@@ -1,14 +1,13 @@
 "use client";
 
-import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { AnimatePresence, motion as m } from "@/components/motion";
 import type { HTMLMotionProps } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { springs } from "@/components/motion";
+import * as React from "react";
+import { AnimatePresence, motion as m, springs } from "@/components/motion";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 /**
  * Button variants with Apple HIG compliant sizing:
@@ -30,8 +29,7 @@ const buttonVariants = cva(
           "border-2 border-border bg-transparent hover:bg-accent/10 hover:border-accent/50 active:bg-accent/20",
         secondary:
           "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 active:bg-secondary/70",
-        ghost:
-          "hover:bg-accent/20 hover:text-accent-foreground active:bg-accent/30",
+        ghost: "hover:bg-accent/20 hover:text-accent-foreground active:bg-accent/30",
         link: "text-primary underline-offset-4 hover:underline",
         // Premium gradient variant for hero CTAs - Stripe-style
         gradient:
@@ -54,7 +52,7 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
+  },
 );
 
 type ButtonVariantProps = VariantProps<typeof buttonVariants>;
@@ -81,9 +79,7 @@ function LoadingSpinner({ className, reducedMotion }: LoadingSpinnerProps) {
   );
 }
 
-interface ButtonProps
-  extends Omit<HTMLMotionProps<"button">, "children">,
-    ButtonVariantProps {
+interface ButtonProps extends Omit<HTMLMotionProps<"button">, "children">, ButtonVariantProps {
   asChild?: boolean;
   children?: React.ReactNode;
   /** Disable motion animations (for server components or reduced motion) */
@@ -121,16 +117,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       ...props
     },
-    ref
+    ref,
   ) => {
     const isDisabled = disabled || loading;
     const prefersReducedMotion = useReducedMotion();
     const shouldDisableMotion = disableMotion || prefersReducedMotion;
 
     const clampedProgress =
-      typeof loadingProgress === "number"
-        ? Math.max(0, Math.min(100, loadingProgress))
-        : undefined;
+      typeof loadingProgress === "number" ? Math.max(0, Math.min(100, loadingProgress)) : undefined;
     const showShimmer = loading && !shouldDisableMotion && variant !== "link";
     const showProgress = loading && typeof clampedProgress === "number";
 
@@ -239,7 +233,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {content}
       </m.button>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";

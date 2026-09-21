@@ -1,5 +1,5 @@
-import { lessonSlugByModuleId, manifestCommands } from './generated/manifest-web-index';
-import type { ManifestCommand } from './generated/manifest-web-index';
+import type { ManifestCommand } from "./generated/manifest-web-index";
+import { lessonSlugByModuleId, manifestCommands } from "./generated/manifest-web-index";
 
 export type CommandCategory =
   | "agents"

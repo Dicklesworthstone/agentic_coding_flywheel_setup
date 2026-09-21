@@ -1,71 +1,69 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  BarChart3,
-  Eye,
-  Network,
-  Cpu,
-  Bot,
-  Layers,
-  TrendingUp,
-  Play,
-  Star,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Ban,
-  ArrowRight,
-  RotateCcw,
-  Zap,
-  Target,
-  GitBranch,
-  RefreshCw,
   Activity,
-  Terminal,
+  AlertTriangle,
+  ArrowRight,
+  Ban,
+  BarChart3,
+  Bot,
+  CheckCircle2,
   ChevronRight,
   Circle,
-  Hash,
+  Clock,
+  Cpu,
+  Eye,
   Gauge,
+  GitBranch,
+  Hash,
+  Layers,
+  Network,
+  Play,
+  RefreshCw,
+  RotateCcw,
   Shield,
+  Star,
+  Target,
+  Terminal,
+  TrendingUp,
   Trophy,
-} from 'lucide-react';
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function BvLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Use BV to triage issues with graph-aware intelligence and coordinate
-        multi-agent work through robot mode.
+        Use BV to triage issues with graph-aware intelligence and coordinate multi-agent work
+        through robot mode.
       </GoalBanner>
 
       {/* Section 1: What Is BV */}
       <Section title="What Is BV?" icon={<Eye className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>BV (Beads Viewer)</Highlight> is a high-performance Terminal
-          UI for browsing, triaging, and analyzing issues tracked by the Beads
-          system. While <code>br</code> manages the issue data, BV is your
-          intelligence layer — computing dependency graphs, identifying
+          <Highlight>BV (Beads Viewer)</Highlight> is a high-performance Terminal UI for browsing,
+          triaging, and analyzing issues tracked by the Beads system. While <code>br</code> manages
+          the issue data, BV is your intelligence layer — computing dependency graphs, identifying
           bottlenecks, and giving AI agents structured triage recommendations.
         </Paragraph>
         <Paragraph>
-          BV computes 9+ graph metrics over your issue dependency graph, including
-          PageRank, betweenness centrality, HITS scores, eigenvector centrality,
-          and k-core decomposition. It uses these to surface the highest-impact
-          work items automatically.
+          BV computes 9+ graph metrics over your issue dependency graph, including PageRank,
+          betweenness centrality, HITS scores, eigenvector centrality, and k-core decomposition. It
+          uses these to surface the highest-impact work items automatically.
         </Paragraph>
 
         <div className="mt-8">
@@ -107,10 +105,9 @@ export function BvLesson() {
       {/* Section 2: Robot Triage — The Mega-Command */}
       <Section title="Robot Triage" icon={<Bot className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          The <Highlight>--robot-triage</Highlight> flag is BV&apos;s mega-command.
-          It runs a two-phase analysis — first computing graph metrics, then
-          combining them with status, age, and blocking relationships to produce
-          a prioritized list of what to work on next.
+          The <Highlight>--robot-triage</Highlight> flag is BV&apos;s mega-command. It runs a
+          two-phase analysis — first computing graph metrics, then combining them with status, age,
+          and blocking relationships to produce a prioritized list of what to work on next.
         </Paragraph>
 
         <CodeBlock
@@ -132,9 +129,9 @@ bv --robot-triage --label "backend"`}
         />
 
         <TipBox variant="tip">
-          Always use <code>bv --robot-triage</code> as your starting point — never
-          run bare <code>bv</code> from an agent. The robot flags produce
-          structured JSON that agents can parse directly.
+          Always use <code>bv --robot-triage</code> as your starting point — never run bare{" "}
+          <code>bv</code> from an agent. The robot flags produce structured JSON that agents can
+          parse directly.
         </TipBox>
       </Section>
 
@@ -143,26 +140,43 @@ bv --robot-triage --label "backend"`}
       {/* Section 3: Graph Analysis Commands */}
       <Section title="Graph Analysis" icon={<Network className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          BV builds a full dependency graph from your issues and computes metrics
-          used by real-world network analysis. These reveal which issues are true
-          bottlenecks versus just noisy.
+          BV builds a full dependency graph from your issues and computes metrics used by real-world
+          network analysis. These reveal which issues are true bottlenecks versus just noisy.
         </Paragraph>
 
         <CommandList
           commands={[
-            { command: 'bv --robot-insights', description: 'Full graph analysis with all metrics as JSON' },
-            { command: 'bv --robot-priority', description: 'Priority recommendations based on graph centrality' },
-            { command: 'bv --robot-plan', description: 'Dependency-respecting execution plan' },
-            { command: 'bv --robot-blocker-chain', description: 'Find the longest blocking chains' },
-            { command: 'bv --robot-orphans', description: 'Discover disconnected issues with no dependencies' },
-            { command: 'bv --robot-related <bead-id>', description: 'Find issues related to a specific bead' },
-            { command: 'bv --robot-graph --format mermaid', description: 'Export dependency graph as Mermaid diagram' },
+            {
+              command: "bv --robot-insights",
+              description: "Full graph analysis with all metrics as JSON",
+            },
+            {
+              command: "bv --robot-priority",
+              description: "Priority recommendations based on graph centrality",
+            },
+            { command: "bv --robot-plan", description: "Dependency-respecting execution plan" },
+            {
+              command: "bv --robot-blocker-chain",
+              description: "Find the longest blocking chains",
+            },
+            {
+              command: "bv --robot-orphans",
+              description: "Discover disconnected issues with no dependencies",
+            },
+            {
+              command: "bv --robot-related <bead-id>",
+              description: "Find issues related to a specific bead",
+            },
+            {
+              command: "bv --robot-graph --format mermaid",
+              description: "Export dependency graph as Mermaid diagram",
+            },
           ]}
         />
 
         <TipBox variant="info">
-          Graph metrics include confidence scores. High PageRank + high betweenness
-          means an issue sits on many critical paths — fix it first.
+          Graph metrics include confidence scores. High PageRank + high betweenness means an issue
+          sits on many critical paths — fix it first.
         </TipBox>
       </Section>
 
@@ -171,8 +185,8 @@ bv --robot-triage --label "backend"`}
       {/* Section 4: File Impact & Sprint Planning */}
       <Section title="Impact & Planning" icon={<Cpu className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          BV connects issues to source files, letting you assess the blast radius
-          of changes and plan sprints with realistic capacity.
+          BV connects issues to source files, letting you assess the blast radius of changes and
+          plan sprints with realistic capacity.
         </Paragraph>
 
         <CodeBlock
@@ -202,8 +216,8 @@ bv --robot-forecast`}
       {/* Section 5: Diagnostics & Drift */}
       <Section title="Diagnostics & Drift" icon={<BarChart3 className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          BV can snapshot your project&apos;s health metrics and detect when things
-          drift outside thresholds — useful for CI alerts or periodic health checks.
+          BV can snapshot your project&apos;s health metrics and detect when things drift outside
+          thresholds — useful for CI alerts or periodic health checks.
         </Paragraph>
 
         <CodeBlock
@@ -228,9 +242,8 @@ bv --robot-label-health`}
         />
 
         <TipBox variant="tip">
-          Use <code>bv --robot-alerts</code> in a cron job or CI step. Exit code
-          0 means healthy, 1 means drifted, 2 means critical — perfect for
-          automated monitoring.
+          Use <code>bv --robot-alerts</code> in a cron job or CI step. Exit code 0 means healthy, 1
+          means drifted, 2 means critical — perfect for automated monitoring.
         </TipBox>
       </Section>
 
@@ -241,19 +254,27 @@ bv --robot-label-health`}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">BV + BR</span>
-            <p className="text-white/80 text-sm mt-1">BR manages issue data, BV analyzes it with graph intelligence</p>
+            <p className="text-white/80 text-sm mt-1">
+              BR manages issue data, BV analyzes it with graph intelligence
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">BV + NTM</span>
-            <p className="text-white/80 text-sm mt-1">Use triage-by-label to assign work across spawned agents</p>
+            <p className="text-white/80 text-sm mt-1">
+              Use triage-by-label to assign work across spawned agents
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">BV + CASS</span>
-            <p className="text-white/80 text-sm mt-1">Search past sessions for context on high-priority beads</p>
+            <p className="text-white/80 text-sm mt-1">
+              Search past sessions for context on high-priority beads
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">BV + Agent Mail</span>
-            <p className="text-white/80 text-sm mt-1">Coordinate triage decisions across concurrent agents</p>
+            <p className="text-white/80 text-sm mt-1">
+              Coordinate triage decisions across concurrent agents
+            </p>
           </div>
         </div>
       </Section>
@@ -265,15 +286,15 @@ bv --robot-label-health`}
 // Interactive Graph Triage Engine — Types & Data
 // ---------------------------------------------------------------------------
 
-type IssueStatus = 'open' | 'in-progress' | 'blocked' | 'done';
+type IssueStatus = "open" | "in-progress" | "blocked" | "done";
 
 type AnalysisMode =
-  | 'overview'
-  | 'pagerank'
-  | 'critical-path'
-  | 'cycles'
-  | 'quick-wins'
-  | 'bottlenecks';
+  | "overview"
+  | "pagerank"
+  | "critical-path"
+  | "cycles"
+  | "quick-wins"
+  | "bottlenecks";
 
 interface GraphNodeMetrics {
   pageRank: number;
@@ -310,228 +331,412 @@ interface TriageRecommendation {
   id: string;
   action: string;
   reason: string;
-  impact: 'critical' | 'high' | 'medium' | 'low';
+  impact: "critical" | "high" | "medium" | "low";
   metric: string;
 }
 
 const GRAPH_NODES: GraphNode[] = [
   {
-    id: 'DB',
-    label: 'DB migration',
-    status: 'in-progress',
-    x: 320, y: 55,
-    metrics: { pageRank: 0.31, betweenness: 0.82, hits_authority: 0.15, hits_hub: 0.91, eigenvector: 0.88, kCore: 3, inDegree: 0, outDegree: 4 },
+    id: "DB",
+    label: "DB migration",
+    status: "in-progress",
+    x: 320,
+    y: 55,
+    metrics: {
+      pageRank: 0.31,
+      betweenness: 0.82,
+      hits_authority: 0.15,
+      hits_hub: 0.91,
+      eigenvector: 0.88,
+      kCore: 3,
+      inDegree: 0,
+      outDegree: 4,
+    },
     isQuickWin: false,
-    why: 'Highest PageRank and betweenness -- sits on every critical path. Completing this unblocks 4 downstream issues.',
+    why: "Highest PageRank and betweenness -- sits on every critical path. Completing this unblocks 4 downstream issues.",
     blockedBy: [],
     age: 12,
-    track: 'backend',
+    track: "backend",
   },
   {
-    id: 'AUTH',
-    label: 'Auth refactor',
-    status: 'blocked',
-    x: 130, y: 140,
-    metrics: { pageRank: 0.24, betweenness: 0.65, hits_authority: 0.40, hits_hub: 0.55, eigenvector: 0.72, kCore: 3, inDegree: 2, outDegree: 2 },
+    id: "AUTH",
+    label: "Auth refactor",
+    status: "blocked",
+    x: 130,
+    y: 140,
+    metrics: {
+      pageRank: 0.24,
+      betweenness: 0.65,
+      hits_authority: 0.4,
+      hits_hub: 0.55,
+      eigenvector: 0.72,
+      kCore: 3,
+      inDegree: 2,
+      outDegree: 2,
+    },
     isQuickWin: false,
-    why: 'Blocks 2 downstream issues. High betweenness centrality makes it a critical relay node.',
-    blockedBy: ['DB', 'CACHE'],
+    why: "Blocks 2 downstream issues. High betweenness centrality makes it a critical relay node.",
+    blockedBy: ["DB", "CACHE"],
     age: 18,
-    track: 'backend',
+    track: "backend",
   },
   {
-    id: 'API',
-    label: 'API v2 endpoints',
-    status: 'open',
-    x: 510, y: 140,
-    metrics: { pageRank: 0.18, betweenness: 0.48, hits_authority: 0.70, hits_hub: 0.20, eigenvector: 0.60, kCore: 3, inDegree: 3, outDegree: 2 },
+    id: "API",
+    label: "API v2 endpoints",
+    status: "open",
+    x: 510,
+    y: 140,
+    metrics: {
+      pageRank: 0.18,
+      betweenness: 0.48,
+      hits_authority: 0.7,
+      hits_hub: 0.2,
+      eigenvector: 0.6,
+      kCore: 3,
+      inDegree: 3,
+      outDegree: 2,
+    },
     isQuickWin: false,
-    why: 'High authority score -- many issues depend on it. Blocked by DB and AUTH.',
-    blockedBy: ['DB', 'AUTH'],
+    why: "High authority score -- many issues depend on it. Blocked by DB and AUTH.",
+    blockedBy: ["DB", "AUTH"],
     age: 10,
-    track: 'backend',
+    track: "backend",
   },
   {
-    id: 'UI',
-    label: 'Dashboard UI',
-    status: 'open',
-    x: 560, y: 270,
-    metrics: { pageRank: 0.12, betweenness: 0.10, hits_authority: 0.85, hits_hub: 0.05, eigenvector: 0.35, kCore: 2, inDegree: 1, outDegree: 0 },
+    id: "UI",
+    label: "Dashboard UI",
+    status: "open",
+    x: 560,
+    y: 270,
+    metrics: {
+      pageRank: 0.12,
+      betweenness: 0.1,
+      hits_authority: 0.85,
+      hits_hub: 0.05,
+      eigenvector: 0.35,
+      kCore: 2,
+      inDegree: 1,
+      outDegree: 0,
+    },
     isQuickWin: false,
-    why: 'Leaf node with high authority -- user-visible but low graph impact.',
-    blockedBy: ['API'],
+    why: "Leaf node with high authority -- user-visible but low graph impact.",
+    blockedBy: ["API"],
     age: 5,
-    track: 'frontend',
+    track: "frontend",
   },
   {
-    id: 'TESTS',
-    label: 'Integration tests',
-    status: 'open',
-    x: 320, y: 320,
-    metrics: { pageRank: 0.09, betweenness: 0.05, hits_authority: 0.10, hits_hub: 0.08, eigenvector: 0.15, kCore: 1, inDegree: 1, outDegree: 0 },
+    id: "TESTS",
+    label: "Integration tests",
+    status: "open",
+    x: 320,
+    y: 320,
+    metrics: {
+      pageRank: 0.09,
+      betweenness: 0.05,
+      hits_authority: 0.1,
+      hits_hub: 0.08,
+      eigenvector: 0.15,
+      kCore: 1,
+      inDegree: 1,
+      outDegree: 0,
+    },
     isQuickWin: true,
-    why: 'No blockers, no dependents -- quick win for velocity stats.',
+    why: "No blockers, no dependents -- quick win for velocity stats.",
     blockedBy: [],
     age: 3,
-    track: 'testing',
+    track: "testing",
   },
   {
-    id: 'CACHE',
-    label: 'Cache layer',
-    status: 'done',
-    x: 100, y: 270,
-    metrics: { pageRank: 0.05, betweenness: 0.22, hits_authority: 0.05, hits_hub: 0.40, eigenvector: 0.30, kCore: 2, inDegree: 0, outDegree: 2 },
+    id: "CACHE",
+    label: "Cache layer",
+    status: "done",
+    x: 100,
+    y: 270,
+    metrics: {
+      pageRank: 0.05,
+      betweenness: 0.22,
+      hits_authority: 0.05,
+      hits_hub: 0.4,
+      eigenvector: 0.3,
+      kCore: 2,
+      inDegree: 0,
+      outDegree: 2,
+    },
     isQuickWin: false,
-    why: 'Already completed -- contributed to unblocking AUTH.',
+    why: "Already completed -- contributed to unblocking AUTH.",
     blockedBy: [],
     age: 0,
-    track: 'backend',
+    track: "backend",
   },
   {
-    id: 'DOCS',
-    label: 'API documentation',
-    status: 'open',
-    x: 130, y: 380,
-    metrics: { pageRank: 0.07, betweenness: 0.02, hits_authority: 0.05, hits_hub: 0.12, eigenvector: 0.08, kCore: 1, inDegree: 0, outDegree: 1 },
+    id: "DOCS",
+    label: "API documentation",
+    status: "open",
+    x: 130,
+    y: 380,
+    metrics: {
+      pageRank: 0.07,
+      betweenness: 0.02,
+      hits_authority: 0.05,
+      hits_hub: 0.12,
+      eigenvector: 0.08,
+      kCore: 1,
+      inDegree: 0,
+      outDegree: 1,
+    },
     isQuickWin: true,
-    why: 'Isolated subgraph -- safe quick win with no risk of conflicts.',
+    why: "Isolated subgraph -- safe quick win with no risk of conflicts.",
     blockedBy: [],
     age: 7,
-    track: 'docs',
+    track: "docs",
   },
   {
-    id: 'PERF',
-    label: 'Perf optimization',
-    status: 'blocked',
-    x: 510, y: 380,
-    metrics: { pageRank: 0.14, betweenness: 0.12, hits_authority: 0.75, hits_hub: 0.10, eigenvector: 0.42, kCore: 2, inDegree: 1, outDegree: 1 },
+    id: "PERF",
+    label: "Perf optimization",
+    status: "blocked",
+    x: 510,
+    y: 380,
+    metrics: {
+      pageRank: 0.14,
+      betweenness: 0.12,
+      hits_authority: 0.75,
+      hits_hub: 0.1,
+      eigenvector: 0.42,
+      kCore: 2,
+      inDegree: 1,
+      outDegree: 1,
+    },
     isQuickWin: false,
-    why: 'Blocked by API v2. High HITS authority -- final optimization pass.',
-    blockedBy: ['API'],
+    why: "Blocked by API v2. High HITS authority -- final optimization pass.",
+    blockedBy: ["API"],
     age: 14,
-    track: 'backend',
+    track: "backend",
   },
   {
-    id: 'NOTIFY',
-    label: 'Notification svc',
-    status: 'open',
-    x: 320, y: 190,
-    metrics: { pageRank: 0.11, betweenness: 0.30, hits_authority: 0.50, hits_hub: 0.35, eigenvector: 0.45, kCore: 2, inDegree: 1, outDegree: 2 },
+    id: "NOTIFY",
+    label: "Notification svc",
+    status: "open",
+    x: 320,
+    y: 190,
+    metrics: {
+      pageRank: 0.11,
+      betweenness: 0.3,
+      hits_authority: 0.5,
+      hits_hub: 0.35,
+      eigenvector: 0.45,
+      kCore: 2,
+      inDegree: 1,
+      outDegree: 2,
+    },
     isQuickWin: false,
-    why: 'Medium betweenness -- bridges backend to frontend concerns.',
-    blockedBy: ['DB'],
+    why: "Medium betweenness -- bridges backend to frontend concerns.",
+    blockedBy: ["DB"],
     age: 8,
-    track: 'backend',
+    track: "backend",
   },
   {
-    id: 'BILLING',
-    label: 'Billing module',
-    status: 'open',
-    x: 370, y: 420,
-    metrics: { pageRank: 0.10, betweenness: 0.08, hits_authority: 0.60, hits_hub: 0.15, eigenvector: 0.28, kCore: 1, inDegree: 2, outDegree: 0 },
+    id: "BILLING",
+    label: "Billing module",
+    status: "open",
+    x: 370,
+    y: 420,
+    metrics: {
+      pageRank: 0.1,
+      betweenness: 0.08,
+      hits_authority: 0.6,
+      hits_hub: 0.15,
+      eigenvector: 0.28,
+      kCore: 1,
+      inDegree: 2,
+      outDegree: 0,
+    },
     isQuickWin: false,
-    why: 'Depends on PERF and NOTIFY. Last node in critical chain.',
-    blockedBy: ['PERF', 'NOTIFY'],
+    why: "Depends on PERF and NOTIFY. Last node in critical chain.",
+    blockedBy: ["PERF", "NOTIFY"],
     age: 2,
-    track: 'backend',
+    track: "backend",
   },
 ];
 
 const GRAPH_EDGES: GraphEdge[] = [
-  { from: 'DB', to: 'AUTH', isBlocker: true },
-  { from: 'DB', to: 'API', isBlocker: true },
-  { from: 'DB', to: 'NOTIFY', isBlocker: true },
-  { from: 'AUTH', to: 'API', isBlocker: false },
-  { from: 'API', to: 'UI', isBlocker: false },
-  { from: 'API', to: 'PERF', isBlocker: true },
-  { from: 'CACHE', to: 'AUTH', isBlocker: false },
-  { from: 'CACHE', to: 'TESTS', isBlocker: false },
-  { from: 'DOCS', to: 'API', isBlocker: false },
-  { from: 'NOTIFY', to: 'BILLING', isBlocker: false },
-  { from: 'PERF', to: 'BILLING', isBlocker: false },
-  { from: 'NOTIFY', to: 'UI', isBlocker: false },
+  { from: "DB", to: "AUTH", isBlocker: true },
+  { from: "DB", to: "API", isBlocker: true },
+  { from: "DB", to: "NOTIFY", isBlocker: true },
+  { from: "AUTH", to: "API", isBlocker: false },
+  { from: "API", to: "UI", isBlocker: false },
+  { from: "API", to: "PERF", isBlocker: true },
+  { from: "CACHE", to: "AUTH", isBlocker: false },
+  { from: "CACHE", to: "TESTS", isBlocker: false },
+  { from: "DOCS", to: "API", isBlocker: false },
+  { from: "NOTIFY", to: "BILLING", isBlocker: false },
+  { from: "PERF", to: "BILLING", isBlocker: false },
+  { from: "NOTIFY", to: "UI", isBlocker: false },
 ];
 
 // Simulated cycle for cycle detection mode
 const CYCLE_EDGES: Array<{ from: string; to: string }> = [
-  { from: 'API', to: 'NOTIFY' },
-  { from: 'NOTIFY', to: 'PERF' },
-  { from: 'PERF', to: 'API' },
+  { from: "API", to: "NOTIFY" },
+  { from: "NOTIFY", to: "PERF" },
+  { from: "PERF", to: "API" },
 ];
 
 // Critical path: DB -> API -> PERF -> BILLING (longest chain)
-const CRITICAL_PATH_IDS = ['DB', 'API', 'PERF', 'BILLING'];
+const CRITICAL_PATH_IDS = ["DB", "API", "PERF", "BILLING"];
 const CRITICAL_PATH_EDGES = [
-  { from: 'DB', to: 'API' },
-  { from: 'API', to: 'PERF' },
-  { from: 'PERF', to: 'BILLING' },
+  { from: "DB", to: "API" },
+  { from: "API", to: "PERF" },
+  { from: "PERF", to: "BILLING" },
 ];
 
 const TRIAGE_RECOMMENDATIONS: TriageRecommendation[] = [
-  { id: 'DB', action: 'Complete DB migration ASAP', reason: 'Highest PageRank (0.31) + betweenness (0.82). Unblocks 4 issues.', impact: 'critical', metric: 'pageRank + betweenness' },
-  { id: 'AUTH', action: 'Unblock AUTH after DB completes', reason: 'Second-highest betweenness (0.65). Critical relay node.', impact: 'high', metric: 'betweenness' },
-  { id: 'TESTS', action: 'Assign to idle agent now', reason: 'Zero dependencies, zero blockers. Free velocity.', impact: 'medium', metric: 'quick-win' },
-  { id: 'DOCS', action: 'Parallel quick-win task', reason: 'Isolated subgraph. No conflict risk.', impact: 'medium', metric: 'quick-win' },
-  { id: 'API', action: 'Queue after DB + AUTH', reason: 'High authority (0.70). Enables PERF and UI.', impact: 'high', metric: 'hits_authority' },
-  { id: 'NOTIFY', action: 'Start after DB unblocks', reason: 'Bridges backend to frontend. Medium betweenness.', impact: 'medium', metric: 'betweenness' },
+  {
+    id: "DB",
+    action: "Complete DB migration ASAP",
+    reason: "Highest PageRank (0.31) + betweenness (0.82). Unblocks 4 issues.",
+    impact: "critical",
+    metric: "pageRank + betweenness",
+  },
+  {
+    id: "AUTH",
+    action: "Unblock AUTH after DB completes",
+    reason: "Second-highest betweenness (0.65). Critical relay node.",
+    impact: "high",
+    metric: "betweenness",
+  },
+  {
+    id: "TESTS",
+    action: "Assign to idle agent now",
+    reason: "Zero dependencies, zero blockers. Free velocity.",
+    impact: "medium",
+    metric: "quick-win",
+  },
+  {
+    id: "DOCS",
+    action: "Parallel quick-win task",
+    reason: "Isolated subgraph. No conflict risk.",
+    impact: "medium",
+    metric: "quick-win",
+  },
+  {
+    id: "API",
+    action: "Queue after DB + AUTH",
+    reason: "High authority (0.70). Enables PERF and UI.",
+    impact: "high",
+    metric: "hits_authority",
+  },
+  {
+    id: "NOTIFY",
+    action: "Start after DB unblocks",
+    reason: "Bridges backend to frontend. Medium betweenness.",
+    impact: "medium",
+    metric: "betweenness",
+  },
 ];
 
-const STATUS_COLORS: Record<IssueStatus, { fill: string; stroke: string; text: string; bg: string; label: string }> = {
-  'open':        { fill: '#3b82f6', stroke: '#60a5fa', text: 'text-blue-400',    bg: 'bg-blue-500',    label: 'Open' },
-  'in-progress': { fill: '#f59e0b', stroke: '#fbbf24', text: 'text-amber-400',   bg: 'bg-amber-500',   label: 'In Progress' },
-  'blocked':     { fill: '#ef4444', stroke: '#f87171', text: 'text-red-400',     bg: 'bg-red-500',     label: 'Blocked' },
-  'done':        { fill: '#22c55e', stroke: '#4ade80', text: 'text-emerald-400', bg: 'bg-emerald-500', label: 'Done' },
+const STATUS_COLORS: Record<
+  IssueStatus,
+  { fill: string; stroke: string; text: string; bg: string; label: string }
+> = {
+  open: {
+    fill: "#3b82f6",
+    stroke: "#60a5fa",
+    text: "text-blue-400",
+    bg: "bg-blue-500",
+    label: "Open",
+  },
+  "in-progress": {
+    fill: "#f59e0b",
+    stroke: "#fbbf24",
+    text: "text-amber-400",
+    bg: "bg-amber-500",
+    label: "In Progress",
+  },
+  blocked: {
+    fill: "#ef4444",
+    stroke: "#f87171",
+    text: "text-red-400",
+    bg: "bg-red-500",
+    label: "Blocked",
+  },
+  done: {
+    fill: "#22c55e",
+    stroke: "#4ade80",
+    text: "text-emerald-400",
+    bg: "bg-emerald-500",
+    label: "Done",
+  },
 };
 
-const IMPACT_COLORS: Record<TriageRecommendation['impact'], string> = {
-  critical: 'text-red-400 bg-red-500/10 border-red-500/30',
-  high: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-  medium: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
-  low: 'text-white/50 bg-white/[0.04] border-white/[0.08]',
+const IMPACT_COLORS: Record<TriageRecommendation["impact"], string> = {
+  critical: "text-red-400 bg-red-500/10 border-red-500/30",
+  high: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+  medium: "text-blue-400 bg-blue-500/10 border-blue-500/30",
+  low: "text-white/50 bg-white/[0.04] border-white/[0.08]",
 };
 
-const MODE_CONFIG: Record<AnalysisMode, { label: string; icon: typeof Eye; description: string }> = {
-  'overview':      { label: 'Overview',      icon: Eye,        description: 'Full dependency graph with status coloring' },
-  'pagerank':      { label: 'PageRank',      icon: Trophy,     description: 'Node size scaled by PageRank score' },
-  'critical-path': { label: 'Critical Path', icon: GitBranch,  description: 'Longest dependency chain highlighted' },
-  'cycles':        { label: 'Cycles',        icon: RefreshCw,  description: 'Circular dependency detection' },
-  'quick-wins':    { label: 'Quick Wins',    icon: Zap,        description: 'Zero-dependency tasks for free velocity' },
-  'bottlenecks':   { label: 'Bottlenecks',   icon: Target,     description: 'High betweenness centrality nodes' },
-};
+const MODE_CONFIG: Record<AnalysisMode, { label: string; icon: typeof Eye; description: string }> =
+  {
+    overview: {
+      label: "Overview",
+      icon: Eye,
+      description: "Full dependency graph with status coloring",
+    },
+    pagerank: {
+      label: "PageRank",
+      icon: Trophy,
+      description: "Node size scaled by PageRank score",
+    },
+    "critical-path": {
+      label: "Critical Path",
+      icon: GitBranch,
+      description: "Longest dependency chain highlighted",
+    },
+    cycles: { label: "Cycles", icon: RefreshCw, description: "Circular dependency detection" },
+    "quick-wins": {
+      label: "Quick Wins",
+      icon: Zap,
+      description: "Zero-dependency tasks for free velocity",
+    },
+    bottlenecks: {
+      label: "Bottlenecks",
+      icon: Target,
+      description: "High betweenness centrality nodes",
+    },
+  };
 
 const TERMINAL_COMMANDS: Record<AnalysisMode, string[]> = {
-  'overview': [
-    '$ bv --robot-triage',
+  overview: [
+    "$ bv --robot-triage",
     '{"phase":"graph_metrics","nodes":10,"edges":12}',
     '{"phase":"priority_rank","top":"DB","score":0.31}',
     '{"status":"complete","recommendations":6}',
   ],
-  'pagerank': [
-    '$ bv --robot-insights --metric pagerank',
+  pagerank: [
+    "$ bv --robot-insights --metric pagerank",
     '{"DB":0.31,"AUTH":0.24,"API":0.18,"PERF":0.14}',
     '{"UI":0.12,"NOTIFY":0.11,"BILLING":0.10}',
     '{"TESTS":0.09,"DOCS":0.07,"CACHE":0.05}',
   ],
-  'critical-path': [
-    '$ bv --robot-blocker-chain',
+  "critical-path": [
+    "$ bv --robot-blocker-chain",
     '{"chain":["DB","API","PERF","BILLING"]}',
     '{"length":4,"estimated_days":28}',
     '{"bottleneck":"DB","blocks_remaining":3}',
   ],
-  'cycles': [
-    '$ bv --robot-insights --cycles',
+  cycles: [
+    "$ bv --robot-insights --cycles",
     '{"warning":"cycle_detected","nodes":3}',
     '{"cycle":["API","NOTIFY","PERF","API"]}',
     '{"recommendation":"break_edge PERF->API"}',
   ],
-  'quick-wins': [
-    '$ bv --robot-triage --filter quick-wins',
+  "quick-wins": [
+    "$ bv --robot-triage --filter quick-wins",
     '{"quick_wins":["TESTS","DOCS"]}',
     '{"TESTS":{"blockers":0,"dependents":0}}',
     '{"DOCS":{"blockers":0,"dependents":1}}',
   ],
-  'bottlenecks': [
-    '$ bv --robot-priority --metric betweenness',
+  bottlenecks: [
+    "$ bv --robot-priority --metric betweenness",
     '{"DB":{"betweenness":0.82,"blocking":4}}',
     '{"AUTH":{"betweenness":0.65,"blocking":2}}',
     '{"API":{"betweenness":0.48,"blocking":2}}',
@@ -544,9 +749,9 @@ const TERMINAL_COMMANDS: Record<AnalysisMode, string[]> = {
 
 function InteractiveGraphTriage() {
   const [triageRun, setTriageRun] = useState(false);
-  const [animatingPhase, setAnimatingPhase] = useState<'idle' | 'computing' | 'done'>('idle');
+  const [animatingPhase, setAnimatingPhase] = useState<"idle" | "computing" | "done">("idle");
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('overview');
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("overview");
   const [criticalPathStep, setCriticalPathStep] = useState(0);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [showMetricsDetail, setShowMetricsDetail] = useState(false);
@@ -570,9 +775,12 @@ function InteractiveGraphTriage() {
     const timers: ReturnType<typeof setTimeout>[] = [];
     const commands = TERMINAL_COMMANDS[analysisMode];
     commands.forEach((line, i) => {
-      const t = setTimeout(() => {
-        setTerminalLines((prev) => [...prev, line]);
-      }, (i + 1) * 350);
+      const t = setTimeout(
+        () => {
+          setTerminalLines((prev) => [...prev, line]);
+        },
+        (i + 1) * 350,
+      );
       timers.push(t);
     });
     return () => {
@@ -592,7 +800,7 @@ function InteractiveGraphTriage() {
 
   // Animate critical path tracing
   useEffect(() => {
-    if (analysisMode !== 'critical-path' || !triageRun || !inView) {
+    if (analysisMode !== "critical-path" || !triageRun || !inView) {
       if (criticalPathTimerRef.current) {
         clearInterval(criticalPathTimerRef.current);
         criticalPathTimerRef.current = null;
@@ -616,21 +824,22 @@ function InteractiveGraphTriage() {
   }, [analysisMode, triageRun, inView]);
 
   const topNode = useMemo(() => {
-    return GRAPH_NODES.reduce((best, n) =>
-      n.status !== 'done' && n.metrics.pageRank > best.metrics.pageRank ? n : best
-    , GRAPH_NODES[0]);
+    return GRAPH_NODES.reduce(
+      (best, n) => (n.status !== "done" && n.metrics.pageRank > best.metrics.pageRank ? n : best),
+      GRAPH_NODES[0],
+    );
   }, []);
 
   const handleRunTriage = useCallback(() => {
-    if (animatingPhase === 'computing') return;
+    if (animatingPhase === "computing") return;
     setTriageRun(false);
-    setAnimatingPhase('computing');
+    setAnimatingPhase("computing");
     setSelectedNode(null);
     setTerminalLines([]);
     setCriticalPathStep(0);
     setTimeout(() => {
       setTriageRun(true);
-      setAnimatingPhase('done');
+      setAnimatingPhase("done");
       setSelectedNode(topNode.id);
     }, 1800);
   }, [animatingPhase, topNode.id]);
@@ -647,45 +856,51 @@ function InteractiveGraphTriage() {
 
   const handleReset = useCallback(() => {
     setTriageRun(false);
-    setAnimatingPhase('idle');
+    setAnimatingPhase("idle");
     setSelectedNode(null);
-    setAnalysisMode('overview');
+    setAnalysisMode("overview");
     setTerminalLines([]);
     setCriticalPathStep(0);
     setShowMetricsDetail(false);
   }, []);
 
-  const getNodeRadius = useCallback((node: GraphNode): number => {
-    if (!triageRun) return 20;
-    switch (analysisMode) {
-      case 'pagerank':
-        return 14 + node.metrics.pageRank * 60;
-      case 'bottlenecks':
-        return 14 + node.metrics.betweenness * 30;
-      case 'quick-wins':
-        return node.isQuickWin ? 28 : 16;
-      default:
-        return 14 + node.metrics.pageRank * 50;
-    }
-  }, [triageRun, analysisMode]);
-
-  const getNodeOpacity = useCallback((node: GraphNode): number => {
-    if (!triageRun) return 1;
-    switch (analysisMode) {
-      case 'quick-wins':
-        return node.isQuickWin && node.status !== 'done' ? 1 : 0.3;
-      case 'critical-path':
-        return CRITICAL_PATH_IDS.includes(node.id) ? 1 : 0.25;
-      case 'bottlenecks':
-        return node.metrics.betweenness > 0.3 ? 1 : 0.3;
-      case 'cycles': {
-        const cycleNodeIds = new Set(CYCLE_EDGES.flatMap((e) => [e.from, e.to]));
-        return cycleNodeIds.has(node.id) ? 1 : 0.25;
+  const getNodeRadius = useCallback(
+    (node: GraphNode): number => {
+      if (!triageRun) return 20;
+      switch (analysisMode) {
+        case "pagerank":
+          return 14 + node.metrics.pageRank * 60;
+        case "bottlenecks":
+          return 14 + node.metrics.betweenness * 30;
+        case "quick-wins":
+          return node.isQuickWin ? 28 : 16;
+        default:
+          return 14 + node.metrics.pageRank * 50;
       }
-      default:
-        return 1;
-    }
-  }, [triageRun, analysisMode]);
+    },
+    [triageRun, analysisMode],
+  );
+
+  const getNodeOpacity = useCallback(
+    (node: GraphNode): number => {
+      if (!triageRun) return 1;
+      switch (analysisMode) {
+        case "quick-wins":
+          return node.isQuickWin && node.status !== "done" ? 1 : 0.3;
+        case "critical-path":
+          return CRITICAL_PATH_IDS.includes(node.id) ? 1 : 0.25;
+        case "bottlenecks":
+          return node.metrics.betweenness > 0.3 ? 1 : 0.3;
+        case "cycles": {
+          const cycleNodeIds = new Set(CYCLE_EDGES.flatMap((e) => [e.from, e.to]));
+          return cycleNodeIds.has(node.id) ? 1 : 0.25;
+        }
+        default:
+          return 1;
+      }
+    },
+    [triageRun, analysisMode],
+  );
 
   const selectedData = useMemo(() => {
     if (!selectedNode) return null;
@@ -694,22 +909,25 @@ function InteractiveGraphTriage() {
 
   const sortedNodes = useMemo(() => {
     return [...GRAPH_NODES]
-      .filter((n) => n.status !== 'done')
+      .filter((n) => n.status !== "done")
       .sort((a, b) => b.metrics.pageRank - a.metrics.pageRank);
   }, []);
 
   const quickWinNodes = useMemo(() => {
-    return GRAPH_NODES.filter((n) => n.isQuickWin && n.status !== 'done');
+    return GRAPH_NODES.filter((n) => n.isQuickWin && n.status !== "done");
   }, []);
 
   const bottleneckNodes = useMemo(() => {
     return [...GRAPH_NODES]
-      .filter((n) => n.metrics.betweenness > 0.3 && n.status !== 'done')
+      .filter((n) => n.metrics.betweenness > 0.3 && n.status !== "done")
       .sort((a, b) => b.metrics.betweenness - a.metrics.betweenness);
   }, []);
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-80 h-80 bg-violet-500/[0.04] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-blue-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -726,7 +944,7 @@ function InteractiveGraphTriage() {
           </div>
           <p className="text-sm text-white/50">
             {triageRun
-              ? 'Explore 6 analysis modes to understand your dependency graph'
+              ? "Explore 6 analysis modes to understand your dependency graph"
               : 'Click "Run Triage" to compute graph metrics and see recommendations'}
           </p>
         </div>
@@ -738,10 +956,15 @@ function InteractiveGraphTriage() {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
             >
               <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
-                {(Object.entries(MODE_CONFIG) as [AnalysisMode, typeof MODE_CONFIG[AnalysisMode]][]).map(([mode, config]) => {
+                {(
+                  Object.entries(MODE_CONFIG) as [
+                    AnalysisMode,
+                    (typeof MODE_CONFIG)[AnalysisMode],
+                  ][]
+                ).map(([mode, config]) => {
                   const ModeIcon = config.icon;
                   const isActive = analysisMode === mode;
                   return (
@@ -751,11 +974,11 @@ function InteractiveGraphTriage() {
                       onClick={() => handleAnalysisModeChange(mode)}
                       whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.96 }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 25 }}
                       className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
                         isActive
-                          ? 'border border-violet-500/40 bg-violet-500/15 text-violet-300 shadow-lg shadow-violet-500/10'
-                          : 'border border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
+                          ? "border border-violet-500/40 bg-violet-500/15 text-violet-300 shadow-lg shadow-violet-500/10"
+                          : "border border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60 hover:bg-white/[0.04]"
                       }`}
                     >
                       <ModeIcon className="h-3 w-3" />
@@ -774,7 +997,9 @@ function InteractiveGraphTriage() {
 
         {/* Legend */}
         <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-          {(Object.entries(STATUS_COLORS) as [IssueStatus, typeof STATUS_COLORS[IssueStatus]][]).map(([status, meta]) => (
+          {(
+            Object.entries(STATUS_COLORS) as [IssueStatus, (typeof STATUS_COLORS)[IssueStatus]][]
+          ).map(([status, meta]) => (
             <div key={status} className="flex items-center gap-1.5">
               <div className={`h-2.5 w-2.5 rounded-full ${meta.bg}`} />
               <span className="text-[10px] text-white/50">{meta.label}</span>
@@ -784,13 +1009,13 @@ function InteractiveGraphTriage() {
             <Star className="h-2.5 w-2.5 text-yellow-400" />
             <span className="text-[10px] text-white/50">Quick Win</span>
           </div>
-          {triageRun && analysisMode === 'critical-path' && (
+          {triageRun && analysisMode === "critical-path" && (
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-5 rounded bg-gradient-to-r from-cyan-400 to-cyan-500" />
               <span className="text-[10px] text-cyan-400/70">Critical Path</span>
             </div>
           )}
-          {triageRun && analysisMode === 'cycles' && (
+          {triageRun && analysisMode === "cycles" && (
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-5 rounded bg-gradient-to-r from-red-400 to-rose-500" />
               <span className="text-[10px] text-red-400/70">Cycle</span>
@@ -805,7 +1030,7 @@ function InteractiveGraphTriage() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-2 overflow-hidden relative">
               {/* Computing overlay */}
               <AnimatePresence>
-                {animatingPhase === 'computing' && (
+                {animatingPhase === "computing" && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -814,7 +1039,11 @@ function InteractiveGraphTriage() {
                   >
                     <motion.div
                       animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                      transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                      transition={
+                        inView
+                          ? { duration: 2, repeat: Infinity, ease: "linear" }
+                          : { duration: 0.2 }
+                      }
                     >
                       <Network className="h-8 w-8 text-violet-400" />
                     </motion.div>
@@ -827,7 +1056,7 @@ function InteractiveGraphTriage() {
                       Computing graph metrics...
                     </motion.p>
                     <div className="flex gap-1 mt-2">
-                      {['PageRank', 'Betweenness', 'HITS', 'Eigenvector'].map((metric, i) => (
+                      {["PageRank", "Betweenness", "HITS", "Eigenvector"].map((metric, i) => (
                         <motion.span
                           key={metric}
                           initial={{ opacity: 0, scale: 0.8 }}
@@ -843,22 +1072,46 @@ function InteractiveGraphTriage() {
                 )}
               </AnimatePresence>
 
-              <svg
-                viewBox="0 0 660 470"
-                className="w-full h-auto"
-                style={{ minHeight: 300 }}
-              >
+              <svg viewBox="0 0 660 470" className="w-full h-auto" style={{ minHeight: 300 }}>
                 <defs>
-                  <marker id="bv-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                  <marker
+                    id="bv-arrow"
+                    markerWidth="8"
+                    markerHeight="6"
+                    refX="8"
+                    refY="3"
+                    orient="auto"
+                  >
                     <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.25)" />
                   </marker>
-                  <marker id="bv-arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                  <marker
+                    id="bv-arrow-red"
+                    markerWidth="8"
+                    markerHeight="6"
+                    refX="8"
+                    refY="3"
+                    orient="auto"
+                  >
                     <polygon points="0 0, 8 3, 0 6" fill="rgba(239,68,68,0.6)" />
                   </marker>
-                  <marker id="bv-arrow-cyan" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                  <marker
+                    id="bv-arrow-cyan"
+                    markerWidth="8"
+                    markerHeight="6"
+                    refX="8"
+                    refY="3"
+                    orient="auto"
+                  >
                     <polygon points="0 0, 8 3, 0 6" fill="rgba(34,211,238,0.8)" />
                   </marker>
-                  <marker id="bv-arrow-cycle" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                  <marker
+                    id="bv-arrow-cycle"
+                    markerWidth="8"
+                    markerHeight="6"
+                    refX="8"
+                    refY="3"
+                    orient="auto"
+                  >
                     <polygon points="0 0, 8 3, 0 6" fill="rgba(244,63,94,0.8)" />
                   </marker>
                   <filter id="bv-glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -903,17 +1156,20 @@ function InteractiveGraphTriage() {
                   if (!fromNode || !toNode) return null;
 
                   // Check if edge is on critical path
-                  const isCriticalEdge = triageRun && analysisMode === 'critical-path' &&
+                  const isCriticalEdge =
+                    triageRun &&
+                    analysisMode === "critical-path" &&
                     CRITICAL_PATH_EDGES.some((cp) => cp.from === edge.from && cp.to === edge.to);
 
                   // Determine edge opacity based on mode
                   let edgeOpacity = 1;
                   if (triageRun) {
-                    if (analysisMode === 'critical-path' && !isCriticalEdge) edgeOpacity = 0.15;
-                    if (analysisMode === 'quick-wins') edgeOpacity = 0.1;
-                    if (analysisMode === 'cycles') edgeOpacity = 0.1;
-                    if (analysisMode === 'bottlenecks') {
-                      const isBetweenBottlenecks = fromNode.metrics.betweenness > 0.3 || toNode.metrics.betweenness > 0.3;
+                    if (analysisMode === "critical-path" && !isCriticalEdge) edgeOpacity = 0.15;
+                    if (analysisMode === "quick-wins") edgeOpacity = 0.1;
+                    if (analysisMode === "cycles") edgeOpacity = 0.1;
+                    if (analysisMode === "bottlenecks") {
+                      const isBetweenBottlenecks =
+                        fromNode.metrics.betweenness > 0.3 || toNode.metrics.betweenness > 0.3;
                       edgeOpacity = isBetweenBottlenecks ? 0.6 : 0.1;
                     }
                   }
@@ -927,93 +1183,97 @@ function InteractiveGraphTriage() {
                       y2={toNode.y}
                       stroke={
                         isCriticalEdge
-                          ? '#22d3ee'
+                          ? "#22d3ee"
                           : edge.isBlocker
-                            ? 'rgba(239,68,68,0.4)'
-                            : 'rgba(255,255,255,0.12)'
+                            ? "rgba(239,68,68,0.4)"
+                            : "rgba(255,255,255,0.12)"
                       }
                       strokeWidth={isCriticalEdge ? 3 : edge.isBlocker ? 2 : 1.5}
-                      strokeDasharray={isCriticalEdge ? 'none' : edge.isBlocker ? '6 4' : 'none'}
+                      strokeDasharray={isCriticalEdge ? "none" : edge.isBlocker ? "6 4" : "none"}
                       markerEnd={
                         isCriticalEdge
-                          ? 'url(#bv-arrow-cyan)'
+                          ? "url(#bv-arrow-cyan)"
                           : edge.isBlocker
-                            ? 'url(#bv-arrow-red)'
-                            : 'url(#bv-arrow)'
+                            ? "url(#bv-arrow-red)"
+                            : "url(#bv-arrow)"
                       }
                       opacity={edgeOpacity}
-                      filter={isCriticalEdge ? 'url(#bv-glow-cyan)' : undefined}
+                      filter={isCriticalEdge ? "url(#bv-glow-cyan)" : undefined}
                     />
                   );
                 })}
 
                 {/* Cycle edges (shown only in cycle detection mode) */}
-                {triageRun && analysisMode === 'cycles' && CYCLE_EDGES.map((edge) => {
-                  const fromNode = GRAPH_NODES.find((n) => n.id === edge.from);
-                  const toNode = GRAPH_NODES.find((n) => n.id === edge.to);
-                  if (!fromNode || !toNode) return null;
+                {triageRun &&
+                  analysisMode === "cycles" &&
+                  CYCLE_EDGES.map((edge) => {
+                    const fromNode = GRAPH_NODES.find((n) => n.id === edge.from);
+                    const toNode = GRAPH_NODES.find((n) => n.id === edge.to);
+                    if (!fromNode || !toNode) return null;
 
-                  // Offset cycle edges slightly for visibility
-                  const dx = toNode.x - fromNode.x;
-                  const dy = toNode.y - fromNode.y;
-                  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                  const offsetX = (-dy / len) * 12;
-                  const offsetY = (dx / len) * 12;
+                    // Offset cycle edges slightly for visibility
+                    const dx = toNode.x - fromNode.x;
+                    const dy = toNode.y - fromNode.y;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const offsetX = (-dy / len) * 12;
+                    const offsetY = (dx / len) * 12;
 
-                  const midX = (fromNode.x + toNode.x) / 2 + offsetX * 2;
-                  const midY = (fromNode.y + toNode.y) / 2 + offsetY * 2;
+                    const midX = (fromNode.x + toNode.x) / 2 + offsetX * 2;
+                    const midY = (fromNode.y + toNode.y) / 2 + offsetY * 2;
 
-                  return (
-                    <path
-                      key={`cycle-${edge.from}-${edge.to}`}
-                      d={`M ${fromNode.x + offsetX} ${fromNode.y + offsetY} Q ${midX} ${midY} ${toNode.x + offsetX} ${toNode.y + offsetY}`}
-                      stroke="#f43f5e"
-                      strokeWidth={2.5}
-                      fill="none"
-                      strokeDasharray="8 4"
-                      markerEnd="url(#bv-arrow-cycle)"
-                      filter="url(#bv-glow-red)"
-                      opacity={0.8}
-                    >
-                      <animate
-                        attributeName="stroke-dashoffset"
-                        values="0;-24"
-                        dur="1.5s"
-                        repeatCount="indefinite"
-                      />
-                    </path>
-                  );
-                })}
+                    return (
+                      <path
+                        key={`cycle-${edge.from}-${edge.to}`}
+                        d={`M ${fromNode.x + offsetX} ${fromNode.y + offsetY} Q ${midX} ${midY} ${toNode.x + offsetX} ${toNode.y + offsetY}`}
+                        stroke="#f43f5e"
+                        strokeWidth={2.5}
+                        fill="none"
+                        strokeDasharray="8 4"
+                        markerEnd="url(#bv-arrow-cycle)"
+                        filter="url(#bv-glow-red)"
+                        opacity={0.8}
+                      >
+                        <animate
+                          attributeName="stroke-dashoffset"
+                          values="0;-24"
+                          dur="1.5s"
+                          repeatCount="indefinite"
+                        />
+                      </path>
+                    );
+                  })}
 
                 {/* Critical path animated trace */}
-                {triageRun && analysisMode === 'critical-path' && CRITICAL_PATH_EDGES.map((edge, i) => {
-                  const fromNode = GRAPH_NODES.find((n) => n.id === edge.from);
-                  const toNode = GRAPH_NODES.find((n) => n.id === edge.to);
-                  if (!fromNode || !toNode) return null;
+                {triageRun &&
+                  analysisMode === "critical-path" &&
+                  CRITICAL_PATH_EDGES.map((edge, i) => {
+                    const fromNode = GRAPH_NODES.find((n) => n.id === edge.from);
+                    const toNode = GRAPH_NODES.find((n) => n.id === edge.to);
+                    if (!fromNode || !toNode) return null;
 
-                  const isTraced = criticalPathStep > i;
+                    const isTraced = criticalPathStep > i;
 
-                  return isTraced ? (
-                    <line
-                      key={`cp-trace-${edge.from}-${edge.to}`}
-                      x1={fromNode.x}
-                      y1={fromNode.y}
-                      x2={toNode.x}
-                      y2={toNode.y}
-                      stroke="#22d3ee"
-                      strokeWidth={4}
-                      opacity={0.6}
-                      filter="url(#bv-glow-cyan)"
-                    >
-                      <animate
-                        attributeName="opacity"
-                        values="0.4;0.8;0.4"
-                        dur="2s"
-                        repeatCount="indefinite"
-                      />
-                    </line>
-                  ) : null;
-                })}
+                    return isTraced ? (
+                      <line
+                        key={`cp-trace-${edge.from}-${edge.to}`}
+                        x1={fromNode.x}
+                        y1={fromNode.y}
+                        x2={toNode.x}
+                        y2={toNode.y}
+                        stroke="#22d3ee"
+                        strokeWidth={4}
+                        opacity={0.6}
+                        filter="url(#bv-glow-cyan)"
+                      >
+                        <animate
+                          attributeName="opacity"
+                          values="0.4;0.8;0.4"
+                          dur="2s"
+                          repeatCount="indefinite"
+                        />
+                      </line>
+                    ) : null;
+                  })}
 
                 {/* Nodes */}
                 {GRAPH_NODES.map((node) => {
@@ -1022,21 +1282,27 @@ function InteractiveGraphTriage() {
                   const color = STATUS_COLORS[node.status];
                   const isTop = triageRun && node.id === topNode.id;
                   const isSelected = node.id === selectedNode;
-                  const isOnCriticalPath = triageRun && analysisMode === 'critical-path' && CRITICAL_PATH_IDS.includes(node.id);
-                  const isCriticalPathActive = isOnCriticalPath && CRITICAL_PATH_IDS.indexOf(node.id) < criticalPathStep;
+                  const isOnCriticalPath =
+                    triageRun &&
+                    analysisMode === "critical-path" &&
+                    CRITICAL_PATH_IDS.includes(node.id);
+                  const isCriticalPathActive =
+                    isOnCriticalPath && CRITICAL_PATH_IDS.indexOf(node.id) < criticalPathStep;
                   const cycleNodeIds = new Set(CYCLE_EDGES.flatMap((e) => [e.from, e.to]));
-                  const isInCycle = triageRun && analysisMode === 'cycles' && cycleNodeIds.has(node.id);
-                  const isBottleneck = triageRun && analysisMode === 'bottlenecks' && node.metrics.betweenness > 0.3;
+                  const isInCycle =
+                    triageRun && analysisMode === "cycles" && cycleNodeIds.has(node.id);
+                  const isBottleneck =
+                    triageRun && analysisMode === "bottlenecks" && node.metrics.betweenness > 0.3;
 
                   return (
                     <g
                       key={node.id}
-                      style={{ cursor: 'pointer' }}
+                      style={{ cursor: "pointer" }}
                       opacity={nodeOpacity}
                       onClick={() => setSelectedNode(node.id === selectedNode ? null : node.id)}
                     >
                       {/* Top recommendation pulsing glow */}
-                      {isTop && analysisMode === 'overview' && (
+                      {isTop && analysisMode === "overview" && (
                         <circle
                           cx={node.x}
                           cy={node.y}
@@ -1047,8 +1313,18 @@ function InteractiveGraphTriage() {
                           opacity={0.5}
                           filter="url(#bv-glow)"
                         >
-                          <animate attributeName="r" values={`${radius + 6};${radius + 14};${radius + 6}`} dur="2s" repeatCount="indefinite" />
-                          <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2s" repeatCount="indefinite" />
+                          <animate
+                            attributeName="r"
+                            values={`${radius + 6};${radius + 14};${radius + 6}`}
+                            dur="2s"
+                            repeatCount="indefinite"
+                          />
+                          <animate
+                            attributeName="opacity"
+                            values="0.5;0.2;0.5"
+                            dur="2s"
+                            repeatCount="indefinite"
+                          />
                         </circle>
                       )}
 
@@ -1063,7 +1339,12 @@ function InteractiveGraphTriage() {
                           strokeWidth={2}
                           filter="url(#bv-glow-cyan)"
                         >
-                          <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.5s" repeatCount="indefinite" />
+                          <animate
+                            attributeName="opacity"
+                            values="0.8;0.3;0.8"
+                            dur="1.5s"
+                            repeatCount="indefinite"
+                          />
                         </circle>
                       )}
 
@@ -1079,7 +1360,12 @@ function InteractiveGraphTriage() {
                           strokeDasharray="4 3"
                           filter="url(#bv-glow-red)"
                         >
-                          <animate attributeName="stroke-dashoffset" values="0;-14" dur="1s" repeatCount="indefinite" />
+                          <animate
+                            attributeName="stroke-dashoffset"
+                            values="0;-14"
+                            dur="1s"
+                            repeatCount="indefinite"
+                          />
                         </circle>
                       )}
 
@@ -1094,7 +1380,12 @@ function InteractiveGraphTriage() {
                           strokeWidth={2}
                           filter="url(#bv-glow)"
                         >
-                          <animate attributeName="opacity" values="0.7;0.3;0.7" dur="2s" repeatCount="indefinite" />
+                          <animate
+                            attributeName="opacity"
+                            values="0.7;0.3;0.7"
+                            dur="2s"
+                            repeatCount="indefinite"
+                          />
                         </circle>
                       )}
 
@@ -1118,29 +1409,19 @@ function InteractiveGraphTriage() {
                         r={radius}
                         fill={
                           isInCycle
-                            ? 'rgba(244,63,94,0.15)'
+                            ? "rgba(244,63,94,0.15)"
                             : isCriticalPathActive
-                              ? 'rgba(34,211,238,0.15)'
+                              ? "rgba(34,211,238,0.15)"
                               : `${color.fill}20`
                         }
                         stroke={
-                          isInCycle
-                            ? '#f43f5e'
-                            : isCriticalPathActive
-                              ? '#22d3ee'
-                              : color.stroke
+                          isInCycle ? "#f43f5e" : isCriticalPathActive ? "#22d3ee" : color.stroke
                         }
                         strokeWidth={isSelected ? 2.5 : 1.5}
                       />
 
                       {/* Center status dot */}
-                      <circle
-                        cx={node.x}
-                        cy={node.y}
-                        r={4}
-                        fill={color.fill}
-                        opacity={0.8}
-                      />
+                      <circle cx={node.x} cy={node.y} r={4} fill={color.fill} opacity={0.8} />
 
                       {/* Node label above */}
                       <text
@@ -1161,26 +1442,31 @@ function InteractiveGraphTriage() {
                           y={node.y + radius + 14}
                           textAnchor="middle"
                           fill={
-                            isInCycle ? '#f43f5e'
-                              : isCriticalPathActive ? '#22d3ee'
-                                : color.stroke
+                            isInCycle ? "#f43f5e" : isCriticalPathActive ? "#22d3ee" : color.stroke
                           }
                           fontSize="10"
                           fontWeight="bold"
                           fontFamily="monospace"
                         >
-                          {analysisMode === 'bottlenecks'
+                          {analysisMode === "bottlenecks"
                             ? `B:${node.metrics.betweenness.toFixed(2)}`
                             : `PR:${node.metrics.pageRank.toFixed(2)}`}
                         </text>
                       )}
 
                       {/* Quick-win star badge */}
-                      {triageRun && node.isQuickWin && node.status !== 'done' && (
+                      {triageRun && node.isQuickWin && node.status !== "done" && (
                         <g transform={`translate(${node.x + radius - 2}, ${node.y - radius + 2})`}>
-                          <circle cx={0} cy={0} r={7} fill="#422006" stroke="#facc15" strokeWidth={1} />
+                          <circle
+                            cx={0}
+                            cy={0}
+                            r={7}
+                            fill="#422006"
+                            stroke="#facc15"
+                            strokeWidth={1}
+                          />
                           <text x={0} y={3.5} textAnchor="middle" fill="#facc15" fontSize="9">
-                            {'\u2605'}
+                            {"\u2605"}
                           </text>
                         </g>
                       )}
@@ -1188,16 +1474,41 @@ function InteractiveGraphTriage() {
                       {/* Bottleneck warning badge */}
                       {isBottleneck && (
                         <g transform={`translate(${node.x - radius + 2}, ${node.y - radius + 2})`}>
-                          <circle cx={0} cy={0} r={7} fill="rgba(245,158,11,0.2)" stroke="#f59e0b" strokeWidth={1} />
-                          <text x={0} y={3.5} textAnchor="middle" fill="#f59e0b" fontSize="9">!</text>
+                          <circle
+                            cx={0}
+                            cy={0}
+                            r={7}
+                            fill="rgba(245,158,11,0.2)"
+                            stroke="#f59e0b"
+                            strokeWidth={1}
+                          />
+                          <text x={0} y={3.5} textAnchor="middle" fill="#f59e0b" fontSize="9">
+                            !
+                          </text>
                         </g>
                       )}
 
                       {/* Cycle warning badge */}
                       {isInCycle && (
                         <g transform={`translate(${node.x - radius + 2}, ${node.y - radius + 2})`}>
-                          <circle cx={0} cy={0} r={7} fill="rgba(244,63,94,0.2)" stroke="#f43f5e" strokeWidth={1} />
-                          <text x={0} y={4} textAnchor="middle" fill="#f43f5e" fontSize="9" fontFamily="monospace">C</text>
+                          <circle
+                            cx={0}
+                            cy={0}
+                            r={7}
+                            fill="rgba(244,63,94,0.2)"
+                            stroke="#f43f5e"
+                            strokeWidth={1}
+                          />
+                          <text
+                            x={0}
+                            y={4}
+                            textAnchor="middle"
+                            fill="#f43f5e"
+                            fontSize="9"
+                            fontFamily="monospace"
+                          >
+                            C
+                          </text>
                         </g>
                       )}
                     </g>
@@ -1213,19 +1524,23 @@ function InteractiveGraphTriage() {
                 onClick={handleRunTriage}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-                disabled={animatingPhase === 'computing'}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
+                disabled={animatingPhase === "computing"}
                 className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
-                  animatingPhase === 'computing'
-                    ? 'border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait'
-                    : 'border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20'
+                  animatingPhase === "computing"
+                    ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
+                    : "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
                 }`}
               >
-                {animatingPhase === 'computing' ? (
+                {animatingPhase === "computing" ? (
                   <>
                     <motion.div
                       animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                      transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                      transition={
+                        inView
+                          ? { duration: 1, repeat: Infinity, ease: "linear" }
+                          : { duration: 0.2 }
+                      }
                     >
                       <Network className="h-4 w-4" />
                     </motion.div>
@@ -1245,7 +1560,7 @@ function InteractiveGraphTriage() {
                   onClick={handleReset}
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 25 }}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
                   className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-white/50 hover:text-white/70 transition-colors"
@@ -1261,9 +1576,9 @@ function InteractiveGraphTriage() {
               {triageRun && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
+                  animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 25 }}
                   className="overflow-hidden"
                 >
                   <div className="rounded-2xl border border-white/[0.08] bg-black/40 overflow-hidden">
@@ -1287,20 +1602,20 @@ function InteractiveGraphTriage() {
                           key={`${analysisMode}-${i}`}
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                          transition={{ type: "spring", stiffness: 200, damping: 25 }}
                           className={
-                            line.startsWith('$')
-                              ? 'text-emerald-400'
-                              : line.includes('warning') || line.includes('cycle')
-                                ? 'text-red-400/70'
-                                : 'text-white/40'
+                            line.startsWith("$")
+                              ? "text-emerald-400"
+                              : line.includes("warning") || line.includes("cycle")
+                                ? "text-red-400/70"
+                                : "text-white/40"
                           }
                         >
                           {line}
                         </motion.div>
                       ))}
                       {terminalLines.length > 0 && (
-                        <span className="text-emerald-400 animate-pulse">{'>'} _</span>
+                        <span className="text-emerald-400 animate-pulse">{">"} _</span>
                       )}
                     </div>
                   </div>
@@ -1317,7 +1632,7 @@ function InteractiveGraphTriage() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 className="w-full xl:w-80 shrink-0 space-y-4"
               >
                 {/* Top Recommendation Card */}
@@ -1331,9 +1646,15 @@ function InteractiveGraphTriage() {
                   <div>
                     <p className="text-sm font-semibold text-white/90">{topNode.label}</p>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-[10px] font-mono text-violet-400/70">PR: {topNode.metrics.pageRank.toFixed(2)}</span>
-                      <span className="text-[10px] font-mono text-violet-400/70">BW: {topNode.metrics.betweenness.toFixed(2)}</span>
-                      <span className="text-[10px] font-mono text-violet-400/70">EV: {topNode.metrics.eigenvector.toFixed(2)}</span>
+                      <span className="text-[10px] font-mono text-violet-400/70">
+                        PR: {topNode.metrics.pageRank.toFixed(2)}
+                      </span>
+                      <span className="text-[10px] font-mono text-violet-400/70">
+                        BW: {topNode.metrics.betweenness.toFixed(2)}
+                      </span>
+                      <span className="text-[10px] font-mono text-violet-400/70">
+                        EV: {topNode.metrics.eigenvector.toFixed(2)}
+                      </span>
                     </div>
                   </div>
                   <p className="text-xs text-white/60 leading-relaxed">{topNode.why}</p>
@@ -1347,13 +1668,15 @@ function InteractiveGraphTriage() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 25 }}
                       className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <SelectedNodeIcon status={selectedData.status} />
-                          <span className={`text-xs font-semibold uppercase tracking-wider ${STATUS_COLORS[selectedData.status].text}`}>
+                          <span
+                            className={`text-xs font-semibold uppercase tracking-wider ${STATUS_COLORS[selectedData.status].text}`}
+                          >
                             {selectedData.id}
                           </span>
                         </div>
@@ -1362,7 +1685,7 @@ function InteractiveGraphTriage() {
                           onClick={() => setShowMetricsDetail(!showMetricsDetail)}
                           className="text-[10px] text-white/30 hover:text-white/50 transition-colors"
                         >
-                          {showMetricsDetail ? 'hide' : 'metrics'}
+                          {showMetricsDetail ? "hide" : "metrics"}
                         </button>
                       </div>
                       <div>
@@ -1387,20 +1710,55 @@ function InteractiveGraphTriage() {
                         {showMetricsDetail && (
                           <motion.div
                             initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
+                            animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
-                            transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                            transition={{ type: "spring", stiffness: 200, damping: 25 }}
                             className="overflow-hidden"
                           >
                             <div className="grid grid-cols-2 gap-1.5 pt-1">
-                              <MetricBadge label="PageRank" value={selectedData.metrics.pageRank} maxVal={0.31} />
-                              <MetricBadge label="Betweenness" value={selectedData.metrics.betweenness} maxVal={0.82} />
-                              <MetricBadge label="HITS Auth" value={selectedData.metrics.hits_authority} maxVal={0.85} />
-                              <MetricBadge label="HITS Hub" value={selectedData.metrics.hits_hub} maxVal={0.91} />
-                              <MetricBadge label="Eigenvector" value={selectedData.metrics.eigenvector} maxVal={0.88} />
-                              <MetricBadge label="k-Core" value={selectedData.metrics.kCore} maxVal={3} isInteger />
-                              <MetricBadge label="In-Degree" value={selectedData.metrics.inDegree} maxVal={3} isInteger />
-                              <MetricBadge label="Out-Degree" value={selectedData.metrics.outDegree} maxVal={4} isInteger />
+                              <MetricBadge
+                                label="PageRank"
+                                value={selectedData.metrics.pageRank}
+                                maxVal={0.31}
+                              />
+                              <MetricBadge
+                                label="Betweenness"
+                                value={selectedData.metrics.betweenness}
+                                maxVal={0.82}
+                              />
+                              <MetricBadge
+                                label="HITS Auth"
+                                value={selectedData.metrics.hits_authority}
+                                maxVal={0.85}
+                              />
+                              <MetricBadge
+                                label="HITS Hub"
+                                value={selectedData.metrics.hits_hub}
+                                maxVal={0.91}
+                              />
+                              <MetricBadge
+                                label="Eigenvector"
+                                value={selectedData.metrics.eigenvector}
+                                maxVal={0.88}
+                              />
+                              <MetricBadge
+                                label="k-Core"
+                                value={selectedData.metrics.kCore}
+                                maxVal={3}
+                                isInteger
+                              />
+                              <MetricBadge
+                                label="In-Degree"
+                                value={selectedData.metrics.inDegree}
+                                maxVal={3}
+                                isInteger
+                              />
+                              <MetricBadge
+                                label="Out-Degree"
+                                value={selectedData.metrics.outDegree}
+                                maxVal={4}
+                                isInteger
+                              />
                             </div>
                           </motion.div>
                         )}
@@ -1412,14 +1770,16 @@ function InteractiveGraphTriage() {
                         <div className="flex items-center gap-1.5 pt-1">
                           <Ban className="h-3 w-3 text-red-400" />
                           <span className="text-[10px] text-red-400/80">
-                            Blocked by: {selectedData.blockedBy.join(', ')}
+                            Blocked by: {selectedData.blockedBy.join(", ")}
                           </span>
                         </div>
                       )}
                       {selectedData.isQuickWin && (
                         <div className="flex items-center gap-1.5 pt-1">
                           <Star className="h-3 w-3 text-yellow-400" />
-                          <span className="text-[10px] text-yellow-400/80">Quick win candidate</span>
+                          <span className="text-[10px] text-yellow-400/80">
+                            Quick win candidate
+                          </span>
                         </div>
                       )}
                     </motion.div>
@@ -1428,7 +1788,7 @@ function InteractiveGraphTriage() {
 
                 {/* Mode-specific panels */}
                 <AnimatePresence mode="wait">
-                  {analysisMode === 'overview' && (
+                  {analysisMode === "overview" && (
                     <TriageRankingPanel
                       key="ranking"
                       nodes={sortedNodes}
@@ -1437,7 +1797,7 @@ function InteractiveGraphTriage() {
                     />
                   )}
 
-                  {analysisMode === 'pagerank' && (
+                  {analysisMode === "pagerank" && (
                     <PageRankPanel
                       key="pagerank"
                       nodes={sortedNodes}
@@ -1446,18 +1806,13 @@ function InteractiveGraphTriage() {
                     />
                   )}
 
-                  {analysisMode === 'critical-path' && (
-                    <CriticalPathPanel
-                      key="critical-path"
-                      step={criticalPathStep}
-                    />
+                  {analysisMode === "critical-path" && (
+                    <CriticalPathPanel key="critical-path" step={criticalPathStep} />
                   )}
 
-                  {analysisMode === 'cycles' && (
-                    <CycleDetectionPanel key="cycles" />
-                  )}
+                  {analysisMode === "cycles" && <CycleDetectionPanel key="cycles" />}
 
-                  {analysisMode === 'quick-wins' && (
+                  {analysisMode === "quick-wins" && (
                     <QuickWinsPanel
                       key="quick-wins"
                       nodes={quickWinNodes}
@@ -1466,7 +1821,7 @@ function InteractiveGraphTriage() {
                     />
                   )}
 
-                  {analysisMode === 'bottlenecks' && (
+                  {analysisMode === "bottlenecks" && (
                     <BottleneckPanel
                       key="bottlenecks"
                       nodes={bottleneckNodes}
@@ -1493,23 +1848,35 @@ function InteractiveGraphTriage() {
 
 function SelectedNodeIcon({ status }: { status: IssueStatus }) {
   const icons: Record<IssueStatus, typeof Clock> = {
-    'open': Clock,
-    'in-progress': ArrowRight,
-    'blocked': Ban,
-    'done': CheckCircle2,
+    open: Clock,
+    "in-progress": ArrowRight,
+    blocked: Ban,
+    done: CheckCircle2,
   };
   const Icon = icons[status];
   const color = STATUS_COLORS[status];
   return <Icon className={`h-4 w-4 ${color.text}`} />;
 }
 
-function MetricBadge({ label, value, maxVal, isInteger }: { label: string; value: number; maxVal: number; isInteger?: boolean }) {
+function MetricBadge({
+  label,
+  value,
+  maxVal,
+  isInteger,
+}: {
+  label: string;
+  value: number;
+  maxVal: number;
+  isInteger?: boolean;
+}) {
   const pct = Math.min((value / maxVal) * 100, 100);
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-1.5">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-white/40">{label}</span>
-        <span className="text-[10px] font-mono text-white/60">{isInteger ? value : value.toFixed(2)}</span>
+        <span className="text-[10px] font-mono text-white/60">
+          {isInteger ? value : value.toFixed(2)}
+        </span>
       </div>
       <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
         <div
@@ -1535,7 +1902,7 @@ function TriageRankingPanel({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-2"
     >
       <div className="flex items-center gap-2 mb-3">
@@ -1553,17 +1920,19 @@ function TriageRankingPanel({
             onClick={() => onSelect(node.id)}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.04 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.04 }}
             className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors ${
               node.id === selectedNode
-                ? 'bg-white/[0.06] border border-white/[0.12]'
-                : 'hover:bg-white/[0.03] border border-transparent'
+                ? "bg-white/[0.06] border border-white/[0.12]"
+                : "hover:bg-white/[0.03] border border-transparent"
             }`}
           >
             <span className="text-xs font-mono text-white/30 w-4">{i + 1}.</span>
             <div className={`h-2 w-2 rounded-full ${color.bg} shrink-0`} />
             <span className="text-xs text-white/70 truncate flex-1">{node.label}</span>
-            <span className="text-[10px] font-mono text-white/40">{node.metrics.pageRank.toFixed(2)}</span>
+            <span className="text-[10px] font-mono text-white/40">
+              {node.metrics.pageRank.toFixed(2)}
+            </span>
             {node.isQuickWin && <Star className="h-3 w-3 text-yellow-400 shrink-0" />}
           </motion.button>
         );
@@ -1586,7 +1955,7 @@ function PageRankPanel({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-2"
     >
       <div className="flex items-center gap-2 mb-3">
@@ -1604,22 +1973,24 @@ function PageRankPanel({
             onClick={() => onSelect(node.id)}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.04 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.04 }}
             className={`w-full rounded-xl px-3 py-2 text-left transition-colors ${
               node.id === selectedNode
-                ? 'bg-white/[0.06] border border-white/[0.12]'
-                : 'hover:bg-white/[0.03] border border-transparent'
+                ? "bg-white/[0.06] border border-white/[0.12]"
+                : "hover:bg-white/[0.03] border border-transparent"
             }`}
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-white/70">{node.label}</span>
-              <span className="text-[10px] font-mono text-violet-400">{node.metrics.pageRank.toFixed(3)}</span>
+              <span className="text-[10px] font-mono text-violet-400">
+                {node.metrics.pageRank.toFixed(3)}
+              </span>
             </div>
             <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.06 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.06 }}
                 className="h-full bg-gradient-to-r from-violet-500 to-purple-400 rounded-full"
               />
             </div>
@@ -1636,7 +2007,7 @@ function CriticalPathPanel({ step }: { step: number }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.04] p-4 space-y-3"
     >
       <div className="flex items-center gap-2">
@@ -1656,20 +2027,26 @@ function CriticalPathPanel({ step }: { step: number }) {
           const color = STATUS_COLORS[node.status];
           return (
             <div key={id} className="flex items-center gap-2">
-              <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-mono transition-colors ${
-                isReached ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'bg-white/[0.04] text-white/30 border border-white/[0.08]'
-              }`}>
+              <div
+                className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-mono transition-colors ${
+                  isReached
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                    : "bg-white/[0.04] text-white/30 border border-white/[0.08]"
+                }`}
+              >
                 {i + 1}
               </div>
               {i < CRITICAL_PATH_IDS.length - 1 && (
-                <ChevronRight className={`h-3 w-3 ${isReached ? 'text-cyan-400' : 'text-white/20'}`} />
+                <ChevronRight
+                  className={`h-3 w-3 ${isReached ? "text-cyan-400" : "text-white/20"}`}
+                />
               )}
-              <span className={`text-xs transition-colors ${isReached ? 'text-white/80' : 'text-white/30'}`}>
+              <span
+                className={`text-xs transition-colors ${isReached ? "text-white/80" : "text-white/30"}`}
+              >
                 {node.label}
               </span>
-              <span className={`text-[10px] ml-auto ${color.text}`}>
-                {color.label}
-              </span>
+              <span className={`text-[10px] ml-auto ${color.text}`}>{color.label}</span>
             </div>
           );
         })}
@@ -1685,13 +2062,13 @@ function CriticalPathPanel({ step }: { step: number }) {
 }
 
 function CycleDetectionPanel() {
-  const cycleNodes = ['API', 'NOTIFY', 'PERF'];
+  const cycleNodes = ["API", "NOTIFY", "PERF"];
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="rounded-2xl border border-red-500/20 bg-red-500/[0.04] p-4 space-y-3"
     >
       <div className="flex items-center gap-2">
@@ -1701,7 +2078,8 @@ function CycleDetectionPanel() {
         </p>
       </div>
       <p className="text-xs text-white/40">
-        Circular dependency found between {cycleNodes.length} nodes. This creates a deadlock where no node can be completed first.
+        Circular dependency found between {cycleNodes.length} nodes. This creates a deadlock where
+        no node can be completed first.
       </p>
       <div className="flex items-center gap-1.5 flex-wrap">
         {cycleNodes.map((id, i) => (
@@ -1709,9 +2087,7 @@ function CycleDetectionPanel() {
             <span className="text-xs font-mono text-red-400 px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
               {id}
             </span>
-            {i < cycleNodes.length - 1 && (
-              <ArrowRight className="h-3 w-3 text-red-400/50" />
-            )}
+            {i < cycleNodes.length - 1 && <ArrowRight className="h-3 w-3 text-red-400/50" />}
           </div>
         ))}
         <ArrowRight className="h-3 w-3 text-red-400/50" />
@@ -1719,7 +2095,7 @@ function CycleDetectionPanel() {
       </div>
       <div className="p-2 rounded-lg bg-red-500/[0.06] border border-red-500/20">
         <p className="text-[10px] text-red-300/70 font-mono">
-          Recommendation: Break edge PERF {'->'} API to resolve cycle
+          Recommendation: Break edge PERF {"->"} API to resolve cycle
         </p>
       </div>
       <div className="flex items-center gap-1.5 pt-1">
@@ -1746,14 +2122,12 @@ function QuickWinsPanel({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="rounded-2xl border border-yellow-500/20 bg-yellow-500/[0.04] p-4 space-y-3"
     >
       <div className="flex items-center gap-2">
         <Zap className="h-3.5 w-3.5 text-yellow-400" />
-        <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wider">
-          Quick Wins
-        </p>
+        <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wider">Quick Wins</p>
       </div>
       <p className="text-xs text-white/40">
         Tasks with zero blockers that can be started immediately for free velocity.
@@ -1765,11 +2139,11 @@ function QuickWinsPanel({
           onClick={() => onSelect(node.id)}
           initial={{ opacity: 0, x: 10 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.08 }}
+          transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.08 }}
           className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors ${
             node.id === selectedNode
-              ? 'bg-yellow-500/10 border border-yellow-500/20'
-              : 'hover:bg-white/[0.03] border border-transparent'
+              ? "bg-yellow-500/10 border border-yellow-500/20"
+              : "hover:bg-white/[0.03] border border-transparent"
           }`}
         >
           <Star className="h-3 w-3 text-yellow-400 shrink-0" />
@@ -1804,7 +2178,7 @@ function BottleneckPanel({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-4 space-y-3"
     >
       <div className="flex items-center gap-2">
@@ -1825,11 +2199,11 @@ function BottleneckPanel({
             onClick={() => onSelect(node.id)}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.06 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.06 }}
             className={`w-full rounded-xl px-3 py-2 text-left transition-colors ${
               node.id === selectedNode
-                ? 'bg-amber-500/10 border border-amber-500/20'
-                : 'hover:bg-white/[0.03] border border-transparent'
+                ? "bg-amber-500/10 border border-amber-500/20"
+                : "hover:bg-white/[0.03] border border-transparent"
             }`}
           >
             <div className="flex items-center justify-between mb-1">
@@ -1837,18 +2211,22 @@ function BottleneckPanel({
                 <Gauge className="h-3 w-3 text-amber-400/60" />
                 <span className="text-xs text-white/70">{node.label}</span>
               </div>
-              <span className="text-[10px] font-mono text-amber-400">{node.metrics.betweenness.toFixed(2)}</span>
+              <span className="text-[10px] font-mono text-amber-400">
+                {node.metrics.betweenness.toFixed(2)}
+              </span>
             </div>
             <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.08 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.08 }}
                 className="h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full"
               />
             </div>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-[10px] text-white/30">Blocks {node.metrics.outDegree} issues</span>
+              <span className="text-[10px] text-white/30">
+                Blocks {node.metrics.outDegree} issues
+              </span>
               <span className="text-[10px] text-white/30">k-core: {node.metrics.kCore}</span>
             </div>
           </motion.button>
@@ -1863,7 +2241,7 @@ function RecommendationsPanel() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.2 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.2 }}
       className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-2"
     >
       <div className="flex items-center gap-2 mb-3">
@@ -1877,10 +2255,12 @@ function RecommendationsPanel() {
           key={rec.id}
           initial={{ opacity: 0, x: 10 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.3 + i * 0.05 }}
+          transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.3 + i * 0.05 }}
           className="flex items-start gap-2 py-1.5"
         >
-          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold uppercase shrink-0 mt-0.5 ${IMPACT_COLORS[rec.impact]}`}>
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold uppercase shrink-0 mt-0.5 ${IMPACT_COLORS[rec.impact]}`}
+          >
             {rec.impact}
           </span>
           <div className="min-w-0">

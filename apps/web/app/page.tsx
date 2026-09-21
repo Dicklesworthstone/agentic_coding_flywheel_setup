@@ -1,40 +1,39 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useDrag } from "@use-gesture/react";
 import {
   ArrowRight,
-  Terminal,
-  Rocket,
-  ShieldCheck,
-  Zap,
-  GitBranch,
-  Cpu,
-  Clock,
-  Sparkles,
-  ChevronRight,
-  MessageCircle,
-  Check,
-  X,
-  Server,
-  Bot,
-  Coins,
-  Laptop,
-  Cloud,
-  Moon,
   BookOpen,
-  Target,
+  Bot,
+  Check,
+  ChevronRight,
+  Clock,
+  Cloud,
+  Coins,
+  Cpu,
+  GitBranch,
+  Laptop,
+  MessageCircle,
+  Moon,
   Package,
+  Rocket,
+  Server,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Terminal,
+  X,
+  Zap,
 } from "lucide-react";
-import { motion } from "@/components/motion";
-import { useDrag } from "@use-gesture/react";
-import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { Jargon } from "@/components/jargon";
-import { springs, fadeUp, staggerContainer, fadeScale } from "@/components/motion";
-import { useScrollReveal, staggerDelay } from "@/lib/hooks/useScrollReveal";
-import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { fadeScale, fadeUp, motion, springs, staggerContainer } from "@/components/motion";
+import { Button } from "@/components/ui/button";
 import { manifestTools } from "@/lib/generated/manifest-tools";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { staggerDelay, useScrollReveal } from "@/lib/hooks/useScrollReveal";
 import { VPS_TOP_PICK } from "@/lib/vpsProviders";
 
 // The "N+ tools" claim is derived from the generated manifest (39 entries
@@ -131,9 +130,7 @@ function AnimatedTerminal() {
         <div className="terminal-dot terminal-dot-red" aria-hidden="true" />
         <div className="terminal-dot terminal-dot-yellow" aria-hidden="true" />
         <div className="terminal-dot terminal-dot-green" aria-hidden="true" />
-        <span className="ml-3 font-mono text-xs text-muted-foreground">
-          ubuntu@vps ~
-        </span>
+        <span className="ml-3 font-mono text-xs text-muted-foreground">ubuntu@vps ~</span>
       </div>
       {/* Fixed height container to prevent layout shifts. 320px fits the
           full 8-line loop plus cursor at the 14px desktop size (9 boxes ×
@@ -154,9 +151,7 @@ function AnimatedTerminal() {
                 <span className="terminal-command">{line.text}</span>
               </>
             )}
-            {line.type === "output" && (
-              <span className="terminal-output">{line.text}</span>
-            )}
+            {line.type === "output" && <span className="terminal-output">{line.text}</span>}
             {line.type === "success" && (
               <span className="text-[oklch(0.72_0.19_145)]">{line.text}</span>
             )}
@@ -219,7 +214,8 @@ const FEATURES = [
     title: "One-liner Install",
     description: (
       <>
-        A single command transforms your <Jargon term="vps">VPS</Jargon>. No manual configuration, no dependency hell.
+        A single command transforms your <Jargon term="vps">VPS</Jargon>. No manual configuration,
+        no dependency hell.
       </>
     ),
     gradient: "bg-[oklch(0.75_0.18_195)]",
@@ -229,8 +225,9 @@ const FEATURES = [
     title: "Three AI Agents",
     description: (
       <>
-        <Jargon term="claude-code">Claude Code</Jargon>, <Jargon term="codex">Codex CLI</Jargon>, and{" "}
-        <Jargon term="antigravity-cli">Antigravity CLI</Jargon>, all configured with optimal settings for coding.
+        <Jargon term="claude-code">Claude Code</Jargon>, <Jargon term="codex">Codex CLI</Jargon>,
+        and <Jargon term="antigravity-cli">Antigravity CLI</Jargon>, all configured with optimal
+        settings for coding.
       </>
     ),
     gradient: "bg-[oklch(0.7_0.2_330)]",
@@ -251,8 +248,8 @@ const FEATURES = [
     title: "Vibe Mode",
     description: (
       <>
-        Passwordless <Jargon term="sudo">sudo</Jargon> with dangerous flags enabled for maximum velocity on throwaway{" "}
-        <Jargon term="vps">VPS</Jargon> environments.
+        Passwordless <Jargon term="sudo">sudo</Jargon> with dangerous flags enabled for maximum
+        velocity on throwaway <Jargon term="vps">VPS</Jargon> environments.
       </>
     ),
     gradient: "bg-[oklch(0.78_0.16_75)]",
@@ -275,9 +272,13 @@ const FEATURES = [
     title: "Interactive Tutorial",
     description: (
       <>
-        Run &apos;onboard&apos; after setup for guided lessons from <Jargon term="linux">Linux</Jargon> basics to full{" "}
-        <Jargon term="agentic">agentic</Jargon> workflows.{" "}
-        <Link href="/learn/welcome" className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline">
+        Run &apos;onboard&apos; after setup for guided lessons from{" "}
+        <Jargon term="linux">Linux</Jargon> basics to full <Jargon term="agentic">agentic</Jargon>{" "}
+        workflows.{" "}
+        <Link
+          href="/learn/welcome"
+          className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
+        >
           Preview lessons <BookOpen className="h-3 w-3" />
         </Link>
       </>
@@ -297,9 +298,7 @@ function FeaturesSection() {
         animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
         transition={springs.smooth}
       >
-        <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight">
-          Everything You Need
-        </h2>
+        <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight">Everything You Need</h2>
         <p className="mx-auto max-w-2xl text-muted-foreground">
           A single <Jargon term="curl">curl</Jargon> command installs and configures your complete{" "}
           <Jargon term="agentic">agentic</Jargon> coding environment
@@ -337,7 +336,10 @@ function FlywheelSection() {
   const { ref, isInView } = useScrollReveal({ threshold: 0.1 });
 
   return (
-    <section ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 bg-card/20 py-24">
+    <section
+      ref={ref as React.RefObject<HTMLElement>}
+      className="border-t border-border/30 bg-card/20 py-24"
+    >
       <div className="mx-auto max-w-7xl px-6">
         <motion.div
           className="mb-12 text-center"
@@ -347,15 +349,18 @@ function FlywheelSection() {
         >
           <div className="mb-4 flex items-center justify-center gap-3">
             <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Ecosystem</span>
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
+              Ecosystem
+            </span>
             <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
           </div>
           <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight">
-            The <Jargon term="agentic">Agentic</Jargon> Coding <Jargon term="flywheel">Flywheel</Jargon>
+            The <Jargon term="agentic">Agentic</Jargon> Coding{" "}
+            <Jargon term="flywheel">Flywheel</Jargon>
           </h2>
           <p className="mx-auto max-w-2xl text-muted-foreground">
-            An ecosystem of interconnected tools, the ten core ones below, that transform multi-<Jargon term="ai-agents">agent</Jargon> workflows.
-            Each tool enhances the others.
+            An ecosystem of interconnected tools, the ten core ones below, that transform multi-
+            <Jargon term="ai-agents">agent</Jargon> workflows. Each tool enhances the others.
           </p>
         </motion.div>
 
@@ -392,7 +397,12 @@ function FlywheelSection() {
           animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
           transition={{ ...springs.smooth, delay: 0.5 }}
         >
-          <Button asChild size="lg" variant="outline" className="border-primary/30 hover:bg-primary/10">
+          <Button
+            asChild
+            size="lg"
+            variant="outline"
+            className="border-primary/30 hover:bg-primary/10"
+          >
             <Link href="/flywheel">
               Explore the Flywheel
               <ChevronRight className="ml-2 h-4 w-4" />
@@ -438,11 +448,14 @@ function WorkflowStepsSection() {
       axis: "x",
       filterTaps: true,
       threshold: 8,
-    }
+    },
   );
 
   return (
-    <section ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 bg-card/30 py-24">
+    <section
+      ref={ref as React.RefObject<HTMLElement>}
+      className="border-t border-border/30 bg-card/30 py-24"
+    >
       <div className="mx-auto max-w-7xl px-6">
         <motion.div
           className="mb-12 text-center"
@@ -454,7 +467,8 @@ function WorkflowStepsSection() {
             {WORKFLOW_STEPS.length} Steps to Liftoff
           </h2>
           <p className="mx-auto max-w-2xl text-muted-foreground">
-            The wizard guides you from &quot;I have a laptop&quot; to &quot;<Jargon term="ai-agents">AI agents</Jargon> are coding for me&quot;
+            The wizard guides you from &quot;I have a laptop&quot; to &quot;
+            <Jargon term="ai-agents">AI agents</Jargon> are coding for me&quot;
           </p>
         </motion.div>
 
@@ -531,7 +545,9 @@ function AboutSection() {
         >
           <div className="mb-6 flex items-center justify-center gap-3">
             <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">About</span>
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
+              About
+            </span>
             <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
           </div>
 
@@ -587,15 +603,15 @@ function AboutSection() {
               >
                 Jeffrey Emanuel
               </a>
-              , and I built this because I was being inundated with requests from friends,
-              older relatives, and strangers on the internet asking me to help them get started
-              with using AI for software development.
+              , and I built this because I was being inundated with requests from friends, older
+              relatives, and strangers on the internet asking me to help them get started with using
+              AI for software development.
             </p>
 
             <p>
               I wanted <strong className="text-foreground">one resource</strong> I could point
-              people to that would help them &quot;from soup to nuts&quot; in getting set up;
-              even if they have almost no computer expertise, just motivation and desire.
+              people to that would help them &quot;from soup to nuts&quot; in getting set up; even
+              if they have almost no computer expertise, just motivation and desire.
             </p>
 
             <p>
@@ -603,10 +619,10 @@ function AboutSection() {
               <strong className="text-foreground">
                 totally free, <Jargon term="open-source">open-source</Jargon>{" "}
                 <Jargon term="agentic">agentic</Jargon> coding tools
-              </strong>.
-              I originally built these for myself to move faster in my consulting work with
-              Private Equity and Hedge Funds. Now I want to help others be more productive
-              and creative too.
+              </strong>
+              . I originally built these for myself to move faster in my consulting work with
+              Private Equity and Hedge Funds. Now I want to help others be more productive and
+              creative too.
             </p>
           </div>
 
@@ -646,14 +662,17 @@ const WHY_VPS_ITEMS = [
   {
     icon: <Laptop className="h-6 w-6 text-white" />,
     title: "Not Your Laptop",
-    description: "AI agents consume significant RAM and CPU. Running them locally drains your battery and slows everything down.",
-    detail: "Each agent uses ~2GB RAM. With 10+ agents, you need 48-64GB—more than most laptops have.",
+    description:
+      "AI agents consume significant RAM and CPU. Running them locally drains your battery and slows everything down.",
+    detail:
+      "Each agent uses ~2GB RAM. With 10+ agents, you need 48-64GB—more than most laptops have.",
     gradient: "from-amber-400 to-orange-500",
   },
   {
     icon: <Cloud className="h-6 w-6 text-white" />,
     title: "Not AWS/GCP/Azure",
-    description: "Cloud giants charge by the hour and make billing unpredictable. A dedicated VPS is simpler and cheaper.",
+    description:
+      "Cloud giants charge by the hour and make billing unpredictable. A dedicated VPS is simpler and cheaper.",
     detail: `A 64GB VPS costs ~$${VPS_TOP_PICK.recommended.priceUSD}/month flat. Equivalent cloud resources would cost 3-5x more.`,
     gradient: "from-sky-400 to-blue-500",
   },
@@ -661,7 +680,8 @@ const WHY_VPS_ITEMS = [
     icon: <Moon className="h-6 w-6 text-white" />,
     title: "Works While You Sleep",
     description: "Your VPS runs 24/7. Queue up tasks before bed, wake up to completed code.",
-    detail: "AI agents can refactor, test, and iterate autonomously—compounding progress overnight.",
+    detail:
+      "AI agents can refactor, test, and iterate autonomously—compounding progress overnight.",
     gradient: "from-violet-400 to-purple-500",
   },
 ];
@@ -670,7 +690,10 @@ function WhyVPSSection() {
   const { ref, isInView } = useScrollReveal({ threshold: 0.1 });
 
   return (
-    <section ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 py-24 relative overflow-hidden">
+    <section
+      ref={ref as React.RefObject<HTMLElement>}
+      className="border-t border-border/30 py-24 relative overflow-hidden"
+    >
       <div className="pointer-events-none absolute -left-40 top-1/4 h-80 w-80 rounded-full bg-[oklch(0.75_0.18_195/0.08)] blur-[100px]" />
       <div className="pointer-events-none absolute -right-40 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[100px]" />
 
@@ -683,12 +706,17 @@ function WhyVPSSection() {
         >
           <div className="mb-4 flex items-center justify-center gap-3">
             <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">The Foundation</span>
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
+              The Foundation
+            </span>
             <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
           </div>
-          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">Why a VPS?</h2>
+          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">
+            Why a VPS?
+          </h2>
           <p className="mx-auto max-w-2xl text-muted-foreground">
-            <Jargon term="agentic">Agentic</Jargon> workflows need dedicated compute. A <Jargon term="vps">VPS</Jargon> gives you a 24/7 server that&apos;s always ready.
+            <Jargon term="agentic">Agentic</Jargon> workflows need dedicated compute. A{" "}
+            <Jargon term="vps">VPS</Jargon> gives you a 24/7 server that&apos;s always ready.
           </p>
         </motion.div>
 
@@ -710,11 +738,15 @@ function WhyVPSSection() {
                 className={`pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} blur-3xl opacity-0 group-hover:opacity-20 transition-opacity`}
               />
               <div className="relative">
-                <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient}`}>
+                <div
+                  className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient}`}
+                >
                   {item.icon}
                 </div>
                 <h3 className="mb-2 text-lg font-semibold">{item.title}</h3>
-                <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{item.description}</p>
+                <p className="mb-3 text-sm leading-relaxed text-muted-foreground">
+                  {item.description}
+                </p>
                 <p className="text-xs text-muted-foreground/70 italic">{item.detail}</p>
               </div>
             </motion.div>
@@ -727,9 +759,14 @@ function WhyVPSSection() {
           animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
           transition={{ ...springs.smooth, delay: 0.4 }}
         >
-          <p className="mb-4 text-muted-foreground">Ready to see if this approach is right for you?</p>
+          <p className="mb-4 text-muted-foreground">
+            Ready to see if this approach is right for you?
+          </p>
           <Button asChild variant="outline" className="border-primary/30 hover:bg-primary/10">
-            <a href="#is-this-for-you">Check If This Is For You<ChevronRight className="ml-2 h-4 w-4" /></a>
+            <a href="#is-this-for-you">
+              Check If This Is For You
+              <ChevronRight className="ml-2 h-4 w-4" />
+            </a>
           </Button>
         </motion.div>
       </div>
@@ -739,52 +776,102 @@ function WhyVPSSection() {
 
 // "Is This For You?" Decision Section
 const FOR_YOU_ITEMS = [
-  { text: "You want AI to write real, production code for you", detail: "Full implementations, not just suggestions" },
-  { text: "Sites like Lovable.dev are too limiting for what you want to build", detail: "You need full control and complexity" },
-  { text: "You're willing to invest ~$500/month in AI subscriptions", detail: "Claude Max + ChatGPT Pro + VPS hosting" },
-  { text: "You can follow step-by-step instructions", detail: "No coding experience required, just patience" },
+  {
+    text: "You want AI to write real, production code for you",
+    detail: "Full implementations, not just suggestions",
+  },
+  {
+    text: "Sites like Lovable.dev are too limiting for what you want to build",
+    detail: "You need full control and complexity",
+  },
+  {
+    text: "You're willing to invest ~$500/month in AI subscriptions",
+    detail: "Claude Max + ChatGPT Pro + VPS hosting",
+  },
+  {
+    text: "You can follow step-by-step instructions",
+    detail: "No coding experience required, just patience",
+  },
 ];
 
 const NOT_FOR_YOU_ITEMS = [
   { text: "You want a completely free solution", detail: "AI subscriptions have real costs" },
-  { text: "You only want occasional AI help with snippets", detail: "This is for full agentic workflows" },
-  { text: "You're looking for mobile-first development", detail: "This requires a desktop or laptop" },
-  { text: "You need enterprise compliance out of the box", detail: "This is for individual developers" },
+  {
+    text: "You only want occasional AI help with snippets",
+    detail: "This is for full agentic workflows",
+  },
+  {
+    text: "You're looking for mobile-first development",
+    detail: "This requires a desktop or laptop",
+  },
+  {
+    text: "You need enterprise compliance out of the box",
+    detail: "This is for individual developers",
+  },
 ];
 
 function IsThisForYouSection() {
   const { ref, isInView } = useScrollReveal({ threshold: 0.1 });
 
   return (
-    <section id="is-this-for-you" ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 py-24 relative overflow-hidden">
+    <section
+      id="is-this-for-you"
+      ref={ref as React.RefObject<HTMLElement>}
+      className="border-t border-border/30 py-24 relative overflow-hidden"
+    >
       <div className="pointer-events-none absolute -left-40 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-[oklch(0.72_0.19_145/0.08)] blur-[100px]" />
       <div className="pointer-events-none absolute -right-40 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-[oklch(0.65_0.22_25/0.08)] blur-[100px]" />
 
       <div className="mx-auto max-w-7xl px-6 relative">
-        <motion.div className="mb-12 text-center" initial={{ opacity: 0, y: 20 }} animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }} transition={springs.smooth}>
+        <motion.div
+          className="mb-12 text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={springs.smooth}
+        >
           <div className="mb-4 flex items-center justify-center gap-3">
             <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Honest Assessment</span>
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
+              Honest Assessment
+            </span>
             <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
           </div>
-          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">Is This For You?</h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">We believe in radical transparency. Here&apos;s who will get the most value from this setup.</p>
+          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">
+            Is This For You?
+          </h2>
+          <p className="mx-auto max-w-2xl text-muted-foreground">
+            We believe in radical transparency. Here&apos;s who will get the most value from this
+            setup.
+          </p>
         </motion.div>
 
         <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">
           {/* For You Card */}
-          <motion.div className="relative overflow-hidden rounded-2xl border border-[oklch(0.72_0.19_145/0.3)] bg-gradient-to-br from-[oklch(0.72_0.19_145/0.05)] to-transparent p-6 sm:p-8" initial={{ opacity: 0, x: -30 }} animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -30 }} transition={{ ...springs.smooth, delay: 0.1 }}>
+          <motion.div
+            className="relative overflow-hidden rounded-2xl border border-[oklch(0.72_0.19_145/0.3)] bg-gradient-to-br from-[oklch(0.72_0.19_145/0.05)] to-transparent p-6 sm:p-8"
+            initial={{ opacity: 0, x: -30 }}
+            animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -30 }}
+            transition={{ ...springs.smooth, delay: 0.1 }}
+          >
             <div className="pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-[oklch(0.72_0.19_145/0.15)] blur-3xl" />
             <div className="relative">
               <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[oklch(0.72_0.19_145/0.2)]">
                   <Check className="h-5 w-5 text-[oklch(0.72_0.19_145)]" />
                 </div>
-                <h3 className="font-mono text-xl font-bold text-[oklch(0.72_0.19_145)]">This is for you if...</h3>
+                <h3 className="font-mono text-xl font-bold text-[oklch(0.72_0.19_145)]">
+                  This is for you if...
+                </h3>
               </div>
               <ul className="space-y-4">
                 {FOR_YOU_ITEMS.map((item, i) => (
-                  <motion.li key={item.text} className="group flex gap-3" initial={{ opacity: 0, x: -10 }} animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -10 }} transition={{ ...springs.smooth, delay: 0.15 + i * 0.05 }}>
+                  <motion.li
+                    key={item.text}
+                    className="group flex gap-3"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -10 }}
+                    transition={{ ...springs.smooth, delay: 0.15 + i * 0.05 }}
+                  >
                     <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[oklch(0.72_0.19_145/0.2)]">
                       <Check className="h-3 w-3 text-[oklch(0.72_0.19_145)]" />
                     </div>
@@ -799,18 +886,31 @@ function IsThisForYouSection() {
           </motion.div>
 
           {/* Not For You Card */}
-          <motion.div className="relative overflow-hidden rounded-2xl border border-[oklch(0.65_0.22_25/0.3)] bg-gradient-to-br from-[oklch(0.65_0.22_25/0.05)] to-transparent p-6 sm:p-8" initial={{ opacity: 0, x: 30 }} animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: 30 }} transition={{ ...springs.smooth, delay: 0.1 }}>
+          <motion.div
+            className="relative overflow-hidden rounded-2xl border border-[oklch(0.65_0.22_25/0.3)] bg-gradient-to-br from-[oklch(0.65_0.22_25/0.05)] to-transparent p-6 sm:p-8"
+            initial={{ opacity: 0, x: 30 }}
+            animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: 30 }}
+            transition={{ ...springs.smooth, delay: 0.1 }}
+          >
             <div className="pointer-events-none absolute -left-20 -top-20 h-40 w-40 rounded-full bg-[oklch(0.65_0.22_25/0.15)] blur-3xl" />
             <div className="relative">
               <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[oklch(0.65_0.22_25/0.2)]">
                   <X className="h-5 w-5 text-[oklch(0.65_0.22_25)]" />
                 </div>
-                <h3 className="font-mono text-xl font-bold text-[oklch(0.65_0.22_25)]">This is not for you if...</h3>
+                <h3 className="font-mono text-xl font-bold text-[oklch(0.65_0.22_25)]">
+                  This is not for you if...
+                </h3>
               </div>
               <ul className="space-y-4">
                 {NOT_FOR_YOU_ITEMS.map((item, i) => (
-                  <motion.li key={item.text} className="group flex gap-3" initial={{ opacity: 0, x: 10 }} animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: 10 }} transition={{ ...springs.smooth, delay: 0.15 + i * 0.05 }}>
+                  <motion.li
+                    key={item.text}
+                    className="group flex gap-3"
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: 10 }}
+                    transition={{ ...springs.smooth, delay: 0.15 + i * 0.05 }}
+                  >
                     <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[oklch(0.65_0.22_25/0.2)]">
                       <X className="h-3 w-3 text-[oklch(0.65_0.22_25)]" />
                     </div>
@@ -825,10 +925,20 @@ function IsThisForYouSection() {
           </motion.div>
         </div>
 
-        <motion.div className="mt-10 text-center" initial={{ opacity: 0, y: 10 }} animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }} transition={{ ...springs.smooth, delay: 0.5 }}>
-          <p className="mb-4 text-muted-foreground">Sound like you? Let&apos;s talk about the investment.</p>
+        <motion.div
+          className="mt-10 text-center"
+          initial={{ opacity: 0, y: 10 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+          transition={{ ...springs.smooth, delay: 0.5 }}
+        >
+          <p className="mb-4 text-muted-foreground">
+            Sound like you? Let&apos;s talk about the investment.
+          </p>
           <Button asChild variant="outline" className="border-primary/30 hover:bg-primary/10">
-            <a href="#pricing">See Full Cost Breakdown<ChevronRight className="ml-2 h-4 w-4" /></a>
+            <a href="#pricing">
+              See Full Cost Breakdown
+              <ChevronRight className="ml-2 h-4 w-4" />
+            </a>
           </Button>
         </motion.div>
       </div>
@@ -838,35 +948,90 @@ function IsThisForYouSection() {
 
 // "What Does This Cost?" Pricing Section
 const PRICING_ITEMS = [
-  { name: "Cloud VPS", price: `~$${VPS_TOP_PICK.recommended.priceUSD}`, period: "/month", description: "64GB RAM Ubuntu server (e.g. Contabo)", icon: Server, gradient: "from-sky-400 to-blue-500", note: "64GB RAM for 10+ agents" },
-  { name: "Claude Max", price: "$200", period: "/month", description: "Anthropic's Claude Code CLI", icon: Bot, gradient: "from-amber-400 to-orange-500", note: "$400 for power users (2 accounts)" },
-  { name: "ChatGPT Pro", price: "$200", period: "/month", description: "GPT-5.6 Sol Pro for extended thinking planning", icon: Cpu, gradient: "from-emerald-400 to-teal-500", note: "Essential for plan documents" },
+  {
+    name: "Cloud VPS",
+    price: `~$${VPS_TOP_PICK.recommended.priceUSD}`,
+    period: "/month",
+    description: "64GB RAM Ubuntu server (e.g. Contabo)",
+    icon: Server,
+    gradient: "from-sky-400 to-blue-500",
+    note: "64GB RAM for 10+ agents",
+  },
+  {
+    name: "Claude Max",
+    price: "$200",
+    period: "/month",
+    description: "Anthropic's Claude Code CLI",
+    icon: Bot,
+    gradient: "from-amber-400 to-orange-500",
+    note: "$400 for power users (2 accounts)",
+  },
+  {
+    name: "ChatGPT Pro",
+    price: "$200",
+    period: "/month",
+    description: "GPT-5.6 Sol Pro for extended thinking planning",
+    icon: Cpu,
+    gradient: "from-emerald-400 to-teal-500",
+    note: "Essential for plan documents",
+  },
 ];
 
 function WhatDoesThisCostSection() {
   const { ref, isInView } = useScrollReveal({ threshold: 0.1 });
 
   return (
-    <section id="pricing" ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 bg-card/20 py-24 relative overflow-hidden">
+    <section
+      id="pricing"
+      ref={ref as React.RefObject<HTMLElement>}
+      className="border-t border-border/30 bg-card/20 py-24 relative overflow-hidden"
+    >
       <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-20" />
 
       <div className="mx-auto max-w-7xl px-6 relative">
-        <motion.div className="mb-12 text-center" initial={{ opacity: 0, y: 20 }} animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }} transition={springs.smooth}>
+        <motion.div
+          className="mb-12 text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={springs.smooth}
+        >
           <div className="mb-4 flex items-center justify-center gap-3">
             <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Investment</span>
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
+              Investment
+            </span>
             <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
           </div>
-          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">What Does This Cost?</h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">Complete transparency: here&apos;s what you&apos;ll actually pay each month. The tools are free; you pay for the AI services.</p>
+          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">
+            What Does This Cost?
+          </h2>
+          <p className="mx-auto max-w-2xl text-muted-foreground">
+            Complete transparency: here&apos;s what you&apos;ll actually pay each month. The tools
+            are free; you pay for the AI services.
+          </p>
         </motion.div>
 
-        <motion.div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-10" variants={staggerContainer} initial="hidden" animate={isInView ? "visible" : "hidden"}>
+        <motion.div
+          className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-10"
+          variants={staggerContainer}
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+        >
           {PRICING_ITEMS.map((item, i) => (
-            <motion.div key={item.name} className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30" variants={fadeUp} transition={{ delay: staggerDelay(i, 0.1) }} whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}>
-              <motion.div className={`pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} blur-3xl opacity-0 group-hover:opacity-20 transition-opacity`} />
+            <motion.div
+              key={item.name}
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30"
+              variants={fadeUp}
+              transition={{ delay: staggerDelay(i, 0.1) }}
+              whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}
+            >
+              <motion.div
+                className={`pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} blur-3xl opacity-0 group-hover:opacity-20 transition-opacity`}
+              />
               <div className="relative">
-                <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient}`}>
+                <div
+                  className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient}`}
+                >
                   <item.icon className="h-6 w-6 text-white" />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold">{item.name}</h3>
@@ -881,7 +1046,12 @@ function WhatDoesThisCostSection() {
           ))}
         </motion.div>
 
-        <motion.div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/5 via-[oklch(0.7_0.2_330/0.05)] to-primary/5 p-6 sm:p-8" initial={{ opacity: 0, scale: 0.95 }} animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }} transition={{ ...springs.smooth, delay: 0.4 }}>
+        <motion.div
+          className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/5 via-[oklch(0.7_0.2_330/0.05)] to-primary/5 p-6 sm:p-8"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }}
+          transition={{ ...springs.smooth, delay: 0.4 }}
+        >
           <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/20">
@@ -896,17 +1066,38 @@ function WhatDoesThisCostSection() {
               </div>
             </div>
             <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:items-end">
-              <div className="flex items-center gap-2"><Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" /><span>All tools & setup scripts included free</span></div>
-              <div className="flex items-center gap-2"><Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" /><span>Cancel AI subscriptions anytime</span></div>
-              <div className="flex items-center gap-2"><Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" /><span>No hidden fees or upsells</span></div>
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" />
+                <span>All tools & setup scripts included free</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" />
+                <span>Cancel AI subscriptions anytime</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" />
+                <span>No hidden fees or upsells</span>
+              </div>
             </div>
           </div>
         </motion.div>
 
-        <motion.div className="mt-10 text-center" initial={{ opacity: 0, y: 10 }} animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }} transition={{ ...springs.smooth, delay: 0.5 }}>
-          <p className="mb-6 max-w-2xl mx-auto text-muted-foreground">Consider: a junior developer costs $5,000+/month. For under $700, you get <strong className="text-foreground">10+ AI agents</strong> working 24/7, writing code while you sleep.</p>
+        <motion.div
+          className="mt-10 text-center"
+          initial={{ opacity: 0, y: 10 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+          transition={{ ...springs.smooth, delay: 0.5 }}
+        >
+          <p className="mb-6 max-w-2xl mx-auto text-muted-foreground">
+            Consider: a junior developer costs $5,000+/month. For under $700, you get{" "}
+            <strong className="text-foreground">10+ AI agents</strong> working 24/7, writing code
+            while you sleep.
+          </p>
           <Button asChild size="lg" className="bg-primary text-primary-foreground">
-            <Link href="/wizard/os-selection">Start Your Setup<ArrowRight className="ml-2 h-4 w-4" /></Link>
+            <Link href="/wizard/os-selection">
+              Start Your Setup
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
           </Button>
         </motion.div>
       </div>
@@ -946,9 +1137,7 @@ export default function HomePage() {
       <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-30" />
 
       {/* Floating orbs - hidden on mobile to prevent performance issues */}
-      <div
-        className="pointer-events-none absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-[oklch(0.75_0.18_195/0.1)] blur-[100px] hidden sm:block sm:animate-pulse-glow"
-      />
+      <div className="pointer-events-none absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-[oklch(0.75_0.18_195/0.1)] blur-[100px] hidden sm:block sm:animate-pulse-glow" />
       <div
         className="pointer-events-none absolute right-1/4 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[80px] hidden sm:block sm:animate-pulse-glow"
         style={{ animationDelay: "1s" }}
@@ -960,7 +1149,9 @@ export default function HomePage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20">
             <Terminal className="h-5 w-5 text-primary" />
           </div>
-          <span className="whitespace-nowrap font-mono text-base font-bold tracking-tight sm:text-lg">Agent Flywheel</span>
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-tight sm:text-lg">
+            Agent Flywheel
+          </span>
         </div>
         <div className="flex items-center gap-1 sm:gap-4">
           {/* Mobile: icon-only buttons with 44px touch targets (Apple HIG) */}
@@ -993,7 +1184,12 @@ export default function HomePage() {
           {/* Hidden on phones: the hero's "Start the Wizard" CTA is already
               above the fold there, and the header cannot fit brand + three
               44px icon targets + a button at 320-390px without wrapping. */}
-          <Button asChild size="sm" variant="outline" className="hidden border-primary/30 hover:bg-primary/10 sm:inline-flex">
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="hidden border-primary/30 hover:bg-primary/10 sm:inline-flex"
+          >
             <Link href="/wizard/os-selection">
               Get Started
               <ChevronRight className="ml-1 h-4 w-4" />
@@ -1041,11 +1237,13 @@ export default function HomePage() {
                 className="mb-8 max-w-xl text-lg leading-relaxed text-muted-foreground"
                 variants={fadeUp}
               >
-                Transform a fresh <Jargon term="cloud-server">cloud server</Jargon> into a fully-configured{" "}
-                <Jargon term="agentic">agentic</Jargon> coding environment.{" "}
-                <Jargon term="claude-code">Claude Code</Jargon>, OpenAI <Jargon term="codex">Codex</Jargon>,{" "}
-                Google <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with {TOOL_COUNT_LABEL} modern developer tools.
-                All totally free and <Jargon term="open-source">open-source</Jargon>.
+                Transform a fresh <Jargon term="cloud-server">cloud server</Jargon> into a
+                fully-configured <Jargon term="agentic">agentic</Jargon> coding environment.{" "}
+                <Jargon term="claude-code">Claude Code</Jargon>, OpenAI{" "}
+                <Jargon term="codex">Codex</Jargon>, Google{" "}
+                <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with{" "}
+                {TOOL_COUNT_LABEL} modern developer tools. All totally free and{" "}
+                <Jargon term="open-source">open-source</Jargon>.
               </motion.p>
 
               {/* CTA Buttons */}
@@ -1063,10 +1261,18 @@ export default function HomePage() {
                       Start the Wizard
                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </span>
-                    <span className="absolute inset-0 -z-10 bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary opacity-0 transition-opacity group-hover:opacity-100 motion-safe:group-hover:[animation:shimmer_2s_linear_infinite]" style={{ backgroundSize: "200% 100%" }} />
+                    <span
+                      className="absolute inset-0 -z-10 bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary opacity-0 transition-opacity group-hover:opacity-100 motion-safe:group-hover:[animation:shimmer_2s_linear_infinite]"
+                      style={{ backgroundSize: "200% 100%" }}
+                    />
                   </Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="border-border/50 hover:bg-muted/50">
+                <Button
+                  asChild
+                  size="lg"
+                  variant="outline"
+                  className="border-border/50 hover:bg-muted/50"
+                >
                   <a
                     href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
                     target="_blank"
@@ -1097,8 +1303,8 @@ export default function HomePage() {
                   <Package className="h-4 w-4" />
                 </div>
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  <span className="font-semibold text-foreground">Using Omarchy or Arch?</span>{" "}
-                  The same one-liner works — the installer auto-detects your distro, installs via
+                  <span className="font-semibold text-foreground">Using Omarchy or Arch?</span> The
+                  same one-liner works — the installer auto-detects your distro, installs via
                   pacman, and keeps your existing prompt.{" "}
                   <Link
                     href="/omarchy"
@@ -1162,7 +1368,8 @@ export default function HomePage() {
                 transition={{ ...springs.gentle, delay: 0.05 }}
                 whileHover={{ y: -4 }}
                 style={{
-                  boxShadow: "0 0 60px -12px oklch(0.75 0.18 195 / 0.15), 0 24px 48px -12px rgba(0,0,0,0.4)",
+                  boxShadow:
+                    "0 0 60px -12px oklch(0.75 0.18 195 / 0.15), 0 24px 48px -12px rgba(0,0,0,0.4)",
                 }}
               >
                 {/* Border gradient: the sweep animates background-position
@@ -1171,7 +1378,8 @@ export default function HomePage() {
                 <div
                   className="absolute inset-0 rounded-3xl opacity-40 transition-opacity duration-500 group-hover:opacity-100 motion-safe:group-hover:[animation:shimmer_4s_linear_infinite]"
                   style={{
-                    background: "linear-gradient(135deg, oklch(0.75 0.18 195 / 0.5), oklch(0.7 0.2 330 / 0.3), oklch(0.75 0.18 195 / 0.5))",
+                    background:
+                      "linear-gradient(135deg, oklch(0.75 0.18 195 / 0.5), oklch(0.7 0.2 330 / 0.3), oklch(0.75 0.18 195 / 0.5))",
                     backgroundSize: "200% 200%",
                     padding: "1px",
                     WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
@@ -1195,8 +1403,9 @@ export default function HomePage() {
                   </h2>
 
                   <p className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                    The definitive guide to planning-first agentic development: decompose complex projects into beads,
-                    detect convergence, coordinate agent swarms, and ship 10&times; faster with the Flywheel approach.
+                    The definitive guide to planning-first agentic development: decompose complex
+                    projects into beads, detect convergence, coordinate agent swarms, and ship
+                    10&times; faster with the Flywheel approach.
                   </p>
 
                   <div className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
@@ -1237,14 +1446,16 @@ export default function HomePage() {
                 transition={{ ...springs.gentle, delay: 0.1 }}
                 whileHover={{ y: -4 }}
                 style={{
-                  boxShadow: "0 0 60px -12px oklch(0.75 0.18 30 / 0.12), 0 24px 48px -12px rgba(0,0,0,0.4)",
+                  boxShadow:
+                    "0 0 60px -12px oklch(0.75 0.18 30 / 0.12), 0 24px 48px -12px rgba(0,0,0,0.4)",
                 }}
               >
                 {/* Border gradient: hover-only sweep (see the card above) */}
                 <div
                   className="absolute inset-0 rounded-3xl opacity-30 transition-opacity duration-500 group-hover:opacity-80 motion-safe:group-hover:[animation:shimmer_4s_linear_infinite]"
                   style={{
-                    background: "linear-gradient(135deg, oklch(0.75 0.18 30 / 0.5), oklch(0.78 0.16 75 / 0.3), oklch(0.75 0.18 30 / 0.5))",
+                    background:
+                      "linear-gradient(135deg, oklch(0.75 0.18 30 / 0.5), oklch(0.78 0.16 75 / 0.3), oklch(0.75 0.18 30 / 0.5))",
                     backgroundSize: "200% 200%",
                     padding: "1px",
                     WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
@@ -1274,7 +1485,9 @@ export default function HomePage() {
                     viewport={{ once: true }}
                     transition={{ ...springs.smooth, delay: 0.15 }}
                   >
-                    <span className="bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">The Core Flywheel</span>
+                    <span className="bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">
+                      The Core Flywheel
+                    </span>
                   </motion.h2>
 
                   <motion.p
@@ -1284,7 +1497,9 @@ export default function HomePage() {
                     viewport={{ once: true }}
                     transition={{ ...springs.smooth, delay: 0.2 }}
                   >
-                    New to the Flywheel? Start with just three tools — Agent Mail, beads, and bv. This focused guide covers the core loop that captures most of the methodology&apos;s value, without the full system&apos;s complexity.
+                    New to the Flywheel? Start with just three tools — Agent Mail, beads, and bv.
+                    This focused guide covers the core loop that captures most of the
+                    methodology&apos;s value, without the full system&apos;s complexity.
                   </motion.p>
 
                   <motion.div

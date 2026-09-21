@@ -12,9 +12,9 @@
  * Requires: Application Default Credentials (gcloud auth application-default login)
  */
 
-import { AnalyticsAdminServiceClient } from '@google-analytics/admin';
+import { AnalyticsAdminServiceClient } from "@google-analytics/admin";
 
-const PROPERTY_ID = '517085078';
+const PROPERTY_ID = "517085078";
 const PROPERTY_NAME = `properties/${PROPERTY_ID}`;
 
 const adminClient = new AnalyticsAdminServiceClient();
@@ -31,7 +31,7 @@ function recordOperationalError(message: string): void {
 }
 
 async function enableGoogleSignals(): Promise<void> {
-  console.log('\n📊 Enabling Google Signals...\n');
+  console.log("\n📊 Enabling Google Signals...\n");
 
   try {
     // Get current settings
@@ -42,8 +42,8 @@ async function enableGoogleSignals(): Promise<void> {
     console.log(`  Current state: ${currentSettings.state}`);
     console.log(`  Current consent: ${currentSettings.consent}`);
 
-    if (currentSettings.state === 'GOOGLE_SIGNALS_ENABLED') {
-      console.log('  ✅ Google Signals is already enabled!');
+    if (currentSettings.state === "GOOGLE_SIGNALS_ENABLED") {
+      console.log("  ✅ Google Signals is already enabled!");
       return;
     }
 
@@ -51,27 +51,26 @@ async function enableGoogleSignals(): Promise<void> {
     const [updatedSettings] = await adminClient.updateGoogleSignalsSettings({
       googleSignalsSettings: {
         name: `${PROPERTY_NAME}/googleSignalsSettings`,
-        state: 'GOOGLE_SIGNALS_ENABLED',
-        consent: 'GOOGLE_SIGNALS_CONSENT_CONSENTED',
+        state: "GOOGLE_SIGNALS_ENABLED",
+        consent: "GOOGLE_SIGNALS_CONSENT_CONSENTED",
       },
       updateMask: {
-        paths: ['state', 'consent'],
+        paths: ["state", "consent"],
       },
     });
 
     console.log(`  New state: ${updatedSettings.state}`);
     console.log(`  New consent: ${updatedSettings.consent}`);
-    console.log('  ✅ Google Signals enabled successfully!');
-    console.log('\n  ⚠️  It takes 24-48 hours for demographic data to start appearing.');
-
+    console.log("  ✅ Google Signals enabled successfully!");
+    console.log("\n  ⚠️  It takes 24-48 hours for demographic data to start appearing.");
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
-    if (msg.includes('PERMISSION_DENIED')) {
-      recordOperationalError('Permission denied - you need Admin access to enable Google Signals');
-      console.log('     Please enable it manually in GA4 Admin → Data Settings → Data Collection');
-    } else if (msg.includes('requires user consent')) {
-      recordOperationalError('Google Signals requires user consent acknowledgment');
-      console.log('     Please enable it manually in GA4 Admin → Data Settings → Data Collection');
+    if (msg.includes("PERMISSION_DENIED")) {
+      recordOperationalError("Permission denied - you need Admin access to enable Google Signals");
+      console.log("     Please enable it manually in GA4 Admin → Data Settings → Data Collection");
+    } else if (msg.includes("requires user consent")) {
+      recordOperationalError("Google Signals requires user consent acknowledgment");
+      console.log("     Please enable it manually in GA4 Admin → Data Settings → Data Collection");
     } else {
       recordOperationalError(`Error: ${msg}`);
     }
@@ -79,7 +78,7 @@ async function enableGoogleSignals(): Promise<void> {
 }
 
 async function extendDataRetention(): Promise<void> {
-  console.log('\n⏱️  Extending Data Retention...\n');
+  console.log("\n⏱️  Extending Data Retention...\n");
 
   try {
     const [currentRetention] = await adminClient.getDataRetentionSettings({
@@ -88,25 +87,24 @@ async function extendDataRetention(): Promise<void> {
 
     console.log(`  Current retention: ${currentRetention.eventDataRetention}`);
 
-    if (currentRetention.eventDataRetention === 'FOURTEEN_MONTHS') {
-      console.log('  ✅ Data retention is already set to 14 months!');
+    if (currentRetention.eventDataRetention === "FOURTEEN_MONTHS") {
+      console.log("  ✅ Data retention is already set to 14 months!");
       return;
     }
 
     const [updatedRetention] = await adminClient.updateDataRetentionSettings({
       dataRetentionSettings: {
         name: `${PROPERTY_NAME}/dataRetentionSettings`,
-        eventDataRetention: 'FOURTEEN_MONTHS',
+        eventDataRetention: "FOURTEEN_MONTHS",
         resetUserDataOnNewActivity: true,
       },
       updateMask: {
-        paths: ['event_data_retention', 'reset_user_data_on_new_activity'],
+        paths: ["event_data_retention", "reset_user_data_on_new_activity"],
       },
     });
 
     console.log(`  New retention: ${updatedRetention.eventDataRetention}`);
-    console.log('  ✅ Data retention extended to 14 months!');
-
+    console.log("  ✅ Data retention extended to 14 months!");
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
     recordOperationalError(`Error: ${msg}`);
@@ -114,7 +112,7 @@ async function extendDataRetention(): Promise<void> {
 }
 
 async function addMissingDimensions(): Promise<void> {
-  console.log('\n📏 Adding Missing Acquisition Dimensions...\n');
+  console.log("\n📏 Adding Missing Acquisition Dimensions...\n");
 
   // Get existing dimensions
   const existing = new Set<string>();
@@ -128,39 +126,39 @@ async function addMissingDimensions(): Promise<void> {
       }
     }
   } catch {
-    console.log('  Note: Could not fetch existing dimensions');
+    console.log("  Note: Could not fetch existing dimensions");
   }
 
   const newDimensions = [
     // UTM Parameters (user-scoped for first-touch attribution)
-    { name: 'utm_source', scope: 'USER', description: 'UTM source parameter' },
-    { name: 'utm_medium', scope: 'USER', description: 'UTM medium parameter' },
-    { name: 'utm_campaign', scope: 'USER', description: 'UTM campaign parameter' },
-    { name: 'utm_term', scope: 'USER', description: 'UTM term parameter' },
-    { name: 'utm_content', scope: 'USER', description: 'UTM content parameter' },
+    { name: "utm_source", scope: "USER", description: "UTM source parameter" },
+    { name: "utm_medium", scope: "USER", description: "UTM medium parameter" },
+    { name: "utm_campaign", scope: "USER", description: "UTM campaign parameter" },
+    { name: "utm_term", scope: "USER", description: "UTM term parameter" },
+    { name: "utm_content", scope: "USER", description: "UTM content parameter" },
 
     // First-touch attribution
-    { name: 'first_visit_date', scope: 'USER', description: 'Date of first visit' },
-    { name: 'first_traffic_source', scope: 'USER', description: 'First traffic source' },
-    { name: 'first_traffic_medium', scope: 'USER', description: 'First traffic medium' },
-    { name: 'first_landing_page', scope: 'USER', description: 'First landing page URL' },
+    { name: "first_visit_date", scope: "USER", description: "Date of first visit" },
+    { name: "first_traffic_source", scope: "USER", description: "First traffic source" },
+    { name: "first_traffic_medium", scope: "USER", description: "First traffic medium" },
+    { name: "first_landing_page", scope: "USER", description: "First landing page URL" },
 
     // Latest session attribution
-    { name: 'latest_traffic_source', scope: 'USER', description: 'Latest traffic source' },
-    { name: 'latest_traffic_medium', scope: 'USER', description: 'Latest traffic medium' },
+    { name: "latest_traffic_source", scope: "USER", description: "Latest traffic source" },
+    { name: "latest_traffic_medium", scope: "USER", description: "Latest traffic medium" },
 
     // Referrer tracking
-    { name: 'referrer', scope: 'EVENT', description: 'Full referrer URL' },
-    { name: 'referrer_domain', scope: 'EVENT', description: 'Referrer domain only' },
-    { name: 'landing_page', scope: 'EVENT', description: 'Landing page path' },
+    { name: "referrer", scope: "EVENT", description: "Full referrer URL" },
+    { name: "referrer_domain", scope: "EVENT", description: "Referrer domain only" },
+    { name: "landing_page", scope: "EVENT", description: "Landing page path" },
 
     // Visit tracking
-    { name: 'visit_count', scope: 'USER', description: 'Number of visits by user' },
-    { name: 'is_returning_user', scope: 'USER', description: 'Whether user has visited before' },
-    { name: 'is_first_visit', scope: 'EVENT', description: 'Whether this is first visit' },
+    { name: "visit_count", scope: "USER", description: "Number of visits by user" },
+    { name: "is_returning_user", scope: "USER", description: "Whether user has visited before" },
+    { name: "is_first_visit", scope: "EVENT", description: "Whether this is first visit" },
 
     // Platform detection
-    { name: 'platform', scope: 'EVENT', description: 'Detected platform (macOS, Windows, etc.)' },
+    { name: "platform", scope: "EVENT", description: "Detected platform (macOS, Windows, etc.)" },
   ];
 
   let created = 0;
@@ -178,19 +176,19 @@ async function addMissingDimensions(): Promise<void> {
         parent: PROPERTY_NAME,
         customDimension: {
           parameterName: dim.name,
-          displayName: dim.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          displayName: dim.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
           description: dim.description,
-          scope: dim.scope as 'EVENT' | 'USER',
+          scope: dim.scope as "EVENT" | "USER",
         },
       });
       console.log(`  ✅ ${dim.name}`);
       created++;
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
-      if (msg.includes('already exists')) {
+      if (msg.includes("already exists")) {
         console.log(`  ⏭️  ${dim.name} (already exists)`);
         skipped++;
-      } else if (msg.includes('limit')) {
+      } else if (msg.includes("limit")) {
         recordOperationalError(`${dim.name}: Hit dimension limit`);
       } else {
         recordOperationalError(`${dim.name}: ${msg}`);
@@ -202,29 +200,30 @@ async function addMissingDimensions(): Promise<void> {
 }
 
 async function verifyConfiguration(): Promise<void> {
-  console.log('\n🔍 Verifying Configuration...\n');
+  console.log("\n🔍 Verifying Configuration...\n");
 
   try {
     // Check Google Signals
     const [signalsSettings] = await adminClient.getGoogleSignalsSettings({
       name: `${PROPERTY_NAME}/googleSignalsSettings`,
     });
-    const signalsEnabled = signalsSettings.state === 'GOOGLE_SIGNALS_ENABLED';
-    console.log(`  Google Signals: ${signalsEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+    const signalsEnabled = signalsSettings.state === "GOOGLE_SIGNALS_ENABLED";
+    console.log(`  Google Signals: ${signalsEnabled ? "✅ Enabled" : "❌ Disabled"}`);
 
     // Check data retention
     const [retention] = await adminClient.getDataRetentionSettings({
       name: `${PROPERTY_NAME}/dataRetentionSettings`,
     });
-    const retentionGood = retention.eventDataRetention === 'FOURTEEN_MONTHS';
-    console.log(`  Data Retention: ${retentionGood ? '✅ 14 months' : `⚠️ ${retention.eventDataRetention}`}`);
+    const retentionGood = retention.eventDataRetention === "FOURTEEN_MONTHS";
+    console.log(
+      `  Data Retention: ${retentionGood ? "✅ 14 months" : `⚠️ ${retention.eventDataRetention}`}`,
+    );
 
     // Count dimensions
     const [dimensions] = await adminClient.listCustomDimensions({
       parent: PROPERTY_NAME,
     });
     console.log(`  Custom Dimensions: ${dimensions?.length || 0}`);
-
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
     recordOperationalError(`Error verifying: ${msg}`);
@@ -232,9 +231,9 @@ async function verifyConfiguration(): Promise<void> {
 }
 
 async function printNextSteps(): Promise<void> {
-  console.log('\n' + '═'.repeat(60));
-  console.log('  NEXT STEPS');
-  console.log('═'.repeat(60));
+  console.log("\n" + "═".repeat(60));
+  console.log("  NEXT STEPS");
+  console.log("═".repeat(60));
 
   console.log(`
   1. If Google Signals couldn't be enabled via API, enable manually:
@@ -256,9 +255,9 @@ async function printNextSteps(): Promise<void> {
 }
 
 async function main() {
-  console.log('═'.repeat(60));
-  console.log('   FIX GA4 SETTINGS');
-  console.log('═'.repeat(60));
+  console.log("═".repeat(60));
+  console.log("   FIX GA4 SETTINGS");
+  console.log("═".repeat(60));
   console.log(`\n  Property ID: ${PROPERTY_ID}`);
   console.log(`  Date: ${new Date().toISOString()}`);
 
@@ -270,24 +269,23 @@ async function main() {
     await printNextSteps();
 
     if (hadOperationalError) {
-      console.error('\n⚠️ Configuration updates completed with errors.');
+      console.error("\n⚠️ Configuration updates completed with errors.");
       process.exit(1);
     }
 
-    console.log('\n' + '═'.repeat(60));
-    console.log('  ✅ Configuration updates complete!');
-    console.log('═'.repeat(60) + '\n');
-
+    console.log("\n" + "═".repeat(60));
+    console.log("  ✅ Configuration updates complete!");
+    console.log("═".repeat(60) + "\n");
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
 
-    if (msg.includes('Could not load the default credentials')) {
-      console.error('\n❌ Authentication required!');
-      console.error('\nPlease run:');
-      console.error('  gcloud auth application-default login');
-      console.error('\nThen retry this script.');
+    if (msg.includes("Could not load the default credentials")) {
+      console.error("\n❌ Authentication required!");
+      console.error("\nPlease run:");
+      console.error("  gcloud auth application-default login");
+      console.error("\nThen retry this script.");
     } else {
-      console.error('\n❌ Error:', msg);
+      console.error("\n❌ Error:", msg);
     }
     process.exit(1);
   }

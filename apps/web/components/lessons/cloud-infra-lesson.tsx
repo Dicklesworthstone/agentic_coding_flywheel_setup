@@ -1,46 +1,33 @@
 "use client";
 
+import { ArrowRight, Cloud, Database, Globe, Key, Rocket } from "lucide-react";
 import {
-  Cloud,
-  Database,
-  Key,
-  Rocket,
-  Globe,
-  ArrowRight,
-} from "lucide-react";
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
-  FeatureGrid,
   FeatureCard,
+  FeatureGrid,
+  GoalBanner,
+  Highlight,
   InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function CloudInfraLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Deploy and manage cloud infrastructure with PostgreSQL, Supabase,
-        Vercel, and Wrangler — the cloud stack that powers modern web
-        applications.
+        Deploy and manage cloud infrastructure with PostgreSQL, Supabase, Vercel, and Wrangler — the
+        cloud stack that powers modern web applications.
       </GoalBanner>
 
       {/* Your Cloud Stack */}
-      <Section
-        title="Your Cloud Stack"
-        icon={<Cloud className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Your Cloud Stack" icon={<Cloud className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          ACFS installs CLI tools for the major{" "}
-          <Highlight>cloud platforms</Highlight> used in modern web development.
-          From local databases to edge computing, everything is configured and
-          ready to go.
+          ACFS installs CLI tools for the major <Highlight>cloud platforms</Highlight> used in
+          modern web development. From local databases to edge computing, everything is configured
+          and ready to go.
         </Paragraph>
 
         <div className="mt-6">
@@ -76,15 +63,11 @@ export function CloudInfraLesson() {
       <Divider />
 
       {/* PostgreSQL 18 */}
-      <Section
-        title="PostgreSQL 18"
-        icon={<Database className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="PostgreSQL 18" icon={<Database className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
           Local database for development, testing, and direct production use.
-          <Highlight>PostgreSQL 18</Highlight> gives you JSONB document storage,
-          full-text search, and row-level security out of the box.
+          <Highlight>PostgreSQL 18</Highlight> gives you JSONB document storage, full-text search,
+          and row-level security out of the box.
         </Paragraph>
 
         <div className="mt-6">
@@ -124,9 +107,8 @@ psql -U postgres -d myproject < backup.sql
 
         <div className="mt-6">
           <TipBox variant="tip">
-            PostgreSQL runs locally on your VPS. For production, use Supabase
-            (managed PostgreSQL with auth and real-time) or connect to a cloud
-            instance.
+            PostgreSQL runs locally on your VPS. For production, use Supabase (managed PostgreSQL
+            with auth and real-time) or connect to a cloud instance.
           </TipBox>
         </div>
       </Section>
@@ -134,14 +116,10 @@ psql -U postgres -d myproject < backup.sql
       <Divider />
 
       {/* Supabase CLI */}
-      <Section
-        title="Supabase CLI"
-        icon={<Key className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Supabase CLI" icon={<Key className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          <Highlight>Backend-as-a-service</Highlight> with auth, database,
-          storage, and real-time — all managed through the Supabase CLI.
+          <Highlight>Backend-as-a-service</Highlight> with auth, database, storage, and real-time —
+          all managed through the Supabase CLI.
         </Paragraph>
 
         <div className="mt-6">
@@ -181,18 +159,16 @@ supabase status`}
 
         <div className="mt-6">
           <TipBox variant="warning">
-            On a headless VPS, don&apos;t rely on browser OAuth. Create the token on
-            your laptop first, then authenticate with{" "}
-            <InlineCode>supabase login --token ...</InlineCode> or export{" "}
-            <InlineCode>SUPABASE_ACCESS_TOKEN</InlineCode> for later commands.
+            On a headless VPS, don&apos;t rely on browser OAuth. Create the token on your laptop
+            first, then authenticate with <InlineCode>supabase login --token ...</InlineCode> or
+            export <InlineCode>SUPABASE_ACCESS_TOKEN</InlineCode> for later commands.
           </TipBox>
         </div>
 
         <div className="mt-6">
           <TipBox variant="tip">
             <InlineCode>supabase gen types</InlineCode> generates TypeScript types from your
-            database schema. Run it after every migration to keep your types in
-            sync.
+            database schema. Run it after every migration to keep your types in sync.
           </TipBox>
         </div>
       </Section>
@@ -200,15 +176,10 @@ supabase status`}
       <Divider />
 
       {/* Vercel CLI */}
-      <Section
-        title="Vercel CLI"
-        icon={<Rocket className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Vercel CLI" icon={<Rocket className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          Deploy <Highlight>Next.js apps</Highlight> with zero configuration.
-          Vercel handles builds, CDN, serverless functions, and preview
-          deployments automatically.
+          Deploy <Highlight>Next.js apps</Highlight> with zero configuration. Vercel handles builds,
+          CDN, serverless functions, and preview deployments automatically.
         </Paragraph>
 
         <div className="mt-6">
@@ -246,17 +217,17 @@ vercel --prebuilt`}
 
         <div className="mt-6">
           <TipBox variant="warning">
-            <InlineCode>vercel login</InlineCode> now supports a device-login flow on
-            headless terminals. Use <InlineCode>VERCEL_TOKEN</InlineCode> only when you
-            specifically need non-interactive automation or CI auth.
+            <InlineCode>vercel login</InlineCode> now supports a device-login flow on headless
+            terminals. Use <InlineCode>VERCEL_TOKEN</InlineCode> only when you specifically need
+            non-interactive automation or CI auth.
           </TipBox>
         </div>
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Vercel automatically detects Next.js projects. Just run{" "}
-            <InlineCode>vercel</InlineCode> and it handles the build configuration. Use{" "}
-            <InlineCode>vercel --prod</InlineCode> for production deployments.
+            Vercel automatically detects Next.js projects. Just run <InlineCode>vercel</InlineCode>{" "}
+            and it handles the build configuration. Use <InlineCode>vercel --prod</InlineCode> for
+            production deployments.
           </TipBox>
         </div>
       </Section>
@@ -264,15 +235,10 @@ vercel --prebuilt`}
       <Divider />
 
       {/* Wrangler (Cloudflare) */}
-      <Section
-        title="Wrangler (Cloudflare)"
-        icon={<Globe className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Wrangler (Cloudflare)" icon={<Globe className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          <Highlight>Cloudflare Workers</Highlight>, R2 object storage, D1
-          database, and KV store — deploy serverless code to the edge in
-          seconds.
+          <Highlight>Cloudflare Workers</Highlight>, R2 object storage, D1 database, and KV store —
+          deploy serverless code to the edge in seconds.
         </Paragraph>
 
         <div className="mt-6">
@@ -312,10 +278,10 @@ wrangler tail`}
 
         <div className="mt-6">
           <TipBox variant="warning">
-            <InlineCode>wrangler login</InlineCode> expects a browser session. On a
-            headless VPS, use <InlineCode>CLOUDFLARE_API_TOKEN</InlineCode>{" "}
-            instead, and add <InlineCode>CLOUDFLARE_ACCOUNT_ID</InlineCode> for
-            workflows that need an explicit account.
+            <InlineCode>wrangler login</InlineCode> expects a browser session. On a headless VPS,
+            use <InlineCode>CLOUDFLARE_API_TOKEN</InlineCode> instead, and add{" "}
+            <InlineCode>CLOUDFLARE_ACCOUNT_ID</InlineCode> for workflows that need an explicit
+            account.
           </TipBox>
         </div>
       </Section>
@@ -329,39 +295,27 @@ wrangler tail`}
         delay={0.35}
       >
         <Paragraph>
-          How these tools work together in practice — from local development to
-          production deployment:
+          How these tools work together in practice — from local development to production
+          deployment:
         </Paragraph>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
-            <div className="mb-2 text-sm font-semibold text-blue-400">
-              Step 1: Local Dev
-            </div>
+            <div className="mb-2 text-sm font-semibold text-blue-400">Step 1: Local Dev</div>
             <p className="text-sm text-zinc-400">
               PostgreSQL + Supabase local stack for development
             </p>
           </div>
           <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
-            <div className="mb-2 text-sm font-semibold text-violet-400">
-              Step 2: Testing
-            </div>
-            <p className="text-sm text-zinc-400">
-              Run against local database, generate types
-            </p>
+            <div className="mb-2 text-sm font-semibold text-violet-400">Step 2: Testing</div>
+            <p className="text-sm text-zinc-400">Run against local database, generate types</p>
           </div>
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
-            <div className="mb-2 text-sm font-semibold text-emerald-400">
-              Step 3: Deploy App
-            </div>
-            <p className="text-sm text-zinc-400">
-              Vercel deploys Next.js frontend
-            </p>
+            <div className="mb-2 text-sm font-semibold text-emerald-400">Step 3: Deploy App</div>
+            <p className="text-sm text-zinc-400">Vercel deploys Next.js frontend</p>
           </div>
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
-            <div className="mb-2 text-sm font-semibold text-amber-400">
-              Step 4: Edge Logic
-            </div>
+            <div className="mb-2 text-sm font-semibold text-amber-400">Step 4: Edge Logic</div>
             <p className="text-sm text-zinc-400">
               Wrangler deploys API routes to Cloudflare Workers
             </p>
@@ -370,9 +324,8 @@ wrangler tail`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            Local PostgreSQL for development, Supabase for managed backend,
-            Vercel for frontend deployment, and Wrangler for edge computing. The
-            full cloud stack.
+            Local PostgreSQL for development, Supabase for managed backend, Vercel for frontend
+            deployment, and Wrangler for edge computing. The full cloud stack.
           </TipBox>
         </div>
       </Section>

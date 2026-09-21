@@ -2,46 +2,40 @@
 
 import {
   Activity,
-  Stethoscope,
-  Clock,
-  LayoutDashboard,
-  Gauge,
-  ClipboardCheck,
   CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  Gauge,
+  LayoutDashboard,
   Shield,
+  Stethoscope,
 } from "lucide-react";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function AcfsDoctorLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Keep your ACFS environment healthy with doctor checks, automated nightly
-        updates, and workspace management — the maintenance tools that prevent
-        environment drift.
+        Keep your ACFS environment healthy with doctor checks, automated nightly updates, and
+        workspace management — the maintenance tools that prevent environment drift.
       </GoalBanner>
 
       {/* Section 1: Why Maintenance Matters */}
-      <Section
-        title="Why Maintenance Matters"
-        icon={<Activity className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Why Maintenance Matters" icon={<Activity className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          AI agents depend on correctly installed tools. A broken{" "}
-          <Highlight>PATH</Highlight>, missing binary, or stale config can waste
-          hours of debugging time. ACFS includes three maintenance systems that
-          catch problems early, before they derail your work.
+          AI agents depend on correctly installed tools. A broken <Highlight>PATH</Highlight>,
+          missing binary, or stale config can waste hours of debugging time. ACFS includes three
+          maintenance systems that catch problems early, before they derail your work.
         </Paragraph>
 
         <div className="mt-8">
@@ -77,16 +71,11 @@ export function AcfsDoctorLesson() {
       <Divider />
 
       {/* Section 2: acfs doctor */}
-      <Section
-        title="acfs doctor"
-        icon={<Stethoscope className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="acfs doctor" icon={<Stethoscope className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          The <Highlight>acfs doctor</Highlight> command runs health checks on
-          every component installed by ACFS. It checks binary existence, version
-          constraints, and configuration validity — giving you a quick snapshot
-          of your entire environment.
+          The <Highlight>acfs doctor</Highlight> command runs health checks on every component
+          installed by ACFS. It checks binary existence, version constraints, and configuration
+          validity — giving you a quick snapshot of your entire environment.
         </Paragraph>
 
         <div className="mt-6">
@@ -124,9 +113,8 @@ acfs doctor --category shell`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Run <code className="text-amber-300">acfs doctor</code> at the start
-            of every session. It takes under 5 seconds and catches issues before
-            they waste hours of agent time.
+            Run <code className="text-amber-300">acfs doctor</code> at the start of every session.
+            It takes under 5 seconds and catches issues before they waste hours of agent time.
           </TipBox>
         </div>
       </Section>
@@ -134,15 +122,10 @@ acfs doctor --category shell`}
       <Divider />
 
       {/* Section 3: Nightly Auto-Updates */}
-      <Section
-        title="Nightly Auto-Updates"
-        icon={<Clock className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Nightly Auto-Updates" icon={<Clock className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          A systemd timer runs updates automatically every night. It updates tool
-          binaries, pulls latest configs, and runs doctor afterward to verify
-          everything is still healthy.
+          A systemd timer runs updates automatically every night. It updates tool binaries, pulls
+          latest configs, and runs doctor afterward to verify everything is still healthy.
         </Paragraph>
 
         <div className="mt-6">
@@ -175,9 +158,8 @@ sudo systemctl enable --now acfs-nightly.timer`}
 
         <div className="mt-6">
           <TipBox variant="warning">
-            Don&apos;t disable nightly updates unless you have a specific reason.
-            Tool version drift between agents causes subtle, hard-to-debug
-            failures.
+            Don&apos;t disable nightly updates unless you have a specific reason. Tool version drift
+            between agents causes subtle, hard-to-debug failures.
           </TipBox>
         </div>
       </Section>
@@ -185,15 +167,10 @@ sudo systemctl enable --now acfs-nightly.timer`}
       <Divider />
 
       {/* Section 4: Workspace Setup */}
-      <Section
-        title="Workspace Setup"
-        icon={<LayoutDashboard className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Workspace Setup" icon={<LayoutDashboard className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          ACFS creates a ready-to-use workspace with a tmux session and project
-          folder structure. Everything is configured so you can SSH in and
-          immediately start working.
+          ACFS creates a ready-to-use workspace with a tmux session and project folder structure.
+          Everything is configured so you can SSH in and immediately start working.
         </Paragraph>
 
         <div className="mt-6">
@@ -222,8 +199,8 @@ ntm spawn myproject --cc=1 --cod=1`}
         <div className="mt-6">
           <TipBox variant="tip">
             The workspace is designed so you can SSH in, run{" "}
-            <code className="text-amber-300">tmux attach</code>, and immediately
-            start working. Everything persists across disconnections.
+            <code className="text-amber-300">tmux attach</code>, and immediately start working.
+            Everything persists across disconnections.
           </TipBox>
         </div>
       </Section>
@@ -231,15 +208,11 @@ ntm spawn myproject --cc=1 --cod=1`}
       <Divider />
 
       {/* Section 5: SRPS: Resource Protection */}
-      <Section
-        title="SRPS: Resource Protection"
-        icon={<Gauge className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="SRPS: Resource Protection" icon={<Gauge className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          The <Highlight>System Resource Protection Service</Highlight> prevents
-          agents from overwhelming the VPS. It monitors CPU, memory, disk, and
-          process count, taking automatic action when thresholds are exceeded.
+          The <Highlight>System Resource Protection Service</Highlight> prevents agents from
+          overwhelming the VPS. It monitors CPU, memory, disk, and process count, taking automatic
+          action when thresholds are exceeded.
         </Paragraph>
 
         <div className="mt-6">
@@ -272,10 +245,9 @@ srps config set memory-critical 95
 
         <div className="mt-6">
           <TipBox variant="info">
-            SRPS works with <Highlight>SBH</Highlight> (Storage Ballast Helper)
-            which pre-allocates disk space as an emergency buffer. When disk
-            fills up, SBH releases the ballast so the system can recover
-            gracefully.
+            SRPS works with <Highlight>SBH</Highlight> (Storage Ballast Helper) which pre-allocates
+            disk space as an emergency buffer. When disk fills up, SBH releases the ballast so the
+            system can recover gracefully.
           </TipBox>
         </div>
       </Section>
@@ -289,8 +261,7 @@ srps config set memory-critical 95
         delay={0.35}
       >
         <Paragraph>
-          A practical maintenance routine that keeps your environment healthy
-          with minimal effort.
+          A practical maintenance routine that keeps your environment healthy with minimal effort.
         </Paragraph>
 
         <div className="mt-6 space-y-3">
@@ -386,8 +357,8 @@ function SummaryCard() {
           <code className="text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded text-sm">
             acfs doctor
           </code>{" "}
-          at session start prevents hours of debugging broken tools. Let the
-          nightly timer handle updates so you can focus on building.
+          at session start prevents hours of debugging broken tools. Let the nightly timer handle
+          updates so you can focus on building.
         </p>
       </div>
     </div>

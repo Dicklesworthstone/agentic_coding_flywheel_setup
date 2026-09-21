@@ -1,24 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
-  AnimatePresence,
-  motion,
-  useInView,
-  useReducedMotion,
-} from "@/components/motion";
-import {
+  CheckCircle,
+  Code,
+  Compass,
   FileText,
   GitBranch,
-  Compass,
-  Mail,
-  Code,
-  CheckCircle,
-  Terminal,
   Lightbulb,
+  Mail,
   Package,
+  Terminal,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -29,13 +24,7 @@ const EXHIBIT_PANEL_CLASS =
 
 const AUTO_TOUR_INTERVAL_MS = 3000;
 
-type StageId =
-  | "plan"
-  | "encode"
-  | "triage"
-  | "coordinate"
-  | "implement"
-  | "close";
+type StageId = "plan" | "encode" | "triage" | "coordinate" | "implement" | "close";
 
 interface Stage {
   id: StageId;
@@ -52,8 +41,7 @@ const STAGES: Stage[] = [
   {
     id: "plan",
     label: "Plan",
-    description:
-      "Create & refine markdown plan with multiple frontier models",
+    description: "Create & refine markdown plan with multiple frontier models",
     icon: FileText,
     color: "#a78bfa",
     artifact: "Markdown Plan",
@@ -426,10 +414,7 @@ function DetailCard({ stage }: { stage: Stage }) {
           className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
           style={{ color: stage.color }}
         >
-          <span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: stage.color }}
-          />
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
           Stage Detail
         </div>
         <h4 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-none drop-shadow-md">
@@ -449,9 +434,7 @@ function DetailCard({ stage }: { stage: Stage }) {
             <Package size={10} className="opacity-50" />
             Artifact
           </span>
-          <p className="text-sm sm:text-base text-white/90 font-medium">
-            {stage.artifact}
-          </p>
+          <p className="text-sm sm:text-base text-white/90 font-medium">{stage.artifact}</p>
         </div>
 
         {/* Command */}
@@ -461,23 +444,15 @@ function DetailCard({ stage }: { stage: Stage }) {
             <Terminal size={10} className="opacity-50" />
             Command
           </span>
-          <p className="text-sm text-white/90 font-mono font-medium break-all">
-            {stage.command}
-          </p>
+          <p className="text-sm text-white/90 font-mono font-medium break-all">{stage.command}</p>
         </div>
       </div>
 
       {/* Tip */}
       <div className="flex items-start gap-3 p-5 rounded-2xl bg-white/[0.015] border border-white/[0.04] relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/[0.005] to-transparent pointer-events-none" />
-        <Lightbulb
-          size={16}
-          className="mt-0.5 shrink-0"
-          style={{ color: stage.color }}
-        />
-        <p className="text-sm leading-relaxed text-zinc-400 font-light">
-          {stage.tip}
-        </p>
+        <Lightbulb size={16} className="mt-0.5 shrink-0" style={{ color: stage.color }} />
+        <p className="text-sm leading-relaxed text-zinc-400 font-light">{stage.tip}</p>
       </div>
     </motion.div>
   );
@@ -528,11 +503,7 @@ function MobileStageList({
                 ? `0 4px 24px -4px ${stage.color}30, 0 0 0 1px ${stage.color}15`
                 : undefined,
             }}
-            animate={
-              isActive && !reducedMotion
-                ? { scale: [1, 1.01, 1] }
-                : { scale: 1 }
-            }
+            animate={isActive && !reducedMotion ? { scale: [1, 1.01, 1] } : { scale: 1 }}
             transition={
               isActive && !reducedMotion
                 ? {
@@ -550,20 +521,13 @@ function MobileStageList({
                 isActive ? "shadow-lg" : ""
               }`}
               style={{
-                backgroundColor: isActive
-                  ? `${stage.color}15`
-                  : "rgba(255,255,255,0.02)",
+                backgroundColor: isActive ? `${stage.color}15` : "rgba(255,255,255,0.02)",
                 borderWidth: 1,
                 borderStyle: "solid",
-                borderColor: isActive
-                  ? `${stage.color}40`
-                  : "rgba(255,255,255,0.04)",
+                borderColor: isActive ? `${stage.color}40` : "rgba(255,255,255,0.04)",
               }}
             >
-              <Icon
-                size={18}
-                color={isActive ? stage.color : "rgba(255,255,255,0.3)"}
-              />
+              <Icon size={18} color={isActive ? stage.color : "rgba(255,255,255,0.3)"} />
             </div>
 
             <div className="flex flex-col gap-0.5 min-w-0">
@@ -574,11 +538,7 @@ function MobileStageList({
               >
                 {stage.label}
               </span>
-              <span
-                className={`text-[0.7rem] text-white/25 ${
-                  isActive ? "" : "truncate"
-                }`}
-              >
+              <span className={`text-[0.7rem] text-white/25 ${isActive ? "" : "truncate"}`}>
                 {stage.description}
               </span>
             </div>
@@ -624,9 +584,7 @@ function TravelingDot({
   const pos = stagePosition(activeIndex, cx, cy, radius);
 
   if (reducedMotion) {
-    return (
-      <circle cx={pos.x} cy={pos.y} r={4} fill="#FF5500" fillOpacity={0.8} />
-    );
+    return <circle cx={pos.x} cy={pos.y} r={4} fill="#FF5500" fillOpacity={0.8} />;
   }
 
   return (
@@ -727,13 +685,10 @@ export function CoreLoopDiagram() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isInView]);
 
-  const handleStageSelect = useCallback(
-    (index: number) => {
-      setActiveIndex(index);
-      setAutoTour(false);
-    },
-    [],
-  );
+  const handleStageSelect = useCallback((index: number) => {
+    setActiveIndex(index);
+    setAutoTour(false);
+  }, []);
 
   /* SVG layout constants */
   const svgCx = 200;
@@ -758,8 +713,8 @@ export function CoreLoopDiagram() {
             Six stages, one loop, compounding leverage
           </h3>
           <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
-            Each closed bead reshapes the graph. The next agent gets a
-            better map. Click any stage to see the details.
+            Each closed bead reshapes the graph. The next agent gets a better map. Click any stage
+            to see the details.
           </p>
         </div>
 
@@ -834,22 +789,12 @@ export function CoreLoopDiagram() {
               </circle>
 
               {/* Center depth gradient */}
-              <circle
-                cx={svgCx}
-                cy={svgCy}
-                r={60}
-                fill="url(#clCenterGlow)"
-              />
+              <circle cx={svgCx} cy={svgCy} r={60} fill="url(#clCenterGlow)" />
 
               {/* Connector paths between stages */}
               {STAGES.map((stage, index) => {
                 const from = stagePosition(index, svgCx, svgCy, svgRadius);
-                const to = stagePosition(
-                  (index + 1) % STAGE_COUNT,
-                  svgCx,
-                  svgCy,
-                  svgRadius,
-                );
+                const to = stagePosition((index + 1) % STAGE_COUNT, svgCx, svgCy, svgRadius);
                 const isActive = index === activeIndex;
                 const path = arcBetween(from, to, svgCx, svgCy);
                 const connId = `clConn-${stage.id}`;
@@ -865,16 +810,10 @@ export function CoreLoopDiagram() {
                       fill="none"
                       stroke={isActive ? stage.color : "white"}
                       strokeWidth={isActive ? 2.5 : 1}
-                      markerEnd={
-                        isActive
-                          ? `url(#clArrow-${stage.id})`
-                          : "url(#clArrow)"
-                      }
+                      markerEnd={isActive ? `url(#clArrow-${stage.id})` : "url(#clArrow)"}
                       initial={false}
                       animate={{
-                        strokeDasharray: isActive
-                          ? ["0, 600", "600, 0"]
-                          : "4, 12",
+                        strokeDasharray: isActive ? ["0, 600", "600, 0"] : "4, 12",
                         strokeOpacity: isActive ? 0.9 : 0.06,
                       }}
                       transition={{ duration: 1.2, ease: "easeInOut" }}
@@ -978,14 +917,8 @@ export function CoreLoopDiagram() {
                   style={{
                     width: index === activeIndex ? 20 : 8,
                     height: 8,
-                    backgroundColor:
-                      index === activeIndex
-                        ? stage.color
-                        : "rgba(255,255,255,0.1)",
-                    boxShadow:
-                      index === activeIndex
-                        ? `0 0 10px ${stage.color}60`
-                        : "none",
+                    backgroundColor: index === activeIndex ? stage.color : "rgba(255,255,255,0.1)",
+                    boxShadow: index === activeIndex ? `0 0 10px ${stage.color}60` : "none",
                   }}
                   layout
                   transition={{ type: "spring", stiffness: 200, damping: 25 }}

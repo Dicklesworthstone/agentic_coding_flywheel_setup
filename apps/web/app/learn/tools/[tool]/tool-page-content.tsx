@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -14,18 +12,14 @@ import {
   Sparkles,
   Terminal,
 } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "@/components/motion";
+import { copyTextToClipboard } from "@/lib/utils";
 import type { ToolCard, ToolId } from "./tool-data";
 import { TOOLS } from "./tool-data";
-import { copyTextToClipboard } from "@/lib/utils";
 
-function FloatingOrb({
-  className,
-  delay = 0,
-}: {
-  className: string;
-  delay?: number;
-}) {
+function FloatingOrb({ className, delay = 0 }: { className: string; delay?: number }) {
   return (
     <motion.div
       className={`absolute rounded-full pointer-events-none ${className}`}
@@ -133,7 +127,11 @@ interface ToolPageContentProps {
 
 export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
   return (
-    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-clip">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="text-aa-floor min-h-screen bg-black relative overflow-x-clip"
+    >
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         <FloatingOrb
@@ -288,15 +286,13 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
                       <div className="w-3 h-3 rounded-full bg-red-500/70" aria-hidden="true" />
                       <div className="w-3 h-3 rounded-full bg-yellow-500/70" aria-hidden="true" />
                       <div className="w-3 h-3 rounded-full bg-green-500/70" aria-hidden="true" />
-                      <span className="ml-2 text-xs text-white/50">
-                        terminal
-                      </span>
+                      <span className="ml-2 text-xs text-white/50">terminal</span>
                     </div>
                     <div className="p-4 font-mono text-sm pr-24">
-                      <span className="text-emerald-400" aria-hidden="true">$</span>
-                      <span className="text-white/90 ml-2">
-                        {doc.quickCommand}
+                      <span className="text-emerald-400" aria-hidden="true">
+                        $
                       </span>
+                      <span className="text-white/90 ml-2">{doc.quickCommand}</span>
                     </div>
                     <CopyButton text={doc.quickCommand} />
                   </div>
@@ -318,12 +314,15 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
                   </div>
                   <div className="rounded-xl border border-white/[0.08] bg-black/40 p-4 text-sm text-white/70">
                     <p className="mb-4">
-                      Remove the hook only, or fully purge DCG from your system.
-                      You can re-enable it anytime with{" "}
-                      <code className="font-mono text-white/90 bg-white/5 px-1 rounded">dcg install</code>.
+                      Remove the hook only, or fully purge DCG from your system. You can re-enable
+                      it anytime with{" "}
+                      <code className="font-mono text-white/90 bg-white/5 px-1 rounded">
+                        dcg install
+                      </code>
+                      .
                     </p>
                     <pre className="rounded-lg border border-white/[0.08] bg-black/60 p-3 text-xs font-mono text-white/90 whitespace-pre overflow-x-auto">
-{`# Remove hook only
+                      {`# Remove hook only
 dcg uninstall
 
 # Full removal (hook + binary + config)

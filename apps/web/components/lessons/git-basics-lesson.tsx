@@ -1,41 +1,41 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
 import {
+  AlertTriangle,
+  CheckCircle,
+  ChevronRight,
+  Circle,
+  Edit3,
+  Eye,
+  FileX,
   GitBranch,
   GitCommit,
   GitMerge,
   History,
-  Terminal,
-  AlertTriangle,
-  Shield,
-  FileX,
-  Undo2,
-  Eye,
-  CheckCircle,
-  RotateCcw,
-  ChevronRight,
-  Play,
-  X,
-  Circle,
-  Plus,
   Minus,
-  Edit3,
+  Play,
+  Plus,
+  RotateCcw,
+  Shield,
+  Terminal,
+  Undo2,
   User,
+  X,
 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
   InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function GitBasicsLesson() {
@@ -46,16 +46,11 @@ export function GitBasicsLesson() {
       </GoalBanner>
 
       {/* What Is Git */}
-      <Section
-        title="What Is Git?"
-        icon={<GitBranch className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is Git?" icon={<GitBranch className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>Git</Highlight> is a version control system that tracks
-          changes to your code over time. Think of it like a detailed history
-          of every change you&apos;ve ever made, with the ability to go back to
-          any point.
+          <Highlight>Git</Highlight> is a version control system that tracks changes to your code
+          over time. Think of it like a detailed history of every change you&apos;ve ever made, with
+          the ability to go back to any point.
         </Paragraph>
 
         <div className="mt-8">
@@ -91,11 +86,7 @@ export function GitBasicsLesson() {
       <Divider />
 
       {/* Core Concepts */}
-      <Section
-        title="Core Concepts"
-        icon={<GitCommit className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Core Concepts" icon={<GitCommit className="h-5 w-5" />} delay={0.15}>
         <div className="space-y-6">
           <ConceptCard
             term="Repository"
@@ -135,11 +126,7 @@ export function GitBasicsLesson() {
       <Divider />
 
       {/* Essential Commands */}
-      <Section
-        title="Essential Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
             {
@@ -181,50 +168,25 @@ export function GitBasicsLesson() {
       <Divider />
 
       {/* .gitignore */}
-      <Section
-        title="Understanding .gitignore"
-        icon={<FileX className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Understanding .gitignore" icon={<FileX className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          The <InlineCode>.gitignore</InlineCode> file tells git which files to
-          ignore. This is <strong>critical for security</strong> because you
-          never want to commit:
+          The <InlineCode>.gitignore</InlineCode> file tells git which files to ignore. This is{" "}
+          <strong>critical for security</strong> because you never want to commit:
         </Paragraph>
 
         <div className="mt-6 space-y-3">
-          <IgnoreItem
-            pattern=".env"
-            reason="Contains API keys and secrets"
-            critical
-          />
-          <IgnoreItem
-            pattern="node_modules/"
-            reason="Dependencies (huge, regeneratable)"
-          />
-          <IgnoreItem
-            pattern=".venv/"
-            reason="Python virtual environments"
-          />
-          <IgnoreItem
-            pattern="*.log"
-            reason="Log files with potentially sensitive data"
-          />
-          <IgnoreItem
-            pattern="credentials.json"
-            reason="Service account keys"
-            critical
-          />
-          <IgnoreItem
-            pattern=".claude/"
-            reason="Claude Code session data"
-          />
+          <IgnoreItem pattern=".env" reason="Contains API keys and secrets" critical />
+          <IgnoreItem pattern="node_modules/" reason="Dependencies (huge, regeneratable)" />
+          <IgnoreItem pattern=".venv/" reason="Python virtual environments" />
+          <IgnoreItem pattern="*.log" reason="Log files with potentially sensitive data" />
+          <IgnoreItem pattern="credentials.json" reason="Service account keys" critical />
+          <IgnoreItem pattern=".claude/" reason="Claude Code session data" />
         </div>
 
         <div className="mt-6">
           <TipBox variant="warning">
-            <strong>Never commit secrets!</strong> If you accidentally commit an
-            API key, consider it compromised. Rotate it immediately.
+            <strong>Never commit secrets!</strong> If you accidentally commit an API key, consider
+            it compromised. Rotate it immediately.
           </TipBox>
         </div>
       </Section>
@@ -232,11 +194,7 @@ export function GitBasicsLesson() {
       <Divider />
 
       {/* Branches */}
-      <Section
-        title="Working with Branches"
-        icon={<GitBranch className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Working with Branches" icon={<GitBranch className="h-5 w-5" />} delay={0.3}>
         <CommandList
           commands={[
             {
@@ -283,10 +241,8 @@ export function GitBasicsLesson() {
         delay={0.35}
       >
         <Paragraph>
-          <strong className="text-red-400">
-            AI agents may propose these commands.
-          </strong>{" "}
-          Know what they do before approving them:
+          <strong className="text-red-400">AI agents may propose these commands.</strong> Know what
+          they do before approving them:
         </Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -338,14 +294,8 @@ export function GitBasicsLesson() {
       <Divider />
 
       {/* Recovery Tools */}
-      <Section
-        title="Recovery Tools"
-        icon={<Undo2 className="h-5 w-5" />}
-        delay={0.4}
-      >
-        <Paragraph>
-          When things go wrong, these commands can help:
-        </Paragraph>
+      <Section title="Recovery Tools" icon={<Undo2 className="h-5 w-5" />} delay={0.4}>
+        <Paragraph>When things go wrong, these commands can help:</Paragraph>
 
         <CommandList
           commands={[
@@ -424,11 +374,7 @@ $ git branch recovery <hash>`}
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Eye className="h-5 w-5" />}
-        delay={0.5}
-      >
+      <Section title="Try It Now" icon={<Eye className="h-5 w-5" />} delay={0.5}>
         <CodeBlock
           code={`# Check your repository status
 $ git status
@@ -648,10 +594,7 @@ function InteractiveGitFlow() {
   const [showDangerOverlay, setShowDangerOverlay] = useState(false);
 
   const commits = useMemo(() => buildCommitsForStep(currentStep), [currentStep]);
-  const stagingFiles = useMemo(
-    () => buildStagingFilesForStep(currentStep),
-    [currentStep]
-  );
+  const stagingFiles = useMemo(() => buildStagingFilesForStep(currentStep), [currentStep]);
   const headCommitId = useMemo(() => {
     if (currentStep >= 4) return "m1";
     if (currentStep >= 3) return "c3";
@@ -661,7 +604,7 @@ function InteractiveGitFlow() {
 
   const selectedCommitData = useMemo(
     () => commits.find((c) => c.id === selectedCommit) ?? null,
-    [commits, selectedCommit]
+    [commits, selectedCommit],
   );
 
   const advanceStep = useCallback(() => {
@@ -691,9 +634,7 @@ function InteractiveGitFlow() {
       <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
         <div className="flex items-center gap-2">
           <GitBranch className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-white">
-            Interactive Git Graph
-          </span>
+          <span className="text-sm font-semibold text-white">Interactive Git Graph</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -733,9 +674,7 @@ function InteractiveGitFlow() {
                   className="flex items-center gap-2"
                 >
                   <div className="h-2.5 w-2.5 rounded-full bg-purple-400" />
-                  <span className="text-xs font-mono text-purple-400">
-                    feature/auth
-                  </span>
+                  <span className="text-xs font-mono text-purple-400">feature/auth</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -744,9 +683,7 @@ function InteractiveGitFlow() {
               initial={false}
               animate={{ opacity: 1 }}
             >
-              <span className="text-[10px] text-white/40 uppercase tracking-wider">
-                HEAD
-              </span>
+              <span className="text-[10px] text-white/40 uppercase tracking-wider">HEAD</span>
               <motion.div
                 layout
                 transition={SPRING}
@@ -762,17 +699,13 @@ function InteractiveGitFlow() {
               <div className="flex items-center gap-3 flex-wrap">
                 {mainCommits.map((commit, idx) => (
                   <div key={commit.id} className="flex items-center gap-3">
-                    {idx > 0 && (
-                      <div className="h-[2px] w-6 bg-blue-400/40" />
-                    )}
+                    {idx > 0 && <div className="h-[2px] w-6 bg-blue-400/40" />}
                     <CommitNode
                       commit={commit}
                       isHead={headCommitId === commit.id}
                       isSelected={selectedCommit === commit.id}
                       onClick={() =>
-                        setSelectedCommit(
-                          selectedCommit === commit.id ? null : commit.id
-                        )
+                        setSelectedCommit(selectedCommit === commit.id ? null : commit.id)
                       }
                       color="blue"
                     />
@@ -796,21 +729,14 @@ function InteractiveGitFlow() {
 
                   <div className="flex items-center gap-3 flex-wrap">
                     {featureCommits.map((commit, idx) => (
-                      <div
-                        key={commit.id}
-                        className="flex items-center gap-3"
-                      >
-                        {idx > 0 && (
-                          <div className="h-[2px] w-6 bg-purple-400/40" />
-                        )}
+                      <div key={commit.id} className="flex items-center gap-3">
+                        {idx > 0 && <div className="h-[2px] w-6 bg-purple-400/40" />}
                         <CommitNode
                           commit={commit}
                           isHead={headCommitId === commit.id}
                           isSelected={selectedCommit === commit.id}
                           onClick={() =>
-                            setSelectedCommit(
-                              selectedCommit === commit.id ? null : commit.id
-                            )
+                            setSelectedCommit(selectedCommit === commit.id ? null : commit.id)
                           }
                           color="purple"
                         />
@@ -859,23 +785,16 @@ function InteractiveGitFlow() {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <p className="text-sm text-white/80 mb-2">
-                    {selectedCommitData.message}
-                  </p>
+                  <p className="text-sm text-white/80 mb-2">{selectedCommitData.message}</p>
                   <div className="flex items-center gap-2 mb-3 text-xs text-white/40">
                     <User className="h-3 w-3" />
                     <span>{selectedCommitData.author}</span>
                   </div>
                   <div className="space-y-1">
                     {selectedCommitData.filesChanged.map((f) => (
-                      <div
-                        key={f.name}
-                        className="flex items-center gap-2 text-xs"
-                      >
+                      <div key={f.name} className="flex items-center gap-2 text-xs">
                         <FileStatusIcon status={f.status} />
-                        <span className="font-mono text-white/60">
-                          {f.name}
-                        </span>
+                        <span className="font-mono text-white/60">{f.name}</span>
                       </div>
                     ))}
                   </div>
@@ -924,9 +843,7 @@ function InteractiveGitFlow() {
       <div className="border-t border-white/[0.06] px-5 py-3">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs text-white/50 font-mono">
-            <span className="text-primary font-semibold">
-              Step {currentStep + 1}/6:
-            </span>{" "}
+            <span className="text-primary font-semibold">Step {currentStep + 1}/6:</span>{" "}
             {STEP_LABELS[currentStep]}
           </p>
         </div>
@@ -937,9 +854,7 @@ function InteractiveGitFlow() {
             <motion.div
               key={s}
               className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
-                s <= currentStep
-                  ? "bg-primary"
-                  : "bg-white/[0.06]"
+                s <= currentStep ? "bg-primary" : "bg-white/[0.06]"
               }`}
               initial={false}
               animate={{
@@ -994,12 +909,8 @@ function InteractiveGitFlow() {
                   <AlertTriangle className="h-5 w-5 text-red-400" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-red-300">
-                    DCG: Dangerous Commands
-                  </h4>
-                  <p className="text-[11px] text-red-400/70">
-                    Always review before approving
-                  </p>
+                  <h4 className="text-sm font-bold text-red-300">DCG: Dangerous Commands</h4>
+                  <p className="text-[11px] text-red-400/70">Always review before approving</p>
                 </div>
               </div>
               <div className="space-y-2 mb-5">
@@ -1010,12 +921,8 @@ function InteractiveGitFlow() {
                   >
                     <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
                     <div>
-                      <code className="text-xs font-mono text-red-300">
-                        {d.cmd}
-                      </code>
-                      <p className="text-[11px] text-red-400/60 mt-0.5">
-                        {d.desc}
-                      </p>
+                      <code className="text-xs font-mono text-red-300">{d.cmd}</code>
+                      <p className="text-[11px] text-red-400/60 mt-0.5">{d.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -1077,9 +984,7 @@ function CommitNode({
       animate={{ opacity: 1, scale: 1 }}
       transition={SPRING_SNAPPY}
       onClick={onClick}
-      className={`group relative flex flex-col items-center gap-1 ${
-        isSelected ? "z-10" : ""
-      }`}
+      className={`group relative flex flex-col items-center gap-1 ${isSelected ? "z-10" : ""}`}
     >
       {/* HEAD pointer */}
       <AnimatePresence>
@@ -1133,10 +1038,8 @@ function CommitNode({
 // =============================================================================
 
 function FileStatusIcon({ status }: { status: "added" | "modified" | "deleted" }) {
-  if (status === "added")
-    return <Plus className="h-3 w-3 text-emerald-400 shrink-0" />;
-  if (status === "deleted")
-    return <Minus className="h-3 w-3 text-red-400 shrink-0" />;
+  if (status === "added") return <Plus className="h-3 w-3 text-emerald-400 shrink-0" />;
+  if (status === "deleted") return <Minus className="h-3 w-3 text-red-400 shrink-0" />;
   return <Edit3 className="h-3 w-3 text-amber-400 shrink-0" />;
 }
 
@@ -1173,12 +1076,8 @@ function StagingZone({
   const c = colorMap[color];
 
   return (
-    <div
-      className={`rounded-lg border ${c.border} ${c.bg} p-2.5 min-h-[64px]`}
-    >
-      <p
-        className={`text-[10px] font-semibold ${c.header} uppercase tracking-wider mb-2`}
-      >
+    <div className={`rounded-lg border ${c.border} ${c.bg} p-2.5 min-h-[64px]`}>
+      <p className={`text-[10px] font-semibold ${c.header} uppercase tracking-wider mb-2`}>
         {title}
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -1194,9 +1093,7 @@ function StagingZone({
               Empty
             </motion.span>
           ) : (
-            files.map((f) => (
-              <StagingFileChip key={f.id} file={f} />
-            ))
+            files.map((f) => <StagingFileChip key={f.id} file={f} />)
           )}
         </AnimatePresence>
       </div>
@@ -1230,9 +1127,7 @@ function StagingFileChip({ file }: { file: StagingFile }) {
     >
       <FileStatusIcon status={file.status} />
       <span className="truncate max-w-[120px]">{file.name}</span>
-      {isSensitive && (
-        <AlertTriangle className="h-2.5 w-2.5 text-red-400 shrink-0 ml-0.5" />
-      )}
+      {isSensitive && <AlertTriangle className="h-2.5 w-2.5 text-red-400 shrink-0 ml-0.5" />}
     </motion.div>
   );
 }
@@ -1286,7 +1181,9 @@ function IgnoreItem({
           : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]"
       }`}
     >
-      <code className={`font-mono text-sm px-2 py-1 rounded ${critical ? "bg-red-500/20 text-red-400" : "bg-white/[0.05] text-primary"}`}>
+      <code
+        className={`font-mono text-sm px-2 py-1 rounded ${critical ? "bg-red-500/20 text-red-400" : "bg-white/[0.05] text-primary"}`}
+      >
         {pattern}
       </code>
       <span className="text-sm text-white/60">{reason}</span>
@@ -1335,13 +1232,7 @@ function DangerousCommand({
 // =============================================================================
 // BEST PRACTICE
 // =============================================================================
-function BestPractice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function BestPractice({ title, description }: { title: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -1353,7 +1244,9 @@ function BestPractice({
         <CheckCircle className="h-5 w-5" />
       </div>
       <div>
-        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">{title}</p>
+        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+          {title}
+        </p>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>

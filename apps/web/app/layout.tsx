@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono, Instrument_Sans } from "next/font/google";
-import { QueryProvider } from "@/components/query-provider";
+import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import { AnalyticsProvider } from "@/components/analytics-provider";
 import { MotionProvider } from "@/components/motion/motion-provider";
+import { QueryProvider } from "@/components/query-provider";
 import { WizardInstallationProvider } from "@/components/wizard-installation-provider";
 import "./globals.css";
 

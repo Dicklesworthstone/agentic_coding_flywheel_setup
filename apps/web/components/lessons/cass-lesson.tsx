@@ -1,71 +1,65 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Search,
-  History,
-  Database,
-  Terminal,
-  Bot,
-  FileSearch,
-  Filter,
-  Sparkles,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
   Book,
-  Zap,
+  Bot,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
-  Play,
-  Loader2,
-  GitBranch,
   Clock,
-  ArrowRight,
-  Network,
-  Tag,
-  Eye,
-  X,
-  AlertTriangle,
-  CheckCircle,
   Copy,
-  BarChart3,
-  Lightbulb,
+  Database,
+  Eye,
+  FileSearch,
+  Filter,
+  GitBranch,
+  History,
   Layers,
+  Lightbulb,
+  Loader2,
+  Network,
+  Play,
+  Search,
+  Sparkles,
+  Tag,
+  Terminal,
+  X,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
+import { copyTextToClipboard } from "@/lib/utils";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
-import { copyTextToClipboard } from "@/lib/utils";
 
 export function CassLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Search across all past agent sessions to reuse solved problems.
-      </GoalBanner>
+      <GoalBanner>Search across all past agent sessions to reuse solved problems.</GoalBanner>
 
       {/* What Is CASS */}
-      <Section
-        title="What Is CASS?"
-        icon={<Search className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is CASS?" icon={<Search className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CASS (Coding Agent Session Search)</Highlight> indexes all
-          your past agent conversations—Claude Code, Codex, Antigravity, Cursor, and
-          more—so you can find solutions to problems you&apos;ve already solved.
+          <Highlight>CASS (Coding Agent Session Search)</Highlight> indexes all your past agent
+          conversations—Claude Code, Codex, Antigravity, Cursor, and more—so you can find solutions
+          to problems you&apos;ve already solved.
         </Paragraph>
         <Paragraph>
-          It&apos;s like having a searchable memory of everything your agents
-          have ever done across all projects.
+          It&apos;s like having a searchable memory of everything your agents have ever done across
+          all projects.
         </Paragraph>
 
         <div className="mt-8">
@@ -101,14 +95,9 @@ export function CassLesson() {
       <Divider />
 
       {/* Why Use CASS */}
-      <Section
-        title="Why Use CASS?"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Why Use CASS?" icon={<Sparkles className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          You&apos;ve likely solved many problems before with agents. Without
-          CASS:
+          You&apos;ve likely solved many problems before with agents. Without CASS:
         </Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -128,8 +117,8 @@ export function CassLesson() {
 
         <div className="mt-6">
           <TipBox variant="info">
-            CASS helps you avoid re-solving the same problems. Your past agent
-            sessions are a goldmine of solutions!
+            CASS helps you avoid re-solving the same problems. Your past agent sessions are a
+            goldmine of solutions!
           </TipBox>
         </div>
       </Section>
@@ -137,15 +126,10 @@ export function CassLesson() {
       <Divider />
 
       {/* Essential Commands */}
-      <Section
-        title="Essential Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          <strong>Important:</strong> Never run bare <code>cass</code>—it
-          launches a TUI that may block your session. Always use{" "}
-          <code>--robot</code> or <code>--json</code>.
+          <strong>Important:</strong> Never run bare <code>cass</code>—it launches a TUI that may
+          block your session. Always use <code>--robot</code> or <code>--json</code>.
         </Paragraph>
 
         <div className="mt-6">
@@ -183,11 +167,7 @@ export function CassLesson() {
       <Divider />
 
       {/* Search Patterns */}
-      <Section
-        title="Search Patterns"
-        icon={<Filter className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Search Patterns" icon={<Filter className="h-5 w-5" />} delay={0.25}>
         <div className="space-y-6">
           <SearchPattern
             title="Basic Search"
@@ -224,25 +204,15 @@ export function CassLesson() {
       <Divider />
 
       {/* The Search Workflow */}
-      <Section
-        title="The Search Workflow"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="The Search Workflow" icon={<Zap className="h-5 w-5" />} delay={0.3}>
         <InteractiveSessionSearch />
       </Section>
 
       <Divider />
 
       {/* Output Format */}
-      <Section
-        title="Understanding Output"
-        icon={<FileSearch className="h-5 w-5" />}
-        delay={0.35}
-      >
-        <Paragraph>
-          CASS returns structured results with session info and snippets:
-        </Paragraph>
+      <Section title="Understanding Output" icon={<FileSearch className="h-5 w-5" />} delay={0.35}>
+        <Paragraph>CASS returns structured results with session info and snippets:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -275,8 +245,8 @@ export function CassLesson() {
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Use <code>cass expand</code> with the source path and line
-            number to see the full conversation context!
+            Use <code>cass expand</code> with the source path and line number to see the full
+            conversation context!
           </TipBox>
         </div>
       </Section>
@@ -284,11 +254,7 @@ export function CassLesson() {
       <Divider />
 
       {/* Best Practices */}
-      <Section
-        title="Best Practices"
-        icon={<Book className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Best Practices" icon={<Book className="h-5 w-5" />} delay={0.4}>
         <div className="space-y-4">
           <BestPractice
             title="Use specific search terms"
@@ -312,11 +278,7 @@ export function CassLesson() {
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="Try It Now" icon={<Terminal className="h-5 w-5" />} delay={0.45}>
         <CodeBlock
           code={`# Check your indexing status
 $ cass health
@@ -336,13 +298,7 @@ $ cass robot-docs guide`}
 // =============================================================================
 // USE CASE CARD
 // =============================================================================
-function UseCaseCard({
-  problem,
-  solution,
-}: {
-  problem: string;
-  solution: string;
-}) {
+function UseCaseCard({ problem, solution }: { problem: string; solution: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -389,7 +345,9 @@ function SearchPattern({
       className="group space-y-3 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
     >
       <div>
-        <h4 className="font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
+        <h4 className="font-semibold text-white group-hover:text-primary transition-colors">
+          {title}
+        </h4>
         <p className="text-sm text-white/50">{description}</p>
       </div>
       <CodeBlock code={code} />
@@ -525,7 +483,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/backend/session-2026-03-08.jsonl",
         workspace: "/projects/backend-api",
         score: 0.96,
-        snippet: "Error: connect ECONNREFUSED 127.0.0.1:5432 - Fixed by restarting PostgreSQL service and updating pg_hba.conf to allow local connections",
+        snippet:
+          "Error: connect ECONNREFUSED 127.0.0.1:5432 - Fixed by restarting PostgreSQL service and updating pg_hba.conf to allow local connections",
         matchHighlights: ["ECONNREFUSED", "PostgreSQL"],
         timestamp: "2026-03-08T14:23:00Z",
         lineNumber: 87,
@@ -547,7 +506,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.codex/sessions/2026-02-22.jsonl",
         workspace: "/projects/microservices",
         score: 0.89,
-        snippet: "ECONNREFUSED on PostgreSQL - root cause was Docker network misconfiguration, container using wrong hostname",
+        snippet:
+          "ECONNREFUSED on PostgreSQL - root cause was Docker network misconfiguration, container using wrong hostname",
         matchHighlights: ["ECONNREFUSED", "PostgreSQL"],
         timestamp: "2026-02-22T09:15:00Z",
         lineNumber: 134,
@@ -568,7 +528,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.cursor/sessions/session-2026-03-01.jsonl",
         workspace: "/projects/saas-app",
         score: 0.82,
-        snippet: "PostgreSQL ECONNREFUSED after system reboot - added systemd service enable and connection retry with exponential backoff",
+        snippet:
+          "PostgreSQL ECONNREFUSED after system reboot - added systemd service enable and connection retry with exponential backoff",
         matchHighlights: ["PostgreSQL", "ECONNREFUSED"],
         timestamp: "2026-03-01T16:40:00Z",
         lineNumber: 203,
@@ -583,9 +544,27 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
       },
     ],
     timeline: [
-      { agent: "cursor", agentLabel: "Cursor", date: "Mar 1", summary: "Systemd enable + retry logic", sessionRef: "e3" },
-      { agent: "codex", agentLabel: "Codex", date: "Feb 22", summary: "Docker network hostname fix", sessionRef: "e2" },
-      { agent: "claude", agentLabel: "Claude Code", date: "Mar 8", summary: "pg_hba.conf + service restart", sessionRef: "e1" },
+      {
+        agent: "cursor",
+        agentLabel: "Cursor",
+        date: "Mar 1",
+        summary: "Systemd enable + retry logic",
+        sessionRef: "e3",
+      },
+      {
+        agent: "codex",
+        agentLabel: "Codex",
+        date: "Feb 22",
+        summary: "Docker network hostname fix",
+        sessionRef: "e2",
+      },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Mar 8",
+        summary: "pg_hba.conf + service restart",
+        sessionRef: "e1",
+      },
     ],
     knowledgeNodes: [
       { label: "ECONNREFUSED", category: "error", connections: [1, 2, 3] },
@@ -603,7 +582,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
     icon: "prompt",
     query: "implement authentication",
     command: 'cass search "implement authentication" --robot --fields full',
-    description: "Mine effective prompts and patterns from past sessions to reuse winning strategies",
+    description:
+      "Mine effective prompts and patterns from past sessions to reuse winning strategies",
     hits: [
       {
         id: "p1",
@@ -612,7 +592,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/webapp/session-2026-03-01.jsonl",
         workspace: "/projects/nextjs-saas",
         score: 0.97,
-        snippet: "Implemented OAuth2 PKCE flow with refresh token rotation, httpOnly cookies, and CSRF protection middleware",
+        snippet:
+          "Implemented OAuth2 PKCE flow with refresh token rotation, httpOnly cookies, and CSRF protection middleware",
         matchHighlights: ["implement", "authentication"],
         timestamp: "2026-03-01T10:30:00Z",
         lineNumber: 203,
@@ -633,7 +614,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.gemini/sessions/2026-02-18.jsonl",
         workspace: "/projects/express-api",
         score: 0.91,
-        snippet: "JWT authentication with role-based access control, rate limiting on login, and bcrypt password hashing",
+        snippet:
+          "JWT authentication with role-based access control, rate limiting on login, and bcrypt password hashing",
         matchHighlights: ["authentication"],
         timestamp: "2026-02-18T14:15:00Z",
         lineNumber: 67,
@@ -653,7 +635,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.codex/sessions/2026-01-30.jsonl",
         workspace: "/projects/python-api",
         score: 0.85,
-        snippet: "Session-based auth with Redis store, implemented magic link email login instead of passwords",
+        snippet:
+          "Session-based auth with Redis store, implemented magic link email login instead of passwords",
         matchHighlights: ["authentication"],
         timestamp: "2026-01-30T11:00:00Z",
         lineNumber: 312,
@@ -668,9 +651,27 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
       },
     ],
     timeline: [
-      { agent: "codex", agentLabel: "Codex", date: "Jan 30", summary: "Magic link + Redis sessions", sessionRef: "p3" },
-      { agent: "gemini", agentLabel: "Gemini", date: "Feb 18", summary: "JWT + RBAC + rate limiting", sessionRef: "p2" },
-      { agent: "claude", agentLabel: "Claude Code", date: "Mar 1", summary: "OAuth2 PKCE + token rotation", sessionRef: "p1" },
+      {
+        agent: "codex",
+        agentLabel: "Codex",
+        date: "Jan 30",
+        summary: "Magic link + Redis sessions",
+        sessionRef: "p3",
+      },
+      {
+        agent: "gemini",
+        agentLabel: "Gemini",
+        date: "Feb 18",
+        summary: "JWT + RBAC + rate limiting",
+        sessionRef: "p2",
+      },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Mar 1",
+        summary: "OAuth2 PKCE + token rotation",
+        sessionRef: "p1",
+      },
     ],
     knowledgeNodes: [
       { label: "Authentication", category: "pattern", connections: [1, 2, 3, 4] },
@@ -697,7 +698,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.gemini/sessions/2026-03-05.jsonl",
         workspace: "/projects/dashboard",
         score: 0.94,
-        snippet: "Optimized 10k-row table from 2.3s to 16ms render using react-window virtualization, useMemo for filter logic, and debounced input",
+        snippet:
+          "Optimized 10k-row table from 2.3s to 16ms render using react-window virtualization, useMemo for filter logic, and debounced input",
         matchHighlights: ["React", "performance", "optimization"],
         timestamp: "2026-03-05T09:45:00Z",
         lineNumber: 89,
@@ -718,7 +720,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/ecommerce/session-2026-02-25.jsonl",
         workspace: "/projects/ecommerce-frontend",
         score: 0.88,
-        snippet: "Eliminated unnecessary re-renders with useCallback for event handlers, React.memo with custom comparator, and context splitting",
+        snippet:
+          "Eliminated unnecessary re-renders with useCallback for event handlers, React.memo with custom comparator, and context splitting",
         matchHighlights: ["React", "performance"],
         timestamp: "2026-02-25T13:20:00Z",
         lineNumber: 445,
@@ -733,8 +736,20 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
       },
     ],
     timeline: [
-      { agent: "claude", agentLabel: "Claude Code", date: "Feb 25", summary: "Context splitting + memo", sessionRef: "s2" },
-      { agent: "gemini", agentLabel: "Gemini", date: "Mar 5", summary: "Virtualization + debounce", sessionRef: "s1" },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Feb 25",
+        summary: "Context splitting + memo",
+        sessionRef: "s2",
+      },
+      {
+        agent: "gemini",
+        agentLabel: "Gemini",
+        date: "Mar 5",
+        summary: "Virtualization + debounce",
+        sessionRef: "s1",
+      },
     ],
     knowledgeNodes: [
       { label: "React Performance", category: "pattern", connections: [1, 2, 3, 4] },
@@ -751,7 +766,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
     icon: "compare",
     query: "Docker multi-stage build",
     command: 'cass search "Docker multi-stage build" --robot --compare',
-    description: "Compare how different agents approached the same problem to find the best solution",
+    description:
+      "Compare how different agents approached the same problem to find the best solution",
     hits: [
       {
         id: "c1",
@@ -760,7 +776,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/infra/session-2026-02-28.jsonl",
         workspace: "/projects/production-deploy",
         score: 0.93,
-        snippet: "Multi-stage Docker build: builder stage for compilation, slim runtime stage. Image size reduced from 1.2GB to 89MB",
+        snippet:
+          "Multi-stage Docker build: builder stage for compilation, slim runtime stage. Image size reduced from 1.2GB to 89MB",
         matchHighlights: ["Docker", "multi-stage", "build"],
         timestamp: "2026-02-28T15:10:00Z",
         lineNumber: 156,
@@ -780,7 +797,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.codex/sessions/2026-03-10.jsonl",
         workspace: "/projects/backend-v2",
         score: 0.87,
-        snippet: "Docker BuildKit multi-stage with cache mounts for node_modules - rebuilds in 8s instead of 3min by caching npm install layer",
+        snippet:
+          "Docker BuildKit multi-stage with cache mounts for node_modules - rebuilds in 8s instead of 3min by caching npm install layer",
         matchHighlights: ["Docker", "multi-stage", "build"],
         timestamp: "2026-03-10T11:30:00Z",
         lineNumber: 45,
@@ -800,7 +818,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.gemini/sessions/2026-02-14.jsonl",
         workspace: "/projects/monorepo",
         score: 0.78,
-        snippet: "Docker multi-stage for monorepo: used turbo prune to only include relevant packages, reducing context from 8GB to 200MB",
+        snippet:
+          "Docker multi-stage for monorepo: used turbo prune to only include relevant packages, reducing context from 8GB to 200MB",
         matchHighlights: ["Docker", "multi-stage"],
         timestamp: "2026-02-14T08:00:00Z",
         lineNumber: 201,
@@ -815,9 +834,27 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
       },
     ],
     timeline: [
-      { agent: "gemini", agentLabel: "Gemini", date: "Feb 14", summary: "Monorepo turbo prune", sessionRef: "c3" },
-      { agent: "claude", agentLabel: "Claude Code", date: "Feb 28", summary: "Slim runtime stage (89MB)", sessionRef: "c1" },
-      { agent: "codex", agentLabel: "Codex", date: "Mar 10", summary: "BuildKit cache mounts", sessionRef: "c2" },
+      {
+        agent: "gemini",
+        agentLabel: "Gemini",
+        date: "Feb 14",
+        summary: "Monorepo turbo prune",
+        sessionRef: "c3",
+      },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Feb 28",
+        summary: "Slim runtime stage (89MB)",
+        sessionRef: "c1",
+      },
+      {
+        agent: "codex",
+        agentLabel: "Codex",
+        date: "Mar 10",
+        summary: "BuildKit cache mounts",
+        sessionRef: "c2",
+      },
     ],
     knowledgeNodes: [
       { label: "Multi-stage Build", category: "pattern", connections: [1, 2, 3] },
@@ -844,7 +881,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.codex/sessions/2026-01-15.jsonl",
         workspace: "/projects/api-v1",
         score: 0.91,
-        snippet: "Set up Prisma migrations with seed data. Created initial schema with User, Post, Comment models",
+        snippet:
+          "Set up Prisma migrations with seed data. Created initial schema with User, Post, Comment models",
         matchHighlights: ["database", "migration"],
         timestamp: "2026-01-15T10:00:00Z",
         lineNumber: 23,
@@ -864,7 +902,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/api-v1/session-2026-02-10.jsonl",
         workspace: "/projects/api-v1",
         score: 0.87,
-        snippet: "Added migration for tags system with many-to-many relation. Fixed Prisma migrate deploy failing in CI due to missing DATABASE_URL",
+        snippet:
+          "Added migration for tags system with many-to-many relation. Fixed Prisma migrate deploy failing in CI due to missing DATABASE_URL",
         matchHighlights: ["migration"],
         timestamp: "2026-02-10T14:30:00Z",
         lineNumber: 178,
@@ -885,7 +924,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/api-v1/session-2026-03-06.jsonl",
         workspace: "/projects/api-v1",
         score: 0.83,
-        snippet: "Zero-downtime migration strategy: expand-contract pattern for renaming columns without breaking production",
+        snippet:
+          "Zero-downtime migration strategy: expand-contract pattern for renaming columns without breaking production",
         matchHighlights: ["migration"],
         timestamp: "2026-03-06T16:45:00Z",
         lineNumber: 312,
@@ -900,9 +940,27 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
       },
     ],
     timeline: [
-      { agent: "codex", agentLabel: "Codex", date: "Jan 15", summary: "Initial Prisma schema setup", sessionRef: "t1" },
-      { agent: "claude", agentLabel: "Claude Code", date: "Feb 10", summary: "Tags migration + CI fix", sessionRef: "t2" },
-      { agent: "claude", agentLabel: "Claude Code", date: "Mar 6", summary: "Zero-downtime column rename", sessionRef: "t3" },
+      {
+        agent: "codex",
+        agentLabel: "Codex",
+        date: "Jan 15",
+        summary: "Initial Prisma schema setup",
+        sessionRef: "t1",
+      },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Feb 10",
+        summary: "Tags migration + CI fix",
+        sessionRef: "t2",
+      },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Mar 6",
+        summary: "Zero-downtime column rename",
+        sessionRef: "t3",
+      },
     ],
     knowledgeNodes: [
       { label: "DB Migrations", category: "pattern", connections: [1, 2, 3] },
@@ -927,7 +985,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.claude/projects/webapp/session-2026-03-02.jsonl",
         workspace: "/projects/webapp",
         score: 0.95,
-        snippet: "Testing pyramid: 70% unit (vitest), 20% integration (supertest), 10% e2e (playwright). Achieved 94% coverage with meaningful tests",
+        snippet:
+          "Testing pyramid: 70% unit (vitest), 20% integration (supertest), 10% e2e (playwright). Achieved 94% coverage with meaningful tests",
         matchHighlights: ["testing", "strategies"],
         timestamp: "2026-03-02T11:20:00Z",
         lineNumber: 156,
@@ -947,7 +1006,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.cursor/sessions/session-2026-02-20.jsonl",
         workspace: "/projects/api",
         score: 0.88,
-        snippet: "Contract testing between microservices using Pact. Prevents integration failures by validating API contracts independently",
+        snippet:
+          "Contract testing between microservices using Pact. Prevents integration failures by validating API contracts independently",
         matchHighlights: ["testing"],
         timestamp: "2026-02-20T09:30:00Z",
         lineNumber: 89,
@@ -967,7 +1027,8 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
         sessionPath: "~/.gemini/sessions/2026-03-09.jsonl",
         workspace: "/projects/mobile-app",
         score: 0.82,
-        snippet: "Snapshot testing with jest for UI regression. Auto-update snapshots in CI only when visual review is approved",
+        snippet:
+          "Snapshot testing with jest for UI regression. Auto-update snapshots in CI only when visual review is approved",
         matchHighlights: ["testing"],
         timestamp: "2026-03-09T15:00:00Z",
         lineNumber: 234,
@@ -982,9 +1043,27 @@ const SEARCH_SCENARIOS: SearchScenario[] = [
       },
     ],
     timeline: [
-      { agent: "cursor", agentLabel: "Cursor", date: "Feb 20", summary: "Contract testing with Pact", sessionRef: "k2" },
-      { agent: "claude", agentLabel: "Claude Code", date: "Mar 2", summary: "Testing pyramid restructure", sessionRef: "k1" },
-      { agent: "gemini", agentLabel: "Gemini", date: "Mar 9", summary: "Snapshot + visual regression", sessionRef: "k3" },
+      {
+        agent: "cursor",
+        agentLabel: "Cursor",
+        date: "Feb 20",
+        summary: "Contract testing with Pact",
+        sessionRef: "k2",
+      },
+      {
+        agent: "claude",
+        agentLabel: "Claude Code",
+        date: "Mar 2",
+        summary: "Testing pyramid restructure",
+        sessionRef: "k1",
+      },
+      {
+        agent: "gemini",
+        agentLabel: "Gemini",
+        date: "Mar 9",
+        summary: "Snapshot + visual regression",
+        sessionRef: "k3",
+      },
     ],
     knowledgeNodes: [
       { label: "Testing Strategy", category: "pattern", connections: [1, 2, 3, 4] },
@@ -1051,18 +1130,22 @@ function InteractiveSessionSearch() {
 
       // Animated terminal output
       setTerminalLines([`$ ${sc.command}`]);
-      pushTimer(setTimeout(() => {
-        setTerminalLines((prev) => [
-          ...prev,
-          `Searching ${sc.stats.sessionsSearched} indexed sessions...`,
-        ]);
-      }, 300));
-      pushTimer(setTimeout(() => {
-        setTerminalLines((prev) => [
-          ...prev,
-          `Scanning ${sc.stats.agents} agents: claude, codex, antigravity, cursor`,
-        ]);
-      }, 600));
+      pushTimer(
+        setTimeout(() => {
+          setTerminalLines((prev) => [
+            ...prev,
+            `Searching ${sc.stats.sessionsSearched} indexed sessions...`,
+          ]);
+        }, 300),
+      );
+      pushTimer(
+        setTimeout(() => {
+          setTerminalLines((prev) => [
+            ...prev,
+            `Scanning ${sc.stats.agents} agents: claude, codex, antigravity, cursor`,
+          ]);
+        }, 600),
+      );
 
       // Progress bar animation
       const progressInterval = setInterval(() => {
@@ -1076,26 +1159,26 @@ function InteractiveSessionSearch() {
       }, 50);
       searchTimerRef.current = progressInterval;
 
-      pushTimer(setTimeout(() => {
-        clearInterval(progressInterval);
-        searchTimerRef.current = null;
-        setSearchProgress(100);
-        setTerminalLines((prev) => [
-          ...prev,
-          `Found ${sc.stats.totalHits} hits across ${sc.stats.agents} agents (${sc.stats.tookMs}ms)`,
-          "",
-        ]);
-        setSearching(false);
-        setHasSearched(true);
-      }, SEARCH_DELAY_MS));
+      pushTimer(
+        setTimeout(() => {
+          clearInterval(progressInterval);
+          searchTimerRef.current = null;
+          setSearchProgress(100);
+          setTerminalLines((prev) => [
+            ...prev,
+            `Found ${sc.stats.totalHits} hits across ${sc.stats.agents} agents (${sc.stats.tookMs}ms)`,
+            "",
+          ]);
+          setSearching(false);
+          setHasSearched(true);
+        }, SEARCH_DELAY_MS),
+      );
     },
-    [clearAllTimers, pushTimer]
+    [clearAllTimers, pushTimer],
   );
 
   const handlePrev = useCallback(() => {
-    const next =
-      (activeScenarioIdx - 1 + SEARCH_SCENARIOS.length) %
-      SEARCH_SCENARIOS.length;
+    const next = (activeScenarioIdx - 1 + SEARCH_SCENARIOS.length) % SEARCH_SCENARIOS.length;
     runSearch(next);
   }, [activeScenarioIdx, runSearch]);
 
@@ -1104,18 +1187,26 @@ function InteractiveSessionSearch() {
     runSearch(next);
   }, [activeScenarioIdx, runSearch]);
 
-  const handleCopy = useCallback(async (hitId: string, text: string) => {
-    await copyTextToClipboard(text);
-    setCopiedId(hitId);
-    pushTimer(setTimeout(() => {
-      setCopiedId(null);
-    }, 2000));
-  }, [pushTimer]);
+  const handleCopy = useCallback(
+    async (hitId: string, text: string) => {
+      await copyTextToClipboard(text);
+      setCopiedId(hitId);
+      pushTimer(
+        setTimeout(() => {
+          setCopiedId(null);
+        }, 2000),
+      );
+    },
+    [pushTimer],
+  );
 
   const IconForScenario = SCENARIO_ICONS[scenario.icon];
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-emerald-500/8 rounded-full blur-3xl pointer-events-none" />
@@ -1128,12 +1219,8 @@ function InteractiveSessionSearch() {
             <IconForScenario className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-sm font-semibold text-white">
-              Cross-Agent Session Search
-            </h4>
-            <p className="text-xs text-white/40 truncate">
-              {scenario.description}
-            </p>
+            <h4 className="text-sm font-semibold text-white">Cross-Agent Session Search</h4>
+            <p className="text-xs text-white/40 truncate">{scenario.description}</p>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-white/30">
             <Database className="h-3.5 w-3.5" />
@@ -1189,9 +1276,7 @@ function InteractiveSessionSearch() {
               <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
               <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
             </div>
-            <span className="ml-2 text-xs text-white/30 font-mono">
-              cass-terminal
-            </span>
+            <span className="ml-2 text-xs text-white/30 font-mono">cass-terminal</span>
           </div>
           <div className="p-4 font-mono text-xs space-y-1 min-h-[80px] max-h-[120px] overflow-y-auto">
             <AnimatePresence mode="popLayout">
@@ -1220,7 +1305,11 @@ function InteractiveSessionSearch() {
             {(searching || (!hasSearched && terminalLines.length === 0)) && (
               <motion.span
                 animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-                transition={inView ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+                transition={
+                  inView
+                    ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" }
+                    : { duration: 0.2 }
+                }
                 className="inline-block w-2 h-3.5 bg-emerald-400/80"
               />
             )}
@@ -1268,7 +1357,9 @@ function InteractiveSessionSearch() {
               <div className="relative">
                 <motion.div
                   animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                  transition={inView ? { duration: 1.2, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+                  transition={
+                    inView ? { duration: 1.2, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+                  }
                 >
                   <Loader2 className="h-8 w-8 text-primary" />
                 </motion.div>
@@ -1281,8 +1372,7 @@ function InteractiveSessionSearch() {
                   Searching across {scenario.stats.agents} agent indexes...
                 </div>
                 <div className="text-xs text-white/30">
-                  {scenario.stats.sessionsSearched} sessions |{" "}
-                  {searchProgress}% complete
+                  {scenario.stats.sessionsSearched} sessions | {searchProgress}% complete
                 </div>
               </div>
             </motion.div>
@@ -1307,26 +1397,18 @@ function InteractiveSessionSearch() {
                     {scenario.stats.totalHits} hit
                     {scenario.stats.totalHits !== 1 ? "s" : ""}
                   </span>
-                  <span className="text-white/30">
-                    {scenario.stats.agents} agents
-                  </span>
-                  <span className="text-white/30">
-                    {scenario.stats.tookMs}ms
-                  </span>
+                  <span className="text-white/30">{scenario.stats.agents} agents</span>
+                  <span className="text-white/30">{scenario.stats.tookMs}ms</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {(["claude", "codex", "gemini", "cursor"] as AgentType[])
-                    .filter((a) =>
-                      scenario.hits.some((h) => h.agent === a)
-                    )
+                    .filter((a) => scenario.hits.some((h) => h.agent === a))
                     .map((agent) => (
                       <span
                         key={agent}
                         className={`flex items-center gap-1 ${AGENT_STYLES[agent].text}`}
                       >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${AGENT_STYLES[agent].dot}`}
-                        />
+                        <span className={`h-1.5 w-1.5 rounded-full ${AGENT_STYLES[agent].dot}`} />
                         {agent}
                       </span>
                     ))}
@@ -1409,14 +1491,10 @@ function InteractiveSessionSearch() {
                                 <div
                                   className={`flex h-7 w-7 items-center justify-center rounded-lg ${colors.bg} ring-1 ${colors.ring}`}
                                 >
-                                  <Bot
-                                    className={`h-3.5 w-3.5 ${colors.text}`}
-                                  />
+                                  <Bot className={`h-3.5 w-3.5 ${colors.text}`} />
                                 </div>
                                 <div>
-                                  <span
-                                    className={`text-sm font-semibold ${colors.text}`}
-                                  >
+                                  <span className={`text-sm font-semibold ${colors.text}`}>
                                     {hit.agentLabel}
                                   </span>
                                   <div className="text-[10px] text-white/30 font-mono">
@@ -1440,11 +1518,7 @@ function InteractiveSessionSearch() {
                                   )}
                                 </button>
                                 <button
-                                  onClick={() =>
-                                    setExpandedHit(
-                                      isExpanded ? null : hit.id
-                                    )
-                                  }
+                                  onClick={() => setExpandedHit(isExpanded ? null : hit.id)}
                                   className="flex h-6 items-center gap-1 px-2 rounded-md bg-white/[0.04] text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors text-[10px] font-mono"
                                 >
                                   {isExpanded ? (
@@ -1538,57 +1612,46 @@ function InteractiveSessionSearch() {
                                     <div className="flex items-center gap-2 mb-2">
                                       <FileSearch className="h-3.5 w-3.5 text-primary" />
                                       <span className="text-xs text-primary font-medium">
-                                        cass expand{" "}
-                                        {hit.sessionPath.split("/").pop()} -n{" "}
+                                        cass expand {hit.sessionPath.split("/").pop()} -n{" "}
                                         {hit.lineNumber} -C 3 --json
                                       </span>
                                     </div>
                                     <div className="font-mono text-xs bg-black/40 rounded-lg p-3 space-y-1.5 border border-white/[0.04]">
-                                      {hit.expandedContext.map(
-                                        (line, li) => {
-                                          const isMatch =
-                                            line.startsWith(">>>");
-                                          const isUser =
-                                            line.startsWith("user:");
-                                          return (
-                                            <div
-                                              key={li}
-                                              className={`leading-relaxed ${
-                                                isMatch
-                                                  ? "text-primary font-semibold bg-primary/10 -mx-2 px-2 py-1 rounded border-l-2 border-primary/40"
-                                                  : isUser
-                                                    ? "text-white/50"
-                                                    : "text-emerald-400/70"
-                                              }`}
-                                            >
-                                              {isMatch && (
-                                                <span className="text-[10px] text-primary/60 uppercase tracking-wider mr-2">
-                                                  match
-                                                </span>
-                                              )}
-                                              {isUser && (
-                                                <span className="text-blue-400/60 mr-1">
-                                                  &gt;
-                                                </span>
-                                              )}
-                                              {!isUser && !isMatch && (
-                                                <span className="text-emerald-400/40 mr-1">
-                                                  &lt;
-                                                </span>
-                                              )}
-                                              {isMatch
-                                                ? line.slice(4)
+                                      {hit.expandedContext.map((line, li) => {
+                                        const isMatch = line.startsWith(">>>");
+                                        const isUser = line.startsWith("user:");
+                                        return (
+                                          <div
+                                            key={li}
+                                            className={`leading-relaxed ${
+                                              isMatch
+                                                ? "text-primary font-semibold bg-primary/10 -mx-2 px-2 py-1 rounded border-l-2 border-primary/40"
                                                 : isUser
-                                                  ? line.slice(5)
-                                                  : line.startsWith(
-                                                        "assistant:"
-                                                      )
-                                                    ? line.slice(11)
-                                                    : line}
-                                            </div>
-                                          );
-                                        }
-                                      )}
+                                                  ? "text-white/50"
+                                                  : "text-emerald-400/70"
+                                            }`}
+                                          >
+                                            {isMatch && (
+                                              <span className="text-[10px] text-primary/60 uppercase tracking-wider mr-2">
+                                                match
+                                              </span>
+                                            )}
+                                            {isUser && (
+                                              <span className="text-blue-400/60 mr-1">&gt;</span>
+                                            )}
+                                            {!isUser && !isMatch && (
+                                              <span className="text-emerald-400/40 mr-1">&lt;</span>
+                                            )}
+                                            {isMatch
+                                              ? line.slice(4)
+                                              : isUser
+                                                ? line.slice(5)
+                                                : line.startsWith("assistant:")
+                                                  ? line.slice(11)
+                                                  : line}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 </motion.div>
@@ -1654,18 +1717,14 @@ function InteractiveSessionSearch() {
                                 }}
                                 className={`h-10 w-10 rounded-full ${colors.bg} ring-2 ${colors.ring} flex items-center justify-center shadow-lg ${colors.glow}`}
                               >
-                                <Bot
-                                  className={`h-4 w-4 ${colors.text}`}
-                                />
+                                <Bot className={`h-4 w-4 ${colors.text}`} />
                               </motion.div>
                             </div>
 
                             {/* Event content */}
                             <div className="flex-1 pt-1">
                               <div className="flex items-center justify-between mb-1">
-                                <span
-                                  className={`text-sm font-semibold ${colors.text}`}
-                                >
+                                <span className={`text-sm font-semibold ${colors.text}`}>
                                   {event.agentLabel}
                                 </span>
                                 <span className="text-xs text-white/30 font-mono flex items-center gap-1">
@@ -1700,13 +1759,10 @@ function InteractiveSessionSearch() {
                       <div className="flex items-start gap-2">
                         <Lightbulb className="h-4 w-4 text-primary/60 mt-0.5 shrink-0" />
                         <div className="text-xs text-white/50">
-                          <span className="text-primary/80 font-medium">
-                            Insight:
-                          </span>{" "}
-                          Multiple agents solved &quot;{scenario.query}
-                          &quot; problems across {scenario.timeline.length}{" "}
-                          sessions. The latest approaches incorporate learnings
-                          from earlier attempts.
+                          <span className="text-primary/80 font-medium">Insight:</span> Multiple
+                          agents solved &quot;{scenario.query}
+                          &quot; problems across {scenario.timeline.length} sessions. The latest
+                          approaches incorporate learnings from earlier attempts.
                         </div>
                       </div>
                     </motion.div>
@@ -1737,19 +1793,15 @@ function InteractiveSessionSearch() {
                     {/* Visual knowledge graph */}
                     <div className="relative rounded-xl border border-white/[0.06] bg-black/30 p-6 min-h-[200px] overflow-hidden">
                       {/* Connection lines rendered as SVG */}
-                      <KnowledgeGraphSVG
-                        nodes={scenario.knowledgeNodes}
-                      />
+                      <KnowledgeGraphSVG nodes={scenario.knowledgeNodes} />
                       {/* Nodes */}
                       <div className="relative z-10 flex flex-wrap gap-3 justify-center">
                         {scenario.knowledgeNodes.map((node, i) => {
                           const categoryStyles = {
-                            pattern:
-                              "bg-primary/15 text-primary border-primary/25 ring-primary/10",
+                            pattern: "bg-primary/15 text-primary border-primary/25 ring-primary/10",
                             solution:
                               "bg-emerald-500/15 text-emerald-400 border-emerald-500/25 ring-emerald-400/10",
-                            error:
-                              "bg-red-500/15 text-red-400 border-red-500/25 ring-red-400/10",
+                            error: "bg-red-500/15 text-red-400 border-red-500/25 ring-red-400/10",
                             tool: "bg-blue-500/15 text-blue-400 border-blue-500/25 ring-blue-400/10",
                           };
                           const categoryIcons = {
@@ -1810,18 +1862,9 @@ function InteractiveSessionSearch() {
                           },
                         ] as const
                       ).map((item) => (
-                        <div
-                          key={item.cat}
-                          className="flex items-center gap-1.5"
-                        >
-                          <span
-                            className={`h-2 w-2 rounded-full ${item.dot}`}
-                          />
-                          <span
-                            className={`text-[10px] capitalize ${item.color}`}
-                          >
-                            {item.cat}
-                          </span>
+                        <div key={item.cat} className="flex items-center gap-1.5">
+                          <span className={`h-2 w-2 rounded-full ${item.dot}`} />
+                          <span className={`text-[10px] capitalize ${item.color}`}>{item.cat}</span>
                         </div>
                       ))}
                     </div>
@@ -1832,11 +1875,7 @@ function InteractiveSessionSearch() {
                         Extracted Patterns
                       </div>
                       {scenario.knowledgeNodes
-                        .filter(
-                          (n) =>
-                            n.category === "pattern" ||
-                            n.category === "solution"
-                        )
+                        .filter((n) => n.category === "pattern" || n.category === "solution")
                         .map((node, i) => (
                           <motion.div
                             key={node.label}
@@ -1852,14 +1891,10 @@ function InteractiveSessionSearch() {
                           >
                             <div
                               className={`h-2 w-2 rounded-full shrink-0 ${
-                                node.category === "pattern"
-                                  ? "bg-primary"
-                                  : "bg-emerald-400"
+                                node.category === "pattern" ? "bg-primary" : "bg-emerald-400"
                               }`}
                             />
-                            <span className="text-xs text-white/60 flex-1">
-                              {node.label}
-                            </span>
+                            <span className="text-xs text-white/60 flex-1">{node.label}</span>
                             <span className="text-[10px] text-white/25 font-mono">
                               {node.connections.length} connections
                             </span>
@@ -1880,34 +1915,21 @@ function InteractiveSessionSearch() {
 // =============================================================================
 // HIGHLIGHTED SNIPPET - renders text with highlighted search matches
 // =============================================================================
-function HighlightedSnippet({
-  text,
-  highlights,
-}: {
-  text: string;
-  highlights: string[];
-}) {
+function HighlightedSnippet({ text, highlights }: { text: string; highlights: string[] }) {
   if (highlights.length === 0) {
     return <span>{text}</span>;
   }
 
-  const escapedHighlights = highlights.map((h) =>
-    h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  );
+  const escapedHighlights = highlights.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const regex = new RegExp(`(${escapedHighlights.join("|")})`, "gi");
   const parts = text.split(regex);
 
   return (
     <span>
       {parts.map((part, i) => {
-        const isHighlight = highlights.some(
-          (h) => h.toLowerCase() === part.toLowerCase()
-        );
+        const isHighlight = highlights.some((h) => h.toLowerCase() === part.toLowerCase());
         return isHighlight ? (
-          <span
-            key={i}
-            className="text-primary font-semibold bg-primary/15 px-0.5 rounded"
-          >
+          <span key={i} className="text-primary font-semibold bg-primary/15 px-0.5 rounded">
             {part}
           </span>
         ) : (
@@ -1921,11 +1943,7 @@ function HighlightedSnippet({
 // =============================================================================
 // KNOWLEDGE GRAPH SVG - renders connection lines between nodes
 // =============================================================================
-function KnowledgeGraphSVG({
-  nodes,
-}: {
-  nodes: KnowledgeNode[];
-}) {
+function KnowledgeGraphSVG({ nodes }: { nodes: KnowledgeNode[] }) {
   // Precompute unique edges so each pair draws only one line
   const edges: [number, number][] = [];
   const edgeSet = new Set<string>();
@@ -1977,13 +1995,7 @@ function KnowledgeGraphSVG({
 // =============================================================================
 // BEST PRACTICE
 // =============================================================================
-function BestPractice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function BestPractice({ title, description }: { title: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -1995,7 +2007,9 @@ function BestPractice({
         <Sparkles className="h-5 w-5" />
       </div>
       <div>
-        <p className="font-semibold text-white group-hover:text-primary transition-colors">{title}</p>
+        <p className="font-semibold text-white group-hover:text-primary transition-colors">
+          {title}
+        </p>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>

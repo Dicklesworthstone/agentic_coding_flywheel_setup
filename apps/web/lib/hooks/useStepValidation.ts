@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { validateStep, type ValidationResult } from "../wizardSteps";
+import { type ValidationResult, validateStep } from "../wizardSteps";
 
 const VALID: ValidationResult = { valid: true, errors: [] };
 

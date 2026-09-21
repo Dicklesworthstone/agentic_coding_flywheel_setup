@@ -11,8 +11,8 @@ import {
   formatHandoffRunbookMarkdown,
   formatTeamProfileReviewMarkdown,
 } from "./commandBuilder";
-import { ACFS_RECOMMENDED_UBUNTU } from "./vpsProviders";
 import type { ModuleSelectionInput } from "./moduleSelection";
+import { ACFS_RECOMMENDED_UBUNTU } from "./vpsProviders";
 
 /**
  * Run the actual copy/paste command, replacing only its network transport.
@@ -22,27 +22,34 @@ import type { ModuleSelectionInput } from "./moduleSelection";
 function observeInstaller(command: string) {
   const fixture = [
     'TARGET_UBUNTU_VERSION="25.10"',
-    'TARGET_UBUNTU_VERSION_EXPLICIT=false',
+    "TARGET_UBUNTU_VERSION_EXPLICIT=false",
     'for arg in "$@"; do',
     '  case "$arg" in',
     '    --target-ubuntu=*) TARGET_UBUNTU_VERSION="${arg#*=}"; TARGET_UBUNTU_VERSION_EXPLICIT=true ;;',
-    '  esac',
-    'done',
+    "  esac",
+    "done",
     'printf "%s\\0" "$TARGET_UBUNTU_VERSION" "$TARGET_UBUNTU_VERSION_EXPLICIT" "${TARGET_USER:-ubuntu}" "$@"',
   ].join("\n");
-  const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-p", "-c", [
-    "curl() { printf '%s\\n' \"$ACFS_TEST_INSTALLER\"; }",
-    command,
-  ].join("\n")], {
-    env: {
-      PATH: "/usr/bin:/bin",
-      ACFS_TEST_INSTALLER: fixture,
-      // An inherited old setting must not redirect a newly copied command.
-      UBUNTU_TARGET_VERSION: "25.10",
+  const result = spawnSync(
+    "/bin/bash",
+    [
+      "--noprofile",
+      "--norc",
+      "-p",
+      "-c",
+      ["curl() { printf '%s\\n' \"$ACFS_TEST_INSTALLER\"; }", command].join("\n"),
+    ],
+    {
+      env: {
+        PATH: "/usr/bin:/bin",
+        ACFS_TEST_INSTALLER: fixture,
+        // An inherited old setting must not redirect a newly copied command.
+        UBUNTU_TARGET_VERSION: "25.10",
+      },
+      encoding: "utf8",
+      timeout: 5000,
     },
-    encoding: "utf8",
-    timeout: 5000,
-  });
+  );
   assert.equal(result.status, 0, result.stderr || result.error?.message);
   const fields = result.stdout.split("\0");
   assert.equal(fields.pop(), "");
@@ -72,7 +79,12 @@ for (const mode of ["vibe", "safe"] as const) {
   }
 }
 
-for (const [input, expected] of [["ubuntu", "ubuntu"], ["admin", "admin"], ["bad user;false", "ubuntu"], ["root", "ubuntu"]]) {
+for (const [input, expected] of [
+  ["ubuntu", "ubuntu"],
+  ["admin", "admin"],
+  ["bad user;false", "ubuntu"],
+  ["root", "ubuntu"],
+]) {
   test(`explicit target preserves target-user normalization: ${input}`, () => {
     const observed = observeInstaller(buildInstallCommand("safe", null, input));
     assert.equal(observed.user, expected);
@@ -97,15 +109,30 @@ for (const selection of [
 }
 
 test("invalid selectors still fail before any copyable install command exists", () => {
-  assert.throws(() => buildInstallCommand("vibe", null, "ubuntu", {
-    onlyModules: ["lang.bun; --target-ubuntu=25.10"],
-  }), /Unknown module/);
+  assert.throws(
+    () =>
+      buildInstallCommand("vibe", null, "ubuntu", {
+        onlyModules: ["lang.bun; --target-ubuntu=25.10"],
+      }),
+    /Unknown module/,
+  );
 });
 
 test("personalized commands, handoff and retry artifacts use the same explicit destination", () => {
-  const inputs = { ip: "203.0.113.42", os: "linux" as const, username: "admin", mode: "safe" as const,
-    ref: "release/lts", moduleSelection: { onlyModules: ["lang.bun"] } };
-  const command = buildInstallCommand(inputs.mode, inputs.ref, inputs.username, inputs.moduleSelection);
+  const inputs = {
+    ip: "203.0.113.42",
+    os: "linux" as const,
+    username: "admin",
+    mode: "safe" as const,
+    ref: "release/lts",
+    moduleSelection: { onlyModules: ["lang.bun"] },
+  };
+  const command = buildInstallCommand(
+    inputs.mode,
+    inputs.ref,
+    inputs.username,
+    inputs.moduleSelection,
+  );
   const installer = buildCommands(inputs).find((entry) => entry.id === "installer");
   const runbook = buildHandoffRunbook(inputs);
   const retry = runbook.recoveryCommands.find((entry) => entry.id === "rerun-installer");
@@ -118,10 +145,22 @@ test("personalized commands, handoff and retry artifacts use the same explicit d
 });
 
 test("profile review and import commands cannot fall back to the legacy installer target", () => {
-  const profile = buildTeamProfile({ ip: "", os: "mac", username: "admin", mode: "safe", ref: null,
-    providerSelection: { providerId: "other", planName: "custom plan", ubuntuVersion: "24.04",
-      region: "not-listed", targetAgents: 10, workloadId: "standard" },
-    moduleSelection: { onlyModules: ["lang.bun"] } });
+  const profile = buildTeamProfile({
+    ip: "",
+    os: "mac",
+    username: "admin",
+    mode: "safe",
+    ref: null,
+    providerSelection: {
+      providerId: "other",
+      planName: "custom plan",
+      ubuntuVersion: "24.04",
+      region: "not-listed",
+      targetAgents: 10,
+      workloadId: "standard",
+    },
+    moduleSelection: { onlyModules: ["lang.bun"] },
+  });
   const review = formatTeamProfileReviewMarkdown(profile);
   assert.ok(review.includes(`--target-ubuntu=${ACFS_RECOMMENDED_UBUNTU}`));
   const diff = buildTeamProfileImportDiff(profile, { ubuntuVersion: "24.04" });

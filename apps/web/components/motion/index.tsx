@@ -1,6 +1,6 @@
 "use client";
 
-import { m, AnimatePresence, useReducedMotion, useInView, type Variants } from "framer-motion";
+import { AnimatePresence, m, useInView, useReducedMotion, type Variants } from "framer-motion";
 
 /**
  * Spring configurations optimized for Stripe/Linear-style subtle, professional feel.
@@ -287,7 +287,7 @@ export interface PresenceMotionProps {
  */
 export function getPresenceProps(
   variants: Variants,
-  prefersReducedMotion: boolean
+  prefersReducedMotion: boolean,
 ): PresenceMotionProps {
   if (prefersReducedMotion) {
     return {
@@ -332,7 +332,7 @@ export const listItemMotion = {
  */
 export function getMotionProps(
   props: Record<string, unknown>,
-  prefersReducedMotion: boolean
+  prefersReducedMotion: boolean,
 ): Record<string, unknown> {
   if (prefersReducedMotion) {
     return {};
@@ -363,11 +363,11 @@ export const MotionH2 = m.h2;
 export const MotionH3 = m.h3;
 export const MotionH4 = m.h4;
 
+export type { Variants };
 // Re-export `m` as `motion` for backwards compatibility with LazyMotion strict mode
 // This allows existing code using `motion.div` etc. to work without changes
 // `m` is the LazyMotion-compatible component. The root MotionProvider mounts
 // <LazyMotion strict>, so importing the full `motion` from "framer-motion"
 // throws in dev and bundles the full animation runtime; always import
 // `motion` from here instead.
-export { m as motion, AnimatePresence, useReducedMotion, useInView };
-export type { Variants };
+export { AnimatePresence, m as motion, useInView, useReducedMotion };

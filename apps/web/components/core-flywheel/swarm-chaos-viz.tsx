@@ -1,13 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AnimatePresence,
-  motion,
-  useInView,
-  useReducedMotion,
-} from "@/components/motion";
 import { Lock, Play, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -118,7 +113,14 @@ const PHASES: PhaseNarrative[] = [
         { id: "A3", color: AGENT_COLORS[2], targetTask: 2, status: "grabbing T2" },
         { id: "A4", color: AGENT_COLORS[3], targetTask: 6, status: "grabbing T6" },
       ],
-      tasks: { 1: "ready", 2: "conflicted", 3: "ready", 4: "in-progress", 5: "ready", 6: "in-progress" },
+      tasks: {
+        1: "ready",
+        2: "conflicted",
+        3: "ready",
+        4: "in-progress",
+        5: "ready",
+        6: "in-progress",
+      },
       conflicts: 1,
       idleBurn: 0,
       completed: 0,
@@ -149,7 +151,14 @@ const PHASES: PhaseNarrative[] = [
         { id: "A3", color: AGENT_COLORS[2], targetTask: 2, status: "resolving conflict..." },
         { id: "A4", color: AGENT_COLORS[3], targetTask: 6, status: "working on T6" },
       ],
-      tasks: { 1: "ready", 2: "conflicted", 3: "ready", 4: "ready", 5: "blocked", 6: "in-progress" },
+      tasks: {
+        1: "ready",
+        2: "conflicted",
+        3: "ready",
+        4: "ready",
+        5: "blocked",
+        6: "in-progress",
+      },
       conflicts: 1,
       idleBurn: 4200,
       completed: 0,
@@ -162,7 +171,14 @@ const PHASES: PhaseNarrative[] = [
         { id: "A3", color: AGENT_COLORS[2], targetTask: 6, status: "working on T6" },
         { id: "A4", color: AGENT_COLORS[3], targetTask: null, status: "waiting (deps blocked)" },
       ],
-      tasks: { 1: "in-progress", 2: "ready", 3: "in-progress", 4: "ready", 5: "ready", 6: "in-progress" },
+      tasks: {
+        1: "in-progress",
+        2: "ready",
+        3: "in-progress",
+        4: "ready",
+        5: "ready",
+        6: "in-progress",
+      },
       conflicts: 0,
       idleBurn: 0,
       completed: 0,
@@ -180,7 +196,14 @@ const PHASES: PhaseNarrative[] = [
         { id: "A3", color: AGENT_COLORS[2], targetTask: 1, status: "starting T1 (late)" },
         { id: "A4", color: AGENT_COLORS[3], targetTask: 6, status: "done with T6" },
       ],
-      tasks: { 1: "in-progress", 2: "in-progress", 3: "ready", 4: "ready", 5: "blocked", 6: "done" },
+      tasks: {
+        1: "in-progress",
+        2: "in-progress",
+        3: "ready",
+        4: "ready",
+        5: "blocked",
+        6: "done",
+      },
       conflicts: 1,
       idleBurn: 8400,
       completed: 1,
@@ -245,7 +268,11 @@ const TASK_STATE_COLORS: Record<TaskState, { bg: string; border: string; text: s
   "in-progress": { bg: "bg-blue-500/[0.12]", border: "border-blue-500/30", text: "text-blue-400" },
   done: { bg: "bg-emerald-500/[0.15]", border: "border-emerald-500/30", text: "text-emerald-400" },
   conflicted: { bg: "bg-red-500/[0.15]", border: "border-red-500/30", text: "text-red-400" },
-  blocked: { bg: "bg-orange-500/[0.08]", border: "border-orange-500/20", text: "text-orange-400/60" },
+  blocked: {
+    bg: "bg-orange-500/[0.08]",
+    border: "border-orange-500/20",
+    text: "text-orange-400/60",
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -278,15 +305,11 @@ function TaskBox({
           : { scale: 1 }
       }
       transition={
-        isConflicted && !reducedMotion
-          ? { duration: 0.6, repeat: Infinity }
-          : { duration: 0.3 }
+        isConflicted && !reducedMotion ? { duration: 0.6, repeat: Infinity } : { duration: 0.3 }
       }
     >
       {task.label}
-      {showLock && (
-        <Lock size={10} className="ml-1 text-emerald-400/70" />
-      )}
+      {showLock && <Lock size={10} className="ml-1 text-emerald-400/70" />}
       {isConflicted && (
         <motion.span
           className="absolute -top-2 -right-2 rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-black text-white"
@@ -380,24 +403,12 @@ function DependencyArrows({ reducedMotion }: { reducedMotion: boolean }) {
   );
 }
 
-function MetricBar({
-  label,
-  value,
-  isBad,
-}: {
-  label: string;
-  value: string;
-  isBad?: boolean;
-}) {
+function MetricBar({ label, value, isBad }: { label: string; value: string; isBad?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">
-        {label}
-      </span>
+      <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">{label}</span>
       <span
-        className={`text-xs font-black tabular-nums ${
-          isBad ? "text-red-400" : "text-emerald-400"
-        }`}
+        className={`text-xs font-black tabular-nums ${isBad ? "text-red-400" : "text-emerald-400"}`}
       >
         {value}
       </span>
@@ -463,14 +474,8 @@ function SimPanel({
         <div className="grid grid-cols-2 gap-2">
           {snapshot.agents.map((agent) => (
             <div key={agent.id} className="flex flex-col gap-0.5">
-              <AgentDot
-                agent={agent}
-                taskIndex={agent.targetTask}
-                reducedMotion={reducedMotion}
-              />
-              <span className="ml-5 text-[11px] text-white/25 truncate">
-                {agent.status}
-              </span>
+              <AgentDot agent={agent} taskIndex={agent.targetTask} reducedMotion={reducedMotion} />
+              <span className="ml-5 text-[11px] text-white/25 truncate">{agent.status}</span>
             </div>
           ))}
         </div>
@@ -478,9 +483,7 @@ function SimPanel({
 
       {/* Tasks row */}
       <div className="mb-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
-          Tasks
-        </p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">Tasks</p>
         <div className="grid grid-cols-3 gap-2">
           {TASKS.map((task) => {
             const state = snapshot.tasks[task.id];
@@ -513,11 +516,7 @@ function SimPanel({
           value={snapshot.idleBurn > 0 ? `${(snapshot.idleBurn / 1000).toFixed(1)}k tokens` : "0"}
           isBad={snapshot.idleBurn > 0}
         />
-        <MetricBar
-          label="Completed"
-          value={`${snapshot.completed}/6`}
-          isBad={false}
-        />
+        <MetricBar label="Completed" value={`${snapshot.completed}/6`} isBad={false} />
       </div>
     </div>
   );
@@ -602,8 +601,8 @@ export function SwarmChaosViz() {
           Why the tools matter
         </h4>
         <p className="text-[1.05rem] leading-relaxed text-zinc-400 font-light max-w-2xl">
-          Four agents, six tasks, side by side. One side uses the core
-          loop, the other does not. Press Start.
+          Four agents, six tasks, side by side. One side uses the core loop, the other does not.
+          Press Start.
         </p>
       </div>
 
@@ -614,12 +613,7 @@ export function SwarmChaosViz() {
         animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
         transition={{ duration: rm ? 0 : 0.6 }}
       >
-        <SimPanel
-          variant="chaos"
-          snapshot={currentPhase.chaos}
-          phase={phase}
-          reducedMotion={rm}
-        />
+        <SimPanel variant="chaos" snapshot={currentPhase.chaos} phase={phase} reducedMotion={rm} />
         <SimPanel
           variant="coordinated"
           snapshot={currentPhase.coordinated}
@@ -650,10 +644,7 @@ export function SwarmChaosViz() {
           Phase
         </span>
         {PHASES.map((_, index) => (
-          <div
-            key={index}
-            className="p-0.5"
-          >
+          <div key={index} className="p-0.5">
             <motion.div
               className="rounded-full"
               style={{
@@ -665,15 +656,10 @@ export function SwarmChaosViz() {
                     : index < phase
                       ? "#FF550044"
                       : "rgba(255,255,255,0.1)",
-                boxShadow:
-                  index === phase ? "0 0 10px rgba(255,85,0,0.6)" : "none",
+                boxShadow: index === phase ? "0 0 10px rgba(255,85,0,0.6)" : "none",
               }}
               layout
-              transition={
-                rm
-                  ? { duration: 0 }
-                  : { type: "spring", stiffness: 200, damping: 25 }
-              }
+              transition={rm ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 25 }}
             />
           </div>
         ))}

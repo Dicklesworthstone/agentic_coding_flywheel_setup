@@ -1,43 +1,43 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Globe,
-  Terminal,
-  Zap,
-  FileText,
-  Code,
-  Settings,
-  Play,
-  Shield,
   ArrowRight,
-  RotateCcw,
-  Trash2,
-  FileCode2,
+  BarChart3,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
-  BookOpen,
+  Code,
+  FileCode2,
+  FileText,
+  Gauge,
+  Globe,
+  GraduationCap,
   MessageSquare,
   Newspaper,
-  GraduationCap,
-  Star,
-  Gauge,
-  BarChart3,
+  Play,
+  RotateCcw,
+  Settings,
+  Shield,
   Sparkles,
-} from 'lucide-react';
+  Star,
+  Terminal,
+  Trash2,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function MdwbLesson() {
   return (
@@ -49,14 +49,14 @@ export function MdwbLesson() {
       {/* Section 1: What Is MDWB */}
       <Section title="What Is MDWB?" icon={<Globe className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>MDWB (Markdown Web Browser)</Highlight> fetches web pages and
-          converts them into clean Markdown, stripping out ads, navigation, and
-          scripts. The result is perfect for feeding into LLMs as context.
+          <Highlight>MDWB (Markdown Web Browser)</Highlight> fetches web pages and converts them
+          into clean Markdown, stripping out ads, navigation, and scripts. The result is perfect for
+          feeding into LLMs as context.
         </Paragraph>
         <Paragraph>
-          When AI agents need information from the web, raw HTML is noisy and
-          token-expensive. MDWB extracts just the content, preserving headings,
-          code blocks, lists, and links in a format LLMs handle efficiently.
+          When AI agents need information from the web, raw HTML is noisy and token-expensive. MDWB
+          extracts just the content, preserving headings, code blocks, lists, and links in a format
+          LLMs handle efficiently.
         </Paragraph>
 
         <div className="mt-8">
@@ -98,8 +98,7 @@ export function MdwbLesson() {
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          Submit a URL as a capture job, then read the Markdown snapshot back
-          by job id.
+          Submit a URL as a capture job, then read the Markdown snapshot back by job id.
         </Paragraph>
 
         <CodeBlock
@@ -128,17 +127,26 @@ mdwb show <job-id> | claude "summarize this API"`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'mdwb fetch "<url>" --watch', description: 'Capture a URL as a Markdown job' },
-            { command: 'mdwb show <job-id>', description: 'Print the Markdown snapshot for a job' },
-            { command: 'mdwb links <job-id>', description: 'List the links found on the captured page' },
-            { command: 'mdwb search "<query>"', description: 'Full-text search across captured pages' },
-            { command: 'mdwb --help', description: 'Show all available options' },
+            {
+              command: 'mdwb fetch "<url>" --watch',
+              description: "Capture a URL as a Markdown job",
+            },
+            { command: "mdwb show <job-id>", description: "Print the Markdown snapshot for a job" },
+            {
+              command: "mdwb links <job-id>",
+              description: "List the links found on the captured page",
+            },
+            {
+              command: 'mdwb search "<query>"',
+              description: "Full-text search across captured pages",
+            },
+            { command: "mdwb --help", description: "Show all available options" },
           ]}
         />
 
         <TipBox variant="info">
-          MDWB handles JavaScript-rendered pages, documentation sites, and
-          blog posts. It works best with content-focused pages.
+          MDWB handles JavaScript-rendered pages, documentation sites, and blog posts. It works best
+          with content-focused pages.
         </TipBox>
       </Section>
 
@@ -146,9 +154,7 @@ mdwb show <job-id> | claude "summarize this API"`}
 
       {/* Section 4: Use Cases */}
       <Section title="Common Use Cases" icon={<Settings className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          MDWB shines when you need web content in LLM-friendly format.
-        </Paragraph>
+        <Paragraph>MDWB shines when you need web content in LLM-friendly format.</Paragraph>
 
         <CodeBlock
           code={`# Research a library's docs before using it
@@ -173,22 +179,26 @@ mdwb search "architecture" --tag research | claude "analyze these documents"`}
 
       {/* Section 5: Integration */}
       <Section title="Flywheel Integration" icon={<Shield className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          MDWB connects web knowledge to the agent workflow.
-        </Paragraph>
+        <Paragraph>MDWB connects web knowledge to the agent workflow.</Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">MDWB + TRU</span>
-            <p className="text-white/80 text-sm mt-1">Fetch docs, then compress for maximum context</p>
+            <p className="text-white/80 text-sm mt-1">
+              Fetch docs, then compress for maximum context
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">MDWB + FSFS</span>
-            <p className="text-white/80 text-sm mt-1">Index downloaded pages for local semantic search</p>
+            <p className="text-white/80 text-sm mt-1">
+              Index downloaded pages for local semantic search
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">MDWB + CSCTF</span>
-            <p className="text-white/80 text-sm mt-1">Archive both web pages and AI conversations</p>
+            <p className="text-white/80 text-sm mt-1">
+              Archive both web pages and AI conversations
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">MDWB + Brenner</span>
@@ -225,124 +235,335 @@ interface PageType {
 
 const PAGE_TYPES: PageType[] = [
   {
-    id: 'blog',
-    label: 'Blog Post',
+    id: "blog",
+    label: "Blog Post",
     icon: BookOpen,
-    url: 'blog.example.com/rust-performance',
-    color: 'violet',
+    url: "blog.example.com/rust-performance",
+    color: "violet",
     elements: [
-      { tag: '<nav>', content: 'Home | About | Contact', isNoise: true, markdownOutput: '' },
-      { tag: '<script>', content: 'analytics.track("page_view")', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="ad">', content: 'SPONSORED: Buy Now!', isNoise: true, markdownOutput: '' },
-      { tag: '<h1>', content: 'Why Rust Is Fast', isNoise: false, markdownOutput: '# Why Rust Is Fast' },
-      { tag: '<p class="meta">', content: 'By Jane - 5 min read', isNoise: true, markdownOutput: '' },
-      { tag: '<p>', content: 'Rust achieves C-level performance through zero-cost abstractions.', isNoise: false, markdownOutput: 'Rust achieves C-level performance through zero-cost abstractions.' },
-      { tag: '<h2>', content: 'Key Features', isNoise: false, markdownOutput: '## Key Features' },
-      { tag: '<ul>', content: 'No GC | Move semantics | Compile-time checks', isNoise: false, markdownOutput: '- No GC\n- Move semantics\n- Compile-time checks' },
-      { tag: '<footer>', content: 'Copyright 2025 TechBlog', isNoise: true, markdownOutput: '' },
+      { tag: "<nav>", content: "Home | About | Contact", isNoise: true, markdownOutput: "" },
+      {
+        tag: "<script>",
+        content: 'analytics.track("page_view")',
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="ad">',
+        content: "SPONSORED: Buy Now!",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<h1>",
+        content: "Why Rust Is Fast",
+        isNoise: false,
+        markdownOutput: "# Why Rust Is Fast",
+      },
+      {
+        tag: '<p class="meta">',
+        content: "By Jane - 5 min read",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<p>",
+        content: "Rust achieves C-level performance through zero-cost abstractions.",
+        isNoise: false,
+        markdownOutput: "Rust achieves C-level performance through zero-cost abstractions.",
+      },
+      { tag: "<h2>", content: "Key Features", isNoise: false, markdownOutput: "## Key Features" },
+      {
+        tag: "<ul>",
+        content: "No GC | Move semantics | Compile-time checks",
+        isNoise: false,
+        markdownOutput: "- No GC\n- Move semantics\n- Compile-time checks",
+      },
+      { tag: "<footer>", content: "Copyright 2025 TechBlog", isNoise: true, markdownOutput: "" },
     ],
     htmlBytes: 2840,
     mdBytes: 312,
     qualityScore: 94,
   },
   {
-    id: 'api-docs',
-    label: 'API Docs',
+    id: "api-docs",
+    label: "API Docs",
     icon: Code,
-    url: 'docs.example.com/api/auth',
-    color: 'blue',
+    url: "docs.example.com/api/auth",
+    color: "blue",
     elements: [
-      { tag: '<link>', content: 'stylesheet: docs-theme.css', isNoise: true, markdownOutput: '' },
-      { tag: '<nav class="sidebar">', content: 'API Reference | Guide | Auth', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="banner">', content: 'New v3 API available!', isNoise: true, markdownOutput: '' },
-      { tag: '<h1>', content: 'Authentication API', isNoise: false, markdownOutput: '# Authentication API' },
-      { tag: '<p>', content: 'Use Bearer tokens for all authenticated endpoints.', isNoise: false, markdownOutput: 'Use Bearer tokens for all authenticated endpoints.' },
-      { tag: '<pre><code>', content: 'curl -H "Authorization: Bearer TOKEN" /api/user', isNoise: false, markdownOutput: '```\ncurl -H "Authorization: Bearer TOKEN" /api/user\n```' },
-      { tag: '<h2>', content: 'Rate Limits', isNoise: false, markdownOutput: '## Rate Limits' },
-      { tag: '<table>', content: 'Free: 100/hr | Pro: 10K/hr | Enterprise: Unlimited', isNoise: false, markdownOutput: '| Plan | Limit |\n|---|---|\n| Free | 100/hr |\n| Pro | 10K/hr |' },
-      { tag: '<script>', content: 'initCodeHighlighting()', isNoise: true, markdownOutput: '' },
+      { tag: "<link>", content: "stylesheet: docs-theme.css", isNoise: true, markdownOutput: "" },
+      {
+        tag: '<nav class="sidebar">',
+        content: "API Reference | Guide | Auth",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="banner">',
+        content: "New v3 API available!",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<h1>",
+        content: "Authentication API",
+        isNoise: false,
+        markdownOutput: "# Authentication API",
+      },
+      {
+        tag: "<p>",
+        content: "Use Bearer tokens for all authenticated endpoints.",
+        isNoise: false,
+        markdownOutput: "Use Bearer tokens for all authenticated endpoints.",
+      },
+      {
+        tag: "<pre><code>",
+        content: 'curl -H "Authorization: Bearer TOKEN" /api/user',
+        isNoise: false,
+        markdownOutput: '```\ncurl -H "Authorization: Bearer TOKEN" /api/user\n```',
+      },
+      { tag: "<h2>", content: "Rate Limits", isNoise: false, markdownOutput: "## Rate Limits" },
+      {
+        tag: "<table>",
+        content: "Free: 100/hr | Pro: 10K/hr | Enterprise: Unlimited",
+        isNoise: false,
+        markdownOutput: "| Plan | Limit |\n|---|---|\n| Free | 100/hr |\n| Pro | 10K/hr |",
+      },
+      { tag: "<script>", content: "initCodeHighlighting()", isNoise: true, markdownOutput: "" },
     ],
     htmlBytes: 3120,
     mdBytes: 389,
     qualityScore: 97,
   },
   {
-    id: 'github',
-    label: 'GitHub README',
+    id: "github",
+    label: "GitHub README",
     icon: FileCode2,
-    url: 'github.com/example/fast-cli',
-    color: 'emerald',
+    url: "github.com/example/fast-cli",
+    color: "emerald",
     elements: [
-      { tag: '<div class="js-repo-nav">', content: 'Code | Issues | Pull Requests', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="signup-prompt">', content: 'Sign up for GitHub', isNoise: true, markdownOutput: '' },
-      { tag: '<h1>', content: 'fast-cli', isNoise: false, markdownOutput: '# fast-cli' },
-      { tag: '<p>', content: 'A blazing-fast command-line toolkit built in Rust.', isNoise: false, markdownOutput: 'A blazing-fast command-line toolkit built in Rust.' },
-      { tag: '<h2>', content: 'Installation', isNoise: false, markdownOutput: '## Installation' },
-      { tag: '<pre><code>', content: 'cargo install fast-cli', isNoise: false, markdownOutput: '```sh\ncargo install fast-cli\n```' },
-      { tag: '<h2>', content: 'Usage', isNoise: false, markdownOutput: '## Usage' },
-      { tag: '<pre><code>', content: 'fast-cli run --config my.toml', isNoise: false, markdownOutput: '```sh\nfast-cli run --config my.toml\n```' },
-      { tag: '<div class="footer-links">', content: 'Terms | Privacy | Security', isNoise: true, markdownOutput: '' },
+      {
+        tag: '<div class="js-repo-nav">',
+        content: "Code | Issues | Pull Requests",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="signup-prompt">',
+        content: "Sign up for GitHub",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      { tag: "<h1>", content: "fast-cli", isNoise: false, markdownOutput: "# fast-cli" },
+      {
+        tag: "<p>",
+        content: "A blazing-fast command-line toolkit built in Rust.",
+        isNoise: false,
+        markdownOutput: "A blazing-fast command-line toolkit built in Rust.",
+      },
+      { tag: "<h2>", content: "Installation", isNoise: false, markdownOutput: "## Installation" },
+      {
+        tag: "<pre><code>",
+        content: "cargo install fast-cli",
+        isNoise: false,
+        markdownOutput: "```sh\ncargo install fast-cli\n```",
+      },
+      { tag: "<h2>", content: "Usage", isNoise: false, markdownOutput: "## Usage" },
+      {
+        tag: "<pre><code>",
+        content: "fast-cli run --config my.toml",
+        isNoise: false,
+        markdownOutput: "```sh\nfast-cli run --config my.toml\n```",
+      },
+      {
+        tag: '<div class="footer-links">',
+        content: "Terms | Privacy | Security",
+        isNoise: true,
+        markdownOutput: "",
+      },
     ],
     htmlBytes: 4560,
     mdBytes: 284,
     qualityScore: 92,
   },
   {
-    id: 'stackoverflow',
-    label: 'Stack Overflow',
+    id: "stackoverflow",
+    label: "Stack Overflow",
     icon: MessageSquare,
-    url: 'stackoverflow.com/questions/71234',
-    color: 'amber',
+    url: "stackoverflow.com/questions/71234",
+    color: "amber",
     elements: [
-      { tag: '<div class="top-bar">', content: 'Products | OverflowAI | Labs', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="sidebar">', content: 'Related Questions | Hot Network', isNoise: true, markdownOutput: '' },
-      { tag: '<h1>', content: 'How to handle async errors in Rust?', isNoise: false, markdownOutput: '# How to handle async errors in Rust?' },
-      { tag: '<div class="vote-count">', content: '47 votes', isNoise: true, markdownOutput: '' },
-      { tag: '<p>', content: 'Use the ? operator with Result types for clean async error propagation.', isNoise: false, markdownOutput: 'Use the ? operator with Result types for clean async error propagation.' },
-      { tag: '<pre><code>', content: 'async fn fetch() -> Result<Data, Error> {\n  let resp = client.get(url).await?;\n  Ok(resp.json().await?)\n}', isNoise: false, markdownOutput: '```rust\nasync fn fetch() -> Result<Data, Error> {\n  let resp = client.get(url).await?;\n  Ok(resp.json().await?)\n}\n```' },
-      { tag: '<div class="comments">', content: '12 comments collapsed', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="ads">', content: 'Sponsored: Cloud hosting...', isNoise: true, markdownOutput: '' },
+      {
+        tag: '<div class="top-bar">',
+        content: "Products | OverflowAI | Labs",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="sidebar">',
+        content: "Related Questions | Hot Network",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<h1>",
+        content: "How to handle async errors in Rust?",
+        isNoise: false,
+        markdownOutput: "# How to handle async errors in Rust?",
+      },
+      { tag: '<div class="vote-count">', content: "47 votes", isNoise: true, markdownOutput: "" },
+      {
+        tag: "<p>",
+        content: "Use the ? operator with Result types for clean async error propagation.",
+        isNoise: false,
+        markdownOutput: "Use the ? operator with Result types for clean async error propagation.",
+      },
+      {
+        tag: "<pre><code>",
+        content:
+          "async fn fetch() -> Result<Data, Error> {\n  let resp = client.get(url).await?;\n  Ok(resp.json().await?)\n}",
+        isNoise: false,
+        markdownOutput:
+          "```rust\nasync fn fetch() -> Result<Data, Error> {\n  let resp = client.get(url).await?;\n  Ok(resp.json().await?)\n}\n```",
+      },
+      {
+        tag: '<div class="comments">',
+        content: "12 comments collapsed",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="ads">',
+        content: "Sponsored: Cloud hosting...",
+        isNoise: true,
+        markdownOutput: "",
+      },
     ],
     htmlBytes: 5890,
     mdBytes: 342,
     qualityScore: 88,
   },
   {
-    id: 'wikipedia',
-    label: 'Wikipedia',
+    id: "wikipedia",
+    label: "Wikipedia",
     icon: GraduationCap,
-    url: 'en.wikipedia.org/wiki/Rust_(language)',
-    color: 'cyan',
+    url: "en.wikipedia.org/wiki/Rust_(language)",
+    color: "cyan",
     elements: [
-      { tag: '<div id="mw-navigation">', content: 'Main page | Contents | Talk', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="infobox">', content: 'Paradigm: multi-paradigm | Designed by: Graydon Hoare', isNoise: true, markdownOutput: '' },
-      { tag: '<h1>', content: 'Rust (programming language)', isNoise: false, markdownOutput: '# Rust (programming language)' },
-      { tag: '<p>', content: 'Rust is a general-purpose programming language emphasizing performance, type safety, and concurrency.', isNoise: false, markdownOutput: 'Rust is a general-purpose programming language emphasizing performance, type safety, and concurrency.' },
-      { tag: '<h2>', content: 'History', isNoise: false, markdownOutput: '## History' },
-      { tag: '<p>', content: 'Rust grew out of a personal project by Mozilla employee Graydon Hoare.', isNoise: false, markdownOutput: 'Rust grew out of a personal project by Mozilla employee Graydon Hoare.' },
-      { tag: '<div class="reflist">', content: '[1] [2] [3] ... 248 references', isNoise: true, markdownOutput: '' },
-      { tag: '<div id="catlinks">', content: 'Categories: Programming languages', isNoise: true, markdownOutput: '' },
+      {
+        tag: '<div id="mw-navigation">',
+        content: "Main page | Contents | Talk",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="infobox">',
+        content: "Paradigm: multi-paradigm | Designed by: Graydon Hoare",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<h1>",
+        content: "Rust (programming language)",
+        isNoise: false,
+        markdownOutput: "# Rust (programming language)",
+      },
+      {
+        tag: "<p>",
+        content:
+          "Rust is a general-purpose programming language emphasizing performance, type safety, and concurrency.",
+        isNoise: false,
+        markdownOutput:
+          "Rust is a general-purpose programming language emphasizing performance, type safety, and concurrency.",
+      },
+      { tag: "<h2>", content: "History", isNoise: false, markdownOutput: "## History" },
+      {
+        tag: "<p>",
+        content: "Rust grew out of a personal project by Mozilla employee Graydon Hoare.",
+        isNoise: false,
+        markdownOutput: "Rust grew out of a personal project by Mozilla employee Graydon Hoare.",
+      },
+      {
+        tag: '<div class="reflist">',
+        content: "[1] [2] [3] ... 248 references",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div id="catlinks">',
+        content: "Categories: Programming languages",
+        isNoise: true,
+        markdownOutput: "",
+      },
     ],
     htmlBytes: 89400,
     mdBytes: 4120,
     qualityScore: 91,
   },
   {
-    id: 'news',
-    label: 'News Article',
+    id: "news",
+    label: "News Article",
     icon: Newspaper,
-    url: 'news.example.com/tech/ai-coding',
-    color: 'rose',
+    url: "news.example.com/tech/ai-coding",
+    color: "rose",
     elements: [
-      { tag: '<div class="masthead">', content: 'TechNews | Subscribe | Sign In', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="cookie-wall">', content: 'Accept cookies to continue', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="paywall">', content: 'Subscribe for $9.99/mo', isNoise: true, markdownOutput: '' },
-      { tag: '<h1>', content: 'AI-Powered Coding Tools Reshape Development', isNoise: false, markdownOutput: '# AI-Powered Coding Tools Reshape Development' },
-      { tag: '<p class="byline">', content: 'By Sarah Chen | March 2026', isNoise: true, markdownOutput: '' },
-      { tag: '<p>', content: 'A new generation of AI coding assistants is transforming how software teams build and ship products.', isNoise: false, markdownOutput: 'A new generation of AI coding assistants is transforming how software teams build and ship products.' },
-      { tag: '<blockquote>', content: '"We ship 3x faster with AI pair programming" - CTO at Acme Corp', isNoise: false, markdownOutput: '> "We ship 3x faster with AI pair programming" - CTO at Acme Corp' },
-      { tag: '<div class="newsletter">', content: 'Sign up for our newsletter', isNoise: true, markdownOutput: '' },
-      { tag: '<div class="related">', content: 'More stories you might like...', isNoise: true, markdownOutput: '' },
+      {
+        tag: '<div class="masthead">',
+        content: "TechNews | Subscribe | Sign In",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="cookie-wall">',
+        content: "Accept cookies to continue",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="paywall">',
+        content: "Subscribe for $9.99/mo",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<h1>",
+        content: "AI-Powered Coding Tools Reshape Development",
+        isNoise: false,
+        markdownOutput: "# AI-Powered Coding Tools Reshape Development",
+      },
+      {
+        tag: '<p class="byline">',
+        content: "By Sarah Chen | March 2026",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: "<p>",
+        content:
+          "A new generation of AI coding assistants is transforming how software teams build and ship products.",
+        isNoise: false,
+        markdownOutput:
+          "A new generation of AI coding assistants is transforming how software teams build and ship products.",
+      },
+      {
+        tag: "<blockquote>",
+        content: '"We ship 3x faster with AI pair programming" - CTO at Acme Corp',
+        isNoise: false,
+        markdownOutput: '> "We ship 3x faster with AI pair programming" - CTO at Acme Corp',
+      },
+      {
+        tag: '<div class="newsletter">',
+        content: "Sign up for our newsletter",
+        isNoise: true,
+        markdownOutput: "",
+      },
+      {
+        tag: '<div class="related">',
+        content: "More stories you might like...",
+        isNoise: true,
+        markdownOutput: "",
+      },
     ],
     htmlBytes: 6720,
     mdBytes: 398,
@@ -351,19 +572,19 @@ const PAGE_TYPES: PageType[] = [
 ];
 
 const COMMANDS = [
-  { cmd: 'mdwb fetch "<url>" --watch', desc: 'Capture URL as a job' },
-  { cmd: 'mdwb show <job-id> > file.md', desc: 'Save snapshot to file' },
-  { cmd: 'mdwb links <job-id>', desc: 'List captured links' },
-  { cmd: 'mdwb show <job-id> | claude', desc: 'Pipe to AI agent' },
+  { cmd: 'mdwb fetch "<url>" --watch', desc: "Capture URL as a job" },
+  { cmd: "mdwb show <job-id> > file.md", desc: "Save snapshot to file" },
+  { cmd: "mdwb links <job-id>", desc: "List captured links" },
+  { cmd: "mdwb show <job-id> | claude", desc: "Pipe to AI agent" },
 ];
 
-type ConversionStage = 'idle' | 'fetching' | 'scanning' | 'stripping' | 'converting' | 'done';
+type ConversionStage = "idle" | "fetching" | "scanning" | "stripping" | "converting" | "done";
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 function InteractiveWebToMarkdown() {
   const [pageIndex, setPageIndex] = useState(0);
-  const [stage, setStage] = useState<ConversionStage>('idle');
+  const [stage, setStage] = useState<ConversionStage>("idle");
   const [highlightedElement, setHighlightedElement] = useState(-1);
   const [convertedTokens, setConvertedTokens] = useState<string[]>([]);
   const [flyingTokenIndex, setFlyingTokenIndex] = useState(-1);
@@ -378,14 +599,17 @@ function InteractiveWebToMarkdown() {
     timersRef.current = [];
   }, []);
 
-  const handleSelectPage = useCallback((idx: number) => {
-    clearTimers();
-    setPageIndex(idx);
-    setStage('idle');
-    setHighlightedElement(-1);
-    setConvertedTokens([]);
-    setFlyingTokenIndex(-1);
-  }, [clearTimers]);
+  const handleSelectPage = useCallback(
+    (idx: number) => {
+      clearTimers();
+      setPageIndex(idx);
+      setStage("idle");
+      setHighlightedElement(-1);
+      setConvertedTokens([]);
+      setFlyingTokenIndex(-1);
+    },
+    [clearTimers],
+  );
 
   const handleStepForward = useCallback(() => {
     const nextIdx = (pageIndex + 1) % PAGE_TYPES.length;
@@ -398,18 +622,18 @@ function InteractiveWebToMarkdown() {
   }, [pageIndex, handleSelectPage]);
 
   const handleConvert = useCallback(() => {
-    if (stage !== 'idle' && stage !== 'done') return;
+    if (stage !== "idle" && stage !== "done") return;
     clearTimers();
     setConvertedTokens([]);
     setHighlightedElement(-1);
     setFlyingTokenIndex(-1);
 
     // Stage 1: Fetching
-    setStage('fetching');
+    setStage("fetching");
 
     // Stage 2: Scanning through elements
     const t1 = setTimeout(() => {
-      setStage('scanning');
+      setStage("scanning");
       // Highlight each element sequentially
       page.elements.forEach((_, i) => {
         const tH = setTimeout(() => {
@@ -424,36 +648,39 @@ function InteractiveWebToMarkdown() {
 
     // Stage 3: Stripping noise
     const t2 = setTimeout(() => {
-      setStage('stripping');
+      setStage("stripping");
       setHighlightedElement(-1);
     }, 700 + scanDuration);
     timersRef.current.push(t2);
 
     // Stage 4: Converting - fly tokens one by one
-    const t3 = setTimeout(() => {
-      setStage('converting');
-      const contentElements = page.elements.filter(el => !el.isNoise);
-      contentElements.forEach((el, i) => {
-        const tF = setTimeout(() => {
-          setFlyingTokenIndex(i);
-          setConvertedTokens(prev => [...prev, el.markdownOutput]);
-        }, i * 350);
-        timersRef.current.push(tF);
-      });
+    const t3 = setTimeout(
+      () => {
+        setStage("converting");
+        const contentElements = page.elements.filter((el) => !el.isNoise);
+        contentElements.forEach((el, i) => {
+          const tF = setTimeout(() => {
+            setFlyingTokenIndex(i);
+            setConvertedTokens((prev) => [...prev, el.markdownOutput]);
+          }, i * 350);
+          timersRef.current.push(tF);
+        });
 
-      const convertDuration = contentElements.length * 350 + 300;
-      const tDone = setTimeout(() => {
-        setStage('done');
-        setFlyingTokenIndex(-1);
-      }, convertDuration);
-      timersRef.current.push(tDone);
-    }, 700 + scanDuration + 600);
+        const convertDuration = contentElements.length * 350 + 300;
+        const tDone = setTimeout(() => {
+          setStage("done");
+          setFlyingTokenIndex(-1);
+        }, convertDuration);
+        timersRef.current.push(tDone);
+      },
+      700 + scanDuration + 600,
+    );
     timersRef.current.push(t3);
   }, [stage, page, clearTimers]);
 
   const handleReset = useCallback(() => {
     clearTimers();
-    setStage('idle');
+    setStage("idle");
     setHighlightedElement(-1);
     setConvertedTokens([]);
     setFlyingTokenIndex(-1);
@@ -466,24 +693,57 @@ function InteractiveWebToMarkdown() {
     };
   }, []);
 
-  const noiseCount = page.elements.filter(el => el.isNoise).length;
-  const contentCount = page.elements.filter(el => !el.isNoise).length;
+  const noiseCount = page.elements.filter((el) => el.isNoise).length;
+  const contentCount = page.elements.filter((el) => !el.isNoise).length;
   const reductionPct = Math.round((1 - page.mdBytes / page.htmlBytes) * 100);
 
   const colorMap: Record<string, { border: string; bg: string; text: string; glow: string }> = {
-    violet: { border: 'border-violet-500/30', bg: 'bg-violet-500/10', text: 'text-violet-300', glow: 'bg-violet-500/[0.06]' },
-    blue: { border: 'border-blue-500/30', bg: 'bg-blue-500/10', text: 'text-blue-300', glow: 'bg-blue-500/[0.06]' },
-    emerald: { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-300', glow: 'bg-emerald-500/[0.06]' },
-    amber: { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-300', glow: 'bg-amber-500/[0.06]' },
-    cyan: { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-300', glow: 'bg-cyan-500/[0.06]' },
-    rose: { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-300', glow: 'bg-rose-500/[0.06]' },
+    violet: {
+      border: "border-violet-500/30",
+      bg: "bg-violet-500/10",
+      text: "text-violet-300",
+      glow: "bg-violet-500/[0.06]",
+    },
+    blue: {
+      border: "border-blue-500/30",
+      bg: "bg-blue-500/10",
+      text: "text-blue-300",
+      glow: "bg-blue-500/[0.06]",
+    },
+    emerald: {
+      border: "border-emerald-500/30",
+      bg: "bg-emerald-500/10",
+      text: "text-emerald-300",
+      glow: "bg-emerald-500/[0.06]",
+    },
+    amber: {
+      border: "border-amber-500/30",
+      bg: "bg-amber-500/10",
+      text: "text-amber-300",
+      glow: "bg-amber-500/[0.06]",
+    },
+    cyan: {
+      border: "border-cyan-500/30",
+      bg: "bg-cyan-500/10",
+      text: "text-cyan-300",
+      glow: "bg-cyan-500/[0.06]",
+    },
+    rose: {
+      border: "border-rose-500/30",
+      bg: "bg-rose-500/10",
+      text: "text-rose-300",
+      glow: "bg-rose-500/[0.06]",
+    },
   };
   const colors = colorMap[page.color] ?? colorMap.violet;
 
-  const isAnimating = stage !== 'idle' && stage !== 'done';
+  const isAnimating = stage !== "idle" && stage !== "done";
 
   return (
-    <div ref={ref} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={ref}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 right-1/4 w-72 h-72 bg-violet-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-1/4 w-56 h-56 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -531,7 +791,7 @@ function InteractiveWebToMarkdown() {
                   className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
                     isActive
                       ? `${pColors.border} ${pColors.bg} ${pColors.text}`
-                      : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60'
+                      : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
                   }`}
                 >
                   <Icon className="h-3 w-3" />
@@ -588,8 +848,10 @@ function InteractiveWebToMarkdown() {
             <div className="flex-1 p-2 space-y-1 overflow-y-auto max-h-[260px]">
               {page.elements.map((el, i) => {
                 const isHighlighted = highlightedElement === i;
-                const isStripped = (stage === 'stripping' || stage === 'converting' || stage === 'done') && el.isNoise;
-                const isConverting = stage === 'converting' || stage === 'done';
+                const isStripped =
+                  (stage === "stripping" || stage === "converting" || stage === "done") &&
+                  el.isNoise;
+                const isConverting = stage === "converting" || stage === "done";
                 const isContent = !el.isNoise;
 
                 return (
@@ -605,28 +867,32 @@ function InteractiveWebToMarkdown() {
                     className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-mono transition-colors ${
                       isHighlighted
                         ? el.isNoise
-                          ? 'border-red-500/40 bg-red-500/10'
-                          : 'border-emerald-500/40 bg-emerald-500/10'
+                          ? "border-red-500/40 bg-red-500/10"
+                          : "border-emerald-500/40 bg-emerald-500/10"
                         : isStripped
-                          ? 'border-red-500/10 bg-red-500/[0.03] line-through'
+                          ? "border-red-500/10 bg-red-500/[0.03] line-through"
                           : isConverting && isContent
-                            ? 'border-emerald-500/20 bg-emerald-500/[0.05]'
-                            : 'border-white/[0.06] bg-white/[0.01]'
+                            ? "border-emerald-500/20 bg-emerald-500/[0.05]"
+                            : "border-white/[0.06] bg-white/[0.01]"
                     }`}
                   >
                     <div className="flex items-start gap-2">
-                      <span className={`shrink-0 font-semibold ${
-                        isHighlighted
-                          ? el.isNoise ? 'text-red-400' : 'text-emerald-400'
-                          : isStripped
-                            ? 'text-red-400/40'
-                            : 'text-white/30'
-                      }`}>
+                      <span
+                        className={`shrink-0 font-semibold ${
+                          isHighlighted
+                            ? el.isNoise
+                              ? "text-red-400"
+                              : "text-emerald-400"
+                            : isStripped
+                              ? "text-red-400/40"
+                              : "text-white/30"
+                        }`}
+                      >
                         {el.tag}
                       </span>
-                      <span className={`truncate ${
-                        isStripped ? 'text-white/20' : 'text-white/50'
-                      }`}>
+                      <span
+                        className={`truncate ${isStripped ? "text-white/20" : "text-white/50"}`}
+                      >
                         {el.content}
                       </span>
                       {isHighlighted && (
@@ -635,11 +901,11 @@ function InteractiveWebToMarkdown() {
                           animate={{ opacity: 1, scale: 1 }}
                           className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                             el.isNoise
-                              ? 'bg-red-500/20 text-red-300'
-                              : 'bg-emerald-500/20 text-emerald-300'
+                              ? "bg-red-500/20 text-red-300"
+                              : "bg-emerald-500/20 text-emerald-300"
                           }`}
                         >
-                          {el.isNoise ? 'NOISE' : 'KEEP'}
+                          {el.isNoise ? "NOISE" : "KEEP"}
                         </motion.span>
                       )}
                       {isStripped && !isHighlighted && (
@@ -677,7 +943,7 @@ function InteractiveWebToMarkdown() {
             {/* Markdown content */}
             <div className="flex-1 p-3 overflow-y-auto max-h-[260px]">
               <AnimatePresence mode="popLayout">
-                {stage === 'idle' ? (
+                {stage === "idle" ? (
                   <motion.div
                     key="placeholder"
                     initial={{ opacity: 0 }}
@@ -699,8 +965,8 @@ function InteractiveWebToMarkdown() {
                     {convertedTokens.map((token, i) => (
                       <motion.div
                         key={`token-${i}`}
-                        initial={{ opacity: 0, x: 20, filter: 'blur(4px)' }}
-                        animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                        initial={{ opacity: 0, x: 20, filter: "blur(4px)" }}
+                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                         transition={{ ...SPRING, delay: 0.05 }}
                       >
                         <pre className="text-[11px] font-mono text-emerald-300/80 leading-relaxed whitespace-pre-wrap">
@@ -708,7 +974,7 @@ function InteractiveWebToMarkdown() {
                         </pre>
                       </motion.div>
                     ))}
-                    {stage === 'fetching' && (
+                    {stage === "fetching" && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -716,14 +982,18 @@ function InteractiveWebToMarkdown() {
                       >
                         <motion.div
                           animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                          transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                          transition={
+                            inView
+                              ? { duration: 1, repeat: Infinity, ease: "linear" }
+                              : { duration: 0.2 }
+                          }
                         >
                           <Globe className="h-3.5 w-3.5" />
                         </motion.div>
                         Fetching page...
                       </motion.div>
                     )}
-                    {stage === 'scanning' && (
+                    {stage === "scanning" && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -731,14 +1001,16 @@ function InteractiveWebToMarkdown() {
                       >
                         <motion.div
                           animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 1 }}
-                          transition={inView ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
+                          transition={
+                            inView ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }
+                          }
                         >
                           <BarChart3 className="h-3.5 w-3.5" />
                         </motion.div>
                         Scanning elements...
                       </motion.div>
                     )}
-                    {stage === 'stripping' && (
+                    {stage === "stripping" && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -748,11 +1020,13 @@ function InteractiveWebToMarkdown() {
                         Removing {noiseCount} noise elements...
                       </motion.div>
                     )}
-                    {stage === 'converting' && convertedTokens.length < contentCount && (
+                    {stage === "converting" && convertedTokens.length < contentCount && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={inView ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
-                        transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
+                        transition={
+                          inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }
+                        }
                         className="flex items-center gap-2 text-xs text-violet-300/50"
                       >
                         <FileCode2 className="h-3.5 w-3.5" />
@@ -768,11 +1042,11 @@ function InteractiveWebToMarkdown() {
 
         {/* Flying token animation overlay */}
         <AnimatePresence>
-          {flyingTokenIndex >= 0 && stage === 'converting' && (
+          {flyingTokenIndex >= 0 && stage === "converting" && (
             <motion.div
               key={`fly-${flyingTokenIndex}`}
-              initial={{ opacity: 0.8, x: '25%', y: '50%', scale: 0.7 }}
-              animate={{ opacity: 0, x: '75%', scale: 0.3 }}
+              initial={{ opacity: 0.8, x: "25%", y: "50%", scale: 0.7 }}
+              animate={{ opacity: 0, x: "75%", scale: 0.3 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
               className="absolute inset-0 pointer-events-none flex items-center justify-center"
@@ -786,7 +1060,7 @@ function InteractiveWebToMarkdown() {
 
         {/* Stats row: token comparison + quality score */}
         <AnimatePresence>
-          {(stage === 'done' || stage === 'converting') && (
+          {(stage === "done" || stage === "converting") && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -810,11 +1084,13 @@ function InteractiveWebToMarkdown() {
                     <div className="flex-1 h-5 rounded-full bg-white/[0.04] overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
-                        animate={{ width: '100%' }}
+                        animate={{ width: "100%" }}
                         transition={{ ...SPRING, delay: 0.1 }}
                         className="h-full rounded-full bg-gradient-to-r from-red-400/30 to-red-500/40 flex items-center justify-end pr-2"
                       >
-                        <span className="text-[10px] font-mono text-red-200/70">{(page.htmlBytes / 1024).toFixed(1)} KB</span>
+                        <span className="text-[10px] font-mono text-red-200/70">
+                          {(page.htmlBytes / 1024).toFixed(1)} KB
+                        </span>
                       </motion.div>
                     </div>
                   </div>
@@ -827,17 +1103,27 @@ function InteractiveWebToMarkdown() {
                         transition={{ ...SPRING, delay: 0.25 }}
                         className="h-full rounded-full bg-gradient-to-r from-emerald-400/40 to-emerald-500/50 flex items-center justify-end pr-2"
                       >
-                        <span className="text-[10px] font-mono text-emerald-200/80">{(page.mdBytes / 1024).toFixed(1)} KB</span>
+                        <span className="text-[10px] font-mono text-emerald-200/80">
+                          {(page.mdBytes / 1024).toFixed(1)} KB
+                        </span>
                       </motion.div>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-center gap-4 text-[10px] text-white/40 pt-1">
-                  <span>Noise removed: <span className="text-red-300/70 font-medium">{noiseCount}</span></span>
+                  <span>
+                    Noise removed: <span className="text-red-300/70 font-medium">{noiseCount}</span>
+                  </span>
                   <span className="text-white/10">|</span>
-                  <span>Content kept: <span className="text-emerald-300/70 font-medium">{contentCount}</span></span>
+                  <span>
+                    Content kept:{" "}
+                    <span className="text-emerald-300/70 font-medium">{contentCount}</span>
+                  </span>
                   <span className="text-white/10">|</span>
-                  <span>Token savings: <span className="text-violet-300/70 font-medium">~{reductionPct}%</span></span>
+                  <span>
+                    Token savings:{" "}
+                    <span className="text-violet-300/70 font-medium">~{reductionPct}%</span>
+                  </span>
                 </div>
               </div>
 
@@ -856,7 +1142,9 @@ function InteractiveWebToMarkdown() {
                   <svg viewBox="0 0 80 80" className="h-16 w-16">
                     {/* Background circle */}
                     <circle
-                      cx="40" cy="40" r="32"
+                      cx="40"
+                      cy="40"
+                      r="32"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="5"
@@ -864,20 +1152,26 @@ function InteractiveWebToMarkdown() {
                     />
                     {/* Score arc */}
                     <motion.circle
-                      cx="40" cy="40" r="32"
+                      cx="40"
+                      cy="40"
+                      r="32"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="5"
                       strokeLinecap="round"
                       strokeDasharray={`${2 * Math.PI * 32}`}
                       initial={{ strokeDashoffset: 2 * Math.PI * 32 }}
-                      animate={{ strokeDashoffset: 2 * Math.PI * 32 * (1 - page.qualityScore / 100) }}
+                      animate={{
+                        strokeDashoffset: 2 * Math.PI * 32 * (1 - page.qualityScore / 100),
+                      }}
                       transition={{ duration: 1.2, delay: 0.4 }}
                       className="text-emerald-400"
-                      style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+                      style={{ transform: "rotate(-90deg)", transformOrigin: "50% 50%" }}
                     />
                   </svg>
-                  <span className="absolute text-lg font-bold text-emerald-400">{page.qualityScore}</span>
+                  <span className="absolute text-lg font-bold text-emerald-400">
+                    {page.qualityScore}
+                  </span>
                 </motion.div>
                 <div className="flex items-center gap-1">
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -890,9 +1184,13 @@ function InteractiveWebToMarkdown() {
                       }}
                       transition={{ ...SPRING, delay: 0.5 + i * 0.08 }}
                     >
-                      <Star className={`h-3 w-3 ${
-                        i < Math.round(page.qualityScore / 20) ? 'text-amber-400 fill-amber-400' : 'text-white/20'
-                      }`} />
+                      <Star
+                        className={`h-3 w-3 ${
+                          i < Math.round(page.qualityScore / 20)
+                            ? "text-amber-400 fill-amber-400"
+                            : "text-white/20"
+                        }`}
+                      />
                     </motion.div>
                   ))}
                 </div>
@@ -903,7 +1201,7 @@ function InteractiveWebToMarkdown() {
 
         {/* Command bar */}
         <AnimatePresence>
-          {stage === 'done' && (
+          {stage === "done" && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -926,7 +1224,9 @@ function InteractiveWebToMarkdown() {
                     transition={{ ...SPRING, delay: 0.1 + i * 0.06 }}
                     className="flex items-center gap-2 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2.5 py-1.5"
                   >
-                    <code className="text-[10px] font-mono text-violet-300/80 shrink-0">{c.cmd}</code>
+                    <code className="text-[10px] font-mono text-violet-300/80 shrink-0">
+                      {c.cmd}
+                    </code>
                     <span className="text-[10px] text-white/30 ml-auto">{c.desc}</span>
                   </motion.div>
                 ))}
@@ -937,46 +1237,52 @@ function InteractiveWebToMarkdown() {
 
         {/* Pipeline stage indicator */}
         <div className="flex items-center justify-center gap-1.5 flex-wrap">
-          {(['fetching', 'scanning', 'stripping', 'converting', 'done'] as ConversionStage[]).map((s, i) => {
-            const stageOrder = ['fetching', 'scanning', 'stripping', 'converting', 'done'];
-            const currentIdx = stageOrder.indexOf(stage);
-            const isActive = stage === s;
-            const isPast = currentIdx > i;
-            const icons = [Globe, BarChart3, Trash2, FileCode2, FileText];
-            const labels = ['Fetch', 'Scan', 'Strip', 'Convert', 'Done'];
-            const Icon = icons[i];
-            return (
-              <div key={s} className="flex items-center gap-1.5">
-                {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-white/15" />}
-                <motion.div
-                  animate={{
-                    scale: isActive ? 1.08 : 1,
-                    opacity: isActive || isPast ? 1 : 0.25,
-                  }}
-                  transition={SPRING}
-                  className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium ${
-                    isActive
-                      ? 'border-white/20 bg-white/[0.06] text-white/80'
-                      : isPast
-                        ? 'border-emerald-500/20 bg-emerald-500/[0.04] text-emerald-400/60'
-                        : 'border-white/[0.04] bg-white/[0.01] text-white/20'
-                  }`}
-                >
-                  {isActive ? (
-                    <motion.div
-                      animate={{ rotate: s !== 'done' && inView ? 360 : 0 }}
-                      transition={s !== 'done' && inView ? { duration: 1.5, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
-                    >
+          {(["fetching", "scanning", "stripping", "converting", "done"] as ConversionStage[]).map(
+            (s, i) => {
+              const stageOrder = ["fetching", "scanning", "stripping", "converting", "done"];
+              const currentIdx = stageOrder.indexOf(stage);
+              const isActive = stage === s;
+              const isPast = currentIdx > i;
+              const icons = [Globe, BarChart3, Trash2, FileCode2, FileText];
+              const labels = ["Fetch", "Scan", "Strip", "Convert", "Done"];
+              const Icon = icons[i];
+              return (
+                <div key={s} className="flex items-center gap-1.5">
+                  {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-white/15" />}
+                  <motion.div
+                    animate={{
+                      scale: isActive ? 1.08 : 1,
+                      opacity: isActive || isPast ? 1 : 0.25,
+                    }}
+                    transition={SPRING}
+                    className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium ${
+                      isActive
+                        ? "border-white/20 bg-white/[0.06] text-white/80"
+                        : isPast
+                          ? "border-emerald-500/20 bg-emerald-500/[0.04] text-emerald-400/60"
+                          : "border-white/[0.04] bg-white/[0.01] text-white/20"
+                    }`}
+                  >
+                    {isActive ? (
+                      <motion.div
+                        animate={{ rotate: s !== "done" && inView ? 360 : 0 }}
+                        transition={
+                          s !== "done" && inView
+                            ? { duration: 1.5, repeat: Infinity, ease: "linear" }
+                            : { duration: 0.2 }
+                        }
+                      >
+                        <Icon className="h-2.5 w-2.5" />
+                      </motion.div>
+                    ) : (
                       <Icon className="h-2.5 w-2.5" />
-                    </motion.div>
-                  ) : (
-                    <Icon className="h-2.5 w-2.5" />
-                  )}
-                  {labels[i]}
-                </motion.div>
-              </div>
-            );
-          })}
+                    )}
+                    {labels[i]}
+                  </motion.div>
+                </div>
+              );
+            },
+          )}
         </div>
 
         {/* Controls */}
@@ -990,7 +1296,7 @@ function InteractiveWebToMarkdown() {
             disabled={isAnimating}
             className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
               isAnimating
-                ? 'border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait'
+                ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
                 : `${colors.border} ${colors.bg} ${colors.text} hover:brightness-125`
             }`}
           >
@@ -998,7 +1304,9 @@ function InteractiveWebToMarkdown() {
               <>
                 <motion.div
                   animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                  transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                  transition={
+                    inView ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+                  }
                 >
                   <Globe className="h-4 w-4" />
                 </motion.div>
@@ -1013,7 +1321,7 @@ function InteractiveWebToMarkdown() {
           </motion.button>
 
           <AnimatePresence>
-            {stage === 'done' && (
+            {stage === "done" && (
               <motion.button
                 type="button"
                 onClick={handleReset}

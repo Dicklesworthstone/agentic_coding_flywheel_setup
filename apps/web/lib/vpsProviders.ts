@@ -116,18 +116,9 @@ export interface EvaluatedProviderPlan {
   status: PlanStatus;
 }
 
-export type VPSReadinessStatus =
-  | "supported"
-  | "borderline"
-  | "unsupported"
-  | "unknown";
+export type VPSReadinessStatus = "supported" | "borderline" | "unsupported" | "unknown";
 
-export type VPSReadinessCheckId =
-  | "provider"
-  | "plan"
-  | "os"
-  | "region"
-  | "capacity";
+export type VPSReadinessCheckId = "provider" | "plan" | "os" | "region" | "capacity";
 
 export interface VPSReadinessCheck {
   id: VPSReadinessCheckId;
@@ -249,8 +240,7 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       cautionBelowUbuntu: ACFS_RECOMMENDED_UBUNTU,
     },
     isTopPick: true,
-    note:
-      "USD prices are approximate conversions of Contabo's EUR list price (24-month introductory rate, incl. VAT). Month-to-month terms and US datacenters can cost more; the checkout page shows the final price. Storage is listed as SSD.",
+    note: "USD prices are approximate conversions of Contabo's EUR list price (24-month introductory rate, incl. VAT). Month-to-month terms and US datacenters can cost more; the checkout page shows the final price. Storage is listed as SSD.",
   },
   {
     id: "ovh",
@@ -321,8 +311,7 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       minimumUbuntu: "22.04",
       cautionBelowUbuntu: ACFS_RECOMMENDED_UBUNTU,
     },
-    note:
-      "OVH's VPS range now tops out at VPS-4 (24 GB), below the 48 GB ACFS target. Choose OVH only for a small swarm; pick Contabo for 48-64 GB.",
+    note: "OVH's VPS range now tops out at VPS-4 (24 GB), below the 48 GB ACFS target. Choose OVH only for a small swarm; pick Contabo for 48-64 GB.",
   },
 ];
 
@@ -409,15 +398,14 @@ function readinessSummary(status: VPSReadinessStatus): string {
 
 export function getWorkloadProfile(workloadId: WorkloadId): WorkloadProfile {
   return (
-    VPS_WORKLOAD_PROFILES.find((profile) => profile.id === workloadId) ??
-    VPS_WORKLOAD_PROFILES[1]
+    VPS_WORKLOAD_PROFILES.find((profile) => profile.id === workloadId) ?? VPS_WORKLOAD_PROFILES[1]
   );
 }
 
 export function calculateRequiredSpecs(
   agentCount: number,
   workload: WorkloadProfile,
-  comfortable: boolean
+  comfortable: boolean,
 ): RequiredSpecs {
   const targetSafeAgents = comfortable ? Math.ceil(agentCount / 0.7) : agentCount;
   const rawRamGB = (targetSafeAgents * workload.ramPerAgentGB + 4) / 0.9;
@@ -434,7 +422,7 @@ export function calculateRequiredSpecs(
 export function evaluatePlan(
   plan: VPSPlan,
   workload: WorkloadProfile,
-  agentCount: number
+  agentCount: number,
 ): Pick<EvaluatedProviderPlan, "recommendedAgents" | "safeAgents" | "status"> {
   const usableRamGB = Math.max(0, plan.ramGB - Math.max(4, plan.ramGB * 0.1));
   const usableStorageGB = Math.max(0, plan.storageGB - 10);
@@ -451,7 +439,7 @@ export function evaluatePlan(
 
 export function evaluateProviderPlans(
   workload: WorkloadProfile,
-  agentCount: number
+  agentCount: number,
 ): EvaluatedProviderPlan[] {
   return VPS_PROVIDERS.flatMap((provider) =>
     (["budget", "recommended"] as const).map((tier) => {
@@ -461,28 +449,23 @@ export function evaluateProviderPlans(
         plan,
         ...evaluatePlan(plan, workload, agentCount),
       };
-    })
+    }),
   ).sort((a, b) => a.plan.priceUSD - b.plan.priceUSD);
 }
 
-export function getProviderPlan(
-  provider: VPSProvider,
-  planName: string
-): VPSPlan | null {
+export function getProviderPlan(provider: VPSProvider, planName: string): VPSPlan | null {
   const normalizedPlan = normalizeText(planName);
   if (normalizedPlan === "recommended") return provider.recommended;
   if (normalizedPlan === "budget") return provider.budget;
 
   return (
     ([provider.recommended, provider.budget] as const).find(
-      (plan) => normalizeText(plan.name) === normalizedPlan
+      (plan) => normalizeText(plan.name) === normalizedPlan,
     ) ?? null
   );
 }
 
-export function validateVPSReadiness(
-  input: VPSReadinessInput
-): VPSReadinessResult {
+export function validateVPSReadiness(input: VPSReadinessInput): VPSReadinessResult {
   const provider =
     VPS_PROVIDERS.find((entry) => normalizeText(entry.id) === normalizeText(input.providerId)) ??
     null;
@@ -577,14 +560,15 @@ export function validateVPSReadiness(
   const region = provider.regionOptions.find(
     (option) =>
       normalizeText(option.id) === normalizedRegion ||
-      option.aliases.some((alias) => normalizeText(alias) === normalizedRegion)
+      option.aliases.some((alias) => normalizeText(alias) === normalizedRegion),
   );
   if (!region) {
     checks.push({
       id: "region",
       label: "Region",
       status: "borderline",
-      message: "This region is not in the ACFS table. Prefer a nearby US, Canada, or EU region when available.",
+      message:
+        "This region is not in the ACFS table. Prefer a nearby US, Canada, or EU region when available.",
     });
   } else {
     checks.push({

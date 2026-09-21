@@ -2,16 +2,16 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import {
-  buildInstallSelectorArgs,
-  formatModuleSelectionPlan,
-  resolveModuleSelection,
-  type ModuleSelectionInput,
-} from "./moduleSelection";
-import {
+  type ManifestModuleMetadata,
   manifestModules,
   manifestSelectionProfiles,
-  type ManifestModuleMetadata,
 } from "./generated/manifest-modules";
+import {
+  buildInstallSelectorArgs,
+  formatModuleSelectionPlan,
+  type ModuleSelectionInput,
+  resolveModuleSelection,
+} from "./moduleSelection";
 
 function refuse(input: unknown): void {
   const plan = resolveModuleSelection(input as ModuleSelectionInput);
@@ -24,7 +24,10 @@ function refuse(input: unknown): void {
 }
 
 for (const [name, value] of [
-  ["null", null], ["array", []], ["string", "agents.codex"], ["number", 1],
+  ["null", null],
+  ["array", []],
+  ["string", "agents.codex"],
+  ["number", 1],
   ["blank module", { onlyModules: [""] }],
   ["blank module mixed with valid module", { onlyModules: ["agents.codex", ""] }],
   ["null modules", { onlyModules: null }],
@@ -60,7 +63,10 @@ test("refuses accessor-backed selection without evaluating it", () => {
   let calls = 0;
   const value = Object.defineProperty({}, "onlyModules", {
     enumerable: true,
-    get: () => { calls++; return []; },
+    get: () => {
+      calls++;
+      return [];
+    },
   });
   refuse(value);
   assert.equal(calls, 0);
@@ -69,8 +75,13 @@ test("refuses accessor-backed selection without evaluating it", () => {
 test("undefined optional fields and intentionally empty arrays retain default semantics", () => {
   const expected = resolveModuleSelection();
   const actual = resolveModuleSelection({
-    profile: undefined, onlyModules: [], onlyPhases: [], skipModules: [],
-    skipTags: [], skipCategories: [], noDeps: undefined,
+    profile: undefined,
+    onlyModules: [],
+    onlyPhases: [],
+    skipModules: [],
+    skipTags: [],
+    skipCategories: [],
+    noDeps: undefined,
   });
   assert.deepEqual(actual, expected);
   assert.deepEqual(buildInstallSelectorArgs({ onlyModules: [] }), []);
@@ -96,33 +107,69 @@ test("every real generated profile and every exact module resolves without widen
 
 test("a dependency added from disabled defaults is not also reported as excluded", () => {
   const modules: ManifestModuleMetadata[] = [
-    { id: "lang.fixture", description: "Runtime", category: "lang", phase: 6,
-      dependencies: [], tags: [], enabledByDefault: false, optional: true },
-    { id: "agents.fixture", description: "Agent", category: "agents", phase: 7,
-      dependencies: ["lang.fixture"], tags: [], enabledByDefault: true, optional: false },
+    {
+      id: "lang.fixture",
+      description: "Runtime",
+      category: "lang",
+      phase: 6,
+      dependencies: [],
+      tags: [],
+      enabledByDefault: false,
+      optional: true,
+    },
+    {
+      id: "agents.fixture",
+      description: "Agent",
+      category: "agents",
+      phase: 7,
+      dependencies: ["lang.fixture"],
+      tags: [],
+      enabledByDefault: true,
+      optional: false,
+    },
   ];
   const plan = resolveModuleSelection({}, modules, []);
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.included.map((entry) => entry.id), ["lang.fixture", "agents.fixture"]);
+  assert.deepEqual(
+    plan.included.map((entry) => entry.id),
+    ["lang.fixture", "agents.fixture"],
+  );
   assert.deepEqual(plan.excluded, []);
 });
 
 test("explicit noDeps permits skipping a known dependency, never an explicitly requested module", () => {
-  const plan = resolveModuleSelection({ onlyModules: ["agents.codex"], skipModules: ["lang.bun"], noDeps: true });
+  const plan = resolveModuleSelection({
+    onlyModules: ["agents.codex"],
+    skipModules: ["lang.bun"],
+    noDeps: true,
+  });
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.included.map((entry) => entry.id), ["agents.codex"]);
+  assert.deepEqual(
+    plan.included.map((entry) => entry.id),
+    ["agents.codex"],
+  );
   assert.match(plan.warnings.join("\n"), /--no-deps/);
   refuse({ onlyModules: ["agents.codex"], skipModules: ["agents.codex"], noDeps: true });
 });
 
-for (const mutation of ["duplicate", "missing", "cycle", "later-phase", "bad-phase", "order"] as const) {
+for (const mutation of [
+  "duplicate",
+  "missing",
+  "cycle",
+  "later-phase",
+  "bad-phase",
+  "order",
+] as const) {
   test(`corrupt manifest ${mutation} never emits an executable plan, even with noDeps`, () => {
     const modules = structuredClone(manifestModules);
     const codex = modules.find((module) => module.id === "agents.codex")!;
     const bun = modules.find((module) => module.id === "lang.bun")!;
     if (mutation === "duplicate") modules.push({ ...codex });
     if (mutation === "missing") codex.dependencies = ["lang.missing"];
-    if (mutation === "cycle") { codex.phase = 6; bun.dependencies = [codex.id]; }
+    if (mutation === "cycle") {
+      codex.phase = 6;
+      bun.dependencies = [codex.id];
+    }
     if (mutation === "later-phase") bun.phase = 8;
     if (mutation === "bad-phase") bun.phase = NaN;
     if (mutation === "order") modules.reverse();
@@ -136,25 +183,41 @@ for (const mutation of ["duplicate", "missing", "cycle", "later-phase", "bad-pha
 }
 
 test("valid selection never mutates caller arrays or the generated catalogue", () => {
-  const input: ModuleSelectionInput = { onlyModules: ["agents.codex"], skipModules: ["tools.vault"] };
+  const input: ModuleSelectionInput = {
+    onlyModules: ["agents.codex"],
+    skipModules: ["tools.vault"],
+  };
   const before = JSON.stringify({ input, manifestModules, manifestSelectionProfiles });
-  Object.freeze(input.onlyModules); Object.freeze(input.skipModules); Object.freeze(input);
-  resolveModuleSelection(input); buildInstallSelectorArgs(input);
+  Object.freeze(input.onlyModules);
+  Object.freeze(input.skipModules);
+  Object.freeze(input);
+  resolveModuleSelection(input);
+  buildInstallSelectorArgs(input);
   assert.equal(JSON.stringify({ input, manifestModules, manifestSelectionProfiles }), before);
 });
 
 /** Parse exactly the argv that Bash receives, not a hand-split command string. */
 function selectorRoundTrip(input: ModuleSelectionInput): ModuleSelectionInput {
   const args = buildInstallSelectorArgs(input);
-  const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c",
-    `capture() { printf '%s\\0' "$@"; }; capture ${args.join(" ")}`],
-  { encoding: "utf8", env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, timeout: 5000 });
+  const result = spawnSync(
+    "/bin/bash",
+    [
+      "--noprofile",
+      "--norc",
+      "-c",
+      `capture() { printf '%s\\0' "$@"; }; capture ${args.join(" ")}`,
+    ],
+    { encoding: "utf8", env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, timeout: 5000 },
+  );
   assert.equal(result.status, 0, result.stderr);
   const argv = args.length ? result.stdout.split("\0").slice(0, -1) : [];
   const decoded: ModuleSelectionInput = { onlyModules: [], onlyPhases: [], skipModules: [] };
   for (let index = 0; index < argv.length; index++) {
     const flag = argv[index];
-    if (flag === "--no-deps") { decoded.noDeps = true; continue; }
+    if (flag === "--no-deps") {
+      decoded.noDeps = true;
+      continue;
+    }
     const value = argv[++index];
     assert.ok(value, "a selector flag lost its argument");
     if (flag === "--profile") decoded.profile = value as ModuleSelectionInput["profile"];
@@ -169,37 +232,76 @@ function selectorRoundTrip(input: ModuleSelectionInput): ModuleSelectionInput {
 test("tag exclusions lower to exact skips including matching disabled defaults", () => {
   const input: ModuleSelectionInput = { skipTags: ["cloud", "maintenance"] };
   const decoded = selectorRoundTrip(input);
-  assert.deepEqual(decoded.skipModules, manifestModules
-    .filter((module) => module.tags.some((tag) => input.skipTags!.includes(tag)))
-    .map((module) => module.id));
+  assert.deepEqual(
+    decoded.skipModules,
+    manifestModules
+      .filter((module) => module.tags.some((tag) => input.skipTags!.includes(tag)))
+      .map((module) => module.id),
+  );
   assert.ok(decoded.skipModules!.includes("tools.vault"));
   assert.ok(decoded.skipModules!.includes("acfs.nightly"));
-  assert.deepEqual(resolveModuleSelection(decoded).included, resolveModuleSelection(input).included);
+  assert.deepEqual(
+    resolveModuleSelection(decoded).included,
+    resolveModuleSelection(input).included,
+  );
 });
 
 test("category and tag exclusions deduplicate overlaps and preserve explicit skips", () => {
-  const input: ModuleSelectionInput = { skipModules: ["tools.vault", "tools.vault"],
-    skipTags: ["vpn", "networking", "cloud"], skipCategories: ["cloud", "network"] };
+  const input: ModuleSelectionInput = {
+    skipModules: ["tools.vault", "tools.vault"],
+    skipTags: ["vpn", "networking", "cloud"],
+    skipCategories: ["cloud", "network"],
+  };
   const decoded = selectorRoundTrip(input);
   assert.equal(decoded.skipModules![0], "tools.vault");
   assert.equal(new Set(decoded.skipModules).size, decoded.skipModules!.length);
   assert.ok(decoded.skipModules!.includes("network.tailscale"));
   assert.ok(decoded.skipModules!.includes("network.ssh_keepalive"));
-  assert.deepEqual(resolveModuleSelection(decoded).included, resolveModuleSelection(input).included);
-  assert.deepEqual(buildInstallSelectorArgs(input), buildInstallSelectorArgs({ ...input,
-    skipTags: [...input.skipTags!].reverse(), skipCategories: [...input.skipCategories!].reverse() }));
+  assert.deepEqual(
+    resolveModuleSelection(decoded).included,
+    resolveModuleSelection(input).included,
+  );
+  assert.deepEqual(
+    buildInstallSelectorArgs(input),
+    buildInstallSelectorArgs({
+      ...input,
+      skipTags: [...input.skipTags!].reverse(),
+      skipCategories: [...input.skipCategories!].reverse(),
+    }),
+  );
 });
 
 test("group exclusions do not widen a narrow request or bypass dependency conflicts", () => {
   const input: ModuleSelectionInput = { onlyModules: ["agents.codex"], skipCategories: ["cloud"] };
   const decoded = selectorRoundTrip(input);
   assert.deepEqual(decoded.onlyModules, ["agents.codex"]);
-  assert.deepEqual(resolveModuleSelection(decoded).included, resolveModuleSelection(input).included);
-  assert.throws(() => buildInstallSelectorArgs({ onlyModules: ["agents.codex"], skipTags: ["runtime"] }), /depends on skipped/);
-  const expert = selectorRoundTrip({ onlyModules: ["agents.codex"], skipTags: ["runtime"], noDeps: true });
+  assert.deepEqual(
+    resolveModuleSelection(decoded).included,
+    resolveModuleSelection(input).included,
+  );
+  assert.throws(
+    () => buildInstallSelectorArgs({ onlyModules: ["agents.codex"], skipTags: ["runtime"] }),
+    /depends on skipped/,
+  );
+  const expert = selectorRoundTrip({
+    onlyModules: ["agents.codex"],
+    skipTags: ["runtime"],
+    noDeps: true,
+  });
   assert.equal(expert.noDeps, true);
-  assert.deepEqual(resolveModuleSelection(expert).included.map((entry) => entry.id), ["agents.codex"]);
-  assert.throws(() => buildInstallSelectorArgs({ onlyModules: ["agents.codex"], skipCategories: ["agents"], noDeps: true }), /was requested/);
+  assert.deepEqual(
+    resolveModuleSelection(expert).included.map((entry) => entry.id),
+    ["agents.codex"],
+  );
+  assert.throws(
+    () =>
+      buildInstallSelectorArgs({
+        onlyModules: ["agents.codex"],
+        skipCategories: ["agents"],
+        noDeps: true,
+      }),
+    /was requested/,
+  );
 });
 
 test("phase profiles retain their profile selection while excluding a matching member", () => {
@@ -207,12 +309,19 @@ test("phase profiles retain their profile selection while excluding a matching m
   const decoded = selectorRoundTrip(input);
   assert.equal(decoded.profile, "agents-only");
   assert.deepEqual(decoded.skipModules, ["agents.gemini"]);
-  assert.deepEqual(resolveModuleSelection(decoded).included, resolveModuleSelection(input).included);
+  assert.deepEqual(
+    resolveModuleSelection(decoded).included,
+    resolveModuleSelection(input).included,
+  );
 });
 
 const exclusionGroups: ModuleSelectionInput[] = [
-  ...[...new Set(manifestModules.flatMap((module) => module.tags))].map((tag) => ({ skipTags: [tag] })),
-  ...[...new Set(manifestModules.map((module) => module.category))].map((category) => ({ skipCategories: [category] })),
+  ...[...new Set(manifestModules.flatMap((module) => module.tags))].map((tag) => ({
+    skipTags: [tag],
+  })),
+  ...[...new Set(manifestModules.map((module) => module.category))].map((category) => ({
+    skipCategories: [category],
+  })),
 ];
 for (const profile of manifestSelectionProfiles) {
   test(`all exclusion groups preserve the exact ${profile.id} profile plan through real Bash argv`, () => {
@@ -227,7 +336,10 @@ for (const profile of manifestSelectionProfiles) {
           const decoded = selectorRoundTrip(input);
           const actual = resolveModuleSelection(decoded);
           assert.equal(actual.ok, true, JSON.stringify({ input, actual }));
-          assert.deepEqual(actual.included.map((entry) => entry.id), expected.included.map((entry) => entry.id));
+          assert.deepEqual(
+            actual.included.map((entry) => entry.id),
+            expected.included.map((entry) => entry.id),
+          );
           assert.equal(new Set(decoded.skipModules).size, decoded.skipModules!.length);
           assert.deepEqual(actual.warnings, expected.warnings);
         }

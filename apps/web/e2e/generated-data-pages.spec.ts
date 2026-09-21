@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * E2E tests for pages that depend on manifest-generated data.
@@ -31,7 +31,7 @@ function setupErrorMonitoring(page: Page): ErrorCollector {
         "gtag",
       ];
       const shouldIgnore = ignoredPatterns.some((pattern) =>
-        text.toLowerCase().includes(pattern.toLowerCase())
+        text.toLowerCase().includes(pattern.toLowerCase()),
       );
       if (!shouldIgnore) {
         collector.jsErrors.push(`Console: ${text}`);
@@ -65,7 +65,6 @@ async function waitForPageSettled(page: Page): Promise<void> {
   // Allow some slack for pages with background requests
   await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
 }
-
 
 test.describe("Flywheel Page (generated data)", () => {
   test("loads without JS errors or failed requests", async ({ page }) => {
@@ -184,9 +183,7 @@ test.describe("Learn Commands Page (generated data)", () => {
     await waitForPageSettled(page);
 
     await expect(page.getByText("giil", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Get Image from Internet Link", { exact: true })
-    ).toBeVisible();
+    await expect(page.getByText("Get Image from Internet Link", { exact: true })).toBeVisible();
   });
 
   test("finds PCR by acronym after generated command-name changes", async ({ page }) => {
@@ -195,12 +192,8 @@ test.describe("Learn Commands Page (generated data)", () => {
 
     await page.getByLabel("Search commands").fill("pcr");
 
-    await expect(
-      page.getByText("claude-post-compact-reminder", { exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByText("Post-Compact Reminder", { exact: true })
-    ).toBeVisible();
+    await expect(page.getByText("claude-post-compact-reminder", { exact: true })).toBeVisible();
+    await expect(page.getByText("Post-Compact Reminder", { exact: true })).toBeVisible();
   });
 
   test("prefers canonical generated examples for matching manual commands", async ({ page }) => {
@@ -299,7 +292,7 @@ test.describe("Tool Detail Pages (generated data)", () => {
         (err) =>
           !err.includes("favicon") &&
           !err.includes("404") &&
-          !err.includes("Failed to load resource")
+          !err.includes("Failed to load resource"),
       );
       expect(failedRequests).toEqual([]);
       expect(criticalErrors).toEqual([]);

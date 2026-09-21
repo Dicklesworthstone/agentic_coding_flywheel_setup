@@ -1,53 +1,54 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from "@/components/motion";
 import {
   AlignLeft,
+  CheckCircle2,
+  Copy,
+  Eye,
+  Play,
+  RotateCcw,
+  Settings,
+  Shield,
+  Sparkles,
   Terminal,
   Wand2,
-  Eye,
-  Copy,
-  Settings,
-  Play,
-  Shield,
-  CheckCircle2,
-  Sparkles,
-  RotateCcw,
-} from 'lucide-react';
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
+
 const InteractiveDiagramFixer = InteractiveDiagramFixerImpl;
 
 export function AadcLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Fix malformed ASCII art diagrams that AI agents produce with misaligned boxes and broken lines.
+        Fix malformed ASCII art diagrams that AI agents produce with misaligned boxes and broken
+        lines.
       </GoalBanner>
 
       {/* Section 1: What Is AADC */}
       <Section title="What Is AADC?" icon={<AlignLeft className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>AADC (ASCII Art Diagram Corrector)</Highlight> automatically
-          fixes alignment issues, broken box edges, and misconnected lines in ASCII
-          diagrams. AI models frequently generate diagrams with subtle rendering
-          errors that AADC corrects.
+          <Highlight>AADC (ASCII Art Diagram Corrector)</Highlight> automatically fixes alignment
+          issues, broken box edges, and misconnected lines in ASCII diagrams. AI models frequently
+          generate diagrams with subtle rendering errors that AADC corrects.
         </Paragraph>
         <Paragraph>
-          When agents produce architecture diagrams, flowcharts, or tables in ASCII,
-          the output often has columns that don&apos;t align, boxes with gaps, or
-          connectors that miss their targets. AADC detects and repairs these issues.
+          When agents produce architecture diagrams, flowcharts, or tables in ASCII, the output
+          often has columns that don&apos;t align, boxes with gaps, or connectors that miss their
+          targets. AADC detects and repairs these issues.
         </Paragraph>
 
         <div className="mt-8">
@@ -84,9 +85,7 @@ export function AadcLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>
-          Fix a diagram from a file or stdin.
-        </Paragraph>
+        <Paragraph>Fix a diagram from a file or stdin.</Paragraph>
 
         <CodeBlock
           code={`# Fix a diagram file
@@ -114,10 +113,10 @@ aadc fix --diff diagram.txt`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'aadc fix <file>', description: 'Fix alignment issues in a diagram' },
-            { command: 'aadc fix --diff <file>', description: 'Show changes as a diff' },
-            { command: 'aadc check <file>', description: 'Check for issues without fixing' },
-            { command: 'aadc --help', description: 'Show all available options' },
+            { command: "aadc fix <file>", description: "Fix alignment issues in a diagram" },
+            { command: "aadc fix --diff <file>", description: "Show changes as a diff" },
+            { command: "aadc check <file>", description: "Check for issues without fixing" },
+            { command: "aadc --help", description: "Show all available options" },
           ]}
         />
       </Section>
@@ -126,9 +125,7 @@ aadc fix --diff diagram.txt`}
 
       {/* Section 4: Example */}
       <Section title="Before and After" icon={<Settings className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          AADC fixes common AI-generated diagram issues.
-        </Paragraph>
+        <Paragraph>AADC fixes common AI-generated diagram issues.</Paragraph>
 
         <CodeBlock
           code={`# Before (broken):
@@ -152,8 +149,7 @@ aadc fix --diff diagram.txt`}
         />
 
         <TipBox variant="info">
-          AADC handles box edges, connector lines, padding, and column alignment
-          in a single pass.
+          AADC handles box edges, connector lines, padding, and column alignment in a single pass.
         </TipBox>
 
         <div className="mt-8">
@@ -180,7 +176,9 @@ aadc fix --diff diagram.txt`}
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">AADC + CM</span>
-            <p className="text-white/80 text-sm mt-1">Clean architecture diagrams in memory files</p>
+            <p className="text-white/80 text-sm mt-1">
+              Clean architecture diagrams in memory files
+            </p>
           </div>
         </div>
       </Section>
@@ -346,7 +344,12 @@ const DIAGRAM_SCENARIOS: DiagramScenario[] = [
       "|   +-- index.test.ts  ",
       "+-- package.json       ",
     ],
-    issues: ["Missing tree connectors", "Indentation inconsistent", "No branch lines", "Leaf nodes unaligned"],
+    issues: [
+      "Missing tree connectors",
+      "Indentation inconsistent",
+      "No branch lines",
+      "Leaf nodes unaligned",
+    ],
   },
   {
     id: "pipeline",
@@ -375,7 +378,7 @@ const DIAGRAM_SCENARIOS: DiagramScenario[] = [
 /** Character-level diff between two strings for highlighting */
 function computeCharDiffs(
   broken: string,
-  fixed: string
+  fixed: string,
 ): { char: string; status: "same" | "added" | "removed" }[] {
   const result: { char: string; status: "same" | "added" | "removed" }[] = [];
   const maxLen = Math.max(broken.length, fixed.length);
@@ -446,7 +449,7 @@ function InteractiveDiagramFixerImpl() {
       handleReset();
       setScenarioIndex(index);
     },
-    [phase, handleReset]
+    [phase, handleReset],
   );
 
   const handleRunFix = useCallback(() => {
@@ -481,18 +484,16 @@ function InteractiveDiagramFixerImpl() {
       pushTimer(
         setTimeout(() => {
           addTerminalLine(`[aadc]  ! Issue ${i + 1}: ${issue}`);
-        }, delay)
+        }, delay),
       );
     }
 
     delay += 400;
     pushTimer(
       setTimeout(() => {
-        addTerminalLine(
-          `[aadc] Found ${scenario.issues.length} issues. Repairing...`
-        );
+        addTerminalLine(`[aadc] Found ${scenario.issues.length} issues. Repairing...`);
         setPhase("repairing");
-      }, delay)
+      }, delay),
     );
 
     // Phase 2: Repairing line by line, char by char
@@ -509,7 +510,7 @@ function InteractiveDiagramFixerImpl() {
           setTimeout(() => {
             setRepairedLineCount(capturedLine);
             setRepairedCharCount(capturedChar);
-          }, delay)
+          }, delay),
         );
       }
 
@@ -520,14 +521,10 @@ function InteractiveDiagramFixerImpl() {
           setRepairedLineCount(capturedLineIdx + 1);
           setRepairedCharCount(0);
           // Update health score progressively
-          const progress = Math.round(
-            ((capturedLineIdx + 1) / totalLines) * 100
-          );
+          const progress = Math.round(((capturedLineIdx + 1) / totalLines) * 100);
           setHealthScore(progress);
-          addTerminalLine(
-            `[aadc]  + Line ${capturedLineIdx + 1}/${totalLines} repaired`
-          );
-        }, delay)
+          addTerminalLine(`[aadc]  + Line ${capturedLineIdx + 1}/${totalLines} repaired`);
+        }, delay),
       );
     }
 
@@ -540,15 +537,9 @@ function InteractiveDiagramFixerImpl() {
         setPhase("done");
         setShowDiff(true);
         setHealthScore(100);
-      }, delay)
+      }, delay),
     );
-  }, [
-    phase,
-    handleReset,
-    scenario,
-    addTerminalLine,
-    pushTimer,
-  ]);
+  }, [phase, handleReset, scenario, addTerminalLine, pushTimer]);
 
   // Build the "currently displayed" lines for the left (broken+repairing) panel
   const buildLiveLines = useCallback((): string[] => {
@@ -566,8 +557,7 @@ function InteractiveDiagramFixerImpl() {
       if (i === repairedLineCount) {
         const fixedLine = scenario.fixed[i];
         const partial =
-          fixedLine.substring(0, repairedCharCount) +
-          brokenLine.substring(repairedCharCount);
+          fixedLine.substring(0, repairedCharCount) + brokenLine.substring(repairedCharCount);
         return partial;
       }
       return brokenLine;
@@ -579,11 +569,14 @@ function InteractiveDiagramFixerImpl() {
   // Compute overall repair progress (0..1)
   const totalChars = scenario.fixed.reduce((sum, l) => sum + l.length, 0);
   const repairedCharsTotal =
-    scenario.fixed
-      .slice(0, repairedLineCount)
-      .reduce((sum, l) => sum + l.length, 0) + repairedCharCount;
+    scenario.fixed.slice(0, repairedLineCount).reduce((sum, l) => sum + l.length, 0) +
+    repairedCharCount;
   const repairProgress =
-    phase === "done" ? 1 : phase === "idle" || phase === "scanning" ? 0 : Math.min(repairedCharsTotal / Math.max(totalChars, 1), 1);
+    phase === "done"
+      ? 1
+      : phase === "idle" || phase === "scanning"
+        ? 0
+        : Math.min(repairedCharsTotal / Math.max(totalChars, 1), 1);
 
   return (
     <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
@@ -719,9 +712,9 @@ function InteractiveDiagramFixerImpl() {
                   transition={{ duration: 0.15 }}
                 >
                   {liveLines.map((line, i) => {
-                    const isFullyRepaired = i < repairedLineCount && phase !== "idle" && phase !== "scanning";
-                    const isCurrentLine =
-                      i === repairedLineCount && phase === "repairing";
+                    const isFullyRepaired =
+                      i < repairedLineCount && phase !== "idle" && phase !== "scanning";
+                    const isCurrentLine = i === repairedLineCount && phase === "repairing";
                     const isStillBroken = !isFullyRepaired && !isCurrentLine;
 
                     return (
@@ -760,14 +753,16 @@ function InteractiveDiagramFixerImpl() {
                           </span>
                         )}
                         {/* Flash highlight on just-completed lines */}
-                        {isFullyRepaired && i === repairedLineCount - 1 && phase === "repairing" && (
-                          <motion.span
-                            initial={{ opacity: 0.4 }}
-                            animate={{ opacity: 0 }}
-                            transition={{ duration: 0.5 }}
-                            className="absolute inset-0 bg-emerald-400/8 rounded pointer-events-none"
-                          />
-                        )}
+                        {isFullyRepaired &&
+                          i === repairedLineCount - 1 &&
+                          phase === "repairing" && (
+                            <motion.span
+                              initial={{ opacity: 0.4 }}
+                              animate={{ opacity: 0 }}
+                              transition={{ duration: 0.5 }}
+                              className="absolute inset-0 bg-emerald-400/8 rounded pointer-events-none"
+                            />
+                          )}
                       </div>
                     );
                   })}
@@ -800,10 +795,7 @@ function InteractiveDiagramFixerImpl() {
 
                       if (!hasChanges) {
                         return (
-                          <div
-                            key={`diff-same-${i}`}
-                            className="whitespace-pre text-white/30"
-                          >
+                          <div key={`diff-same-${i}`} className="whitespace-pre text-white/30">
                             <span className="inline-block w-4 text-right mr-1 text-white/10 select-none text-[10px]">
                               {" "}
                             </span>
@@ -854,10 +846,7 @@ function InteractiveDiagramFixerImpl() {
                     transition={{ duration: 0.15 }}
                   >
                     {scenario.broken.map((line, i) => (
-                      <div
-                        key={`broken-line-${i}`}
-                        className="whitespace-pre text-white/40"
-                      >
+                      <div key={`broken-line-${i}`} className="whitespace-pre text-white/40">
                         <span className="inline-block w-5 text-right mr-2 text-white/15 select-none text-[10px]">
                           {i + 1}
                         </span>
@@ -880,8 +869,7 @@ function InteractiveDiagramFixerImpl() {
             {scenario.issues.map((issue, i) => {
               const issueResolved =
                 phase === "done" ||
-                (phase === "repairing" &&
-                  repairProgress > (i + 1) / scenario.issues.length);
+                (phase === "repairing" && repairProgress > (i + 1) / scenario.issues.length);
 
               return (
                 <motion.span
@@ -925,15 +913,12 @@ function InteractiveDiagramFixerImpl() {
             className="rounded-xl border border-white/[0.08] bg-black/60 p-3 font-mono text-[10px] leading-relaxed max-h-[140px] overflow-y-auto overflow-x-auto"
           >
             {terminalLines.length === 0 ? (
-              <span className="text-white/20">
-                $ waiting for command...
-              </span>
+              <span className="text-white/20">$ waiting for command...</span>
             ) : (
               terminalLines.map((line, i) => {
                 const isCommand = line.startsWith("$");
                 const isError = line.includes("! Issue");
-                const isSuccess =
-                  line.includes("repaired") || line.includes("100%");
+                const isSuccess = line.includes("repaired") || line.includes("100%");
 
                 return (
                   <motion.div
@@ -972,9 +957,7 @@ function InteractiveDiagramFixerImpl() {
             className="space-y-1"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-white/30">
-                Repair progress
-              </span>
+              <span className="text-[10px] text-white/30">Repair progress</span>
               <span className="text-[10px] font-mono text-white/40">
                 {Math.round(repairProgress * 100)}%
               </span>

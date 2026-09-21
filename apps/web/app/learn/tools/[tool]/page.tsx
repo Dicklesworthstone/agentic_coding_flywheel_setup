@@ -1,8 +1,8 @@
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ToolPageContent } from "./tool-page-content";
+import { notFound } from "next/navigation";
 import type { ToolId } from "./tool-data";
-import { TOOLS, TOOL_IDS } from "./tool-data";
+import { TOOL_IDS, TOOLS } from "./tool-data";
+import { ToolPageContent } from "./tool-page-content";
 
 interface Props {
   params: Promise<{ tool: string }>;

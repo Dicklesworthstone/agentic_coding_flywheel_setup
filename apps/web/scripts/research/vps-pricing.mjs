@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * VPS Pricing Research Script
  *
@@ -14,13 +15,13 @@
  * - Screenshots: Saved to ../../research_screenshots/
  */
 
-import { chromium } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "@playwright/test";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = join(__dirname, '..', '..', '..', '..', 'research_screenshots');
+const SCREENSHOT_DIR = join(__dirname, "..", "..", "..", "..", "research_screenshots");
 let hadResearchError = false;
 
 function getErrorMessage(error) {
@@ -28,30 +29,32 @@ function getErrorMessage(error) {
 }
 
 // Ensure screenshot directory exists
-try { mkdirSync(SCREENSHOT_DIR, { recursive: true }); } catch {}
+try {
+  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+} catch {}
 
 /**
  * Research Contabo VPS pricing
  */
 async function researchContabo(page) {
-  console.log('\n' + '='.repeat(70));
-  console.log('  CONTABO VPS PRICING');
-  console.log('='.repeat(70) + '\n');
+  console.log("\n" + "=".repeat(70));
+  console.log("  CONTABO VPS PRICING");
+  console.log("=".repeat(70) + "\n");
 
   const results = { plans: [], timestamp: new Date().toISOString() };
 
   try {
     // Visit US site for USD pricing
-    console.log('Visiting https://contabo.com/en-us/vps/ ...');
-    await page.goto('https://contabo.com/en-us/vps/', { waitUntil: 'networkidle', timeout: 60000 });
+    console.log("Visiting https://contabo.com/en-us/vps/ ...");
+    await page.goto("https://contabo.com/en-us/vps/", { waitUntil: "networkidle", timeout: 60000 });
     await page.waitForTimeout(3000);
 
     // Take screenshot
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'contabo_pricing.png'),
-      fullPage: false
+      path: join(SCREENSHOT_DIR, "contabo_pricing.png"),
+      fullPage: false,
     });
-    console.log('Screenshot: contabo_pricing.png\n');
+    console.log("Screenshot: contabo_pricing.png\n");
 
     // Extract page text
     const pageText = await page.evaluate(() => document.body.innerText);
@@ -61,12 +64,15 @@ async function researchContabo(page) {
     let match;
     const allPrices = new Set();
     while ((match = pricePattern.exec(pageText)) !== null) {
-      allPrices.add('$' + match[1]);
+      allPrices.add("$" + match[1]);
     }
-    console.log('All prices found:', [...allPrices].join(', '));
+    console.log("All prices found:", [...allPrices].join(", "));
 
     // Parse plan blocks looking for Cloud VPS patterns
-    const lines = pageText.split('\n').map(l => l.trim()).filter(l => l);
+    const lines = pageText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l);
 
     let currentPlan = null;
     let planData = {};
@@ -110,32 +116,31 @@ async function researchContabo(page) {
     }
 
     // Output results
-    console.log('\nContabo Cloud VPS Plans (USD):');
-    console.log('-'.repeat(60));
-    console.log('| Plan           | vCPU | RAM     | Storage      | Price    |');
-    console.log('-'.repeat(60));
+    console.log("\nContabo Cloud VPS Plans (USD):");
+    console.log("-".repeat(60));
+    console.log("| Plan           | vCPU | RAM     | Storage      | Price    |");
+    console.log("-".repeat(60));
 
     for (const plan of results.plans) {
-      const name = (plan.name || '').padEnd(14);
-      const vcpu = (plan.vcpu || '?').replace(' vCPU', '').padEnd(4);
-      const ram = (plan.ram || '?').padEnd(7);
-      const storage = (plan.storage || '?').padEnd(12);
-      const price = (plan.price ? plan.price + '/mo' : '?').padEnd(8);
+      const name = (plan.name || "").padEnd(14);
+      const vcpu = (plan.vcpu || "?").replace(" vCPU", "").padEnd(4);
+      const ram = (plan.ram || "?").padEnd(7);
+      const storage = (plan.storage || "?").padEnd(12);
+      const price = (plan.price ? plan.price + "/mo" : "?").padEnd(8);
       console.log(`| ${name} | ${vcpu} | ${ram} | ${storage} | ${price} |`);
     }
-    console.log('-'.repeat(60));
+    console.log("-".repeat(60));
 
     // Take full page screenshot
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'contabo_full.png'),
-      fullPage: true
+      path: join(SCREENSHOT_DIR, "contabo_full.png"),
+      fullPage: true,
     });
-
   } catch (error) {
     hadResearchError = true;
-    console.error('Contabo error:', getErrorMessage(error));
+    console.error("Contabo error:", getErrorMessage(error));
     try {
-      await page.screenshot({ path: join(SCREENSHOT_DIR, 'contabo_error.png') });
+      await page.screenshot({ path: join(SCREENSHOT_DIR, "contabo_error.png") });
     } catch {}
   }
 
@@ -146,40 +151,46 @@ async function researchContabo(page) {
  * Research OVH VPS pricing
  */
 async function researchOVH(page) {
-  console.log('\n' + '='.repeat(70));
-  console.log('  OVH VPS PRICING');
-  console.log('='.repeat(70) + '\n');
+  console.log("\n" + "=".repeat(70));
+  console.log("  OVH VPS PRICING");
+  console.log("=".repeat(70) + "\n");
 
   const results = { plans: [], timestamp: new Date().toISOString() };
 
   try {
     // Visit US site for USD pricing
-    console.log('Visiting https://us.ovhcloud.com/vps/ ...');
-    await page.goto('https://us.ovhcloud.com/vps/', { waitUntil: 'networkidle', timeout: 60000 });
+    console.log("Visiting https://us.ovhcloud.com/vps/ ...");
+    await page.goto("https://us.ovhcloud.com/vps/", { waitUntil: "networkidle", timeout: 60000 });
     await page.waitForTimeout(3000);
 
     // Take screenshot
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'ovh_pricing.png'),
-      fullPage: false
+      path: join(SCREENSHOT_DIR, "ovh_pricing.png"),
+      fullPage: false,
     });
-    console.log('Screenshot: ovh_pricing.png\n');
+    console.log("Screenshot: ovh_pricing.png\n");
 
     // Try the configurator page for detailed pricing
-    console.log('Checking configurator for detailed specs...');
-    await page.goto('https://us.ovhcloud.com/vps/configurator/', { waitUntil: 'networkidle', timeout: 60000 });
+    console.log("Checking configurator for detailed specs...");
+    await page.goto("https://us.ovhcloud.com/vps/configurator/", {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
     await page.waitForTimeout(3000);
 
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'ovh_configurator.png'),
-      fullPage: false
+      path: join(SCREENSHOT_DIR, "ovh_configurator.png"),
+      fullPage: false,
     });
 
     // Extract page text
     const pageText = await page.evaluate(() => document.body.innerText);
 
     // Parse VPS plans
-    const lines = pageText.split('\n').map(l => l.trim()).filter(l => l);
+    const lines = pageText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l);
 
     let currentPlan = null;
     let planData = {};
@@ -223,32 +234,31 @@ async function researchOVH(page) {
     }
 
     // Output results
-    console.log('\nOVH VPS Plans (USD):');
-    console.log('-'.repeat(60));
-    console.log('| Plan   | vCore | RAM     | Storage      | Price    |');
-    console.log('-'.repeat(60));
+    console.log("\nOVH VPS Plans (USD):");
+    console.log("-".repeat(60));
+    console.log("| Plan   | vCore | RAM     | Storage      | Price    |");
+    console.log("-".repeat(60));
 
     for (const plan of results.plans) {
-      const name = (plan.name || '').padEnd(6);
-      const vcore = (plan.vcore || '?').replace(' vCore', '').padEnd(5);
-      const ram = (plan.ram || '?').padEnd(7);
-      const storage = (plan.storage || '?').padEnd(12);
-      const price = (plan.price ? plan.price + '/mo' : '?').padEnd(8);
+      const name = (plan.name || "").padEnd(6);
+      const vcore = (plan.vcore || "?").replace(" vCore", "").padEnd(5);
+      const ram = (plan.ram || "?").padEnd(7);
+      const storage = (plan.storage || "?").padEnd(12);
+      const price = (plan.price ? plan.price + "/mo" : "?").padEnd(8);
       console.log(`| ${name} | ${vcore} | ${ram} | ${storage} | ${price} |`);
     }
-    console.log('-'.repeat(60));
+    console.log("-".repeat(60));
 
     // Take full page screenshot
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'ovh_full.png'),
-      fullPage: true
+      path: join(SCREENSHOT_DIR, "ovh_full.png"),
+      fullPage: true,
     });
-
   } catch (error) {
     hadResearchError = true;
-    console.error('OVH error:', getErrorMessage(error));
+    console.error("OVH error:", getErrorMessage(error));
     try {
-      await page.screenshot({ path: join(SCREENSHOT_DIR, 'ovh_error.png') });
+      await page.screenshot({ path: join(SCREENSHOT_DIR, "ovh_error.png") });
     } catch {}
   }
 
@@ -259,16 +269,16 @@ async function researchOVH(page) {
  * Generate pricing comparison summary
  */
 function generateSummary() {
-  const date = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+  const date = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 
-  console.log('\n' + '='.repeat(70));
-  console.log('  PRICING COMPARISON SUMMARY');
-  console.log('  ' + date);
-  console.log('='.repeat(70));
+  console.log("\n" + "=".repeat(70));
+  console.log("  PRICING COMPARISON SUMMARY");
+  console.log("  " + date);
+  console.log("=".repeat(70));
 
   console.log(`
 RECOMMENDED PLANS FOR AGENT FLYWHEEL:
@@ -288,7 +298,7 @@ NOTES:
 - Check provider sites for current exact pricing
 
 WIZARD UPDATE CHECKLIST:
-${'-'.repeat(40)}
+${"-".repeat(40)}
 After running this script, verify these files have accurate pricing:
   - apps/web/app/wizard/rent-vps/page.tsx
   - Any other files mentioning VPS pricing
@@ -301,10 +311,10 @@ Screenshots saved to: ${SCREENSHOT_DIR}
  * Main entry point
  */
 async function main() {
-  console.log('\n' + '#'.repeat(70));
-  console.log('#  VPS PRICING RESEARCH');
-  console.log('#  ' + new Date().toISOString());
-  console.log('#'.repeat(70));
+  console.log("\n" + "#".repeat(70));
+  console.log("#  VPS PRICING RESEARCH");
+  console.log("#  " + new Date().toISOString());
+  console.log("#".repeat(70));
 
   let browser;
 
@@ -312,8 +322,8 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
-      locale: 'en-US',
-      timezoneId: 'America/New_York'
+      locale: "en-US",
+      timezoneId: "America/New_York",
     });
     const page = await context.newPage();
 
@@ -327,15 +337,15 @@ async function main() {
   }
 
   if (hadResearchError) {
-    console.error('\n' + '='.repeat(70));
-    console.error('  RESEARCH COMPLETED WITH ERRORS');
-    console.error('='.repeat(70) + '\n');
+    console.error("\n" + "=".repeat(70));
+    console.error("  RESEARCH COMPLETED WITH ERRORS");
+    console.error("=".repeat(70) + "\n");
     process.exit(1);
   }
 
-  console.log('\n' + '='.repeat(70));
-  console.log('  RESEARCH COMPLETE');
-  console.log('='.repeat(70) + '\n');
+  console.log("\n" + "=".repeat(70));
+  console.log("  RESEARCH COMPLETE");
+  console.log("=".repeat(70) + "\n");
 }
 
 main().catch((error) => {

@@ -1,48 +1,36 @@
 "use client";
 
+import { Globe, Key, Lock, Shield, ShieldCheck, Zap } from "lucide-react";
 import {
-  Shield,
-  Zap,
-  Lock,
-  Key,
-  Globe,
-  ShieldCheck,
-} from "lucide-react";
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
-  FeatureGrid,
   FeatureCard,
+  FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function TailscaleLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Secure your VPS with Tailscale mesh VPN and SSH hardening — access your
-        development server from anywhere without exposing ports to the internet.
+        Secure your VPS with Tailscale mesh VPN and SSH hardening — access your development server
+        from anywhere without exposing ports to the internet.
       </GoalBanner>
 
       {/* Why Tailscale? */}
-      <Section
-        title="Why Tailscale?"
-        icon={<Shield className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Why Tailscale?" icon={<Shield className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          Your VPS has a <Highlight>public IP</Highlight> that bots scan
-          constantly. Automated scripts probe SSH ports, try default credentials,
-          and exploit known vulnerabilities around the clock.
+          Your VPS has a <Highlight>public IP</Highlight> that bots scan constantly. Automated
+          scripts probe SSH ports, try default credentials, and exploit known vulnerabilities around
+          the clock.
         </Paragraph>
         <Paragraph>
-          <Highlight>Tailscale</Highlight> creates a private mesh network
-          (WireGuard-based) with zero config. No open ports, no port forwarding,
-          no firewall rules to manage.
+          <Highlight>Tailscale</Highlight> creates a private mesh network (WireGuard-based) with
+          zero config. No open ports, no port forwarding, no firewall rules to manage.
         </Paragraph>
 
         <div className="mt-6">
@@ -78,14 +66,8 @@ export function TailscaleLesson() {
       <Divider />
 
       {/* Quick Setup */}
-      <Section
-        title="Quick Setup"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.15}
-      >
-        <Paragraph>
-          Install and connect in 2 commands:
-        </Paragraph>
+      <Section title="Quick Setup" icon={<Zap className="h-5 w-5" />} delay={0.15}>
+        <Paragraph>Install and connect in 2 commands:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -113,9 +95,8 @@ ssh ubuntu@my-vps    # Instead of ssh ubuntu@203.0.113.42`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            After Tailscale is running, you can SSH using the Tailscale IP
-            (100.x.y.z) instead of the public IP. This means SSH traffic never
-            touches the public internet.
+            After Tailscale is running, you can SSH using the Tailscale IP (100.x.y.z) instead of
+            the public IP. This means SSH traffic never touches the public internet.
           </TipBox>
         </div>
       </Section>
@@ -123,14 +104,8 @@ ssh ubuntu@my-vps    # Instead of ssh ubuntu@203.0.113.42`}
       <Divider />
 
       {/* SSH Hardening */}
-      <Section
-        title="SSH Hardening"
-        icon={<Lock className="h-5 w-5" />}
-        delay={0.2}
-      >
-        <Paragraph>
-          Once Tailscale is set up, lock down the public SSH port:
-        </Paragraph>
+      <Section title="SSH Hardening" icon={<Lock className="h-5 w-5" />} delay={0.2}>
+        <Paragraph>Once Tailscale is set up, lock down the public SSH port:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -166,9 +141,9 @@ ssh ubuntu@public-ip     # Should be refused`}
 
         <div className="mt-6">
           <TipBox variant="warning">
-            ALWAYS test SSH access over Tailscale in a separate terminal BEFORE
-            restricting SSH to Tailscale-only. If Tailscale goes down and SSH is
-            restricted, you could lock yourself out.
+            ALWAYS test SSH access over Tailscale in a separate terminal BEFORE restricting SSH to
+            Tailscale-only. If Tailscale goes down and SSH is restricted, you could lock yourself
+            out.
           </TipBox>
         </div>
       </Section>
@@ -182,8 +157,7 @@ ssh ubuntu@public-ip     # Should be refused`}
         delay={0.25}
       >
         <Paragraph>
-          Tailscale can handle SSH authentication itself — no SSH keys to
-          manage:
+          Tailscale can handle SSH authentication itself — no SSH keys to manage:
         </Paragraph>
 
         <div className="mt-6">
@@ -217,9 +191,8 @@ tailscale ssh-status
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Tailscale SSH means you never need to manage
-            ~/.ssh/authorized_keys again. Add a new team member? They join the
-            tailnet and get SSH access automatically based on ACLs.
+            Tailscale SSH means you never need to manage ~/.ssh/authorized_keys again. Add a new
+            team member? They join the tailnet and get SSH access automatically based on ACLs.
           </TipBox>
         </div>
       </Section>
@@ -227,14 +200,8 @@ tailscale ssh-status
       <Divider />
 
       {/* Multi-VPS Networking */}
-      <Section
-        title="Multi-VPS Networking"
-        icon={<Globe className="h-5 w-5" />}
-        delay={0.3}
-      >
-        <Paragraph>
-          Connect multiple VPS instances into a private network:
-        </Paragraph>
+      <Section title="Multi-VPS Networking" icon={<Globe className="h-5 w-5" />} delay={0.3}>
+        <Paragraph>Connect multiple VPS instances into a private network:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -268,14 +235,8 @@ psql -h 100.100.1.4 -U postgres
       <Divider />
 
       {/* Firewall Lockdown */}
-      <Section
-        title="Firewall Lockdown"
-        icon={<ShieldCheck className="h-5 w-5" />}
-        delay={0.35}
-      >
-        <Paragraph>
-          Final hardening: close everything except Tailscale.
-        </Paragraph>
+      <Section title="Firewall Lockdown" icon={<ShieldCheck className="h-5 w-5" />} delay={0.35}>
+        <Paragraph>Final hardening: close everything except Tailscale.</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -305,9 +266,8 @@ ssh ubuntu@100.x.y.z    # → Works perfectly`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            Tailscale + UFW = zero public attack surface. Your VPS is invisible
-            to the internet but fully accessible to you and your agents over the
-            encrypted mesh.
+            Tailscale + UFW = zero public attack surface. Your VPS is invisible to the internet but
+            fully accessible to you and your agents over the encrypted mesh.
           </TipBox>
         </div>
       </Section>

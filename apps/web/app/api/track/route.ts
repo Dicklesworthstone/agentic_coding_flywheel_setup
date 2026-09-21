@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from "next/server";
 import {
   isJsonContentType,
   isValidClientId,
@@ -7,13 +7,13 @@ import {
   serverEventHasExactShape,
   serverEventParamsArePrivacySafe,
   serverTrackPayloadHasExactShape,
-} from './validation';
+} from "./validation";
 
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const GA_API_SECRET_RAW = process.env.GA_API_SECRET;
 
 function sanitizeGaMeasurementId(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
+  if (typeof value !== "string") return undefined;
 
   let cleaned = value.trim();
   if (!cleaned) return undefined;
@@ -28,7 +28,7 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
 
   // Remove common trailing garbage (escaped newlines, whitespace sequences)
   // that can appear from misconfigured env vars or Vercel CLI pulls.
-  cleaned = cleaned.replace(/\\n$/, '').replace(/\s+$/, '');
+  cleaned = cleaned.replace(/\\n$/, "").replace(/\s+$/, "");
 
   // Extract valid GA4 measurement ID (G-XXXXXXXXXX).
   // Use extraction rather than strict matching to handle edge cases.
@@ -39,7 +39,7 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
 }
 
 function sanitizeGaApiSecret(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
+  if (typeof value !== "string") return undefined;
   let cleaned = value.trim();
   if (!cleaned) return undefined;
 
@@ -51,7 +51,7 @@ function sanitizeGaApiSecret(value: unknown): string | undefined {
   }
 
   // Remove trailing escaped newlines from Vercel CLI pulls.
-  cleaned = cleaned.replace(/\\n$/, '').replace(/\s+$/, '');
+  cleaned = cleaned.replace(/\\n$/, "").replace(/\s+$/, "");
   if (!cleaned || cleaned.length > 200) return undefined;
   return cleaned;
 }
@@ -67,11 +67,11 @@ const MAX_REQUEST_BODY_BYTES = 32_000; // hard cap to reduce abuse/memory pressu
 const GA_FETCH_TIMEOUT_MS = 3000;
 
 class PayloadTooLargeError extends Error {
-  override name = 'PayloadTooLargeError';
+  override name = "PayloadTooLargeError";
 }
 
 async function readJsonBodyWithLimit(request: NextRequest): Promise<unknown> {
-  const declaredLengthRaw = request.headers.get('content-length');
+  const declaredLengthRaw = request.headers.get("content-length");
   if (declaredLengthRaw) {
     const declaredLength = Number(declaredLengthRaw);
     if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
@@ -97,9 +97,9 @@ async function readJsonBodyWithLimit(request: NextRequest): Promise<unknown> {
     }
   }
 
-  const decoder = new TextDecoder('utf-8', { fatal: true });
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytesRead = 0;
-  let text = '';
+  let text = "";
 
   try {
     while (true) {
@@ -123,7 +123,7 @@ async function readJsonBodyWithLimit(request: NextRequest): Promise<unknown> {
     text += decoder.decode();
   } catch (error) {
     if (error instanceof PayloadTooLargeError) throw error;
-    throw new SyntaxError('Request body must be valid UTF-8 JSON');
+    throw new SyntaxError("Request body must be valid UTF-8 JSON");
   }
   try {
     return JSON.parse(text) as unknown;
@@ -152,82 +152,81 @@ function cleanupExpiredEntries(): void {
 
 function normalizeIP(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) return 'unknown';
-  if (trimmed.length > 80) return 'unknown';
+  if (!trimmed) return "unknown";
+  if (trimmed.length > 80) return "unknown";
 
   // [IPv6]:port
-  if (trimmed.startsWith('[')) {
-    const endIdx = trimmed.indexOf(']');
+  if (trimmed.startsWith("[")) {
+    const endIdx = trimmed.indexOf("]");
     if (endIdx > 1) {
       return normalizeIP(trimmed.slice(1, endIdx));
     }
-    return 'unknown';
+    return "unknown";
   }
 
   // Handle IPv4-mapped IPv6 (e.g. ::ffff:192.168.1.1)
-  if (trimmed.toLowerCase().startsWith('::ffff:')) {
+  if (trimmed.toLowerCase().startsWith("::ffff:")) {
     const ipv4Part = trimmed.slice(7);
-    if (ipv4Part.includes('.')) {
+    if (ipv4Part.includes(".")) {
       return normalizeIP(ipv4Part);
     }
   }
 
   // IPv4:port
-  if (trimmed.includes('.') && trimmed.includes(':')) {
-    const beforePort = trimmed.split(':')[0]?.trim();
+  if (trimmed.includes(".") && trimmed.includes(":")) {
+    const beforePort = trimmed.split(":")[0]?.trim();
     if (beforePort) return normalizeIP(beforePort);
   }
 
   // IPv4
-  if (trimmed.includes('.')) {
-    const parts = trimmed.split('.');
-    if (parts.length !== 4) return 'unknown';
+  if (trimmed.includes(".")) {
+    const parts = trimmed.split(".");
+    if (parts.length !== 4) return "unknown";
     for (const part of parts) {
-      if (!/^\d{1,3}$/.test(part)) return 'unknown';
+      if (!/^\d{1,3}$/.test(part)) return "unknown";
       const n = Number(part);
-      if (!Number.isInteger(n) || n < 0 || n > 255) return 'unknown';
+      if (!Number.isInteger(n) || n < 0 || n > 255) return "unknown";
     }
     return trimmed;
   }
 
   // IPv6 (basic validation; exact canonicalization is unnecessary for rate limiting)
-  if (trimmed.includes(':') && /^[0-9a-fA-F:\.]+$/.test(trimmed) && trimmed.length <= 45) {
+  if (trimmed.includes(":") && /^[0-9a-fA-F:.]+$/.test(trimmed) && trimmed.length <= 45) {
     return trimmed.toLowerCase();
   }
 
-  return 'unknown';
+  return "unknown";
 }
 
 function getClientRateLimitKey(request: NextRequest): string {
   const requestIP = (request as unknown as { ip?: string }).ip;
   const forwardedFor =
-    request.headers.get('x-vercel-forwarded-for') ||
-    request.headers.get('x-forwarded-for');
+    request.headers.get("x-vercel-forwarded-for") || request.headers.get("x-forwarded-for");
   const normalizedIP = normalizeIP(
     requestIP ||
-      forwardedFor?.split(',')[0]?.trim() ||
-      request.headers.get('cf-connecting-ip') ||
-      request.headers.get('x-real-ip') ||
-      ''
+      forwardedFor?.split(",")[0]?.trim() ||
+      request.headers.get("cf-connecting-ip") ||
+      request.headers.get("x-real-ip") ||
+      "",
   );
 
-  if (normalizedIP !== 'unknown') return normalizedIP;
+  if (normalizedIP !== "unknown") return normalizedIP;
 
   // Avoid globally shared "unknown" bucket throttling unrelated users.
   // Use coarse request fingerprinting when no trusted IP is available.
   const ipHint = (
     requestIP ||
     forwardedFor ||
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-real-ip') ||
-    ''
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-real-ip") ||
+    ""
   )
     .trim()
     .slice(0, 120);
-  const userAgent = (request.headers.get('user-agent') || '').slice(0, 240);
-  const acceptLanguage = (request.headers.get('accept-language') || '').slice(0, 80);
+  const userAgent = (request.headers.get("user-agent") || "").slice(0, 240);
+  const acceptLanguage = (request.headers.get("accept-language") || "").slice(0, 80);
   const fallbackInput = `${ipHint}|${userAgent}|${acceptLanguage}`;
-  if (!fallbackInput.trim()) return 'unknown';
+  if (!fallbackInput.trim()) return "unknown";
 
   let hash = 0x811c9dc5;
   for (let i = 0; i < fallbackInput.length; i++) {
@@ -280,15 +279,15 @@ interface EventPayload {
  * Body: { client_id, events: [{ name, params }] }
  */
 export async function POST(request: NextRequest) {
-  if (!isJsonContentType(request.headers.get('content-type'))) {
-    return NextResponse.json({ error: 'Unsupported content type' }, { status: 415 });
+  if (!isJsonContentType(request.headers.get("content-type"))) {
+    return NextResponse.json({ error: "Unsupported content type" }, { status: 415 });
   }
 
-  const contentLength = request.headers.get('content-length');
+  const contentLength = request.headers.get("content-length");
   if (contentLength) {
     const bytes = Number(contentLength);
     if (Number.isFinite(bytes) && bytes > MAX_REQUEST_BODY_BYTES) {
-      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 });
     }
   }
 
@@ -296,55 +295,46 @@ export async function POST(request: NextRequest) {
   const rateLimitKey = getClientRateLimitKey(request);
   if (isRateLimited(rateLimitKey)) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded' },
+      { error: "Rate limit exceeded" },
       {
         status: 429,
-        headers: { 'Retry-After': Math.ceil(RATE_LIMIT_WINDOW_MS / 1000).toString() },
-      }
+        headers: { "Retry-After": Math.ceil(RATE_LIMIT_WINDOW_MS / 1000).toString() },
+      },
     );
   }
 
   if (!GA_MEASUREMENT_ID || !GA_API_SECRET) {
-    return NextResponse.json(
-      { error: 'Analytics not configured' },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Analytics not configured" }, { status: 503 });
   }
 
   try {
     const rawBody: unknown = await readJsonBodyWithLimit(request);
     if (!serverTrackPayloadHasExactShape(rawBody)) {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
     const clientId = rawBody.client_id;
     const events = rawBody.events;
 
-    if (typeof clientId !== 'string' || !Array.isArray(events)) {
-      return NextResponse.json({ error: 'Missing client_id or events' }, { status: 400 });
+    if (typeof clientId !== "string" || !Array.isArray(events)) {
+      return NextResponse.json({ error: "Missing client_id or events" }, { status: 400 });
     }
 
     // Validate required fields
     if (!clientId || events.length === 0) {
-      return NextResponse.json(
-        { error: 'Missing client_id or events' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing client_id or events" }, { status: 400 });
     }
 
     // Validate client_id format
     if (!isValidClientId(clientId)) {
-      return NextResponse.json(
-        { error: 'Invalid client_id format' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid client_id format" }, { status: 400 });
     }
 
     // Limit number of events per request
     if (events.length > MAX_EVENTS_PER_REQUEST) {
       return NextResponse.json(
         { error: `Maximum ${MAX_EVENTS_PER_REQUEST} events per request` },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -352,22 +342,22 @@ export async function POST(request: NextRequest) {
 
     // Validate every event against its exact checked-in schema.
     for (const event of events) {
-      if (!serverEventHasExactShape(event) || typeof event.name !== 'string') {
-        return NextResponse.json({ error: 'Invalid event payload' }, { status: 400 });
+      if (!serverEventHasExactShape(event) || typeof event.name !== "string") {
+        return NextResponse.json({ error: "Invalid event payload" }, { status: 400 });
       }
       if (!isValidServerEventName(event.name)) {
         return NextResponse.json(
           { error: `Invalid event name: ${event.name?.slice(0, 20)}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
       if (!serverEventParamsArePrivacySafe(event.name, event.params)) {
-        return NextResponse.json({ error: 'Unsafe event params' }, { status: 400 });
+        return NextResponse.json({ error: "Unsafe event params" }, { status: 400 });
       }
       sanitizedEvents.push({ name: event.name, params: sanitizeEventParams(event.params) });
     }
 
-    const rawSessionId = clientId.split('.')[1] || '';
+    const rawSessionId = clientId.split(".")[1] || "";
     const parsedSessionId = Number(rawSessionId);
     const sessionId =
       Number.isSafeInteger(parsedSessionId) && parsedSessionId > 0
@@ -375,13 +365,13 @@ export async function POST(request: NextRequest) {
         : Math.floor(Date.now() / 1000);
 
     if (sanitizedEvents.length === 0) {
-      return NextResponse.json({ error: 'No valid events' }, { status: 400 });
+      return NextResponse.json({ error: "No valid events" }, { status: 400 });
     }
 
     // Build the Measurement Protocol payload
     const payload = {
       client_id: clientId,
-      events: sanitizedEvents.map(event => ({
+      events: sanitizedEvents.map((event) => ({
         name: event.name,
         params: {
           ...event.params,
@@ -397,21 +387,18 @@ export async function POST(request: NextRequest) {
 
     let response: Response | undefined;
     try {
-      const endpoint = new URL('https://www.google-analytics.com/mp/collect');
-      endpoint.searchParams.set('measurement_id', GA_MEASUREMENT_ID);
-      endpoint.searchParams.set('api_secret', GA_API_SECRET);
+      const endpoint = new URL("https://www.google-analytics.com/mp/collect");
+      endpoint.searchParams.set("measurement_id", GA_MEASUREMENT_ID);
+      endpoint.searchParams.set("api_secret", GA_API_SECRET);
 
-      response = await fetch(
-        endpoint.toString(),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        }
-      );
+      response = await fetch(endpoint.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
     } catch {
-      console.error('GA4 MP fetch failed');
+      console.error("GA4 MP fetch failed");
       response = undefined;
     } finally {
       clearTimeout(timeout);
@@ -419,26 +406,20 @@ export async function POST(request: NextRequest) {
 
     if (!response || !response.ok) {
       const status = response ? response.status : 504;
-      console.error('GA4 MP request failed with status:', status);
-      return NextResponse.json(
-        { error: 'Failed to send to analytics' },
-        { status: 502 }
-      );
+      console.error("GA4 MP request failed with status:", status);
+      return NextResponse.json({ error: "Failed to send to analytics" }, { status: 502 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof PayloadTooLargeError) {
-      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 });
     }
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: 'Invalid JSON format' }, { status: 400 });
+      return NextResponse.json({ error: "Invalid JSON format" }, { status: 400 });
     }
-    console.error('Analytics tracking error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error("Analytics tracking error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

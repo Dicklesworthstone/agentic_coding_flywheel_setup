@@ -1,20 +1,15 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
-import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { CheckCircle2 } from "lucide-react";
+import React, { useCallback, useRef, useState } from "react";
+import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { cn } from "@/lib/utils";
 
 const EXHIBIT_PANEL_CLASS =
   "my-12 overflow-hidden rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl relative group/viz transition duration-500 hover:border-primary/20";
 
-type PlanDimensionId =
-  | "architecture"
-  | "workflow"
-  | "edgeCases"
-  | "novelty"
-  | "execution";
+type PlanDimensionId = "architecture" | "workflow" | "edgeCases" | "novelty" | "execution";
 type PlanModelId = "gpt" | "claude" | "gemini" | "grok";
 
 const PLAN_DIMENSIONS = [
@@ -99,8 +94,7 @@ export function PlanEvolutionStudio() {
     };
   });
   const totalScore = Math.round(
-    dimensionScores.reduce((sum, score) => sum + score.value, 0) /
-      dimensionScores.length,
+    dimensionScores.reduce((sum, score) => sum + score.value, 0) / dimensionScores.length,
   );
   const missingNotes = PLAN_MODEL_DATA.filter((model) => !enabledModels[model.id]).map(
     (model) => model.blindSpot,
@@ -131,14 +125,16 @@ export function PlanEvolutionStudio() {
             Best-of-all-worlds synthesis
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">
-            Toggle proposal plans on and off, then drag the refinement dial.
-            The point is not “many models” in the abstract; it is that
-            complementary strengths plus fresh-round revision produce a plan
-            that is harder to surprise later.
+            Toggle proposal plans on and off, then drag the refinement dial. The point is not “many
+            models” in the abstract; it is that complementary strengths plus fresh-round revision
+            produce a plan that is harder to surprise later.
           </p>
         </div>
 
-        <label htmlFor="plan-refinement-round" className="block rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner min-w-[280px]">
+        <label
+          htmlFor="plan-refinement-round"
+          className="block rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner min-w-[280px]"
+        >
           <div className="flex items-center justify-between gap-6 text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
             <span>Refinement round</span>
             <span className="text-white/80">{PLAN_REFINEMENT_LABELS[refinementRound]}</span>
@@ -155,7 +151,7 @@ export function PlanEvolutionStudio() {
               aria-label="Refinement round"
               className="h-2 w-full cursor-ew-resize appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0A0D14] [&::-webkit-slider-thumb]:bg-[#FF5500] [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,85,0,0.6)] hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform relative z-10"
               style={{
-                background: `linear-gradient(to right, rgba(255,85,0,0.5) ${(refinementRound / 4) * 100}%, rgba(255,255,255,0.05) ${(refinementRound / 4) * 100}%)`
+                background: `linear-gradient(to right, rgba(255,85,0,0.5) ${(refinementRound / 4) * 100}%, rgba(255,255,255,0.05) ${(refinementRound / 4) * 100}%)`,
               }}
             />
           </div>
@@ -184,14 +180,21 @@ export function PlanEvolutionStudio() {
                   "rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
                   enabled
                     ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
-                    : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80"
+                    : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",
                 )}
                 style={{
-                  boxShadow: enabled ? `inset 0 1px 1px rgba(255,255,255,0.05), 0 0 30px ${model.color}0A` : undefined
+                  boxShadow: enabled
+                    ? `inset 0 1px 1px rgba(255,255,255,0.05), 0 0 30px ${model.color}0A`
+                    : undefined,
                 }}
               >
                 {enabled && (
-                  <div className="absolute inset-0 bg-gradient-to-br opacity-10 pointer-events-none transition-opacity duration-500 group-hover/model:opacity-20" style={{ backgroundImage: `linear-gradient(to bottom right, ${model.color}40, transparent)` }} />
+                  <div
+                    className="absolute inset-0 bg-gradient-to-br opacity-10 pointer-events-none transition-opacity duration-500 group-hover/model:opacity-20"
+                    style={{
+                      backgroundImage: `linear-gradient(to bottom right, ${model.color}40, transparent)`,
+                    }}
+                  />
                 )}
                 <div className="flex items-start justify-between gap-4 relative z-10">
                   <div>
@@ -199,7 +202,12 @@ export function PlanEvolutionStudio() {
                       className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
                       style={{ color: model.color }}
                     >
-                      {enabled && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: model.color }} />}
+                      {enabled && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: model.color }}
+                        />
+                      )}
                       {model.role}
                     </div>
                     <div className="mt-1.5 text-lg font-black tracking-tight text-white group-hover/model:text-white transition-colors">
@@ -209,7 +217,7 @@ export function PlanEvolutionStudio() {
                   <div
                     className={cn(
                       "rounded-full px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest transition-colors",
-                      enabled ? "text-white" : "text-white/40"
+                      enabled ? "text-white" : "text-white/40",
                     )}
                     style={{
                       backgroundColor: enabled ? `${model.color}15` : "rgba(255,255,255,0.02)",
@@ -225,7 +233,10 @@ export function PlanEvolutionStudio() {
                     <span
                       key={strength}
                       className="rounded-lg border px-3 py-1.5 text-[0.7rem] font-medium text-white/70"
-                      style={{ borderColor: enabled ? `${model.color}20` : "rgba(255,255,255,0.05)", backgroundColor: enabled ? `${model.color}0A` : "transparent" }}
+                      style={{
+                        borderColor: enabled ? `${model.color}20` : "rgba(255,255,255,0.05)",
+                        backgroundColor: enabled ? `${model.color}0A` : "transparent",
+                      }}
                     >
                       {strength}
                     </span>
@@ -259,7 +270,7 @@ export function PlanEvolutionStudio() {
 
             <div className="relative mt-8 h-56 overflow-hidden rounded-2xl border border-white/[0.04] bg-[#020408] shadow-inner">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.1),transparent_60%)] pointer-events-none" />
-              
+
               {[0, 1, 2].map((sheetLayer) => (
                 <motion.div
                   key={`sheet-${sheetLayer}`}
@@ -287,7 +298,10 @@ export function PlanEvolutionStudio() {
                     <span
                       key={model.id}
                       className="rounded-full px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-widest text-white shadow-sm"
-                      style={{ backgroundColor: `${model.color}15`, border: `1px solid ${model.color}30` }}
+                      style={{
+                        backgroundColor: `${model.color}15`,
+                        border: `1px solid ${model.color}30`,
+                      }}
                     >
                       {model.label}
                     </span>
@@ -352,10 +366,16 @@ export function PlanEvolutionStudio() {
               </div>
               <div className="space-y-2 text-sm leading-relaxed text-zinc-400 font-light">
                 {missingNotes.length > 0 ? (
-                  missingNotes.map((note) => <p key={note} className="flex items-start gap-2"><span className="text-[#FF5F56] mt-0.5">•</span>{note}</p>)
+                  missingNotes.map((note) => (
+                    <p key={note} className="flex items-start gap-2">
+                      <span className="text-[#FF5F56] mt-0.5">•</span>
+                      {note}
+                    </p>
+                  ))
                 ) : (
                   <p className="flex items-center gap-2 text-[#27C93F] font-medium">
-                    <CheckCircle2 className="h-4 w-4" /> All proposal sources are active. Best-of-all-worlds.
+                    <CheckCircle2 className="h-4 w-4" /> All proposal sources are active.
+                    Best-of-all-worlds.
                   </p>
                 )}
               </div>

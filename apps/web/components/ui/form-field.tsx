@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { AnimatePresence, motion as m } from "@/components/motion";
-import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 export interface FormFieldProps {
   /** Input name for form submission */
@@ -78,7 +78,7 @@ export function FormField({
           isFocused && !showError && "border-primary",
           showError && "border-destructive",
           !isFocused && !showError && "border-border/50 hover:border-border",
-          disabled && "cursor-not-allowed opacity-60"
+          disabled && "cursor-not-allowed opacity-60",
         )}
       >
         <m.label
@@ -89,7 +89,7 @@ export function FormField({
             isFloating ? "text-xs font-medium" : "text-base text-muted-foreground",
             isFocused && !showError && "text-primary",
             showError && "text-destructive",
-            !isFocused && !showError && isFloating && "text-muted-foreground"
+            !isFocused && !showError && isFloating && "text-muted-foreground",
           )}
           animate={
             prefersReducedMotion
@@ -123,14 +123,12 @@ export function FormField({
           maxLength={maxLength}
           placeholder={isFloating ? placeholder : undefined}
           aria-invalid={showError}
-          aria-describedby={
-            error ? `${id}-error` : helperText ? `${id}-helper` : undefined
-          }
+          aria-describedby={error ? `${id}-error` : helperText ? `${id}-helper` : undefined}
           className={cn(
             "w-full bg-transparent px-4 pt-6 pb-2 text-base",
             "rounded-xl outline-none",
             "placeholder:text-muted-foreground/50",
-            disabled && "cursor-not-allowed"
+            disabled && "cursor-not-allowed",
           )}
         />
       </div>
@@ -171,7 +169,7 @@ export function FormField({
           <span
             className={cn(
               "text-sm tabular-nums",
-              value.length >= maxLength ? "text-destructive" : "text-muted-foreground"
+              value.length >= maxLength ? "text-destructive" : "text-muted-foreground",
             )}
           >
             {value.length}/{maxLength}

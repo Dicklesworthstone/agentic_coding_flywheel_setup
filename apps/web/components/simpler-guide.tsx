@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useCallback, ReactNode } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
-import { HelpCircle, ChevronDown, Lightbulb, ArrowRight, Check, Download } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { springs } from "@/components/motion";
+import { ArrowRight, Check, ChevronDown, Download, HelpCircle, Lightbulb } from "lucide-react";
+import { type ReactNode, useCallback, useState } from "react";
+import { AnimatePresence, motion, springs } from "@/components/motion";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface SimplerGuideProps {
   children: ReactNode;
@@ -28,7 +27,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
         isOpen
           ? "border-purple bg-purple/5"
           : "border-border/40 bg-muted/20 hover:border-purple/50 hover:bg-purple/3",
-        className
+        className,
       )}
     >
       {/* Toggle button */}
@@ -42,9 +41,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
           <div
             className={cn(
               "flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-              isOpen
-                ? "bg-purple text-primary-foreground"
-                : "bg-purple/15 text-purple"
+              isOpen ? "bg-purple text-primary-foreground" : "bg-purple/15 text-purple",
             )}
           >
             <HelpCircle className="h-5 w-5" />
@@ -53,7 +50,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
             <p
               className={cn(
                 "font-semibold transition-colors",
-                isOpen ? "text-purple" : "text-foreground"
+                isOpen ? "text-purple" : "text-foreground",
               )}
             >
               Make it simpler for me
@@ -63,14 +60,11 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
             </p>
           </div>
         </div>
-        <motion.div
-          animate={{ rotate: isOpen ? 180 : 0 }}
-          transition={springs.snappy}
-        >
+        <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={springs.snappy}>
           <ChevronDown
             className={cn(
               "h-5 w-5 transition-colors",
-              isOpen ? "text-purple" : "text-muted-foreground"
+              isOpen ? "text-purple" : "text-muted-foreground",
             )}
           />
         </motion.div>
@@ -150,13 +144,7 @@ export function GuideStep({
 /**
  * A checklist item showing what the user should see/do.
  */
-export function GuideCheck({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+export function GuideCheck({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className={cn("flex items-start gap-2", className)}>
       <Check className="mt-0.5 h-4 w-4 shrink-0 text-green" />
@@ -181,12 +169,10 @@ export function GuideExplain({
     <div
       className={cn(
         "overflow-hidden rounded-xl border border-primary/30 bg-primary/8 p-4",
-        className
+        className,
       )}
     >
-      <p className="mb-2 font-medium text-primary">
-        What is &quot;{term}&quot;?
-      </p>
+      <p className="mb-2 font-medium text-primary">What is &quot;{term}&quot;?</p>
       <div className="text-sm leading-relaxed text-muted-foreground">{children}</div>
     </div>
   );
@@ -244,7 +230,7 @@ export function DirectDownloadButton({
         // green) stays readable in both themes.
         "bg-green text-primary-foreground hover:bg-green/90 active:bg-green/85",
         "shadow-lg shadow-green/30",
-        className
+        className,
       )}
       onClick={handleClick}
     >
@@ -252,9 +238,7 @@ export function DirectDownloadButton({
         <Download className="h-5 w-5" />
         <span className="text-base font-semibold">{label}</span>
       </div>
-      {sublabel && (
-        <span className="text-xs font-normal opacity-90">{sublabel}</span>
-      )}
+      {sublabel && <span className="text-xs font-normal opacity-90">{sublabel}</span>}
     </Button>
   );
 }
@@ -262,19 +246,10 @@ export function DirectDownloadButton({
 /**
  * A warning/caution box for beginners.
  */
-export function GuideCaution({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+export function GuideCaution({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={cn(
-        "overflow-hidden rounded-xl border border-amber/30 bg-amber/8 p-4",
-        className
-      )}
+      className={cn("overflow-hidden rounded-xl border border-amber/30 bg-amber/8 p-4", className)}
     >
       <p className="mb-2 flex items-center gap-2 font-medium text-amber">
         <span className="text-lg">⚠️</span> Important
@@ -287,19 +262,10 @@ export function GuideCaution({
 /**
  * A tip/hint box for beginners.
  */
-export function GuideTip({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+export function GuideTip({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={cn(
-        "overflow-hidden rounded-xl border border-green/30 bg-green/8 p-4",
-        className
-      )}
+      className={cn("overflow-hidden rounded-xl border border-green/30 bg-green/8 p-4", className)}
     >
       <p className="mb-2 flex items-center gap-2 font-medium text-green">
         <span className="text-lg">💡</span> Tip

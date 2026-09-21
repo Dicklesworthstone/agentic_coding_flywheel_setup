@@ -5,9 +5,9 @@
  * Used by the Accounts wizard step and other components.
  */
 
-export type ServiceCategory = 'access' | 'agent' | 'cloud' | 'devtools';
-export type ServicePriority = 'strongly-recommended' | 'recommended' | 'optional';
-export type ServiceTier = 'essential' | 'recommended' | 'optional';
+export type ServiceCategory = "access" | "agent" | "cloud" | "devtools";
+export type ServicePriority = "strongly-recommended" | "recommended" | "optional";
+export type ServiceTier = "essential" | "recommended" | "optional";
 
 export interface Service {
   /** Unique identifier, matches manifest module id where applicable */
@@ -56,7 +56,7 @@ export interface Service {
   googleSsoUrl?: string;
 
   /** Alternative auth methods available */
-  alternativeAuth?: ('github' | 'email' | 'apple')[];
+  alternativeAuth?: ("github" | "email" | "apple")[];
 
   /** Command to run after install for authentication */
   postInstallCommand?: string;
@@ -74,184 +74,203 @@ export interface Service {
 export const SERVICES: Service[] = [
   // Access Layer
   {
-    id: 'tailscale',
-    moduleId: 'network.tailscale',
-    name: 'Tailscale',
-    provider: 'Tailscale',
-    logo: '/logos/tailscale.svg',
-    category: 'access',
+    id: "tailscale",
+    moduleId: "network.tailscale",
+    name: "Tailscale",
+    provider: "Tailscale",
+    logo: "/logos/tailscale.svg",
+    category: "access",
     // `tier` drives WHEN the accounts wizard asks for the signup (it can wait
     // until the VPS exists); `priority` and the visible copy agree that the
     // tool itself is recommended, not optional.
-    priority: 'recommended',
-    tier: 'optional',
+    priority: "recommended",
+    tier: "optional",
     sortOrder: 1,
-    shortDescription: 'Recommended: zero-config VPN for secure remote access',
-    whyNeeded: 'Recommended once your VPS is running: access it from anywhere without exposing ports. SSH over a private network, no firewall rules needed.',
-    signupUrl: 'https://login.tailscale.com/start',
+    shortDescription: "Recommended: zero-config VPN for secure remote access",
+    whyNeeded:
+      "Recommended once your VPS is running: access it from anywhere without exposing ports. SSH over a private network, no firewall rules needed.",
+    signupUrl: "https://login.tailscale.com/start",
     supportsGoogleSso: true,
-    googleSsoUrl: 'https://login.tailscale.com/start',
-    alternativeAuth: ['github', 'apple'],
-    postInstallCommand: 'sudo tailscale up',
+    googleSsoUrl: "https://login.tailscale.com/start",
+    alternativeAuth: ["github", "apple"],
+    postInstallCommand: "sudo tailscale up",
     installedByAcfs: true,
-    docsUrl: 'https://tailscale.com/kb/',
+    docsUrl: "https://tailscale.com/kb/",
   },
 
   // Coding Agents
   {
-    id: 'claude-code',
-    moduleId: 'agents.claude',
-    name: 'Claude Code',
-    provider: 'Anthropic',
-    logo: '/logos/anthropic.svg',
-    category: 'agent',
-    priority: 'strongly-recommended',
-    tier: 'essential',
+    id: "claude-code",
+    moduleId: "agents.claude",
+    name: "Claude Code",
+    provider: "Anthropic",
+    logo: "/logos/anthropic.svg",
+    category: "agent",
+    priority: "strongly-recommended",
+    tier: "essential",
     sortOrder: 2,
-    shortDescription: 'Primary AI coding agent',
+    shortDescription: "Primary AI coding agent",
     requiresSubscription: true,
-    subscriptionNote: 'Recommended: Claude Max ($200/mo) for heavy multi-agent use; Pro works for lighter use',
-    whyNeeded: 'Claude Code is your main AI pair programmer. Understands context, writes code, explains concepts. Works with Claude Pro or Max; Max is recommended for heavy multi-agent use.',
-    signupUrl: 'https://claude.ai/',
+    subscriptionNote:
+      "Recommended: Claude Max ($200/mo) for heavy multi-agent use; Pro works for lighter use",
+    whyNeeded:
+      "Claude Code is your main AI pair programmer. Understands context, writes code, explains concepts. Works with Claude Pro or Max; Max is recommended for heavy multi-agent use.",
+    signupUrl: "https://claude.ai/",
     supportsGoogleSso: true,
-    googleSsoUrl: 'https://claude.ai/login',
-    postInstallCommand: 'claude',
+    googleSsoUrl: "https://claude.ai/login",
+    postInstallCommand: "claude",
     installedByAcfs: true,
-    docsUrl: 'https://docs.anthropic.com/',
+    docsUrl: "https://docs.anthropic.com/",
   },
   {
-    id: 'codex-cli',
-    moduleId: 'agents.codex',
-    name: 'Codex CLI',
-    provider: 'OpenAI',
-    logo: '/logos/openai.svg',
-    category: 'agent',
-    priority: 'recommended',
-    tier: 'recommended',
+    id: "codex-cli",
+    moduleId: "agents.codex",
+    name: "Codex CLI",
+    provider: "OpenAI",
+    logo: "/logos/openai.svg",
+    category: "agent",
+    priority: "recommended",
+    tier: "recommended",
     sortOrder: 1,
-    shortDescription: 'OpenAI coding agent (paid ChatGPT plan)',
+    shortDescription: "OpenAI coding agent (paid ChatGPT plan)",
     requiresSubscription: true,
-    subscriptionNote: 'Recommended: ChatGPT Pro ($200/mo) for heavy use; Plus also works',
-    whyNeeded: 'Secondary AI agent. Different model = different perspectives. Signs in with a paid ChatGPT account (Plus or Pro).',
-    signupUrl: 'https://chat.openai.com/',
+    subscriptionNote: "Recommended: ChatGPT Pro ($200/mo) for heavy use; Plus also works",
+    whyNeeded:
+      "Secondary AI agent. Different model = different perspectives. Signs in with a paid ChatGPT account (Plus or Pro).",
+    signupUrl: "https://chat.openai.com/",
     supportsGoogleSso: true,
-    googleSsoUrl: 'https://chat.openai.com/auth/login',
-    alternativeAuth: ['apple', 'email'],
-    postInstallCommand: 'codex login --device-auth',
+    googleSsoUrl: "https://chat.openai.com/auth/login",
+    alternativeAuth: ["apple", "email"],
+    postInstallCommand: "codex login --device-auth",
     installedByAcfs: true,
     // The Codex CLI repository, not the OpenAI platform/API docs (a different
     // product: the wizard signs Codex in with a ChatGPT account, not an API key).
-    docsUrl: 'https://github.com/openai/codex',
+    docsUrl: "https://github.com/openai/codex",
   },
   {
-    id: 'antigravity-cli',
-    moduleId: 'agents.antigravity',
-    name: 'Antigravity CLI',
-    provider: 'Google',
-    logo: '/logos/google.svg',
-    category: 'agent',
-    priority: 'optional',
-    tier: 'recommended',
+    id: "antigravity-cli",
+    moduleId: "agents.antigravity",
+    name: "Antigravity CLI",
+    provider: "Google",
+    logo: "/logos/google.svg",
+    category: "agent",
+    priority: "optional",
+    tier: "recommended",
     sortOrder: 2,
-    shortDescription: 'Google AI coding agent launched with agy',
+    shortDescription: "Google AI coding agent launched with agy",
     requiresSubscription: true,
-    subscriptionNote: 'Requires eligible Google/Gemini access',
-    whyNeeded: 'Third AI option. Uses Gemini 3.8 Flash (High) through Antigravity. Good for Google Cloud projects and fresh-perspective reviews.',
-    signupUrl: 'https://accounts.google.com/',
+    subscriptionNote: "Requires eligible Google/Gemini access",
+    whyNeeded:
+      "Third AI option. Uses Gemini 3.8 Flash (High) through Antigravity. Good for Google Cloud projects and fresh-perspective reviews.",
+    signupUrl: "https://accounts.google.com/",
     supportsGoogleSso: true, // It IS Google
-    postInstallCommand: 'agy',
+    postInstallCommand: "agy",
     installedByAcfs: true,
-    docsUrl: '/learn/tools/antigravity-cli',
+    docsUrl: "/learn/tools/antigravity-cli",
   },
 
   // Developer Tools
   {
-    id: 'github',
-    moduleId: 'cli.modern',
-    name: 'GitHub',
-    provider: 'Microsoft',
-    logo: '/logos/github.svg',
-    category: 'devtools',
-    priority: 'strongly-recommended',
-    tier: 'essential',
+    id: "github",
+    moduleId: "cli.modern",
+    name: "GitHub",
+    provider: "Microsoft",
+    logo: "/logos/github.svg",
+    category: "devtools",
+    priority: "strongly-recommended",
+    tier: "essential",
     sortOrder: 1,
-    shortDescription: 'Code hosting and version control',
-    whyNeeded: 'Store your code, collaborate, use GitHub Actions for CI/CD. Essential for any developer.',
-    signupUrl: 'https://github.com/signup',
+    shortDescription: "Code hosting and version control",
+    whyNeeded:
+      "Store your code, collaborate, use GitHub Actions for CI/CD. Essential for any developer.",
+    signupUrl: "https://github.com/signup",
     supportsGoogleSso: false, // Email-based, but can link Google email
-    alternativeAuth: ['email'],
-    postInstallCommand: 'gh auth login',
+    alternativeAuth: ["email"],
+    postInstallCommand: "gh auth login",
     installedByAcfs: true,
-    docsUrl: 'https://docs.github.com/',
+    docsUrl: "https://docs.github.com/",
   },
 
   // Cloud Platforms
   {
-    id: 'vercel',
-    moduleId: 'cloud.vercel',
-    name: 'Vercel',
-    provider: 'Vercel',
-    logo: '/logos/vercel.svg',
-    category: 'cloud',
-    priority: 'recommended',
-    tier: 'optional',
+    id: "vercel",
+    moduleId: "cloud.vercel",
+    name: "Vercel",
+    provider: "Vercel",
+    logo: "/logos/vercel.svg",
+    category: "cloud",
+    priority: "recommended",
+    tier: "optional",
     sortOrder: 2,
-    shortDescription: 'Frontend deployment platform',
-    whyNeeded: 'Deploy Next.js, React, and static sites with zero config. Git push = live site.',
-    signupUrl: 'https://vercel.com/signup',
+    shortDescription: "Frontend deployment platform",
+    whyNeeded: "Deploy Next.js, React, and static sites with zero config. Git push = live site.",
+    signupUrl: "https://vercel.com/signup",
     supportsGoogleSso: true,
-    alternativeAuth: ['github', 'email'],
-    postInstallCommand: 'vercel login',
+    alternativeAuth: ["github", "email"],
+    postInstallCommand: "vercel login",
     installedByAcfs: true,
-    docsUrl: 'https://vercel.com/docs',
+    docsUrl: "https://vercel.com/docs",
   },
   {
-    id: 'supabase',
-    moduleId: 'cloud.supabase',
-    name: 'Supabase',
-    provider: 'Supabase',
-    logo: '/logos/supabase.svg',
-    category: 'cloud',
-    priority: 'optional',
-    tier: 'optional',
+    id: "supabase",
+    moduleId: "cloud.supabase",
+    name: "Supabase",
+    provider: "Supabase",
+    logo: "/logos/supabase.svg",
+    category: "cloud",
+    priority: "optional",
+    tier: "optional",
     sortOrder: 3,
-    shortDescription: 'Postgres database + auth + realtime',
-    whyNeeded: 'Firebase alternative with real Postgres. Great for MVPs and full apps alike.',
-    signupUrl: 'https://supabase.com/dashboard',
+    shortDescription: "Postgres database + auth + realtime",
+    whyNeeded: "Firebase alternative with real Postgres. Great for MVPs and full apps alike.",
+    signupUrl: "https://supabase.com/dashboard",
     supportsGoogleSso: true,
-    alternativeAuth: ['github'],
-    postInstallCommand: 'supabase login --token YOUR_SUPABASE_ACCESS_TOKEN',
+    alternativeAuth: ["github"],
+    postInstallCommand: "supabase login --token YOUR_SUPABASE_ACCESS_TOKEN",
     installedByAcfs: true,
-    docsUrl: 'https://supabase.com/docs',
+    docsUrl: "https://supabase.com/docs",
   },
   {
-    id: 'cloudflare',
-    moduleId: 'cloud.wrangler',
-    name: 'Cloudflare',
-    provider: 'Cloudflare',
-    logo: '/logos/cloudflare.svg',
-    category: 'cloud',
-    priority: 'optional',
-    tier: 'optional',
+    id: "cloudflare",
+    moduleId: "cloud.wrangler",
+    name: "Cloudflare",
+    provider: "Cloudflare",
+    logo: "/logos/cloudflare.svg",
+    category: "cloud",
+    priority: "optional",
+    tier: "optional",
     sortOrder: 4,
-    shortDescription: 'CDN, DNS, Workers, and more',
-    whyNeeded: 'Free CDN, DNS management, edge computing. Great for performance and DDoS protection.',
-    signupUrl: 'https://dash.cloudflare.com/sign-up',
+    shortDescription: "CDN, DNS, Workers, and more",
+    whyNeeded:
+      "Free CDN, DNS management, edge computing. Great for performance and DDoS protection.",
+    signupUrl: "https://dash.cloudflare.com/sign-up",
     supportsGoogleSso: false, // Email-based only
-    alternativeAuth: ['email'],
-    postInstallCommand: '${EDITOR:-nano} ~/.zshrc',
+    alternativeAuth: ["email"],
+    postInstallCommand: "${EDITOR:-nano} ~/.zshrc",
     installedByAcfs: true,
-    docsUrl: 'https://developers.cloudflare.com/',
+    docsUrl: "https://developers.cloudflare.com/",
   },
 ];
 
 // Helper functions
 /** Use the resolver's dependency-complete selection, never the profile label alone. */
-export function getSelectedAuthServices(moduleIds: ReadonlySet<string>): Record<ServiceCategory, Service[]> {
-  const groups: Record<ServiceCategory, Service[]> = { access: [], agent: [], cloud: [], devtools: [] };
+export function getSelectedAuthServices(
+  moduleIds: ReadonlySet<string>,
+): Record<ServiceCategory, Service[]> {
+  const groups: Record<ServiceCategory, Service[]> = {
+    access: [],
+    agent: [],
+    cloud: [],
+    devtools: [],
+  };
   for (const service of SERVICES) {
-    if (service.installedByAcfs && service.postInstallCommand && service.moduleId
-        && moduleIds.has(service.moduleId)) groups[service.category].push(service);
+    if (
+      service.installedByAcfs &&
+      service.postInstallCommand &&
+      service.moduleId &&
+      moduleIds.has(service.moduleId)
+    )
+      groups[service.category].push(service);
   }
   return groups;
 }
@@ -295,21 +314,21 @@ export function getServiceById(id: string): Service | undefined {
 
 /** Category display names */
 export const CATEGORY_NAMES: Record<ServiceCategory, string> = {
-  access: 'Access & Security',
-  agent: 'AI Coding Agents',
-  cloud: 'Cloud Platforms',
-  devtools: 'Developer Tools',
+  access: "Access & Security",
+  agent: "AI Coding Agents",
+  cloud: "Cloud Platforms",
+  devtools: "Developer Tools",
 };
 
 /** Priority display names */
 export const PRIORITY_NAMES: Record<ServicePriority, string> = {
-  'strongly-recommended': 'Strongly Recommended',
-  recommended: 'Recommended',
-  optional: 'Optional',
+  "strongly-recommended": "Strongly Recommended",
+  recommended: "Recommended",
+  optional: "Optional",
 };
 
 export const TIER_NAMES: Record<ServiceTier, string> = {
-  essential: 'Essential',
-  recommended: 'Recommended',
-  optional: 'Optional',
+  essential: "Essential",
+  recommended: "Recommended",
+  optional: "Optional",
 };

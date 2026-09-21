@@ -1,26 +1,18 @@
-'use client';
+"use client";
 
+import { CheckCircle2, FileText, Play, Power, RotateCcw, Search, Terminal } from "lucide-react";
 import {
-  Terminal,
-  Power,
-  Play,
-  Search,
-  FileText,
-  RotateCcw,
-  CheckCircle2,
-} from 'lucide-react';
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function PfrLesson() {
   return (
@@ -32,15 +24,15 @@ export function PfrLesson() {
       {/* Section 1: What Is PFR */}
       <Section title="What Is PFR?" icon={<Power className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>pfr (Power Failure Resumer)</Highlight> recovers crashed agent
-          sessions after a hard power cut. Its forensic insight: when the machine dies,
-          every crashed session&apos;s file stops changing at nearly the same moment
-          before boot. PFR clusters that pocket of last-modified timestamps, then scores
-          each candidate&apos;s confidence as high, medium, or low, with printed reasons.
+          <Highlight>pfr (Power Failure Resumer)</Highlight> recovers crashed agent sessions after a
+          hard power cut. Its forensic insight: when the machine dies, every crashed session&apos;s
+          file stops changing at nearly the same moment before boot. PFR clusters that pocket of
+          last-modified timestamps, then scores each candidate&apos;s confidence as high, medium, or
+          low, with printed reasons.
         </Paragraph>
         <Paragraph>
-          Sessions that were already resumed are skipped automatically, so running it
-          twice never double-opens anything.
+          Sessions that were already resumed are skipped automatically, so running it twice never
+          double-opens anything.
         </Paragraph>
 
         <div className="mt-8">
@@ -79,10 +71,16 @@ export function PfrLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'pfr --dry-run', description: 'Show what would be resumed, without touching anything' },
-            { command: 'pfr -y', description: 'Resume all detected victims without prompting' },
-            { command: 'pfr --last-plan --pick', description: 'Review the frozen plan and pick sessions to resume' },
-            { command: 'pfr --doctor --json', description: 'Verify installation health' },
+            {
+              command: "pfr --dry-run",
+              description: "Show what would be resumed, without touching anything",
+            },
+            { command: "pfr -y", description: "Resume all detected victims without prompting" },
+            {
+              command: "pfr --last-plan --pick",
+              description: "Review the frozen plan and pick sessions to resume",
+            },
+            { command: "pfr --doctor --json", description: "Verify installation health" },
           ]}
         />
       </Section>
@@ -91,7 +89,8 @@ export function PfrLesson() {
 
       {/* Section 3: How Recovery Works */}
       <Section title="How Recovery Works" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# After the machine comes back up, see what died
+        <CodeBlock
+          code={`# After the machine comes back up, see what died
 pfr --dry-run
 
 # Happy with the plan? Resume everything
@@ -103,19 +102,20 @@ pfr -y
 # ...each in its own terminal tab.
 
 # Afterward, pfr verifies against ps and writes last-report.json.
-# A silent failure (tab opened but no live process) exits non-zero.`} />
+# A silent failure (tab opened but no live process) exits non-zero.`}
+        />
 
         <Paragraph>
-          The plan-then-act split matters: <Highlight>last-plan.json</Highlight> freezes
-          the detection decisions so you can inspect or re-run them with{' '}
-          <Highlight>--last-plan --pick</Highlight>, and{' '}
-          <Highlight>last-report.json</Highlight> records what actually happened.
+          The plan-then-act split matters: <Highlight>last-plan.json</Highlight> freezes the
+          detection decisions so you can inspect or re-run them with{" "}
+          <Highlight>--last-plan --pick</Highlight>, and <Highlight>last-report.json</Highlight>{" "}
+          records what actually happened.
         </Paragraph>
 
         <TipBox variant="warning">
-          There is no <Highlight>--version</Highlight> flag; use{' '}
-          <Highlight>pfr --doctor</Highlight> instead. PFR is a local-workstation tool:
-          on a headless server it can still plan, but it cannot reopen terminal tabs.
+          There is no <Highlight>--version</Highlight> flag; use <Highlight>pfr --doctor</Highlight>{" "}
+          instead. PFR is a local-workstation tool: on a headless server it can still plan, but it
+          cannot reopen terminal tabs.
         </TipBox>
       </Section>
     </div>

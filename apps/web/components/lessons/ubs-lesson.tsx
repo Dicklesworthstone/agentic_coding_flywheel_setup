@@ -1,65 +1,58 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { motion, AnimatePresence, springs, useInView } from "@/components/motion";
 import {
-  Bug,
-  Shield,
-  Terminal,
   AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  Bug,
   CheckCircle,
-  XCircle,
-  Zap,
-  Search,
+  ChevronRight,
+  Code,
+  Eye,
   FileCode,
+  FolderOpen,
   GitCommit,
   Lightbulb,
-  Play,
-  RotateCcw,
-  ChevronRight,
-  Eye,
-  Wrench,
-  RefreshCw,
-  FolderOpen,
   Lock,
-  Code,
-  BarChart3,
-  ArrowRight,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Shield,
+  Terminal,
+  Wrench,
+  XCircle,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function UbsLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Learn to catch bugs before they reach production with UBS.
-      </GoalBanner>
+      <GoalBanner>Learn to catch bugs before they reach production with UBS.</GoalBanner>
 
       {/* What Is UBS */}
-      <Section
-        title="What Is UBS?"
-        icon={<Bug className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is UBS?" icon={<Bug className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>UBS (Ultimate Bug Scanner)</Highlight> is your safety net
-          before every commit. It scans your code for common bugs, security
-          issues, and anti-patterns that might slip through during development.
+          <Highlight>UBS (Ultimate Bug Scanner)</Highlight> is your safety net before every commit.
+          It scans your code for common bugs, security issues, and anti-patterns that might slip
+          through during development.
         </Paragraph>
         <Paragraph>
-          Think of it as a code review bot that catches issues in seconds, not
-          hours.
+          Think of it as a code review bot that catches issues in seconds, not hours.
         </Paragraph>
 
         <div className="mt-8">
@@ -95,11 +88,7 @@ export function UbsLesson() {
       <Divider />
 
       {/* The Golden Rule */}
-      <Section
-        title="The Golden Rule"
-        icon={<GitCommit className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="The Golden Rule" icon={<GitCommit className="h-5 w-5" />} delay={0.15}>
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -111,8 +100,7 @@ export function UbsLesson() {
             </div>
             <div>
               <p className="text-lg font-bold text-white">
-                Run <code className="text-amber-400">ubs</code> before every
-                commit.
+                Run <code className="text-amber-400">ubs</code> before every commit.
               </p>
               <p className="text-white/60 mt-1">
                 Exit 0 = safe to commit. Exit &gt;0 = fix issues first.
@@ -125,11 +113,7 @@ export function UbsLesson() {
       <Divider />
 
       {/* Essential Commands */}
-      <Section
-        title="Essential Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
             {
@@ -157,9 +141,8 @@ export function UbsLesson() {
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Always scope to changed files when possible.{" "}
-            <code>ubs file.ts</code> runs in under 1 second, while{" "}
-            <code>ubs .</code> may take 30+ seconds.
+            Always scope to changed files when possible. <code>ubs file.ts</code> runs in under 1
+            second, while <code>ubs .</code> may take 30+ seconds.
           </TipBox>
         </div>
       </Section>
@@ -167,11 +150,7 @@ export function UbsLesson() {
       <Divider />
 
       {/* Understanding Output */}
-      <Section
-        title="Understanding Output"
-        icon={<Search className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Understanding Output" icon={<Search className="h-5 w-5" />} delay={0.25}>
         <Paragraph>UBS output follows a consistent format:</Paragraph>
 
         <div className="mt-6">
@@ -199,11 +178,7 @@ Exit code: 1`}
             meaning="Exact location of the issue"
             color="text-emerald-400"
           />
-          <OutputExplainer
-            pattern="\ud83d\udca1"
-            meaning="Suggested fix"
-            color="text-amber-400"
-          />
+          <OutputExplainer pattern="\ud83d\udca1" meaning="Suggested fix" color="text-amber-400" />
           <OutputExplainer
             pattern="Exit code 0/1"
             meaning="Pass (safe) / Fail (needs fixes)"
@@ -215,11 +190,7 @@ Exit code: 1`}
       <Divider />
 
       {/* Bug Severity */}
-      <Section
-        title="Bug Severity Guide"
-        icon={<AlertTriangle className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Bug Severity Guide" icon={<AlertTriangle className="h-5 w-5" />} delay={0.3}>
         <div className="space-y-4">
           <SeverityCard
             level="Critical"
@@ -266,25 +237,15 @@ Exit code: 1`}
       <Divider />
 
       {/* The Fix Workflow */}
-      <Section
-        title="The Fix Workflow"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="The Fix Workflow" icon={<Zap className="h-5 w-5" />} delay={0.35}>
         <InteractiveBugScanner />
       </Section>
 
       <Divider />
 
       {/* Pre-Commit Hook */}
-      <Section
-        title="Pre-Commit Integration"
-        icon={<GitCommit className="h-5 w-5" />}
-        delay={0.4}
-      >
-        <Paragraph>
-          For maximum safety, add UBS to your pre-commit workflow:
-        </Paragraph>
+      <Section title="Pre-Commit Integration" icon={<GitCommit className="h-5 w-5" />} delay={0.4}>
+        <Paragraph>For maximum safety, add UBS to your pre-commit workflow:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -301,8 +262,8 @@ $ git commit -m "feat: add user auth"`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            ACFS agents are trained to run <code>ubs</code> automatically
-            before committing. You get this protection by default!
+            ACFS agents are trained to run <code>ubs</code> automatically before committing. You get
+            this protection by default!
           </TipBox>
         </div>
       </Section>
@@ -310,11 +271,7 @@ $ git commit -m "feat: add user auth"`}
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="Try It Now" icon={<Terminal className="h-5 w-5" />} delay={0.45}>
         <CodeBlock
           code={`# View session logs
 $ ubs sessions --entries 1
@@ -351,9 +308,7 @@ function OutputExplainer({
       className="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] backdrop-blur-xl transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
     >
       <code className={`font-mono text-sm font-medium ${color}`}>{pattern}</code>
-      <span className="text-white/50 group-hover:text-white/70 transition-colors">
-        {"\u2192"}
-      </span>
+      <span className="text-white/50 group-hover:text-white/70 transition-colors">{"\u2192"}</span>
       <span className="text-white/60 group-hover:text-white/80 transition-colors">{meaning}</span>
     </motion.div>
   );
@@ -456,9 +411,7 @@ const SCENARIOS: ScanScenario[] = [
     label: "Clean Code",
     description: "A well-written file passes with zero findings",
     command: "ubs src/utils/helpers.ts",
-    files: [
-      { name: "src/utils/helpers.ts", icon: "code", linesScanned: 84 },
-    ],
+    files: [{ name: "src/utils/helpers.ts", icon: "code", linesScanned: 84 }],
     findings: [],
     exitCode: 0,
     ciMode: false,
@@ -468,9 +421,7 @@ const SCENARIOS: ScanScenario[] = [
     label: "SQL Injection",
     description: "Detects string interpolation in database queries",
     command: "ubs src/api/users.ts",
-    files: [
-      { name: "src/api/users.ts", icon: "file", linesScanned: 127 },
-    ],
+    files: [{ name: "src/api/users.ts", icon: "file", linesScanned: 127 }],
     findings: [
       {
         id: 0,
@@ -503,9 +454,7 @@ const SCENARIOS: ScanScenario[] = [
     label: "Unquoted Variable",
     description: "Catches unquoted shell variable that can cause word splitting",
     command: "ubs scripts/deploy.sh",
-    files: [
-      { name: "scripts/deploy.sh", icon: "code", linesScanned: 53 },
-    ],
+    files: [{ name: "scripts/deploy.sh", icon: "code", linesScanned: 53 }],
     findings: [
       {
         id: 0,
@@ -527,9 +476,7 @@ const SCENARIOS: ScanScenario[] = [
     label: "Resource Leak",
     description: "Finds unclosed file handles and connections",
     command: "ubs src/db/connection.ts",
-    files: [
-      { name: "src/db/connection.ts", icon: "lock", linesScanned: 98 },
-    ],
+    files: [{ name: "src/db/connection.ts", icon: "lock", linesScanned: 98 }],
     findings: [
       {
         id: 0,
@@ -696,14 +643,7 @@ const SEVERITY_CONFIG: Record<
   },
 };
 
-type WarRoomPhase =
-  | "idle"
-  | "scanning"
-  | "results"
-  | "inspect"
-  | "fixing"
-  | "rescan"
-  | "done";
+type WarRoomPhase = "idle" | "scanning" | "results" | "inspect" | "fixing" | "rescan" | "done";
 
 const FIX_WORKFLOW_STEPS = [
   { icon: Eye, label: "Read Finding" },
@@ -772,9 +712,7 @@ function InteractiveBugScanner() {
 
   const queueUiTimer = useCallback((callback: () => void, delay = 0) => {
     const timer = window.setTimeout(() => {
-      fixTimersRef.current = fixTimersRef.current.filter(
-        (pendingTimer) => pendingTimer !== timer,
-      );
+      fixTimersRef.current = fixTimersRef.current.filter((pendingTimer) => pendingTimer !== timer);
       callback();
     }, delay);
 
@@ -801,7 +739,7 @@ function InteractiveBugScanner() {
       resetState();
       setScenarioIdx(idx);
     },
-    [resetState]
+    [resetState],
   );
 
   const startScan = useCallback(() => {
@@ -861,9 +799,12 @@ function InteractiveBugScanner() {
             setPhase(sc.findings.length > 0 ? "results" : "done");
             // Reveal findings one at a time
             sc.findings.forEach((_, i) => {
-              queueUiTimer(() => {
-                setVisibleFindings((prev) => [...prev, i]);
-              }, (i + 1) * 300);
+              queueUiTimer(
+                () => {
+                  setVisibleFindings((prev) => [...prev, i]);
+                },
+                (i + 1) * 300,
+              );
             });
           }, 200);
         }
@@ -878,7 +819,7 @@ function InteractiveBugScanner() {
         setPhase("inspect");
       }
     },
-    [phase]
+    [phase],
   );
 
   const startFixWorkflow = useCallback(() => {
@@ -903,7 +844,7 @@ function InteractiveBugScanner() {
         if (i === 1) {
           queueUiTimer(() => {
             addTerminalLine(
-              `$ vim ${scenario.findings[0]?.file ?? "file.ts"}:${scenario.findings[0]?.line ?? 1}`
+              `$ vim ${scenario.findings[0]?.file ?? "file.ts"}:${scenario.findings[0]?.line ?? 1}`,
             );
           });
         }
@@ -931,24 +872,26 @@ function InteractiveBugScanner() {
   // --- Severity heatmap data ---
   const heatmapData = scenario.files.map((file) => {
     const fileFindings = scenario.findings.filter((f) => f.file === file.name);
-    const critCount = fileFindings.filter(
-      (f) => f.severity === "critical"
-    ).length;
-    const impCount = fileFindings.filter(
-      (f) => f.severity === "important"
-    ).length;
-    const ctxCount = fileFindings.filter(
-      (f) => f.severity === "contextual"
-    ).length;
-    return { file: file.name, critical: critCount, important: impCount, contextual: ctxCount, total: fileFindings.length };
+    const critCount = fileFindings.filter((f) => f.severity === "critical").length;
+    const impCount = fileFindings.filter((f) => f.severity === "important").length;
+    const ctxCount = fileFindings.filter((f) => f.severity === "contextual").length;
+    return {
+      file: file.name,
+      critical: critCount,
+      important: impCount,
+      contextual: ctxCount,
+      total: fileFindings.length,
+    };
   });
 
   const hasFindings = scenario.findings.length > 0;
-  const showHeatmap =
-    (phase === "results" || phase === "inspect") && hasFindings;
+  const showHeatmap = (phase === "results" || phase === "inspect") && hasFindings;
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Scenario Selector */}
       <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-white/[0.08] bg-white/[0.02] overflow-x-auto scrollbar-none">
         {SCENARIOS.map((sc, i) => (
@@ -979,13 +922,9 @@ function InteractiveBugScanner() {
       <div className="flex items-center gap-3 px-4 py-2 border-b border-white/[0.06] bg-white/[0.01]">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <Terminal className="h-3.5 w-3.5 text-white/30 shrink-0" />
-          <code className="text-xs text-primary/80 font-mono truncate">
-            {scenario.command}
-          </code>
+          <code className="text-xs text-primary/80 font-mono truncate">{scenario.command}</code>
         </div>
-        <span className="text-xs text-white/30 shrink-0">
-          {scenario.description}
-        </span>
+        <span className="text-xs text-white/30 shrink-0">{scenario.description}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1px_1fr] min-h-[420px]">
@@ -1009,9 +948,7 @@ function InteractiveBugScanner() {
               const prog = fileProgress[i] ?? 0;
               const isDone = prog >= 100;
               const isActive = phase === "scanning" && i === currentFileIdx;
-              const fileFindings = scenario.findings.filter(
-                (f) => f.file === file.name
-              );
+              const fileFindings = scenario.findings.filter((f) => f.file === file.name);
               const hasIssues = isDone && fileFindings.length > 0;
 
               return (
@@ -1035,9 +972,7 @@ function InteractiveBugScanner() {
                     <span className="text-xs font-mono text-white/60 truncate flex-1">
                       {file.name}
                     </span>
-                    <span className="text-[10px] text-white/30">
-                      {file.linesScanned} lines
-                    </span>
+                    <span className="text-[10px] text-white/30">{file.linesScanned} lines</span>
                     {isDone && !hasIssues && (
                       <motion.span
                         initial={{ scale: 0 }}
@@ -1055,9 +990,7 @@ function InteractiveBugScanner() {
                         className="flex items-center gap-1"
                       >
                         <XCircle className="h-3 w-3 text-red-400" />
-                        <span className="text-[10px] text-red-400">
-                          {fileFindings.length}
-                        </span>
+                        <span className="text-[10px] text-red-400">{fileFindings.length}</span>
                       </motion.span>
                     )}
                   </div>
@@ -1115,10 +1048,7 @@ function InteractiveBugScanner() {
                   {heatmapData
                     .filter((d) => d.total > 0)
                     .map((row) => {
-                      const maxFindings = Math.max(
-                        ...heatmapData.map((d) => d.total),
-                        1
-                      );
+                      const maxFindings = Math.max(...heatmapData.map((d) => d.total), 1);
                       const pct = Math.round((row.total / maxFindings) * 100);
 
                       return (
@@ -1176,15 +1106,11 @@ function InteractiveBugScanner() {
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-[10px] text-white/30">
-                        Important
-                      </span>
+                      <span className="text-[10px] text-white/30">Important</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-[10px] text-white/30">
-                        Contextual
-                      </span>
+                      <span className="text-[10px] text-white/30">Contextual</span>
                     </div>
                   </div>
                 </div>
@@ -1208,9 +1134,7 @@ function InteractiveBugScanner() {
                   <motion.span
                     animate={inView ? { opacity: [1, 0, 1] } : { opacity: 1 }}
                     transition={
-                      inView
-                        ? { duration: 1, repeat: Infinity, ease: "linear" }
-                        : { duration: 0.2 }
+                      inView ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
                     }
                     className="inline-block w-1.5 h-3 bg-white/40 ml-0.5 align-middle"
                   />
@@ -1262,12 +1186,8 @@ function InteractiveBugScanner() {
                   <Bug className="h-8 w-8 text-primary" />
                 </div>
                 <div className="text-center">
-                  <p className="text-white/70 text-sm font-medium">
-                    {scenario.label} Scenario
-                  </p>
-                  <p className="text-white/40 text-xs mt-1 max-w-[240px]">
-                    {scenario.description}
-                  </p>
+                  <p className="text-white/70 text-sm font-medium">{scenario.label} Scenario</p>
+                  <p className="text-white/40 text-xs mt-1 max-w-[240px]">{scenario.description}</p>
                 </div>
                 {scenario.ciMode && (
                   <motion.div
@@ -1307,9 +1227,7 @@ function InteractiveBugScanner() {
                 <motion.div
                   animate={inView ? { rotate: 360 } : { rotate: 0 }}
                   transition={
-                    inView
-                      ? { duration: 2, repeat: Infinity, ease: "linear" }
-                      : { duration: 0.2 }
+                    inView ? { duration: 2, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
                   }
                 >
                   <Search className="h-10 w-10 text-primary" />
@@ -1328,7 +1246,7 @@ function InteractiveBugScanner() {
                               ((fileProgress.filter((p) => p >= 100).length +
                                 (fileProgress[currentFileIdx] ?? 0) / 100) /
                                 scenario.files.length) *
-                                100
+                                100,
                             )
                           : 0
                       }%`,
@@ -1371,9 +1289,7 @@ function InteractiveBugScanner() {
                   )}
                   <span
                     className={`text-sm font-medium ${
-                      scenario.exitCode === 0
-                        ? "text-emerald-400"
-                        : "text-red-400"
+                      scenario.exitCode === 0 ? "text-emerald-400" : "text-red-400"
                     }`}
                   >
                     Exit {scenario.exitCode}
@@ -1407,12 +1323,8 @@ function InteractiveBugScanner() {
                           >
                             <div className="p-2.5">
                               <div className="flex items-center gap-2">
-                                <span
-                                  className={`w-2 h-2 rounded-full ${styles.dot} shrink-0`}
-                                />
-                                <span
-                                  className={`text-xs font-bold ${styles.text}`}
-                                >
+                                <span className={`w-2 h-2 rounded-full ${styles.dot} shrink-0`} />
+                                <span className={`text-xs font-bold ${styles.text}`}>
                                   {finding.title}
                                 </span>
                                 <span
@@ -1421,8 +1333,7 @@ function InteractiveBugScanner() {
                                   {styles.label}
                                 </span>
                                 <span className="text-[10px] text-white/30 ml-auto font-mono shrink-0">
-                                  {finding.file.split("/").pop()}:{finding.line}:
-                                  {finding.col}
+                                  {finding.file.split("/").pop()}:{finding.line}:{finding.col}
                                 </span>
                               </div>
                               <p className="text-xs text-white/50 mt-1 ml-4">
@@ -1509,9 +1420,7 @@ function InteractiveBugScanner() {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Wrench className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium text-white/70">
-                    Fix Workflow
-                  </span>
+                  <span className="text-sm font-medium text-white/70">Fix Workflow</span>
                 </div>
 
                 {/* Fix workflow stepper */}
@@ -1552,9 +1461,7 @@ function InteractiveBugScanner() {
                           ) : (
                             <StepIcon
                               className={`h-3.5 w-3.5 ${
-                                isCurrent
-                                  ? "text-primary"
-                                  : "text-white/30"
+                                isCurrent ? "text-primary" : "text-white/30"
                               }`}
                             />
                           )}
@@ -1574,15 +1481,15 @@ function InteractiveBugScanner() {
                           <motion.div
                             className="ml-auto flex items-center gap-1"
                             animate={inView ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
-                            transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
+                            transition={
+                              inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }
+                            }
                           >
                             <ChevronRight className="h-3 w-3 text-primary" />
                           </motion.div>
                         )}
                         {isComplete && (
-                          <span className="ml-auto text-[10px] text-emerald-400/60">
-                            Done
-                          </span>
+                          <span className="ml-auto text-[10px] text-emerald-400/60">Done</span>
                         )}
                       </motion.div>
                     );
@@ -1606,9 +1513,7 @@ function InteractiveBugScanner() {
                         <span className="text-[11px] text-emerald-400/70 line-through">
                           {f.title}
                         </span>
-                        <span className="text-[10px] text-emerald-400/40 ml-auto">
-                          Fixed
-                        </span>
+                        <span className="text-[10px] text-emerald-400/40 ml-auto">Fixed</span>
                       </div>
                     ))}
                   </motion.div>

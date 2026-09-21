@@ -1,37 +1,37 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
 import {
-  ListTodo,
-  GitBranch,
-  Terminal,
+  AlertTriangle,
+  ArrowRight,
   BarChart,
-  Target,
-  Workflow,
   CheckCircle,
-  Zap,
+  ChevronRight,
+  Circle,
+  Clock,
+  GitBranch,
+  ListTodo,
+  Lock,
   Network,
   Play,
   RotateCcw,
-  ChevronRight,
-  AlertTriangle,
-  Clock,
-  ArrowRight,
-  Circle,
-  Lock,
+  Target,
+  Terminal,
+  Workflow,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function BeadsLesson() {
@@ -42,24 +42,19 @@ export function BeadsLesson() {
       </GoalBanner>
 
       {/* What Is Beads */}
-      <Section
-        title="What Is beads_rust (br)?"
-        icon={<ListTodo className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is beads_rust (br)?" icon={<ListTodo className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>beads_rust</Highlight> (<code>br</code>) is a graph-aware issue tracking system
-          designed for agent workflows. It tracks dependencies between tasks
-          and uses graph algorithms to tell you what to work on next.
+          designed for agent workflows. It tracks dependencies between tasks and uses graph
+          algorithms to tell you what to work on next.
         </Paragraph>
         <Paragraph>
-          <Highlight>BV (Beads Viewer)</Highlight> is the TUI and CLI for
-          working with beads. It provides both interactive views and
-          machine-readable outputs for agents.
+          <Highlight>BV (Beads Viewer)</Highlight> is the TUI and CLI for working with beads. It
+          provides both interactive views and machine-readable outputs for agents.
         </Paragraph>
         <TipBox variant="info">
-          <code>br</code> is the CLI for the beads_rust issue tracker.
-          Use <code>br --help</code> for all available commands.
+          <code>br</code> is the CLI for the beads_rust issue tracker. Use <code>br --help</code>{" "}
+          for all available commands.
         </TipBox>
 
         <div className="mt-8">
@@ -95,11 +90,7 @@ export function BeadsLesson() {
       <Divider />
 
       {/* Core Commands */}
-      <Section
-        title="Core br Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Core br Commands" icon={<Terminal className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
           <code>br</code> is the CLI for managing beads issues:
         </Paragraph>
@@ -145,9 +136,8 @@ export function BeadsLesson() {
 
         <div className="mt-6">
           <TipBox variant="warning">
-            <strong>Important:</strong> Never run bare <code>bv</code>—it
-            launches a TUI. Use <code>bv --robot-*</code> flags for agent
-            output.
+            <strong>Important:</strong> Never run bare <code>bv</code>—it launches a TUI. Use{" "}
+            <code>bv --robot-*</code> flags for agent output.
           </TipBox>
         </div>
       </Section>
@@ -155,20 +145,20 @@ export function BeadsLesson() {
       <Divider />
 
       {/* BV Robot Commands */}
-      <Section
-        title="BV Robot Commands"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.2}
-      >
-        <Paragraph>
-          BV provides machine-readable outputs with precomputed graph metrics:
-        </Paragraph>
+      <Section title="BV Robot Commands" icon={<Zap className="h-5 w-5" />} delay={0.2}>
+        <Paragraph>BV provides machine-readable outputs with precomputed graph metrics:</Paragraph>
 
         <div className="mt-6 space-y-6">
           <RobotCommand
             command="bv --robot-triage"
             description="THE mega-command: recommendations, quick wins, blockers to clear"
-            output={["quick_ref", "recommendations", "quick_wins", "blockers_to_clear", "project_health"]}
+            output={[
+              "quick_ref",
+              "recommendations",
+              "quick_wins",
+              "blockers_to_clear",
+              "project_health",
+            ]}
             primary
           />
 
@@ -187,7 +177,15 @@ export function BeadsLesson() {
           <RobotCommand
             command="bv --robot-insights"
             description="Full graph metrics"
-            output={["PageRank", "betweenness", "HITS", "eigenvector", "critical_path", "cycles", "k-core"]}
+            output={[
+              "PageRank",
+              "betweenness",
+              "HITS",
+              "eigenvector",
+              "critical_path",
+              "cycles",
+              "k-core",
+            ]}
           />
         </div>
       </Section>
@@ -217,11 +215,36 @@ export function BeadsLesson() {
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
             <h4 className="font-bold text-white mb-4">Priorities (0-4)</h4>
             <div className="space-y-2">
-              <PriorityRow priority="0" label="Critical" description="Security, data loss, broken builds" color="text-red-400" />
-              <PriorityRow priority="1" label="High" description="Important work" color="text-amber-400" />
-              <PriorityRow priority="2" label="Medium" description="Default priority" color="text-primary" />
-              <PriorityRow priority="3" label="Low" description="Nice to have" color="text-white/60" />
-              <PriorityRow priority="4" label="Backlog" description="Future consideration" color="text-white/60" />
+              <PriorityRow
+                priority="0"
+                label="Critical"
+                description="Security, data loss, broken builds"
+                color="text-red-400"
+              />
+              <PriorityRow
+                priority="1"
+                label="High"
+                description="Important work"
+                color="text-amber-400"
+              />
+              <PriorityRow
+                priority="2"
+                label="Medium"
+                description="Default priority"
+                color="text-primary"
+              />
+              <PriorityRow
+                priority="3"
+                label="Low"
+                description="Nice to have"
+                color="text-white/60"
+              />
+              <PriorityRow
+                priority="4"
+                label="Backlog"
+                description="Future consideration"
+                color="text-white/60"
+              />
             </div>
           </div>
         </div>
@@ -230,11 +253,7 @@ export function BeadsLesson() {
       <Divider />
 
       {/* The Agent Workflow */}
-      <Section
-        title="The Agent Workflow"
-        icon={<Workflow className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="The Agent Workflow" icon={<Workflow className="h-5 w-5" />} delay={0.3}>
         <InteractiveDependencyGraph />
       </Section>
 
@@ -246,9 +265,7 @@ export function BeadsLesson() {
         icon={<BarChart className="h-5 w-5" />}
         delay={0.35}
       >
-        <Paragraph>
-          BV calculates graph metrics to help prioritize work:
-        </Paragraph>
+        <Paragraph>BV calculates graph metrics to help prioritize work:</Paragraph>
 
         <div className="mt-6 space-y-4">
           <MetricCard
@@ -277,11 +294,7 @@ export function BeadsLesson() {
       <Divider />
 
       {/* Best Practices */}
-      <Section
-        title="Best Practices"
-        icon={<CheckCircle className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Best Practices" icon={<CheckCircle className="h-5 w-5" />} delay={0.4}>
         <div className="space-y-4">
           <BestPractice
             title="Start with br ready"
@@ -307,8 +320,8 @@ export function BeadsLesson() {
 
         <div className="mt-6">
           <TipBox variant="info">
-            Always commit <code>.beads/</code> with your code changes. It&apos;s
-            the authoritative source of truth for issue state.
+            Always commit <code>.beads/</code> with your code changes. It&apos;s the authoritative
+            source of truth for issue state.
           </TipBox>
         </div>
       </Section>
@@ -316,11 +329,7 @@ export function BeadsLesson() {
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Play className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="Try It Now" icon={<Play className="h-5 w-5" />} delay={0.45}>
         <CodeBlock
           code={`# See what's ready to work on
 $ br ready
@@ -362,8 +371,12 @@ function TypeRow({
       whileHover={{ x: 4 }}
       className="group flex items-center gap-3 p-2 rounded-lg transition duration-200 hover:bg-white/[0.04]"
     >
-      <code className={`text-sm font-mono font-medium px-2 py-1 rounded bg-white/5 ${color}`}>{type}</code>
-      <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">{description}</span>
+      <code className={`text-sm font-mono font-medium px-2 py-1 rounded bg-white/5 ${color}`}>
+        {type}
+      </code>
+      <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+        {description}
+      </span>
     </motion.div>
   );
 }
@@ -392,7 +405,9 @@ function PriorityRow({
       <span className={`text-sm font-mono font-bold w-6 text-center ${color}`}>{priority}</span>
       <span className={`text-sm font-medium ${color}`}>{label}</span>
       <span className="text-xs text-white/50">{"\u2014"}</span>
-      <span className="text-xs text-white/60 group-hover:text-white/80 transition-colors">{description}</span>
+      <span className="text-xs text-white/60 group-hover:text-white/80 transition-colors">
+        {description}
+      </span>
     </motion.div>
   );
 }
@@ -419,9 +434,13 @@ function RobotCommand({
       className={`group relative rounded-2xl border ${primary ? "border-primary/30 bg-primary/5" : "border-white/[0.08] bg-white/[0.02]"} p-5 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]`}
     >
       {/* Subtle glow on hover */}
-      <div className={`absolute inset-0 ${primary ? "bg-primary/5" : "bg-white/[0.02]"} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+      <div
+        className={`absolute inset-0 ${primary ? "bg-primary/5" : "bg-white/[0.02]"} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+      />
 
-      <code className={`relative text-sm font-medium ${primary ? "text-primary" : "text-emerald-400"}`}>
+      <code
+        className={`relative text-sm font-medium ${primary ? "text-primary" : "text-emerald-400"}`}
+      >
         {command}
       </code>
       <p className="relative text-sm text-white/60 mt-2">{description}</p>
@@ -719,9 +738,7 @@ function isBeadReady(bead: BeadNode, beadMap: Map<string, BeadNode>): boolean {
 }
 
 /** Compute transitive dependents count for importance scoring */
-function computeImportanceScores(
-  beads: BeadNode[]
-): Record<string, number> {
+function computeImportanceScores(beads: BeadNode[]): Record<string, number> {
   const dependents: Record<string, Set<string>> = {};
   for (const b of beads) dependents[b.id] = new Set();
   for (const b of beads) {
@@ -764,19 +781,10 @@ function InteractiveDependencyGraph() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const autoPlayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const beadMap = useMemo(
-    () => new Map(beads.map((b) => [b.id, b])),
-    [beads]
-  );
+  const beadMap = useMemo(() => new Map(beads.map((b) => [b.id, b])), [beads]);
 
-  const importance = useMemo(
-    () => computeImportanceScores(beads),
-    [beads]
-  );
-  const maxImportance = useMemo(
-    () => Math.max(1, ...Object.values(importance)),
-    [importance]
-  );
+  const importance = useMemo(() => computeImportanceScores(beads), [beads]);
+  const maxImportance = useMemo(() => Math.max(1, ...Object.values(importance)), [importance]);
 
   // Reverse deps: what does each bead unblock?
   const unblocksMap = useMemo(() => {
@@ -791,20 +799,12 @@ function InteractiveDependencyGraph() {
   }, [beads]);
 
   // Ready beads: open + all deps closed
-  const readyBeads = useMemo(
-    () => beads.filter((b) => isBeadReady(b, beadMap)),
-    [beads, beadMap]
-  );
+  const readyBeads = useMemo(() => beads.filter((b) => isBeadReady(b, beadMap)), [beads, beadMap]);
 
   // Blocked beads: open + at least one dep not closed
   const blockedBeads = useMemo(
-    () =>
-      beads.filter(
-        (b) =>
-          b.status === "open" &&
-          !isBeadReady(b, beadMap)
-      ),
-    [beads, beadMap]
+    () => beads.filter((b) => b.status === "open" && !isBeadReady(b, beadMap)),
+    [beads, beadMap],
   );
 
   // Stats
@@ -825,20 +825,15 @@ function InteractiveDependencyGraph() {
     setTerminalLines((prev) => [...prev.slice(-8), line]);
   }, []);
 
-  const recalcBeadStatuses = useCallback(
-    (updated: BeadNode[]): BeadNode[] => {
-      const byId = new Map(updated.map((b) => [b.id, b]));
-      return updated.map((b) => {
-        if (b.status === "closed" || b.status === "in_progress") return b;
-        const allDepsClosed = b.deps.every(
-          (d) => byId.get(d)?.status === "closed"
-        );
-        // Keep open status -- readiness is computed separately
-        return allDepsClosed ? b : b;
-      });
-    },
-    []
-  );
+  const recalcBeadStatuses = useCallback((updated: BeadNode[]): BeadNode[] => {
+    const byId = new Map(updated.map((b) => [b.id, b]));
+    return updated.map((b) => {
+      if (b.status === "closed" || b.status === "in_progress") return b;
+      const allDepsClosed = b.deps.every((d) => byId.get(d)?.status === "closed");
+      // Keep open status -- readiness is computed separately
+      return allDepsClosed ? b : b;
+    });
+  }, []);
 
   const handleNodeClick = useCallback(
     (id: string) => {
@@ -851,9 +846,7 @@ function InteractiveDependencyGraph() {
       if (bead.status === "open" && ready) {
         // Start working on it
         setBeads((prev) =>
-          prev.map((b) =>
-            b.id === id ? { ...b, status: "in_progress" as BeadStatus } : b
-          )
+          prev.map((b) => (b.id === id ? { ...b, status: "in_progress" as BeadStatus } : b)),
         );
         addTerminalLine(`$ br update ${id} --status=in_progress`);
         addTerminalLine(`  Updated ${id}: open -> in_progress`);
@@ -864,7 +857,7 @@ function InteractiveDependencyGraph() {
         // Complete it
         setBeads((prev) => {
           const closed = prev.map((b) =>
-            b.id === id ? { ...b, status: "closed" as BeadStatus } : b
+            b.id === id ? { ...b, status: "closed" as BeadStatus } : b,
           );
           return recalcBeadStatuses(closed);
         });
@@ -875,9 +868,7 @@ function InteractiveDependencyGraph() {
         const unblocked = unblocksMap[id] ?? [];
         if (unblocked.length > 0) {
           setTimeout(() => {
-            addTerminalLine(
-              `  Unblocked: ${unblocked.join(", ")}`
-            );
+            addTerminalLine(`  Unblocked: ${unblocked.join(", ")}`);
           }, 0);
         }
         setTimeout(() => {
@@ -885,7 +876,7 @@ function InteractiveDependencyGraph() {
         }, 0);
       }
     },
-    [beadMap, recalcBeadStatuses, addTerminalLine, unblocksMap]
+    [beadMap, recalcBeadStatuses, addTerminalLine, unblocksMap],
   );
 
   const handleReset = useCallback(() => {
@@ -968,11 +959,7 @@ function InteractiveDependencyGraph() {
       setActiveStep(3);
       setSelectedId("bd-3");
       setBeads((prev) =>
-        prev.map((b) =>
-          b.id === "bd-3"
-            ? { ...b, status: "in_progress" as BeadStatus }
-            : b
-        )
+        prev.map((b) => (b.id === "bd-3" ? { ...b, status: "in_progress" as BeadStatus } : b)),
       );
       addTerminalLine("$ br update bd-3 --status=in_progress");
       addTerminalLine("  Updated bd-3: open -> in_progress");
@@ -983,11 +970,7 @@ function InteractiveDependencyGraph() {
     const t4 = setTimeout(() => {
       setActiveStep(4);
       setBeads((prev) =>
-        prev.map((b) =>
-          b.id === "bd-3"
-            ? { ...b, status: "closed" as BeadStatus }
-            : b
-        )
+        prev.map((b) => (b.id === "bd-3" ? { ...b, status: "closed" as BeadStatus } : b)),
       );
       addTerminalLine("$ br close bd-3");
       addTerminalLine("  Closed bd-3: Auth middleware");
@@ -1088,19 +1071,11 @@ function InteractiveDependencyGraph() {
                         : "bg-white/10 text-white/40"
                   }`}
                 >
-                  {isPast ? (
-                    <CheckCircle className="h-3.5 w-3.5" />
-                  ) : (
-                    i + 1
-                  )}
+                  {isPast ? <CheckCircle className="h-3.5 w-3.5" /> : i + 1}
                 </div>
                 <span
                   className={`text-[10px] font-medium leading-tight ${
-                    isActive
-                      ? "text-primary"
-                      : isPast
-                        ? "text-emerald-400"
-                        : "text-white/40"
+                    isActive ? "text-primary" : isPast ? "text-emerald-400" : "text-white/40"
                   }`}
                 >
                   {step.title}
@@ -1125,9 +1100,7 @@ function InteractiveDependencyGraph() {
             className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]"
           >
             <ArrowRight className="h-3 w-3 text-primary shrink-0" />
-            <span className="text-xs text-white/60">
-              {WORKFLOW_STEPS[activeStep].description}
-            </span>
+            <span className="text-xs text-white/60">{WORKFLOW_STEPS[activeStep].description}</span>
             <code className="ml-auto text-[10px] text-primary/80 font-mono whitespace-nowrap">
               {WORKFLOW_STEPS[activeStep].command}
             </code>
@@ -1146,9 +1119,7 @@ function InteractiveDependencyGraph() {
               <span className="text-[10px] text-white/40 uppercase tracking-wider">
                 Project Progress
               </span>
-              <span className="text-xs font-mono text-primary">
-                {stats.progress}%
-              </span>
+              <span className="text-xs font-mono text-primary">{stats.progress}%</span>
             </div>
             <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
               <motion.div
@@ -1195,17 +1166,17 @@ function InteractiveDependencyGraph() {
       {/* ================================================================ */}
       <div className="relative flex flex-col lg:flex-row">
         {/* SVG Dependency Graph */}
-        <div className="flex-1 px-3 pb-2 min-w-0 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60" tabIndex={0} role="region" aria-label="Bead dependency graph (scrolls sideways on small screens)">
+        <div
+          className="flex-1 px-3 pb-2 min-w-0 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          tabIndex={0}
+          role="region"
+          aria-label="Bead dependency graph (scrolls sideways on small screens)"
+        >
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-3 px-2 py-2 flex-wrap">
             <p className="text-xs text-white/40">
-              Click a{" "}
-              <span className="text-primary font-medium">ready</span>{" "}
-              node to start, click{" "}
-              <span className="text-amber-400 font-medium">
-                in-progress
-              </span>{" "}
-              to close.
+              Click a <span className="text-primary font-medium">ready</span> node to start, click{" "}
+              <span className="text-amber-400 font-medium">in-progress</span> to close.
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -1278,10 +1249,7 @@ function InteractiveDependencyGraph() {
                 markerHeight="6"
                 orient="auto-start-reverse"
               >
-                <path
-                  d="M 0 0 L 10 5 L 0 10 z"
-                  fill="var(--primary)"
-                />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)" />
               </marker>
               <marker
                 id="bead-arrow-critical"
@@ -1329,10 +1297,7 @@ function InteractiveDependencyGraph() {
                   CRITICAL_PATH_IDS.includes(bead.id);
 
                 const ready = isBeadReady(bead, beadMap);
-                const edgeStatus =
-                  src.status === "closed" && ready
-                    ? "ready"
-                    : src.status;
+                const edgeStatus = src.status === "closed" && ready ? "ready" : src.status;
 
                 const arrowColor = isCritical
                   ? "#fbbf24"
@@ -1346,8 +1311,7 @@ function InteractiveDependencyGraph() {
                     : `bead-arrow-${src.status}`;
 
                 // Highlight connected edges
-                const isConnected =
-                  activeId === bead.id || activeId === depId;
+                const isConnected = activeId === bead.id || activeId === depId;
 
                 return (
                   <path
@@ -1355,21 +1319,13 @@ function InteractiveDependencyGraph() {
                     d={`M ${srcX} ${srcY} C ${midX} ${srcY}, ${midX} ${tgtY}, ${tgtX} ${tgtY}`}
                     fill="none"
                     stroke={arrowColor}
-                    strokeWidth={
-                      isCritical ? 2.5 : isConnected ? 2 : 1.5
-                    }
-                    strokeOpacity={
-                      isCritical
-                        ? 0.9
-                        : isConnected
-                          ? 0.8
-                          : 0.4
-                    }
+                    strokeWidth={isCritical ? 2.5 : isConnected ? 2 : 1.5}
+                    strokeOpacity={isCritical ? 0.9 : isConnected ? 0.8 : 0.4}
                     markerEnd={`url(#${markerId})`}
                     className="transition-[stroke,stroke-width,stroke-opacity] duration-300"
                   />
                 );
-              })
+              }),
             )}
 
             {/* Bead nodes */}
@@ -1378,28 +1334,18 @@ function InteractiveDependencyGraph() {
               const pi = priorityInfo(bead.priority);
               const ready = isBeadReady(bead, beadMap);
               const isActive = activeId === bead.id;
-              const isCritical =
-                showCriticalPath &&
-                CRITICAL_PATH_IDS.includes(bead.id);
+              const isCritical = showCriticalPath && CRITICAL_PATH_IDS.includes(bead.id);
               const imp = importance[bead.id] ?? 0;
               const barH = Math.max(4, (imp / maxImportance) * 28);
 
               const isClickable =
-                (bead.status === "open" && ready) ||
-                bead.status === "in_progress";
+                (bead.status === "open" && ready) || bead.status === "in_progress";
 
               // Determine node visual state
-              const nodeStroke = ready
-                ? "var(--primary)"
-                : sc.stroke;
-              const nodeStrokeOpacity =
-                bead.status === "open" && !ready ? 0.25 : 0.7;
+              const nodeStroke = ready ? "var(--primary)" : sc.stroke;
+              const nodeStrokeOpacity = bead.status === "open" && !ready ? 0.25 : 0.7;
 
-              const dashArray = ready
-                ? "6 3"
-                : bead.status === "open"
-                  ? "2 3"
-                  : "none";
+              const dashArray = ready ? "6 3" : bead.status === "open" ? "2 3" : "none";
 
               const statusLabel =
                 bead.status === "closed"
@@ -1513,9 +1459,7 @@ function InteractiveDependencyGraph() {
                     width={NODE_W}
                     height={NODE_H}
                     rx={12}
-                    fill={
-                      isActive ? sc.fill : "rgba(255,255,255,0.03)"
-                    }
+                    fill={isActive ? sc.fill : "rgba(255,255,255,0.03)"}
                     fillOpacity={isActive ? 0.15 : 1}
                     stroke={nodeStroke}
                     strokeWidth={isActive ? 2 : 1.2}
@@ -1533,18 +1477,10 @@ function InteractiveDependencyGraph() {
                   </rect>
 
                   {/* Status indicator icon */}
-                  <g
-                    transform={`translate(${bead.x + 10}, ${bead.y + NODE_H / 2})`}
-                  >
+                  <g transform={`translate(${bead.x + 10}, ${bead.y + NODE_H / 2})`}>
                     {bead.status === "closed" && (
                       <g transform="translate(-5,-5)">
-                        <circle
-                          cx="5"
-                          cy="5"
-                          r="5"
-                          fill="#22c55e"
-                          fillOpacity={0.25}
-                        />
+                        <circle cx="5" cy="5" r="5" fill="#22c55e" fillOpacity={0.25} />
                         <path
                           d="M 2.5 5 L 4.5 7 L 7.5 3.5"
                           stroke="#22c55e"
@@ -1608,9 +1544,7 @@ function InteractiveDependencyGraph() {
                   </g>
 
                   {/* Priority badge */}
-                  <g
-                    transform={`translate(${bead.x + NODE_W - 26}, ${bead.y + 6})`}
-                  >
+                  <g transform={`translate(${bead.x + NODE_W - 26}, ${bead.y + 6})`}>
                     <rect
                       x="0"
                       y="0"
@@ -1624,9 +1558,7 @@ function InteractiveDependencyGraph() {
                             ? "#f59e0b"
                             : "rgba(255,255,255,0.08)"
                       }
-                      fillOpacity={
-                        bead.priority <= 1 ? 0.3 : 1
-                      }
+                      fillOpacity={bead.priority <= 1 ? 0.3 : 1}
                     />
                     <text
                       x="10"
@@ -1652,11 +1584,7 @@ function InteractiveDependencyGraph() {
                     x={bead.x + 22}
                     y={bead.y + 18}
                     fill={sc.text}
-                    fillOpacity={
-                      bead.status === "open" && !ready
-                        ? 0.35
-                        : 0.55
-                    }
+                    fillOpacity={bead.status === "open" && !ready ? 0.35 : 0.55}
                     fontSize="8"
                     fontFamily="monospace"
                   >
@@ -1668,17 +1596,11 @@ function InteractiveDependencyGraph() {
                     x={bead.x + 22}
                     y={bead.y + 34}
                     fill={sc.text}
-                    fillOpacity={
-                      bead.status === "open" && !ready
-                        ? 0.45
-                        : 0.9
-                    }
+                    fillOpacity={bead.status === "open" && !ready ? 0.45 : 0.9}
                     fontSize="10"
                     fontWeight="600"
                   >
-                    {bead.title.length > 15
-                      ? bead.title.slice(0, 14) + "\u2026"
-                      : bead.title}
+                    {bead.title.length > 15 ? bead.title.slice(0, 14) + "\u2026" : bead.title}
                   </text>
 
                   {/* Type label */}
@@ -1736,24 +1658,9 @@ function InteractiveDependencyGraph() {
                   ["blocked", "#6b7280", "Blocked"],
                 ] as const
               ).map(([, color, label], i) => (
-                <g
-                  key={label}
-                  transform={`translate(${i * 120}, 0)`}
-                >
-                  <circle
-                    cx={6}
-                    cy={6}
-                    r={5}
-                    fill={color}
-                    fillOpacity={0.6}
-                  />
-                  <text
-                    x={16}
-                    y={10}
-                    fill="white"
-                    fillOpacity={0.5}
-                    fontSize="9"
-                  >
+                <g key={label} transform={`translate(${i * 120}, 0)`}>
+                  <circle cx={6} cy={6} r={5} fill={color} fillOpacity={0.6} />
+                  <text x={16} y={10} fill="white" fillOpacity={0.5} fontSize="9">
                     {label}
                   </text>
                 </g>
@@ -1770,33 +1677,13 @@ function InteractiveDependencyGraph() {
                   strokeWidth={1.5}
                   strokeDasharray="4 2"
                 />
-                <text
-                  x={18}
-                  y={10}
-                  fill="white"
-                  fillOpacity={0.5}
-                  fontSize="9"
-                >
+                <text x={18} y={10} fill="white" fillOpacity={0.5} fontSize="9">
                   Critical Path
                 </text>
               </g>
               <g transform="translate(610, 0)">
-                <rect
-                  x={0}
-                  y={2}
-                  width={5}
-                  height={8}
-                  rx={1}
-                  fill="white"
-                  fillOpacity={0.3}
-                />
-                <text
-                  x={10}
-                  y={10}
-                  fill="white"
-                  fillOpacity={0.5}
-                  fontSize="9"
-                >
+                <rect x={0} y={2} width={5} height={8} rx={1} fill="white" fillOpacity={0.3} />
+                <text x={10} y={10} fill="white" fillOpacity={0.5} fontSize="9">
                   Importance
                 </text>
               </g>
@@ -1850,12 +1737,8 @@ function InteractiveDependencyGraph() {
                             damping: 25,
                           }}
                           onClick={() => handleNodeClick(bead.id)}
-                          onMouseEnter={() =>
-                            setHoveredId(bead.id)
-                          }
-                          onMouseLeave={() =>
-                            setHoveredId(null)
-                          }
+                          onMouseEnter={() => setHoveredId(bead.id)}
+                          onMouseLeave={() => setHoveredId(null)}
                           className={`w-full text-left px-3 py-2 rounded-lg border transition duration-200 ${
                             activeId === bead.id
                               ? "border-primary/40 bg-primary/10"
@@ -1863,23 +1746,13 @@ function InteractiveDependencyGraph() {
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] font-mono font-bold ${pi.color}`}
-                            >
+                            <span className={`text-[10px] font-mono font-bold ${pi.color}`}>
                               {pi.label}
                             </span>
-                            <code className="text-[10px] text-white/40 font-mono">
-                              {bead.id}
-                            </code>
-                            <span
-                              className={`ml-auto text-[10px] ${ti.color}`}
-                            >
-                              {ti.label}
-                            </span>
+                            <code className="text-[10px] text-white/40 font-mono">{bead.id}</code>
+                            <span className={`ml-auto text-[10px] ${ti.color}`}>{ti.label}</span>
                           </div>
-                          <p className="text-xs text-white/70 mt-1 truncate">
-                            {bead.title}
-                          </p>
+                          <p className="text-xs text-white/70 mt-1 truncate">{bead.title}</p>
                         </motion.button>
                       );
                     })
@@ -1901,9 +1774,7 @@ function InteractiveDependencyGraph() {
             </div>
             <div className="space-y-1">
               {blockedBeads.slice(0, 4).map((bead) => {
-                const blockerIds = bead.deps.filter(
-                  (d) => beadMap.get(d)?.status !== "closed"
-                );
+                const blockerIds = bead.deps.filter((d) => beadMap.get(d)?.status !== "closed");
                 return (
                   <div
                     key={bead.id}
@@ -1911,12 +1782,8 @@ function InteractiveDependencyGraph() {
                     onMouseEnter={() => setHoveredId(bead.id)}
                     onMouseLeave={() => setHoveredId(null)}
                   >
-                    <code className="text-white/30 font-mono">
-                      {bead.id}
-                    </code>
-                    <span className="text-white/40 truncate flex-1">
-                      {bead.title}
-                    </span>
+                    <code className="text-white/30 font-mono">{bead.id}</code>
+                    <span className="text-white/40 truncate flex-1">{bead.title}</span>
                     <span className="text-red-400/60 whitespace-nowrap">
                       {"\u2190"} {blockerIds.join(", ")}
                     </span>
@@ -1965,17 +1832,13 @@ function InteractiveDependencyGraph() {
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <code className="text-xs text-white/50 font-mono">
-                      {activeBead.id}
-                    </code>
+                    <code className="text-xs text-white/50 font-mono">{activeBead.id}</code>
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${beadStatusColor(activeBead.status).badge}`}
                     >
-                      {isBeadReady(activeBead, beadMap) &&
-                      activeBead.status === "open"
+                      {isBeadReady(activeBead, beadMap) && activeBead.status === "open"
                         ? "Ready"
-                        : beadStatusColor(activeBead.status)
-                            .label}
+                        : beadStatusColor(activeBead.status).label}
                     </span>
                     <span
                       className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${priorityInfo(activeBead.priority).color} ${priorityInfo(activeBead.priority).bgColor}`}
@@ -1983,25 +1846,16 @@ function InteractiveDependencyGraph() {
                       {priorityInfo(activeBead.priority).label}{" "}
                       {priorityInfo(activeBead.priority).urgency}
                     </span>
-                    <span
-                      className={`text-[10px] italic ${beadTypeInfo(activeBead.type).color}`}
-                    >
+                    <span className={`text-[10px] italic ${beadTypeInfo(activeBead.type).color}`}>
                       {beadTypeInfo(activeBead.type).label}
                     </span>
                   </div>
-                  <p className="text-sm font-semibold text-white">
-                    {activeBead.title}
-                  </p>
-                  <p className="text-xs text-white/40">
-                    {activeBead.description}
-                  </p>
+                  <p className="text-sm font-semibold text-white">{activeBead.title}</p>
+                  <p className="text-xs text-white/40">{activeBead.description}</p>
                 </div>
                 <div className="flex items-center gap-1 text-xs text-white/30">
                   <BarChart className="h-3 w-3" />
-                  <span>
-                    Importance:{" "}
-                    {importance[activeBead.id] ?? 0}
-                  </span>
+                  <span>Importance: {importance[activeBead.id] ?? 0}</span>
                 </div>
               </div>
 
@@ -2012,23 +1866,17 @@ function InteractiveDependencyGraph() {
                     Depends on
                   </p>
                   {activeBead.deps.length === 0 ? (
-                    <p className="text-xs text-white/40 italic">
-                      None (root bead)
-                    </p>
+                    <p className="text-xs text-white/40 italic">None (root bead)</p>
                   ) : (
                     <div className="flex flex-wrap gap-1">
                       {activeBead.deps.map((d) => {
                         const dep = beadMap.get(d);
-                        const isClosed =
-                          dep?.status === "closed";
+                        const isClosed = dep?.status === "closed";
                         return (
                           <span
                             key={d}
                             className={`px-1.5 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 ${
-                              dep
-                                ? beadStatusColor(dep.status)
-                                    .badge
-                                : "bg-white/10 text-white/40"
+                              dep ? beadStatusColor(dep.status).badge : "bg-white/10 text-white/40"
                             }`}
                           >
                             {isClosed ? (
@@ -2047,16 +1895,11 @@ function InteractiveDependencyGraph() {
                   <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">
                     Unblocks
                   </p>
-                  {(unblocksMap[activeBead.id] ?? []).length ===
-                  0 ? (
-                    <p className="text-xs text-white/40 italic">
-                      None (leaf bead)
-                    </p>
+                  {(unblocksMap[activeBead.id] ?? []).length === 0 ? (
+                    <p className="text-xs text-white/40 italic">None (leaf bead)</p>
                   ) : (
                     <div className="flex flex-wrap gap-1">
-                      {(
-                        unblocksMap[activeBead.id] ?? []
-                      ).map((bId) => {
+                      {(unblocksMap[activeBead.id] ?? []).map((bId) => {
                         const bt = beadMap.get(bId);
                         return (
                           <span
@@ -2073,41 +1916,36 @@ function InteractiveDependencyGraph() {
               </div>
 
               {/* Action hints */}
-              {activeBead.status === "open" &&
-                isBeadReady(activeBead, beadMap) && (
-                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                    <Play className="h-3 w-3 text-primary" />
-                    <p className="text-xs text-primary font-medium">
-                      Click to claim and start working on this
-                      bead
-                    </p>
-                    <code className="ml-auto text-[10px] text-primary/60 font-mono">
-                      br update {activeBead.id}{" "}
-                      --status=in_progress
-                    </code>
-                  </div>
-                )}
+              {activeBead.status === "open" && isBeadReady(activeBead, beadMap) && (
+                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <Play className="h-3 w-3 text-primary" />
+                  <p className="text-xs text-primary font-medium">
+                    Click to claim and start working on this bead
+                  </p>
+                  <code className="ml-auto text-[10px] text-primary/60 font-mono">
+                    br update {activeBead.id} --status=in_progress
+                  </code>
+                </div>
+              )}
               {activeBead.status === "in_progress" && (
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <CheckCircle className="h-3 w-3 text-amber-400" />
                   <p className="text-xs text-amber-400 font-medium">
-                    Click to mark complete and unblock
-                    downstream beads
+                    Click to mark complete and unblock downstream beads
                   </p>
                   <code className="ml-auto text-[10px] text-amber-400/60 font-mono">
                     br close {activeBead.id}
                   </code>
                 </div>
               )}
-              {activeBead.status === "open" &&
-                !isBeadReady(activeBead, beadMap) && (
-                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-                    <Lock className="h-3 w-3 text-white/30" />
-                    <p className="text-[10px] text-white/40 font-medium">
-                      Blocked by unfinished dependencies
-                    </p>
-                  </div>
-                )}
+              {activeBead.status === "open" && !isBeadReady(activeBead, beadMap) && (
+                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                  <Lock className="h-3 w-3 text-white/30" />
+                  <p className="text-[10px] text-white/40 font-medium">
+                    Blocked by unfinished dependencies
+                  </p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -2164,9 +2002,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <Circle className="h-2 w-2 text-red-400/60" />
         <Circle className="h-2 w-2 text-amber-400/60" />
         <Circle className="h-2 w-2 text-emerald-400/60" />
-        <span className="ml-2 text-[10px] text-white/30 font-mono">
-          br terminal
-        </span>
+        <span className="ml-2 text-[10px] text-white/30 font-mono">br terminal</span>
       </div>
       {/* Output */}
       <div
@@ -2233,7 +2069,9 @@ function MetricCard({
         <span className="group-hover:text-primary transition-colors">{name}</span>
       </h4>
       <p className="relative text-sm text-white/60 mt-3">{description}</p>
-      <p className="relative text-sm text-primary/80 mt-3 font-medium">{"\u2192"} {usage}</p>
+      <p className="relative text-sm text-primary/80 mt-3 font-medium">
+        {"\u2192"} {usage}
+      </p>
     </motion.div>
   );
 }
@@ -2241,13 +2079,7 @@ function MetricCard({
 // =============================================================================
 // BEST PRACTICE
 // =============================================================================
-function BestPractice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function BestPractice({ title, description }: { title: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -2259,7 +2091,9 @@ function BestPractice({
         <CheckCircle className="h-5 w-5" />
       </div>
       <div>
-        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">{title}</p>
+        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+          {title}
+        </p>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>

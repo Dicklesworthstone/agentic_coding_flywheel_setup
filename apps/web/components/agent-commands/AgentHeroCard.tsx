@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Copy, Check, ChevronDown, Terminal } from "lucide-react";
-import { motion, AnimatePresence, springs } from "@/components/motion";
-import { cn, copyTextToClipboard } from "@/lib/utils";
+import { Check, ChevronDown, Copy, Terminal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs } from "@/components/motion";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { cn, copyTextToClipboard } from "@/lib/utils";
 
 export type AgentType = "claude" | "codex" | "antigravity" | "gemini";
 
@@ -150,7 +150,7 @@ export function AgentHeroCard({
         "outline-none ring-offset-2 ring-offset-background",
         "focus-visible:ring-2 focus-visible:ring-primary",
         "transition duration-300",
-        "hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
+        "hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10",
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -173,24 +173,26 @@ export function AgentHeroCard({
       <motion.div
         className={cn(
           "pointer-events-none absolute -inset-px rounded-2xl opacity-0 blur-2xl transition-opacity duration-500",
-          personality.bgGlow
+          personality.bgGlow,
         )}
         animate={{ opacity: isHovered ? 0.6 : 0 }}
       />
 
       {/* Decorative corner glow */}
-      <div className={cn(
-        "absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-0 transition-opacity duration-500",
-        personality.bgGlow,
-        isHovered && "opacity-40"
-      )} />
+      <div
+        className={cn(
+          "absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-0 transition-opacity duration-500",
+          personality.bgGlow,
+          isHovered && "opacity-40",
+        )}
+      />
 
       {/* Gradient header */}
       <div
         className={cn(
           "relative flex items-center gap-4 p-5",
           "bg-gradient-to-r",
-          personality.gradient
+          personality.gradient,
         )}
       >
         {/* Agent icon with animated ring */}
@@ -229,7 +231,7 @@ export function AgentHeroCard({
               "flex items-center gap-2 rounded-lg px-3 py-2",
               "bg-white/20 backdrop-blur-sm",
               "font-mono text-sm text-white",
-              "hover:bg-white/30 transition-colors"
+              "hover:bg-white/30 transition-colors",
             )}
             whileTap={{ scale: 0.95 }}
           >
@@ -291,9 +293,7 @@ export function AgentHeroCard({
             className="overflow-hidden"
           >
             <div className="flex items-center justify-between border-t border-white/[0.06] px-5 py-3 bg-black/20">
-              <span className="text-sm text-white/60">
-                {agent.model}
-              </span>
+              <span className="text-sm text-white/60">{agent.model}</span>
               <div className="flex items-center gap-2 text-sm text-white/60">
                 <span>{agent.examples.length} commands</span>
                 <span className="text-white/20">·</span>

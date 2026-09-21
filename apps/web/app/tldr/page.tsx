@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
-import { Copy, Check } from "lucide-react";
-import { motion, useReducedMotion, useInView } from "@/components/motion";
-import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { Check, Copy } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { TldrHero } from "@/components/tldr/tldr-hero";
-import { TldrToolGrid } from "@/components/tldr/tldr-tool-grid";
 import { TldrSynergyDiagram } from "@/components/tldr/tldr-synergy-diagram";
+import { TldrToolGrid } from "@/components/tldr/tldr-tool-grid";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { tldrFlywheelTools, tldrPageData } from "@/lib/tldr-content";
 import { copyTextToClipboard } from "@/lib/utils";
 
@@ -23,10 +23,7 @@ function FlywheelExplanation() {
   const { flywheelExplanation } = tldrPageData;
 
   return (
-    <section
-      ref={containerRef}
-      className="relative overflow-hidden py-12 md:py-24"
-    >
+    <section ref={containerRef} className="relative overflow-hidden py-12 md:py-24">
       {/* Background gradient */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent" />
 
@@ -110,12 +107,10 @@ function FooterCTA({ id }: { id?: string }) {
   return (
     <section id={id} className="border-t border-border/50 py-12 md:py-16">
       <div className="container mx-auto px-4 text-center">
-        <h2 className="text-xl font-bold text-white sm:text-2xl md:text-3xl">
-          Get Started
-        </h2>
+        <h2 className="text-xl font-bold text-white sm:text-2xl md:text-3xl">Get Started</h2>
         <p className="mx-auto mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
-          The fastest way to set up the entire flywheel ecosystem is with ACFS.
-          One command, 30 minutes, and you&apos;re ready to go.
+          The fastest way to set up the entire flywheel ecosystem is with ACFS. One command, 30
+          minutes, and you&apos;re ready to go.
         </p>
         <div className="mt-6 flex flex-col items-center gap-4 md:mt-8">
           <div className="group relative w-full max-w-6xl">
@@ -157,10 +152,7 @@ function FooterCTA({ id }: { id?: string }) {
           </div>
           <p className="text-xs text-muted-foreground">
             Or use the{" "}
-            <a
-              href="/wizard/os-selection"
-              className="text-primary underline hover:text-primary/80"
-            >
+            <a href="/wizard/os-selection" className="text-primary underline hover:text-primary/80">
               step-by-step wizard
             </a>{" "}
             for guided setup.

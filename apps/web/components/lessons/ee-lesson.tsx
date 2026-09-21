@@ -1,27 +1,18 @@
-'use client';
+"use client";
 
+import { Brain, Database, Hash, History, Play, Search, ShieldCheck, Terminal } from "lucide-react";
 import {
-  Terminal,
-  Brain,
-  Search,
-  Database,
-  Play,
-  ShieldCheck,
-  History,
-  Hash,
-} from 'lucide-react';
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function EeLesson() {
   return (
@@ -33,16 +24,15 @@ export function EeLesson() {
       {/* Section 1: What Is EE */}
       <Section title="What Is Eidetic Engine?" icon={<Brain className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>ee (Eidetic Engine)</Highlight> is durable, explainable local memory
-          for coding agents. It stores typed memories (rules, decisions, failures,
-          commands, conventions) and retrieves them with hybrid BM25 + local vector
-          search, so an agent starting a new session can recall what past sessions
-          learned the hard way.
+          <Highlight>ee (Eidetic Engine)</Highlight> is durable, explainable local memory for coding
+          agents. It stores typed memories (rules, decisions, failures, commands, conventions) and
+          retrieves them with hybrid BM25 + local vector search, so an agent starting a new session
+          can recall what past sessions learned the hard way.
         </Paragraph>
         <Paragraph>
-          Everything runs locally: there is no cloud API, and every retrieval comes with
-          an explainable score breakdown so you can see exactly why a memory was selected
-          for a given task.
+          Everything runs locally: there is no cloud API, and every retrieval comes with an
+          explainable score breakdown so you can see exactly why a memory was selected for a given
+          task.
         </Paragraph>
 
         <div className="mt-8">
@@ -81,14 +71,29 @@ export function EeLesson() {
       <Section title="Core Workflow" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'ee pack "fix the auth bug"', description: 'Build a token-budgeted context pack for a task' },
-            { command: 'ee remember "<rule text>"', description: 'Capture a new rule, decision, or failure' },
-            { command: 'ee search "query"', description: 'Search stored memories' },
-            { command: 'ee why <memory-id>', description: 'Explain why a memory was stored or selected' },
-            { command: 'ee curate candidates', description: 'Review proposals that distill memories into rules' },
-            { command: 'ee import cass', description: 'Mine past CASS sessions into memories' },
-            { command: 'ee preflight check --cmd "rm -rf build"', description: 'Check a risky command against failure memories' },
-            { command: 'ee doctor --json', description: 'Verify installation health' },
+            {
+              command: 'ee pack "fix the auth bug"',
+              description: "Build a token-budgeted context pack for a task",
+            },
+            {
+              command: 'ee remember "<rule text>"',
+              description: "Capture a new rule, decision, or failure",
+            },
+            { command: 'ee search "query"', description: "Search stored memories" },
+            {
+              command: "ee why <memory-id>",
+              description: "Explain why a memory was stored or selected",
+            },
+            {
+              command: "ee curate candidates",
+              description: "Review proposals that distill memories into rules",
+            },
+            { command: "ee import cass", description: "Mine past CASS sessions into memories" },
+            {
+              command: 'ee preflight check --cmd "rm -rf build"',
+              description: "Check a risky command against failure memories",
+            },
+            { command: "ee doctor --json", description: "Verify installation health" },
           ]}
         />
       </Section>
@@ -98,27 +103,28 @@ export function EeLesson() {
       {/* Section 3: When to Use It */}
       <Section title="When to Use It" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          Reach for <Highlight>ee</Highlight> at three moments: at{' '}
-          <Highlight>session start</Highlight> (run <Highlight>ee pack</Highlight> to load
-          relevant context), <Highlight>after learning a rule</Highlight> (run{' '}
-          <Highlight>ee remember</Highlight> so the lesson survives the session), and{' '}
-          <Highlight>before risky commands</Highlight> (run{' '}
-          <Highlight>ee preflight</Highlight> to check against past failures).
+          Reach for <Highlight>ee</Highlight> at three moments: at{" "}
+          <Highlight>session start</Highlight> (run <Highlight>ee pack</Highlight> to load relevant
+          context), <Highlight>after learning a rule</Highlight> (run{" "}
+          <Highlight>ee remember</Highlight> so the lesson survives the session), and{" "}
+          <Highlight>before risky commands</Highlight> (run <Highlight>ee preflight</Highlight> to
+          check against past failures).
         </Paragraph>
-        <CodeBlock code={`# Start of session: pull the most relevant memories for the task
+        <CodeBlock
+          code={`# Start of session: pull the most relevant memories for the task
 ee pack "fix the auth bug"
 
 # After discovering something worth keeping
 ee remember "Always run migrations before seeding the test database"
 
 # Before doing anything destructive
-ee preflight check --cmd "rm -rf build"`} />
+ee preflight check --cmd "rm -rf build"`}
+        />
 
         <TipBox>
-          Memory is advisory. If a stored memory conflicts with the live AGENTS.md or
-          README, the live project files always win; use the{' '}
-          <Highlight>ee curate</Highlight> subcommands to review and prune memories that
-          have gone stale.
+          Memory is advisory. If a stored memory conflicts with the live AGENTS.md or README, the
+          live project files always win; use the <Highlight>ee curate</Highlight> subcommands to
+          review and prune memories that have gone stale.
         </TipBox>
       </Section>
 
@@ -127,11 +133,11 @@ ee preflight check --cmd "rm -rf build"`} />
       {/* Section 4: Explainability */}
       <Section title="Explainable by Design" icon={<Database className="h-5 w-5" />} delay={0.4}>
         <Paragraph>
-          Every pack is deterministic: the same memories and the same query produce the
-          same pack hash, and the JSON schema is versioned. When a selection looks wrong,{' '}
-          <Highlight>ee why &lt;memory-id&gt;</Highlight> shows the per-item score breakdown (lexical match,
-          vector similarity, confidence, recency) so you can debug retrieval instead of
-          guessing.
+          Every pack is deterministic: the same memories and the same query produce the same pack
+          hash, and the JSON schema is versioned. When a selection looks wrong,{" "}
+          <Highlight>ee why &lt;memory-id&gt;</Highlight> shows the per-item score breakdown
+          (lexical match, vector similarity, confidence, recency) so you can debug retrieval instead
+          of guessing.
         </Paragraph>
       </Section>
     </div>

@@ -1,12 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useCallback } from 'react';
-import {
-  trackLessonEnter,
-  trackLessonComplete,
-  trackLessonDropoff,
-} from '@/lib/analytics';
-import { TOTAL_LESSONS, type Lesson } from '@/lib/lessons';
+import { useCallback, useEffect, useRef } from "react";
+import { trackLessonComplete, trackLessonDropoff, trackLessonEnter } from "@/lib/analytics";
+import { type Lesson, TOTAL_LESSONS } from "@/lib/lessons";
 
 interface UseLessonAnalyticsOptions {
   lesson: Lesson;
@@ -45,35 +41,32 @@ export function useLessonAnalytics({
   }, []);
 
   // Track lesson completion
-  const markComplete = useCallback((additionalData?: Record<string, unknown>) => {
-    // Ensure we're marking complete for the currently tracked lesson
-    if (isCompleted.current || trackedLessonId.current !== lesson.id) return;
-    isCompleted.current = true;
+  const markComplete = useCallback(
+    (additionalData?: Record<string, unknown>) => {
+      // Ensure we're marking complete for the currently tracked lesson
+      if (isCompleted.current || trackedLessonId.current !== lesson.id) return;
+      isCompleted.current = true;
 
-    trackLessonComplete(
-      lesson.id,
-      lesson.slug,
-      lesson.title,
-      totalLessons,
-      {
+      trackLessonComplete(lesson.id, lesson.slug, lesson.title, totalLessons, {
         time_spent_seconds: getTimeSpent(),
         ...additionalData,
-      }
-    );
-  }, [lesson.id, lesson.slug, lesson.title, totalLessons, getTimeSpent]);
+      });
+    },
+    [lesson.id, lesson.slug, lesson.title, totalLessons, getTimeSpent],
+  );
 
   // Track potential abandonment on unmount
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!isCompleted.current) {
-        trackLessonDropoff('page_exit');
+        trackLessonDropoff("page_exit");
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
 

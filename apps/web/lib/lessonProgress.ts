@@ -9,37 +9,36 @@
  * For static lesson data, see lessons.ts.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
-import { safeGetJSON, safeSetJSON } from "./utils";
 import {
-  LESSONS,
-  TOTAL_LESSONS,
-  type Lesson,
   getLessonById,
   getLessonBySlug,
   getNextLesson,
   getPreviousLesson,
   isReferenceLesson,
+  LESSONS,
+  type Lesson,
+  TOTAL_LESSONS,
 } from "./lessons";
+import { safeGetJSON, safeSetJSON } from "./utils";
 
 // Re-export static data for backwards compatibility
 export {
-  LESSONS,
-  TOTAL_LESSONS,
-  type Lesson,
   getLessonById,
   getLessonBySlug,
   getNextLesson,
   getPreviousLesson,
   isReferenceLesson,
+  LESSONS,
+  type Lesson,
+  TOTAL_LESSONS,
 };
 
 /** localStorage key for storing completed lessons */
 export const COMPLETED_LESSONS_KEY = "acfs-learning-hub-completed-lessons";
 
-export const COMPLETED_LESSONS_CHANGED_EVENT =
-  "acfs:learning-hub:completed-lessons-changed";
+export const COMPLETED_LESSONS_CHANGED_EVENT = "acfs:learning-hub:completed-lessons-changed";
 
 // Query keys for TanStack Query
 export const lessonProgressKeys = {
@@ -52,11 +51,7 @@ type CompletedLessonsChangedDetail = {
 
 function normalizeCompletedLessons(lessons: readonly unknown[]): number[] {
   const validLessons = lessons.filter(
-    (n): n is number =>
-      typeof n === "number" &&
-      Number.isInteger(n) &&
-      n >= 0 &&
-      n < TOTAL_LESSONS
+    (n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < TOTAL_LESSONS,
   );
   return Array.from(new Set(validLessons)).sort((a, b) => a - b);
 }
@@ -66,7 +61,7 @@ function emitCompletedLessonsChanged(lessons: number[]): void {
   window.dispatchEvent(
     new CustomEvent<CompletedLessonsChangedDetail>(COMPLETED_LESSONS_CHANGED_EVENT, {
       detail: { lessons },
-    })
+    }),
   );
 }
 
@@ -90,10 +85,7 @@ export function setCompletedLessons(lessons: number[]): boolean {
 }
 
 /** Mark a lesson as completed (pure function, returns new array) */
-export function addCompletedLesson(
-  currentLessons: number[],
-  lessonId: number
-): number[] {
+export function addCompletedLesson(currentLessons: number[], lessonId: number): number[] {
   if (
     !Number.isInteger(lessonId) ||
     lessonId < 0 ||
@@ -115,17 +107,12 @@ export function getCompletionPercentage(completedLessons: number[]): number {
 
 export type LessonStatus = "completed" | "current" | "reference" | "locked";
 
-export function getLessonStatus(
-  lessonId: number,
-  completedLessons: number[]
-): LessonStatus {
+export function getLessonStatus(lessonId: number, completedLessons: number[]): LessonStatus {
   if (completedLessons.includes(lessonId)) {
     return "completed";
   }
 
-  const firstUncompleted = LESSONS.find(
-    (lesson) => !completedLessons.includes(lesson.id)
-  );
+  const firstUncompleted = LESSONS.find((lesson) => !completedLessons.includes(lesson.id));
 
   if (firstUncompleted?.id === lessonId) {
     return "current";
@@ -140,17 +127,12 @@ export function getLessonStatus(
   return "locked";
 }
 
-export function isLessonAccessible(
-  lessonId: number,
-  completedLessons: number[]
-): boolean {
+export function isLessonAccessible(lessonId: number, completedLessons: number[]): boolean {
   return getLessonStatus(lessonId, completedLessons) !== "locked";
 }
 
 /** Get the suggested next lesson to work on */
-export function getNextUncompletedLesson(
-  completedLessons: number[]
-): Lesson | undefined {
+export function getNextUncompletedLesson(completedLessons: number[]): Lesson | undefined {
   return LESSONS.find((lesson) => !completedLessons.includes(lesson.id));
 }
 
@@ -179,7 +161,7 @@ export function useCompletedLessons(): UseCompletedLessonsResult {
       const nextLessons = customEvent.detail?.lessons ?? getCompletedLessons();
       queryClient.setQueryData(
         lessonProgressKeys.completedLessons,
-        normalizeCompletedLessons(nextLessons)
+        normalizeCompletedLessons(nextLessons),
       );
     };
 
@@ -190,14 +172,14 @@ export function useCompletedLessons(): UseCompletedLessonsResult {
 
     window.addEventListener(
       COMPLETED_LESSONS_CHANGED_EVENT,
-      handleCompletedLessonsChanged as EventListener
+      handleCompletedLessonsChanged as EventListener,
     );
     window.addEventListener("storage", handleStorage);
 
     return () => {
       window.removeEventListener(
         COMPLETED_LESSONS_CHANGED_EVENT,
-        handleCompletedLessonsChanged as EventListener
+        handleCompletedLessonsChanged as EventListener,
       );
       window.removeEventListener("storage", handleStorage);
     };
@@ -215,12 +197,8 @@ export function useCompletedLessons(): UseCompletedLessonsResult {
       // Use query cache as source of truth to avoid race conditions when
       // markComplete is called rapidly multiple times. Falls back to
       // localStorage for initial hydration.
-      const cachedLessons = queryClient.getQueryData<number[]>(
-        lessonProgressKeys.completedLessons
-      );
-      const currentLessons = normalizeCompletedLessons(
-        cachedLessons ?? getCompletedLessons()
-      );
+      const cachedLessons = queryClient.getQueryData<number[]>(lessonProgressKeys.completedLessons);
+      const currentLessons = normalizeCompletedLessons(cachedLessons ?? getCompletedLessons());
       const newLessons = addCompletedLesson(currentLessons, lessonId);
       if (newLessons === currentLessons) {
         return currentLessons;
@@ -231,10 +209,7 @@ export function useCompletedLessons(): UseCompletedLessonsResult {
       return newLessons;
     },
     onError: () => {
-      queryClient.setQueryData(
-        lessonProgressKeys.completedLessons,
-        getCompletedLessons()
-      );
+      queryClient.setQueryData(lessonProgressKeys.completedLessons, getCompletedLessons());
     },
   });
 
@@ -243,7 +218,7 @@ export function useCompletedLessons(): UseCompletedLessonsResult {
     (lessonId: number) => {
       return mutateAsync(lessonId);
     },
-    [mutateAsync]
+    [mutateAsync],
   );
 
   return {

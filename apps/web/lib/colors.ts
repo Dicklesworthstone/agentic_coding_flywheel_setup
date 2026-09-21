@@ -174,7 +174,9 @@ export function getColorDefinition(colorClass: string): ColorDefinition {
   }
 
   // Try partial match (e.g. if class has extra spaces or slightly different format)
-  const key = Object.keys(TAILWIND_GRADIENTS).find(k => colorClass.includes(k.split(" ")[0].replace("from-", "")));
+  const key = Object.keys(TAILWIND_GRADIENTS).find((k) =>
+    colorClass.includes(k.split(" ")[0].replace("from-", "")),
+  );
 
   return key ? TAILWIND_GRADIENTS[key] : DEFAULT_COLOR;
 }

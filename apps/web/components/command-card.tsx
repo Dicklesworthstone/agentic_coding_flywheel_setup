@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Terminal, CheckCircle2, Server, Monitor } from "lucide-react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { Check, CheckCircle2, Copy, Monitor, Server, Terminal } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CopyStatus } from "@/components/ui/code-block";
-import { cn, safeGetItem, safeSetItem } from "@/lib/utils";
-import { useDetectedOS, useUserOS } from "@/lib/userPreferences";
-import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
-import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
-import { springs } from "@/components/motion";
 import { commandCopyAnalyticsProperties, trackInteraction } from "@/lib/analytics";
+import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { useDetectedOS, useUserOS } from "@/lib/userPreferences";
+import { cn, safeGetItem, safeSetItem } from "@/lib/utils";
 
 export interface CommandCardProps {
   /** The default command to display */
@@ -46,8 +45,7 @@ type OS = "mac" | "windows" | "linux";
 type CheckedState = boolean | "indeterminate";
 
 const COMPLETION_KEY_PREFIX = "acfs-command-";
-export const COMMAND_COMPLETION_CHANGED_EVENT =
-  "acfs:command-completion-changed";
+export const COMMAND_COMPLETION_CHANGED_EVENT = "acfs:command-completion-changed";
 
 type CommandCompletionChangedDetail = {
   key: string;
@@ -71,12 +69,9 @@ function getCompletionFromStorage(key: string | null): boolean {
 function emitCommandCompletionChanged(key: string, completed: boolean): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent<CommandCompletionChangedDetail>(
-      COMMAND_COMPLETION_CHANGED_EVENT,
-      {
-        detail: { key, completed },
-      }
-    )
+    new CustomEvent<CommandCompletionChangedDetail>(COMMAND_COMPLETION_CHANGED_EVENT, {
+      detail: { key, completed },
+    }),
   );
 }
 
@@ -167,14 +162,14 @@ export function CommandCard({
 
     window.addEventListener(
       COMMAND_COMPLETION_CHANGED_EVENT,
-      handleCompletionChanged as EventListener
+      handleCompletionChanged as EventListener,
     );
     window.addEventListener("storage", handleStorage);
 
     return () => {
       window.removeEventListener(
         COMMAND_COMPLETION_CHANGED_EVENT,
-        handleCompletionChanged as EventListener
+        handleCompletionChanged as EventListener,
       );
       window.removeEventListener("storage", handleStorage);
     };
@@ -215,7 +210,7 @@ export function CommandCard({
       }
       if (isChecked) onComplete?.();
     },
-    [completionKey, completionStatus, queryClient, onComplete]
+    [completionKey, completionStatus, queryClient, onComplete],
   );
 
   return (
@@ -227,16 +222,14 @@ export function CommandCard({
         "group overflow-hidden rounded-xl border border-border/50 bg-card/50 transition duration-300",
         completed && "border-green/30 bg-green/5",
         !completed && "hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5",
-        className
+        className,
       )}
     >
       {/* Description and Location Badge */}
       {(description || runLocation) && (
         <div className="border-b border-border/30 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            {description && (
-              <p className="text-sm text-muted-foreground">{description}</p>
-            )}
+            {description && <p className="text-sm text-muted-foreground">{description}</p>}
             {runLocation && <LocationBadge location={runLocation} />}
           </div>
         </div>
@@ -269,17 +262,13 @@ export function CommandCard({
         </div>
 
         {/* Copy button - 52px touch target */}
-        <motion.div
-          className="shrink-0"
-          whileTap={{ scale: 0.95 }}
-          transition={springs.snappy}
-        >
+        <motion.div className="shrink-0" whileTap={{ scale: 0.95 }} transition={springs.snappy}>
           <Button
             variant="ghost"
             size="icon"
             className={cn(
               "h-[52px] w-14 rounded-none border-l border-border/30",
-              copied && "bg-green/10 text-green"
+              copied && "bg-green/10 text-green",
             )}
             onClick={handleCopy}
             aria-label={copied ? "Copied!" : "Copy command"}
@@ -336,9 +325,7 @@ export function CommandCard({
           htmlFor={checkboxId || persistKey || "command-completed"}
           className={cn(
             "flex min-h-[44px] cursor-pointer items-center gap-3 border-t border-border/30 px-4 py-3 text-sm transition-colors",
-            completed
-              ? "bg-green/5 text-green"
-              : "text-muted-foreground hover:text-foreground"
+            completed ? "bg-green/5 text-green" : "text-muted-foreground hover:text-foreground",
           )}
         >
           <Checkbox
@@ -347,10 +334,7 @@ export function CommandCard({
             disabled={Boolean(completionKey) && completionStatus !== "success"}
             checked={completed}
             onCheckedChange={handleCheckboxChange}
-            className={cn(
-              "transition",
-              completed && "border-green bg-green text-background"
-            )}
+            className={cn("transition", completed && "border-green bg-green text-background")}
           />
           {completed ? (
             <span className="flex items-center gap-2">
@@ -403,7 +387,7 @@ export function CodeBlock({
         // text-muted-foreground and the code's text-foreground would be
         // light-theme dark text on a dark box.
         "dark group relative overflow-hidden rounded-xl border border-border/50 bg-[oklch(0.08_0.015_260)] text-foreground",
-        className
+        className,
       )}
     >
       {/* Header */}

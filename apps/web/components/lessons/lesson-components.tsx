@@ -1,16 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, Check, ChevronRight, Copy, Lightbulb, Sparkles, Zap } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { motion } from "@/components/motion";
-import {
-  Check,
-  Copy,
-  Lightbulb,
-  AlertTriangle,
-  ChevronRight,
-  Sparkles,
-  Zap,
-} from "lucide-react";
 import {
   CodeBlock as SharedCodeBlock,
   type CodeBlockProps as SharedCodeBlockProps,
@@ -42,9 +34,7 @@ export function Section({ title, icon, children, delay = 0 }: SectionProps) {
             {icon}
           </div>
         )}
-        <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-          {title}
-        </h2>
+        <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">{title}</h2>
         <div className="flex-1 h-px bg-gradient-to-r from-white/20 to-transparent" />
       </div>
       <div className="space-y-6">{children}</div>
@@ -62,11 +52,7 @@ interface ParagraphProps {
 
 export function Paragraph({ children, highlight }: ParagraphProps) {
   return (
-    <p
-      className={`text-lg leading-relaxed ${
-        highlight ? "text-white/80" : "text-white/60"
-      }`}
-    >
+    <p className={`text-lg leading-relaxed ${highlight ? "text-white/80" : "text-white/60"}`}>
       {children}
     </p>
   );
@@ -75,9 +61,7 @@ export function Paragraph({ children, highlight }: ParagraphProps) {
 // =============================================================================
 // CODE BLOCK - Re-exported from shared ui/code-block
 // =============================================================================
-export function CodeBlock(
-  props: Omit<SharedCodeBlockProps, "variant" | "copyable">,
-) {
+export function CodeBlock(props: Omit<SharedCodeBlockProps, "variant" | "copyable">) {
   return <SharedCodeBlock {...props} variant="terminal" copyable />;
 }
 
@@ -137,9 +121,7 @@ export function FeatureCard({
 // FEATURE GRID - Grid of feature cards
 // =============================================================================
 export function FeatureGrid({ children }: { children: ReactNode }) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">{children}</div>
-  );
+  return <div className="grid gap-4 sm:grid-cols-2">{children}</div>;
 }
 
 // =============================================================================
@@ -301,9 +283,7 @@ export function StepList({ steps, headingLevel = 3 }: StepListProps) {
           </div>
           <div className="pt-1">
             <StepHeading className="font-semibold text-white">{step.title}</StepHeading>
-            {step.description && (
-              <p className="mt-1 text-white/50 text-sm">{step.description}</p>
-            )}
+            {step.description && <p className="mt-1 text-white/50 text-sm">{step.description}</p>}
           </div>
         </motion.div>
       ))}
@@ -333,9 +313,7 @@ export function DiagramBox({
     >
       {icon && <div className="text-white mb-2">{icon}</div>}
       <span className="font-bold text-white text-sm">{label}</span>
-      {sublabel && (
-        <span className="text-xs text-white/50 mt-1">{sublabel}</span>
-      )}
+      {sublabel && <span className="text-xs text-white/50 mt-1">{sublabel}</span>}
     </div>
   );
 }
@@ -418,9 +396,7 @@ export function GoalBanner({ children }: GoalBannerProps) {
           <Zap className="h-6 w-6 text-white" />
         </div>
         <div>
-          <span className="text-xs font-bold text-primary uppercase tracking-wider">
-            Goal
-          </span>
+          <span className="text-xs font-bold text-primary uppercase tracking-wider">Goal</span>
           <p className="text-lg text-white font-medium">{children}</p>
         </div>
       </div>

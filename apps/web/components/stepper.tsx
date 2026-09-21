@@ -1,17 +1,17 @@
 "use client";
 
-import { useCallback } from "react";
 import { Check, Circle } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  WIZARD_STEPS,
-  getHighestContiguousCompletedStep,
-  useCompletedSteps,
-  type WizardStep,
-} from "@/lib/wizardSteps";
+import { useCallback } from "react";
 import { motion } from "@/components/motion";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { useUserOS } from "@/lib/userPreferences";
+import { cn } from "@/lib/utils";
+import {
+  getHighestContiguousCompletedStep,
+  useCompletedSteps,
+  WIZARD_STEPS,
+  type WizardStep,
+} from "@/lib/wizardSteps";
 
 export interface StepperProps {
   /** Current active step (1-indexed) */
@@ -66,7 +66,7 @@ function StepItem({
         "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition duration-200",
         isActive && "bg-primary/10 shadow-sm",
         isClickable && !isActive && "hover:bg-muted/50",
-        !isClickable && "cursor-not-allowed opacity-60"
+        !isClickable && "cursor-not-allowed opacity-60",
       )}
       aria-current={isActive ? "step" : undefined}
       aria-label={`Step ${step.id}: ${step.title}, ${state}`}
@@ -81,8 +81,9 @@ function StepItem({
         className={cn(
           "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition duration-300",
           showCompletedState && "bg-green text-primary-foreground shadow-sm shadow-green/30",
-          isActive && "bg-primary text-primary-foreground shadow-sm shadow-primary/30 animate-glow-pulse",
-          !isActive && !showCompletedState && "bg-muted text-muted-foreground"
+          isActive &&
+            "bg-primary text-primary-foreground shadow-sm shadow-primary/30 animate-glow-pulse",
+          !isActive && !showCompletedState && "bg-muted text-muted-foreground",
         )}
       >
         {showCompletedState ? (
@@ -101,14 +102,12 @@ function StepItem({
             "truncate text-sm font-medium transition-colors",
             isActive && "text-foreground",
             showCompletedState && "text-muted-foreground",
-            !isActive && !showCompletedState && "text-muted-foreground"
+            !isActive && !showCompletedState && "text-muted-foreground",
           )}
         >
           {step.title}
         </div>
-        {isActive && (
-          <div className="mt-0.5 text-xs text-primary">In progress</div>
-        )}
+        {isActive && <div className="mt-0.5 text-xs text-primary">In progress</div>}
         {showCompletedState && (
           <div className="mt-0.5 text-xs text-green">
             {isSkipped ? "Skipped (Linux)" : "Complete"}
@@ -146,14 +145,11 @@ export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
         onStepClick(stepId);
       }
     },
-    [onStepClick]
+    [onStepClick],
   );
 
   return (
-    <nav
-      className={cn("flex flex-col", className)}
-      aria-label="Wizard steps"
-    >
+    <nav className={cn("flex flex-col", className)} aria-label="Wizard steps">
       {WIZARD_STEPS.map((step, index) => {
         const isActive = step.id === currentStep;
         const isCompleted = completedSteps.includes(step.id);
@@ -222,7 +218,7 @@ export function StepperMobile({
               key={step.id}
               className={cn(
                 "h-full flex-1 overflow-hidden rounded-full transition-colors duration-300",
-                showCompletedState ? "bg-green" : "bg-muted"
+                showCompletedState ? "bg-green" : "bg-muted",
               )}
             >
               {isActive && (

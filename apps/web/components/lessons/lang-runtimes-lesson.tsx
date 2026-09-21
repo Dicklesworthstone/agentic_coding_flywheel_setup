@@ -1,43 +1,31 @@
 "use client";
 
+import { Cloud, Cog, Layers, Package, Server, Zap } from "lucide-react";
 import {
-  Layers,
-  Zap,
-  Package,
-  Cog,
-  Cloud,
-  Server,
-} from "lucide-react";
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
   InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function LangRuntimesLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Master five language runtimes installed by ACFS &mdash; Bun for
-        TypeScript, uv for Python, Rust/cargo for systems code, Go for cloud
-        tooling, and nvm for Node.js compatibility.
+        Master five language runtimes installed by ACFS &mdash; Bun for TypeScript, uv for Python,
+        Rust/cargo for systems code, Go for cloud tooling, and nvm for Node.js compatibility.
       </GoalBanner>
 
       {/* Section 1: Your Language Stack */}
-      <Section
-        title="Your Language Stack"
-        icon={<Layers className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Your Language Stack" icon={<Layers className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          ACFS installs 5 language runtimes, each chosen for a specific role in
-          the agentic coding workflow.
+          ACFS installs 5 language runtimes, each chosen for a specific role in the agentic coding
+          workflow.
         </Paragraph>
 
         <div className="mt-8">
@@ -73,14 +61,10 @@ export function LangRuntimesLesson() {
       <Divider />
 
       {/* Section 2: Bun: The JS/TS Runtime */}
-      <Section
-        title="Bun: The JS/TS Runtime"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Bun: The JS/TS Runtime" icon={<Zap className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          Bun replaces Node.js + npm + npx for most tasks. ACFS uses Bun
-          exclusively &mdash; never use npm/yarn/pnpm.
+          Bun replaces Node.js + npm + npx for most tasks. ACFS uses Bun exclusively &mdash; never
+          use npm/yarn/pnpm.
         </Paragraph>
 
         <div className="mt-6">
@@ -114,8 +98,8 @@ bun --version`}
         <div className="mt-8">
           <TipBox variant="tip">
             <InlineCode>bun install -g</InlineCode> is valid syntax (alias for{" "}
-            <InlineCode>bun add -g</InlineCode>). Don&apos;t &ldquo;fix&rdquo;
-            it &mdash; this is intentional and documented in AGENTS.md.
+            <InlineCode>bun add -g</InlineCode>). Don&apos;t &ldquo;fix&rdquo; it &mdash; this is
+            intentional and documented in AGENTS.md.
           </TipBox>
         </div>
       </Section>
@@ -123,15 +107,10 @@ bun --version`}
       <Divider />
 
       {/* Section 3: uv: Fast Python */}
-      <Section
-        title="uv: Fast Python"
-        icon={<Package className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="uv: Fast Python" icon={<Package className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          uv is a Rust-powered Python package manager that&apos;s 10-100x faster
-          than pip. It handles virtual environments, dependency resolution, and
-          Python version management.
+          uv is a Rust-powered Python package manager that&apos;s 10-100x faster than pip. It
+          handles virtual environments, dependency resolution, and Python version management.
         </Paragraph>
 
         <div className="mt-6">
@@ -165,9 +144,8 @@ uv python list`}
 
         <div className="mt-8">
           <TipBox variant="tip">
-            uv automatically creates and manages virtual environments. You
-            rarely need to manually create a venv &mdash; just{" "}
-            <InlineCode>uv add</InlineCode> and{" "}
+            uv automatically creates and manages virtual environments. You rarely need to manually
+            create a venv &mdash; just <InlineCode>uv add</InlineCode> and{" "}
             <InlineCode>uv run</InlineCode>.
           </TipBox>
         </div>
@@ -176,14 +154,10 @@ uv python list`}
       <Divider />
 
       {/* Section 4: Rust & Cargo */}
-      <Section
-        title="Rust & Cargo"
-        icon={<Cog className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Rust & Cargo" icon={<Cog className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          The Agent Flywheel stack (NTM, BV, CAAM, DCG, etc.) is built in
-          Rust. Cargo is the build system, package manager, and test runner.
+          The Agent Flywheel stack (NTM, BV, CAAM, DCG, etc.) is built in Rust. Cargo is the build
+          system, package manager, and test runner.
         </Paragraph>
 
         <div className="mt-6">
@@ -221,9 +195,8 @@ rch exec -- cargo test`}
 
         <div className="mt-8">
           <TipBox variant="tip">
-            When multiple agents build simultaneously, use RCH to offload
-            compilation to remote workers. This prevents CPU contention on your
-            development VPS.
+            When multiple agents build simultaneously, use RCH to offload compilation to remote
+            workers. This prevents CPU contention on your development VPS.
           </TipBox>
         </div>
       </Section>
@@ -231,15 +204,10 @@ rch exec -- cargo test`}
       <Divider />
 
       {/* Section 5: Go for Cloud Tools */}
-      <Section
-        title="Go for Cloud Tools"
-        icon={<Cloud className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Go for Cloud Tools" icon={<Cloud className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          Many DevOps and cloud tools are written in Go (lazygit, lazydocker,
-          goreleaser). Go is also used to build some Agent Flywheel tools
-          (SLB, DSR).
+          Many DevOps and cloud tools are written in Go (lazygit, lazydocker, goreleaser). Go is
+          also used to build some Agent Flywheel tools (SLB, DSR).
         </Paragraph>
 
         <div className="mt-6">
@@ -274,14 +242,10 @@ GOOS=darwin GOARCH=arm64 go build -o myapp-macos
       <Divider />
 
       {/* Section 6: nvm & Node.js */}
-      <Section
-        title="nvm & Node.js"
-        icon={<Server className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="nvm & Node.js" icon={<Server className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
-          nvm manages Node.js versions for tools that require Node (not Bun).
-          Some CI tools and older packages still need Node.js.
+          nvm manages Node.js versions for tools that require Node (not Bun). Some CI tools and
+          older packages still need Node.js.
         </Paragraph>
 
         <div className="mt-6">
@@ -311,9 +275,9 @@ which bun     # Should be ~/.bun/bin/bun`}
 
         <div className="mt-8">
           <TipBox variant="info">
-            Five runtimes, each with a clear role. Bun for daily TypeScript
-            work, uv for Python, Rust for the core tools, Go for cloud
-            infrastructure, and Node.js as a compatibility fallback.
+            Five runtimes, each with a clear role. Bun for daily TypeScript work, uv for Python,
+            Rust for the core tools, Go for cloud infrastructure, and Node.js as a compatibility
+            fallback.
           </TipBox>
         </div>
       </Section>

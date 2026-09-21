@@ -1,40 +1,33 @@
-'use client';
+"use client";
 
+import { CheckSquare, FileText, FolderPlus, Rocket, Shield, Users } from "lucide-react";
 import {
-  Rocket,
-  FolderPlus,
-  Shield,
-  FileText,
-  Users,
-  CheckSquare,
-} from 'lucide-react';
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function ProjectBootstrapLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Set up a new project for multi-agent development in 5 minutes with
-        issue tracking, safety hooks, quality scanning, and agent coordination.
+        Set up a new project for multi-agent development in 5 minutes with issue tracking, safety
+        hooks, quality scanning, and agent coordination.
       </GoalBanner>
 
       {/* Section 1: Overview */}
       <Section title="The Bootstrap Checklist" icon={<Rocket className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           Starting a new project with the flywheel means setting up
-          <Highlight> six foundational layers</Highlight> that protect your code,
-          track your work, and enable agent collaboration from day one.
+          <Highlight> six foundational layers</Highlight> that protect your code, track your work,
+          and enable agent collaboration from day one.
         </Paragraph>
 
         <div className="mt-8">
@@ -96,8 +89,8 @@ bv --robot-triage
         />
 
         <TipBox variant="tip">
-          Define dependencies early. BV uses them to compute which issues should
-          be worked on first, preventing agents from starting blocked work.
+          Define dependencies early. BV uses them to compute which issues should be worked on first,
+          preventing agents from starting blocked work.
         </TipBox>
       </Section>
 
@@ -106,8 +99,8 @@ bv --robot-triage
       {/* Section 3: Install Safety Hooks */}
       <Section title="2. Safety Hooks" icon={<Shield className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          Install DCG to block destructive commands and SLB for two-person
-          approval on risky operations.
+          Install DCG to block destructive commands and SLB for two-person approval on risky
+          operations.
         </Paragraph>
 
         <CodeBlock
@@ -129,8 +122,8 @@ slb check "git push --force origin main"
         />
 
         <TipBox variant="warning">
-          Always install DCG before giving agents access to your project. Without
-          it, a single bad command can destroy uncommitted work.
+          Always install DCG before giving agents access to your project. Without it, a single bad
+          command can destroy uncommitted work.
         </TipBox>
       </Section>
 
@@ -138,9 +131,7 @@ slb check "git push --force origin main"
 
       {/* Section 4: Set Up Quality Scanning */}
       <Section title="3. Quality Gates" icon={<CheckSquare className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          Install UBS and wire it into git hooks so every commit is scanned.
-        </Paragraph>
+        <Paragraph>Install UBS and wire it into git hooks so every commit is scanned.</Paragraph>
 
         <CodeBlock
           code={`# Run a baseline scan
@@ -171,9 +162,8 @@ git add . && git commit -m "test"
       {/* Section 5: AGENTS.md Convention */}
       <Section title="4. AGENTS.md" icon={<FileText className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          Create an <Highlight>AGENTS.md</Highlight> file that tells AI agents
-          how to work in your project. This is the single most important file
-          for multi-agent coordination.
+          Create an <Highlight>AGENTS.md</Highlight> file that tells AI agents how to work in your
+          project. This is the single most important file for multi-agent coordination.
         </Paragraph>
 
         <CodeBlock
@@ -203,8 +193,8 @@ Key architectural decisions agents need to know.
         />
 
         <TipBox variant="info">
-          Every AI agent (Claude, Codex, Antigravity) reads AGENTS.md at session start.
-          Keep it concise — agents have limited context windows.
+          Every AI agent (Claude, Codex, Antigravity) reads AGENTS.md at session start. Keep it
+          concise — agents have limited context windows.
         </TipBox>
       </Section>
 
@@ -213,25 +203,39 @@ Key architectural decisions agents need to know.
       {/* Section 6: Agent Mail Registration */}
       <Section title="5. Agent Coordination" icon={<Users className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
-          Start an Agent Mail session so the project, agent identity, inbox, and
-          reservations are all wired up correctly.
+          Start an Agent Mail session so the project, agent identity, inbox, and reservations are
+          all wired up correctly.
         </Paragraph>
 
         <CommandList
           commands={[
-            { command: 'am macros start-session --project /your/project --program codex-cli --model gpt-5 --task "bootstrap"', description: 'Ensure the project exists and register an agent session' },
-            { command: 'am check-inbox --project /your/project --agent <name>', description: 'Check for unread messages from other agents' },
-            { command: 'am file_reservations reserve --exclusive /your/project <name> src/api.ts', description: 'Reserve a file for exclusive editing' },
-            { command: 'am mail send --project /your/project --from <name> --to other-agent --subject "project initialized" --body "Ready to start"', description: 'Notify another agent that the project is ready' },
+            {
+              command:
+                'am macros start-session --project /your/project --program codex-cli --model gpt-5 --task "bootstrap"',
+              description: "Ensure the project exists and register an agent session",
+            },
+            {
+              command: "am check-inbox --project /your/project --agent <name>",
+              description: "Check for unread messages from other agents",
+            },
+            {
+              command: "am file_reservations reserve --exclusive /your/project <name> src/api.ts",
+              description: "Reserve a file for exclusive editing",
+            },
+            {
+              command:
+                'am mail send --project /your/project --from <name> --to other-agent --subject "project initialized" --body "Ready to start"',
+              description: "Notify another agent that the project is ready",
+            },
           ]}
         />
 
         <div className="mt-6 p-4 rounded-lg bg-white/[0.03] border border-white/[0.08]">
           <p className="text-sm text-white/70">
-            <strong className="text-white">Quick bootstrap summary:</strong> <code>br init</code> →{' '}
-            <code>dcg install</code> → <code>ubs .</code> → create AGENTS.md →{' '}
-            <code>am macros start-session</code>. Five commands, five minutes, fully
-            protected multi-agent development environment.
+            <strong className="text-white">Quick bootstrap summary:</strong> <code>br init</code> →{" "}
+            <code>dcg install</code> → <code>ubs .</code> → create AGENTS.md →{" "}
+            <code>am macros start-session</code>. Five commands, five minutes, fully protected
+            multi-agent development environment.
           </p>
         </div>
       </Section>

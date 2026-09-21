@@ -7,13 +7,12 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useInstallationPreference, useWizardInstallation } from "./wizardInstallation";
-import type { ModuleSelectionInput } from "./moduleSelection";
 import {
-  isValidIP,
-  normalizeGitRef,
-  normalizeSSHUsername,
-} from "./inputValidation";
+  type ManifestSelectionProfileId,
+  manifestSelectionProfiles,
+} from "./generated/manifest-modules";
+import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
+import type { ModuleSelectionInput } from "./moduleSelection";
 import {
   safeGetItem,
   safeGetJSON,
@@ -22,16 +21,8 @@ import {
   stripSensitiveQueryState,
   urlContainsSensitiveState,
 } from "./utils";
-import {
-  VPS_PROVIDERS,
-  validateUbuntuImage,
-  type WorkloadId,
-} from "./vpsProviders";
-
-import {
-  manifestSelectionProfiles,
-  type ManifestSelectionProfileId,
-} from "./generated/manifest-modules";
+import { VPS_PROVIDERS, validateUbuntuImage, type WorkloadId } from "./vpsProviders";
+import { useInstallationPreference, useWizardInstallation } from "./wizardInstallation";
 
 export { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
 
@@ -63,7 +54,7 @@ export const CREATE_VPS_REQUIRED_CHECKLIST_ITEMS = [
   "password",
   "created",
 ] as const;
-export type CreateVPSChecklistItemId = typeof CREATE_VPS_REQUIRED_CHECKLIST_ITEMS[number];
+export type CreateVPSChecklistItemId = (typeof CREATE_VPS_REQUIRED_CHECKLIST_ITEMS)[number];
 
 const OS_QUERY_KEY = "os";
 const VPS_IP_QUERY_KEY = "ip";
@@ -129,9 +120,10 @@ export function normalizeVPSReadinessSelection(value: unknown): VPSReadinessSele
   // The purchase menu is not a migration map. Keep recognizable old images so
   // lifecycle checks can reject them, and never fabricate an OS after redaction
   // or a missing/invalid value. Validate the whole label before extracting it.
-  const ubuntuVersion = validateUbuntuImage(requestedUbuntuVersion).status === "unknown"
-    ? "unknown"
-    : requestedUbuntuVersion.match(/\d{2}\.(?:04|10)/)?.[0] ?? "unknown";
+  const ubuntuVersion =
+    validateUbuntuImage(requestedUbuntuVersion).status === "unknown"
+      ? "unknown"
+      : (requestedUbuntuVersion.match(/\d{2}\.(?:04|10)/)?.[0] ?? "unknown");
 
   return {
     providerId: provider?.id ?? "other",
@@ -248,7 +240,12 @@ export function detectOS(): OperatingSystem | null {
 
   // If the user is on a phone/tablet, we can't reliably infer the OS of the
   // computer they'll use for the terminal/VPS steps. Force an explicit choice.
-  if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod") || ua.includes("android")) {
+  if (
+    ua.includes("iphone") ||
+    ua.includes("ipad") ||
+    ua.includes("ipod") ||
+    ua.includes("android")
+  ) {
     return null;
   }
 
@@ -291,8 +288,8 @@ export function setVPSIP(ip: string): boolean {
   if (!isValidIP(normalized)) {
     return false;
   }
-  const didScrubURL = setQueryParam(VPS_IP_QUERY_KEY, null)
-    || !urlContainsSensitiveState(window.location.href);
+  const didScrubURL =
+    setQueryParam(VPS_IP_QUERY_KEY, null) || !urlContainsSensitiveState(window.location.href);
   if (!didScrubURL) return false;
   if (safeSetItem(VPS_IP_KEY, normalized)) {
     volatileVPSIPs.delete(window);
@@ -336,11 +333,14 @@ export function useUserOS(): [OperatingSystem | null, (os: OperatingSystem) => v
     gcTime: Infinity,
   });
 
-  const setOS = useCallback((newOS: OperatingSystem) => {
-    if (setUserOS(newOS)) {
-      queryClient.setQueryData(userPreferencesKeys.userOS, getUserOS());
-    }
-  }, [queryClient]);
+  const setOS = useCallback(
+    (newOS: OperatingSystem) => {
+      if (setUserOS(newOS)) {
+        queryClient.setQueryData(userPreferencesKeys.userOS, getUserOS());
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? null, setOS, status === "success"];
 }
@@ -369,12 +369,15 @@ export function useVPSIP(): [string | null, (ip: string) => void, boolean] {
     gcTime: Infinity,
   });
 
-  const setIP = useCallback((newIP: string) => {
-    const normalized = newIP.trim();
-    if (setVPSIP(normalized)) {
-      queryClient.setQueryData(userPreferencesKeys.vpsIP, getVPSIP());
-    }
-  }, [queryClient]);
+  const setIP = useCallback(
+    (newIP: string) => {
+      const normalized = newIP.trim();
+      if (setVPSIP(normalized)) {
+        queryClient.setQueryData(userPreferencesKeys.vpsIP, getVPSIP());
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? null, setIP, status === "success"];
 }
@@ -394,12 +397,15 @@ export function useVPSReadinessSelection(): [
     gcTime: Infinity,
   });
 
-  const setReadinessSelection = useCallback((selection: VPSReadinessSelection) => {
-    const normalized = normalizeVPSReadinessSelection(selection);
-    if (normalized && setVPSReadinessSelection(normalized)) {
-      queryClient.setQueryData(userPreferencesKeys.vpsReadinessSelection, normalized);
-    }
-  }, [queryClient]);
+  const setReadinessSelection = useCallback(
+    (selection: VPSReadinessSelection) => {
+      const normalized = normalizeVPSReadinessSelection(selection);
+      if (normalized && setVPSReadinessSelection(normalized)) {
+        queryClient.setQueryData(userPreferencesKeys.vpsReadinessSelection, normalized);
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? null, setReadinessSelection, status === "success"];
 }
@@ -432,15 +438,18 @@ export function useCreateVPSChecklist(): [string[], (items: string[]) => void, b
     gcTime: Infinity,
   });
 
-  const setChecklist = useCallback((items: string[]) => {
-    const normalized = normalizeStringList(items);
-    // Update the cache even when persistence fails (private browsing,
-    // blocked storage): unlike OS/IP/steps there is no URL fallback for the
-    // checklist, and dropping the update would leave the checkboxes
-    // permanently unchecked and the step impossible to complete.
-    setCreateVPSChecklist(normalized);
-    queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, normalized);
-  }, [queryClient]);
+  const setChecklist = useCallback(
+    (items: string[]) => {
+      const normalized = normalizeStringList(items);
+      // Update the cache even when persistence fails (private browsing,
+      // blocked storage): unlike OS/IP/steps there is no URL fallback for the
+      // checklist, and dropping the update would leave the checkboxes
+      // permanently unchecked and the step impossible to complete.
+      setCreateVPSChecklist(normalized);
+      queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, normalized);
+    },
+    [queryClient],
+  );
 
   return [data ?? [], setChecklist, status === "success"];
 }
@@ -470,21 +479,24 @@ export function useCheckedServices(): [string[], (serviceId: string) => void, bo
     gcTime: Infinity,
   });
 
-  const toggleService = useCallback((serviceId: string) => {
-    const currentIds =
-      queryClient.getQueryData<string[]>(userPreferencesKeys.checkedServices) ??
-      getCheckedServices();
-    const currentSet = new Set(currentIds);
-    if (currentSet.has(serviceId)) {
-      currentSet.delete(serviceId);
-    } else {
-      currentSet.add(serviceId);
-    }
-    const newIds = [...currentSet];
-    if (setCheckedServices(newIds)) {
-      queryClient.setQueryData(userPreferencesKeys.checkedServices, newIds);
-    }
-  }, [queryClient]);
+  const toggleService = useCallback(
+    (serviceId: string) => {
+      const currentIds =
+        queryClient.getQueryData<string[]>(userPreferencesKeys.checkedServices) ??
+        getCheckedServices();
+      const currentSet = new Set(currentIds);
+      if (currentSet.has(serviceId)) {
+        currentSet.delete(serviceId);
+      } else {
+        currentSet.add(serviceId);
+      }
+      const newIds = [...currentSet];
+      if (setCheckedServices(newIds)) {
+        queryClient.setQueryData(userPreferencesKeys.checkedServices, newIds);
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? [], toggleService, status === "success"];
 }
@@ -549,11 +561,14 @@ export function useSavedInstallMode(): [InstallMode, (mode: InstallMode) => void
     gcTime: Infinity,
   });
 
-  const setMode = useCallback((newMode: InstallMode) => {
-    if (setInstallMode(newMode)) {
-      queryClient.setQueryData(userPreferencesKeys.installMode, getInstallMode());
-    }
-  }, [queryClient]);
+  const setMode = useCallback(
+    (newMode: InstallMode) => {
+      if (setInstallMode(newMode)) {
+        queryClient.setQueryData(userPreferencesKeys.installMode, getInstallMode());
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? "vibe", setMode, status === "success"];
 }
@@ -590,11 +605,14 @@ export function useSavedSSHUsername(): [string, (username: string) => void, bool
     gcTime: Infinity,
   });
 
-  const setUsername = useCallback((newUsername: string) => {
-    if (setSSHUsername(newUsername)) {
-      queryClient.setQueryData(userPreferencesKeys.sshUsername, getSSHUsername());
-    }
-  }, [queryClient]);
+  const setUsername = useCallback(
+    (newUsername: string) => {
+      if (setSSHUsername(newUsername)) {
+        queryClient.setQueryData(userPreferencesKeys.sshUsername, getSSHUsername());
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? "ubuntu", setUsername, status === "success"];
 }
@@ -613,9 +631,7 @@ export function setACFSRef(ref: string | null): boolean {
     return false;
   }
   const value = raw ? normalizeGitRef(raw) : null;
-  const storedOk = value
-    ? safeSetItem(ACFS_REF_KEY, value)
-    : safeSetItem(ACFS_REF_KEY, "");
+  const storedOk = value ? safeSetItem(ACFS_REF_KEY, value) : safeSetItem(ACFS_REF_KEY, "");
   const urlOk = setQueryParam(ACFS_REF_QUERY_KEY, value);
   if (storedOk || urlOk) {
     emitUserPreferencesUpdate();
@@ -634,11 +650,14 @@ export function useSavedACFSRef(): [string | null, (ref: string | null) => void,
     gcTime: Infinity,
   });
 
-  const setRef = useCallback((newRef: string | null) => {
-    if (setACFSRef(newRef)) {
-      queryClient.setQueryData(userPreferencesKeys.acfsRef, getACFSRef());
-    }
-  }, [queryClient]);
+  const setRef = useCallback(
+    (newRef: string | null) => {
+      if (setACFSRef(newRef)) {
+        queryClient.setQueryData(userPreferencesKeys.acfsRef, getACFSRef());
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? null, setRef, status === "success"];
 }
@@ -671,7 +690,11 @@ export function setModuleProfile(profile: ModuleSelectionProfileId): boolean {
   return storedOk || urlOk;
 }
 
-export function useSavedModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleSelectionProfileId) => void, boolean] {
+export function useSavedModuleProfile(): [
+  ModuleSelectionProfileId,
+  (profile: ModuleSelectionProfileId) => void,
+  boolean,
+] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.moduleProfile);
 
@@ -682,11 +705,14 @@ export function useSavedModuleProfile(): [ModuleSelectionProfileId, (profile: Mo
     gcTime: Infinity,
   });
 
-  const setProfile = useCallback((newProfile: ModuleSelectionProfileId) => {
-    if (setModuleProfile(newProfile)) {
-      queryClient.setQueryData(userPreferencesKeys.moduleProfile, getModuleProfile());
-    }
-  }, [queryClient]);
+  const setProfile = useCallback(
+    (newProfile: ModuleSelectionProfileId) => {
+      if (setModuleProfile(newProfile)) {
+        queryClient.setQueryData(userPreferencesKeys.moduleProfile, getModuleProfile());
+      }
+    },
+    [queryClient],
+  );
 
   return [data ?? "full", setProfile, status === "success"];
 }
@@ -705,8 +731,15 @@ export function useACFSRef(): [string | null, (ref: string | null) => void, bool
   return useInstallationPreference(useSavedACFSRef(), (installation) => installation.ref);
 }
 
-export function useModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleSelectionProfileId) => void, boolean] {
-  return useInstallationPreference(useSavedModuleProfile(), (installation) => installation.moduleSelection.profile ?? "full");
+export function useModuleProfile(): [
+  ModuleSelectionProfileId,
+  (profile: ModuleSelectionProfileId) => void,
+  boolean,
+] {
+  return useInstallationPreference(
+    useSavedModuleProfile(),
+    (installation) => installation.moduleSelection.profile ?? "full",
+  );
 }
 
 /** Exact selectors must travel together; a profile ID alone loses custom skips. */
@@ -714,6 +747,9 @@ export function useModuleSelection(): [ModuleSelectionInput, boolean] {
   const [profile, , loaded] = useModuleProfile();
   const session = useWizardInstallation();
   const installation = session?.status === "active" ? session.installation : null;
-  const selection = useMemo(() => installation?.moduleSelection ?? { profile }, [installation, profile]);
+  const selection = useMemo(
+    () => installation?.moduleSelection ?? { profile },
+    [installation, profile],
+  );
   return [selection, loaded];
 }

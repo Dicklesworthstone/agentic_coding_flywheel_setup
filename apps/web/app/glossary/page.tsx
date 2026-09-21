@@ -1,10 +1,10 @@
 "use client";
 
+import { BookOpen, ChevronDown, Home, Search, Terminal, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, ChevronDown, Home, Search, Terminal, X } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { jargonDictionary } from "@/lib/jargon";
 import { cn } from "@/lib/utils";
@@ -19,13 +19,7 @@ const CATEGORY_LABELS: Record<GlossaryCategory, string> = {
   concepts: "Concepts",
 };
 
-const CATEGORY_ORDER: GlossaryCategory[] = [
-  "all",
-  "networking",
-  "shell",
-  "tools",
-  "concepts",
-];
+const CATEGORY_ORDER: GlossaryCategory[] = ["all", "networking", "shell", "tools", "concepts"];
 
 type LearnMoreLink = {
   href: string;
@@ -61,15 +55,13 @@ type GlossaryEntry = {
 function categorizeKey(key: string): Exclude<GlossaryCategory, "all"> {
   const k = key.toLowerCase();
 
-  if (
-    /(ssh|vps|ip-address|hostname|port|tailscale|dns|firewall|fingerprint)/.test(k)
-  ) {
+  if (/(ssh|vps|ip-address|hostname|port|tailscale|dns|firewall|fingerprint)/.test(k)) {
     return "networking";
   }
 
   if (
     /(terminal|command-line|shell|zsh|bash|oh-my-zsh|p10k|powerlevel10k|alias|path|env|tmux|session|zoxide|atuin|fzf)/.test(
-      k
+      k,
     )
   ) {
     return "shell";
@@ -77,7 +69,9 @@ function categorizeKey(key: string): Exclude<GlossaryCategory, "all"> {
 
   if (
     /(git|github|repo|repository|clone|branch|commit|pull-request)/.test(k) ||
-    /(bun|uv|rust|cargo|go|docker|wrangler|supabase|vercel|vault|jq|rg|ripgrep|lazygit|ast-grep)/.test(k)
+    /(bun|uv|rust|cargo|go|docker|wrangler|supabase|vercel|vault|jq|rg|ripgrep|lazygit|ast-grep)/.test(
+      k,
+    )
   ) {
     return "tools";
   }
@@ -104,26 +98,22 @@ export default function GlossaryPage() {
   const [category, setCategory] = useState<GlossaryCategory>("all");
 
   const entries = useMemo<GlossaryEntry[]>(() => {
-    const all: GlossaryEntry[] = Object.entries(jargonDictionary).map(
-      ([key, value]) => {
-        const base: Omit<GlossaryEntry, "searchable"> = {
-          key,
-          category: categorizeKey(key),
-          term: value.term,
-          short: value.short,
-          long: value.long,
-          analogy: value.analogy,
-          why: value.why,
-          related: value.related,
-          learnMore: LEARN_MORE[key],
-        };
-        return { ...base, searchable: buildSearchable(base) };
-      }
-    );
+    const all: GlossaryEntry[] = Object.entries(jargonDictionary).map(([key, value]) => {
+      const base: Omit<GlossaryEntry, "searchable"> = {
+        key,
+        category: categorizeKey(key),
+        term: value.term,
+        short: value.short,
+        long: value.long,
+        analogy: value.analogy,
+        why: value.why,
+        related: value.related,
+        learnMore: LEARN_MORE[key],
+      };
+      return { ...base, searchable: buildSearchable(base) };
+    });
 
-    all.sort((a, b) =>
-      a.term.localeCompare(b.term, undefined, { sensitivity: "base" })
-    );
+    all.sort((a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: "base" }));
 
     return all;
   }, []);
@@ -215,7 +205,12 @@ export default function GlossaryPage() {
   }, [entries]);
 
   return (
-    <div role="main" id="main-content" tabIndex={-1} className="relative min-h-screen bg-background">
+    <div
+      role="main"
+      id="main-content"
+      tabIndex={-1}
+      className="relative min-h-screen bg-background"
+    >
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
@@ -255,12 +250,10 @@ export default function GlossaryPage() {
               <BookOpen className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-4xl">
-            Glossary
-          </h1>
+          <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-4xl">Glossary</h1>
           <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-            Search and browse plain‑English definitions for terms you see in the
-            wizard and learning hub.
+            Search and browse plain‑English definitions for terms you see in the wizard and learning
+            hub.
           </p>
           <p className="mt-3 text-sm text-muted-foreground">
             Tip: Many{" "}
@@ -311,10 +304,8 @@ export default function GlossaryPage() {
           </div>
 
           <div className="mt-4 text-sm text-muted-foreground">
-            Showing <span className="font-medium text-foreground">{filtered.length}</span>{" "}
-            of{" "}
-            <span className="font-medium text-foreground">{entries.length}</span>{" "}
-            terms
+            Showing <span className="font-medium text-foreground">{filtered.length}</span> of{" "}
+            <span className="font-medium text-foreground">{entries.length}</span> terms
           </div>
         </Card>
 
@@ -349,9 +340,7 @@ export default function GlossaryPage() {
                 <summary className="flex cursor-pointer list-none items-start justify-between gap-4 p-5 rounded-2xl outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-semibold text-foreground">
-                        {entry.term}
-                      </h2>
+                      <h2 className="text-lg font-semibold text-foreground">{entry.term}</h2>
                       <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground">
                         #{entry.key}
                       </span>
@@ -359,9 +348,7 @@ export default function GlossaryPage() {
                         {CATEGORY_LABELS[entry.category]}
                       </span>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {entry.short}
-                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">{entry.short}</p>
                   </div>
                   <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                 </summary>
@@ -371,9 +358,7 @@ export default function GlossaryPage() {
                     <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                       What it means
                     </h3>
-                    <p className="mt-2 text-sm leading-relaxed text-foreground">
-                      {entry.long}
-                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-foreground">{entry.long}</p>
                   </div>
 
                   {entry.why && (
@@ -381,9 +366,7 @@ export default function GlossaryPage() {
                       <p className="mb-1 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                         Why we use it
                       </p>
-                      <p className="text-sm leading-relaxed text-foreground">
-                        {entry.why}
-                      </p>
+                      <p className="text-sm leading-relaxed text-foreground">{entry.why}</p>
                     </div>
                   )}
 
@@ -392,9 +375,7 @@ export default function GlossaryPage() {
                       <p className="mb-1 text-xs font-bold uppercase tracking-wider text-primary">
                         Think of it like…
                       </p>
-                      <p className="text-sm leading-relaxed text-foreground">
-                        {entry.analogy}
-                      </p>
+                      <p className="text-sm leading-relaxed text-foreground">{entry.analogy}</p>
                     </div>
                   )}
 
@@ -423,7 +404,7 @@ export default function GlossaryPage() {
                         href={entry.learnMore.href}
                         className={cn(
                           "inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline",
-                          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+                          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
                         )}
                       >
                         {entry.learnMore.label} →

@@ -15,20 +15,20 @@ export const metadata: Metadata = {
     url: "https://agent-flywheel.com/complete-guide",
     siteName: "Agent Flywheel",
     locale: "en_US",
-    images: [{ url: `/complete-guide/opengraph-image?v=${ogVersion}`, width: 1200, height: 630, alt }],
+    images: [
+      { url: `/complete-guide/opengraph-image?v=${ogVersion}`, width: 1200, height: 630, alt },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     creator: "@doodlestein",
-    images: [{ url: `/complete-guide/twitter-image?v=${ogVersion}`, width: 1200, height: 600, alt }],
+    images: [
+      { url: `/complete-guide/twitter-image?v=${ogVersion}`, width: 1200, height: 600, alt },
+    ],
   },
 };
 
-export default function CompleteGuideLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function CompleteGuideLayout({ children }: { children: React.ReactNode }) {
   // Dark-only editorial surface (#020408 background, white text): keep the
   // dark tokens even when the wizard's light theme is active.
   return <div className="dark bg-background text-foreground">{children}</div>;

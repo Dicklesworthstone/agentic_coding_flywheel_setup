@@ -1,11 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  BookOpen,
+  ExternalLink,
+  FolderOpen,
+  FolderPlus,
+  GraduationCap,
+  PartyPopper,
+  RefreshCw,
+  Sparkles,
+  Terminal,
+} from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PartyPopper, BookOpen, ExternalLink, Sparkles, ArrowRight, GraduationCap, Terminal, RefreshCw, FolderPlus, FolderOpen } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { CommandCard, CodeBlock } from "@/components/command-card";
+import { useEffect, useState } from "react";
 import { AlertCard } from "@/components/alert-card";
+import { CommandBuilderPanel } from "@/components/command-builder-panel";
+import { CodeBlock, CommandCard } from "@/components/command-card";
+import { Jargon } from "@/components/jargon";
+import {
+  GuideExplain,
+  GuideSection,
+  GuideStep,
+  GuideTip,
+  SimplerGuide,
+} from "@/components/simpler-guide";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { trackConversion } from "@/lib/analytics";
+import { formatSshTarget } from "@/lib/commandBuilder";
+import { useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
+import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { TOTAL_LESSONS } from "@/lib/lessons";
+import { withCurrentSearch } from "@/lib/utils";
 import {
   canAccessWizardStep,
   getCompletedSteps,
@@ -14,29 +42,12 @@ import {
   setCompletedSteps,
   TOTAL_STEPS,
 } from "@/lib/wizardSteps";
-import { trackConversion } from "@/lib/analytics";
-import { TOTAL_LESSONS } from "@/lib/lessons";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideStep,
-  GuideExplain,
-  GuideTip,
-} from "@/components/simpler-guide";
-import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { Jargon } from "@/components/jargon";
-import { formatSshTarget } from "@/lib/commandBuilder";
-import { useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
-import { withCurrentSearch } from "@/lib/utils";
-import { CommandBuilderPanel } from "@/components/command-builder-panel";
 
 // Confetti colors
 const CONFETTI_COLORS = [
   "oklch(0.75 0.18 195)", // cyan
-  "oklch(0.78 0.16 75)",  // amber
-  "oklch(0.7 0.2 330)",   // magenta
+  "oklch(0.78 0.16 75)", // amber
+  "oklch(0.7 0.2 330)", // magenta
   "oklch(0.72 0.19 145)", // green
 ];
 
@@ -67,7 +78,15 @@ const CONFETTI_PARTICLES: ConfettiParticleData[] = Array.from({ length: 50 }, (_
 });
 
 // Confetti particle component - all random values passed as props for deterministic rendering
-function ConfettiParticle({ delay, left, color, size, rotation, duration, isRound }: Omit<ConfettiParticleData, 'id'>) {
+function ConfettiParticle({
+  delay,
+  left,
+  color,
+  size,
+  rotation,
+  duration,
+  isRound,
+}: Omit<ConfettiParticleData, "id">) {
   return (
     <div
       className="pointer-events-none fixed animate-confetti-fall"
@@ -105,7 +124,14 @@ export default function LaunchOnboardingStep() {
   // Re-derive the exact doctor context after the previous page unmounts.
   // Shared forward-navigation validators intentionally require a rendered
   // control, so calling validateStep(12) here would cause a redirect loop.
-  const { ready: settingsReady, loading, vpsIP, sshUsername, doctorConfirmed, completionKey } = useInstallationHealth();
+  const {
+    ready: settingsReady,
+    loading,
+    vpsIP,
+    sshUsername,
+    doctorConfirmed,
+    completionKey,
+  } = useInstallationHealth();
   const ready = settingsReady && !loading;
   const displayIP = vpsIP && vpsIP.trim() ? vpsIP : "YOUR_VPS_IP";
   const effectiveUsername = sshUsername.trim() || "ubuntu";
@@ -123,7 +149,8 @@ export default function LaunchOnboardingStep() {
     const canAccess =
       canAccessWizardStep(completedSteps, 13) &&
       highestCompleted >= 12 &&
-      doctorConfirmed && completionKey !== null;
+      doctorConfirmed &&
+      completionKey !== null;
 
     if (!canAccess) {
       router.replace(withCurrentSearch("/wizard/status-check"));
@@ -178,7 +205,8 @@ export default function LaunchOnboardingStep() {
           Congratulations! You&apos;re all set up!
         </h1>
         <p className="text-lg text-muted-foreground">
-          Your <Jargon term="vps">VPS</Jargon> is now a powerful coding environment ready for <Jargon term="agentic">AI-assisted</Jargon> development.
+          Your <Jargon term="vps">VPS</Jargon> is now a powerful coding environment ready for{" "}
+          <Jargon term="agentic">AI-assisted</Jargon> development.
         </p>
       </div>
 
@@ -187,14 +215,14 @@ export default function LaunchOnboardingStep() {
         <div className="space-y-2 text-sm">
           <p>
             When you first connect to your VPS after installation, you might see the{" "}
-            <strong className="text-foreground">Powerlevel10k configuration wizard</strong> — a colorful
-            terminal setup screen.
+            <strong className="text-foreground">Powerlevel10k configuration wizard</strong> — a
+            colorful terminal setup screen.
           </p>
           <p className="text-muted-foreground">
-            <strong className="text-foreground">Don&apos;t worry, this is optional!</strong> You can press{" "}
-            <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">q</kbd> to skip it, or follow
-            the prompts to customize your terminal appearance. ACFS already configured sensible defaults,
-            so skipping is perfectly fine.
+            <strong className="text-foreground">Don&apos;t worry, this is optional!</strong> You can
+            press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">q</kbd> to skip
+            it, or follow the prompts to customize your terminal appearance. ACFS already configured
+            sensible defaults, so skipping is perfectly fine.
           </p>
         </div>
       </AlertCard>
@@ -207,15 +235,21 @@ export default function LaunchOnboardingStep() {
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <Sparkles className="h-6 w-6 text-amber" />
-            <h2 className="text-xl font-semibold">First: Authenticate the AI tools you plan to use</h2>
+            <h2 className="text-xl font-semibold">
+              First: Authenticate the AI tools you plan to use
+            </h2>
           </div>
           <p className="text-muted-foreground">
-            <strong className="text-foreground">Start with Claude Code so you can begin coding immediately.</strong>{" "}
+            <strong className="text-foreground">
+              Start with Claude Code so you can begin coding immediately.
+            </strong>{" "}
             Codex and Antigravity can wait until you actually plan to use those accounts.
           </p>
           <div className="space-y-3">
             <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">1</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">
+                1
+              </div>
               <div className="space-y-3">
                 <p className="font-medium">Claude Code</p>
                 <CommandCard
@@ -227,20 +261,39 @@ export default function LaunchOnboardingStep() {
                 <div className="rounded-lg border border-amber/30 bg-amber/5 p-3 text-sm space-y-2">
                   <p className="font-medium text-amber">How the authentication works:</p>
                   <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                    <li>The terminal shows a URL like <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">https://claude.ai/oauth/...</code></li>
-                    <li><strong className="text-foreground">Copy that URL</strong> and paste it into your web browser (on your laptop)</li>
+                    <li>
+                      The terminal shows a URL like{" "}
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                        https://claude.ai/oauth/...
+                      </code>
+                    </li>
+                    <li>
+                      <strong className="text-foreground">Copy that URL</strong> and paste it into
+                      your web browser (on your laptop)
+                    </li>
                     <li>Log in to Claude in your browser</li>
-                    <li>The browser shows a <strong className="text-foreground">code</strong> (like &quot;ABCD-1234&quot;)</li>
-                    <li><strong className="text-foreground">Copy that code</strong> and paste it back into your <strong className="text-foreground">terminal window</strong> (the same one running Claude)</li>
+                    <li>
+                      The browser shows a <strong className="text-foreground">code</strong> (like
+                      &quot;ABCD-1234&quot;)
+                    </li>
+                    <li>
+                      <strong className="text-foreground">Copy that code</strong> and paste it back
+                      into your <strong className="text-foreground">terminal window</strong> (the
+                      same one running Claude)
+                    </li>
                   </ol>
                   <p className="text-xs text-muted-foreground mt-2">
-                    When your browser says &quot;Paste this into Claude Code&quot; — that means paste the code into the terminal window where you typed <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">claude</code>.
+                    When your browser says &quot;Paste this into Claude Code&quot; — that means
+                    paste the code into the terminal window where you typed{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">claude</code>.
                   </p>
                 </div>
               </div>
             </div>
             <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">2</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">
+                2
+              </div>
               <div>
                 <p className="font-medium">Codex CLI (if using OpenAI)</p>
                 <CommandCard
@@ -251,7 +304,9 @@ export default function LaunchOnboardingStep() {
               </div>
             </div>
             <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">3</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">
+                3
+              </div>
               <div>
                 <p className="font-medium">Antigravity CLI (optional)</p>
                 <CommandCard
@@ -266,7 +321,8 @@ export default function LaunchOnboardingStep() {
             After authenticating, you can use the shortcuts (vibe mode):{" "}
             <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">cc</code> (Claude),{" "}
             <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">cod</code> (Codex),{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">agy</code> (Antigravity).
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">agy</code>{" "}
+            (Antigravity).
           </GuideTip>
         </div>
       </Card>
@@ -299,8 +355,8 @@ export default function LaunchOnboardingStep() {
             <Terminal className="h-4 w-4" />
             <span>
               Prefer the terminal? Run{" "}
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">onboard</code>{" "}
-              for the CLI version.
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">onboard</code> for
+              the CLI version.
             </span>
           </div>
         </div>
@@ -341,14 +397,26 @@ export default function LaunchOnboardingStep() {
             <div className="space-y-2">
               <h3 className="font-medium">Resume or create a session</h3>
               <div className="space-y-2">
-                <CommandCard command="ntm list" description="See existing sessions" runLocation="vps" />
+                <CommandCard
+                  command="ntm list"
+                  description="See existing sessions"
+                  runLocation="vps"
+                />
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
                 <div className="flex-1">
-                  <CommandCard command="ntm attach myproject" description="Resume a session" runLocation="vps" />
+                  <CommandCard
+                    command="ntm attach myproject"
+                    description="Resume a session"
+                    runLocation="vps"
+                  />
                 </div>
                 <div className="flex-1">
-                  <CommandCard command="ntm new myproject" description="Or create new" runLocation="vps" />
+                  <CommandCard
+                    command="ntm new myproject"
+                    description="Or create new"
+                    runLocation="vps"
+                  />
                 </div>
               </div>
             </div>
@@ -386,7 +454,8 @@ export default function LaunchOnboardingStep() {
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">
-                Your session keeps running! Come back tomorrow and everything is exactly where you left it.
+                Your session keeps running! Come back tomorrow and everything is exactly where you
+                left it.
               </p>
             </div>
           </div>
@@ -422,7 +491,10 @@ export default function LaunchOnboardingStep() {
 
           <div className="space-y-2">
             <h3 className="font-medium">2. Create and navigate to a project folder</h3>
-            <CommandCard command="mkdir /data/projects/my-awesome-app && cd /data/projects/my-awesome-app" runLocation="vps" />
+            <CommandCard
+              command="mkdir /data/projects/my-awesome-app && cd /data/projects/my-awesome-app"
+              runLocation="vps"
+            />
           </div>
 
           <div className="space-y-2">
@@ -437,8 +509,8 @@ export default function LaunchOnboardingStep() {
           </div>
 
           <GuideTip>
-            Claude will set up the project structure, install dependencies, and start
-            building. You can guide it step by step or give it the whole vision at once.
+            Claude will set up the project structure, install dependencies, and start building. You
+            can guide it step by step or give it the whole vision at once.
           </GuideTip>
         </div>
       </Card>
@@ -454,7 +526,9 @@ export default function LaunchOnboardingStep() {
           <div className="space-y-2">
             <p className="font-medium">Your home folder</p>
             <p className="text-sm text-muted-foreground">
-              Everything you create lives in <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{homeDir}</code> (or just <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">~</code>).
+              Everything you create lives in{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{homeDir}</code>{" "}
+              (or just <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">~</code>).
             </p>
             <CommandCard command="cd ~" description="Go to your home folder" runLocation="vps" />
           </div>
@@ -463,7 +537,10 @@ export default function LaunchOnboardingStep() {
             <p className="font-medium">See what&apos;s here</p>
             <CommandCard command="lsd" description="List files (with icons!)" runLocation="vps" />
             <p className="text-sm text-muted-foreground">
-              We installed <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">lsd</code> — a prettier version of <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">ls</code>.
+              We installed{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">lsd</code> — a
+              prettier version of{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">ls</code>.
             </p>
           </div>
 
@@ -471,7 +548,11 @@ export default function LaunchOnboardingStep() {
             <p className="font-medium">Navigate into a folder</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
               <div className="flex-1">
-                <CommandCard command="cd /data/projects" description="Enter a folder" runLocation="vps" />
+                <CommandCard
+                  command="cd /data/projects"
+                  description="Enter a folder"
+                  runLocation="vps"
+                />
               </div>
               <div className="flex-1">
                 <CommandCard command="cd .." description="Go back up" runLocation="vps" />
@@ -483,17 +564,27 @@ export default function LaunchOnboardingStep() {
             <p className="font-medium">Find files fast</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
               <div className="flex-1">
-                <CommandCard command='rg "search term"' description="Search file contents" runLocation="vps" />
+                <CommandCard
+                  command='rg "search term"'
+                  description="Search file contents"
+                  runLocation="vps"
+                />
               </div>
               <div className="flex-1">
-                <CommandCard command="fd filename" description="Find files by name" runLocation="vps" />
+                <CommandCard
+                  command="fd filename"
+                  description="Find files by name"
+                  runLocation="vps"
+                />
               </div>
             </div>
           </div>
 
           <GuideTip>
-            Pro tip: Use <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">z</code> (zoxide) to jump to folders you&apos;ve visited before.
-            Just type <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">z proj</code> to jump to your projects folder!
+            Pro tip: Use <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">z</code>{" "}
+            (zoxide) to jump to folders you&apos;ve visited before. Just type{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">z proj</code> to jump
+            to your projects folder!
           </GuideTip>
         </div>
       </Card>
@@ -517,7 +608,10 @@ export default function LaunchOnboardingStep() {
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Create a project folder</h3>
-              <CommandCard command="mkdir -p /data/projects/my_first_project && cd /data/projects/my_first_project" runLocation="vps" />
+              <CommandCard
+                command="mkdir -p /data/projects/my_first_project && cd /data/projects/my_first_project"
+                runLocation="vps"
+              />
             </div>
           </div>
 
@@ -529,8 +623,8 @@ export default function LaunchOnboardingStep() {
               <h3 className="font-medium">Authenticate Claude</h3>
               <CommandCard command="claude" runLocation="vps" />
               <p className="text-sm text-muted-foreground">
-                The terminal will display a URL. Copy it and open in your laptop&apos;s
-                browser to log in, then return to your terminal.
+                The terminal will display a URL. Copy it and open in your laptop&apos;s browser to
+                log in, then return to your terminal.
               </p>
             </div>
           </div>
@@ -554,9 +648,7 @@ export default function LaunchOnboardingStep() {
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Your first prompt</h3>
-              <p className="text-sm text-muted-foreground">
-                In the Claude prompt, type:
-              </p>
+              <p className="text-sm text-muted-foreground">In the Claude prompt, type:</p>
               <div className="rounded-lg bg-muted px-4 py-3 font-mono text-sm">
                 Create a simple Python script that prints &quot;Hello from AI!&quot; and run it
               </div>
@@ -569,11 +661,11 @@ export default function LaunchOnboardingStep() {
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Watch the magic!</h3>
-              <p className="text-sm text-muted-foreground">
-                Claude will:
-              </p>
+              <p className="text-sm text-muted-foreground">Claude will:</p>
               <ul className="space-y-1 text-sm text-muted-foreground">
-                <li>✓ Create a file called <span className="font-mono">hello.py</span></li>
+                <li>
+                  ✓ Create a file called <span className="font-mono">hello.py</span>
+                </li>
                 <li>✓ Write the Python code</li>
                 <li>✓ Run the script for you</li>
                 <li>✓ Show &quot;Hello from AI!&quot; in the output</li>
@@ -603,9 +695,7 @@ export default function LaunchOnboardingStep() {
         <div className="space-y-4">
           <div>
             <h3 className="font-medium">1. Open your terminal app</h3>
-            <p className="text-sm text-muted-foreground">
-              Ghostty, WezTerm, or Windows Terminal
-            </p>
+            <p className="text-sm text-muted-foreground">Ghostty, WezTerm, or Windows Terminal</p>
           </div>
 
           <div>
@@ -620,7 +710,11 @@ export default function LaunchOnboardingStep() {
           <div className="space-y-2">
             <h3 className="font-medium">3. Resume your session (if using NTM)</h3>
             <CommandCard command="ntm list" description="See your sessions" runLocation="vps" />
-            <CommandCard command="ntm attach myproject" description="Resume a session" runLocation="vps" />
+            <CommandCard
+              command="ntm attach myproject"
+              description="Resume a session"
+              runLocation="vps"
+            />
             <p className="text-sm text-muted-foreground mt-2">
               This brings back exactly where you left off — including any running Claude sessions!
             </p>
@@ -634,11 +728,16 @@ export default function LaunchOnboardingStep() {
           </summary>
           <div className="mt-4 space-y-4 pl-6 border-l-2 border-primary/30">
             <p className="text-sm text-muted-foreground">
-              Add this to your local <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">~/.ssh/config</code> file:
+              Add this to your local{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                ~/.ssh/config
+              </code>{" "}
+              file:
             </p>
             <CodeBlock code={sshConfigSnippet} language="ssh-config" />
             <p className="text-sm text-muted-foreground">
-              Then just type: <code className="rounded bg-muted px-2 py-1 font-mono text-xs">ssh myserver</code>
+              Then just type:{" "}
+              <code className="rounded bg-muted px-2 py-1 font-mono text-xs">ssh myserver</code>
             </p>
           </div>
         </details>
@@ -668,30 +767,28 @@ export default function LaunchOnboardingStep() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Card className="p-4">
             <h3 className="mb-2 font-medium">Start Claude Code</h3>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Launch your AI coding assistant
-            </p>
+            <p className="mb-3 text-sm text-muted-foreground">Launch your AI coding assistant</p>
             <code className="rounded bg-muted px-2 py-1 text-sm">cc</code>
           </Card>
           <Card className="p-4">
-            <h3 className="mb-2 font-medium">Use <Jargon term="tmux">tmux</Jargon> with <Jargon term="ntm">ntm</Jargon></h3>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Manage terminal sessions
-            </p>
+            <h3 className="mb-2 font-medium">
+              Use <Jargon term="tmux">tmux</Jargon> with <Jargon term="ntm">ntm</Jargon>
+            </h3>
+            <p className="mb-3 text-sm text-muted-foreground">Manage terminal sessions</p>
             <code className="rounded bg-muted px-2 py-1 text-sm">ntm new myproject</code>
           </Card>
           <Card className="p-4">
-            <h3 className="mb-2 font-medium">Search with <Jargon term="ripgrep">ripgrep</Jargon></h3>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Fast code search
-            </p>
+            <h3 className="mb-2 font-medium">
+              Search with <Jargon term="ripgrep">ripgrep</Jargon>
+            </h3>
+            <p className="mb-3 text-sm text-muted-foreground">Fast code search</p>
             <code className="rounded bg-muted px-2 py-1 text-sm">rg &quot;pattern&quot;</code>
           </Card>
           <Card className="p-4">
-            <h3 className="mb-2 font-medium"><Jargon term="git">Git</Jargon> with <Jargon term="lazygit">lazygit</Jargon></h3>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Visual git interface
-            </p>
+            <h3 className="mb-2 font-medium">
+              <Jargon term="git">Git</Jargon> with <Jargon term="lazygit">lazygit</Jargon>
+            </h3>
+            <p className="mb-3 text-sm text-muted-foreground">Visual git interface</p>
             <code className="rounded bg-muted px-2 py-1 text-sm">lazygit</code>
           </Card>
         </div>
@@ -709,7 +806,11 @@ export default function LaunchOnboardingStep() {
               <p className="mt-2 text-sm text-muted-foreground">
                 For simple fixes, nano is already installed on your VPS:
               </p>
-              <CommandCard command="nano hello.py" description="Open a file in nano" runLocation="vps" />
+              <CommandCard
+                command="nano hello.py"
+                description="Open a file in nano"
+                runLocation="vps"
+              />
               <p className="mt-3 text-sm text-muted-foreground">Nano shortcuts:</p>
               <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-muted-foreground">
                 <li>
@@ -731,7 +832,8 @@ export default function LaunchOnboardingStep() {
             <div>
               <h3 className="font-medium">Full IDE with Cursor (recommended)</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Cursor is an AI-native code editor with great remote editing support (like VS Code Remote SSH).
+                Cursor is an AI-native code editor with great remote editing support (like VS Code
+                Remote SSH).
               </p>
               <ol className="mt-2 list-decimal list-inside space-y-1 text-sm text-muted-foreground">
                 <li>
@@ -753,15 +855,18 @@ export default function LaunchOnboardingStep() {
                   <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-xs">Shift</kbd> +{" "}
                   <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-xs">P</kbd>
                 </li>
-                <li>Search: <span className="font-mono">Remote-SSH: Connect to Host</span></li>
                 <li>
-                  Connect to <span className="font-mono">{userTarget}</span> (it will use your SSH key)
+                  Search: <span className="font-mono">Remote-SSH: Connect to Host</span>
+                </li>
+                <li>
+                  Connect to <span className="font-mono">{userTarget}</span> (it will use your SSH
+                  key)
                 </li>
               </ol>
               <GuideTip className="mt-4">
                 Cursor is built on VS Code, so extensions work the same way — including Remote SSH.
-                You get a full IDE experience (syntax highlighting, file explorer, extensions) while editing files
-                directly on your VPS.
+                You get a full IDE experience (syntax highlighting, file explorer, extensions) while
+                editing files directly on your VPS.
               </GuideTip>
             </div>
           </div>
@@ -806,45 +911,59 @@ export default function LaunchOnboardingStep() {
       <SimplerGuide>
         <div className="space-y-6">
           <GuideExplain term="What just happened?">
-            You&apos;ve just finished setting up a professional-grade cloud development
-            environment! Your VPS now has:
+            You&apos;ve just finished setting up a professional-grade cloud development environment!
+            Your VPS now has:
             <ul className="mt-3 space-y-2">
               <li>
-                <strong>A powerful shell (zsh):</strong> A modern command-line interface
-                with auto-suggestions and beautiful colors
+                <strong>A powerful shell (zsh):</strong> A modern command-line interface with
+                auto-suggestions and beautiful colors
               </li>
               <li>
-                <strong>AI coding assistants:</strong> Claude Code, Codex, and Antigravity CLI
-                are ready to help you write code
+                <strong>AI coding assistants:</strong> Claude Code, Codex, and Antigravity CLI are
+                ready to help you write code
               </li>
               <li>
-                <strong>Development tools:</strong> Fast search (ripgrep), git interface
-                (lazygit), and more
+                <strong>Development tools:</strong> Fast search (ripgrep), git interface (lazygit),
+                and more
               </li>
               <li>
-                <strong>Programming languages:</strong> JavaScript/TypeScript (bun),
-                Python (uv), Rust, and Go
+                <strong>Programming languages:</strong> JavaScript/TypeScript (bun), Python (uv),
+                Rust, and Go
               </li>
             </ul>
           </GuideExplain>
 
           <GuideExplain term="What is tmux and ntm?">
             <p>
-              <strong>The problem:</strong> When you SSH into your VPS and then close your laptop
-              or lose internet, your terminal session dies. Any running commands stop.
+              <strong>The problem:</strong> When you SSH into your VPS and then close your laptop or
+              lose internet, your terminal session dies. Any running commands stop.
             </p>
             <p className="mt-3">
-              <strong>The solution:</strong> <Jargon term="tmux">tmux</Jargon> creates &quot;sessions&quot; that keep
-              running on the VPS even when you disconnect. Your processes continue regardless of your connection state.
+              <strong>The solution:</strong> <Jargon term="tmux">tmux</Jargon> creates
+              &quot;sessions&quot; that keep running on the VPS even when you disconnect. Your
+              processes continue regardless of your connection state.
             </p>
             <p className="mt-3">
-              <strong>NTM</strong> (Named Tmux Manager) makes tmux easier. Instead of cryptic commands,
-              you get simple ones:
+              <strong>NTM</strong> (Named Tmux Manager) makes tmux easier. Instead of cryptic
+              commands, you get simple ones:
             </p>
             <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-muted-foreground">
-              <li><code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm new myproject</code> — Start a new session</li>
-              <li><code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm attach myproject</code> — Resume a session</li>
-              <li><code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm list</code> — See all your sessions</li>
+              <li>
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                  ntm new myproject
+                </code>{" "}
+                — Start a new session
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                  ntm attach myproject
+                </code>{" "}
+                — Resume a session
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm list</code> —
+                See all your sessions
+              </li>
             </ul>
             <p className="mt-3 text-sm">
               This is why you can start a Claude task, close your laptop, go to bed, and come back
@@ -857,33 +976,39 @@ export default function LaunchOnboardingStep() {
               <div>
                 <p className="font-medium text-foreground">cc (Claude Code)</p>
                 <p className="text-sm text-muted-foreground">
-                  This is your primary AI coding assistant. Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>
-                  in any project folder and Claude will help you write, debug, and improve
-                  your code. It can read your files, make changes, run tests, and more.
+                  This is your primary AI coding assistant. Type{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>
+                  in any project folder and Claude will help you write, debug, and improve your
+                  code. It can read your files, make changes, run tests, and more.
                 </p>
               </div>
               <div>
                 <p className="font-medium text-foreground">ntm (Named Tmux Manager)</p>
                 <p className="text-sm text-muted-foreground">
                   This manages your terminal &quot;sessions&quot;. When you run{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm new myproject</code>,
-                  it creates a persistent workspace that stays running even if you disconnect.
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    ntm new myproject
+                  </code>
+                  , it creates a persistent workspace that stays running even if you disconnect.
                   Perfect for long-running tasks!
                 </p>
               </div>
               <div>
                 <p className="font-medium text-foreground">rg (ripgrep)</p>
                 <p className="text-sm text-muted-foreground">
-                  Ultra-fast code search. Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">rg &quot;searchterm&quot;</code>
-                  to find any text across all your files in milliseconds. Essential for
-                  navigating large codebases.
+                  Ultra-fast code search. Type{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    rg &quot;searchterm&quot;
+                  </code>
+                  to find any text across all your files in milliseconds. Essential for navigating
+                  large codebases.
                 </p>
               </div>
               <div>
                 <p className="font-medium text-foreground">lazygit</p>
                 <p className="text-sm text-muted-foreground">
-                  A visual interface for Git. Much easier than remembering git commands!
-                  Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">lazygit</code>
+                  A visual interface for Git. Much easier than remembering git commands! Type{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">lazygit</code>
                   in any git repository to stage, commit, push, and manage branches visually.
                 </p>
               </div>
@@ -894,28 +1019,31 @@ export default function LaunchOnboardingStep() {
             <div className="space-y-4">
               <GuideStep number={1} title="Run the onboarding tutorial">
                 Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">onboard</code>
-                and press Enter. This interactive tutorial teaches you the basics of your
-                new environment.
+                and press Enter. This interactive tutorial teaches you the basics of your new
+                environment.
               </GuideStep>
 
               <GuideStep number={2} title="Create your first project session">
-                Type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm new hello-world</code>
+                Type{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                  ntm new hello-world
+                </code>
                 to create a dedicated workspace for a test project.
               </GuideStep>
 
               <GuideStep number={3} title="Try Claude Code">
-                In your project folder, type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>
-                and ask it to &quot;create a simple hello world script in Python&quot;. Watch
-                the magic happen!
+                In your project folder, type{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc</code>
+                and ask it to &quot;create a simple hello world script in Python&quot;. Watch the
+                magic happen!
               </GuideStep>
             </div>
           </GuideSection>
 
           <GuideTip>
-            <strong>Bookmark this page!</strong> You can always come back here to review
-            the basic commands. Once you&apos;re comfortable with these basics, continue to
-            Part Two to learn the advanced multi-agent workflow that makes this setup truly
-            powerful.
+            <strong>Bookmark this page!</strong> You can always come back here to review the basic
+            commands. Once you&apos;re comfortable with these basics, continue to Part Two to learn
+            the advanced multi-agent workflow that makes this setup truly powerful.
           </GuideTip>
         </div>
       </SimplerGuide>
@@ -928,11 +1056,11 @@ export default function LaunchOnboardingStep() {
             <h2 className="text-xl font-semibold">Ready for the Advanced Workflow?</h2>
           </div>
           <p className="text-muted-foreground">
-            After completing the Learning Hub basics, dive into the powerful multi-agent
-            workflow that lets you build production-ready software at incredible speed.
-            You&apos;ll learn how to orchestrate multiple AI agents working in parallel,
-            use the &quot;best of all worlds&quot; planning technique, and run agent swarms
-            that build features while you sleep.
+            After completing the Learning Hub basics, dive into the powerful multi-agent workflow
+            that lets you build production-ready software at incredible speed. You&apos;ll learn how
+            to orchestrate multiple AI agents working in parallel, use the &quot;best of all
+            worlds&quot; planning technique, and run agent swarms that build features while you
+            sleep.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
@@ -953,12 +1081,8 @@ export default function LaunchOnboardingStep() {
 
       {/* Final message */}
       <div className="rounded-lg border-2 border-dashed border-primary/30 p-6 text-center">
-        <p className="text-lg font-medium">
-          Happy coding!
-        </p>
-        <p className="mt-1 text-muted-foreground">
-          Your agentic coding flywheel is ready to spin.
-        </p>
+        <p className="text-lg font-medium">Happy coding!</p>
+        <p className="mt-1 text-muted-foreground">Your agentic coding flywheel is ready to spin.</p>
       </div>
     </div>
   );

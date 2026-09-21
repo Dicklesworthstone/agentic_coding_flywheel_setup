@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Monitor, Server, ArrowRight, Terminal, HelpCircle } from "lucide-react";
+import { AlertCircle, ArrowRight, HelpCircle, Monitor, Server, Terminal } from "lucide-react";
 import { formatSshTarget } from "@/lib/commandBuilder";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +33,7 @@ export function ConnectionCheck({
 }: ConnectionCheckProps) {
   const sshTarget = formatSshTarget(sshUser, vpsIP);
   const promptSuffix = sshUser === "root" ? "#" : "$";
-  const alternatePrompt =
-    sshUser === "root" ? "ubuntu@vps:~$" : "root@vps:~#";
+  const alternatePrompt = sshUser === "root" ? "ubuntu@vps:~$" : "root@vps:~#";
   const sshCommand = useIdentityFile
     ? `ssh -i ~/.ssh/acfs_ed25519 ${sshTarget}`
     : `ssh ${sshTarget}`;
@@ -53,12 +52,10 @@ export function ConnectionCheck({
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
           <div className="space-y-3">
             <div>
-              <p className="font-semibold text-destructive">
-                STOP! Are you connected to your VPS?
-              </p>
+              <p className="font-semibold text-destructive">STOP! Are you connected to your VPS?</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                The command below runs on your <strong className="text-foreground">VPS</strong>, not on your laptop.
-                If you&apos;re not connected, the command will fail.
+                The command below runs on your <strong className="text-foreground">VPS</strong>, not
+                on your laptop. If you&apos;re not connected, the command will fail.
               </p>
             </div>
 
@@ -89,7 +86,9 @@ export function ConnectionCheck({
                   <span>Correct - You&apos;re on the VPS</span>
                 </div>
                 <div className="dark mt-2 rounded bg-[oklch(0.12_0.01_260)] px-3 py-2 font-mono text-xs text-foreground">
-                  <span className="text-green">{sshUser}@vps:~{promptSuffix}</span>
+                  <span className="text-green">
+                    {sshUser}@vps:~{promptSuffix}
+                  </span>
                   <span className="animate-pulse"> _</span>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -130,21 +129,15 @@ export function TwoComputersExplainer({ className }: { className?: string }) {
       <div className="flex items-start gap-3">
         <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
         <div className="space-y-3">
-          <p className="font-semibold text-foreground">
-            Understanding: You have TWO computers
-          </p>
+          <p className="font-semibold text-foreground">Understanding: You have TWO computers</p>
 
           <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-4">
             {/* Your Computer */}
             <div className="flex-1 rounded-lg border border-border/50 bg-card/50 p-3 text-center">
               <Monitor className="mx-auto h-8 w-8 text-amber" />
               <p className="mt-2 font-medium">Your Computer</p>
-              <p className="text-xs text-muted-foreground">
-                (laptop/desktop)
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Windows, Mac, or Linux
-              </p>
+              <p className="text-xs text-muted-foreground">(laptop/desktop)</p>
+              <p className="mt-1 text-xs text-muted-foreground">Windows, Mac, or Linux</p>
             </div>
 
             {/* Arrow */}
@@ -157,23 +150,21 @@ export function TwoComputersExplainer({ className }: { className?: string }) {
             <div className="flex-1 rounded-lg border border-green/30 bg-green/5 p-3 text-center">
               <Server className="mx-auto h-8 w-8 text-green" />
               <p className="mt-2 font-medium">Your VPS</p>
-              <p className="text-xs text-muted-foreground">
-                (remote server)
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Linux in the cloud
-              </p>
+              <p className="text-xs text-muted-foreground">(remote server)</p>
+              <p className="mt-1 text-xs text-muted-foreground">Linux in the cloud</p>
             </div>
           </div>
 
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
               <strong className="text-foreground">SSH</strong> is like a phone call to your VPS.
-              When you&apos;re &quot;connected via SSH&quot;, everything you type happens on the VPS, not your laptop.
+              When you&apos;re &quot;connected via SSH&quot;, everything you type happens on the
+              VPS, not your laptop.
             </p>
             <p>
-              <strong className="text-foreground">PowerShell, Command Prompt, or Terminal</strong> on your laptop
-              is where you <em>start</em> the SSH connection. But once connected, you&apos;re controlling the VPS.
+              <strong className="text-foreground">PowerShell, Command Prompt, or Terminal</strong>{" "}
+              on your laptop is where you <em>start</em> the SSH connection. But once connected,
+              you&apos;re controlling the VPS.
             </p>
           </div>
         </div>
@@ -202,22 +193,39 @@ export function WhereAmICheck({ className }: { className?: string }) {
             <div className="rounded-lg border border-green/30 bg-green/5 p-3">
               <p className="font-medium text-green">You ARE connected to your VPS if you see:</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li><code className="text-foreground">ubuntu@...</code> or <code className="text-foreground">root@...</code></li>
                 <li>
-                  The name after the <code className="text-foreground">@</code> is your VPS&apos;s hostname — run{" "}
-                  <code className="text-foreground">hostname</code> to check; it should not be your laptop&apos;s name
+                  <code className="text-foreground">ubuntu@...</code> or{" "}
+                  <code className="text-foreground">root@...</code>
+                </li>
+                <li>
+                  The name after the <code className="text-foreground">@</code> is your VPS&apos;s
+                  hostname — run <code className="text-foreground">hostname</code> to check; it
+                  should not be your laptop&apos;s name
                 </li>
                 <li>A colorful prompt (if you ran the installer already)</li>
               </ul>
             </div>
 
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-              <p className="font-medium text-destructive">You are NOT connected (still on your laptop) if you see:</p>
+              <p className="font-medium text-destructive">
+                You are NOT connected (still on your laptop) if you see:
+              </p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                <li><code className="text-foreground">C:\Users\YourName&gt;</code> (Windows Command Prompt)</li>
-                <li><code className="text-foreground">PS C:\Users\YourName&gt;</code> (PowerShell)</li>
-                <li><code className="text-foreground">yourname@YourMac ~ %</code> (Mac Terminal)</li>
-                <li><code className="text-foreground">yourname@laptop:~$</code> (Linux laptop — a <code className="text-foreground">$</code> alone does not mean you&apos;re on the VPS)</li>
+                <li>
+                  <code className="text-foreground">C:\Users\YourName&gt;</code> (Windows Command
+                  Prompt)
+                </li>
+                <li>
+                  <code className="text-foreground">PS C:\Users\YourName&gt;</code> (PowerShell)
+                </li>
+                <li>
+                  <code className="text-foreground">yourname@YourMac ~ %</code> (Mac Terminal)
+                </li>
+                <li>
+                  <code className="text-foreground">yourname@laptop:~$</code> (Linux laptop — a{" "}
+                  <code className="text-foreground">$</code> alone does not mean you&apos;re on the
+                  VPS)
+                </li>
                 <li>Any mention of your laptop&apos;s name or your Windows/Mac/Linux username</li>
               </ul>
             </div>
@@ -225,9 +233,10 @@ export function WhereAmICheck({ className }: { className?: string }) {
 
           <p className="text-muted-foreground">
             <strong className="text-foreground">Still confused?</strong> Type{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">hostname</code>{" "}
-            and press Enter. If it shows your laptop&apos;s name (like &quot;DESKTOP-ABC123&quot; or &quot;MacBook-Pro&quot;),
-            you&apos;re not connected. If it shows something like &quot;vps-12345&quot;, you&apos;re on the VPS.
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">hostname</code> and
+            press Enter. If it shows your laptop&apos;s name (like &quot;DESKTOP-ABC123&quot; or
+            &quot;MacBook-Pro&quot;), you&apos;re not connected. If it shows something like
+            &quot;vps-12345&quot;, you&apos;re on the VPS.
           </p>
         </div>
       </div>

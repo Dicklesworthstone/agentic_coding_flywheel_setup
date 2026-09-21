@@ -1,41 +1,45 @@
-'use client';
+"use client";
 
 import {
-  GitBranch,
-  Shield,
-  PackageCheck,
+  AlertTriangle,
   BarChart3,
   CheckCircle,
-  AlertTriangle,
+  GitBranch,
+  PackageCheck,
+  Shield,
   Zap,
-} from 'lucide-react';
+} from "lucide-react";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function CiCdLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Build automated quality gates using UBS, Beads, and DSR so bugs from
-        agent-generated code never reach production.
+        Build automated quality gates using UBS, Beads, and DSR so bugs from agent-generated code
+        never reach production.
       </GoalBanner>
 
       {/* Section 1: Why CI/CD for Agents */}
-      <Section title="Why CI/CD for Agent Code?" icon={<GitBranch className="h-5 w-5" />} delay={0.1}>
+      <Section
+        title="Why CI/CD for Agent Code?"
+        icon={<GitBranch className="h-5 w-5" />}
+        delay={0.1}
+      >
         <Paragraph>
-          AI coding agents write code fast but make <Highlight>predictable
-          classes of mistakes</Highlight>: unclosed resources, missing error
-          handling, hardcoded secrets, and stale imports. Automated quality gates
-          catch these before they ship.
+          AI coding agents write code fast but make{" "}
+          <Highlight>predictable classes of mistakes</Highlight>: unclosed resources, missing error
+          handling, hardcoded secrets, and stale imports. Automated quality gates catch these before
+          they ship.
         </Paragraph>
 
         <div className="mt-8">
@@ -73,8 +77,8 @@ export function CiCdLesson() {
       {/* Section 2: UBS as Quality Gate */}
       <Section title="UBS Quality Gate" icon={<Shield className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          UBS detects 1000+ bug patterns that AI agents commonly produce. Run
-          it on every commit and in CI pipelines.
+          UBS detects 1000+ bug patterns that AI agents commonly produce. Run it on every commit and
+          in CI pipelines.
         </Paragraph>
 
         <CodeBlock
@@ -103,9 +107,8 @@ ubs . --comparison=baseline.json`}
         />
 
         <TipBox variant="tip">
-          Use <code>ubs --staged</code> in a pre-commit hook so agents can&apos;t
-          commit code with known bugs. The scan runs in under 2 seconds for most
-          projects.
+          Use <code>ubs --staged</code> in a pre-commit hook so agents can&apos;t commit code with
+          known bugs. The scan runs in under 2 seconds for most projects.
         </TipBox>
       </Section>
 
@@ -137,8 +140,8 @@ fi
         />
 
         <TipBox variant="info">
-          UBS supports inline suppression with <code># ubs:ignore</code> comments
-          for intentional false positives. Use sparingly.
+          UBS supports inline suppression with <code># ubs:ignore</code> comments for intentional
+          false positives. Use sparingly.
         </TipBox>
       </Section>
 
@@ -147,8 +150,8 @@ fi
       {/* Section 4: Beads Integration */}
       <Section title="Export to Beads" icon={<BarChart3 className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          UBS can export Beads-compatible JSONL so you can review findings and
-          turn the high-signal ones into tracked issues.
+          UBS can export Beads-compatible JSONL so you can review findings and turn the high-signal
+          ones into tracked issues.
         </Paragraph>
 
         <CodeBlock
@@ -179,9 +182,8 @@ ubs . --comparison=scans/20260310.json
       {/* Section 5: DSR for Local Releases */}
       <Section title="DSR: Local Releases" icon={<PackageCheck className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          When GitHub Actions is throttled or your CI is overloaded, DSR lets
-          you build artifacts locally and then upload a GitHub release from the
-          verified build output.
+          When GitHub Actions is throttled or your CI is overloaded, DSR lets you build artifacts
+          locally and then upload a GitHub release from the verified build output.
         </Paragraph>
 
         <CodeBlock
@@ -203,9 +205,9 @@ dsr release verify ntm 1.2.3`}
         />
 
         <TipBox variant="warning">
-          Run <code>dsr build &lt;tool&gt;</code> first to verify the artifact set,
-          then publish with <code>dsr release &lt;tool&gt; &lt;version&gt; --draft</code>{' '}
-          before creating a final release.
+          Run <code>dsr build &lt;tool&gt;</code> first to verify the artifact set, then publish
+          with <code>dsr release &lt;tool&gt; &lt;version&gt; --draft</code> before creating a final
+          release.
         </TipBox>
       </Section>
 
@@ -216,7 +218,9 @@ dsr release verify ntm 1.2.3`}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
             <span className="text-red-400 font-semibold">Pre-Commit</span>
-            <p className="text-white/80 text-sm mt-1">UBS --staged catches bugs before they enter git</p>
+            <p className="text-white/80 text-sm mt-1">
+              UBS --staged catches bugs before they enter git
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">Post-Commit</span>
@@ -224,11 +228,15 @@ dsr release verify ntm 1.2.3`}
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">CI Pipeline</span>
-            <p className="text-white/80 text-sm mt-1">SARIF output for GitHub Code Scanning integration</p>
+            <p className="text-white/80 text-sm mt-1">
+              SARIF output for GitHub Code Scanning integration
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">Release</span>
-            <p className="text-white/80 text-sm mt-1">DSR builds releases locally when CI is unavailable</p>
+            <p className="text-white/80 text-sm mt-1">
+              DSR builds releases locally when CI is unavailable
+            </p>
           </div>
         </div>
       </Section>

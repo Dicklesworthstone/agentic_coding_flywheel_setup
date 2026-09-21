@@ -1,8 +1,7 @@
 "use client";
 
+import { motion, springs } from "@/components/motion";
 import { cn } from "@/lib/utils";
-import { motion } from "@/components/motion";
-import { springs } from "@/components/motion";
 
 interface SectionHeaderProps {
   /** Small uppercase label above the heading */
@@ -43,21 +42,10 @@ export function SectionHeader({
   isInView = true,
 }: SectionHeaderProps) {
   const content = (
-    <div
-      className={cn(
-        "mb-12",
-        align === "center" && "text-center",
-        className
-      )}
-    >
+    <div className={cn("mb-12", align === "center" && "text-center", className)}>
       {/* Label with gradient dividers */}
       {label && (
-        <div
-          className={cn(
-            "mb-4 flex items-center gap-3",
-            align === "center" && "justify-center"
-          )}
-        >
+        <div className={cn("mb-4 flex items-center gap-3", align === "center" && "justify-center")}>
           <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
           <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
             {label}
@@ -71,7 +59,7 @@ export function SectionHeader({
         className={cn(
           "mb-4 font-mono font-bold tracking-tight",
           size === "default" && "text-3xl",
-          size === "large" && "text-3xl sm:text-4xl"
+          size === "large" && "text-3xl sm:text-4xl",
         )}
       >
         {heading}
@@ -79,12 +67,7 @@ export function SectionHeader({
 
       {/* Description */}
       {description && (
-        <p
-          className={cn(
-            "text-muted-foreground",
-            align === "center" && "mx-auto max-w-2xl"
-          )}
-        >
+        <p className={cn("text-muted-foreground", align === "center" && "mx-auto max-w-2xl")}>
           {description}
         </p>
       )}

@@ -1,63 +1,63 @@
 "use client";
 
-import Link from "next/link";
-import { useRef, useState, useCallback, useMemo } from "react";
-import { motion, useReducedMotion } from "@/components/motion";
 import {
-  ArrowUpRight,
-  Check,
-  Copy,
-  Star,
-  ExternalLink,
-  Box,
-  LayoutGrid,
-  Rocket,
-  Mail,
-  GitBranch,
-  Bug,
-  Brain,
-  Search,
-  ShieldAlert,
-  ShieldCheck,
-  GitPullRequest,
-  Archive,
-  FileCode,
-  RefreshCw,
-  Cog,
-  Image,
-  ChevronRight,
-  Terminal,
   Activity,
+  Archive,
+  ArrowUpRight,
   BarChart,
+  Bot,
+  Box,
+  Brain,
+  Bug,
+  Check,
+  ChevronRight,
+  Cog,
+  Copy,
   Cpu,
+  ExternalLink,
+  FileCode,
   FileJson,
   FileText,
   FlaskConical,
+  GitBranch,
+  GitPullRequest,
   Globe,
+  HardDrive,
+  Image,
   KeyRound,
+  LayoutGrid,
   ListTodo,
+  Mail,
   Monitor,
   Network,
-  PenTool,
-  Radio,
-  Shield,
-  Sparkles,
-  Bot,
-  HardDrive,
   Package,
+  PenTool,
   Power,
+  Radio,
+  RefreshCw,
   Repeat,
+  Rocket,
   Save,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Terminal,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "@/components/motion";
+import { getColorDefinition } from "@/lib/colors";
+import { formatStarCount, formatStarCountFull } from "@/lib/format-stars";
 import {
   COPY_FAILURE_MESSAGE,
   COPY_SUCCESS_MESSAGE,
   useCopyFeedback,
 } from "@/lib/hooks/useCopyFeedback";
-import { formatStarCount, formatStarCountFull } from "@/lib/format-stars";
-import { getColorDefinition } from "@/lib/colors";
 import type { TldrFlywheelTool } from "@/lib/tldr-content";
+import { cn } from "@/lib/utils";
 
 // =============================================================================
 // TYPES
@@ -120,13 +120,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 // HELPER COMPONENTS
 // =============================================================================
 
-function DynamicIcon({
-  name,
-  className,
-}: {
-  name: string;
-  className?: string;
-}) {
+function DynamicIcon({ name, className }: { name: string; className?: string }) {
   const IconComponent = iconMap[name] || Box;
   return <IconComponent className={className} />;
 }
@@ -161,7 +155,7 @@ function SynergyPill({
       <div
         className={cn(
           "relative flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br shadow-md sm:h-6 sm:w-6",
-          linkedTool.color
+          linkedTool.color,
         )}
       >
         <DynamicIcon name={linkedTool.icon} className="h-2.5 w-2.5 text-white sm:h-3 sm:w-3" />
@@ -210,10 +204,7 @@ function TechBadge({ tech }: { tech: string }) {
 // MAIN COMPONENT
 // =============================================================================
 
-export function TldrToolCard({
-  tool,
-  allTools,
-}: TldrToolCardProps) {
+export function TldrToolCard({ tool, allTools }: TldrToolCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const exampleRef = useRef<HTMLElement>(null);
   const copyExample = useCopyFeedback();
@@ -221,7 +212,7 @@ export function TldrToolCard({
   const [isHovered, setIsHovered] = useState(false);
   const isTouchDevice = useMemo(
     () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches,
-    []
+    [],
   );
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = prefersReducedMotion ?? false;
@@ -238,7 +229,7 @@ export function TldrToolCard({
         cardRef.current?.style.setProperty("--mouse-y", `${y}px`);
       });
     },
-    [reducedMotion, isTouchDevice]
+    [reducedMotion, isTouchDevice],
   );
 
   const colorDef = getColorDefinition(tool.color);
@@ -268,7 +259,7 @@ export function TldrToolCard({
           "border border-border/50 bg-card/50 backdrop-blur-sm",
           "transition duration-300",
           "hover:border-border hover:bg-card/70",
-          "active:scale-[0.98]"
+          "active:scale-[0.98]",
         )}
         style={{
           boxShadow: isHovered
@@ -289,7 +280,7 @@ export function TldrToolCard({
         <div
           className={cn(
             "absolute inset-0 bg-gradient-to-br opacity-[0.05] transition-opacity duration-300 group-hover:opacity-[0.1]",
-            tool.color
+            tool.color,
           )}
           aria-hidden="true"
         />
@@ -314,7 +305,7 @@ export function TldrToolCard({
                 <div
                   className={cn(
                     "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br sm:h-12 sm:w-12",
-                    tool.color
+                    tool.color,
                   )}
                   style={{
                     boxShadow: isHovered
@@ -323,15 +314,16 @@ export function TldrToolCard({
                     transition: "box-shadow 0.3s ease",
                   }}
                 >
-                  <DynamicIcon name={tool.icon} className="h-5 w-5 text-white drop-shadow sm:h-6 sm:w-6" />
+                  <DynamicIcon
+                    name={tool.icon}
+                    className="h-5 w-5 text-white drop-shadow sm:h-6 sm:w-6"
+                  />
                   {/* Inner highlight */}
                   <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-transparent to-white/20" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-bold text-white sm:text-lg">
-                      {tool.shortName}
-                    </h3>
+                    <h3 className="text-base font-bold text-white sm:text-lg">{tool.shortName}</h3>
                     {tool.category === "core" && (
                       <span
                         className="rounded-full bg-primary/20 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-primary ring-1 ring-primary/30"
@@ -351,7 +343,9 @@ export function TldrToolCard({
                       </code>
                     )}
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">{tool.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">
+                    {tool.name}
+                  </p>
                 </div>
               </div>
 
@@ -367,9 +361,17 @@ export function TldrToolCard({
                     title={`${formatStarCountFull(tool.stars)} stars`}
                   >
                     {/* Shimmer effect */}
-                    <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-[1500ms] ease-in-out motion-reduce:transition-none motion-safe:group-hover:translate-x-full" aria-hidden="true" />
-                    <Star className="relative h-3 w-3 fill-accent text-accent drop-shadow-[0_0_3px_rgba(251,191,36,0.5)] sm:h-3.5 sm:w-3.5" aria-hidden="true" />
-                    <span className="relative font-mono tracking-tight">{formatStarCount(tool.stars)}</span>
+                    <span
+                      className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-[1500ms] ease-in-out motion-reduce:transition-none motion-safe:group-hover:translate-x-full"
+                      aria-hidden="true"
+                    />
+                    <Star
+                      className="relative h-3 w-3 fill-accent text-accent drop-shadow-[0_0_3px_rgba(251,191,36,0.5)] sm:h-3.5 sm:w-3.5"
+                      aria-hidden="true"
+                    />
+                    <span className="relative font-mono tracking-tight">
+                      {formatStarCount(tool.stars)}
+                    </span>
                   </span>
                 )}
                 <Link
@@ -403,7 +405,10 @@ export function TldrToolCard({
                     aria-label={`${tool.name} example command`}
                   >
                     <Terminal className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-                    <code ref={exampleRef} className="whitespace-nowrap font-mono text-xs text-primary">
+                    <code
+                      ref={exampleRef}
+                      className="whitespace-nowrap font-mono text-xs text-primary"
+                    >
                       {tool.commandExample}
                     </code>
                   </div>
@@ -411,7 +416,9 @@ export function TldrToolCard({
                     type="button"
                     onClick={() => {
                       if (!tool.commandExample) return;
-                      void copyExample.copy(tool.commandExample, { selectOnFailure: exampleRef.current });
+                      void copyExample.copy(tool.commandExample, {
+                        selectOnFailure: exampleRef.current,
+                      });
                     }}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition duration-200 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                     aria-label={copyExample.copied ? "Copied" : `Copy ${tool.name} example command`}
@@ -429,10 +436,14 @@ export function TldrToolCard({
                   className={cn(
                     "mt-1 text-[11px] leading-snug",
                     copyExample.failed ? "text-amber-400" : "text-success",
-                    copyExample.state === "idle" && "sr-only"
+                    copyExample.state === "idle" && "sr-only",
                   )}
                 >
-                  {copyExample.copied ? COPY_SUCCESS_MESSAGE : copyExample.failed ? COPY_FAILURE_MESSAGE : ""}
+                  {copyExample.copied
+                    ? COPY_SUCCESS_MESSAGE
+                    : copyExample.failed
+                      ? COPY_FAILURE_MESSAGE
+                      : ""}
                 </p>
               </div>
             )}
@@ -494,11 +505,7 @@ export function TldrToolCard({
                       the card on phones. */}
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5 sm:grid-cols-[repeat(2,minmax(0,1fr))] sm:gap-2">
                     {tool.synergies.map((synergy) => (
-                      <SynergyPill
-                        key={synergy.toolId}
-                        synergy={synergy}
-                        allTools={allTools}
-                      />
+                      <SynergyPill key={synergy.toolId} synergy={synergy} allTools={allTools} />
                     ))}
                   </div>
                 </div>

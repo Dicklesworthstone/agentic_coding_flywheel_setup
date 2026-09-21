@@ -1,46 +1,44 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
-  Terminal,
-  ChevronRight,
-  Zap,
-  GitBranch,
-  Cpu,
-  Layers,
-  Workflow,
-  ExternalLink,
-  Star,
-  Copy,
+  ArrowRight,
   Check,
-  Sparkles,
+  ChevronDown,
+  ChevronRight,
   Clock,
-  Users,
+  Code2,
+  Copy,
+  Cpu,
+  ExternalLink,
+  GitBranch,
+  Layers,
   Quote,
   Rocket,
   Shield,
-  Code2,
-  ChevronDown,
-  ArrowRight,
+  Sparkles,
+  Star,
+  Terminal,
+  Users,
+  Workflow,
+  Zap,
 } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import FlywheelVisualization, { flywheelIconMap } from "@/components/flywheel-visualization";
 import { Button } from "@/components/ui/button";
-import FlywheelVisualization, {
-  flywheelIconMap,
-} from "@/components/flywheel-visualization";
-import { copyTextToClipboard } from "@/lib/utils";
 import {
-  flywheelTools,
-  flywheelToolCount,
-  flywheelTotalStarsLabel,
-  workflowScenarios,
-  agentPrompts,
-  synergyExplanations,
-  type FlywheelTool,
-  type WorkflowScenario,
   type AgentPrompt,
+  agentPrompts,
+  type FlywheelTool,
+  flywheelToolCount,
+  flywheelTools,
+  flywheelTotalStarsLabel,
+  synergyExplanations,
+  type WorkflowScenario,
+  workflowScenarios,
 } from "@/lib/flywheel";
+import { copyTextToClipboard } from "@/lib/utils";
 
 // ============================================================
 // HERO SECTION
@@ -82,9 +80,9 @@ function HeroSection() {
           className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg lg:text-xl opacity-0 animate-slide-up"
           style={{ animationDelay: "0.3s", animationFillMode: "forwards" }}
         >
-          {flywheelToolCount} interconnected tools that enable multiple AI agents to work in parallel,
-          review each other&apos;s work, and make incredible autonomous progress,
-          all <span className="text-foreground font-medium">while you&apos;re away</span>.
+          {flywheelToolCount} interconnected tools that enable multiple AI agents to work in
+          parallel, review each other&apos;s work, and make incredible autonomous progress, all{" "}
+          <span className="text-foreground font-medium">while you&apos;re away</span>.
         </p>
 
         {/* Key insight quote */}
@@ -123,7 +121,9 @@ function HeroSection() {
             </div>
             <div>
               <p className="text-xl font-bold text-foreground sm:text-2xl">8+</p>
-              <p className="text-[12px] text-muted-foreground sm:text-sm">Projects simultaneously</p>
+              <p className="text-[12px] text-muted-foreground sm:text-sm">
+                Projects simultaneously
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -131,7 +131,9 @@ function HeroSection() {
               <Star className="h-5 w-5 text-amber-400 sm:h-6 sm:w-6" />
             </div>
             <div>
-              <p className="text-xl font-bold text-foreground sm:text-2xl">{flywheelTotalStarsLabel}</p>
+              <p className="text-xl font-bold text-foreground sm:text-2xl">
+                {flywheelTotalStarsLabel}
+              </p>
               <p className="text-[12px] text-muted-foreground sm:text-sm">GitHub stars</p>
             </div>
           </div>
@@ -261,8 +263,8 @@ function WorkflowSection() {
             How the Tools Work Together
           </h2>
           <p className="mt-4 text-base text-muted-foreground lg:text-lg">
-            These aren&apos;t hypothetical scenarios. These are actual daily workflows running across
-            8+ projects with multiple AI agents.
+            These aren&apos;t hypothetical scenarios. These are actual daily workflows running
+            across 8+ projects with multiple AI agents.
           </p>
         </div>
 
@@ -389,8 +391,8 @@ function PromptsSection() {
             The Prompts That Power the Workflow
           </h2>
           <p className="mt-4 text-base text-muted-foreground lg:text-lg">
-            Copy these prompts to your Stream Deck or command palette. Each takes under a second
-            to execute with a single button press.
+            Copy these prompts to your Stream Deck or command palette. Each takes under a second to
+            execute with a single button press.
           </p>
         </div>
 
@@ -466,7 +468,9 @@ function SynergySection() {
 
               {/* Example */}
               <div className="mt-4 rounded-xl bg-muted/30 p-3">
-                <p className="text-[12px] text-foreground italic">&ldquo;{synergy.example}&rdquo;</p>
+                <p className="text-[12px] text-foreground italic">
+                  &ldquo;{synergy.example}&rdquo;
+                </p>
               </div>
             </div>
           ))}
@@ -618,7 +622,8 @@ function ToolsSection() {
             All {flywheelToolCount} Flywheel Tools
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground lg:text-lg">
-            Each tool installs in under 30 seconds. Written in Go, Rust, TypeScript, Python, and Bash.
+            Each tool installs in under 30 seconds. Written in Go, Rust, TypeScript, Python, and
+            Bash.
           </p>
         </div>
 
@@ -725,8 +730,8 @@ function CTASection() {
               Ready to 10x Your Velocity?
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-base text-muted-foreground lg:text-lg">
-              The Agent Flywheel installer sets up all flywheel tools automatically.
-              From zero to multi-agent workflows in 30 minutes.
+              The Agent Flywheel installer sets up all flywheel tools automatically. From zero to
+              multi-agent workflows in 30 minutes.
             </p>
 
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -764,7 +769,12 @@ export default function FlywheelPage() {
       {/* Navigation */}
       <nav className="relative z-20 mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:py-6">
         <div className="flex items-center gap-4">
-          <Button asChild variant="ghost" size="default" className="h-11 text-muted-foreground hover:text-foreground">
+          <Button
+            asChild
+            variant="ghost"
+            size="default"
+            className="h-11 text-muted-foreground hover:text-foreground"
+          >
             <Link href="/" aria-label="Back to home">
               <ArrowLeft className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Back</span>
@@ -775,10 +785,17 @@ export default function FlywheelPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20 lg:h-9 lg:w-9">
             <Terminal className="h-4 w-4 text-primary lg:h-5 lg:w-5" />
           </div>
-          <span className="whitespace-nowrap font-mono text-base font-bold tracking-tight lg:text-lg">Agent Flywheel</span>
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-tight lg:text-lg">
+            Agent Flywheel
+          </span>
         </div>
         <div className="flex items-center gap-4">
-          <Button asChild size="default" variant="outline" className="h-11 border-primary/30 hover:bg-primary/10">
+          <Button
+            asChild
+            size="default"
+            variant="outline"
+            className="h-11 border-primary/30 hover:bg-primary/10"
+          >
             <Link href="/wizard/os-selection">
               <span className="hidden sm:inline">Get Started</span>
               <span className="sm:hidden">Start</span>
@@ -825,15 +842,23 @@ export default function FlywheelPage() {
               >
                 GitHub
               </a>
-              <Link href="/" className="flex items-center min-h-[44px] px-2 transition-colors hover:text-foreground">
+              <Link
+                href="/"
+                className="flex items-center min-h-[44px] px-2 transition-colors hover:text-foreground"
+              >
                 Home
               </Link>
-              <Link href="/wizard/os-selection" className="flex items-center min-h-[44px] px-2 transition-colors hover:text-foreground">
+              <Link
+                href="/wizard/os-selection"
+                className="flex items-center min-h-[44px] px-2 transition-colors hover:text-foreground"
+              >
                 Get Started
               </Link>
             </div>
 
-            <p className="text-[12px] text-muted-foreground">Built for the agentic coding community</p>
+            <p className="text-[12px] text-muted-foreground">
+              Built for the agentic coding community
+            </p>
           </div>
         </div>
       </footer>

@@ -1,62 +1,65 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
-  LayoutGrid,
-  ShieldCheck,
-  Mail,
-  GitBranch,
-  Bug,
-  Brain,
-  Search,
-  KeyRound,
-  X,
-  ExternalLink,
-  Zap,
-  Star,
-  Copy,
-  Check,
-  ChevronRight,
-  ChevronLeft,
-  Sparkles,
-  Shield,
-  GitMerge,
-  Cloud,
-  Terminal,
-  Bot,
-  BookOpen,
   Activity,
   Archive,
-  FileText,
-  ListTodo,
-  ShieldAlert,
-  HardDrive,
-  Repeat,
-  Package,
-  Save,
-  Bell,
-  Image,
-  Minimize2,
-  Wifi,
-  Globe,
-  FileCode,
-  Network,
-  BoxSelect,
   BarChart3,
+  Bell,
+  BookOpen,
+  Bot,
+  BoxSelect,
+  Brain,
+  Bug,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Cloud,
+  Copy,
+  ExternalLink,
+  FileCode,
+  FileText,
+  GitBranch,
+  GitMerge,
+  Globe,
+  HardDrive,
+  Image,
+  KeyRound,
+  LayoutGrid,
+  ListTodo,
+  Mail,
+  Minimize2,
+  Network,
+  Package,
   Power,
+  Repeat,
+  Save,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Terminal,
+  Wifi,
+  X,
+  Zap,
 } from "lucide-react";
-import { flywheelTools, flywheelDescription, getAllConnections, type FlywheelTool } from "@/lib/flywheel";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  type FlywheelTool,
+  flywheelDescription,
+  flywheelTools,
+  getAllConnections,
+} from "@/lib/flywheel";
 import { cn, copyTextToClipboard } from "@/lib/utils";
 
 // =============================================================================
 // ICON MAP - Extended for all tools
 // =============================================================================
 
-export const flywheelIconMap: Record<
-  string,
-  React.ComponentType<{ className?: string }>
-> = {
+export const flywheelIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutGrid,
   ShieldCheck,
   Mail,
@@ -115,17 +118,20 @@ function getUniqueTools(): FlywheelTool[] {
 // =============================================================================
 
 const PRIMARY_TOOL_IDS = new Set([
-  "ntm",    // Named Tmux Manager - orchestration hub
-  "mail",   // Agent Mail - coordination hub
-  "bv",     // Beads Viewer - task management hub
-  "cass",   // Session Search - memory hub
-  "cm",     // Memory System
-  "ubs",    // Bug Scanner
-  "slb",    // Safety Layer
-  "dcg",    // Destructive Guard
+  "ntm", // Named Tmux Manager - orchestration hub
+  "mail", // Agent Mail - coordination hub
+  "bv", // Beads Viewer - task management hub
+  "cass", // Session Search - memory hub
+  "cm", // Memory System
+  "ubs", // Bug Scanner
+  "slb", // Safety Layer
+  "dcg", // Destructive Guard
 ]);
 
-function classifyTools(tools: FlywheelTool[]): { primary: FlywheelTool[]; secondary: FlywheelTool[] } {
+function classifyTools(tools: FlywheelTool[]): {
+  primary: FlywheelTool[];
+  secondary: FlywheelTool[];
+} {
   const primary: FlywheelTool[] = [];
   const secondary: FlywheelTool[] = [];
 
@@ -162,7 +168,7 @@ function getCirclePosition(
   total: number,
   radius: number,
   center: number,
-  startAngle: number = -Math.PI / 2
+  startAngle: number = -Math.PI / 2,
 ) {
   const angle = startAngle + (index / total) * 2 * Math.PI;
   // Math.cos/Math.sin can differ in the last bit between JS engines (server
@@ -174,7 +180,11 @@ function getCirclePosition(
   };
 }
 
-function getCurvedPath(from: { x: number; y: number }, to: { x: number; y: number }, center: number) {
+function getCurvedPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  center: number,
+) {
   const midX = (from.x + to.x) / 2;
   const midY = (from.y + to.y) / 2;
   const pullFactor = 0.35;
@@ -251,10 +261,7 @@ function ConnectionLine({
   const color2 = getColorFromGradient(toColor);
 
   return (
-    <g
-      className="transition duration-500 ease-out"
-      style={{ opacity: isHighlighted ? 1 : 0.25 }}
-    >
+    <g className="transition duration-500 ease-out" style={{ opacity: isHighlighted ? 1 : 0.25 }}>
       <defs>
         <linearGradient
           id={gradientId}
@@ -265,7 +272,11 @@ function ConnectionLine({
           y2={toPos.y}
         >
           <stop offset="0%" stopColor={color1} stopOpacity={isHighlighted ? 1 : 0.4} />
-          <stop offset="50%" stopColor={isHighlighted ? "#fff" : color1} stopOpacity={isHighlighted ? 0.6 : 0.2} />
+          <stop
+            offset="50%"
+            stopColor={isHighlighted ? "#fff" : color1}
+            stopOpacity={isHighlighted ? 0.6 : 0.2}
+          />
           <stop offset="100%" stopColor={color2} stopOpacity={isHighlighted ? 1 : 0.4} />
         </linearGradient>
         <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
@@ -388,16 +399,16 @@ function DesktopToolNode({
           isSelected
             ? "border-white/60 bg-white/20 shadow-2xl"
             : isConnected
-            ? "border-white/40 bg-white/15 shadow-xl"
-            : "border-white/15 bg-card/90 hover:border-white/30 hover:bg-white/10 shadow-lg"
+              ? "border-white/40 bg-white/15 shadow-xl"
+              : "border-white/15 bg-card/90 hover:border-white/30 hover:bg-white/10 shadow-lg",
         )}
         style={{
           // Color-coordinated shadow
           boxShadow: isSelected
             ? `0 0 40px ${color}50, 0 20px 40px rgba(0,0,0,0.3)`
             : isConnected
-            ? `0 0 25px ${color}30, 0 10px 30px rgba(0,0,0,0.2)`
-            : `0 8px 24px rgba(0,0,0,0.2)`,
+              ? `0 0 25px ${color}30, 0 10px 30px rgba(0,0,0,0.2)`
+              : `0 8px 24px rgba(0,0,0,0.2)`,
         }}
       >
         {/* Animated gradient ring for selected state */}
@@ -418,7 +429,7 @@ function DesktopToolNode({
         <div
           className={cn(
             "absolute inset-0 rounded-2xl blur-xl transition-opacity duration-500 bg-gradient-to-br",
-            tool.color
+            tool.color,
           )}
           style={{ opacity: isSelected ? 0.7 : isConnected ? 0.4 : 0.15 }}
         />
@@ -427,7 +438,8 @@ function DesktopToolNode({
         <div
           className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
           style={{
-            background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%)",
+            background:
+              "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.05) 100%)",
           }}
         />
 
@@ -437,7 +449,7 @@ function DesktopToolNode({
             className={cn(
               "relative flex items-center justify-center rounded-xl bg-gradient-to-br shadow-lg",
               tool.color,
-              isPrimary ? "h-11 w-11" : "h-9 w-9"
+              isPrimary ? "h-11 w-11" : "h-9 w-9",
             )}
             style={{
               boxShadow: `0 4px 16px ${color}40`,
@@ -448,10 +460,12 @@ function DesktopToolNode({
         </div>
 
         {/* Label */}
-        <span className={cn(
-          "relative z-10 font-bold uppercase tracking-wider text-white drop-shadow-sm",
-          fontSize
-        )}>
+        <span
+          className={cn(
+            "relative z-10 font-bold uppercase tracking-wider text-white drop-shadow-sm",
+            fontSize,
+          )}
+        >
           {tool.shortName}
         </span>
 
@@ -495,7 +509,8 @@ function CenterHub({ size }: { size: number }) {
       <div
         className="absolute inset-2 rounded-full"
         style={{
-          background: "conic-gradient(from 0deg, transparent, color-mix(in oklch, var(--primary) 30%, transparent), transparent, color-mix(in oklch, var(--primary) 20%, transparent), transparent)",
+          background:
+            "conic-gradient(from 0deg, transparent, color-mix(in oklch, var(--primary) 30%, transparent), transparent, color-mix(in oklch, var(--primary) 20%, transparent), transparent)",
           animation: "spin 8s linear infinite",
         }}
       />
@@ -508,10 +523,7 @@ function CenterHub({ size }: { size: number }) {
 
       {/* Core content */}
       <div className="absolute inset-3 flex flex-col items-center justify-center rounded-full border border-primary/40 bg-card/90 backdrop-blur-md shadow-xl">
-        <div
-          className="relative"
-          style={{ animation: "float0 3s ease-in-out infinite" }}
-        >
+        <div className="relative" style={{ animation: "float0 3s ease-in-out infinite" }}>
           <Sparkles className="h-8 w-8 text-primary drop-shadow-lg" />
           <div className="absolute inset-0 blur-sm">
             <Sparkles className="h-8 w-8 text-primary opacity-50" />
@@ -595,7 +607,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             <div
               className={cn(
                 "relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br shadow-xl",
-                tool.color
+                tool.color,
               )}
               style={{ boxShadow: `0 8px 32px ${color}40` }}
             >
@@ -638,7 +650,9 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
 
         {/* Features */}
         <div className="mt-6">
-          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Key Features</h4>
+          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Key Features
+          </h4>
           <ul className="space-y-2">
             {tool.features.slice(0, 4).map((feature, i) => (
               <li
@@ -647,7 +661,10 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
                 style={{ animation: `fade-in-up 0.3s ease-out ${i * 0.05}s both` }}
               >
                 <div
-                  className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-gradient-to-br", tool.color)}
+                  className={cn(
+                    "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-gradient-to-br",
+                    tool.color,
+                  )}
                   style={{ boxShadow: `0 2px 8px ${color}30` }}
                 >
                   <Check className="h-3 w-3 text-white" />
@@ -661,10 +678,14 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
         {/* Install command */}
         {tool.installCommand && (
           <div className="mt-6">
-            <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Quick Install</h4>
+            <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Quick Install
+            </h4>
             <div className="flex items-center gap-2 rounded-xl bg-black/30 p-3.5 font-mono text-xs border border-border/30 backdrop-blur-sm">
               <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-foreground">
-                {tool.installCommand.length > 45 ? tool.installCommand.slice(0, 45) + "..." : tool.installCommand}
+                {tool.installCommand.length > 45
+                  ? tool.installCommand.slice(0, 45) + "..."
+                  : tool.installCommand}
               </code>
               <button
                 onClick={copyInstallCommand}
@@ -672,7 +693,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
                   "shrink-0 rounded-lg p-2 transition",
                   copied
                     ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-white/10 hover:text-foreground"
+                    : "text-muted-foreground hover:bg-white/10 hover:text-foreground",
                 )}
                 aria-label="Copy install command"
               >
@@ -689,7 +710,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             size="sm"
             className={cn(
               "h-11 bg-gradient-to-r text-white shadow-lg hover:opacity-90 hover:shadow-xl transition hover:-translate-y-0.5",
-              tool.color
+              tool.color,
             )}
             style={{ boxShadow: `0 4px 20px ${color}40` }}
           >
@@ -699,7 +720,12 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             </a>
           </Button>
           {tool.demoUrl && (
-            <Button asChild size="sm" variant="outline" className="h-11 hover:-translate-y-0.5 transition">
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="h-11 hover:-translate-y-0.5 transition"
+            >
               <a href={tool.demoUrl} target="_blank" rel="noopener noreferrer">
                 Try Demo
                 <ChevronRight className="ml-1 h-4 w-4" />
@@ -711,7 +737,9 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
         {/* Connections */}
         {tool.connectsTo.length > 0 && (
           <div className="mt-7 border-t border-border/50 pt-6">
-            <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Integrates With</h4>
+            <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Integrates With
+            </h4>
             <div className="space-y-2.5">
               {tool.connectsTo.slice(0, 4).map((targetId, i) => {
                 const targetTool = uniqueTools.find((t) => t.id === targetId);
@@ -728,14 +756,16 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
                     <div
                       className={cn(
                         "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-md",
-                        targetTool.color
+                        targetTool.color,
                       )}
                       style={{ boxShadow: `0 4px 12px ${targetColor}30` }}
                     >
                       <TargetIcon className="h-5 w-5 text-white" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground">{targetTool.shortName}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {targetTool.shortName}
+                      </p>
                       <p className="text-xs text-muted-foreground line-clamp-1">
                         {tool.connectionDescriptions[targetId] || "Integration"}
                       </p>
@@ -764,20 +794,21 @@ function PlaceholderPanel() {
       }}
     >
       <div className="flex flex-col items-center justify-center py-10 text-center">
-        <div
-          className="relative mb-5"
-          style={{ animation: "float0 3s ease-in-out infinite" }}
-        >
+        <div className="relative mb-5" style={{ animation: "float0 3s ease-in-out infinite" }}>
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 ring-2 ring-primary/30 shadow-lg">
             <Sparkles className="h-9 w-9 text-primary" />
           </div>
           <div className="absolute inset-0 rounded-full bg-primary/10 blur-xl" />
         </div>
         <h3 className="mb-2 text-lg font-semibold text-foreground">Explore the Flywheel</h3>
-        <p className="text-sm text-muted-foreground">Click any tool to see details and integrations</p>
+        <p className="text-sm text-muted-foreground">
+          Click any tool to see details and integrations
+        </p>
       </div>
       <div className="rounded-xl bg-white/5 p-5 border border-border/30">
-        <p className="text-sm leading-relaxed text-muted-foreground">{flywheelDescription.description}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {flywheelDescription.description}
+        </p>
       </div>
     </div>
   );
@@ -806,7 +837,7 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
         "active:scale-[0.98]", // Touch feedback
         isActive
           ? "border-white/50 bg-white/15 shadow-2xl scale-[1.02]"
-          : "border-white/15 bg-card/90 hover:border-white/25 shadow-lg"
+          : "border-white/15 bg-card/90 hover:border-white/25 shadow-lg",
       )}
       style={{
         boxShadow: isActive
@@ -825,11 +856,17 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
       )}
 
       {/* Inner background */}
-      <div className="absolute inset-[1px] rounded-[15px] bg-card/95" style={{ display: isActive ? "block" : "none" }} />
+      <div
+        className="absolute inset-[1px] rounded-[15px] bg-card/95"
+        style={{ display: isActive ? "block" : "none" }}
+      />
 
       {/* Gradient glow */}
       <div
-        className={cn("absolute inset-0 rounded-2xl blur-xl transition-opacity duration-300 bg-gradient-to-br", tool.color)}
+        className={cn(
+          "absolute inset-0 rounded-2xl blur-xl transition-opacity duration-300 bg-gradient-to-br",
+          tool.color,
+        )}
         style={{ opacity: isActive ? 0.35 : 0.1 }}
       />
 
@@ -838,7 +875,7 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
         <div
           className={cn(
             "flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg",
-            tool.color
+            tool.color,
           )}
           style={{ boxShadow: `0 4px 16px ${color}40` }}
         >
@@ -873,11 +910,15 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
 
       {/* Footer */}
       <div className="relative z-10 mt-auto pt-4 flex items-center justify-between border-t border-border/30">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{tool.language}</span>
-        <div className={cn(
-          "flex items-center gap-1 text-xs font-medium transition",
-          isActive ? "text-primary translate-x-1" : "text-muted-foreground"
-        )}>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+          {tool.language}
+        </span>
+        <div
+          className={cn(
+            "flex items-center gap-1 text-xs font-medium transition",
+            isActive ? "text-primary translate-x-1" : "text-muted-foreground",
+          )}
+        >
           <span>Details</span>
           <ChevronRight className="h-4 w-4" />
         </div>
@@ -1019,7 +1060,7 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
             <div
               className={cn(
                 "h-1.5 w-14 rounded-full transition-colors",
-                isDragging ? "bg-muted-foreground/60" : "bg-muted-foreground/30"
+                isDragging ? "bg-muted-foreground/60" : "bg-muted-foreground/30",
               )}
             />
           </div>
@@ -1034,7 +1075,7 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
               <div
                 className={cn(
                   "relative flex items-center justify-center rounded-2xl bg-gradient-to-br shadow-xl",
-                  tool.color
+                  tool.color,
                 )}
                 style={{
                   width: 72,
@@ -1046,7 +1087,8 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
                 <div
                   className="absolute inset-0 rounded-2xl"
                   style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 50%)",
+                    background:
+                      "linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 50%)",
                   }}
                 />
               </div>
@@ -1080,17 +1122,21 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
             {/* Install command */}
             {tool.installCommand && (
               <div className="mt-6">
-                <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Install</h4>
+                <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Install
+                </h4>
                 <button
                   onClick={copyInstallCommand}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-xl p-4 font-mono text-xs text-left transition active:scale-[0.98]",
                     copied ? "bg-primary/20 border-primary/30" : "bg-black/30 border-border/30",
-                    "border"
+                    "border",
                   )}
                 >
                   <code className="flex-1 text-foreground break-all">
-                    {tool.installCommand.length > 55 ? tool.installCommand.slice(0, 55) + "..." : tool.installCommand}
+                    {tool.installCommand.length > 55
+                      ? tool.installCommand.slice(0, 55) + "..."
+                      : tool.installCommand}
                   </code>
                   {copied ? (
                     <Check className="h-5 w-5 text-primary shrink-0" />
@@ -1106,7 +1152,7 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
               asChild
               className={cn(
                 "mt-6 w-full h-14 bg-gradient-to-r text-white shadow-lg text-base font-semibold",
-                tool.color
+                tool.color,
               )}
               style={{ boxShadow: `0 8px 32px ${color}40` }}
             >
@@ -1118,12 +1164,17 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
 
             {/* Features */}
             <div className="mt-8">
-              <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Key Features</h4>
+              <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Key Features
+              </h4>
               <ul className="space-y-3">
                 {tool.features.slice(0, 5).map((feature, i) => (
                   <li key={i} className="flex items-start gap-3 text-sm text-foreground">
                     <div
-                      className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br", tool.color)}
+                      className={cn(
+                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br",
+                        tool.color,
+                      )}
                       style={{ boxShadow: `0 2px 8px ${color}30` }}
                     >
                       <Check className="h-3.5 w-3.5 text-white" />
@@ -1155,14 +1206,16 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
                         <div
                           className={cn(
                             "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-md",
-                            targetTool.color
+                            targetTool.color,
                           )}
                           style={{ boxShadow: `0 4px 12px ${targetColor}30` }}
                         >
                           <TargetIcon className="h-6 w-6 text-white" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-foreground">{targetTool.shortName}</p>
+                          <p className="text-sm font-semibold text-foreground">
+                            {targetTool.shortName}
+                          </p>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {tool.connectionDescriptions[targetId] || "Integration"}
                           </p>
@@ -1204,7 +1257,9 @@ function StatsBadge({ toolCount }: { toolCount: number }) {
         <div className="h-5 w-px bg-primary/30" />
         <div className="flex items-center gap-2">
           <Star className="h-4 w-4 text-amber-400 fill-current drop-shadow-sm" />
-          <span className="text-sm font-bold text-foreground">{flywheelDescription.metrics.totalStars}</span>
+          <span className="text-sm font-bold text-foreground">
+            {flywheelDescription.metrics.totalStars}
+          </span>
           <span className="text-xs text-muted-foreground">stars</span>
         </div>
         {/* No "Active" status dot here: nothing on this page probes anything,
@@ -1282,7 +1337,7 @@ function DesktopVisualization({
         (to === activeToolId && activeTool.connectsTo.includes(from))
       );
     },
-    [activeToolId, tools]
+    [activeToolId, tools],
   );
 
   const isToolConnected = useCallback(
@@ -1291,43 +1346,43 @@ function DesktopVisualization({
       const activeTool = tools.find((t) => t.id === activeToolId);
       return activeTool?.connectsTo.includes(toolId) ?? false;
     },
-    [activeToolId, tools]
+    [activeToolId, tools],
   );
 
   return (
     <div ref={frameRef} className="relative mx-auto aspect-square w-full max-w-[640px]">
-    <div
-      className="absolute left-0 top-0 origin-top-left"
-      style={{
-        width: DESKTOP_CONFIG.containerSize,
-        height: DESKTOP_CONFIG.containerSize,
-        transform: scale === 1 ? undefined : `scale(${scale})`,
-      }}
-    >
-      {/* Ambient background glow */}
       <div
-        className="absolute inset-0 rounded-full bg-primary/5 blur-3xl"
-        style={{ transform: "scale(1.2)" }}
-      />
-
-      {/* SVG connections */}
-      <svg
-        className="absolute inset-0"
-        width={DESKTOP_CONFIG.containerSize}
-        height={DESKTOP_CONFIG.containerSize}
-        aria-hidden="true"
+        className="absolute left-0 top-0 origin-top-left"
+        style={{
+          width: DESKTOP_CONFIG.containerSize,
+          height: DESKTOP_CONFIG.containerSize,
+          transform: scale === 1 ? undefined : `scale(${scale})`,
+        }}
       >
-        <defs>
-          {/* Ambient glow for center */}
-          <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
-            <stop offset="70%" stopColor="var(--primary)" stopOpacity="0.05" />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
-          </radialGradient>
-        </defs>
+        {/* Ambient background glow */}
+        <div
+          className="absolute inset-0 rounded-full bg-primary/5 blur-3xl"
+          style={{ transform: "scale(1.2)" }}
+        />
 
-        <style>
-          {`
+        {/* SVG connections */}
+        <svg
+          className="absolute inset-0"
+          width={DESKTOP_CONFIG.containerSize}
+          height={DESKTOP_CONFIG.containerSize}
+          aria-hidden="true"
+        >
+          <defs>
+            {/* Ambient glow for center */}
+            <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+              <stop offset="70%" stopColor="var(--primary)" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          <style>
+            {`
             @keyframes flow {
               from { stroke-dashoffset: 0; }
               to { stroke-dashoffset: -48; }
@@ -1369,98 +1424,98 @@ function DesktopVisualization({
               to { opacity: 1; transform: translateY(0); }
             }
           `}
-        </style>
+          </style>
 
-        {/* Center ambient glow */}
-        <circle
-          cx={center}
-          cy={center}
-          r={DESKTOP_CONFIG.innerRadius * 0.9}
-          fill="url(#center-glow)"
-        />
+          {/* Center ambient glow */}
+          <circle
+            cx={center}
+            cy={center}
+            r={DESKTOP_CONFIG.innerRadius * 0.9}
+            fill="url(#center-glow)"
+          />
 
-        {/* Decorative orbital rings */}
-        <circle
-          cx={center}
-          cy={center}
-          r={DESKTOP_CONFIG.innerRadius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeDasharray="6 8"
-          className="text-primary/15"
-        />
-        <circle
-          cx={center}
-          cy={center}
-          r={DESKTOP_CONFIG.outerRadius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeDasharray="4 10"
-          className="text-primary/10"
-        />
+          {/* Decorative orbital rings */}
+          <circle
+            cx={center}
+            cy={center}
+            r={DESKTOP_CONFIG.innerRadius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeDasharray="6 8"
+            className="text-primary/15"
+          />
+          <circle
+            cx={center}
+            cy={center}
+            r={DESKTOP_CONFIG.outerRadius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1"
+            strokeDasharray="4 10"
+            className="text-primary/10"
+          />
 
-        {/* Connection lines */}
-        {connections.map(({ from, to }) => {
-          const fromTool = tools.find((t) => t.id === from);
-          const toTool = tools.find((t) => t.id === to);
-          const fromPos = positions[from];
-          const toPos = positions[to];
-          if (!fromPos || !toPos || !fromTool || !toTool) return null;
+          {/* Connection lines */}
+          {connections.map(({ from, to }) => {
+            const fromTool = tools.find((t) => t.id === from);
+            const toTool = tools.find((t) => t.id === to);
+            const fromPos = positions[from];
+            const toPos = positions[to];
+            if (!fromPos || !toPos || !fromTool || !toTool) return null;
 
-          return (
-            <ConnectionLine
-              key={`${from}-${to}`}
-              fromPos={fromPos}
-              toPos={toPos}
-              isHighlighted={isConnectionHighlighted(from, to)}
-              fromColor={fromTool.color}
-              toColor={toTool.color}
-              connectionId={`${from}-${to}`}
-              center={center}
-            />
-          );
-        })}
-      </svg>
+            return (
+              <ConnectionLine
+                key={`${from}-${to}`}
+                fromPos={fromPos}
+                toPos={toPos}
+                isHighlighted={isConnectionHighlighted(from, to)}
+                fromColor={fromTool.color}
+                toColor={toTool.color}
+                connectionId={`${from}-${to}`}
+                center={center}
+              />
+            );
+          })}
+        </svg>
 
-      {/* Center hub */}
-      <CenterHub size={DESKTOP_CONFIG.centerSize} />
+        {/* Center hub */}
+        <CenterHub size={DESKTOP_CONFIG.centerSize} />
 
-      {/* Primary tools (inner ring) */}
-      {primary.map((tool, index) => (
-        <DesktopToolNode
-          key={tool.id}
-          tool={tool}
-          position={positions[tool.id]}
-          size={DESKTOP_CONFIG.innerNodeSize}
-          isSelected={tool.id === selectedToolId}
-          isConnected={isToolConnected(tool.id)}
-          isDimmed={!!activeToolId && tool.id !== activeToolId && !isToolConnected(tool.id)}
-          onSelect={() => onSelectTool(tool.id)}
-          onHover={(hovering) => onHoverTool(hovering ? tool.id : null)}
-          isPrimary={true}
-          index={index}
-        />
-      ))}
+        {/* Primary tools (inner ring) */}
+        {primary.map((tool, index) => (
+          <DesktopToolNode
+            key={tool.id}
+            tool={tool}
+            position={positions[tool.id]}
+            size={DESKTOP_CONFIG.innerNodeSize}
+            isSelected={tool.id === selectedToolId}
+            isConnected={isToolConnected(tool.id)}
+            isDimmed={!!activeToolId && tool.id !== activeToolId && !isToolConnected(tool.id)}
+            onSelect={() => onSelectTool(tool.id)}
+            onHover={(hovering) => onHoverTool(hovering ? tool.id : null)}
+            isPrimary={true}
+            index={index}
+          />
+        ))}
 
-      {/* Secondary tools (outer ring) */}
-      {secondary.map((tool, index) => (
-        <DesktopToolNode
-          key={tool.id}
-          tool={tool}
-          position={positions[tool.id]}
-          size={DESKTOP_CONFIG.outerNodeSize}
-          isSelected={tool.id === selectedToolId}
-          isConnected={isToolConnected(tool.id)}
-          isDimmed={!!activeToolId && tool.id !== activeToolId && !isToolConnected(tool.id)}
-          onSelect={() => onSelectTool(tool.id)}
-          onHover={(hovering) => onHoverTool(hovering ? tool.id : null)}
-          isPrimary={false}
-          index={index}
-        />
-      ))}
-    </div>
+        {/* Secondary tools (outer ring) */}
+        {secondary.map((tool, index) => (
+          <DesktopToolNode
+            key={tool.id}
+            tool={tool}
+            position={positions[tool.id]}
+            size={DESKTOP_CONFIG.outerNodeSize}
+            isSelected={tool.id === selectedToolId}
+            isConnected={isToolConnected(tool.id)}
+            isDimmed={!!activeToolId && tool.id !== activeToolId && !isToolConnected(tool.id)}
+            onSelect={() => onSelectTool(tool.id)}
+            onHover={(hovering) => onHoverTool(hovering ? tool.id : null)}
+            isPrimary={false}
+            index={index}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1528,7 +1583,7 @@ function MobileVisualization({ tools, selectedToolId, onSelectTool }: MobileVisu
         disabled={!canScrollLeft}
         className={cn(
           "absolute left-2 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-card/95 border border-border/50 backdrop-blur-md shadow-xl transition active:scale-95",
-          canScrollLeft ? "opacity-100" : "opacity-0 pointer-events-none"
+          canScrollLeft ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         style={{ boxShadow: canScrollLeft ? "0 4px 20px rgba(0,0,0,0.3)" : "none" }}
         aria-label="Scroll left"
@@ -1540,7 +1595,7 @@ function MobileVisualization({ tools, selectedToolId, onSelectTool }: MobileVisu
         disabled={!canScrollRight}
         className={cn(
           "absolute right-2 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-card/95 border border-border/50 backdrop-blur-md shadow-xl transition active:scale-95",
-          canScrollRight ? "opacity-100" : "opacity-0 pointer-events-none"
+          canScrollRight ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         style={{ boxShadow: canScrollRight ? "0 4px 20px rgba(0,0,0,0.3)" : "none" }}
         aria-label="Scroll right"
@@ -1581,7 +1636,9 @@ function MobileVisualization({ tools, selectedToolId, onSelectTool }: MobileVisu
             <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-muted">
               <Zap className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Supporting Tools</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Supporting Tools
+            </h3>
             <span className="text-xs text-muted-foreground">({secondary.length})</span>
           </div>
           <div
@@ -1632,7 +1689,9 @@ export default function FlywheelVisualization() {
       <div className="mb-10 md:mb-14 text-center">
         <div className="mb-5 flex items-center justify-center gap-3">
           <div className="h-px w-10 bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
-          <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-primary">Ecosystem</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-primary">
+            Ecosystem
+          </span>
           <div className="h-px w-10 bg-gradient-to-l from-transparent via-primary/60 to-transparent" />
         </div>
         <h2 className="mb-5 font-mono text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-foreground">
@@ -1660,7 +1719,11 @@ export default function FlywheelVisualization() {
 
         <div className="flex flex-col">
           {displayedTool ? (
-            <ToolDetailPanel key={displayedTool.id} tool={displayedTool} onClose={handleCloseDetail} />
+            <ToolDetailPanel
+              key={displayedTool.id}
+              tool={displayedTool}
+              onClose={handleCloseDetail}
+            />
           ) : (
             <PlaceholderPanel />
           )}

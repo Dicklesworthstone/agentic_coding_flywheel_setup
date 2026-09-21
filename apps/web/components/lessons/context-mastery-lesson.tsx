@@ -1,41 +1,32 @@
-'use client';
+"use client";
 
+import { ArrowDown, Brain, FileCode, Gauge, Layers, Minimize2, Search } from "lucide-react";
 import {
-  Layers,
-  Minimize2,
-  FileCode,
-  Search,
-  Brain,
-  Gauge,
-  ArrowDown,
-} from 'lucide-react';
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function ContextMasteryLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Maximize what fits in your agent&apos;s context window using TRU, S2P,
-        CASS, and CM — the difference between an agent that forgets and one that
-        remembers everything.
+        Maximize what fits in your agent&apos;s context window using TRU, S2P, CASS, and CM — the
+        difference between an agent that forgets and one that remembers everything.
       </GoalBanner>
 
       {/* Section 1: The Context Problem */}
       <Section title="The Context Problem" icon={<Layers className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          Every AI agent has a <Highlight>finite context window</Highlight>. When
-          it fills up, the agent compacts (forgets earlier messages) or degrades.
-          Four tools help you fit more useful information into less space.
+          Every AI agent has a <Highlight>finite context window</Highlight>. When it fills up, the
+          agent compacts (forgets earlier messages) or degrades. Four tools help you fit more useful
+          information into less space.
         </Paragraph>
 
         <div className="mt-8">
@@ -73,9 +64,9 @@ export function ContextMasteryLesson() {
       {/* Section 2: TRU Compression */}
       <Section title="Compress with TRU" icon={<Minimize2 className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          <Highlight>TRU (Token-Optimized Notation)</Highlight> compresses source
-          code into a format that uses 40-70% fewer tokens while preserving all
-          semantic meaning. The agent can still understand the code perfectly.
+          <Highlight>TRU (Token-Optimized Notation)</Highlight> compresses source code into a format
+          that uses 40-70% fewer tokens while preserving all semantic meaning. The agent can still
+          understand the code perfectly.
         </Paragraph>
 
         <CodeBlock
@@ -96,8 +87,8 @@ toon compress src/api/ --recursive | claude "Review this API code"`}
         />
 
         <TipBox variant="tip">
-          TRU is especially effective on verbose languages like Java and
-          TypeScript. Python code compresses less because it&apos;s already terse.
+          TRU is especially effective on verbose languages like Java and TypeScript. Python code
+          compresses less because it&apos;s already terse.
         </TipBox>
       </Section>
 
@@ -106,10 +97,9 @@ toon compress src/api/ --recursive | claude "Review this API code"`}
       {/* Section 3: S2P Bundling */}
       <Section title="Bundle with S2P" icon={<FileCode className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          <Highlight>S2P (Source to Prompt)</Highlight> combines multiple source
-          files into a single, well-structured prompt with automatic token
-          counting. Instead of agents reading files one by one, give them
-          everything at once.
+          <Highlight>S2P (Source to Prompt)</Highlight> combines multiple source files into a
+          single, well-structured prompt with automatic token counting. Instead of agents reading
+          files one by one, give them everything at once.
         </Paragraph>
 
         <CodeBlock
@@ -131,9 +121,8 @@ s2p src/components/ --include "*.tsx" --clipboard`}
         />
 
         <TipBox variant="info">
-          S2P shows token counts per file, so you can see which files are
-          consuming the most context. Drop large auto-generated files that
-          agents rarely need.
+          S2P shows token counts per file, so you can see which files are consuming the most
+          context. Drop large auto-generated files that agents rarely need.
         </TipBox>
       </Section>
 
@@ -142,9 +131,9 @@ s2p src/components/ --include "*.tsx" --clipboard`}
       {/* Section 4: Targeted Retrieval with CASS */}
       <Section title="Retrieve with CASS" icon={<Search className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          Instead of dumping entire files into context, use CASS to retrieve
-          {" "}<Highlight>specific snippets</Highlight> from past sessions where a
-          problem was already solved.
+          Instead of dumping entire files into context, use CASS to retrieve{" "}
+          <Highlight>specific snippets</Highlight> from past sessions where a problem was already
+          solved.
         </Paragraph>
 
         <CodeBlock
@@ -164,8 +153,8 @@ cass search "auth middleware pattern" --robot --fields minimal`}
         />
 
         <TipBox variant="tip">
-          Use <code>--fields minimal</code> to get just the snippet and score,
-          not the full metadata. This can cut the response size by 60%.
+          Use <code>--fields minimal</code> to get just the snippet and score, not the full
+          metadata. This can cut the response size by 60%.
         </TipBox>
       </Section>
 
@@ -174,10 +163,9 @@ cass search "auth middleware pattern" --robot --fields minimal`}
       {/* Section 5: Distilled Knowledge with CM */}
       <Section title="Distill with CM" icon={<Brain className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          CM distills entire sessions into <Highlight>single-line
-          rules</Highlight>. Instead of re-reading a 500-message session, your
-          agent gets &ldquo;Always use bcrypt with cost factor 12&rdquo; — one
-          line instead of 50,000 tokens.
+          CM distills entire sessions into <Highlight>single-line rules</Highlight>. Instead of
+          re-reading a 500-message session, your agent gets &ldquo;Always use bcrypt with cost
+          factor 12&rdquo; — one line instead of 50,000 tokens.
         </Paragraph>
 
         <CodeBlock
@@ -209,38 +197,38 @@ cm context "implement rate limiting" --json
           <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <ArrowDown className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
             <span className="text-white/90 text-sm">
-              <strong className="text-amber-400">Step 1: CM Context</strong> — Load
-              distilled rules for the task (~200 tokens)
+              <strong className="text-amber-400">Step 1: CM Context</strong> — Load distilled rules
+              for the task (~200 tokens)
             </span>
           </div>
           <div className="flex items-start gap-3 p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <ArrowDown className="h-4 w-4 text-violet-400 shrink-0 mt-0.5" />
             <span className="text-white/90 text-sm">
-              <strong className="text-violet-400">Step 2: CASS Search</strong> — Find
-              specific past solutions if needed (~500 tokens)
+              <strong className="text-violet-400">Step 2: CASS Search</strong> — Find specific past
+              solutions if needed (~500 tokens)
             </span>
           </div>
           <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <ArrowDown className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
             <span className="text-white/90 text-sm">
-              <strong className="text-blue-400">Step 3: S2P Bundle</strong> — Collect
-              relevant source files with token counts
+              <strong className="text-blue-400">Step 3: S2P Bundle</strong> — Collect relevant
+              source files with token counts
             </span>
           </div>
           <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <ArrowDown className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
             <span className="text-white/90 text-sm">
-              <strong className="text-emerald-400">Step 4: TRU Compress</strong> — Shrink
-              the bundle by 40-70% before sending
+              <strong className="text-emerald-400">Step 4: TRU Compress</strong> — Shrink the bundle
+              by 40-70% before sending
             </span>
           </div>
         </div>
 
         <div className="mt-6 p-4 rounded-lg bg-white/[0.03] border border-white/[0.08]">
           <p className="text-sm text-white/70">
-            <strong className="text-white">Result:</strong> An agent that starts with
-            distilled knowledge, targeted solutions, and compressed source — fitting
-            10x more useful information into the same context window.
+            <strong className="text-white">Result:</strong> An agent that starts with distilled
+            knowledge, targeted solutions, and compressed source — fitting 10x more useful
+            information into the same context window.
           </p>
         </div>
       </Section>

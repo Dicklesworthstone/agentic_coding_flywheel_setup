@@ -1,62 +1,56 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence, springs, useInView } from "@/components/motion";
 import {
-  Sparkles,
-  Brain,
-  Target,
-  Maximize2,
-  Layers,
   Anchor,
-  Clock,
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  Brain,
   CheckSquare,
-  Lightbulb,
-  Zap,
+  ChevronRight,
+  Clock,
+  Code2,
   Eye,
   FileText,
-  Terminal,
-  BarChart3,
-  ChevronRight,
+  Gauge,
+  Layers,
+  Lightbulb,
+  List,
+  Maximize2,
   Play,
   RotateCcw,
-  ArrowRight,
-  Code2,
   Shield,
-  List,
-  BookOpen,
-  Gauge,
+  Sparkles,
+  Target,
+  Terminal,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function PromptEngineeringLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Master the art of directing AI agents with precision and intention.
-      </GoalBanner>
+      <GoalBanner>Master the art of directing AI agents with precision and intention.</GoalBanner>
 
       {/* Introduction */}
-      <Section
-        title="Why Prompting Matters"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Why Prompting Matters" icon={<Sparkles className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          The difference between a mediocre agent session and a brilliant one
-          often comes down to <Highlight>how you direct the agent</Highlight>.
-          This lesson dissects the patterns that make prompts effective, drawn
-          from real-world workflows that consistently produce excellent results.
+          The difference between a mediocre agent session and a brilliant one often comes down to{" "}
+          <Highlight>how you direct the agent</Highlight>. This lesson dissects the patterns that
+          make prompts effective, drawn from real-world workflows that consistently produce
+          excellent results.
         </Paragraph>
 
         <div className="mt-8">
@@ -98,16 +92,12 @@ export function PromptEngineeringLesson() {
         delay={0.15}
       >
         <Paragraph>
-          AI models allocate &quot;compute&quot; based on perceived task
-          importance. <Highlight>Stacked modifiers</Highlight> signal that this
-          task deserves maximum attention:
+          AI models allocate &quot;compute&quot; based on perceived task importance.{" "}
+          <Highlight>Stacked modifiers</Highlight> signal that this task deserves maximum attention:
         </Paragraph>
 
         <div className="mt-6 space-y-4">
-          <IntensityExample
-            phrase="super carefully"
-            effect="Elevates attention above baseline"
-          />
+          <IntensityExample phrase="super carefully" effect="Elevates attention above baseline" />
           <IntensityExample
             phrase="super careful, methodical, and critical"
             effect="Triple-stacking for maximum precision"
@@ -134,21 +124,19 @@ correct them."`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            These aren&apos;t filler words. They&apos;re{" "}
-            <strong>calibration signals</strong> that tell the model to allocate
-            more reasoning depth to the task.
+            These aren&apos;t filler words. They&apos;re <strong>calibration signals</strong> that
+            tell the model to allocate more reasoning depth to the task.
           </TipBox>
         </div>
 
         <div className="mt-6">
           <TipBox variant="tip">
-            <strong>Claude Code feature:</strong> The{" "}
-            <strong>/effort</strong> command (<code>/effort low/medium/high/max</code>) controls how much thinking
-            Claude Code allocates to a task. Use <code>/effort max</code> for
-            tasks requiring maximum reasoning depth. While
-            it&apos;s a tool-level feature in Claude Code, using intensity words like
-            &quot;think deeply&quot; or &quot;reason carefully&quot; can help other
-            agents/models allocate more attention to complex tasks as well.
+            <strong>Claude Code feature:</strong> The <strong>/effort</strong> command (
+            <code>/effort low/medium/high/max</code>) controls how much thinking Claude Code
+            allocates to a task. Use <code>/effort max</code> for tasks requiring maximum reasoning
+            depth. While it&apos;s a tool-level feature in Claude Code, using intensity words like
+            &quot;think deeply&quot; or &quot;reason carefully&quot; can help other agents/models
+            allocate more attention to complex tasks as well.
           </TipBox>
         </div>
       </Section>
@@ -162,8 +150,7 @@ correct them."`}
         delay={0.2}
       >
         <Paragraph>
-          Models tend to take shortcuts. Explicit scope directives push against
-          premature narrowing:
+          Models tend to take shortcuts. Explicit scope directives push against premature narrowing:
         </Paragraph>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -216,8 +203,8 @@ or which they are imported by."`}
         delay={0.25}
       >
         <Paragraph>
-          Questions trigger <Highlight>metacognition</Highlight>—forcing the
-          model to evaluate its own output before finalizing:
+          Questions trigger <Highlight>metacognition</Highlight>—forcing the model to evaluate its
+          own output before finalizing:
         </Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -225,10 +212,7 @@ or which they are imported by."`}
             question="Are you sure it makes sense?"
             purpose="Basic sanity check"
           />
-          <VerificationQuestion
-            question="Is it optimal?"
-            purpose="Pushes beyond 'good enough'"
-          />
+          <VerificationQuestion question="Is it optimal?" purpose="Pushes beyond 'good enough'" />
           <VerificationQuestion
             question="Could we change anything to make the system work better for users?"
             purpose="User-centric optimization"
@@ -255,9 +239,8 @@ before we start implementing these things!"`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            <strong>Plan Space Principle:</strong> Revising plans is 10x cheaper
-            than debugging implementations. Force verification at the planning
-            stage.
+            <strong>Plan Space Principle:</strong> Revising plans is 10x cheaper than debugging
+            implementations. Force verification at the planning stage.
           </TipBox>
         </div>
       </Section>
@@ -271,8 +254,8 @@ before we start implementing these things!"`}
         delay={0.3}
       >
         <Paragraph>
-          <Highlight>Psychological reset techniques</Highlight> help agents
-          approach code without prior assumptions or confirmation bias:
+          <Highlight>Psychological reset techniques</Highlight> help agents approach code without
+          prior assumptions or confirmation bias:
         </Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -321,9 +304,9 @@ underlying root causes using first-principle analysis."`}
         delay={0.35}
       >
         <Paragraph>
-          Great prompts consider <Highlight>future contexts</Highlight>—the
-          agent that will continue this work, the human who will review it, the
-          &quot;future self&quot; who needs to understand it:
+          Great prompts consider <Highlight>future contexts</Highlight>—the agent that will continue
+          this work, the human who will review it, the &quot;future self&quot; who needs to
+          understand it:
         </Paragraph>
 
         <div className="mt-6">
@@ -364,9 +347,8 @@ serves the over-arching goals of the project)."`}
         delay={0.4}
       >
         <Paragraph>
-          <Highlight>Stable reference documents</Highlight> (like AGENTS.md)
-          serve as behavioral anchors. Re-reading them is especially critical
-          after context compaction.
+          <Highlight>Stable reference documents</Highlight> (like AGENTS.md) serve as behavioral
+          anchors. Re-reading them is especially critical after context compaction.
         </Paragraph>
 
         <div className="mt-6">
@@ -380,17 +362,15 @@ Use /effort max."`}
         <div className="mt-6">
           <TipBox variant="warning">
             <strong>Why this matters after compaction:</strong>
-            <br /><br />
-            1. <strong>Context decay:</strong> Rules lose salience as more
-            content is added
+            <br />
+            <br />
+            1. <strong>Context decay:</strong> Rules lose salience as more content is added
             <br />
             2. <strong>Summarization loss:</strong> Compaction may miss nuances
             <br />
-            3. <strong>Drift prevention:</strong> Periodic grounding prevents
-            behavioral divergence
+            3. <strong>Drift prevention:</strong> Periodic grounding prevents behavioral divergence
             <br />
-            4. <strong>Fresh frame:</strong> Re-reading establishes correct
-            operating context
+            4. <strong>Fresh frame:</strong> Re-reading establishes correct operating context
           </TipBox>
         </div>
 
@@ -417,8 +397,7 @@ explicitly give the exact command in this session."`}
         delay={0.45}
       >
         <Paragraph>
-          Push for <Highlight>deep understanding</Highlight> over surface-level
-          pattern matching:
+          Push for <Highlight>deep understanding</Highlight> over surface-level pattern matching:
         </Paragraph>
 
         <div className="mt-6">
@@ -454,14 +433,8 @@ to do a super careful, methodical check..."`}
       <Divider />
 
       {/* Putting It Together */}
-      <Section
-        title="Putting It All Together"
-        icon={<Lightbulb className="h-5 w-5" />}
-        delay={0.5}
-      >
-        <Paragraph>
-          Here&apos;s a real prompt that combines multiple patterns:
-        </Paragraph>
+      <Section title="Putting It All Together" icon={<Lightbulb className="h-5 w-5" />} delay={0.5}>
+        <Paragraph>Here&apos;s a real prompt that combines multiple patterns:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -496,11 +469,7 @@ practice guides referenced in the AGENTS.md file."`}
       <Divider />
 
       {/* Quick Reference */}
-      <Section
-        title="Quick Reference"
-        icon={<FileText className="h-5 w-5" />}
-        delay={0.55}
-      >
+      <Section title="Quick Reference" icon={<FileText className="h-5 w-5" />} delay={0.55}>
         <div className="space-y-4">
           <QuickRefItem
             pattern="Intensity"
@@ -546,13 +515,7 @@ practice guides referenced in the AGENTS.md file."`}
 // =============================================================================
 // INTENSITY EXAMPLE
 // =============================================================================
-function IntensityExample({
-  phrase,
-  effect,
-}: {
-  phrase: string;
-  effect: string;
-}) {
+function IntensityExample({ phrase, effect }: { phrase: string; effect: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -570,13 +533,7 @@ function IntensityExample({
 // =============================================================================
 // SCOPE CARD
 // =============================================================================
-function ScopeCard({
-  direction,
-  phrases,
-}: {
-  direction: "expand" | "deepen";
-  phrases: string[];
-}) {
+function ScopeCard({ direction, phrases }: { direction: "expand" | "deepen"; phrases: string[] }) {
   const isExpand = direction === "expand";
   return (
     <motion.div
@@ -606,13 +563,7 @@ function ScopeCard({
 // =============================================================================
 // VERIFICATION QUESTION
 // =============================================================================
-function VerificationQuestion({
-  question,
-  purpose,
-}: {
-  question: string;
-  purpose: string;
-}) {
+function VerificationQuestion({ question, purpose }: { question: string; purpose: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -663,13 +614,7 @@ function FreshEyesCard({
 // =============================================================================
 // TEMPORAL CONCEPT
 // =============================================================================
-function TemporalConcept({
-  concept,
-  description,
-}: {
-  concept: string;
-  description: string;
-}) {
+function TemporalConcept({ concept, description }: { concept: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -688,13 +633,7 @@ function TemporalConcept({
 // =============================================================================
 // PRINCIPLE CARD
 // =============================================================================
-function PrincipleCard({
-  principle,
-  description,
-}: {
-  principle: string;
-  description: string;
-}) {
+function PrincipleCard({ principle, description }: { principle: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -758,10 +697,9 @@ const TECHNIQUES: Technique[] = [
     effectiveness: 95,
     tokenCost: 180,
     promptLayer:
-      'You are a senior TypeScript engineer. Follow clean-code principles. Never use `any` types. Always add JSDoc comments to exported functions.',
+      "You are a senior TypeScript engineer. Follow clean-code principles. Never use `any` types. Always add JSDoc comments to exported functions.",
     withoutText: "Fix the login bug.",
-    withText:
-      '[SYSTEM] You are a senior TypeScript engineer...\n[USER] Fix the login bug.',
+    withText: "[SYSTEM] You are a senior TypeScript engineer...\n[USER] Fix the login bug.",
     agentOutputBefore:
       "function login(user, pass) {\n  // fixed the bug\n  return fetch('/api/login', {\n    method: 'POST',\n    body: JSON.stringify({user, pass})\n  })\n}",
     agentOutputAfter:
@@ -785,7 +723,7 @@ const TECHNIQUES: Technique[] = [
       'Example 1:\nInput: "usr not found"\nOutput: { code: "USR_404", message: "User not found", action: "Check user ID" }\n\nExample 2:\nInput: "db timeout"\nOutput: { code: "DB_TIMEOUT", message: "Database timeout", action: "Retry with backoff" }',
     withoutText: "Parse this error log and categorize the errors.",
     withText:
-      'Here are examples of how to categorize errors:\n[examples...]\n\nNow parse this error log and categorize the errors.',
+      "Here are examples of how to categorize errors:\n[examples...]\n\nNow parse this error log and categorize the errors.",
     agentOutputBefore:
       "Errors found:\n- Line 12: user not found\n- Line 45: database timeout\n- Line 78: permission denied",
     agentOutputAfter:
@@ -806,7 +744,7 @@ const TECHNIQUES: Technique[] = [
     effectiveness: 92,
     tokenCost: 120,
     promptLayer:
-      'Think step-by-step:\n1. First, identify what the function is supposed to do\n2. Trace the execution path for both success and failure cases\n3. Identify where the actual behavior diverges from expected\n4. Only then propose a fix with your reasoning',
+      "Think step-by-step:\n1. First, identify what the function is supposed to do\n2. Trace the execution path for both success and failure cases\n3. Identify where the actual behavior diverges from expected\n4. Only then propose a fix with your reasoning",
     withoutText: "Why is this function returning null?",
     withText:
       "Think step-by-step: first identify intent, then trace execution, then find divergence. Why is this function returning null?",
@@ -830,7 +768,7 @@ const TECHNIQUES: Technique[] = [
     effectiveness: 90,
     tokenCost: 90,
     promptLayer:
-      'CONSTRAINTS:\n- Do NOT delete any existing tests\n- Do NOT modify the public API surface\n- Do NOT add new dependencies without asking\n- Maximum 50 lines changed per file\n- All changes must be backwards-compatible',
+      "CONSTRAINTS:\n- Do NOT delete any existing tests\n- Do NOT modify the public API surface\n- Do NOT add new dependencies without asking\n- Maximum 50 lines changed per file\n- All changes must be backwards-compatible",
     withoutText: "Refactor the auth module.",
     withText:
       "Refactor the auth module.\nCONSTRAINTS: No API changes, no deleted tests, no new deps, max 50 lines/file.",
@@ -854,14 +792,14 @@ const TECHNIQUES: Technique[] = [
     effectiveness: 85,
     tokenCost: 100,
     promptLayer:
-      'Respond in this exact format:\n## Summary\n[1-2 sentences]\n## Root Cause\n[technical explanation]\n## Fix\n```typescript\n[code]\n```\n## Verification\n[how to confirm the fix works]',
+      "Respond in this exact format:\n## Summary\n[1-2 sentences]\n## Root Cause\n[technical explanation]\n## Fix\n```typescript\n[code]\n```\n## Verification\n[how to confirm the fix works]",
     withoutText: "Investigate and fix the race condition in the queue worker.",
     withText:
       "Investigate and fix the race condition.\nRespond with: ## Summary, ## Root Cause, ## Fix (code), ## Verification.",
     agentOutputBefore:
       "I looked at the queue worker and found a race\ncondition. Here's the fix:\n[300 lines of mixed explanation and code]",
     agentOutputAfter:
-      "## Summary\nQueue worker processes duplicate jobs when\ntwo workers poll simultaneously.\n## Root Cause\nMissing atomic lock acquisition in dequeue().\n## Fix\n```typescript\nawait redis.set(lockKey, workerId, \"NX\", 5000);\n```\n## Verification\nRun: bun test queue.race.test.ts",
+      '## Summary\nQueue worker processes duplicate jobs when\ntwo workers poll simultaneously.\n## Root Cause\nMissing atomic lock acquisition in dequeue().\n## Fix\n```typescript\nawait redis.set(lockKey, workerId, "NX", 5000);\n```\n## Verification\nRun: bun test queue.race.test.ts',
   },
   {
     id: "contextMgmt",
@@ -878,9 +816,8 @@ const TECHNIQUES: Technique[] = [
     effectiveness: 93,
     tokenCost: 60,
     promptLayer:
-      'Before you begin:\n1. Reread AGENTS.md so rules are fresh\n2. Review the last 3 commits for recent changes\n3. Check the test file for expected behavior\n\nPrioritize: AGENTS.md rules > test expectations > existing patterns',
-    withoutText:
-      "Continue working on the feature from earlier.",
+      "Before you begin:\n1. Reread AGENTS.md so rules are fresh\n2. Review the last 3 commits for recent changes\n3. Check the test file for expected behavior\n\nPrioritize: AGENTS.md rules > test expectations > existing patterns",
+    withoutText: "Continue working on the feature from earlier.",
     withText:
       "Reread AGENTS.md, review last 3 commits, check tests. Then continue working on the feature. Prioritize: rules > tests > patterns.",
     agentOutputBefore:
@@ -907,11 +844,11 @@ interface TerminalLine {
 function InteractivePromptLab() {
   const [activeTechnique, setActiveTechnique] = useState<TechniqueId>("system");
   const [enabledTechniques, setEnabledTechniques] = useState<Set<TechniqueId>>(
-    () => new Set<TechniqueId>(["system"])
+    () => new Set<TechniqueId>(["system"]),
   );
-  const [activeTab, setActiveTab] = useState<
-    "builder" | "compare" | "anatomy" | "terminal"
-  >("builder");
+  const [activeTab, setActiveTab] = useState<"builder" | "compare" | "anatomy" | "terminal">(
+    "builder",
+  );
   const [builderStep, setBuilderStep] = useState(0);
   const [isAnimatingTerminal, setIsAnimatingTerminal] = useState(false);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
@@ -938,10 +875,7 @@ function InteractivePromptLab() {
   const totalTokens = enabledList.reduce((sum, t) => sum + t.tokenCost, 0);
   const avgEffectiveness =
     enabledList.length > 0
-      ? Math.round(
-          enabledList.reduce((sum, t) => sum + t.effectiveness, 0) /
-            enabledList.length
-        )
+      ? Math.round(enabledList.reduce((sum, t) => sum + t.effectiveness, 0) / enabledList.length)
       : 0;
 
   // Builder step cycling
@@ -1043,12 +977,12 @@ function InteractivePromptLab() {
     terminalIntervalRef.current = interval;
   }, [
     isAnimatingTerminal,
-      enabledList,
-      avgEffectiveness,
-      technique.agentOutputAfter,
-      totalTokens,
-      clearPendingTerminalWork,
-      queuePendingTimer,
+    enabledList,
+    avgEffectiveness,
+    technique.agentOutputAfter,
+    totalTokens,
+    clearPendingTerminalWork,
+    queuePendingTimer,
   ]);
 
   // Auto-scroll terminal
@@ -1066,8 +1000,16 @@ function InteractivePromptLab() {
 
   const tabs = [
     { id: "builder" as const, label: "Prompt Builder", icon: <Layers className="h-3.5 w-3.5" /> },
-    { id: "compare" as const, label: "Before / After", icon: <ArrowRight className="h-3.5 w-3.5" /> },
-    { id: "anatomy" as const, label: "Anatomy & Tokens", icon: <BarChart3 className="h-3.5 w-3.5" /> },
+    {
+      id: "compare" as const,
+      label: "Before / After",
+      icon: <ArrowRight className="h-3.5 w-3.5" />,
+    },
+    {
+      id: "anatomy" as const,
+      label: "Anatomy & Tokens",
+      icon: <BarChart3 className="h-3.5 w-3.5" />,
+    },
     { id: "terminal" as const, label: "Live Terminal", icon: <Terminal className="h-3.5 w-3.5" /> },
   ];
 
@@ -1079,13 +1021,10 @@ function InteractivePromptLab() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/30 to-violet-500/30 border border-primary/20">
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
-          <h4 className="font-bold text-white text-lg">
-            Interactive Prompt Engineering Lab
-          </h4>
+          <h4 className="font-bold text-white text-lg">Interactive Prompt Engineering Lab</h4>
         </div>
         <p className="text-sm text-white/50 mt-1 mb-4">
-          Toggle techniques, watch prompts build layer by layer, and compare
-          agent output quality.
+          Toggle techniques, watch prompts build layer by layer, and compare agent output quality.
         </p>
 
         {/* Technique toggles */}
@@ -1226,9 +1165,7 @@ function InteractivePromptLab() {
                 </span>
                 <span className={`h-1.5 w-1.5 rounded-full ${technique.dotColor}`} />
               </div>
-              <p className="text-xs text-white/50 leading-relaxed">
-                {technique.description}
-              </p>
+              <p className="text-xs text-white/50 leading-relaxed">{technique.description}</p>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
               <div className="flex items-center gap-1 text-xs text-white/40">
@@ -1338,14 +1275,10 @@ function PromptBuilderPanel({
               }}
               className="mb-3 last:mb-0"
             >
-              <div
-                className={`rounded-lg border p-3 ${t.borderColor} ${t.bgColor}`}
-              >
+              <div className={`rounded-lg border p-3 ${t.borderColor} ${t.bgColor}`}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className={`${t.dotColor} h-2 w-2 rounded-full`} />
-                  <span
-                    className={`text-[10px] uppercase tracking-wider font-semibold ${t.color}`}
-                  >
+                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${t.color}`}>
                     Layer {i + 1}: {t.label}
                   </span>
                 </div>
@@ -1385,10 +1318,7 @@ function PromptBuilderPanel({
           className="h-full rounded-full bg-gradient-to-r from-primary/60 to-violet-500/60"
           initial={{ width: "0%" }}
           animate={{
-            width:
-              techniques.length > 0
-                ? `${(step / techniques.length) * 100}%`
-                : "0%",
+            width: techniques.length > 0 ? `${(step / techniques.length) * 100}%` : "0%",
           }}
           transition={springs.smooth}
         />
@@ -1404,11 +1334,9 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-white/40 mb-3">
-        Compare agent output quality{" "}
-        <span className="text-rose-400">without</span> vs{" "}
+        Compare agent output quality <span className="text-rose-400">without</span> vs{" "}
         <span className="text-emerald-400">with</span> the{" "}
-        <span className={technique.color}>{technique.label}</span> technique
-        applied.
+        <span className={technique.color}>{technique.label}</span> technique applied.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -1421,17 +1349,11 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
             </span>
           </div>
           <div className="mb-3 rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">
-              Prompt
-            </span>
-            <p className="font-mono text-xs text-white/50 mt-1">
-              {technique.withoutText}
-            </p>
+            <span className="text-[10px] text-white/30 uppercase tracking-wider">Prompt</span>
+            <p className="font-mono text-xs text-white/50 mt-1">{technique.withoutText}</p>
           </div>
           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">
-              Agent Output
-            </span>
+            <span className="text-[10px] text-white/30 uppercase tracking-wider">Agent Output</span>
             <pre className="font-mono text-xs text-rose-300/60 mt-1 whitespace-pre-wrap leading-relaxed">
               {technique.agentOutputBefore}
             </pre>
@@ -1447,17 +1369,11 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
             </span>
           </div>
           <div className="mb-3 rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">
-              Prompt
-            </span>
-            <p className="font-mono text-xs text-white/50 mt-1">
-              {technique.withText}
-            </p>
+            <span className="text-[10px] text-white/30 uppercase tracking-wider">Prompt</span>
+            <p className="font-mono text-xs text-white/50 mt-1">{technique.withText}</p>
           </div>
           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">
-              Agent Output
-            </span>
+            <span className="text-[10px] text-white/30 uppercase tracking-wider">Agent Output</span>
             <pre className="font-mono text-xs text-emerald-300/60 mt-1 whitespace-pre-wrap leading-relaxed">
               {technique.agentOutputAfter}
             </pre>
@@ -1489,9 +1405,7 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
             <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-medium">
               With {technique.shortLabel}
             </span>
-            <span className="text-xs text-emerald-400/60">
-              {technique.effectiveness}%
-            </span>
+            <span className="text-xs text-emerald-400/60">{technique.effectiveness}%</span>
           </div>
           <div className="h-2 rounded-full bg-white/[0.04] overflow-hidden">
             <motion.div
@@ -1532,9 +1446,7 @@ function AnatomyPanel({
           <span className="text-xs text-white/40 uppercase tracking-wider font-medium">
             Token Budget
           </span>
-          <span
-            className={`text-xs font-mono ${isOverBudget ? "text-rose-400" : "text-white/50"}`}
-          >
+          <span className={`text-xs font-mono ${isOverBudget ? "text-rose-400" : "text-white/50"}`}>
             {totalTokens} / {MAX_CONTEXT_TOKENS} tokens
           </span>
         </div>
@@ -1616,9 +1528,7 @@ function AnatomyPanel({
                   <span
                     className={`${isEnabled ? t.dotColor : "bg-white/10"} h-2 w-2 rounded-full`}
                   />
-                  <span
-                    className={`text-xs font-medium ${isEnabled ? t.color : "text-white/20"}`}
-                  >
+                  <span className={`text-xs font-medium ${isEnabled ? t.color : "text-white/20"}`}>
                     {t.shortLabel}
                   </span>
                 </div>
@@ -1628,9 +1538,7 @@ function AnatomyPanel({
                       className={`h-full rounded-full ${isEnabled ? t.dotColor : "bg-white/[0.06]"}`}
                       initial={{ width: "0%" }}
                       animate={{
-                        width: isEnabled
-                          ? `${(t.tokenCost / MAX_CONTEXT_TOKENS) * 100}%`
-                          : "0%",
+                        width: isEnabled ? `${(t.tokenCost / MAX_CONTEXT_TOKENS) * 100}%` : "0%",
                       }}
                       transition={{ delay: idx * 0.08, ...springs.smooth }}
                     />
@@ -1658,9 +1566,7 @@ function AnatomyPanel({
         </div>
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-center">
           <BarChart3 className="h-5 w-5 text-violet-400 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-white">
-            {enabledTechniques.size}
-          </div>
+          <div className="text-2xl font-bold text-white">{enabledTechniques.size}</div>
           <div className="text-[10px] text-white/40 uppercase tracking-wider mt-1">
             Active Techniques
           </div>
@@ -1676,9 +1582,7 @@ function AnatomyPanel({
           const isEnabled = enabledTechniques.has(t.id);
           return (
             <div key={t.id} className="flex items-center gap-3">
-              <span
-                className={`text-xs w-16 shrink-0 ${isEnabled ? t.color : "text-white/20"}`}
-              >
+              <span className={`text-xs w-16 shrink-0 ${isEnabled ? t.color : "text-white/20"}`}>
                 {t.shortLabel}
               </span>
               <div className="flex-1 h-2 rounded-full bg-white/[0.04] overflow-hidden">
@@ -1807,9 +1711,7 @@ function TerminalPanel({
                 ) : line.type === "prompt" ? (
                   <span className="text-emerald-400/70">{line.text}</span>
                 ) : (
-                  <span className="text-cyan-300/60 whitespace-pre-wrap">
-                    {line.text}
-                  </span>
+                  <span className="text-cyan-300/60 whitespace-pre-wrap">{line.text}</span>
                 )}
               </motion.div>
             ))}

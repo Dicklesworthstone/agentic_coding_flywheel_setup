@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useMemo, useState, useCallback } from "react";
-import { motion, useReducedMotion, useInView } from "@/components/motion";
-import { cn } from "@/lib/utils";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { getColorDefinition } from "@/lib/colors";
 import type { TldrFlywheelTool } from "@/lib/tldr-content";
+import { cn } from "@/lib/utils";
 
 // =============================================================================
 // TYPES
@@ -36,12 +36,12 @@ const DIAGRAM_CONFIG = {
 
 // Primary tools shown in the inner ring (most connected/important)
 const PRIMARY_TOOL_IDS = new Set([
-  "mail",   // Agent Mail - coordination hub
-  "bv",     // Beads Viewer - task management hub
-  "cass",   // Session Search - memory hub
-  "cm",     // Memory System
-  "ubs",    // Bug Scanner
-  "ntm",    // Named Tmux Manager
+  "mail", // Agent Mail - coordination hub
+  "bv", // Beads Viewer - task management hub
+  "cass", // Session Search - memory hub
+  "cm", // Memory System
+  "ubs", // Bug Scanner
+  "ntm", // Named Tmux Manager
 ]);
 
 // =============================================================================
@@ -53,7 +53,7 @@ function getCirclePosition(
   total: number,
   radius: number,
   center: number,
-  startAngle: number = -Math.PI / 2
+  startAngle: number = -Math.PI / 2,
 ): NodePosition {
   const angle = startAngle + (index / total) * 2 * Math.PI;
   return {
@@ -85,10 +85,7 @@ function classifyTools(tools: TldrFlywheelTool[]): {
 // MAIN COMPONENT
 // =============================================================================
 
-export function TldrSynergyDiagram({
-  tools,
-  className,
-}: TldrSynergyDiagramProps) {
+export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { once: true, margin: "-50px" });
   const prefersReducedMotion = useReducedMotion();
@@ -149,10 +146,13 @@ export function TldrSynergyDiagram({
   }, [primary, secondary, nodePositions]);
 
   // Check if a connection should be highlighted
-  const isConnectionHighlighted = useCallback((from: string, to: string) => {
-    if (!hoveredNode) return false;
-    return from === hoveredNode || to === hoveredNode;
-  }, [hoveredNode]);
+  const isConnectionHighlighted = useCallback(
+    (from: string, to: string) => {
+      if (!hoveredNode) return false;
+      return from === hoveredNode || to === hoveredNode;
+    },
+    [hoveredNode],
+  );
 
   const totalCoreTools = primary.length + secondary.length;
 
@@ -286,7 +286,9 @@ export function TldrSynergyDiagram({
                     y1={conn.fromPos.y}
                     x2={conn.toPos.x}
                     y2={conn.toPos.y}
-                    stroke={isHighlighted ? "url(#tldr-lineGradientHighlight)" : "url(#tldr-lineGradient)"}
+                    stroke={
+                      isHighlighted ? "url(#tldr-lineGradientHighlight)" : "url(#tldr-lineGradient)"
+                    }
                     strokeWidth={isHighlighted ? 2 : 1}
                     strokeLinecap="round"
                     initial={reducedMotion ? {} : { opacity: 0 }}
@@ -302,7 +304,9 @@ export function TldrSynergyDiagram({
                     y1={conn.fromPos.y}
                     x2={conn.toPos.x}
                     y2={conn.toPos.y}
-                    stroke={isHighlighted ? "url(#tldr-lineGradientHighlight)" : "url(#tldr-lineGradient)"}
+                    stroke={
+                      isHighlighted ? "url(#tldr-lineGradientHighlight)" : "url(#tldr-lineGradient)"
+                    }
                     strokeWidth={isHighlighted ? 1.5 : 0.75}
                     strokeLinecap="round"
                     strokeDasharray={isHighlighted ? "4 14" : "3 18"}
@@ -313,7 +317,9 @@ export function TldrSynergyDiagram({
                       delay: reducedMotion ? 0 : 0.3 + index * 0.02,
                     }}
                     style={{
-                      animation: reducedMotion ? "none" : `tldr-flow ${isHighlighted ? 1.5 : 2.5}s linear infinite`,
+                      animation: reducedMotion
+                        ? "none"
+                        : `tldr-flow ${isHighlighted ? 1.5 : 2.5}s linear infinite`,
                     }}
                   />
                 </g>
@@ -433,10 +439,14 @@ export function TldrSynergyDiagram({
                   cy={pos.y}
                   r={nodeRadius}
                   fill="var(--card)"
-                  stroke={isHovered ? color.from : "color-mix(in oklch, var(--border) 50%, transparent)"}
+                  stroke={
+                    isHovered ? color.from : "color-mix(in oklch, var(--border) 50%, transparent)"
+                  }
                   strokeWidth={isHovered ? 2 : 1}
                   style={{
-                    filter: isHovered ? `drop-shadow(0 4px 12px ${color.from}40)` : "drop-shadow(0 2px 4px rgba(0,0,0,0.2))",
+                    filter: isHovered
+                      ? `drop-shadow(0 4px 12px ${color.from}40)`
+                      : "drop-shadow(0 2px 4px rgba(0,0,0,0.2))",
                     transition: "all 0.3s ease-out",
                   }}
                 />
@@ -531,10 +541,14 @@ export function TldrSynergyDiagram({
                   cy={pos.y}
                   r={nodeRadius}
                   fill="var(--card)"
-                  stroke={isHovered ? color.from : "color-mix(in oklch, var(--border) 40%, transparent)"}
+                  stroke={
+                    isHovered ? color.from : "color-mix(in oklch, var(--border) 40%, transparent)"
+                  }
                   strokeWidth={isHovered ? 1.5 : 1}
                   style={{
-                    filter: isHovered ? `drop-shadow(0 3px 10px ${color.from}30)` : "drop-shadow(0 1px 3px rgba(0,0,0,0.15))",
+                    filter: isHovered
+                      ? `drop-shadow(0 3px 10px ${color.from}30)`
+                      : "drop-shadow(0 1px 3px rgba(0,0,0,0.15))",
                     transition: "all 0.3s ease-out",
                   }}
                 />
@@ -590,7 +604,9 @@ export function TldrSynergyDiagram({
           <p className="text-xs text-muted-foreground">
             {hoveredNode ? (
               <span className="text-primary font-medium">
-                Showing connections for {[...primary, ...secondary].find(t => t.id === hoveredNode)?.shortName ?? hoveredNode}
+                Showing connections for{" "}
+                {[...primary, ...secondary].find((t) => t.id === hoveredNode)?.shortName ??
+                  hoveredNode}
               </span>
             ) : (
               "Tap or hover a tool to see its connections"

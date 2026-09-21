@@ -1,18 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { renderLessonComponent } from "@/components/lessons";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -21,35 +12,38 @@ import {
   Home,
   Lock,
   Sparkles,
-  Zap,
-  BookOpen,
   Star,
+  Zap,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  CompletionToast,
+  FinalCelebrationModal,
+  getCompletionMessage,
+  useConfetti,
+} from "@/components/learn/confetti-celebration";
+import { renderLessonComponent } from "@/components/lessons";
 import { Button } from "@/components/ui/button";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { useLessonAnalytics } from "@/lib/hooks/useLessonAnalytics";
 import {
-  type Lesson,
-  LESSONS,
+  getLessonStatus,
   getNextLesson,
   getNextUncompletedLesson,
   getPreviousLesson,
-  getLessonStatus,
   isLessonAccessible,
+  LESSONS,
+  type Lesson,
   useCompletedLessons,
 } from "@/lib/lessonProgress";
+import { isInteractiveKeyboardTarget } from "@/lib/utils";
 import {
   getStepBySlug,
   TOTAL_STEPS as TOTAL_WIZARD_STEPS,
   useCompletedSteps,
 } from "@/lib/wizardSteps";
-import {
-  useConfetti,
-  getCompletionMessage,
-  CompletionToast,
-  FinalCelebrationModal,
-} from "@/components/learn/confetti-celebration";
-import { useLessonAnalytics } from "@/lib/hooks/useLessonAnalytics";
-import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 interface Props {
   lesson: Lesson;
@@ -74,10 +68,7 @@ function readSidebarScrollTop(): number | null {
 
 function saveSidebarScrollTop(scrollTop: number): void {
   try {
-    window.sessionStorage.setItem(
-      SIDEBAR_SCROLL_KEY,
-      String(Math.max(0, Math.round(scrollTop)))
-    );
+    window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(Math.max(0, Math.round(scrollTop))));
   } catch {
     // Same rationale as readSidebarScrollTop: storage failures are non-fatal.
   }
@@ -104,13 +95,7 @@ function useReadingProgress() {
 }
 
 // Animated orb component
-function FloatingOrb({
-  className,
-  delay = 0
-}: {
-  className: string;
-  delay?: number;
-}) {
+function FloatingOrb({ className, delay = 0 }: { className: string; delay?: number }) {
   return (
     <div
       className={`absolute rounded-full pointer-events-none animate-float ${className}`}
@@ -151,7 +136,7 @@ function LessonSidebar({
           nav.scrollTop;
         nav.scrollTop = Math.max(
           0,
-          offsetWithinList - (nav.clientHeight - currentLesson.offsetHeight) / 2
+          offsetWithinList - (nav.clientHeight - currentLesson.offsetHeight) / 2,
         );
       }
     }
@@ -205,7 +190,10 @@ function LessonSidebar({
           <div className="relative p-8 pb-6">
             {/* Ambient orbs */}
             <FloatingOrb className="w-32 h-32 bg-primary/30 blur-[60px] -top-10 -left-10" />
-            <FloatingOrb className="w-24 h-24 bg-violet-500/20 blur-[50px] top-10 right-0" delay={1} />
+            <FloatingOrb
+              className="w-24 h-24 bg-violet-500/20 blur-[50px] top-10 right-0"
+              delay={1}
+            />
 
             <Link
               href="/learn"
@@ -277,8 +265,12 @@ function LessonSidebar({
                 </div>
 
                 <div className="flex items-center justify-between mt-4 text-xs">
-                  <span className="text-white/60">{completedLessons.length} of {LESSONS.length}</span>
-                  <span className="text-emerald-400/80">{LESSONS.length - completedLessons.length} remaining</span>
+                  <span className="text-white/60">
+                    {completedLessons.length} of {LESSONS.length}
+                  </span>
+                  <span className="text-emerald-400/80">
+                    {LESSONS.length - completedLessons.length} remaining
+                  </span>
                 </div>
               </div>
             </div>
@@ -298,92 +290,96 @@ function LessonSidebar({
               />
 
               <ul className="relative space-y-1 py-2">
-              {LESSONS.map((lesson) => {
-                const status = getLessonStatus(lesson.id, completedLessons);
-                const isCompleted = status === "completed";
-                const isCurrent = lesson.id === currentLessonId;
-                const isAccessible = status !== "locked";
+                {LESSONS.map((lesson) => {
+                  const status = getLessonStatus(lesson.id, completedLessons);
+                  const isCompleted = status === "completed";
+                  const isCurrent = lesson.id === currentLessonId;
+                  const isAccessible = status !== "locked";
 
-                return (
-                  <li
-                    key={lesson.id}
-                    ref={isCurrent ? currentLessonRef : undefined}
-                    className="relative"
-                  >
-                    <Link
-                      href={isAccessible ? `/learn/${lesson.slug}` : "#"}
-                      aria-disabled={!isAccessible}
-                      aria-current={isCurrent ? "page" : undefined}
-                      tabIndex={isAccessible ? 0 : -1}
-                      className={`group relative flex items-center gap-4 rounded-xl px-4 py-4 transition duration-500 ${
-                        isCurrent
-                          ? "bg-gradient-to-r from-primary/20 via-primary/10 to-transparent shadow-[inset_0_0_30px_rgba(var(--primary-rgb),0.1)]"
-                          : isAccessible
-                            ? "hover:bg-white/[0.03]"
-                            : "cursor-not-allowed opacity-60"
-                      }`}
-                      onClick={(event) => {
-                        if (!isAccessible) {
-                          event.preventDefault();
-                        }
-                      }}
+                  return (
+                    <li
+                      key={lesson.id}
+                      ref={isCurrent ? currentLessonRef : undefined}
+                      className="relative"
                     >
-                      {/* Timeline node */}
-                      <div className="relative z-10">
-                        {/* Outer glow ring */}
-                        {(isCurrent || isCompleted) && (
-                          <div className={`absolute -inset-1 rounded-full ${
-                            isCompleted
-                              ? "bg-gradient-to-br from-emerald-400 to-emerald-600"
-                              : "bg-gradient-to-br from-primary to-violet-500"
-                          } opacity-50 blur-md animate-pulse`} />
-                        )}
-
-                        <div
-                          className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold border-2 transition duration-500 ${
-                            isCompleted
-                              ? "bg-gradient-to-br from-emerald-400 to-emerald-600 border-emerald-400/50 text-white shadow-[0_0_20px_rgba(16,185,129,0.5)]"
-                              : isCurrent
-                                ? "bg-gradient-to-br from-primary to-violet-500 border-primary/50 text-white shadow-[0_0_20px_rgba(var(--primary-rgb),0.5)]"
-                                : "bg-white/[0.05] border-white/10 text-white/60 group-hover:border-white/30 group-hover:bg-white/[0.08] group-hover:text-white/80"
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <Check className="h-4 w-4 drop-shadow-lg" strokeWidth={3} />
-                          ) : (
-                            <span className="tabular-nums">{lesson.id + 1}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <span className={`block truncate text-sm font-medium transition duration-300 ${
+                      <Link
+                        href={isAccessible ? `/learn/${lesson.slug}` : "#"}
+                        aria-disabled={!isAccessible}
+                        aria-current={isCurrent ? "page" : undefined}
+                        tabIndex={isAccessible ? 0 : -1}
+                        className={`group relative flex items-center gap-4 rounded-xl px-4 py-4 transition duration-500 ${
                           isCurrent
-                            ? "text-white"
-                            : isCompleted
-                              ? "text-white/70"
-                              : "text-white/50 group-hover:text-white/80"
-                        }`}>
-                          {lesson.title}
-                        </span>
-                        <span className="flex items-center gap-1.5 text-xs text-white/60 mt-1">
-                          <Clock className="h-3 w-3" />
-                          {lesson.duration}
-                        </span>
-                      </div>
+                            ? "bg-gradient-to-r from-primary/20 via-primary/10 to-transparent shadow-[inset_0_0_30px_rgba(var(--primary-rgb),0.1)]"
+                            : isAccessible
+                              ? "hover:bg-white/[0.03]"
+                              : "cursor-not-allowed opacity-60"
+                        }`}
+                        onClick={(event) => {
+                          if (!isAccessible) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        {/* Timeline node */}
+                        <div className="relative z-10">
+                          {/* Outer glow ring */}
+                          {(isCurrent || isCompleted) && (
+                            <div
+                              className={`absolute -inset-1 rounded-full ${
+                                isCompleted
+                                  ? "bg-gradient-to-br from-emerald-400 to-emerald-600"
+                                  : "bg-gradient-to-br from-primary to-violet-500"
+                              } opacity-50 blur-md animate-pulse`}
+                            />
+                          )}
 
-                      {/* Active indicator */}
-                      {isCurrent && (
-                        <div className="flex items-center gap-1 text-xs font-medium text-primary">
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                          NOW
+                          <div
+                            className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold border-2 transition duration-500 ${
+                              isCompleted
+                                ? "bg-gradient-to-br from-emerald-400 to-emerald-600 border-emerald-400/50 text-white shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                                : isCurrent
+                                  ? "bg-gradient-to-br from-primary to-violet-500 border-primary/50 text-white shadow-[0_0_20px_rgba(var(--primary-rgb),0.5)]"
+                                  : "bg-white/[0.05] border-white/10 text-white/60 group-hover:border-white/30 group-hover:bg-white/[0.08] group-hover:text-white/80"
+                            }`}
+                          >
+                            {isCompleted ? (
+                              <Check className="h-4 w-4 drop-shadow-lg" strokeWidth={3} />
+                            ) : (
+                              <span className="tabular-nums">{lesson.id + 1}</span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block truncate text-sm font-medium transition duration-300 ${
+                              isCurrent
+                                ? "text-white"
+                                : isCompleted
+                                  ? "text-white/70"
+                                  : "text-white/50 group-hover:text-white/80"
+                            }`}
+                          >
+                            {lesson.title}
+                          </span>
+                          <span className="flex items-center gap-1.5 text-xs text-white/60 mt-1">
+                            <Clock className="h-3 w-3" />
+                            {lesson.duration}
+                          </span>
+                        </div>
+
+                        {/* Active indicator */}
+                        {isCurrent && (
+                          <div className="flex items-center gap-1 text-xs font-medium text-primary">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                            NOW
+                          </div>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           </nav>
@@ -411,9 +407,7 @@ export function LessonContent({ lesson }: Props) {
   const { completedLessons, hasLoaded, markComplete } = useCompletedLessons();
   const [completedSteps] = useCompletedSteps();
   const readingProgress = useReadingProgress();
-  const lessonStatus = hasLoaded
-    ? getLessonStatus(lesson.id, completedLessons)
-    : "current";
+  const lessonStatus = hasLoaded ? getLessonStatus(lesson.id, completedLessons) : "current";
   const isLocked = hasLoaded && lessonStatus === "locked";
   const isCompleted = hasLoaded && completedLessons.includes(lesson.id);
   const prevLesson = getPreviousLesson(lesson.id);
@@ -426,10 +420,9 @@ export function LessonContent({ lesson }: Props) {
     hasLoaded && nextLesson && isLessonAccessible(nextLesson.id, completedLessons)
       ? nextLesson
       : undefined;
-  const nextAvailableLesson =
-    hasLoaded
-      ? getNextUncompletedLesson(completedLessons) ?? LESSONS[LESSONS.length - 1]
-      : undefined;
+  const nextAvailableLesson = hasLoaded
+    ? (getNextUncompletedLesson(completedLessons) ?? LESSONS[LESSONS.length - 1])
+    : undefined;
   const isWizardComplete = completedSteps.length === TOTAL_WIZARD_STEPS;
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -493,14 +486,16 @@ export function LessonContent({ lesson }: Props) {
       if (isFinalLesson) {
         timeoutsRef.current.push(setTimeout(() => setShowFinalCelebration(true), 500));
       } else {
-        timeoutsRef.current.push(setTimeout(() => {
-          router.push(`/learn/${nextLesson.slug}`);
-        }, 1500));
+        timeoutsRef.current.push(
+          setTimeout(() => {
+            router.push(`/learn/${nextLesson.slug}`);
+          }, 1500),
+        );
       }
     } catch (error) {
       console.error("Failed to save lesson progress", error);
       setSaveError(
-        "Unable to save lesson progress. Check your browser storage settings and try again."
+        "Unable to save lesson progress. Check your browser storage settings and try again.",
       );
     } finally {
       setIsMarkingComplete(false);
@@ -551,14 +546,25 @@ export function LessonContent({ lesson }: Props) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [accessiblePrevLesson, accessibleNextLesson, hasLoaded, isCompleted, isLocked, handleMarkComplete, router]);
+  }, [
+    accessiblePrevLesson,
+    accessibleNextLesson,
+    hasLoaded,
+    isCompleted,
+    isLocked,
+    handleMarkComplete,
+    router,
+  ]);
 
   if (isLocked) {
     return (
       <div className="min-h-screen bg-black relative overflow-x-clip">
         <div className="fixed inset-0 pointer-events-none">
           <FloatingOrb className="w-[700px] h-[700px] bg-primary/10 blur-[180px] -top-48 left-1/4" />
-          <FloatingOrb className="w-[420px] h-[420px] bg-violet-500/10 blur-[120px] bottom-0 right-0" delay={2} />
+          <FloatingOrb
+            className="w-[420px] h-[420px] bg-violet-500/10 blur-[120px] bottom-0 right-0"
+            delay={2}
+          />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,_rgba(var(--primary-rgb),0.15),_transparent)]" />
         </div>
 
@@ -570,12 +576,14 @@ export function LessonContent({ lesson }: Props) {
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.25em] text-amber-300/80">
               Lesson Locked
             </p>
-            <h1 className="mb-4 text-4xl font-bold tracking-tight text-white">
-              {lesson.title}
-            </h1>
+            <h1 className="mb-4 text-4xl font-bold tracking-tight text-white">{lesson.title}</h1>
             <p className="mb-8 text-lg leading-relaxed text-white/65">
-              Finish <span className="font-semibold text-white">{nextAvailableLesson?.title ?? "the current lesson"}</span> first
-              to keep the curriculum in sequence. The learning hub only unlocks one new lesson at a time.
+              Finish{" "}
+              <span className="font-semibold text-white">
+                {nextAvailableLesson?.title ?? "the current lesson"}
+              </span>{" "}
+              first to keep the curriculum in sequence. The learning hub only unlocks one new lesson
+              at a time.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
@@ -606,9 +614,15 @@ export function LessonContent({ lesson }: Props) {
         {/* Large primary orb */}
         <FloatingOrb className="w-[800px] h-[800px] bg-primary/10 blur-[200px] -top-64 left-1/4" />
         {/* Secondary orb */}
-        <FloatingOrb className="w-[600px] h-[600px] bg-violet-500/10 blur-[150px] top-1/3 -right-32" delay={2} />
+        <FloatingOrb
+          className="w-[600px] h-[600px] bg-violet-500/10 blur-[150px] top-1/3 -right-32"
+          delay={2}
+        />
         {/* Emerald accent */}
-        <FloatingOrb className="w-[400px] h-[400px] bg-emerald-500/8 blur-[100px] bottom-0 left-0" delay={4} />
+        <FloatingOrb
+          className="w-[400px] h-[400px] bg-emerald-500/8 blur-[100px] bottom-0 left-0"
+          delay={4}
+        />
         {/* Center gradient */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,_rgba(var(--primary-rgb),0.15),_transparent)]" />
         {/* Grid pattern */}
@@ -651,10 +665,7 @@ export function LessonContent({ lesson }: Props) {
           overflow-x-hidden broke position: sticky by making it a clipping
           ancestor), so reserve its width here to keep the article clear. */}
       <div className="relative flex xl:pl-80">
-        <LessonSidebar
-          completedLessons={completedLessons}
-          currentLessonId={lesson.id}
-        />
+        <LessonSidebar completedLessons={completedLessons} currentLessonId={lesson.id} />
 
         <main className="flex-1 min-w-0">
           {/* Mobile header - ultra premium */}
@@ -673,7 +684,9 @@ export function LessonContent({ lesson }: Props) {
                 </Link>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/[0.05] border border-white/[0.08]">
-                    <span className="text-sm font-bold text-primary tabular-nums">{lesson.id + 1}</span>
+                    <span className="text-sm font-bold text-primary tabular-nums">
+                      {lesson.id + 1}
+                    </span>
                     <span className="text-white/50">/</span>
                     <span className="text-sm text-white/60 tabular-nums">{LESSONS.length}</span>
                   </div>
@@ -744,9 +757,7 @@ export function LessonContent({ lesson }: Props) {
                         </div>
                       </div>
                       <div className="flex-1">
-                        <h2 className="text-xl font-bold text-white mb-2">
-                          New to ACFS?
-                        </h2>
+                        <h2 className="text-xl font-bold text-white mb-2">New to ACFS?</h2>
                         <p className="text-white/50 mb-6 leading-relaxed">
                           Complete the setup wizard first to get the most from these lessons.
                         </p>
@@ -765,10 +776,7 @@ export function LessonContent({ lesson }: Props) {
 
               {/* Custom lesson content with error boundary */}
               <article>
-                <ErrorBoundary
-                  backLink="/learn"
-                  backLinkLabel="Learning Hub"
-                >
+                <ErrorBoundary backLink="/learn" backLinkLabel="Learning Hub">
                   {lessonContent ? (
                     lessonContent
                   ) : (
@@ -782,37 +790,48 @@ export function LessonContent({ lesson }: Props) {
               {/* Jaw-dropping completion card */}
               <div className="mt-28 relative group">
                 {/* Multi-layer glow */}
-                <div className={`absolute -inset-2 rounded-[28px] transition duration-700 ${
-                  isCompleted
-                    ? "bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-emerald-500/40 blur-2xl opacity-100"
-                    : "bg-gradient-to-r from-primary/40 via-violet-500/30 to-primary/40 blur-2xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                }`} />
+                <div
+                  className={`absolute -inset-2 rounded-[28px] transition duration-700 ${
+                    isCompleted
+                      ? "bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-emerald-500/40 blur-2xl opacity-100"
+                      : "bg-gradient-to-r from-primary/40 via-violet-500/30 to-primary/40 blur-2xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                  }`}
+                />
 
                 <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.08] via-white/[0.03] to-white/[0.05] backdrop-blur-2xl p-10">
                   {/* Animated gradient border */}
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-primary via-violet-500 to-emerald-400 opacity-20 blur-3xl animate-[spin_10s_linear_infinite]" />
 
                   {/* Top accent line */}
-                  <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent ${
-                    isCompleted ? "via-emerald-400/80" : "via-primary/80"
-                  } to-transparent`} />
+                  <div
+                    className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent ${
+                      isCompleted ? "via-emerald-400/80" : "via-primary/80"
+                    } to-transparent`}
+                  />
 
                   <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-8">
                     <div className="flex items-start gap-6">
                       {/* Stunning icon */}
                       <div className="relative shrink-0">
-                        <div className={`absolute inset-0 rounded-2xl blur-xl transition-opacity duration-500 ${
-                          isCompleted
-                            ? "bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-60"
-                            : "bg-gradient-to-br from-primary to-violet-500 opacity-50 group-hover:opacity-80"
-                        }`} />
-                        <div className={`relative flex h-16 w-16 items-center justify-center rounded-2xl border-2 transition duration-500 ${
-                          isCompleted
-                            ? "bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border-emerald-400/50 shadow-[0_0_40px_rgba(16,185,129,0.5)]"
-                            : "bg-gradient-to-br from-primary/20 to-violet-500/20 border-primary/50 shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)] group-hover:shadow-[0_0_50px_rgba(var(--primary-rgb),0.5)]"
-                        }`}>
+                        <div
+                          className={`absolute inset-0 rounded-2xl blur-xl transition-opacity duration-500 ${
+                            isCompleted
+                              ? "bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-60"
+                              : "bg-gradient-to-br from-primary to-violet-500 opacity-50 group-hover:opacity-80"
+                          }`}
+                        />
+                        <div
+                          className={`relative flex h-16 w-16 items-center justify-center rounded-2xl border-2 transition duration-500 ${
+                            isCompleted
+                              ? "bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border-emerald-400/50 shadow-[0_0_40px_rgba(16,185,129,0.5)]"
+                              : "bg-gradient-to-br from-primary/20 to-violet-500/20 border-primary/50 shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)] group-hover:shadow-[0_0_50px_rgba(var(--primary-rgb),0.5)]"
+                          }`}
+                        >
                           {isCompleted ? (
-                            <Check className="h-7 w-7 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.8)]" strokeWidth={3} />
+                            <Check
+                              className="h-7 w-7 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.8)]"
+                              strokeWidth={3}
+                            />
                           ) : (
                             <Zap className="h-7 w-7 text-primary drop-shadow-[0_0_10px_rgba(var(--primary-rgb),0.8)]" />
                           )}
@@ -862,12 +881,12 @@ export function LessonContent({ lesson }: Props) {
                             <Star className="h-5 w-5" />
                           </span>
                         )
-                        ) : (
-                          <span className="flex items-center gap-3">
-                            {isMarkingComplete ? "Saving..." : "Mark Complete"}
-                            <Check className="h-5 w-5" />
-                          </span>
-                        )}
+                      ) : (
+                        <span className="flex items-center gap-3">
+                          {isMarkingComplete ? "Saving..." : "Mark Complete"}
+                          <Check className="h-5 w-5" />
+                        </span>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -886,8 +905,12 @@ export function LessonContent({ lesson }: Props) {
                         <ChevronLeft className="h-6 w-6 text-white/60 transition duration-500 group-hover:text-white group-hover:-translate-x-1" />
                       </div>
                       <div>
-                        <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">Previous</div>
-                        <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">{accessiblePrevLesson.title}</div>
+                        <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">
+                          Previous
+                        </div>
+                        <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">
+                          {accessiblePrevLesson.title}
+                        </div>
                       </div>
                     </div>
                   </Link>
@@ -902,8 +925,12 @@ export function LessonContent({ lesson }: Props) {
                     <div className="absolute inset-0 bg-gradient-to-l from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-500" />
                     <div className="relative flex items-center justify-end gap-5">
                       <div>
-                        <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">Next</div>
-                        <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">{accessibleNextLesson.title}</div>
+                        <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">
+                          Next
+                        </div>
+                        <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">
+                          {accessibleNextLesson.title}
+                        </div>
                       </div>
                       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-500 group-hover:scale-110 group-hover:bg-white/[0.1] group-hover:border-white/20">
                         <ChevronRight className="h-6 w-6 text-white/60 transition duration-500 group-hover:text-white group-hover:translate-x-1" />
@@ -960,9 +987,15 @@ export function LessonContent({ lesson }: Props) {
             >
               {isCompleted ? (
                 accessibleNextLesson ? (
-                  <span className="flex items-center gap-2">Next<ArrowRight className="h-5 w-5" /></span>
+                  <span className="flex items-center gap-2">
+                    Next
+                    <ArrowRight className="h-5 w-5" />
+                  </span>
                 ) : (
-                  <span className="flex items-center gap-2">Done<Star className="h-5 w-5" /></span>
+                  <span className="flex items-center gap-2">
+                    Done
+                    <Star className="h-5 w-5" />
+                  </span>
                 )
               ) : (
                 <span className="flex items-center gap-2">

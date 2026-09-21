@@ -1,28 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, statSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  buildRootKeyRepairCommand,
-  buildRootKeyRepairCommandWindows,
-  buildUserKeyRepairCommand,
-  buildUserKeyRepairCommandWindows,
-  buildKeyRepairCommands,
-  buildSshKeyLoginCommands,
-  buildWindowsTerminalProfileSshCommand,
   buildCommands,
   buildHandoffRunbook,
   buildInstallCommand,
   buildInstallCommandDetails,
+  buildKeyRepairCommands,
+  buildRootKeyRepairCommand,
+  buildRootKeyRepairCommandWindows,
+  buildShareURL,
+  buildSshKeyLoginCommands,
   buildTeamProfile,
   buildTeamProfileImportDiff,
-  buildShareURL,
-  formatSshTarget,
+  buildUserKeyRepairCommand,
+  buildUserKeyRepairCommandWindows,
+  buildWindowsTerminalProfileSshCommand,
   formatHandoffRunbookMarkdown,
+  formatSshTarget,
   formatTeamProfileImportDiffMarkdown,
   formatTeamProfileReviewMarkdown,
-  serializeTeamProfileImportDiffJson,
   serializeHandoffRunbookJson,
+  serializeTeamProfileImportDiffJson,
   serializeTeamProfileJson,
 } from "./commandBuilder";
 
@@ -53,8 +53,12 @@ describe("buildRootKeyRepairCommand", () => {
     expect(command).toContain("test ! -L /home/dev-user/.ssh");
     expect(command).toContain("tail -c 1 /home/dev-user/.ssh/authorized_keys");
     expect(command).toContain("grep -qw 10");
-    expect(command).toContain('if ! grep -qxF \\"\\$acfs_pubkey\\" /home/dev-user/.ssh/authorized_keys; then');
-    expect(command).toContain('printf \'%s\\n\' \\"\\$acfs_pubkey\\" >> /home/dev-user/.ssh/authorized_keys');
+    expect(command).toContain(
+      'if ! grep -qxF \\"\\$acfs_pubkey\\" /home/dev-user/.ssh/authorized_keys; then',
+    );
+    expect(command).toContain(
+      "printf '%s\\n' \\\"\\$acfs_pubkey\\\" >> /home/dev-user/.ssh/authorized_keys",
+    );
     expect(command).not.toContain("cat >> /home/dev-user/.ssh/authorized_keys");
   });
 
@@ -71,7 +75,9 @@ describe("buildRootKeyRepairCommand", () => {
 
     const remoteCommand = new TextDecoder().decode(result.stdout);
     expect(remoteCommand).toContain('grep -qxF "$acfs_pubkey" /home/ubuntu/.ssh/authorized_keys');
-    expect(remoteCommand).toContain('printf \'%s\\n\' "$acfs_pubkey" >> /home/ubuntu/.ssh/authorized_keys');
+    expect(remoteCommand).toContain(
+      "printf '%s\\n' \"$acfs_pubkey\" >> /home/ubuntu/.ssh/authorized_keys",
+    );
     expect(remoteCommand).not.toContain("grep -qxF $acfs_pubkey");
     expect(remoteCommand).not.toContain("printf '%s\\n' $acfs_pubkey");
   });
@@ -103,7 +109,7 @@ describe("buildUserKeyRepairCommand", () => {
     expect(command).toContain("install -d -m 700 ~/.ssh");
     expect(command).toContain("tail -c 1 ~/.ssh/authorized_keys");
     expect(command).toContain('if ! grep -qxF \\"\\$acfs_pubkey\\" ~/.ssh/authorized_keys; then');
-    expect(command).toContain('printf \'%s\\n\' \\"\\$acfs_pubkey\\" >> ~/.ssh/authorized_keys');
+    expect(command).toContain("printf '%s\\n' \\\"\\$acfs_pubkey\\\" >> ~/.ssh/authorized_keys");
     expect(command).not.toContain("ssh root@");
     expect(command).not.toContain("sudo");
     expect(command).not.toContain("cat >> ~/.ssh/authorized_keys");
@@ -122,7 +128,7 @@ describe("buildUserKeyRepairCommand", () => {
 
     const remoteCommand = new TextDecoder().decode(result.stdout);
     expect(remoteCommand).toContain('grep -qxF "$acfs_pubkey" ~/.ssh/authorized_keys');
-    expect(remoteCommand).toContain('printf \'%s\\n\' "$acfs_pubkey" >> ~/.ssh/authorized_keys');
+    expect(remoteCommand).toContain("printf '%s\\n' \"$acfs_pubkey\" >> ~/.ssh/authorized_keys");
     expect(remoteCommand).not.toContain("grep -qxF $acfs_pubkey");
     expect(remoteCommand).not.toContain("printf '%s\\n' $acfs_pubkey");
   });
@@ -169,7 +175,9 @@ describe("buildUserKeyRepairCommandWindows", () => {
   test("pipes the key from PowerShell without any double quotes or escapes", () => {
     const command = buildUserKeyRepairCommandWindows("dev-user", "203.0.113.42");
 
-    expect(command.startsWith("Get-Content $HOME\\.ssh\\acfs_ed25519.pub | ssh dev-user@203.0.113.42 '")).toBe(true);
+    expect(
+      command.startsWith("Get-Content $HOME\\.ssh\\acfs_ed25519.pub | ssh dev-user@203.0.113.42 '"),
+    ).toBe(true);
     expect(command.endsWith("'")).toBe(true);
     // Windows PowerShell 5.1 strips embedded double quotes when calling a
     // native exe, and `\"` is not an escape in PowerShell, so neither may appear.
@@ -252,7 +260,9 @@ describe("buildRootKeyRepairCommandWindows", () => {
   test("copies the key through root into the target user's home without quotes", () => {
     const command = buildRootKeyRepairCommandWindows("dev-user", "203.0.113.42");
 
-    expect(command.startsWith("Get-Content $HOME\\.ssh\\acfs_ed25519.pub | ssh root@203.0.113.42 '")).toBe(true);
+    expect(
+      command.startsWith("Get-Content $HOME\\.ssh\\acfs_ed25519.pub | ssh root@203.0.113.42 '"),
+    ).toBe(true);
     expect(command.endsWith("'")).toBe(true);
     expect(command).not.toContain('"');
     expect(command).not.toContain("%USERPROFILE%");
@@ -281,9 +291,13 @@ describe("buildKeyRepairCommands", () => {
     const repair = buildKeyRepairCommands("dev-user", "203.0.113.42");
 
     expect(repair.user.command).toBe(buildUserKeyRepairCommand("dev-user", "203.0.113.42"));
-    expect(repair.user.windowsCommand).toBe(buildUserKeyRepairCommandWindows("dev-user", "203.0.113.42"));
+    expect(repair.user.windowsCommand).toBe(
+      buildUserKeyRepairCommandWindows("dev-user", "203.0.113.42"),
+    );
     expect(repair.root.command).toBe(buildRootKeyRepairCommand("dev-user", "203.0.113.42"));
-    expect(repair.root.windowsCommand).toBe(buildRootKeyRepairCommandWindows("dev-user", "203.0.113.42"));
+    expect(repair.root.windowsCommand).toBe(
+      buildRootKeyRepairCommandWindows("dev-user", "203.0.113.42"),
+    );
     expect(repair.user.runLocation).toBe("local");
     expect(repair.root.runLocation).toBe("local");
   });
@@ -301,8 +315,12 @@ describe("buildSshKeyLoginCommands", () => {
   test("threads extra ssh arguments (port forwards) into both variants", () => {
     const login = buildSshKeyLoginCommands("ubuntu", "2001:db8::42", "-L 1455:localhost:1455");
 
-    expect(login.command).toBe("ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]");
-    expect(login.windowsCommand).toBe("ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]");
+    expect(login.command).toBe(
+      "ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]",
+    );
+    expect(login.windowsCommand).toBe(
+      "ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]",
+    );
   });
 
   test("does not serialize shell metacharacters", () => {
@@ -324,9 +342,13 @@ describe("buildWindowsTerminalProfileSshCommand", () => {
 
 describe("buildInstallCommandDetails", () => {
   test("reports the TARGET_USER prefix and pin state alongside the exact command", () => {
-    const details = buildInstallCommandDetails("safe", "v1.2.3", "admin", { profile: "stack-only" });
+    const details = buildInstallCommandDetails("safe", "v1.2.3", "admin", {
+      profile: "stack-only",
+    });
 
-    expect(details.command).toBe(buildInstallCommand("safe", "v1.2.3", "admin", { profile: "stack-only" }));
+    expect(details.command).toBe(
+      buildInstallCommand("safe", "v1.2.3", "admin", { profile: "stack-only" }),
+    );
     expect(details.command).toContain('TARGET_USER="admin"');
     expect(details.usesTargetUserPrefix).toBe(true);
     expect(details.targetUser).toBe("admin");
@@ -522,7 +544,8 @@ describe("buildCommands", () => {
 });
 
 describe("buildHandoffRunbook", () => {
-  const forbiddenCommandSnippets = /\bmaster\b|rm\s+-rf|git\s+reset|git\s+clean|\b(?:npm|yarn|pnpm)\b/i;
+  const forbiddenCommandSnippets =
+    /\bmaster\b|rm\s+-rf|git\s+reset|git\s+clean|\b(?:npm|yarn|pnpm)\b/i;
 
   function expectSafeHandoffArtifacts(artifacts: string[], rawHost: string | null) {
     for (const artifact of artifacts) {
@@ -611,14 +634,26 @@ describe("buildHandoffRunbook", () => {
     const scenarios = [
       {
         name: "normal IPv4 wizard state",
-        inputs: { ip: "203.0.113.42", os: "mac" as const, username: "ubuntu", mode: "vibe" as const, ref: null },
+        inputs: {
+          ip: "203.0.113.42",
+          os: "mac" as const,
+          username: "ubuntu",
+          mode: "vibe" as const,
+          ref: null,
+        },
         expectedHostKind: "ipv4",
         expectedSourceRef: "main",
         rawHost: "203.0.113.42",
       },
       {
         name: "missing target host and invalid optional fields",
-        inputs: { ip: "", os: "windows" as const, username: "bad user", mode: "safe" as const, ref: "bad ref" },
+        inputs: {
+          ip: "",
+          os: "windows" as const,
+          username: "bad user",
+          mode: "safe" as const,
+          ref: "bad ref",
+        },
         expectedHostKind: "invalid_or_missing",
         expectedSourceRef: "main",
         rawHost: null,
@@ -649,12 +684,17 @@ describe("buildHandoffRunbook", () => {
       expect(runbook.install.command).toContain(`/${scenario.expectedSourceRef}/install.sh`);
       expect(runbook.support.bundleCommand).toBe("acfs support-bundle");
       expect(runbook.support.reviewArtifacts).toEqual(["support-report.md", "manifest.json"]);
-      expect(runbook.recoveryCommands.map((command) => command.command)).toContain("acfs support-bundle");
+      expect(runbook.recoveryCommands.map((command) => command.command)).toContain(
+        "acfs support-bundle",
+      );
       for (const command of runbook.recoveryCommands) {
         expect(command.command).not.toMatch(/<[^>]+>/);
       }
 
-      expectSafeHandoffArtifacts([json, markdown, ...runbook.recoveryCommands.map((command) => command.command)], scenario.rawHost);
+      expectSafeHandoffArtifacts(
+        [json, markdown, ...runbook.recoveryCommands.map((command) => command.command)],
+        scenario.rawHost,
+      );
     }
   });
 });
@@ -814,7 +854,11 @@ describe("buildTeamProfile", () => {
     expect(profile.provenance.source.checksumsYamlSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(profile.redaction.allowSecretValues).toBe(false);
     expect(profile.redaction.secretSlotsRequired).toBe(true);
-    expect(profile.serviceAccounts.every((account) => account.secretSlot.startsWith("secret://acfs/team/"))).toBe(true);
+    expect(
+      profile.serviceAccounts.every((account) =>
+        account.secretSlot.startsWith("secret://acfs/team/"),
+      ),
+    ).toBe(true);
   });
 
   test("replaces a malformed caller-supplied timestamp with a canonical UTC timestamp", () => {
@@ -875,11 +919,13 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.schema).toBe("acfs.team-profile-import-diff.v1");
     expect(diff.dryRun).toBe(true);
     expect(diff.ok).toBe(true);
-    expect(diff.safeDefaults.changes.map((change) => change.field)).toContain("providerDefaults.provider");
+    expect(diff.safeDefaults.changes.map((change) => change.field)).toContain(
+      "providerDefaults.provider",
+    );
     expect(diff.installerCommand.command).toContain('--ref "v1.2.3"');
     expect(diff.installerCommand.command).toContain('--profile "cloud-only"');
     expect(diff.secretSlots.required).toEqual(["secret://acfs/team/github-auth"]);
-    expect(json).toContain("\"dryRun\": true");
+    expect(json).toContain('"dryRun": true');
     expect(markdown).toContain("Status: ready");
     expect(markdown).toContain("## Installer Command");
   });
@@ -942,7 +988,9 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities.map((finding) => finding.code)).toContain("team_profile_schema_unsupported");
+    expect(diff.incompatibilities.map((finding) => finding.code)).toContain(
+      "team_profile_schema_unsupported",
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -960,10 +1008,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.findings).toContainEqual(expect.objectContaining({
-      code: "team_profile_missing_required_field",
-      path: "providerDefaults.provider",
-    }));
+    expect(diff.findings).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_missing_required_field",
+        path: "providerDefaults.provider",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -988,24 +1038,26 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "generatedAt",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "generatedBy",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "provenance.source.acfsRef",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "providerDefaults.sshPort",
-      }),
-    ]));
+    expect(diff.incompatibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "generatedAt",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "generatedBy",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "provenance.source.acfsRef",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "providerDefaults.sshPort",
+        }),
+      ]),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1020,14 +1072,17 @@ describe("buildTeamProfileImportDiff", () => {
         },
       },
     };
-    delete (missingVersion.provenance.source as Partial<typeof missingVersion.provenance.source>).acfsVersion;
+    delete (missingVersion.provenance.source as Partial<typeof missingVersion.provenance.source>)
+      .acfsVersion;
 
     const missingDiff = buildTeamProfileImportDiff(missingVersion);
     expect(missingDiff.ok).toBe(false);
-    expect(missingDiff.findings).toContainEqual(expect.objectContaining({
-      code: "team_profile_missing_required_field",
-      path: "provenance.source.acfsVersion",
-    }));
+    expect(missingDiff.findings).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_missing_required_field",
+        path: "provenance.source.acfsVersion",
+      }),
+    );
 
     const mismatchDiff = buildTeamProfileImportDiff({
       ...original,
@@ -1040,10 +1095,12 @@ describe("buildTeamProfileImportDiff", () => {
       },
     });
     expect(mismatchDiff.ok).toBe(false);
-    expect(mismatchDiff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_ref_policy_mismatch",
-      path: "provenance.source.acfsRef",
-    }));
+    expect(mismatchDiff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_ref_policy_mismatch",
+        path: "provenance.source.acfsRef",
+      }),
+    );
     expect(mismatchDiff.installerCommand.command).toBeNull();
 
     const malformedDiff = buildTeamProfileImportDiff({
@@ -1062,12 +1119,14 @@ describe("buildTeamProfileImportDiff", () => {
       },
     });
     expect(malformedDiff.ok).toBe(false);
-    expect(malformedDiff.incompatibilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: "provenance.author" }),
-      expect.objectContaining({ path: "provenance.source.acfsVersion" }),
-      expect.objectContaining({ path: "provenance.source.acfsCommit" }),
-      expect.objectContaining({ path: "compatibility.minAcfsVersion" }),
-    ]));
+    expect(malformedDiff.incompatibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "provenance.author" }),
+        expect.objectContaining({ path: "provenance.source.acfsVersion" }),
+        expect.objectContaining({ path: "provenance.source.acfsCommit" }),
+        expect.objectContaining({ path: "compatibility.minAcfsVersion" }),
+      ]),
+    );
     expect(malformedDiff.installerCommand.command).toBeNull();
   });
 
@@ -1108,10 +1167,12 @@ describe("buildTeamProfileImportDiff", () => {
       const diff = buildTeamProfileImportDiff(malformed.profile);
 
       expect(diff.ok).toBe(false);
-      expect(diff.findings).toContainEqual(expect.objectContaining({
-        code: malformed.code,
-        path: malformed.path,
-      }));
+      expect(diff.findings).toContainEqual(
+        expect.objectContaining({
+          code: malformed.code,
+          path: malformed.path,
+        }),
+      );
       expect(diff.installerCommand.command).toBeNull();
     }
   });
@@ -1130,7 +1191,9 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
     expect(diff.refusals.map((finding) => finding.code)).toContain("team_profile_forbidden_field");
-    expect(diff.refusals.map((finding) => finding.code)).toContain("team_profile_secret_material_refused");
+    expect(diff.refusals.map((finding) => finding.code)).toContain(
+      "team_profile_secret_material_refused",
+    );
     expect(json).not.toContain("Bearer");
     expect(json).not.toContain("<credential>");
   });
@@ -1148,10 +1211,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.refusals).toContainEqual(expect.objectContaining({
-      code: "team_profile_secret_material_refused",
-      path: "extensions.mirrorUrl",
-    }));
+    expect(diff.refusals).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_secret_material_refused",
+        path: "extensions.mirrorUrl",
+      }),
+    );
     expect(json).not.toContain("alice");
     expect(json).not.toContain(userinfoUrl);
   });
@@ -1169,10 +1234,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.refusals).toContainEqual(expect.objectContaining({
-      code: "team_profile_secret_material_refused",
-      path: "extensions.supportNote",
-    }));
+    expect(diff.refusals).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_secret_material_refused",
+        path: "extensions.supportNote",
+      }),
+    );
     expect(json).not.toContain("2001:db8::42");
     expect(json).not.toContain(embeddedIp);
   });
@@ -1190,10 +1257,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.refusals).toContainEqual(expect.objectContaining({
-      code: "team_profile_forbidden_field",
-      path: "<redacted>",
-    }));
+    expect(diff.refusals).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_forbidden_field",
+        path: "<redacted>",
+      }),
+    );
     expect(json).not.toContain(credentialLikeKey);
   });
 
@@ -1223,10 +1292,12 @@ describe("buildTeamProfileImportDiff", () => {
 
       expect(diff.ok).toBe(false);
       expect(diff.profile).toBeNull();
-      expect(diff.refusals).toContainEqual(expect.objectContaining({
-        code: "team_profile_forbidden_field",
-        path: `extensions.${credentialField}`,
-      }));
+      expect(diff.refusals).toContainEqual(
+        expect.objectContaining({
+          code: "team_profile_forbidden_field",
+          path: `extensions.${credentialField}`,
+        }),
+      );
       expect(serializeTeamProfileImportDiffJson(diff)).not.toContain("short-auth-value");
     }
   });
@@ -1260,16 +1331,18 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.refusals).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "team_profile_forbidden_field",
-        path: "redaction.password",
-      }),
-      expect.objectContaining({
-        code: "team_profile_secret_material_refused",
-        path: "redaction.password",
-      }),
-    ]));
+    expect(diff.refusals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "team_profile_forbidden_field",
+          path: "redaction.password",
+        }),
+        expect.objectContaining({
+          code: "team_profile_secret_material_refused",
+          path: "redaction.password",
+        }),
+      ]),
+    );
     expect(json).not.toContain(credentialLikeValue);
   });
 
@@ -1289,10 +1362,12 @@ describe("buildTeamProfileImportDiff", () => {
     const json = serializeTeamProfileImportDiffJson(diff);
 
     expect(diff.ok).toBe(false);
-    expect(diff.refusals).toContainEqual(expect.objectContaining({
-      code: "team_profile_secret_material_refused",
-      path: `install.modulePlan.excluded.${profile.install.modulePlan.excluded.length}`,
-    }));
+    expect(diff.refusals).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_secret_material_refused",
+        path: `install.modulePlan.excluded.${profile.install.modulePlan.excluded.length}`,
+      }),
+    );
     expect(json).not.toContain(credentialLikeModuleId);
   });
 
@@ -1309,10 +1384,12 @@ describe("buildTeamProfileImportDiff", () => {
     const json = serializeTeamProfileImportDiffJson(diff);
 
     expect(diff.ok).toBe(false);
-    expect(diff.refusals).toContainEqual(expect.objectContaining({
-      code: "team_profile_secret_material_refused",
-      path: `redaction.forbiddenFields.${original.redaction.forbiddenFields.length}`,
-    }));
+    expect(diff.refusals).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_secret_material_refused",
+        path: `redaction.forbiddenFields.${original.redaction.forbiddenFields.length}`,
+      }),
+    );
     expect(json).not.toContain(credentialLikePolicy);
   });
 
@@ -1333,10 +1410,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_schema_unsupported",
-      path: "install.ref.value",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "install.ref.value",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
     expect(json).not.toContain(malformedRef);
   });
@@ -1357,10 +1436,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.refusals).toContainEqual(expect.objectContaining({
-      code: "team_profile_secret_material_refused",
-      path: "serviceAccounts.0.secretSlot",
-    }));
+    expect(diff.refusals).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_secret_material_refused",
+        path: "serviceAccounts.0.secretSlot",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
     expect(json).not.toContain(rawCredential);
   });
@@ -1388,24 +1469,26 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "serviceAccounts.0.required",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "serviceAccounts.0.authMethod",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "serviceAccounts.1.id",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "serviceAccounts.1.secretSlot",
-      }),
-    ]));
+    expect(diff.incompatibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "serviceAccounts.0.required",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "serviceAccounts.0.authMethod",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "serviceAccounts.1.id",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "serviceAccounts.1.secretSlot",
+        }),
+      ]),
+    );
     expect(diff.installerCommand.command).toBeNull();
     expect(json).not.toContain(credentialLikeAuthMethod);
   });
@@ -1427,28 +1510,30 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "displayName",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "providerDefaults.provider",
-      }),
-      expect.objectContaining({
-        code: "team_profile_missing_required_field",
-        path: "providerDefaults.region",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "providerDefaults.planClass",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "providerDefaults.operatingSystem",
-      }),
-    ]));
+    expect(diff.incompatibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "displayName",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "providerDefaults.provider",
+        }),
+        expect.objectContaining({
+          code: "team_profile_missing_required_field",
+          path: "providerDefaults.region",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "providerDefaults.planClass",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "providerDefaults.operatingSystem",
+        }),
+      ]),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1497,7 +1582,9 @@ describe("buildTeamProfileImportDiff", () => {
     const markdown = formatTeamProfileImportDiffMarkdown(diff);
 
     expect(diff.ok).toBe(false);
-    expect(diff.incompatibilities.map((finding) => finding.code)).toContain("team_profile_unknown_module");
+    expect(diff.incompatibilities.map((finding) => finding.code)).toContain(
+      "team_profile_unknown_module",
+    );
     expect(diff.installerCommand.command).toBeNull();
     expect(markdown).toContain("Blocked until incompatibilities and refusals are resolved.");
   });
@@ -1521,10 +1608,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_schema_unsupported",
-      path: "install.modules.only",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "install.modules.only",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1547,10 +1636,12 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_schema_unsupported",
-      path: "install.modules.only",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "install.modules.only",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1560,17 +1651,19 @@ describe("buildTeamProfileImportDiff", () => {
       ...original,
       compatibility: {
         ...original.compatibility,
-        targetUbuntuVersions: [25.10],
+        targetUbuntuVersions: [25.1],
       },
     };
     const diff = buildTeamProfileImportDiff(profile);
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_schema_unsupported",
-      path: "compatibility.targetUbuntuVersions",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "compatibility.targetUbuntuVersions",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1588,14 +1681,18 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_schema_unsupported",
-      path: "compatibility.targetUbuntuVersions",
-    }));
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_arch_unsupported",
-      path: "compatibility.architectures",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "compatibility.targetUbuntuVersions",
+      }),
+    );
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_arch_unsupported",
+        path: "compatibility.architectures",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1613,14 +1710,18 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_schema_unsupported",
-      path: "compatibility.schemaVersions",
-    }));
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_arch_unsupported",
-      path: "compatibility.architectures",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "compatibility.schemaVersions",
+      }),
+    );
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_arch_unsupported",
+        path: "compatibility.architectures",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1638,16 +1739,18 @@ describe("buildTeamProfileImportDiff", () => {
 
     expect(diff.ok).toBe(false);
     expect(diff.profile).toBeNull();
-    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "team_profile_missing_required_field",
-        path: "compatibility.installerRefPolicy",
-      }),
-      expect.objectContaining({
-        code: "team_profile_schema_unsupported",
-        path: "compatibility.checksumsRefPolicy",
-      }),
-    ]));
+    expect(diff.incompatibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "team_profile_missing_required_field",
+          path: "compatibility.installerRefPolicy",
+        }),
+        expect.objectContaining({
+          code: "team_profile_schema_unsupported",
+          path: "compatibility.checksumsRefPolicy",
+        }),
+      ]),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1669,16 +1772,18 @@ describe("buildTeamProfileImportDiff", () => {
     const diff = buildTeamProfileImportDiff(profile);
 
     expect(diff.ok).toBe(false);
-    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "team_profile_ubuntu_unsupported",
-        path: "providerDefaults.operatingSystem",
-      }),
-      expect.objectContaining({
-        code: "team_profile_arch_unsupported",
-        path: "providerDefaults.architecture",
-      }),
-    ]));
+    expect(diff.incompatibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "team_profile_ubuntu_unsupported",
+          path: "providerDefaults.operatingSystem",
+        }),
+        expect.objectContaining({
+          code: "team_profile_arch_unsupported",
+          path: "providerDefaults.architecture",
+        }),
+      ]),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1697,10 +1802,12 @@ describe("buildTeamProfileImportDiff", () => {
     const diff = buildTeamProfileImportDiff(profile);
 
     expect(diff.ok).toBe(false);
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_ref_policy_mismatch",
-      path: "install.ref.type",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_ref_policy_mismatch",
+        path: "install.ref.type",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 
@@ -1715,10 +1822,12 @@ describe("buildTeamProfileImportDiff", () => {
     const diff = buildTeamProfileImportDiff(profile);
 
     expect(diff.ok).toBe(false);
-    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
-      code: "team_profile_unknown_module",
-      path: "install.profile",
-    }));
+    expect(diff.incompatibilities).toContainEqual(
+      expect.objectContaining({
+        code: "team_profile_unknown_module",
+        path: "install.profile",
+      }),
+    );
     expect(diff.installerCommand.command).toBeNull();
   });
 });
@@ -1815,7 +1924,9 @@ describe("buildShareURL", () => {
         moduleSelection: { profile: "minimal" },
       });
 
-      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=mac&mode=vibe&profile=minimal");
+      expect(shareURL).toBe(
+        "https://acfs.dev/wizard/launch-onboarding?os=mac&mode=vibe&profile=minimal",
+      );
     } finally {
       Object.defineProperty(globalThis, "window", {
         value: originalWindow,

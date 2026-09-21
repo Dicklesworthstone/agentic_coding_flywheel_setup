@@ -1,6 +1,6 @@
 "use client";
 
-import { LazyMotion, domAnimation, MotionConfig } from "framer-motion";
+import { domAnimation, LazyMotion, MotionConfig } from "framer-motion";
 import { springs } from "./index";
 
 interface MotionProviderProps {
@@ -21,10 +21,7 @@ interface MotionProviderProps {
 export function MotionProvider({ children }: MotionProviderProps) {
   return (
     <LazyMotion features={domAnimation} strict>
-      <MotionConfig
-        transition={springs.smooth}
-        reducedMotion="user"
-      >
+      <MotionConfig transition={springs.smooth} reducedMotion="user">
         {children}
       </MotionConfig>
     </LazyMotion>

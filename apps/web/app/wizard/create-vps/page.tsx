@@ -1,39 +1,46 @@
 "use client";
 
-import { useCallback, useState, useEffect, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { useForm, useStore } from "@tanstack/react-form";
-import { Check, AlertCircle, Server, ChevronDown, HardDrive, ShieldCheck, ExternalLink } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ExternalLink,
+  HardDrive,
+  Server,
+  ShieldCheck,
+} from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Jargon } from "@/components/jargon";
+import {
+  GuideCaution,
+  GuideExplain,
+  GuideSection,
+  GuideStep,
+  GuideTip,
+  SimplerGuide,
+} from "@/components/simpler-guide";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { cn } from "@/lib/utils";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import {
   CREATE_VPS_REQUIRED_CHECKLIST_ITEMS,
+  type CreateVPSChecklistItemId,
   isCreateVPSChecklistComplete,
   isValidIP,
-  type CreateVPSChecklistItemId,
   useCreateVPSChecklist,
   useVPSIP,
 } from "@/lib/userPreferences";
-import { withCurrentSearch } from "@/lib/utils";
+import { cn, withCurrentSearch } from "@/lib/utils";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
+  describePlan,
   VPS_PROVIDERS,
   VPS_TOP_PICK,
-  describePlan,
 } from "@/lib/vpsProviders";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideStep,
-  GuideExplain,
-  GuideTip,
-  GuideCaution,
-} from "@/components/simpler-guide";
-import { Jargon } from "@/components/jargon";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 type ScreenshotSpec = {
   file: string;
@@ -71,8 +78,7 @@ function ScreenshotFigure({ file, alt, caption }: ScreenshotSpec) {
         />
       </a>
       <figcaption className="text-xs text-muted-foreground">
-        {caption}{" "}
-        <span className="sr-only">(opens full size in a new tab)</span>
+        {caption} <span className="sr-only">(opens full size in a new tab)</span>
       </figcaption>
     </figure>
   );
@@ -96,20 +102,14 @@ interface ProviderGuideProps {
   onToggle: () => void;
 }
 
-function ProviderGuide({
-  name,
-  steps,
-  screenshots,
-  isExpanded,
-  onToggle,
-}: ProviderGuideProps) {
+function ProviderGuide({ name, steps, screenshots, isExpanded, onToggle }: ProviderGuideProps) {
   return (
-    <div className={cn(
-      "rounded-xl border transition duration-200",
-      isExpanded
-        ? "border-primary/30 bg-card/80"
-        : "border-border/50 bg-card/50"
-    )}>
+    <div
+      className={cn(
+        "rounded-xl border transition duration-200",
+        isExpanded ? "border-primary/30 bg-card/80" : "border-border/50 bg-card/50",
+      )}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -120,7 +120,7 @@ function ProviderGuide({
         <ChevronDown
           className={cn(
             "h-4 w-4 text-muted-foreground transition-transform duration-200",
-            isExpanded && "rotate-180"
+            isExpanded && "rotate-180",
           )}
         />
       </button>
@@ -161,7 +161,7 @@ const PROVIDER_GUIDES = [
       `Go to contabo.com/en-us/vps and select ${describePlan(CONTABO.recommended)} or ${describePlan(CONTABO.budget)} (USD approximate; Contabo lists EUR)`,
       'Click "Configure" and select your preferred region (US recommended for best latency)',
       'Under "Image", select Ubuntu 25.10 (or newest available; 24.04 LTS is fine too)',
-      'Leave add-ons at their free/default values unless you specifically want them: no private networking, no object storage, unmanaged server, monitoring none',
+      "Leave add-ons at their free/default values unless you specifically want them: no private networking, no object storage, unmanaged server, monitoring none",
       'In "Login & password for your server", keep Username as root, enter a strong root password, and save it - you\'ll need it once',
       "Complete checkout (servers activate within minutes, occasionally up to 1 hour)",
       'Go to "Your services" > "VPS control" to find your IP address',
@@ -274,9 +274,7 @@ export default function CreateVPSPage() {
     } else {
       next.delete(itemId);
     }
-    setStoredChecklist(
-      CHECKLIST_ITEMS.filter((item) => next.has(item.id)).map((item) => item.id)
-    );
+    setStoredChecklist(CHECKLIST_ITEMS.filter((item) => next.has(item.id)).map((item) => item.id));
   };
 
   return (
@@ -289,16 +287,18 @@ export default function CreateVPSPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              Create your <Jargon term="vps" gradientHeading>VPS</Jargon> instance
+              Create your{" "}
+              <Jargon term="vps" gradientHeading>
+                VPS
+              </Jargon>{" "}
+              instance
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~5 min
-            </p>
+            <p className="text-sm text-muted-foreground">~5 min</p>
           </div>
         </div>
         <p className="text-muted-foreground">
-          You have an account with your VPS provider. Now let&apos;s create the actual server
-          (the VPS instance) that will run your development environment.
+          You have an account with your VPS provider. Now let&apos;s create the actual server (the
+          VPS instance) that will run your development environment.
         </p>
       </div>
 
@@ -314,9 +314,7 @@ export default function CreateVPSPage() {
         <div
           className={cn(
             "rounded-xl border p-4 transition-colors",
-            allChecked
-              ? "border-green/50 bg-green/5"
-              : "border-border/50 bg-card/50"
+            allChecked ? "border-green/50 bg-green/5" : "border-border/50 bg-card/50",
           )}
           data-create-vps-checklist
           // Focus target for the step-validation hook (focusSelector); a plain
@@ -333,12 +331,12 @@ export default function CreateVPSPage() {
                 Check each item as you complete it to unlock the next step
               </p>
             </div>
-            <div className={cn(
-              "shrink-0 rounded-full px-3 py-1 text-xs font-medium",
-              allChecked
-                ? "bg-green/15 text-green"
-                : "bg-muted text-muted-foreground"
-            )}>
+            <div
+              className={cn(
+                "shrink-0 rounded-full px-3 py-1 text-xs font-medium",
+                allChecked ? "bg-green/15 text-green" : "bg-muted text-muted-foreground",
+              )}
+            >
               {checkedItems.size} of {CHECKLIST_ITEMS.length}
             </div>
           </div>
@@ -351,16 +349,14 @@ export default function CreateVPSPage() {
               >
                 <Checkbox
                   checked={checkedItems.has(item.id)}
-                  onCheckedChange={(checked) =>
-                    handleCheckItem(item.id, checked === true)
-                  }
+                  onCheckedChange={(checked) => handleCheckItem(item.id, checked === true)}
                 />
                 <span
                   className={cn(
                     "text-sm transition",
                     checkedItems.has(item.id)
                       ? "text-muted-foreground line-through"
-                      : "text-foreground"
+                      : "text-foreground",
                   )}
                 >
                   {item.label}
@@ -381,10 +377,12 @@ export default function CreateVPSPage() {
         {/* IP Address input - placed prominently after checklist */}
         <div className="space-y-4">
           <div className="space-y-2">
-            <h2 id="vps-ip-heading" className="font-semibold text-foreground">Your VPS IP address</h2>
+            <h2 id="vps-ip-heading" className="font-semibold text-foreground">
+              Your VPS IP address
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Enter the IP address of your new VPS. You&apos;ll find this in your
-              provider&apos;s control panel after the VPS is created.
+              Enter the IP address of your new VPS. You&apos;ll find this in your provider&apos;s
+              control panel after the VPS is created.
             </p>
           </div>
 
@@ -398,8 +396,10 @@ export default function CreateVPSPage() {
                 Your data stays on your device
               </p>
               <p className="text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
-                This IP address is stored <strong className="text-foreground/80">in your browser&apos;s local storage</strong>.
-                If browser storage is blocked, the wizard keeps it in memory for this tab only — you&apos;ll be asked again after a reload. The{" "}
+                This IP address is stored{" "}
+                <strong className="text-foreground/80">in your browser&apos;s local storage</strong>
+                . If browser storage is blocked, the wizard keeps it in memory for this tab only —
+                you&apos;ll be asked again after a reload. The{" "}
                 <a
                   href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
                   target="_blank"
@@ -449,7 +449,10 @@ export default function CreateVPSPage() {
 
               return (
                 <div className="space-y-2">
-                  <label htmlFor="vps-ip-input" className="block text-sm font-medium text-foreground">
+                  <label
+                    htmlFor="vps-ip-input"
+                    className="block text-sm font-medium text-foreground"
+                  >
                     IP address
                   </label>
                   <input
@@ -473,7 +476,7 @@ export default function CreateVPSPage() {
                       "focus:border-primary focus:ring-2 focus:ring-primary/20",
                       showError
                         ? "border-destructive focus:border-destructive focus:ring-destructive/20"
-                        : "border-border/50"
+                        : "border-border/50",
                     )}
                   />
                   {showError && (
@@ -537,7 +540,9 @@ export default function CreateVPSPage() {
           <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
             <div className="rounded-lg bg-background/50 px-3 py-2">
               <span className="font-medium text-foreground">🇺🇸 USA:</span>{" "}
-              <span className="text-muted-foreground">Pick US-West (California) or US-East (Virginia)</span>
+              <span className="text-muted-foreground">
+                Pick US-West (California) or US-East (Virginia)
+              </span>
             </div>
             <div className="rounded-lg bg-background/50 px-3 py-2">
               <span className="font-medium text-foreground">🇪🇺 Europe:</span>{" "}
@@ -565,9 +570,7 @@ export default function CreateVPSPage() {
               screenshots={provider.screenshots}
               isExpanded={expandedProvider === provider.name}
               onToggle={() =>
-                setExpandedProvider((prev) =>
-                  prev === provider.name ? null : provider.name
-                )
+                setExpandedProvider((prev) => (prev === provider.name ? null : provider.name))
               }
             />
           ))}
@@ -577,50 +580,70 @@ export default function CreateVPSPage() {
         <SimplerGuide>
           <div className="space-y-6">
             <GuideExplain term="an IP Address">
-              An IP address is like a phone number for computers. It&apos;s a series
-              of numbers (like 203.0.113.42) that identifies your VPS on the internet.
-              <br /><br />
-              You&apos;ll need this address to connect to your VPS from your computer.
-              It&apos;s like knowing someone&apos;s phone number so you can call them.
+              An IP address is like a phone number for computers. It&apos;s a series of numbers
+              (like 203.0.113.42) that identifies your VPS on the internet.
+              <br />
+              <br />
+              You&apos;ll need this address to connect to your VPS from your computer. It&apos;s
+              like knowing someone&apos;s phone number so you can call them.
             </GuideExplain>
 
             <GuideTip>
               <strong>Why password first?</strong> Adding SSH keys in the provider website is
-              confusing and easy to mess up. Instead, we connect once with a password, then
-              the installer sets up your SSH key the right way.
+              confusing and easy to mess up. Instead, we connect once with a password, then the
+              installer sets up your SSH key the right way.
             </GuideTip>
 
             <GuideSection title="Detailed Steps for Creating Your VPS">
               <div className="space-y-4">
                 <GuideStep number={1} title="Log into your VPS provider">
-                  Go to the website where you created your account (OVH or Contabo)
-                  and sign in with the email and password you created earlier.
+                  Go to the website where you created your account (OVH or Contabo) and sign in with
+                  the email and password you created earlier.
                 </GuideStep>
 
                 <GuideStep number={2} title="Find the 'Create Server' or 'Add VPS' button">
                   Look for a button that says something like:
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li><strong>OVH:</strong> Click &quot;Create an instance&quot; or &quot;Order&quot;</li>
-                    <li><strong>Contabo:</strong> Go to &quot;Your services&quot; → click the VPS you ordered</li>
+                    <li>
+                      <strong>OVH:</strong> Click &quot;Create an instance&quot; or
+                      &quot;Order&quot;
+                    </li>
+                    <li>
+                      <strong>Contabo:</strong> Go to &quot;Your services&quot; → click the VPS you
+                      ordered
+                    </li>
                   </ul>
                 </GuideStep>
 
                 <GuideStep number={3} title="Choose your server location">
-                  Pick a data center close to you for faster speeds. The closer the server,
-                  the faster your typing appears and AI responses stream back. This matters
-                  because you&apos;ll be interacting with your VPS constantly.
+                  Pick a data center close to you for faster speeds. The closer the server, the
+                  faster your typing appears and AI responses stream back. This matters because
+                  you&apos;ll be interacting with your VPS constantly.
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li><strong>USA West Coast:</strong> Pick US-West, Los Angeles, or Seattle</li>
-                    <li><strong>USA East Coast:</strong> Pick US-East, Virginia, or New York</li>
-                    <li><strong>Europe:</strong> Pick Germany (Nuremberg/Frankfurt), France, or Finland</li>
-                    <li><strong>Asia-Pacific:</strong> Pick Singapore, Sydney, or Tokyo</li>
-                    <li><strong>If unsure:</strong> Just pick one! Any region works, and the difference is small.</li>
+                    <li>
+                      <strong>USA West Coast:</strong> Pick US-West, Los Angeles, or Seattle
+                    </li>
+                    <li>
+                      <strong>USA East Coast:</strong> Pick US-East, Virginia, or New York
+                    </li>
+                    <li>
+                      <strong>Europe:</strong> Pick Germany (Nuremberg/Frankfurt), France, or
+                      Finland
+                    </li>
+                    <li>
+                      <strong>Asia-Pacific:</strong> Pick Singapore, Sydney, or Tokyo
+                    </li>
+                    <li>
+                      <strong>If unsure:</strong> Just pick one! Any region works, and the
+                      difference is small.
+                    </li>
                   </ul>
                 </GuideStep>
 
                 <GuideStep number={4} title="Select Ubuntu as the operating system">
                   You&apos;ll see a list of &quot;images&quot; or &quot;operating systems&quot;.
-                  <br /><br />
+                  <br />
+                  <br />
                   <strong>Look for:</strong> Ubuntu 25.10 (or newest available)
                   <br />
                   <em className="text-xs">
@@ -632,11 +655,17 @@ export default function CreateVPSPage() {
                 <GuideStep number={5} title="Set a root password">
                   Look for a section called &quot;Authentication&quot; or &quot;Password&quot;.
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li>If asked about SSH keys, <strong>skip that section</strong></li>
+                    <li>
+                      If asked about SSH keys, <strong>skip that section</strong>
+                    </li>
                     <li>Choose &quot;Password&quot; authentication</li>
-                    <li>If the provider asks for a username, keep it as <strong>root</strong></li>
+                    <li>
+                      If the provider asks for a username, keep it as <strong>root</strong>
+                    </li>
                     <li>Set a strong root password</li>
-                    <li><strong>Save this password!</strong> You&apos;ll need it once to connect</li>
+                    <li>
+                      <strong>Save this password!</strong> You&apos;ll need it once to connect
+                    </li>
                   </ul>
                   <p className="mt-2 text-xs italic">
                     Some providers email you a password instead - that&apos;s fine too!
@@ -644,8 +673,9 @@ export default function CreateVPSPage() {
                 </GuideStep>
 
                 <GuideTip>
-                  <strong>Contabo add-ons:</strong> In the &quot;Additional Features&quot; section, the default/free options are fine:
-                  no private networking, unlimited traffic, one IPv4 address, no object storage, unmanaged server, and monitoring none.
+                  <strong>Contabo add-ons:</strong> In the &quot;Additional Features&quot; section,
+                  the default/free options are fine: no private networking, unlimited traffic, one
+                  IPv4 address, no object storage, unmanaged server, and monitoring none.
                 </GuideTip>
 
                 <GuideStep number={6} title="Choose your plan size">
@@ -657,14 +687,15 @@ export default function CreateVPSPage() {
                     <li>Cost: ~${VPS_TOP_PICK.recommended.priceUSD}/month for 64GB (worth it!)</li>
                   </ul>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    64GB is strongly recommended. You&apos;re investing $400+/month in AI subscriptions,
-                    so don&apos;t bottleneck that with insufficient RAM.
+                    64GB is strongly recommended. You&apos;re investing $400+/month in AI
+                    subscriptions, so don&apos;t bottleneck that with insufficient RAM.
                   </p>
                 </GuideStep>
 
                 <GuideStep number={7} title="Create and wait">
                   Click the &quot;Create&quot;, &quot;Deploy&quot;, or &quot;Order&quot; button.
-                  <br /><br />
+                  <br />
+                  <br />
                   Your VPS will take 1-5 minutes to start up. You&apos;ll see a status like
                   &quot;Running&quot; or a green indicator when it&apos;s ready.
                 </GuideStep>
@@ -674,10 +705,16 @@ export default function CreateVPSPage() {
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     <li>On the main server overview page</li>
                     <li>In a &quot;Network&quot; or &quot;IP Addresses&quot; section</li>
-                    <li>It looks like: <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">203.0.113.42</code></li>
+                    <li>
+                      It looks like:{" "}
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                        203.0.113.42
+                      </code>
+                    </li>
                   </ul>
                   <br />
-                  <strong>Copy this number</strong> and paste it in the &quot;Your VPS IP address&quot; box above!
+                  <strong>Copy this number</strong> and paste it in the &quot;Your VPS IP
+                  address&quot; box above!
                 </GuideStep>
               </div>
             </GuideSection>
@@ -692,9 +729,9 @@ export default function CreateVPSPage() {
             </GuideTip>
 
             <GuideCaution>
-              <strong>Save your password!</strong> You&apos;ll need it once to connect
-              for the first time. After that, the installer will set up SSH key access
-              so you won&apos;t need the password anymore.
+              <strong>Save your password!</strong> You&apos;ll need it once to connect for the first
+              time. After that, the installer will set up SSH key access so you won&apos;t need the
+              password anymore.
             </GuideCaution>
           </div>
         </SimplerGuide>

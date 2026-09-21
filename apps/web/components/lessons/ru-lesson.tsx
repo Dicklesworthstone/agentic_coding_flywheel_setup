@@ -1,41 +1,41 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  RefreshCw,
-  Terminal,
-  Zap,
-  FolderSync,
+  AlertTriangle,
   Bot,
-  Shield,
-  Clock,
-  Settings,
   CheckCircle,
-  Play,
   CheckCircle2,
-  XCircle,
-  Loader2,
-  RotateCcw,
+  Clock,
+  FileText,
   FolderGit2,
+  FolderSync,
   GitBranch,
   GitMerge,
-  AlertTriangle,
-  FileText,
+  Loader2,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Settings,
+  Shield,
   Sparkles,
-} from 'lucide-react';
+  Terminal,
+  XCircle,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function RuLesson() {
   return (
@@ -47,9 +47,9 @@ export function RuLesson() {
       {/* Section 1: What Is RU */}
       <Section title="What Is RU?" icon={<RefreshCw className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>RU (Repo Updater)</Highlight> is your command center for managing
-          dozens of GitHub repositories. One command syncs everything. AI automation
-          commits your dirty repos intelligently.
+          <Highlight>RU (Repo Updater)</Highlight> is your command center for managing dozens of
+          GitHub repositories. One command syncs everything. AI automation commits your dirty repos
+          intelligently.
         </Paragraph>
         <Paragraph>
           Without RU, you&apos;d manually cd into each repo and run git pull. With 20+ repos,
@@ -94,19 +94,17 @@ export function RuLesson() {
 
       {/* Section 2: Essential Commands */}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>
-          Start with these core commands. They cover 90% of daily usage.
-        </Paragraph>
+        <Paragraph>Start with these core commands. They cover 90% of daily usage.</Paragraph>
 
         <CommandList
           commands={[
-            { command: 'ru sync', description: 'Clone missing + pull all repos' },
-            { command: 'ru sync -j4', description: 'Parallel sync with 4 workers' },
-            { command: 'ru sync --autostash', description: 'Stash local changes before pull' },
-            { command: 'ru status', description: 'Check all repo states' },
-            { command: 'ru status --fetch', description: 'Fetch + show ahead/behind' },
-            { command: 'ru list --paths', description: 'Show all repo paths' },
-            { command: 'ru doctor', description: 'Health check RU installation' },
+            { command: "ru sync", description: "Clone missing + pull all repos" },
+            { command: "ru sync -j4", description: "Parallel sync with 4 workers" },
+            { command: "ru sync --autostash", description: "Stash local changes before pull" },
+            { command: "ru status", description: "Check all repo states" },
+            { command: "ru status --fetch", description: "Fetch + show ahead/behind" },
+            { command: "ru list --paths", description: "Show all repo paths" },
+            { command: "ru doctor", description: "Health check RU installation" },
           ]}
         />
 
@@ -118,12 +116,16 @@ export function RuLesson() {
       <Divider />
 
       {/* Section 3: Commit Sweep */}
-      <Section title="Commit Sweep: Clean Up Dirty Worktrees" icon={<Bot className="h-5 w-5" />} delay={0.2}>
+      <Section
+        title="Commit Sweep: Clean Up Dirty Worktrees"
+        icon={<Bot className="h-5 w-5" />}
+        delay={0.2}
+      >
         <Paragraph>
           After a swarm session you are left with dirty worktrees across many repos.
-          <Highlight>ru commit-sweep</Highlight> groups the changes in each repo into
-          logical conventional commits. It is a dry-run by default: you see the plan
-          first and apply it with <code>--execute</code>.
+          <Highlight>ru commit-sweep</Highlight> groups the changes in each repo into logical
+          conventional commits. It is a dry-run by default: you see the plan first and apply it with{" "}
+          <code>--execute</code>.
         </Paragraph>
 
         <CodeBlock
@@ -141,16 +143,25 @@ export function RuLesson() {
 
         <CommandList
           commands={[
-            { command: 'ru commit-sweep', description: 'Preview the commit plan (dry-run is the default)' },
-            { command: 'ru commit-sweep --execute', description: 'Run the planned commits' },
-            { command: 'ru commit-sweep --respect-staging', description: 'Keep manually staged files as their own commit' },
-            { command: 'ru commit-sweep --repos="cass*"', description: 'Limit the sweep to repos matching a glob' },
+            {
+              command: "ru commit-sweep",
+              description: "Preview the commit plan (dry-run is the default)",
+            },
+            { command: "ru commit-sweep --execute", description: "Run the planned commits" },
+            {
+              command: "ru commit-sweep --respect-staging",
+              description: "Keep manually staged files as their own commit",
+            },
+            {
+              command: 'ru commit-sweep --repos="cass*"',
+              description: "Limit the sweep to repos matching a glob",
+            },
           ]}
         />
 
         <TipBox variant="warning">
-          Read the plan before adding <code>--execute</code>: the sweep commits
-          everything it grouped, in every matching repo.
+          Read the plan before adding <code>--execute</code>: the sweep commits everything it
+          grouped, in every matching repo.
         </TipBox>
       </Section>
 
@@ -159,17 +170,17 @@ export function RuLesson() {
       {/* Section 4: AI Code Review */}
       <Section title="AI Code Review" icon={<CheckCircle className="h-5 w-5" />} delay={0.23}>
         <Paragraph>
-          RU can orchestrate AI-assisted code reviews across your repos using{' '}
-          <Highlight>ru review</Highlight>. The review system integrates with ntm&apos;s
-          robot mode to spawn Claude agents for thorough analysis.
+          RU can orchestrate AI-assisted code reviews across your repos using{" "}
+          <Highlight>ru review</Highlight>. The review system integrates with ntm&apos;s robot mode
+          to spawn Claude agents for thorough analysis.
         </Paragraph>
 
         <CommandList
           commands={[
-            { command: 'ru review', description: 'Review uncommitted changes in current repo' },
-            { command: 'ru review --plan', description: 'Create detailed review plan first' },
-            { command: 'ru review --all', description: 'Review all dirty repos' },
-            { command: 'ru review --scope=security', description: 'Focus on security issues' },
+            { command: "ru review", description: "Review uncommitted changes in current repo" },
+            { command: "ru review --plan", description: "Create detailed review plan first" },
+            { command: "ru review --all", description: "Review all dirty repos" },
+            { command: "ru review --scope=security", description: "Focus on security issues" },
           ]}
         />
 
@@ -183,9 +194,7 @@ export function RuLesson() {
 
       {/* Section 5: Configuration */}
       <Section title="Configuration" icon={<Settings className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          RU follows XDG conventions. Configure once, sync everywhere.
-        </Paragraph>
+        <Paragraph>RU follows XDG conventions. Configure once, sync everywhere.</Paragraph>
 
         <CodeBlock
           code={`# Base directory for repositories
@@ -227,9 +236,7 @@ git@github.com:owner/repo.git as myrepo`}
 
       {/* Section 6: Integration */}
       <Section title="Tool Integration" icon={<Zap className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          RU becomes more powerful when combined with other flywheel tools.
-        </Paragraph>
+        <Paragraph>RU becomes more powerful when combined with other flywheel tools.</Paragraph>
 
         <div className="space-y-4">
           <motion.div
@@ -240,9 +247,8 @@ git@github.com:owner/repo.git as myrepo`}
           >
             <h4 className="font-semibold text-primary mb-2">RU + NTM</h4>
             <p className="text-muted-foreground text-sm">
-              <code className="text-primary">ru review --mode=ntm</code> drives its
-              Claude sessions through NTM. NTM manages the tmux panes, RU orchestrates
-              the review workflow.
+              <code className="text-primary">ru review --mode=ntm</code> drives its Claude sessions
+              through NTM. NTM manages the tmux panes, RU orchestrates the review workflow.
             </p>
           </motion.div>
           <motion.div
@@ -253,8 +259,8 @@ git@github.com:owner/repo.git as myrepo`}
           >
             <h4 className="font-semibold text-primary mb-2">RU + BV</h4>
             <p className="text-muted-foreground text-sm">
-              After syncing repos, use BV to check beads across all projects.
-              Combine <code className="text-primary">ru status</code> with{' '}
+              After syncing repos, use BV to check beads across all projects. Combine{" "}
+              <code className="text-primary">ru status</code> with{" "}
               <code className="text-primary">bv --robot-triage</code>.
             </p>
           </motion.div>
@@ -266,8 +272,8 @@ git@github.com:owner/repo.git as myrepo`}
           >
             <h4 className="font-semibold text-primary mb-2">RU + Mail</h4>
             <p className="text-muted-foreground text-sm">
-              Agents can claim repos via Mail to prevent conflicts during
-              parallel <code className="text-primary">ru review</code> sessions.
+              Agents can claim repos via Mail to prevent conflicts during parallel{" "}
+              <code className="text-primary">ru review</code> sessions.
             </p>
           </motion.div>
         </div>
@@ -277,9 +283,7 @@ git@github.com:owner/repo.git as myrepo`}
 
       {/* Section 7: Exit Codes */}
       <Section title="Exit Codes" icon={<Play className="h-5 w-5" />} delay={0.35}>
-        <Paragraph>
-          RU uses meaningful exit codes for scripting and automation.
-        </Paragraph>
+        <Paragraph>RU uses meaningful exit codes for scripting and automation.</Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
@@ -308,10 +312,18 @@ git@github.com:owner/repo.git as myrepo`}
 // InteractiveRepoSync - Multi-repo sync operations center with 6 scenarios
 // ---------------------------------------------------------------------------
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
-const SPRING_SNAPPY = { type: 'spring' as const, stiffness: 400, damping: 35 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
+const SPRING_SNAPPY = { type: "spring" as const, stiffness: 400, damping: 35 };
 
-type RepoSyncStatus = 'pending' | 'cloning' | 'pulling' | 'dirty' | 'ai-commit' | 'conflict' | 'synced' | 'error';
+type RepoSyncStatus =
+  | "pending"
+  | "cloning"
+  | "pulling"
+  | "dirty"
+  | "ai-commit"
+  | "conflict"
+  | "synced"
+  | "error";
 
 interface SyncRepo {
   name: string;
@@ -326,7 +338,13 @@ interface SyncRepo {
   lastAction: string;
 }
 
-type ScenarioId = 'parallel-sync' | 'initial-clone' | 'dirty-detect' | 'ai-commit' | 'conflict-resolve' | 'full-sweep';
+type ScenarioId =
+  | "parallel-sync"
+  | "initial-clone"
+  | "dirty-detect"
+  | "ai-commit"
+  | "conflict-resolve"
+  | "full-sweep";
 
 interface Scenario {
   id: ScenarioId;
@@ -337,43 +355,189 @@ interface Scenario {
 }
 
 const SCENARIOS: Scenario[] = [
-  { id: 'parallel-sync', label: 'Parallel Sync', icon: <FolderSync className="h-3.5 w-3.5" />, description: '10 repos synced with 4 workers', command: 'ru sync -j4' },
-  { id: 'initial-clone', label: 'Initial Clone', icon: <FolderGit2 className="h-3.5 w-3.5" />, description: 'Clone missing repos from manifest', command: 'ru sync --clone-only' },
-  { id: 'dirty-detect', label: 'Dirty Detection', icon: <AlertTriangle className="h-3.5 w-3.5" />, description: 'Identify repos with uncommitted changes', command: 'ru status --fetch' },
-  { id: 'ai-commit', label: 'Commit Plan', icon: <Sparkles className="h-3.5 w-3.5" />, description: 'Group dirty changes into conventional commits (dry-run)', command: 'ru commit-sweep' },
-  { id: 'conflict-resolve', label: 'Conflict Resolution', icon: <GitMerge className="h-3.5 w-3.5" />, description: 'Detect and report merge conflicts', command: 'ru sync --autostash' },
-  { id: 'full-sweep', label: 'Execute Sweep', icon: <Bot className="h-3.5 w-3.5" />, description: 'Run the planned commits across every dirty repo', command: 'ru commit-sweep --execute' },
+  {
+    id: "parallel-sync",
+    label: "Parallel Sync",
+    icon: <FolderSync className="h-3.5 w-3.5" />,
+    description: "10 repos synced with 4 workers",
+    command: "ru sync -j4",
+  },
+  {
+    id: "initial-clone",
+    label: "Initial Clone",
+    icon: <FolderGit2 className="h-3.5 w-3.5" />,
+    description: "Clone missing repos from manifest",
+    command: "ru sync --clone-only",
+  },
+  {
+    id: "dirty-detect",
+    label: "Dirty Detection",
+    icon: <AlertTriangle className="h-3.5 w-3.5" />,
+    description: "Identify repos with uncommitted changes",
+    command: "ru status --fetch",
+  },
+  {
+    id: "ai-commit",
+    label: "Commit Plan",
+    icon: <Sparkles className="h-3.5 w-3.5" />,
+    description: "Group dirty changes into conventional commits (dry-run)",
+    command: "ru commit-sweep",
+  },
+  {
+    id: "conflict-resolve",
+    label: "Conflict Resolution",
+    icon: <GitMerge className="h-3.5 w-3.5" />,
+    description: "Detect and report merge conflicts",
+    command: "ru sync --autostash",
+  },
+  {
+    id: "full-sweep",
+    label: "Execute Sweep",
+    icon: <Bot className="h-3.5 w-3.5" />,
+    description: "Run the planned commits across every dirty repo",
+    command: "ru commit-sweep --execute",
+  },
 ];
 
 const ALL_REPOS: SyncRepo[] = [
-  { name: 'ntm', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 3, changedFiles: 0, commitMsg: '', lastAction: '' },
-  { name: 'beads_rust', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 1, changedFiles: 0, commitMsg: '', lastAction: '' },
-  { name: 'cass', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'develop', ahead: 2, behind: 0, changedFiles: 4, commitMsg: '', lastAction: '' },
-  { name: 'slb', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 5, changedFiles: 0, commitMsg: '', lastAction: '' },
-  { name: 'dcg', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 1, behind: 2, changedFiles: 2, commitMsg: '', lastAction: '' },
-  { name: 'ubs', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 0, changedFiles: 0, commitMsg: '', lastAction: '' },
-  { name: 'ru', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 7, changedFiles: 0, commitMsg: '', lastAction: '' },
-  { name: 'caam', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 0, changedFiles: 1, commitMsg: '', lastAction: '' },
-  { name: 'flywheel', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'main', ahead: 0, behind: 4, changedFiles: 0, commitMsg: '', lastAction: '' },
-  { name: 'bv', owner: 'Dicklesworthstone', status: 'pending', progress: 0, branch: 'feat/ui', ahead: 3, behind: 1, changedFiles: 6, commitMsg: '', lastAction: '' },
+  {
+    name: "ntm",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 3,
+    changedFiles: 0,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "beads_rust",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 1,
+    changedFiles: 0,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "cass",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "develop",
+    ahead: 2,
+    behind: 0,
+    changedFiles: 4,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "slb",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 5,
+    changedFiles: 0,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "dcg",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 1,
+    behind: 2,
+    changedFiles: 2,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "ubs",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 0,
+    changedFiles: 0,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "ru",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 7,
+    changedFiles: 0,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "caam",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 0,
+    changedFiles: 1,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "flywheel",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "main",
+    ahead: 0,
+    behind: 4,
+    changedFiles: 0,
+    commitMsg: "",
+    lastAction: "",
+  },
+  {
+    name: "bv",
+    owner: "Dicklesworthstone",
+    status: "pending",
+    progress: 0,
+    branch: "feat/ui",
+    ahead: 3,
+    behind: 1,
+    changedFiles: 6,
+    commitMsg: "",
+    lastAction: "",
+  },
 ];
 
 const AI_COMMIT_MESSAGES = [
-  'fix(parser): handle edge case in nested TOML arrays',
-  'refactor(core): extract validation into shared module',
-  'feat(api): add batch endpoint for parallel queries',
-  'chore(deps): bump framer-motion to v12.1.0',
-  'fix(ui): correct z-index stacking in modal overlay',
-  'docs(readme): update CLI usage examples',
+  "fix(parser): handle edge case in nested TOML arrays",
+  "refactor(core): extract validation into shared module",
+  "feat(api): add batch endpoint for parallel queries",
+  "chore(deps): bump framer-motion to v12.1.0",
+  "fix(ui): correct z-index stacking in modal overlay",
+  "docs(readme): update CLI usage examples",
 ];
 
 function InteractiveRepoSync() {
-  const [activeScenario, setActiveScenario] = useState<ScenarioId>('parallel-sync');
+  const [activeScenario, setActiveScenario] = useState<ScenarioId>("parallel-sync");
   const [repos, setRepos] = useState<SyncRepo[]>(() => ALL_REPOS.map((r) => ({ ...r })));
   const [isRunning, setIsRunning] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
-  const [aiTyping, setAiTyping] = useState('');
-  const [aiTargetRepo, setAiTargetRepo] = useState('');
+  const [aiTyping, setAiTyping] = useState("");
+  const [aiTargetRepo, setAiTargetRepo] = useState("");
   const [completedScenario, setCompletedScenario] = useState(false);
   const [workerSlots, setWorkerSlots] = useState<(string | null)[]>([null, null, null, null]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -407,8 +571,8 @@ function InteractiveRepoSync() {
     clearTimers();
     setRepos(ALL_REPOS.map((r) => ({ ...r })));
     setTerminalLines([]);
-    setAiTyping('');
-    setAiTargetRepo('');
+    setAiTyping("");
+    setAiTargetRepo("");
     setIsRunning(false);
     setCompletedScenario(false);
     setWorkerSlots([null, null, null, null]);
@@ -421,7 +585,18 @@ function InteractiveRepoSync() {
 
   // ---- Scenario: Parallel Sync ----
   const runParallelSync = useCallback(() => {
-    const order = ['ntm', 'beads_rust', 'slb', 'ru', 'cass', 'dcg', 'ubs', 'flywheel', 'caam', 'bv'];
+    const order = [
+      "ntm",
+      "beads_rust",
+      "slb",
+      "ru",
+      "cass",
+      "dcg",
+      "ubs",
+      "flywheel",
+      "caam",
+      "bv",
+    ];
     const workerQueue = [...order];
     const delay = 300;
     const activeSlots: (string | null)[] = [null, null, null, null];
@@ -429,7 +604,7 @@ function InteractiveRepoSync() {
 
     // Assign duration pseudo-randomly based on name length
     order.forEach((name) => {
-      finishTimes[name] = 1200 + (name.length * 200);
+      finishTimes[name] = 1200 + name.length * 200;
     });
 
     // Start initial batch
@@ -438,9 +613,13 @@ function InteractiveRepoSync() {
       activeSlots[s] = repo;
       const staggeredDelay = delay + s * 120;
       addTimer(() => {
-        updateRepo(repo, { status: 'pulling', progress: 15, lastAction: 'git fetch origin' });
+        updateRepo(repo, { status: "pulling", progress: 15, lastAction: "git fetch origin" });
         addTerminalLine(`[worker-${s}] pulling ${repo}...`);
-        setWorkerSlots((prev) => { const next = [...prev]; next[s] = repo; return next; });
+        setWorkerSlots((prev) => {
+          const next = [...prev];
+          next[s] = repo;
+          return next;
+        });
       }, staggeredDelay);
     }
 
@@ -449,7 +628,7 @@ function InteractiveRepoSync() {
     const processedRepos: string[] = [];
 
     const scheduleCompletion = (repoName: string, slotIndex: number) => {
-      const isError = repoName === 'bv'; // bv has conflicts in this scenario
+      const isError = repoName === "bv"; // bv has conflicts in this scenario
       const thisDuration = finishTimes[repoName] ?? 1500;
       const finishAt = completionDelay + thisDuration;
 
@@ -463,10 +642,18 @@ function InteractiveRepoSync() {
 
       addTimer(() => {
         if (isError) {
-          updateRepo(repoName, { status: 'conflict', progress: 60, lastAction: 'CONFLICT in merge' });
+          updateRepo(repoName, {
+            status: "conflict",
+            progress: 60,
+            lastAction: "CONFLICT in merge",
+          });
           addTerminalLine(`[worker-${slotIndex}] CONFLICT: ${repoName} — manual resolution needed`);
         } else {
-          updateRepo(repoName, { status: 'synced', progress: 100, lastAction: 'fast-forward to origin/main' });
+          updateRepo(repoName, {
+            status: "synced",
+            progress: 100,
+            lastAction: "fast-forward to origin/main",
+          });
           addTerminalLine(`[worker-${slotIndex}] synced ${repoName} (ff)`);
         }
         processedRepos.push(repoName);
@@ -475,19 +662,27 @@ function InteractiveRepoSync() {
         if (workerQueue.length > 0) {
           const next = workerQueue.shift()!;
           activeSlots[slotIndex] = next;
-          setWorkerSlots((prev) => { const n = [...prev]; n[slotIndex] = next; return n; });
-          updateRepo(next, { status: 'pulling', progress: 10, lastAction: 'git fetch origin' });
+          setWorkerSlots((prev) => {
+            const n = [...prev];
+            n[slotIndex] = next;
+            return n;
+          });
+          updateRepo(next, { status: "pulling", progress: 10, lastAction: "git fetch origin" });
           addTerminalLine(`[worker-${slotIndex}] pulling ${next}...`);
           scheduleCompletion(next, slotIndex);
         } else {
           activeSlots[slotIndex] = null;
-          setWorkerSlots((prev) => { const n = [...prev]; n[slotIndex] = null; return n; });
+          setWorkerSlots((prev) => {
+            const n = [...prev];
+            n[slotIndex] = null;
+            return n;
+          });
         }
 
         // Check if all done
         if (processedRepos.length === order.length) {
           addTimer(() => {
-            addTerminalLine('9/10 synced, 1 conflict — exit code 2');
+            addTerminalLine("9/10 synced, 1 conflict — exit code 2");
             setIsRunning(false);
             setCompletedScenario(true);
           }, 400);
@@ -507,11 +702,11 @@ function InteractiveRepoSync() {
 
   // ---- Scenario: Initial Clone ----
   const runInitialClone = useCallback(() => {
-    const cloneOrder = ['ntm', 'beads_rust', 'cass', 'slb', 'dcg'];
+    const cloneOrder = ["ntm", "beads_rust", "cass", "slb", "dcg"];
     const delay = 200;
 
-    addTerminalLine('$ ru sync --clone');
-    addTerminalLine('Scanning repos.d/ manifest...');
+    addTerminalLine("$ ru sync --clone");
+    addTerminalLine("Scanning repos.d/ manifest...");
 
     addTimer(() => addTerminalLine(`Found ${cloneOrder.length} missing repos to clone`), 600);
 
@@ -519,38 +714,48 @@ function InteractiveRepoSync() {
       const startDelay = delay + i * 1600;
 
       addTimer(() => {
-        updateRepo(name, { status: 'cloning', progress: 10, lastAction: `git clone git@github.com:Dicklesworthstone/${name}.git` });
+        updateRepo(name, {
+          status: "cloning",
+          progress: 10,
+          lastAction: `git clone git@github.com:Dicklesworthstone/${name}.git`,
+        });
         addTerminalLine(`Cloning ${name}...`);
       }, startDelay);
 
       // Progress ticks
       for (let t = 1; t <= 5; t++) {
-        addTimer(() => {
-          updateRepo(name, { progress: Math.min(10 + t * 18, 100) });
-        }, startDelay + t * 280);
+        addTimer(
+          () => {
+            updateRepo(name, { progress: Math.min(10 + t * 18, 100) });
+          },
+          startDelay + t * 280,
+        );
       }
 
       addTimer(() => {
-        updateRepo(name, { status: 'synced', progress: 100, lastAction: 'clone complete' });
+        updateRepo(name, { status: "synced", progress: 100, lastAction: "clone complete" });
         addTerminalLine(`Cloned ${name} (${Math.floor(12 + name.length * 2.3)}MB)`);
       }, startDelay + 1400);
     });
 
-    addTimer(() => {
-      addTerminalLine(`${cloneOrder.length}/${cloneOrder.length} cloned — exit code 0`);
-      setIsRunning(false);
-      setCompletedScenario(true);
-    }, delay + cloneOrder.length * 1600 + 400);
+    addTimer(
+      () => {
+        addTerminalLine(`${cloneOrder.length}/${cloneOrder.length} cloned — exit code 0`);
+        setIsRunning(false);
+        setCompletedScenario(true);
+      },
+      delay + cloneOrder.length * 1600 + 400,
+    );
   }, [addTimer, addTerminalLine, updateRepo]);
 
   // ---- Scenario: Dirty Detection ----
   const runDirtyDetect = useCallback(() => {
-    const dirtyRepos = ['cass', 'dcg', 'caam', 'bv'];
-    const cleanRepos = ['ntm', 'beads_rust', 'slb', 'ubs', 'ru', 'flywheel'];
+    const dirtyRepos = ["cass", "dcg", "caam", "bv"];
+    const cleanRepos = ["ntm", "beads_rust", "slb", "ubs", "ru", "flywheel"];
     const delay = 200;
 
-    addTerminalLine('$ ru status --fetch');
-    addTerminalLine('Fetching all remotes...');
+    addTerminalLine("$ ru status --fetch");
+    addTerminalLine("Fetching all remotes...");
 
     // Scan all repos
     [...cleanRepos, ...dirtyRepos].forEach((name, i) => {
@@ -559,41 +764,49 @@ function InteractiveRepoSync() {
         const isDirty = dirtyRepos.includes(name);
         const repo = ALL_REPOS.find((r) => r.name === name)!;
         updateRepo(name, {
-          status: isDirty ? 'dirty' : 'synced',
+          status: isDirty ? "dirty" : "synced",
           progress: 100,
           changedFiles: isDirty ? repo.changedFiles : 0,
-          lastAction: isDirty ? `${repo.changedFiles} modified files` : 'clean',
+          lastAction: isDirty ? `${repo.changedFiles} modified files` : "clean",
         });
         if (isDirty) {
-          addTerminalLine(`  DIRTY  ${name} (${repo.changedFiles} files, +${repo.ahead} -${repo.behind})`);
+          addTerminalLine(
+            `  DIRTY  ${name} (${repo.changedFiles} files, +${repo.ahead} -${repo.behind})`,
+          );
         } else {
           addTerminalLine(`  CLEAN  ${name}`);
         }
       }, scanDelay);
     });
 
-    addTimer(() => {
-      addTerminalLine(`4 dirty, 6 clean — exit code 0`);
-      setIsRunning(false);
-      setCompletedScenario(true);
-    }, delay + 400 + 10 * 350 + 500);
+    addTimer(
+      () => {
+        addTerminalLine(`4 dirty, 6 clean — exit code 0`);
+        setIsRunning(false);
+        setCompletedScenario(true);
+      },
+      delay + 400 + 10 * 350 + 500,
+    );
   }, [addTimer, addTerminalLine, updateRepo]);
 
   // ---- Scenario: AI Commit ----
   const runAiCommit = useCallback(() => {
-    const dirtyRepos = ['cass', 'dcg', 'bv'];
+    const dirtyRepos = ["cass", "dcg", "bv"];
     const delay = 200;
 
-    addTerminalLine('$ ru commit-sweep');
-    addTerminalLine('Phase 1: Scanning for dirty repos (dry-run)...');
+    addTerminalLine("$ ru commit-sweep");
+    addTerminalLine("Phase 1: Scanning for dirty repos (dry-run)...");
 
     // Mark dirty repos
     dirtyRepos.forEach((name, i) => {
-      addTimer(() => {
-        const repo = ALL_REPOS.find((r) => r.name === name)!;
-        updateRepo(name, { status: 'dirty', progress: 30, changedFiles: repo.changedFiles });
-        addTerminalLine(`Found dirty: ${name} (${repo.changedFiles} files)`);
-      }, delay + 600 + i * 400);
+      addTimer(
+        () => {
+          const repo = ALL_REPOS.find((r) => r.name === name)!;
+          updateRepo(name, { status: "dirty", progress: 30, changedFiles: repo.changedFiles });
+          addTerminalLine(`Found dirty: ${name} (${repo.changedFiles} files)`);
+        },
+        delay + 600 + i * 400,
+      );
     });
 
     // AI analysis per repo
@@ -605,26 +818,34 @@ function InteractiveRepoSync() {
 
       addTimer(() => {
         addTerminalLine(`Phase 2: Grouping changes in ${name}...`);
-        updateRepo(name, { status: 'ai-commit', progress: 50 });
+        updateRepo(name, { status: "ai-commit", progress: 50 });
         setAiTargetRepo(name);
-        setAiTyping('');
+        setAiTyping("");
       }, aiDelay);
 
       // Type out the commit message character by character
-      const chars = msg.split('');
+      const chars = msg.split("");
       chars.forEach((char, ci) => {
-        addTimer(() => {
-          setAiTyping((prev) => prev + char);
-        }, aiDelay + 400 + ci * 35);
+        addTimer(
+          () => {
+            setAiTyping((prev) => prev + char);
+          },
+          aiDelay + 400 + ci * 35,
+        );
       });
 
       const typingDuration = 400 + chars.length * 35 + 300;
 
       addTimer(() => {
-        updateRepo(name, { status: 'synced', progress: 100, commitMsg: msg, lastAction: 'commit planned' });
+        updateRepo(name, {
+          status: "synced",
+          progress: 100,
+          commitMsg: msg,
+          lastAction: "commit planned",
+        });
         addTerminalLine(`  Planned: "${msg}"`);
-        setAiTyping('');
-        setAiTargetRepo('');
+        setAiTyping("");
+        setAiTargetRepo("");
       }, aiDelay + typingDuration);
 
       aiDelay += typingDuration + 500;
@@ -639,28 +860,32 @@ function InteractiveRepoSync() {
 
   // ---- Scenario: Conflict Resolution ----
   const runConflictResolve = useCallback(() => {
-    const syncRepos = ['ntm', 'dcg', 'bv', 'slb'];
+    const syncRepos = ["ntm", "dcg", "bv", "slb"];
     const delay = 200;
 
-    addTerminalLine('$ ru sync --autostash');
+    addTerminalLine("$ ru sync --autostash");
 
     syncRepos.forEach((name, i) => {
       const startDelay = delay + 400 + i * 2000;
 
       addTimer(() => {
-        updateRepo(name, { status: 'pulling', progress: 20, lastAction: 'git stash' });
+        updateRepo(name, { status: "pulling", progress: 20, lastAction: "git stash" });
         addTerminalLine(`[${name}] stashing local changes...`);
       }, startDelay);
 
       addTimer(() => {
-        updateRepo(name, { progress: 50, lastAction: 'git pull --rebase' });
+        updateRepo(name, { progress: 50, lastAction: "git pull --rebase" });
         addTerminalLine(`[${name}] pulling with rebase...`);
       }, startDelay + 600);
 
-      if (name === 'bv') {
+      if (name === "bv") {
         // Conflict scenario
         addTimer(() => {
-          updateRepo(name, { status: 'conflict', progress: 65, lastAction: 'CONFLICT: src/main.rs' });
+          updateRepo(name, {
+            status: "conflict",
+            progress: 65,
+            lastAction: "CONFLICT: src/main.rs",
+          });
           addTerminalLine(`[${name}] CONFLICT in src/main.rs — stash pop failed`);
         }, startDelay + 1200);
 
@@ -669,43 +894,60 @@ function InteractiveRepoSync() {
         }, startDelay + 1500);
 
         addTimer(() => {
-          updateRepo(name, { status: 'synced', progress: 100, lastAction: 'conflict auto-resolved' });
+          updateRepo(name, {
+            status: "synced",
+            progress: 100,
+            lastAction: "conflict auto-resolved",
+          });
           addTerminalLine(`[${name}] Conflict auto-resolved, stash re-applied`);
         }, startDelay + 1800);
       } else {
         addTimer(() => {
-          updateRepo(name, { status: 'synced', progress: 100, lastAction: 'ff + stash pop' });
+          updateRepo(name, { status: "synced", progress: 100, lastAction: "ff + stash pop" });
           addTerminalLine(`[${name}] synced, stash re-applied`);
         }, startDelay + 1200);
       }
     });
 
-    addTimer(() => {
-      addTerminalLine('4/4 synced (1 conflict auto-resolved) — exit code 0');
-      setIsRunning(false);
-      setCompletedScenario(true);
-    }, delay + 400 + syncRepos.length * 2000 + 500);
+    addTimer(
+      () => {
+        addTerminalLine("4/4 synced (1 conflict auto-resolved) — exit code 0");
+        setIsRunning(false);
+        setCompletedScenario(true);
+      },
+      delay + 400 + syncRepos.length * 2000 + 500,
+    );
   }, [addTimer, addTerminalLine, updateRepo]);
 
   // ---- Scenario: Full Sweep ----
   const runFullSweep = useCallback(() => {
-    const sweepRepos = ['cass', 'dcg', 'caam', 'bv', 'ntm', 'slb'];
+    const sweepRepos = ["cass", "dcg", "caam", "bv", "ntm", "slb"];
     const delay = 200;
 
-    addTerminalLine('$ ru commit-sweep --execute');
-    addTerminalLine('Executing planned commits...');
+    addTerminalLine("$ ru commit-sweep --execute");
+    addTerminalLine("Executing planned commits...");
 
     // Phase 1: Detect dirty
     sweepRepos.forEach((name, i) => {
-      addTimer(() => {
-        const repo = ALL_REPOS.find((r) => r.name === name)!;
-        updateRepo(name, { status: 'dirty', progress: 15, changedFiles: Math.max(repo.changedFiles, 1) });
-      }, delay + 300 + i * 150);
+      addTimer(
+        () => {
+          const repo = ALL_REPOS.find((r) => r.name === name)!;
+          updateRepo(name, {
+            status: "dirty",
+            progress: 15,
+            changedFiles: Math.max(repo.changedFiles, 1),
+          });
+        },
+        delay + 300 + i * 150,
+      );
     });
 
-    addTimer(() => {
-      addTerminalLine(`Found ${sweepRepos.length} repos needing attention`);
-    }, delay + 300 + sweepRepos.length * 150 + 200);
+    addTimer(
+      () => {
+        addTerminalLine(`Found ${sweepRepos.length} repos needing attention`);
+      },
+      delay + 300 + sweepRepos.length * 150 + 200,
+    );
 
     // Phase 2: Parallel AI commit (2 at a time for visual clarity)
     let agentDelay = delay + 1600;
@@ -715,19 +957,28 @@ function InteractiveRepoSync() {
       batchRepos.forEach((name, bi) => {
         const msgIdx = (batch + bi) % AI_COMMIT_MESSAGES.length;
 
-        addTimer(() => {
-          updateRepo(name, { status: 'ai-commit', progress: 50 });
-          addTerminalLine(`[${name}] grouping changes...`);
-        }, agentDelay + bi * 150);
+        addTimer(
+          () => {
+            updateRepo(name, { status: "ai-commit", progress: 50 });
+            addTerminalLine(`[${name}] grouping changes...`);
+          },
+          agentDelay + bi * 150,
+        );
 
-        addTimer(() => {
-          updateRepo(name, { progress: 80, commitMsg: AI_COMMIT_MESSAGES[msgIdx] });
-          addTerminalLine(`[${name}] commit: "${AI_COMMIT_MESSAGES[msgIdx].slice(0, 40)}..."`);
-        }, agentDelay + 1000 + bi * 150);
+        addTimer(
+          () => {
+            updateRepo(name, { progress: 80, commitMsg: AI_COMMIT_MESSAGES[msgIdx] });
+            addTerminalLine(`[${name}] commit: "${AI_COMMIT_MESSAGES[msgIdx].slice(0, 40)}..."`);
+          },
+          agentDelay + 1000 + bi * 150,
+        );
 
-        addTimer(() => {
-          updateRepo(name, { status: 'synced', progress: 100, lastAction: 'committed' });
-        }, agentDelay + 1600 + bi * 150);
+        addTimer(
+          () => {
+            updateRepo(name, { status: "synced", progress: 100, lastAction: "committed" });
+          },
+          agentDelay + 1600 + bi * 150,
+        );
       });
 
       agentDelay += 2000;
@@ -746,15 +997,37 @@ function InteractiveRepoSync() {
     addTimer(() => {
       setIsRunning(true);
       switch (activeScenario) {
-        case 'parallel-sync': runParallelSync(); break;
-        case 'initial-clone': runInitialClone(); break;
-        case 'dirty-detect': runDirtyDetect(); break;
-        case 'ai-commit': runAiCommit(); break;
-        case 'conflict-resolve': runConflictResolve(); break;
-        case 'full-sweep': runFullSweep(); break;
+        case "parallel-sync":
+          runParallelSync();
+          break;
+        case "initial-clone":
+          runInitialClone();
+          break;
+        case "dirty-detect":
+          runDirtyDetect();
+          break;
+        case "ai-commit":
+          runAiCommit();
+          break;
+        case "conflict-resolve":
+          runConflictResolve();
+          break;
+        case "full-sweep":
+          runFullSweep();
+          break;
       }
     }, 80);
-  }, [activeScenario, resetAll, addTimer, runParallelSync, runInitialClone, runDirtyDetect, runAiCommit, runConflictResolve, runFullSweep]);
+  }, [
+    activeScenario,
+    resetAll,
+    addTimer,
+    runParallelSync,
+    runInitialClone,
+    runDirtyDetect,
+    runAiCommit,
+    runConflictResolve,
+    runFullSweep,
+  ]);
 
   // Auto-play on mount
   useEffect(() => {
@@ -770,13 +1043,18 @@ function InteractiveRepoSync() {
   }, []);
 
   // Counters
-  const syncedCount = repos.filter((r) => r.status === 'synced').length;
-  const errorCount = repos.filter((r) => r.status === 'conflict' || r.status === 'error').length;
-  const dirtyCount = repos.filter((r) => r.status === 'dirty' || r.status === 'ai-commit').length;
-  const activeCount = repos.filter((r) => r.status === 'pulling' || r.status === 'cloning' || r.status === 'ai-commit').length;
+  const syncedCount = repos.filter((r) => r.status === "synced").length;
+  const errorCount = repos.filter((r) => r.status === "conflict" || r.status === "error").length;
+  const dirtyCount = repos.filter((r) => r.status === "dirty" || r.status === "ai-commit").length;
+  const activeCount = repos.filter(
+    (r) => r.status === "pulling" || r.status === "cloning" || r.status === "ai-commit",
+  ).length;
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-500/8 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/6 w-48 h-48 bg-violet-500/8 rounded-full blur-3xl pointer-events-none" />
@@ -797,9 +1075,9 @@ function InteractiveRepoSync() {
               disabled={isRunning}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition duration-200 ${
                 activeScenario === s.id
-                  ? 'bg-white/[0.1] text-white border border-white/[0.15] shadow-sm shadow-white/5'
-                  : 'text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.04]'
-              } ${isRunning ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                  ? "bg-white/[0.1] text-white border border-white/[0.15] shadow-sm shadow-white/5"
+                  : "text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.04]"
+              } ${isRunning ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
             >
               {s.icon}
               <span className="hidden sm:inline">{s.label}</span>
@@ -837,14 +1115,14 @@ function InteractiveRepoSync() {
               className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-white/[0.06] border border-white/[0.08] text-white/60 hover:text-white/90 hover:bg-white/[0.1] transition-colors text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {completedScenario ? <RotateCcw className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-              {completedScenario ? 'Replay' : 'Run'}
+              {completedScenario ? "Replay" : "Run"}
             </button>
           </div>
         </div>
       </div>
 
       {/* Worker slots indicator */}
-      {activeScenario === 'parallel-sync' && (
+      {activeScenario === "parallel-sync" && (
         <div className="relative px-4 pb-2">
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-white/30 font-mono shrink-0">workers:</span>
@@ -854,13 +1132,13 @@ function InteractiveRepoSync() {
                   key={i}
                   className={`px-2 py-0.5 rounded text-[10px] font-mono transition duration-300 ${
                     slot
-                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                      : 'bg-white/[0.03] text-white/20 border border-white/[0.06]'
+                      ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+                      : "bg-white/[0.03] text-white/20 border border-white/[0.06]"
                   }`}
                   animate={{ scale: slot ? 1 : 0.95 }}
                   transition={SPRING}
                 >
-                  {slot ?? 'idle'}
+                  {slot ?? "idle"}
                 </motion.div>
               ))}
             </div>
@@ -878,7 +1156,7 @@ function InteractiveRepoSync() {
                 key={repo.name}
                 repo={repo}
                 isAiTarget={aiTargetRepo === repo.name}
-                aiTyping={aiTargetRepo === repo.name ? aiTyping : ''}
+                aiTyping={aiTargetRepo === repo.name ? aiTyping : ""}
                 active={inView}
               />
             ))}
@@ -891,11 +1169,16 @@ function InteractiveRepoSync() {
               <span className="text-[11px] text-white/40 font-medium">Branch States</span>
             </div>
             <div className="space-y-1">
-              {repos.filter((r) => r.status !== 'pending').slice(0, 6).map((repo) => (
-                <BranchRow key={repo.name} repo={repo} />
-              ))}
-              {repos.filter((r) => r.status !== 'pending').length === 0 && (
-                <p className="text-[10px] text-white/20 font-mono py-1">Waiting for sync to start...</p>
+              {repos
+                .filter((r) => r.status !== "pending")
+                .slice(0, 6)
+                .map((repo) => (
+                  <BranchRow key={repo.name} repo={repo} />
+                ))}
+              {repos.filter((r) => r.status !== "pending").length === 0 && (
+                <p className="text-[10px] text-white/20 font-mono py-1">
+                  Waiting for sync to start...
+                </p>
               )}
             </div>
           </div>
@@ -926,15 +1209,23 @@ function InteractiveRepoSync() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.15 }}
                       className={`leading-relaxed ${
-                        line.includes('CONFLICT') || line.includes('DIRTY')
-                          ? 'text-red-400'
-                          : line.includes('synced') || line.includes('cloned') || line.includes('Cloned') || line.includes('CLEAN') || line.includes('committed') || line.includes('resolved') || line.includes('swept')
-                            ? 'text-emerald-400/80'
-                            : line.includes('exit code')
-                              ? 'text-white/70 font-semibold'
-                              : line.includes('agent') || line.includes('AI') || line.includes('Commit')
-                                ? 'text-violet-400/80'
-                                : 'text-white/50'
+                        line.includes("CONFLICT") || line.includes("DIRTY")
+                          ? "text-red-400"
+                          : line.includes("synced") ||
+                              line.includes("cloned") ||
+                              line.includes("Cloned") ||
+                              line.includes("CLEAN") ||
+                              line.includes("committed") ||
+                              line.includes("resolved") ||
+                              line.includes("swept")
+                            ? "text-emerald-400/80"
+                            : line.includes("exit code")
+                              ? "text-white/70 font-semibold"
+                              : line.includes("agent") ||
+                                  line.includes("AI") ||
+                                  line.includes("Commit")
+                                ? "text-violet-400/80"
+                                : "text-white/50"
                       }`}
                     >
                       {line}
@@ -964,14 +1255,18 @@ function InteractiveRepoSync() {
               <div className="shrink-0 mt-0.5">
                 <motion.div
                   animate={inView ? { rotate: [0, 360] } : { rotate: 0 }}
-                  transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                  transition={
+                    inView ? { duration: 2, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+                  }
                 >
                   <Sparkles className="h-4 w-4 text-violet-400" />
                 </motion.div>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-medium text-violet-300">Planning commit for {aiTargetRepo}</span>
+                  <span className="text-[11px] font-medium text-violet-300">
+                    Planning commit for {aiTargetRepo}
+                  </span>
                   <motion.div
                     animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
                     transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
@@ -1011,7 +1306,7 @@ function InteractiveRepoSync() {
                   transition={SPRING_SNAPPY}
                   className="text-xs font-mono text-emerald-400"
                 >
-                  {errorCount > 0 ? `exit ${errorCount > 0 ? 2 : 1}` : 'exit 0'}
+                  {errorCount > 0 ? `exit ${errorCount > 0 ? 2 : 1}` : "exit 0"}
                 </motion.span>
               )}
             </div>
@@ -1019,13 +1314,13 @@ function InteractiveRepoSync() {
               <motion.div
                 className={`h-full rounded-full ${
                   errorCount > 0
-                    ? 'bg-gradient-to-r from-emerald-500 to-red-500'
+                    ? "bg-gradient-to-r from-emerald-500 to-red-500"
                     : syncedCount > 0
-                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
-                      : 'bg-blue-500/70'
+                      ? "bg-gradient-to-r from-emerald-500 to-emerald-400"
+                      : "bg-blue-500/70"
                 }`}
                 animate={{ width: `${((syncedCount + errorCount) / 10) * 100}%` }}
-                transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+                transition={{ type: "spring", stiffness: 100, damping: 20 }}
               />
             </div>
           </div>
@@ -1050,15 +1345,53 @@ function SyncRepoTile({
   aiTyping: string;
   active: boolean;
 }) {
-  const statusStyles: Record<RepoSyncStatus, { border: string; bg: string; text: string; glow: string }> = {
-    pending: { border: 'border-white/[0.06]', bg: 'bg-white/[0.02]', text: 'text-white/30', glow: '' },
-    cloning: { border: 'border-blue-500/30', bg: 'bg-blue-500/[0.05]', text: 'text-blue-400', glow: 'shadow-blue-500/10' },
-    pulling: { border: 'border-amber-500/30', bg: 'bg-amber-500/[0.05]', text: 'text-amber-400', glow: 'shadow-amber-500/10' },
-    dirty: { border: 'border-orange-500/30', bg: 'bg-orange-500/[0.05]', text: 'text-orange-400', glow: '' },
-    'ai-commit': { border: 'border-violet-500/30', bg: 'bg-violet-500/[0.05]', text: 'text-violet-400', glow: 'shadow-violet-500/10' },
-    conflict: { border: 'border-red-500/30', bg: 'bg-red-500/[0.05]', text: 'text-red-400', glow: 'shadow-red-500/10' },
-    synced: { border: 'border-emerald-500/30', bg: 'bg-emerald-500/[0.05]', text: 'text-emerald-400', glow: '' },
-    error: { border: 'border-red-500/30', bg: 'bg-red-500/[0.05]', text: 'text-red-400', glow: '' },
+  const statusStyles: Record<
+    RepoSyncStatus,
+    { border: string; bg: string; text: string; glow: string }
+  > = {
+    pending: {
+      border: "border-white/[0.06]",
+      bg: "bg-white/[0.02]",
+      text: "text-white/30",
+      glow: "",
+    },
+    cloning: {
+      border: "border-blue-500/30",
+      bg: "bg-blue-500/[0.05]",
+      text: "text-blue-400",
+      glow: "shadow-blue-500/10",
+    },
+    pulling: {
+      border: "border-amber-500/30",
+      bg: "bg-amber-500/[0.05]",
+      text: "text-amber-400",
+      glow: "shadow-amber-500/10",
+    },
+    dirty: {
+      border: "border-orange-500/30",
+      bg: "bg-orange-500/[0.05]",
+      text: "text-orange-400",
+      glow: "",
+    },
+    "ai-commit": {
+      border: "border-violet-500/30",
+      bg: "bg-violet-500/[0.05]",
+      text: "text-violet-400",
+      glow: "shadow-violet-500/10",
+    },
+    conflict: {
+      border: "border-red-500/30",
+      bg: "bg-red-500/[0.05]",
+      text: "text-red-400",
+      glow: "shadow-red-500/10",
+    },
+    synced: {
+      border: "border-emerald-500/30",
+      bg: "bg-emerald-500/[0.05]",
+      text: "text-emerald-400",
+      glow: "",
+    },
+    error: { border: "border-red-500/30", bg: "bg-red-500/[0.05]", text: "text-red-400", glow: "" },
   };
 
   const style = statusStyles[repo.status];
@@ -1068,7 +1401,7 @@ function SyncRepoTile({
     cloning: <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />,
     pulling: <Loader2 className="h-3.5 w-3.5 text-amber-400 animate-spin" />,
     dirty: <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />,
-    'ai-commit': <Sparkles className="h-3.5 w-3.5 text-violet-400" />,
+    "ai-commit": <Sparkles className="h-3.5 w-3.5 text-violet-400" />,
     conflict: <XCircle className="h-3.5 w-3.5 text-red-400" />,
     synced: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />,
     error: <XCircle className="h-3.5 w-3.5 text-red-400" />,
@@ -1077,38 +1410,34 @@ function SyncRepoTile({
   return (
     <motion.div
       layout
-      animate={
-        repo.status === 'conflict'
-          ? { x: [0, -3, 3, -3, 3, 0] }
-          : {}
-      }
-      transition={
-        repo.status === 'conflict'
-          ? { duration: 0.4, ease: 'easeInOut' }
-          : SPRING
-      }
-      className={`relative rounded-lg border ${style.border} ${style.bg} p-2 overflow-hidden transition-colors duration-300 ${style.glow ? `shadow-sm ${style.glow}` : ''}`}
+      animate={repo.status === "conflict" ? { x: [0, -3, 3, -3, 3, 0] } : {}}
+      transition={repo.status === "conflict" ? { duration: 0.4, ease: "easeInOut" } : SPRING}
+      className={`relative rounded-lg border ${style.border} ${style.bg} p-2 overflow-hidden transition-colors duration-300 ${style.glow ? `shadow-sm ${style.glow}` : ""}`}
     >
       {/* Pulse overlays */}
       <AnimatePresence>
-        {(repo.status === 'pulling' || repo.status === 'cloning') && (
+        {(repo.status === "pulling" || repo.status === "cloning") && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={active ? { opacity: [0.02, 0.06, 0.02] } : { opacity: 0.02 }}
             exit={{ opacity: 0 }}
-            transition={active ? { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-            className={`absolute inset-0 ${repo.status === 'cloning' ? 'bg-blue-400' : 'bg-amber-400'} rounded-lg`}
+            transition={
+              active ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }
+            }
+            className={`absolute inset-0 ${repo.status === "cloning" ? "bg-blue-400" : "bg-amber-400"} rounded-lg`}
           />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {repo.status === 'ai-commit' && (
+        {repo.status === "ai-commit" && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={active ? { opacity: [0.02, 0.05, 0.02] } : { opacity: 0.02 }}
             exit={{ opacity: 0 }}
-            transition={active ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }
+            }
             className="absolute inset-0 bg-violet-400 rounded-lg"
           />
         )}
@@ -1133,7 +1462,7 @@ function SyncRepoTile({
       </div>
 
       {/* Branch badge */}
-      {repo.status !== 'pending' && (
+      {repo.status !== "pending" && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1141,8 +1470,10 @@ function SyncRepoTile({
         >
           <GitBranch className="h-2.5 w-2.5 text-white/20" />
           <span className="text-[10px] font-mono text-white/25">{repo.branch}</span>
-          {repo.changedFiles > 0 && repo.status !== 'synced' && (
-            <span className="text-[10px] font-mono text-orange-400/70 ml-auto">{repo.changedFiles}f</span>
+          {repo.changedFiles > 0 && repo.status !== "synced" && (
+            <span className="text-[10px] font-mono text-orange-400/70 ml-auto">
+              {repo.changedFiles}f
+            </span>
           )}
         </motion.div>
       )}
@@ -1151,22 +1482,22 @@ function SyncRepoTile({
       <div className="h-0.5 rounded-full bg-white/[0.06] overflow-hidden">
         <motion.div
           className={`h-full rounded-full ${
-            repo.status === 'conflict' || repo.status === 'error'
-              ? 'bg-red-500/70'
-              : repo.status === 'synced'
-                ? 'bg-emerald-500/70'
-                : repo.status === 'ai-commit'
-                  ? 'bg-violet-500/70'
-                  : repo.status === 'dirty'
-                    ? 'bg-orange-500/50'
-                    : repo.status === 'cloning'
-                      ? 'bg-blue-500/70'
-                      : repo.status === 'pulling'
-                        ? 'bg-amber-500/70'
-                        : 'bg-white/10'
+            repo.status === "conflict" || repo.status === "error"
+              ? "bg-red-500/70"
+              : repo.status === "synced"
+                ? "bg-emerald-500/70"
+                : repo.status === "ai-commit"
+                  ? "bg-violet-500/70"
+                  : repo.status === "dirty"
+                    ? "bg-orange-500/50"
+                    : repo.status === "cloning"
+                      ? "bg-blue-500/70"
+                      : repo.status === "pulling"
+                        ? "bg-amber-500/70"
+                        : "bg-white/10"
           }`}
           animate={{ width: `${repo.progress}%` }}
-          transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+          transition={{ type: "spring", stiffness: 120, damping: 20 }}
         />
       </div>
 
@@ -1191,11 +1522,19 @@ function SyncRepoTile({
 function BranchRow({ repo }: { repo: SyncRepo }) {
   const getNodeColor = () => {
     switch (repo.status) {
-      case 'synced': return 'bg-emerald-400';
-      case 'pulling': case 'cloning': return 'bg-amber-400';
-      case 'dirty': case 'ai-commit': return 'bg-violet-400';
-      case 'conflict': case 'error': return 'bg-red-400';
-      default: return 'bg-white/30';
+      case "synced":
+        return "bg-emerald-400";
+      case "pulling":
+      case "cloning":
+        return "bg-amber-400";
+      case "dirty":
+      case "ai-commit":
+        return "bg-violet-400";
+      case "conflict":
+      case "error":
+        return "bg-red-400";
+      default:
+        return "bg-white/30";
     }
   };
 
@@ -1210,9 +1549,7 @@ function BranchRow({ repo }: { repo: SyncRepo }) {
       <div className="flex items-center gap-0.5 w-16 shrink-0">
         <div className={`w-2 h-2 rounded-full ${getNodeColor()} shrink-0`} />
         <div className="h-px flex-1 bg-white/[0.08]" />
-        {repo.ahead > 0 && (
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-        )}
+        {repo.ahead > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
       </div>
       <span className="text-[10px] font-mono text-white/40 w-14 truncate">{repo.name}</span>
       <span className="text-[10px] font-mono text-white/20 w-10">{repo.branch}</span>
@@ -1223,9 +1560,7 @@ function BranchRow({ repo }: { repo: SyncRepo }) {
         {repo.behind > 0 && (
           <span className="text-[10px] font-mono text-amber-400/60">-{repo.behind}</span>
         )}
-        {repo.commitMsg && (
-          <FileText className="h-2.5 w-2.5 text-violet-400/40 ml-1" />
-        )}
+        {repo.commitMsg && <FileText className="h-2.5 w-2.5 text-violet-400/40 ml-1" />}
       </div>
     </motion.div>
   );
@@ -1242,15 +1577,15 @@ function StatusPill({
 }: {
   count: number;
   label: string;
-  color: 'emerald' | 'amber' | 'violet' | 'red';
+  color: "emerald" | "amber" | "violet" | "red";
 }) {
   if (count === 0) return null;
 
   const colorMap = {
-    emerald: 'text-emerald-400/80 bg-emerald-500/10',
-    amber: 'text-amber-400/80 bg-amber-500/10',
-    violet: 'text-violet-400/80 bg-violet-500/10',
-    red: 'text-red-400/80 bg-red-500/10',
+    emerald: "text-emerald-400/80 bg-emerald-500/10",
+    amber: "text-amber-400/80 bg-amber-500/10",
+    violet: "text-violet-400/80 bg-violet-500/10",
+    red: "text-red-400/80 bg-red-500/10",
   };
 
   return (

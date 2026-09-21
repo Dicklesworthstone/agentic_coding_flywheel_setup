@@ -10,12 +10,12 @@
  * stays hand-maintained.
  */
 
-import { manifestTools } from './generated/manifest-tools';
-import { manifestTldrTools } from './generated/manifest-tldr';
-import { manifestCommands } from './generated/manifest-commands';
-import type { ManifestWebTool } from './generated/manifest-tools';
-import type { ManifestTldrTool } from './generated/manifest-tldr';
-import type { ManifestCommand } from './generated/manifest-commands';
+import type { ManifestCommand } from "./generated/manifest-commands";
+import { manifestCommands } from "./generated/manifest-commands";
+import type { ManifestTldrTool } from "./generated/manifest-tldr";
+import { manifestTldrTools } from "./generated/manifest-tldr";
+import type { ManifestWebTool } from "./generated/manifest-tools";
+import { manifestTools } from "./generated/manifest-tools";
 
 /**
  * Maps short IDs used in hand-maintained UI files to canonical manifest module IDs.
@@ -24,51 +24,49 @@ import type { ManifestCommand } from './generated/manifest-commands';
  * The manifest uses dotted module IDs ("stack.mcp_agent_mail", "stack.beads_viewer").
  */
 export const shortIdToModuleId: Record<string, string> = {
-  mail: 'stack.mcp_agent_mail',
-  bv: 'stack.beads_viewer',
-  br: 'stack.beads_rust',
-  ntm: 'stack.ntm',
-  cm: 'stack.cm',
-  cass: 'stack.cass',
-  slb: 'stack.slb',
-  dcg: 'stack.dcg',
-  ru: 'stack.ru',
-  apr: 'stack.automated_plan_reviser',
-  ms: 'stack.meta_skill',
-  ubs: 'stack.ultimate_bug_scanner',
-  pt: 'stack.process_triage',
-  jfp: 'stack.jeffreysprompts',
-  brenner: 'stack.brenner_bot',
-  rch: 'stack.rch',
-  wa: 'stack.wezterm_automata',
-  srps: 'stack.srps',
-  caam: 'stack.caam',
-  xf: 'utils.xf',
-  giil: 'utils.giil',
-  csctf: 'utils.csctf',
-  s2p: 'utils.s2p',
-  tru: 'utils.toon_rust',
-  rano: 'utils.rano',
-  mdwb: 'utils.mdwb',
-  rust_proxy: 'utils.rust_proxy',
-  aadc: 'utils.aadc',
-  caut: 'utils.caut',
-  fsfs: 'stack.frankensearch',
-  sbh: 'stack.storage_ballast_helper',
-  casr: 'stack.cross_agent_session_resumer',
-  dsr: 'stack.doodlestein_self_releaser',
-  asb: 'stack.agent_settings_backup',
-  pcr: 'stack.pcr',
-  ee: 'stack.eidetic_engine_cli',
-  fmd: 'stack.franken_markdown',
-  pi: 'stack.pi_agent_rust',
-  pfr: 'stack.power_failure_resumer',
+  mail: "stack.mcp_agent_mail",
+  bv: "stack.beads_viewer",
+  br: "stack.beads_rust",
+  ntm: "stack.ntm",
+  cm: "stack.cm",
+  cass: "stack.cass",
+  slb: "stack.slb",
+  dcg: "stack.dcg",
+  ru: "stack.ru",
+  apr: "stack.automated_plan_reviser",
+  ms: "stack.meta_skill",
+  ubs: "stack.ultimate_bug_scanner",
+  pt: "stack.process_triage",
+  jfp: "stack.jeffreysprompts",
+  brenner: "stack.brenner_bot",
+  rch: "stack.rch",
+  wa: "stack.wezterm_automata",
+  srps: "stack.srps",
+  caam: "stack.caam",
+  xf: "utils.xf",
+  giil: "utils.giil",
+  csctf: "utils.csctf",
+  s2p: "utils.s2p",
+  tru: "utils.toon_rust",
+  rano: "utils.rano",
+  mdwb: "utils.mdwb",
+  rust_proxy: "utils.rust_proxy",
+  aadc: "utils.aadc",
+  caut: "utils.caut",
+  fsfs: "stack.frankensearch",
+  sbh: "stack.storage_ballast_helper",
+  casr: "stack.cross_agent_session_resumer",
+  dsr: "stack.doodlestein_self_releaser",
+  asb: "stack.agent_settings_backup",
+  pcr: "stack.pcr",
+  ee: "stack.eidetic_engine_cli",
+  fmd: "stack.franken_markdown",
+  pi: "stack.pi_agent_rust",
+  pfr: "stack.power_failure_resumer",
 };
 
 // Lookup maps indexed by moduleId for O(1) access
-const toolsByModuleId = new Map<string, ManifestWebTool>(
-  manifestTools.map((t) => [t.moduleId, t]),
-);
+const toolsByModuleId = new Map<string, ManifestWebTool>(manifestTools.map((t) => [t.moduleId, t]));
 const tldrByModuleId = new Map<string, ManifestTldrTool>(
   manifestTldrTools.map((t) => [t.moduleId, t]),
 );
@@ -94,6 +92,6 @@ export function getManifestCommand(shortId: string): ManifestCommand | undefined
   return moduleId ? commandsByModuleId.get(moduleId) : undefined;
 }
 
+export type { ManifestCommand, ManifestTldrTool, ManifestWebTool };
 // Re-export generated data and types for convenience
-export { manifestTools, manifestTldrTools, manifestCommands };
-export type { ManifestWebTool, ManifestTldrTool, ManifestCommand };
+export { manifestCommands, manifestTldrTools, manifestTools };

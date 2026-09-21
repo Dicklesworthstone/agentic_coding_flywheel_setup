@@ -1,48 +1,48 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  GraduationCap,
-  Terminal,
-  Package,
-  Search,
-  Play,
-  Settings,
-  Download,
-  Code2,
-  Server,
-  CheckCircle2,
-  Circle,
-  ChevronRight,
-  FolderTree,
-  FileText,
-  Loader2,
-  Sparkles,
-  X,
-  Shield,
-  GitBranch,
-  Zap,
-  Layers,
   ArrowRight,
-  Eye,
-  Hash,
-  Star,
-  TrendingUp,
   BarChart3,
-} from 'lucide-react';
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  Code2,
+  Download,
+  Eye,
+  FileText,
+  FolderTree,
+  GitBranch,
+  GraduationCap,
+  Hash,
+  Layers,
+  Loader2,
+  Package,
+  Play,
+  Search,
+  Server,
+  Settings,
+  Shield,
+  Sparkles,
+  Star,
+  Terminal,
+  TrendingUp,
+  X,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function MsLesson() {
   return (
@@ -55,8 +55,8 @@ export function MsLesson() {
       <Section title="What Is Meta Skill?" icon={<GraduationCap className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>Meta Skill (ms)</Highlight> is a local-first knowledge management platform that
-          turns operational knowledge into structured, searchable, reusable artifacts with Git-backed
-          audit trails.
+          turns operational knowledge into structured, searchable, reusable artifacts with
+          Git-backed audit trails.
         </Paragraph>
         <Paragraph>
           It combines BM25 lexical matching with deterministic hash embeddings for hybrid semantic
@@ -104,12 +104,12 @@ export function MsLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'ms list', description: 'List all installed skills' },
-            { command: 'ms install <skill>', description: 'Install a skill from registry' },
-            { command: 'ms uninstall <skill>', description: 'Remove an installed skill' },
-            { command: 'ms update', description: 'Update all installed skills' },
-            { command: 'ms doctor', description: 'Check skill system health' },
-            { command: 'ms search <query>', description: 'Search for skills in registry' },
+            { command: "ms list", description: "List all installed skills" },
+            { command: "ms install <skill>", description: "Install a skill from registry" },
+            { command: "ms uninstall <skill>", description: "Remove an installed skill" },
+            { command: "ms update", description: "Update all installed skills" },
+            { command: "ms doctor", description: "Check skill system health" },
+            { command: "ms search <query>", description: "Search for skills in registry" },
           ]}
         />
 
@@ -123,11 +123,12 @@ export function MsLesson() {
       {/* Section 3: Working with Skills */}
       <Section title="Working with Skills" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          Once installed, skills are automatically available in Claude Code. Use them with
-          the slash command syntax.
+          Once installed, skills are automatically available in Claude Code. Use them with the slash
+          command syntax.
         </Paragraph>
 
-        <CodeBlock code={`# List your installed skills
+        <CodeBlock
+          code={`# List your installed skills
 ms list
 
 # Install a skill
@@ -137,7 +138,8 @@ ms install idea-wizard
 /idea-wizard "build a todo app"
 
 # Update all skills to latest versions
-ms update`} />
+ms update`}
+        />
       </Section>
     </div>
   );
@@ -147,7 +149,7 @@ ms update`} />
 // INTERACTIVE SKILL BROWSER - Skill Library Dashboard
 // =============================================================================
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 interface Skill {
   id: string;
@@ -176,321 +178,338 @@ interface SkillCategory {
 
 const CATEGORIES: SkillCategory[] = [
   {
-    id: 'all',
-    label: 'All Skills',
+    id: "all",
+    label: "All Skills",
     icon: <Layers className="h-4 w-4" />,
-    gradient: 'from-white/10 to-white/5',
-    borderColor: 'border-white/20',
-    textColor: 'text-white',
-    bgAccent: 'bg-white/10',
+    gradient: "from-white/10 to-white/5",
+    borderColor: "border-white/20",
+    textColor: "text-white",
+    bgAccent: "bg-white/10",
   },
   {
-    id: 'cli',
-    label: 'CLI Tools',
+    id: "cli",
+    label: "CLI Tools",
     icon: <Terminal className="h-4 w-4" />,
-    gradient: 'from-violet-500/20 to-purple-500/20',
-    borderColor: 'border-violet-500/30',
-    textColor: 'text-violet-400',
-    bgAccent: 'bg-violet-500/10',
+    gradient: "from-violet-500/20 to-purple-500/20",
+    borderColor: "border-violet-500/30",
+    textColor: "text-violet-400",
+    bgAccent: "bg-violet-500/10",
   },
   {
-    id: 'agent',
-    label: 'Agent Workflows',
+    id: "agent",
+    label: "Agent Workflows",
     icon: <Sparkles className="h-4 w-4" />,
-    gradient: 'from-cyan-500/20 to-blue-500/20',
-    borderColor: 'border-cyan-500/30',
-    textColor: 'text-cyan-400',
-    bgAccent: 'bg-cyan-500/10',
+    gradient: "from-cyan-500/20 to-blue-500/20",
+    borderColor: "border-cyan-500/30",
+    textColor: "text-cyan-400",
+    bgAccent: "bg-cyan-500/10",
   },
   {
-    id: 'infra',
-    label: 'Infrastructure',
+    id: "infra",
+    label: "Infrastructure",
     icon: <Server className="h-4 w-4" />,
-    gradient: 'from-amber-500/20 to-orange-500/20',
-    borderColor: 'border-amber-500/30',
-    textColor: 'text-amber-400',
-    bgAccent: 'bg-amber-500/10',
+    gradient: "from-amber-500/20 to-orange-500/20",
+    borderColor: "border-amber-500/30",
+    textColor: "text-amber-400",
+    bgAccent: "bg-amber-500/10",
   },
   {
-    id: 'security',
-    label: 'Security',
+    id: "security",
+    label: "Security",
     icon: <Shield className="h-4 w-4" />,
-    gradient: 'from-rose-500/20 to-red-500/20',
-    borderColor: 'border-rose-500/30',
-    textColor: 'text-rose-400',
-    bgAccent: 'bg-rose-500/10',
+    gradient: "from-rose-500/20 to-red-500/20",
+    borderColor: "border-rose-500/30",
+    textColor: "text-rose-400",
+    bgAccent: "bg-rose-500/10",
   },
   {
-    id: 'dev',
-    label: 'Development',
+    id: "dev",
+    label: "Development",
     icon: <Code2 className="h-4 w-4" />,
-    gradient: 'from-emerald-500/20 to-teal-500/20',
-    borderColor: 'border-emerald-500/30',
-    textColor: 'text-emerald-400',
-    bgAccent: 'bg-emerald-500/10',
+    gradient: "from-emerald-500/20 to-teal-500/20",
+    borderColor: "border-emerald-500/30",
+    textColor: "text-emerald-400",
+    bgAccent: "bg-emerald-500/10",
   },
   {
-    id: 'coord',
-    label: 'Coordination',
+    id: "coord",
+    label: "Coordination",
     icon: <GitBranch className="h-4 w-4" />,
-    gradient: 'from-fuchsia-500/20 to-pink-500/20',
-    borderColor: 'border-fuchsia-500/30',
-    textColor: 'text-fuchsia-400',
-    bgAccent: 'bg-fuchsia-500/10',
+    gradient: "from-fuchsia-500/20 to-pink-500/20",
+    borderColor: "border-fuchsia-500/30",
+    textColor: "text-fuchsia-400",
+    bgAccent: "bg-fuchsia-500/10",
   },
 ];
 
 const INITIAL_SKILLS: Skill[] = [
   {
-    id: 'code-review',
-    name: 'code-review',
-    description: 'Automated code review with best-practice checks, security scanning, and style suggestions. Generates inline comments and a summary report.',
-    file: 'code-review.md',
+    id: "code-review",
+    name: "code-review",
+    description:
+      "Automated code review with best-practice checks, security scanning, and style suggestions. Generates inline comments and a summary report.",
+    file: "code-review.md",
     installed: true,
-    category: 'dev',
-    triggers: ['/review', '/cr', 'review this PR'],
-    commands: ['ms load code-review', 'ms show code-review'],
-    dependencies: ['refactor-guru'],
+    category: "dev",
+    triggers: ["/review", "/cr", "review this PR"],
+    commands: ["ms load code-review", "ms show code-review"],
+    dependencies: ["refactor-guru"],
     usageCount: 2847,
     rating: 4.9,
-    version: '2.3.1',
+    version: "2.3.1",
   },
   {
-    id: 'refactor-guru',
-    name: 'refactor-guru',
-    description: 'Intelligent refactoring suggestions with before/after diffs, impact analysis, and complexity scoring. Detects code smells automatically.',
-    file: 'refactor-guru.md',
+    id: "refactor-guru",
+    name: "refactor-guru",
+    description:
+      "Intelligent refactoring suggestions with before/after diffs, impact analysis, and complexity scoring. Detects code smells automatically.",
+    file: "refactor-guru.md",
     installed: true,
-    category: 'dev',
-    triggers: ['/refactor', '/clean', 'refactor this function'],
-    commands: ['ms load refactor-guru', 'ms load refactor-guru --full'],
-    dependencies: ['code-review'],
+    category: "dev",
+    triggers: ["/refactor", "/clean", "refactor this function"],
+    commands: ["ms load refactor-guru", "ms load refactor-guru --full"],
+    dependencies: ["code-review"],
     usageCount: 1923,
     rating: 4.7,
-    version: '1.8.0',
+    version: "1.8.0",
   },
   {
-    id: 'idea-wizard',
-    name: 'idea-wizard',
-    description: 'Turn vague ideas into structured project plans with architecture diagrams, tech stack recommendations, and milestone breakdowns.',
-    file: 'idea-wizard.md',
+    id: "idea-wizard",
+    name: "idea-wizard",
+    description:
+      "Turn vague ideas into structured project plans with architecture diagrams, tech stack recommendations, and milestone breakdowns.",
+    file: "idea-wizard.md",
     installed: false,
-    category: 'agent',
-    triggers: ['/idea', '/brainstorm', 'plan this project'],
-    commands: ['ms load idea-wizard', 'ms show idea-wizard'],
-    dependencies: ['doc-gen'],
+    category: "agent",
+    triggers: ["/idea", "/brainstorm", "plan this project"],
+    commands: ["ms load idea-wizard", "ms show idea-wizard"],
+    dependencies: ["doc-gen"],
     usageCount: 3421,
     rating: 4.8,
-    version: '3.1.0',
+    version: "3.1.0",
   },
   {
-    id: 'doc-gen',
-    name: 'doc-gen',
-    description: 'Generate comprehensive documentation from code with JSDoc, README templates, API docs, and usage examples. Supports multiple output formats.',
-    file: 'doc-gen.md',
+    id: "doc-gen",
+    name: "doc-gen",
+    description:
+      "Generate comprehensive documentation from code with JSDoc, README templates, API docs, and usage examples. Supports multiple output formats.",
+    file: "doc-gen.md",
     installed: false,
-    category: 'dev',
-    triggers: ['/docs', '/document', 'generate docs'],
-    commands: ['ms load doc-gen', 'ms load doc-gen --full'],
+    category: "dev",
+    triggers: ["/docs", "/document", "generate docs"],
+    commands: ["ms load doc-gen", "ms load doc-gen --full"],
     dependencies: [],
     usageCount: 2156,
     rating: 4.6,
-    version: '2.0.4',
+    version: "2.0.4",
   },
   {
-    id: 'stacktrace-decoder',
-    name: 'stacktrace-decoder',
-    description: 'Parse and explain complex stack traces with source mapping, root cause analysis, and suggested fixes. Works with Node.js, Python, Rust, and Go.',
-    file: 'stacktrace-decoder.md',
+    id: "stacktrace-decoder",
+    name: "stacktrace-decoder",
+    description:
+      "Parse and explain complex stack traces with source mapping, root cause analysis, and suggested fixes. Works with Node.js, Python, Rust, and Go.",
+    file: "stacktrace-decoder.md",
     installed: true,
-    category: 'cli',
-    triggers: ['/decode', '/trace', 'explain this error'],
-    commands: ['ms load stacktrace-decoder', 'ms show stacktrace-decoder'],
-    dependencies: ['log-analyzer'],
+    category: "cli",
+    triggers: ["/decode", "/trace", "explain this error"],
+    commands: ["ms load stacktrace-decoder", "ms show stacktrace-decoder"],
+    dependencies: ["log-analyzer"],
     usageCount: 1567,
     rating: 4.5,
-    version: '1.4.2',
+    version: "1.4.2",
   },
   {
-    id: 'log-analyzer',
-    name: 'log-analyzer',
-    description: 'Pattern-match log files to find anomalies, errors, and performance bottlenecks. Generates timeline visualizations and alert summaries.',
-    file: 'log-analyzer.md',
+    id: "log-analyzer",
+    name: "log-analyzer",
+    description:
+      "Pattern-match log files to find anomalies, errors, and performance bottlenecks. Generates timeline visualizations and alert summaries.",
+    file: "log-analyzer.md",
     installed: false,
-    category: 'cli',
-    triggers: ['/logs', '/analyze', 'check the logs'],
-    commands: ['ms load log-analyzer', 'ms load log-analyzer --full'],
+    category: "cli",
+    triggers: ["/logs", "/analyze", "check the logs"],
+    commands: ["ms load log-analyzer", "ms load log-analyzer --full"],
     dependencies: [],
     usageCount: 987,
     rating: 4.3,
-    version: '1.2.0',
+    version: "1.2.0",
   },
   {
-    id: 'git-bisect-helper',
-    name: 'git-bisect-helper',
-    description: 'Automate git bisect to find the exact commit that introduced a bug. Supports custom test commands and parallel testing.',
-    file: 'git-bisect-helper.md',
+    id: "git-bisect-helper",
+    name: "git-bisect-helper",
+    description:
+      "Automate git bisect to find the exact commit that introduced a bug. Supports custom test commands and parallel testing.",
+    file: "git-bisect-helper.md",
     installed: false,
-    category: 'cli',
-    triggers: ['/bisect', '/findbug', 'find which commit broke'],
-    commands: ['ms load git-bisect-helper', 'ms show git-bisect-helper'],
-    dependencies: ['stacktrace-decoder'],
+    category: "cli",
+    triggers: ["/bisect", "/findbug", "find which commit broke"],
+    commands: ["ms load git-bisect-helper", "ms show git-bisect-helper"],
+    dependencies: ["stacktrace-decoder"],
     usageCount: 654,
     rating: 4.4,
-    version: '1.1.0',
+    version: "1.1.0",
   },
   {
-    id: 'test-gen',
-    name: 'test-gen',
-    description: 'Generate unit and integration tests with edge cases, mocking strategies, and coverage targets. Infers test frameworks from project config.',
-    file: 'test-gen.md',
+    id: "test-gen",
+    name: "test-gen",
+    description:
+      "Generate unit and integration tests with edge cases, mocking strategies, and coverage targets. Infers test frameworks from project config.",
+    file: "test-gen.md",
     installed: true,
-    category: 'dev',
-    triggers: ['/test', '/generate-tests', 'write tests for'],
-    commands: ['ms load test-gen', 'ms load test-gen --full'],
-    dependencies: ['code-review'],
+    category: "dev",
+    triggers: ["/test", "/generate-tests", "write tests for"],
+    commands: ["ms load test-gen", "ms load test-gen --full"],
+    dependencies: ["code-review"],
     usageCount: 2891,
     rating: 4.8,
-    version: '2.5.0',
+    version: "2.5.0",
   },
   {
-    id: 'docker-compose',
-    name: 'docker-compose',
-    description: 'Generate optimized Dockerfiles and docker-compose configs with multi-stage builds, health checks, and security hardening.',
-    file: 'docker-compose.md',
+    id: "docker-compose",
+    name: "docker-compose",
+    description:
+      "Generate optimized Dockerfiles and docker-compose configs with multi-stage builds, health checks, and security hardening.",
+    file: "docker-compose.md",
     installed: false,
-    category: 'infra',
-    triggers: ['/docker', '/containerize', 'dockerize this'],
-    commands: ['ms load docker-compose', 'ms show docker-compose'],
-    dependencies: ['ci-pipeline', 'deploy-helper'],
+    category: "infra",
+    triggers: ["/docker", "/containerize", "dockerize this"],
+    commands: ["ms load docker-compose", "ms show docker-compose"],
+    dependencies: ["ci-pipeline", "deploy-helper"],
     usageCount: 1432,
     rating: 4.6,
-    version: '2.1.0',
+    version: "2.1.0",
   },
   {
-    id: 'ci-pipeline',
-    name: 'ci-pipeline',
-    description: 'Create CI/CD pipelines for GitHub Actions, GitLab CI, or CircleCI from project config. Auto-detects build steps and test suites.',
-    file: 'ci-pipeline.md',
+    id: "ci-pipeline",
+    name: "ci-pipeline",
+    description:
+      "Create CI/CD pipelines for GitHub Actions, GitLab CI, or CircleCI from project config. Auto-detects build steps and test suites.",
+    file: "ci-pipeline.md",
     installed: true,
-    category: 'infra',
-    triggers: ['/ci', '/pipeline', 'set up CI'],
-    commands: ['ms load ci-pipeline', 'ms load ci-pipeline --full'],
-    dependencies: ['test-gen'],
+    category: "infra",
+    triggers: ["/ci", "/pipeline", "set up CI"],
+    commands: ["ms load ci-pipeline", "ms load ci-pipeline --full"],
+    dependencies: ["test-gen"],
     usageCount: 1876,
     rating: 4.7,
-    version: '2.2.1',
+    version: "2.2.1",
   },
   {
-    id: 'deploy-helper',
-    name: 'deploy-helper',
-    description: 'Deployment checklists, rollback plans, and environment configuration validation. Supports blue-green and canary deployment strategies.',
-    file: 'deploy-helper.md',
+    id: "deploy-helper",
+    name: "deploy-helper",
+    description:
+      "Deployment checklists, rollback plans, and environment configuration validation. Supports blue-green and canary deployment strategies.",
+    file: "deploy-helper.md",
     installed: false,
-    category: 'infra',
-    triggers: ['/deploy', '/release', 'deploy to production'],
-    commands: ['ms load deploy-helper', 'ms show deploy-helper'],
-    dependencies: ['ci-pipeline'],
+    category: "infra",
+    triggers: ["/deploy", "/release", "deploy to production"],
+    commands: ["ms load deploy-helper", "ms show deploy-helper"],
+    dependencies: ["ci-pipeline"],
     usageCount: 1098,
     rating: 4.5,
-    version: '1.7.0',
+    version: "1.7.0",
   },
   {
-    id: 'secret-scanner',
-    name: 'secret-scanner',
-    description: 'Scan codebases for leaked credentials, API keys, and sensitive data. Integrates with pre-commit hooks and CI pipelines.',
-    file: 'secret-scanner.md',
+    id: "secret-scanner",
+    name: "secret-scanner",
+    description:
+      "Scan codebases for leaked credentials, API keys, and sensitive data. Integrates with pre-commit hooks and CI pipelines.",
+    file: "secret-scanner.md",
     installed: true,
-    category: 'security',
-    triggers: ['/scan-secrets', '/secrets', 'check for leaked keys'],
-    commands: ['ms load secret-scanner', 'ms load secret-scanner --full'],
+    category: "security",
+    triggers: ["/scan-secrets", "/secrets", "check for leaked keys"],
+    commands: ["ms load secret-scanner", "ms load secret-scanner --full"],
     dependencies: [],
     usageCount: 2234,
     rating: 4.9,
-    version: '3.0.2',
+    version: "3.0.2",
   },
   {
-    id: 'threat-model',
-    name: 'threat-model',
-    description: 'Generate STRIDE threat models from architecture descriptions. Identifies attack surfaces, trust boundaries, and mitigation strategies.',
-    file: 'threat-model.md',
+    id: "threat-model",
+    name: "threat-model",
+    description:
+      "Generate STRIDE threat models from architecture descriptions. Identifies attack surfaces, trust boundaries, and mitigation strategies.",
+    file: "threat-model.md",
     installed: false,
-    category: 'security',
-    triggers: ['/threat', '/stride', 'analyze security'],
-    commands: ['ms load threat-model', 'ms show threat-model'],
-    dependencies: ['secret-scanner'],
+    category: "security",
+    triggers: ["/threat", "/stride", "analyze security"],
+    commands: ["ms load threat-model", "ms show threat-model"],
+    dependencies: ["secret-scanner"],
     usageCount: 876,
     rating: 4.4,
-    version: '1.3.0',
+    version: "1.3.0",
   },
   {
-    id: 'swarm-dispatch',
-    name: 'swarm-dispatch',
-    description: 'Coordinate multi-agent task execution with dependency resolution, parallel scheduling, and progress tracking across agent instances.',
-    file: 'swarm-dispatch.md',
+    id: "swarm-dispatch",
+    name: "swarm-dispatch",
+    description:
+      "Coordinate multi-agent task execution with dependency resolution, parallel scheduling, and progress tracking across agent instances.",
+    file: "swarm-dispatch.md",
     installed: false,
-    category: 'coord',
-    triggers: ['/swarm', '/dispatch', 'run agents in parallel'],
-    commands: ['ms load swarm-dispatch', 'ms load swarm-dispatch --full'],
-    dependencies: ['idea-wizard'],
+    category: "coord",
+    triggers: ["/swarm", "/dispatch", "run agents in parallel"],
+    commands: ["ms load swarm-dispatch", "ms load swarm-dispatch --full"],
+    dependencies: ["idea-wizard"],
     usageCount: 1567,
     rating: 4.7,
-    version: '2.0.0',
+    version: "2.0.0",
   },
   {
-    id: 'session-replay',
-    name: 'session-replay',
-    description: 'Replay and analyze previous agent sessions to extract patterns, identify failures, and mine reusable knowledge for skill creation.',
-    file: 'session-replay.md',
+    id: "session-replay",
+    name: "session-replay",
+    description:
+      "Replay and analyze previous agent sessions to extract patterns, identify failures, and mine reusable knowledge for skill creation.",
+    file: "session-replay.md",
     installed: false,
-    category: 'coord',
-    triggers: ['/replay', '/session', 'review last session'],
-    commands: ['ms load session-replay', 'ms show session-replay'],
+    category: "coord",
+    triggers: ["/replay", "/session", "review last session"],
+    commands: ["ms load session-replay", "ms show session-replay"],
     dependencies: [],
     usageCount: 1234,
     rating: 4.6,
-    version: '1.5.0',
+    version: "1.5.0",
   },
   {
-    id: 'prompt-optimizer',
-    name: 'prompt-optimizer',
-    description: 'Analyze and optimize system prompts for clarity, token efficiency, and instruction adherence. Scores prompts on multiple dimensions.',
-    file: 'prompt-optimizer.md',
+    id: "prompt-optimizer",
+    name: "prompt-optimizer",
+    description:
+      "Analyze and optimize system prompts for clarity, token efficiency, and instruction adherence. Scores prompts on multiple dimensions.",
+    file: "prompt-optimizer.md",
     installed: false,
-    category: 'agent',
-    triggers: ['/optimize-prompt', '/prompt', 'improve this prompt'],
-    commands: ['ms load prompt-optimizer', 'ms load prompt-optimizer --full'],
-    dependencies: ['session-replay'],
+    category: "agent",
+    triggers: ["/optimize-prompt", "/prompt", "improve this prompt"],
+    commands: ["ms load prompt-optimizer", "ms load prompt-optimizer --full"],
+    dependencies: ["session-replay"],
     usageCount: 1789,
     rating: 4.8,
-    version: '2.4.0',
+    version: "2.4.0",
   },
   {
-    id: 'context-packer',
-    name: 'context-packer',
-    description: 'Intelligently pack maximum relevant context into agent prompts. Uses semantic chunking and priority ranking to fit within token limits.',
-    file: 'context-packer.md',
+    id: "context-packer",
+    name: "context-packer",
+    description:
+      "Intelligently pack maximum relevant context into agent prompts. Uses semantic chunking and priority ranking to fit within token limits.",
+    file: "context-packer.md",
     installed: true,
-    category: 'agent',
-    triggers: ['/pack', '/context', 'pack context for'],
-    commands: ['ms load context-packer', 'ms load context-packer --pack 8000'],
-    dependencies: ['prompt-optimizer'],
+    category: "agent",
+    triggers: ["/pack", "/context", "pack context for"],
+    commands: ["ms load context-packer", "ms load context-packer --pack 8000"],
+    dependencies: ["prompt-optimizer"],
     usageCount: 2543,
     rating: 4.9,
-    version: '3.2.0',
+    version: "3.2.0",
   },
 ];
 
 const FILE_TREE_INITIAL: Array<{
   path: string;
-  type: 'dir' | 'file';
+  type: "dir" | "file";
   depth: number;
 }> = [
-  { path: '.claude/', type: 'dir' as const, depth: 0 },
-  { path: 'skills/', type: 'dir' as const, depth: 1 },
+  { path: ".claude/", type: "dir" as const, depth: 0 },
+  { path: "skills/", type: "dir" as const, depth: 1 },
 ];
 
-type ViewMode = 'grid' | 'detail' | 'deps' | 'terminal';
+type ViewMode = "grid" | "detail" | "deps" | "terminal";
 
 function getCategoryMeta(categoryId: string): SkillCategory {
   return CATEGORIES.find((c) => c.id === categoryId) ?? CATEGORIES[0];
@@ -499,7 +518,7 @@ function getCategoryMeta(categoryId: string): SkillCategory {
 // Highlight matching text in search
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
   const parts = text.split(regex);
   // After split with a capturing group, odd indices are matches
   return (
@@ -511,7 +530,7 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
           </span>
         ) : (
           <span key={i}>{part}</span>
-        )
+        ),
       )}
     </>
   );
@@ -533,9 +552,12 @@ function MiniTerminal({ lines, isVisible }: { lines: string[]; isVisible: boolea
     const resetTimer = setTimeout(() => setVisibleLines(0), 0);
     timers.push(resetTimer);
     lines.forEach((_, idx) => {
-      const t = setTimeout(() => {
-        setVisibleLines(idx + 1);
-      }, 300 + idx * 400);
+      const t = setTimeout(
+        () => {
+          setVisibleLines(idx + 1);
+        },
+        300 + idx * 400,
+      );
       timers.push(t);
     });
     return () => timers.forEach(clearTimeout);
@@ -560,15 +582,15 @@ function MiniTerminal({ lines, isVisible }: { lines: string[]; isVisible: boolea
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ ...SPRING, delay: 0.05 }}
                 className={
-                  line.startsWith('$')
-                    ? 'text-emerald-400'
-                    : line.startsWith('#')
-                      ? 'text-white/30'
-                      : line.startsWith('>')
-                        ? 'text-cyan-400/80'
-                        : line.startsWith('!')
-                          ? 'text-amber-400/80'
-                          : 'text-white/50'
+                  line.startsWith("$")
+                    ? "text-emerald-400"
+                    : line.startsWith("#")
+                      ? "text-white/30"
+                      : line.startsWith(">")
+                        ? "text-cyan-400/80"
+                        : line.startsWith("!")
+                          ? "text-amber-400/80"
+                          : "text-white/50"
                 }
               >
                 {line}
@@ -627,8 +649,7 @@ function DependencyGraph({
           result.push({
             from: skill.id,
             to: depSkill.id,
-            highlighted:
-              selectedSkill?.id === skill.id || selectedSkill?.id === depSkill.id,
+            highlighted: selectedSkill?.id === skill.id || selectedSkill?.id === depSkill.id,
           });
         }
       });
@@ -663,9 +684,9 @@ function DependencyGraph({
                 y1={from.y}
                 x2={to.x}
                 y2={to.y}
-                stroke={edge.highlighted ? 'rgba(139, 92, 246, 0.6)' : 'rgba(255,255,255,0.08)'}
+                stroke={edge.highlighted ? "rgba(139, 92, 246, 0.6)" : "rgba(255,255,255,0.08)"}
                 strokeWidth={edge.highlighted ? 2 : 1}
-                strokeDasharray={edge.highlighted ? 'none' : '4 4'}
+                strokeDasharray={edge.highlighted ? "none" : "4 4"}
                 initial={{ pathLength: 0 }}
                 animate={{ pathLength: 1 }}
                 transition={{ duration: 0.8, delay: i * 0.05 }}
@@ -691,7 +712,7 @@ function DependencyGraph({
                 cx={arrowX}
                 cy={arrowY}
                 r={2.5}
-                fill={edge.highlighted ? 'rgba(139, 92, 246, 0.8)' : 'rgba(255,255,255,0.15)'}
+                fill={edge.highlighted ? "rgba(139, 92, 246, 0.8)" : "rgba(255,255,255,0.15)"}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.5 + i * 0.05 }}
@@ -707,35 +728,31 @@ function DependencyGraph({
             const isConnected =
               selectedSkill?.dependencies.includes(skill.name) ||
               skill.dependencies.some(
-                (d) => skills.find((s) => s.name === d)?.id === selectedSkill?.id
+                (d) => skills.find((s) => s.name === d)?.id === selectedSkill?.id,
               );
             return (
-              <g
-                key={skill.id}
-                onClick={() => onSelectSkill(skill)}
-                style={{ cursor: 'pointer' }}
-              >
+              <g key={skill.id} onClick={() => onSelectSkill(skill)} style={{ cursor: "pointer" }}>
                 <motion.circle
                   cx={pos.x}
                   cy={pos.y}
                   r={isSelected ? 14 : 10}
                   fill={
                     isSelected
-                      ? 'rgba(139, 92, 246, 0.3)'
+                      ? "rgba(139, 92, 246, 0.3)"
                       : isConnected
-                        ? 'rgba(139, 92, 246, 0.15)'
+                        ? "rgba(139, 92, 246, 0.15)"
                         : skill.installed
-                          ? 'rgba(52, 211, 153, 0.15)'
-                          : 'rgba(255, 255, 255, 0.05)'
+                          ? "rgba(52, 211, 153, 0.15)"
+                          : "rgba(255, 255, 255, 0.05)"
                   }
                   stroke={
                     isSelected
-                      ? 'rgba(139, 92, 246, 0.8)'
+                      ? "rgba(139, 92, 246, 0.8)"
                       : isConnected
-                        ? 'rgba(139, 92, 246, 0.4)'
+                        ? "rgba(139, 92, 246, 0.4)"
                         : skill.installed
-                          ? 'rgba(52, 211, 153, 0.4)'
-                          : 'rgba(255, 255, 255, 0.12)'
+                          ? "rgba(52, 211, 153, 0.4)"
+                          : "rgba(255, 255, 255, 0.12)"
                   }
                   strokeWidth={isSelected ? 2 : 1}
                   initial={{ scale: 0 }}
@@ -746,16 +763,14 @@ function DependencyGraph({
                   x={pos.x}
                   y={pos.y + (isSelected ? 24 : 20)}
                   textAnchor="middle"
-                  fill={isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)'}
+                  fill={isSelected ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}
                   fontSize={isSelected ? 9 : 8}
                   fontFamily="monospace"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.3 + i * 0.04 }}
                 >
-                  {skill.name.length > 12
-                    ? skill.name.slice(0, 11) + '\u2026'
-                    : skill.name}
+                  {skill.name.length > 12 ? skill.name.slice(0, 11) + "\u2026" : skill.name}
                 </motion.text>
                 {/* Category-color inner dot */}
                 <motion.circle
@@ -763,19 +778,19 @@ function DependencyGraph({
                   cy={pos.y}
                   r={3}
                   fill={
-                    catMeta.textColor.includes('violet')
-                      ? 'rgba(139,92,246,0.8)'
-                      : catMeta.textColor.includes('cyan')
-                        ? 'rgba(6,182,212,0.8)'
-                        : catMeta.textColor.includes('amber')
-                          ? 'rgba(245,158,11,0.8)'
-                          : catMeta.textColor.includes('rose')
-                            ? 'rgba(244,63,94,0.8)'
-                            : catMeta.textColor.includes('emerald')
-                              ? 'rgba(52,211,153,0.8)'
-                              : catMeta.textColor.includes('fuchsia')
-                                ? 'rgba(217,70,239,0.8)'
-                                : 'rgba(255,255,255,0.6)'
+                    catMeta.textColor.includes("violet")
+                      ? "rgba(139,92,246,0.8)"
+                      : catMeta.textColor.includes("cyan")
+                        ? "rgba(6,182,212,0.8)"
+                        : catMeta.textColor.includes("amber")
+                          ? "rgba(245,158,11,0.8)"
+                          : catMeta.textColor.includes("rose")
+                            ? "rgba(244,63,94,0.8)"
+                            : catMeta.textColor.includes("emerald")
+                              ? "rgba(52,211,153,0.8)"
+                              : catMeta.textColor.includes("fuchsia")
+                                ? "rgba(217,70,239,0.8)"
+                                : "rgba(255,255,255,0.6)"
                   }
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -797,15 +812,36 @@ function DependencyGraph({
 function StatsBar({ skills }: { skills: Skill[] }) {
   const installedCount = skills.filter((s) => s.installed).length;
   const totalUsage = skills.reduce((sum, s) => sum + s.usageCount, 0);
-  const avgRating = skills.length > 0 ? skills.reduce((sum, s) => sum + s.rating, 0) / skills.length : 0;
+  const avgRating =
+    skills.length > 0 ? skills.reduce((sum, s) => sum + s.rating, 0) / skills.length : 0;
 
   return (
     <div className="grid grid-cols-4 gap-3">
       {[
-        { label: 'Total', value: skills.length.toString(), icon: <Package className="h-3.5 w-3.5" />, color: 'text-white/70' },
-        { label: 'Installed', value: `${installedCount}`, icon: <CheckCircle2 className="h-3.5 w-3.5" />, color: 'text-emerald-400' },
-        { label: 'Usage', value: `${(totalUsage / 1000).toFixed(1)}k`, icon: <TrendingUp className="h-3.5 w-3.5" />, color: 'text-cyan-400' },
-        { label: 'Avg Rating', value: avgRating.toFixed(1), icon: <Star className="h-3.5 w-3.5" />, color: 'text-amber-400' },
+        {
+          label: "Total",
+          value: skills.length.toString(),
+          icon: <Package className="h-3.5 w-3.5" />,
+          color: "text-white/70",
+        },
+        {
+          label: "Installed",
+          value: `${installedCount}`,
+          icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+          color: "text-emerald-400",
+        },
+        {
+          label: "Usage",
+          value: `${(totalUsage / 1000).toFixed(1)}k`,
+          icon: <TrendingUp className="h-3.5 w-3.5" />,
+          color: "text-cyan-400",
+        },
+        {
+          label: "Avg Rating",
+          value: avgRating.toFixed(1),
+          icon: <Star className="h-3.5 w-3.5" />,
+          color: "text-amber-400",
+        },
       ].map((stat, i) => (
         <motion.div
           key={stat.label}
@@ -826,10 +862,10 @@ function StatsBar({ skills }: { skills: Skill[] }) {
 }
 
 function InteractiveSkillBrowser() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("all");
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [installingSkill, setInstallingSkill] = useState<string | null>(null);
   const [installProgress, setInstallProgress] = useState(0);
   const [localSkills, setLocalSkills] = useState(INITIAL_SKILLS);
@@ -840,7 +876,7 @@ function InteractiveSkillBrowser() {
   // Filtered skills
   const filteredSkills = useMemo(() => {
     let result = localSkills;
-    if (activeCategory !== 'all') {
+    if (activeCategory !== "all") {
       result = result.filter((s) => s.category === activeCategory);
     }
     if (searchQuery.trim()) {
@@ -849,7 +885,7 @@ function InteractiveSkillBrowser() {
         (s) =>
           s.name.toLowerCase().includes(q) ||
           s.description.toLowerCase().includes(q) ||
-          s.triggers.some((t) => t.toLowerCase().includes(q))
+          s.triggers.some((t) => t.toLowerCase().includes(q)),
       );
     }
     return result;
@@ -871,7 +907,7 @@ function InteractiveSkillBrowser() {
       setInstallingSkill(skill.id);
       setInstallProgress(0);
     },
-    [installingSkill]
+    [installingSkill],
   );
 
   // Animate install progress
@@ -885,12 +921,10 @@ function InteractiveSkillBrowser() {
           // Use setTimeout to avoid synchronous setState in effect
           setTimeout(() => {
             setLocalSkills((skills) =>
-              skills.map((s) =>
-                s.id === installingSkill ? { ...s, installed: true } : s
-              )
+              skills.map((s) => (s.id === installingSkill ? { ...s, installed: true } : s)),
             );
             setSelectedSkill((prev) =>
-              prev?.id === installingSkill ? { ...prev, installed: true } : prev
+              prev?.id === installingSkill ? { ...prev, installed: true } : prev,
             );
             setInstallingSkill(null);
           }, 0);
@@ -911,31 +945,34 @@ function InteractiveSkillBrowser() {
       `$ ms load ${selectedSkill.name}`,
       `> Loading skill from .claude/skills/${selectedSkill.file}`,
       `> Resolving ${selectedSkill.dependencies.length} dependencies...`,
-      `> Skill ready. Triggers: ${selectedSkill.triggers.join(', ')}`,
+      `> Skill ready. Triggers: ${selectedSkill.triggers.join(", ")}`,
       `! Tip: Use "${selectedSkill.triggers[0]}" in Claude Code`,
     ];
   }, [selectedSkill]);
 
   // Installed files derived from skills
   const installedFiles = useMemo(() => {
-    const base: { path: string; type: 'dir' | 'file'; depth: number }[] = [...FILE_TREE_INITIAL];
+    const base: { path: string; type: "dir" | "file"; depth: number }[] = [...FILE_TREE_INITIAL];
     localSkills
       .filter((s) => s.installed)
       .forEach((s) => {
-        base.push({ path: s.file, type: 'file', depth: 2 });
+        base.push({ path: s.file, type: "file", depth: 2 });
       });
     return base;
   }, [localSkills]);
 
   const viewModes: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
-    { id: 'grid', label: 'Grid', icon: <Layers className="h-3.5 w-3.5" /> },
-    { id: 'detail', label: 'Detail', icon: <Eye className="h-3.5 w-3.5" /> },
-    { id: 'deps', label: 'Deps', icon: <GitBranch className="h-3.5 w-3.5" /> },
-    { id: 'terminal', label: 'Terminal', icon: <Terminal className="h-3.5 w-3.5" /> },
+    { id: "grid", label: "Grid", icon: <Layers className="h-3.5 w-3.5" /> },
+    { id: "detail", label: "Detail", icon: <Eye className="h-3.5 w-3.5" /> },
+    { id: "deps", label: "Deps", icon: <GitBranch className="h-3.5 w-3.5" /> },
+    { id: "terminal", label: "Terminal", icon: <Terminal className="h-3.5 w-3.5" /> },
   ];
 
   return (
-    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Dashboard header */}
       <div className="border-b border-white/[0.06] px-6 py-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -946,7 +983,7 @@ function InteractiveSkillBrowser() {
             <div>
               <h3 className="text-sm font-bold text-white">Skill Library Dashboard</h3>
               <p className="text-xs text-white/40">
-                Browse, search, and manage {localSkills.length} skills across{' '}
+                Browse, search, and manage {localSkills.length} skills across{" "}
                 {CATEGORIES.length - 1} categories
               </p>
             </div>
@@ -959,8 +996,8 @@ function InteractiveSkillBrowser() {
                 onClick={() => setViewMode(mode.id)}
                 className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
                   viewMode === mode.id
-                    ? 'bg-primary/20 text-primary border border-primary/30'
-                    : 'border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60'
+                    ? "bg-primary/20 text-primary border border-primary/30"
+                    : "border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60"
                 }`}
               >
                 {mode.icon}
@@ -991,7 +1028,7 @@ function InteractiveSkillBrowser() {
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => setSearchQuery("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
             >
               <X className="h-4 w-4" />
@@ -1014,16 +1051,12 @@ function InteractiveSkillBrowser() {
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
                   isActive
                     ? `${cat.borderColor} bg-gradient-to-r ${cat.gradient} ${cat.textColor}`
-                    : 'border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60'
+                    : "border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60"
                 }`}
               >
                 {cat.icon}
                 {cat.label}
-                <span
-                  className={`ml-0.5 text-[10px] ${
-                    isActive ? 'opacity-70' : 'opacity-40'
-                  }`}
-                >
+                <span className={`ml-0.5 text-[10px] ${isActive ? "opacity-70" : "opacity-40"}`}>
                   {count}
                 </span>
               </motion.button>
@@ -1036,7 +1069,7 @@ function InteractiveSkillBrowser() {
       <div className="p-6">
         <AnimatePresence mode="wait">
           {/* GRID VIEW */}
-          {viewMode === 'grid' && (
+          {viewMode === "grid" && (
             <motion.div
               key="grid"
               initial={{ opacity: 0, y: 12 }}
@@ -1050,8 +1083,8 @@ function InteractiveSkillBrowser() {
                   <p className="text-sm text-white/30">No skills match your search</p>
                   <button
                     onClick={() => {
-                      setSearchQuery('');
-                      setActiveCategory('all');
+                      setSearchQuery("");
+                      setActiveCategory("all");
                     }}
                     className="mt-2 text-xs text-primary/60 hover:text-primary transition-colors"
                   >
@@ -1074,7 +1107,7 @@ function InteractiveSkillBrowser() {
                         className={`group relative rounded-xl border p-4 cursor-pointer transition-colors ${
                           isSelected
                             ? `${cat.borderColor} bg-gradient-to-br ${cat.gradient}`
-                            : 'border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12] hover:bg-white/[0.03]'
+                            : "border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12] hover:bg-white/[0.03]"
                         }`}
                       >
                         {/* Top row: icon + name + status */}
@@ -1133,21 +1166,22 @@ function InteractiveSkillBrowser() {
                               {skill.rating}
                             </span>
                             <span className="flex items-center gap-1">
-                              <Hash className="h-3 w-3" />
-                              v{skill.version}
+                              <Hash className="h-3 w-3" />v{skill.version}
                             </span>
                           </div>
                           {isInstalling ? (
                             <div className="flex items-center gap-1.5">
                               <motion.div
                                 animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                                transition={inView ? { repeat: Infinity, duration: 1, ease: 'linear' } : { duration: 0.2 }}
+                                transition={
+                                  inView
+                                    ? { repeat: Infinity, duration: 1, ease: "linear" }
+                                    : { duration: 0.2 }
+                                }
                               >
                                 <Loader2 className={`h-3.5 w-3.5 ${cat.textColor}`} />
                               </motion.div>
-                              <span className="text-[10px] text-white/40">
-                                {installProgress}%
-                              </span>
+                              <span className="text-[10px] text-white/40">{installProgress}%</span>
                             </div>
                           ) : !skill.installed ? (
                             <motion.button
@@ -1173,8 +1207,8 @@ function InteractiveSkillBrowser() {
                         {isInstalling && (
                           <div className="mt-2 h-1 rounded-full bg-white/[0.06] overflow-hidden">
                             <motion.div
-                              className={`h-full rounded-full bg-gradient-to-r ${cat.gradient.replace(/\/20/g, '/60')}`}
-                              initial={{ width: '0%' }}
+                              className={`h-full rounded-full bg-gradient-to-r ${cat.gradient.replace(/\/20/g, "/60")}`}
+                              initial={{ width: "0%" }}
                               animate={{ width: `${installProgress}%` }}
                               transition={{ duration: 0.08 }}
                             />
@@ -1189,7 +1223,7 @@ function InteractiveSkillBrowser() {
           )}
 
           {/* DETAIL VIEW */}
-          {viewMode === 'detail' && (
+          {viewMode === "detail" && (
             <motion.div
               key="detail"
               initial={{ opacity: 0, y: 12 }}
@@ -1213,7 +1247,7 @@ function InteractiveSkillBrowser() {
                       className={`w-full flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-colors ${
                         isSelected
                           ? `${cat.borderColor} bg-gradient-to-r ${cat.gradient}`
-                          : 'border-white/[0.04] hover:border-white/[0.10] hover:bg-white/[0.02]'
+                          : "border-white/[0.04] hover:border-white/[0.10] hover:bg-white/[0.02]"
                       }`}
                     >
                       <div className={`shrink-0 ${cat.textColor}`}>{cat.icon}</div>
@@ -1294,9 +1328,7 @@ function InteractiveSkillBrowser() {
                           ) : (
                             <>
                               <span className="h-2 w-2 rounded-full bg-white/20" />
-                              <span className="text-xs text-white/40 font-medium">
-                                Available
-                              </span>
+                              <span className="text-xs text-white/40 font-medium">Available</span>
                             </>
                           )}
                         </div>
@@ -1405,7 +1437,11 @@ function InteractiveSkillBrowser() {
                               <div className="flex items-center gap-2">
                                 <motion.div
                                   animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                                  transition={inView ? { repeat: Infinity, duration: 1, ease: 'linear' } : { duration: 0.2 }}
+                                  transition={
+                                    inView
+                                      ? { repeat: Infinity, duration: 1, ease: "linear" }
+                                      : { duration: 0.2 }
+                                  }
                                 >
                                   <Loader2
                                     className={`h-4 w-4 ${getCategoryMeta(selectedSkill.category).textColor}`}
@@ -1417,8 +1453,8 @@ function InteractiveSkillBrowser() {
                               </div>
                               <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
                                 <motion.div
-                                  className={`h-full rounded-full bg-gradient-to-r ${getCategoryMeta(selectedSkill.category).gradient.replace(/\/20/g, '/60')}`}
-                                  initial={{ width: '0%' }}
+                                  className={`h-full rounded-full bg-gradient-to-r ${getCategoryMeta(selectedSkill.category).gradient.replace(/\/20/g, "/60")}`}
+                                  initial={{ width: "0%" }}
                                   animate={{ width: `${installProgress}%` }}
                                   transition={{ duration: 0.08 }}
                                 />
@@ -1461,7 +1497,7 @@ function InteractiveSkillBrowser() {
           )}
 
           {/* DEPENDENCY GRAPH VIEW */}
-          {viewMode === 'deps' && (
+          {viewMode === "deps" && (
             <motion.div
               key="deps"
               initial={{ opacity: 0, y: 12 }}
@@ -1539,9 +1575,8 @@ function InteractiveSkillBrowser() {
                                   {s.name}
                                 </button>
                               ))}
-                            {localSkills.filter((s) =>
-                              s.dependencies.includes(selectedSkill.name)
-                            ).length === 0 && (
+                            {localSkills.filter((s) => s.dependencies.includes(selectedSkill.name))
+                              .length === 0 && (
                               <span className="text-[10px] text-white/20 italic">None</span>
                             )}
                           </div>
@@ -1557,9 +1592,7 @@ function InteractiveSkillBrowser() {
                       className="rounded-xl border border-white/[0.06] bg-white/[0.01] p-8 text-center"
                     >
                       <GitBranch className="mx-auto h-6 w-6 text-white/15 mb-2" />
-                      <p className="text-xs text-white/30">
-                        Click a node to explore dependencies
-                      </p>
+                      <p className="text-xs text-white/30">Click a node to explore dependencies</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1579,15 +1612,13 @@ function InteractiveSkillBrowser() {
                         className="flex items-center gap-1.5"
                         style={{ paddingLeft: `${item.depth * 12}px` }}
                       >
-                        {item.type === 'dir' ? (
+                        {item.type === "dir" ? (
                           <FolderTree className="h-3 w-3 text-amber-400/60 shrink-0" />
                         ) : (
                           <FileText className="h-3 w-3 text-violet-400/60 shrink-0" />
                         )}
                         <span
-                          className={
-                            item.type === 'dir' ? 'text-amber-400/80' : 'text-white/50'
-                          }
+                          className={item.type === "dir" ? "text-amber-400/80" : "text-white/50"}
                         >
                           {item.path}
                         </span>
@@ -1600,7 +1631,7 @@ function InteractiveSkillBrowser() {
           )}
 
           {/* TERMINAL VIEW */}
-          {viewMode === 'terminal' && (
+          {viewMode === "terminal" && (
             <motion.div
               key="terminal"
               initial={{ opacity: 0, y: 12 }}
@@ -1626,7 +1657,7 @@ function InteractiveSkillBrowser() {
                         className={`w-full flex items-center gap-2 rounded-lg border p-2.5 text-left transition-colors ${
                           isSelected
                             ? `${cat.borderColor} bg-gradient-to-r ${cat.gradient}`
-                            : 'border-white/[0.04] hover:border-white/[0.10] hover:bg-white/[0.02]'
+                            : "border-white/[0.04] hover:border-white/[0.10] hover:bg-white/[0.02]"
                         }`}
                       >
                         <Zap className={`h-3.5 w-3.5 shrink-0 ${cat.textColor}`} />
@@ -1651,8 +1682,8 @@ function InteractiveSkillBrowser() {
                     selectedSkill
                       ? terminalLines
                       : [
-                          '# Select an installed skill to preview loading it',
-                          '$ ms list',
+                          "# Select an installed skill to preview loading it",
+                          "$ ms list",
                           `> ${localSkills.filter((s) => s.installed).length} skills installed`,
                         ]
                   }

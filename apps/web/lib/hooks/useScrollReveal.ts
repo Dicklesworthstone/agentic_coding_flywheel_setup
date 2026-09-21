@@ -93,7 +93,7 @@ export function useScrollReveal(options: UseScrollRevealOptions = {}): UseScroll
           }
         });
       },
-      { threshold, rootMargin }
+      { threshold, rootMargin },
     );
 
     observer.observe(element);

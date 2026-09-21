@@ -1,60 +1,55 @@
-'use client';
+"use client";
 
+import { ArrowRight, ClipboardList, Key, Layers, Shield, ShieldCheck, Users } from "lucide-react";
 import {
-  ShieldCheck,
-  Shield,
-  Users,
-  Key,
-  Layers,
-  ClipboardList,
-  ArrowRight,
-} from 'lucide-react';
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function SecurityLayersLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Understand the three-layer security model that makes agent autonomy safe
-        — DCG blocks dangerous commands, SLB gates risky operations behind peer
-        review, and CAAM prevents credential exposure.
+        Understand the three-layer security model that makes agent autonomy safe — DCG blocks
+        dangerous commands, SLB gates risky operations behind peer review, and CAAM prevents
+        credential exposure.
       </GoalBanner>
 
       {/* Section 1: Defense in Depth */}
       <Section title="Defense in Depth" icon={<ShieldCheck className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          Single safety measures fail. The flywheel uses <Highlight>three
-          independent layers</Highlight> so that no single point of failure can
-          let a dangerous operation through.
+          Single safety measures fail. The flywheel uses{" "}
+          <Highlight>three independent layers</Highlight> so that no single point of failure can let
+          a dangerous operation through.
         </Paragraph>
 
         <div className="mt-6 space-y-3">
           <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0" />
             <span className="text-white/90 text-sm">
-              <strong className="text-emerald-400">Layer 1: DCG</strong> — Mechanical, sub-millisecond pattern matching blocks known-bad commands
+              <strong className="text-emerald-400">Layer 1: DCG</strong> — Mechanical,
+              sub-millisecond pattern matching blocks known-bad commands
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <ArrowRight className="h-4 w-4 text-amber-400 shrink-0" />
             <span className="text-white/90 text-sm">
-              <strong className="text-amber-400">Layer 2: SLB</strong> — Human-in-the-loop approval for commands that are dangerous but sometimes needed
+              <strong className="text-amber-400">Layer 2: SLB</strong> — Human-in-the-loop approval
+              for commands that are dangerous but sometimes needed
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <ArrowRight className="h-4 w-4 text-blue-400 shrink-0" />
             <span className="text-white/90 text-sm">
-              <strong className="text-blue-400">Layer 3: CAAM</strong> — Credential rotation and isolation so compromised agents can&apos;t drain API keys
+              <strong className="text-blue-400">Layer 3: CAAM</strong> — Credential rotation and
+              isolation so compromised agents can&apos;t drain API keys
             </span>
           </div>
         </div>
@@ -92,12 +87,15 @@ export function SecurityLayersLesson() {
       <Divider />
 
       {/* Section 2: Layer 1: DCG — Mechanical Enforcement */}
-      <Section title="Layer 1: DCG — Mechanical Enforcement" icon={<Shield className="h-5 w-5" />} delay={0.15}>
+      <Section
+        title="Layer 1: DCG — Mechanical Enforcement"
+        icon={<Shield className="h-5 w-5" />}
+        delay={0.15}
+      >
         <Paragraph>
-          DCG is a Claude Code hook that runs <Highlight>before every command
-          execution</Highlight>. It uses ast-grep internally for structural
-          pattern matching, operating at sub-millisecond latency — agents
-          don&apos;t even notice it&apos;s there.
+          DCG is a Claude Code hook that runs <Highlight>before every command execution</Highlight>.
+          It uses ast-grep internally for structural pattern matching, operating at sub-millisecond
+          latency — agents don&apos;t even notice it&apos;s there.
         </Paragraph>
 
         <CodeBlock
@@ -128,9 +126,8 @@ dcg doctor --format json`}
         />
 
         <TipBox variant="tip">
-          DCG has zero false positives because it uses structural pattern
-          matching via ast-grep. It understands that{' '}
-          <code className="text-emerald-300">rm -rf /tmp/build</code> is scoped
+          DCG has zero false positives because it uses structural pattern matching via ast-grep. It
+          understands that <code className="text-emerald-300">rm -rf /tmp/build</code> is scoped
           while <code className="text-red-300">rm -rf /</code> is destructive.
         </TipBox>
       </Section>
@@ -138,12 +135,15 @@ dcg doctor --format json`}
       <Divider />
 
       {/* Section 3: Layer 2: SLB — Two-Person Rule */}
-      <Section title="Layer 2: SLB — Two-Person Rule" icon={<Users className="h-5 w-5" />} delay={0.2}>
+      <Section
+        title="Layer 2: SLB — Two-Person Rule"
+        icon={<Users className="h-5 w-5" />}
+        delay={0.2}
+      >
         <Paragraph>
-          For commands that are <Highlight>sometimes needed but always
-          dangerous</Highlight>, SLB enforces a two-person rule. One agent
-          creates a launch request, and a human (or second agent) must approve
-          before execution.
+          For commands that are <Highlight>sometimes needed but always dangerous</Highlight>, SLB
+          enforces a two-person rule. One agent creates a launch request, and a human (or second
+          agent) must approve before execution.
         </Paragraph>
 
         <CodeBlock
@@ -174,20 +174,24 @@ slb watch --session-id my-agent
         />
 
         <TipBox variant="warning">
-          SLB is for commands that DCG blocks but you actually need to run. The
-          workflow is: DCG blocks → create SLB request → peer reviews → approved
-          → execute. Never bypass DCG without SLB review.
+          SLB is for commands that DCG blocks but you actually need to run. The workflow is: DCG
+          blocks → create SLB request → peer reviews → approved → execute. Never bypass DCG without
+          SLB review.
         </TipBox>
       </Section>
 
       <Divider />
 
       {/* Section 4: Layer 3: CAAM — Credential Isolation */}
-      <Section title="Layer 3: CAAM — Credential Isolation" icon={<Key className="h-5 w-5" />} delay={0.25}>
+      <Section
+        title="Layer 3: CAAM — Credential Isolation"
+        icon={<Key className="h-5 w-5" />}
+        delay={0.25}
+      >
         <Paragraph>
-          CAAM manages <Highlight>multiple API provider accounts</Highlight> with
-          automatic rotation on rate limits. This prevents a single compromised
-          or rate-limited key from stopping all agents.
+          CAAM manages <Highlight>multiple API provider accounts</Highlight> with automatic rotation
+          on rate limits. This prevents a single compromised or rate-limited key from stopping all
+          agents.
         </Paragraph>
 
         <CodeBlock
@@ -220,9 +224,9 @@ caam status --all
         />
 
         <TipBox variant="tip">
-          CAAM&apos;s auto-rotation means agent swarms can run for hours without
-          hitting rate limits. When one account reaches its quota, CAAM
-          seamlessly switches to the next available account.
+          CAAM&apos;s auto-rotation means agent swarms can run for hours without hitting rate
+          limits. When one account reaches its quota, CAAM seamlessly switches to the next available
+          account.
         </TipBox>
       </Section>
 
@@ -231,39 +235,52 @@ caam status --all
       {/* Section 5: How the Layers Interact */}
       <Section title="How the Layers Interact" icon={<Layers className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          When an agent runs a command, it passes through each security layer in
-          sequence. Here is the <Highlight>decision flow</Highlight>:
+          When an agent runs a command, it passes through each security layer in sequence. Here is
+          the <Highlight>decision flow</Highlight>:
         </Paragraph>
 
         <div className="mt-6 space-y-3">
           <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">1</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">
+              1
+            </span>
             <span className="text-white/90 text-sm">
               Agent issues command → <strong className="text-emerald-400">DCG intercepts</strong>
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">2</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">
+              2
+            </span>
             <span className="text-white/90 text-sm">
-              DCG pattern match → <strong className="text-emerald-400">Safe?</strong> → Execute immediately
+              DCG pattern match → <strong className="text-emerald-400">Safe?</strong> → Execute
+              immediately
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400 text-xs font-bold">3</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400 text-xs font-bold">
+              3
+            </span>
             <span className="text-white/90 text-sm">
               DCG pattern match → <strong className="text-red-400">Dangerous?</strong> → Block
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">4</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">
+              4
+            </span>
             <span className="text-white/90 text-sm">
-              Blocked but needed? → <strong className="text-amber-400">SLB request</strong> → Peer review → Execute or reject
+              Blocked but needed? → <strong className="text-amber-400">SLB request</strong> → Peer
+              review → Execute or reject
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-xs font-bold">5</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-xs font-bold">
+              5
+            </span>
             <span className="text-white/90 text-sm">
-              API call? → <strong className="text-blue-400">CAAM selects account</strong> → Rate limited? → Auto-rotate
+              API call? → <strong className="text-blue-400">CAAM selects account</strong> → Rate
+              limited? → Auto-rotate
             </span>
           </div>
         </div>
@@ -295,9 +312,8 @@ slb execute slb-b2e9
       {/* Section 6: Audit Trail */}
       <Section title="Audit Trail" icon={<ClipboardList className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
-          All three layers produce <Highlight>audit logs</Highlight>, giving you
-          a complete picture of every security decision made during agent
-          operation.
+          All three layers produce <Highlight>audit logs</Highlight>, giving you a complete picture
+          of every security decision made during agent operation.
         </Paragraph>
 
         <CodeBlock
@@ -323,10 +339,11 @@ caam history --limit 50
 
         <div className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl">
           <p className="text-white/80 text-sm leading-relaxed">
-            <strong className="text-white">Three independent layers, each
-            catching what the others miss.</strong> DCG for speed, SLB for
-            judgment, CAAM for resource protection. Together they make it safe
-            to give agents real autonomy.
+            <strong className="text-white">
+              Three independent layers, each catching what the others miss.
+            </strong>{" "}
+            DCG for speed, SLB for judgment, CAAM for resource protection. Together they make it
+            safe to give agents real autonomy.
           </p>
         </div>
       </Section>

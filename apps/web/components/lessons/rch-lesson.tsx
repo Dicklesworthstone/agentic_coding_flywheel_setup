@@ -1,42 +1,42 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Cpu,
-  Terminal,
-  Zap,
-  Server,
-  Settings,
   Activity,
-  Play,
-  Shield,
-  Monitor,
-  CheckCircle2,
   AlertTriangle,
-  Loader2,
+  ArrowRight,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  Cpu,
+  HardDrive,
+  Loader2,
+  Monitor,
+  Package,
+  Play,
+  Server,
+  Settings,
+  Shield,
   Sparkles,
+  Terminal,
   Wifi,
   WifiOff,
-  ArrowRight,
-  HardDrive,
-  Clock,
-  Package,
-} from 'lucide-react';
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function RchLesson() {
   return (
@@ -48,14 +48,14 @@ export function RchLesson() {
       {/* Section 1: What Is RCH */}
       <Section title="What Is RCH?" icon={<Cpu className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>RCH (Remote Compilation Helper)</Highlight> transparently intercepts
-          cargo commands and routes them to powerful remote build servers. Your local
-          machine stays responsive while heavy Rust compilations run elsewhere.
+          <Highlight>RCH (Remote Compilation Helper)</Highlight> transparently intercepts cargo
+          commands and routes them to powerful remote build servers. Your local machine stays
+          responsive while heavy Rust compilations run elsewhere.
         </Paragraph>
         <Paragraph>
-          When running multiple AI agents that all trigger builds, your local CPU becomes
-          a bottleneck. RCH solves this by syncing source to remote workers, building
-          there, and streaming artifacts back.
+          When running multiple AI agents that all trigger builds, your local CPU becomes a
+          bottleneck. RCH solves this by syncing source to remote workers, building there, and
+          streaming artifacts back.
         </Paragraph>
 
         <div className="mt-8">
@@ -93,8 +93,7 @@ export function RchLesson() {
       {/* Section 2: How It Works */}
       <Section title="How It Works" icon={<Play className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          RCH intercepts cargo commands via a Claude Code hook and offloads them to
-          remote workers.
+          RCH intercepts cargo commands via a Claude Code hook and offloads them to remote workers.
         </Paragraph>
 
         <div className="mt-8 mb-8">
@@ -124,16 +123,17 @@ cargo build --release
 
       {/* Section 3: Quick Start */}
       <Section title="Quick Start" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
-        <Paragraph>
-          Get started with these essential commands.
-        </Paragraph>
+        <Paragraph>Get started with these essential commands.</Paragraph>
 
         <CommandList
           commands={[
-            { command: 'rch hook install', description: 'Install the Claude Code hook' },
-            { command: 'rch daemon start', description: 'Start the local daemon' },
-            { command: 'rch workers init', description: 'Add a remote worker (interactive wizard)' },
-            { command: 'rch status', description: 'Check system status' },
+            { command: "rch hook install", description: "Install the Claude Code hook" },
+            { command: "rch daemon start", description: "Start the local daemon" },
+            {
+              command: "rch workers init",
+              description: "Add a remote worker (interactive wizard)",
+            },
+            { command: "rch status", description: "Check system status" },
           ]}
         />
 
@@ -146,16 +146,20 @@ cargo build --release
 
       {/* Section 4: Worker Management */}
       <Section title="Worker Management" icon={<Server className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          RCH supports multiple remote workers with priority-based scheduling.
-        </Paragraph>
+        <Paragraph>RCH supports multiple remote workers with priority-based scheduling.</Paragraph>
 
         <CommandList
           commands={[
-            { command: 'rch workers init', description: 'Add a new worker (wizard: host, SSH, cores, toolchain)' },
-            { command: 'rch workers discover --add', description: 'Add hosts found in your SSH config and aliases' },
-            { command: 'rch workers list', description: 'List configured workers' },
-            { command: 'rch workers probe --all', description: 'Verify all workers are reachable' },
+            {
+              command: "rch workers init",
+              description: "Add a new worker (wizard: host, SSH, cores, toolchain)",
+            },
+            {
+              command: "rch workers discover --add",
+              description: "Add hosts found in your SSH config and aliases",
+            },
+            { command: "rch workers list", description: "List configured workers" },
+            { command: "rch workers probe --all", description: "Verify all workers are reachable" },
           ]}
         />
 
@@ -182,16 +186,14 @@ tags = ["secondary"]`}
 
       {/* Section 5: Diagnostics */}
       <Section title="Diagnostics" icon={<Activity className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          RCH includes comprehensive diagnostics to troubleshoot issues.
-        </Paragraph>
+        <Paragraph>RCH includes comprehensive diagnostics to troubleshoot issues.</Paragraph>
 
         <CommandList
           commands={[
-            { command: 'rch doctor', description: 'Run full diagnostic check' },
-            { command: 'rch doctor --fix', description: 'Auto-fix common issues' },
-            { command: 'rch daemon status', description: 'Check if daemon is running' },
-            { command: 'rch config show', description: 'View current configuration' },
+            { command: "rch doctor", description: "Run full diagnostic check" },
+            { command: "rch doctor --fix", description: "Auto-fix common issues" },
+            { command: "rch daemon status", description: "Check if daemon is running" },
+            { command: "rch config show", description: "View current configuration" },
           ]}
         />
 
@@ -222,7 +224,8 @@ rch update --fleet`}
         />
 
         <TipBox variant="info">
-          Keep workers in sync with <code>rch update --fleet</code>, which updates the local RCH binary and every configured worker.
+          Keep workers in sync with <code>rch update --fleet</code>, which updates the local RCH
+          binary and every configured worker.
         </TipBox>
       </Section>
 
@@ -230,9 +233,7 @@ rch update --fleet`}
 
       {/* Section 7: Integration */}
       <Section title="Tool Integration" icon={<Zap className="h-5 w-5" />} delay={0.4}>
-        <Paragraph>
-          RCH integrates seamlessly with other flywheel tools.
-        </Paragraph>
+        <Paragraph>RCH integrates seamlessly with other flywheel tools.</Paragraph>
 
         <div className="space-y-4">
           <motion.div
@@ -243,8 +244,8 @@ rch update --fleet`}
           >
             <h4 className="font-semibold text-primary mb-2">RCH + NTM</h4>
             <p className="text-muted-foreground text-sm">
-              Agents spawned by NTM automatically use RCH for their builds.
-              Multiple agents can compile in parallel without overwhelming local CPU.
+              Agents spawned by NTM automatically use RCH for their builds. Multiple agents can
+              compile in parallel without overwhelming local CPU.
             </p>
           </motion.div>
           <motion.div
@@ -255,9 +256,9 @@ rch update --fleet`}
           >
             <h4 className="font-semibold text-primary mb-2">RCH + RU</h4>
             <p className="text-muted-foreground text-sm">
-              RU syncs repos that RCH then builds remotely. Use{' '}
-              <code className="text-primary">ru sync</code> to update sources,
-              then build with RCH-accelerated cargo.
+              RU syncs repos that RCH then builds remotely. Use{" "}
+              <code className="text-primary">ru sync</code> to update sources, then build with
+              RCH-accelerated cargo.
             </p>
           </motion.div>
           <motion.div
@@ -268,8 +269,8 @@ rch update --fleet`}
           >
             <h4 className="font-semibold text-primary mb-2">RCH + Beads</h4>
             <p className="text-muted-foreground text-sm">
-              Track build-related tasks via beads. Create issues for build
-              failures or optimization opportunities.
+              Track build-related tasks via beads. Create issues for build failures or optimization
+              opportunities.
             </p>
           </motion.div>
         </div>
@@ -279,9 +280,7 @@ rch update --fleet`}
 
       {/* Section 8: Best Practices */}
       <Section title="Best Practices" icon={<Shield className="h-5 w-5" />} delay={0.45}>
-        <Paragraph>
-          Get the most out of RCH with these recommendations.
-        </Paragraph>
+        <Paragraph>Get the most out of RCH with these recommendations.</Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
@@ -310,13 +309,13 @@ rch update --fleet`}
 // INTERACTIVE COMPILATION FLEET DASHBOARD
 // =============================================================================
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 // ---------------------------------------------------------------------------
 // Types & Data
 // ---------------------------------------------------------------------------
 
-type WorkerHealth = 'online' | 'building' | 'done' | 'error' | 'offline' | 'syncing';
+type WorkerHealth = "online" | "building" | "done" | "error" | "offline" | "syncing";
 
 interface WorkerNode {
   id: number;
@@ -336,7 +335,7 @@ interface BuildJob {
   id: string;
   crate: string;
   assignedTo: number | null;
-  status: 'queued' | 'building' | 'done' | 'failed';
+  status: "queued" | "building" | "done" | "failed";
 }
 
 interface FleetScenario {
@@ -370,209 +369,291 @@ function makeWorker(
     cpuPct: 0,
     ramPct: 0,
     buildProgress: 0,
-    health: 'online',
-    job: '',
+    health: "online",
+    job: "",
     latencyMs: 12 + id * 3,
     ...overrides,
   };
 }
 
 const BASE_WORKERS: WorkerNode[] = [
-  makeWorker(0, 'vps-alpha-01', '10.0.1.10', 48, 64),
-  makeWorker(1, 'vps-alpha-02', '10.0.1.11', 48, 64),
-  makeWorker(2, 'vps-bravo-01', '10.0.2.10', 32, 32),
-  makeWorker(3, 'vps-bravo-02', '10.0.2.11', 32, 32),
-  makeWorker(4, 'vps-charlie-01', '10.0.3.10', 16, 16),
-  makeWorker(5, 'vps-charlie-02', '10.0.3.11', 16, 16),
-  makeWorker(6, 'vps-delta-01', '10.0.4.10', 64, 128),
-  makeWorker(7, 'vps-delta-02', '10.0.4.11', 64, 128),
+  makeWorker(0, "vps-alpha-01", "10.0.1.10", 48, 64),
+  makeWorker(1, "vps-alpha-02", "10.0.1.11", 48, 64),
+  makeWorker(2, "vps-bravo-01", "10.0.2.10", 32, 32),
+  makeWorker(3, "vps-bravo-02", "10.0.2.11", 32, 32),
+  makeWorker(4, "vps-charlie-01", "10.0.3.10", 16, 16),
+  makeWorker(5, "vps-charlie-02", "10.0.3.11", 16, 16),
+  makeWorker(6, "vps-delta-01", "10.0.4.10", 64, 128),
+  makeWorker(7, "vps-delta-02", "10.0.4.11", 64, 128),
 ];
 
 const SCENARIOS: FleetScenario[] = [
   {
-    id: 'idle',
-    label: 'Idle Fleet',
+    id: "idle",
+    label: "Idle Fleet",
     icon: Server,
-    color: 'emerald',
-    description: 'All 8 worker nodes online and idle. Fleet is healthy and ready to accept build jobs.',
-    workers: BASE_WORKERS.map((w) => ({ ...w, health: 'online' as const, cpuPct: 2 + w.id, ramPct: 8 + w.id * 2 })),
+    color: "emerald",
+    description:
+      "All 8 worker nodes online and idle. Fleet is healthy and ready to accept build jobs.",
+    workers: BASE_WORKERS.map((w) => ({
+      ...w,
+      health: "online" as const,
+      cpuPct: 2 + w.id,
+      ramPct: 8 + w.id * 2,
+    })),
     buildQueue: [],
     terminalLines: [
-      '$ rch status',
-      'RCH Remote Compilation Helper v3.2.0',
-      '',
-      'Fleet: 8/8 workers online',
-      'Queue: 0 jobs pending',
-      'Daemon: running (pid 4821)',
-      '',
-      'All systems nominal.',
+      "$ rch status",
+      "RCH Remote Compilation Helper v3.2.0",
+      "",
+      "Fleet: 8/8 workers online",
+      "Queue: 0 jobs pending",
+      "Daemon: running (pid 4821)",
+      "",
+      "All systems nominal.",
     ],
     localTimeSec: 0,
     remoteTimeSec: 0,
     artifactsMb: 0,
   },
   {
-    id: 'dispatched',
-    label: 'Build Dispatched',
+    id: "dispatched",
+    label: "Build Dispatched",
     icon: ArrowRight,
-    color: 'blue',
-    description: 'cargo build --release intercepted. Source tree syncing to workers via rsync + zstd.',
+    color: "blue",
+    description:
+      "cargo build --release intercepted. Source tree syncing to workers via rsync + zstd.",
     workers: BASE_WORKERS.map((w) => ({
       ...w,
-      health: 'syncing' as const,
+      health: "syncing" as const,
       cpuPct: 15 + w.id * 2,
       ramPct: 12 + w.id * 3,
-      job: 'rsync',
+      job: "rsync",
     })),
     buildQueue: [
-      { id: 'J-001', crate: 'my-service', assignedTo: null, status: 'queued' },
-      { id: 'J-002', crate: 'my-lib-core', assignedTo: null, status: 'queued' },
-      { id: 'J-003', crate: 'my-lib-utils', assignedTo: null, status: 'queued' },
-      { id: 'J-004', crate: 'my-lib-db', assignedTo: null, status: 'queued' },
-      { id: 'J-005', crate: 'my-lib-api', assignedTo: null, status: 'queued' },
-      { id: 'J-006', crate: 'my-lib-auth', assignedTo: null, status: 'queued' },
+      { id: "J-001", crate: "my-service", assignedTo: null, status: "queued" },
+      { id: "J-002", crate: "my-lib-core", assignedTo: null, status: "queued" },
+      { id: "J-003", crate: "my-lib-utils", assignedTo: null, status: "queued" },
+      { id: "J-004", crate: "my-lib-db", assignedTo: null, status: "queued" },
+      { id: "J-005", crate: "my-lib-api", assignedTo: null, status: "queued" },
+      { id: "J-006", crate: "my-lib-auth", assignedTo: null, status: "queued" },
     ],
     terminalLines: [
-      '$ cargo build --release',
-      '[rch] Hook intercepted: cargo build --release',
-      '[rch] Syncing workspace (142 MB) to 8 workers...',
-      '[rch] rsync --zstd -a src/ -> vps-alpha-01',
-      '[rch] rsync --zstd -a src/ -> vps-alpha-02',
-      '[rch] rsync --zstd -a src/ -> vps-bravo-01',
-      '[rch] ... (6 more workers)',
-      '[rch] Sync complete in 3.2s',
+      "$ cargo build --release",
+      "[rch] Hook intercepted: cargo build --release",
+      "[rch] Syncing workspace (142 MB) to 8 workers...",
+      "[rch] rsync --zstd -a src/ -> vps-alpha-01",
+      "[rch] rsync --zstd -a src/ -> vps-alpha-02",
+      "[rch] rsync --zstd -a src/ -> vps-bravo-01",
+      "[rch] ... (6 more workers)",
+      "[rch] Sync complete in 3.2s",
     ],
     localTimeSec: 0,
     remoteTimeSec: 0,
     artifactsMb: 0,
   },
   {
-    id: 'compiling',
-    label: 'Parallel Compilation',
+    id: "compiling",
+    label: "Parallel Compilation",
     icon: Cpu,
-    color: 'amber',
-    description: 'All workers compiling crates in parallel. CPU utilization near max across the fleet.',
+    color: "amber",
+    description:
+      "All workers compiling crates in parallel. CPU utilization near max across the fleet.",
     workers: BASE_WORKERS.map((w) => ({
       ...w,
-      health: 'building' as const,
+      health: "building" as const,
       cpuPct: 78 + (w.id % 4) * 5,
       ramPct: 55 + (w.id % 3) * 10,
       buildProgress: 30 + w.id * 8,
-      job: ['my-service', 'my-lib-core', 'my-lib-utils', 'my-lib-db', 'my-lib-api', 'my-lib-auth', 'my-service', 'my-lib-core'][w.id],
+      job: [
+        "my-service",
+        "my-lib-core",
+        "my-lib-utils",
+        "my-lib-db",
+        "my-lib-api",
+        "my-lib-auth",
+        "my-service",
+        "my-lib-core",
+      ][w.id],
     })),
     buildQueue: [
-      { id: 'J-001', crate: 'my-service', assignedTo: 0, status: 'building' },
-      { id: 'J-002', crate: 'my-lib-core', assignedTo: 1, status: 'building' },
-      { id: 'J-003', crate: 'my-lib-utils', assignedTo: 2, status: 'building' },
-      { id: 'J-004', crate: 'my-lib-db', assignedTo: 3, status: 'building' },
-      { id: 'J-005', crate: 'my-lib-api', assignedTo: 4, status: 'building' },
-      { id: 'J-006', crate: 'my-lib-auth', assignedTo: 5, status: 'building' },
+      { id: "J-001", crate: "my-service", assignedTo: 0, status: "building" },
+      { id: "J-002", crate: "my-lib-core", assignedTo: 1, status: "building" },
+      { id: "J-003", crate: "my-lib-utils", assignedTo: 2, status: "building" },
+      { id: "J-004", crate: "my-lib-db", assignedTo: 3, status: "building" },
+      { id: "J-005", crate: "my-lib-api", assignedTo: 4, status: "building" },
+      { id: "J-006", crate: "my-lib-auth", assignedTo: 5, status: "building" },
     ],
     terminalLines: [
-      '[rch] Dispatching 6 crates across 8 workers',
-      '[vps-alpha-01] Compiling my-service v0.9.3',
-      '[vps-alpha-02] Compiling my-lib-core v1.2.0',
-      '[vps-bravo-01] Compiling my-lib-utils v0.4.1',
-      '[vps-bravo-02] Compiling my-lib-db v2.0.0',
-      '[vps-charlie-01] Compiling my-lib-api v1.1.0',
-      '[vps-charlie-02] Compiling my-lib-auth v0.8.2',
-      '[rch] Fleet CPU avg: 87% | 304/320 cores active',
+      "[rch] Dispatching 6 crates across 8 workers",
+      "[vps-alpha-01] Compiling my-service v0.9.3",
+      "[vps-alpha-02] Compiling my-lib-core v1.2.0",
+      "[vps-bravo-01] Compiling my-lib-utils v0.4.1",
+      "[vps-bravo-02] Compiling my-lib-db v2.0.0",
+      "[vps-charlie-01] Compiling my-lib-api v1.1.0",
+      "[vps-charlie-02] Compiling my-lib-auth v0.8.2",
+      "[rch] Fleet CPU avg: 87% | 304/320 cores active",
     ],
     localTimeSec: 240,
     remoteTimeSec: 45,
     artifactsMb: 0,
   },
   {
-    id: 'failure',
-    label: 'Worker Failure',
+    id: "failure",
+    label: "Worker Failure",
     icon: AlertTriangle,
-    color: 'red',
-    description: 'vps-bravo-02 went offline mid-build. RCH automatically reroutes job J-004 to vps-delta-01.',
+    color: "red",
+    description:
+      "vps-bravo-02 went offline mid-build. RCH automatically reroutes job J-004 to vps-delta-01.",
     workers: BASE_WORKERS.map((w) => {
-      if (w.id === 3) return { ...w, health: 'offline' as const, cpuPct: 0, ramPct: 0, buildProgress: 42, job: 'FAILED' };
-      if (w.id === 6) return { ...w, health: 'building' as const, cpuPct: 91, ramPct: 68, buildProgress: 15, job: 'my-lib-db (rerouted)' };
-      if (w.id < 3) return { ...w, health: 'building' as const, cpuPct: 82 + w.id * 3, ramPct: 60 + w.id * 5, buildProgress: 60 + w.id * 8, job: ['my-service', 'my-lib-core', 'my-lib-utils'][w.id] };
-      return { ...w, health: 'building' as const, cpuPct: 75 + w.id * 2, ramPct: 50 + w.id * 4, buildProgress: 55 + w.id * 5, job: ['', '', '', '', 'my-lib-api', 'my-lib-auth', '', ''][w.id] };
+      if (w.id === 3)
+        return {
+          ...w,
+          health: "offline" as const,
+          cpuPct: 0,
+          ramPct: 0,
+          buildProgress: 42,
+          job: "FAILED",
+        };
+      if (w.id === 6)
+        return {
+          ...w,
+          health: "building" as const,
+          cpuPct: 91,
+          ramPct: 68,
+          buildProgress: 15,
+          job: "my-lib-db (rerouted)",
+        };
+      if (w.id < 3)
+        return {
+          ...w,
+          health: "building" as const,
+          cpuPct: 82 + w.id * 3,
+          ramPct: 60 + w.id * 5,
+          buildProgress: 60 + w.id * 8,
+          job: ["my-service", "my-lib-core", "my-lib-utils"][w.id],
+        };
+      return {
+        ...w,
+        health: "building" as const,
+        cpuPct: 75 + w.id * 2,
+        ramPct: 50 + w.id * 4,
+        buildProgress: 55 + w.id * 5,
+        job: ["", "", "", "", "my-lib-api", "my-lib-auth", "", ""][w.id],
+      };
     }),
     buildQueue: [
-      { id: 'J-001', crate: 'my-service', assignedTo: 0, status: 'building' },
-      { id: 'J-002', crate: 'my-lib-core', assignedTo: 1, status: 'building' },
-      { id: 'J-003', crate: 'my-lib-utils', assignedTo: 2, status: 'building' },
-      { id: 'J-004', crate: 'my-lib-db', assignedTo: 6, status: 'building' },
-      { id: 'J-005', crate: 'my-lib-api', assignedTo: 4, status: 'building' },
-      { id: 'J-006', crate: 'my-lib-auth', assignedTo: 5, status: 'building' },
+      { id: "J-001", crate: "my-service", assignedTo: 0, status: "building" },
+      { id: "J-002", crate: "my-lib-core", assignedTo: 1, status: "building" },
+      { id: "J-003", crate: "my-lib-utils", assignedTo: 2, status: "building" },
+      { id: "J-004", crate: "my-lib-db", assignedTo: 6, status: "building" },
+      { id: "J-005", crate: "my-lib-api", assignedTo: 4, status: "building" },
+      { id: "J-006", crate: "my-lib-auth", assignedTo: 5, status: "building" },
     ],
     terminalLines: [
-      '[rch] WARNING: vps-bravo-02 connection lost',
-      '[rch] Job J-004 (my-lib-db) failed on vps-bravo-02',
-      '[rch] Failover: rerouting J-004 -> vps-delta-01',
-      '[vps-delta-01] Compiling my-lib-db v2.0.0 (retry)',
-      '[rch] Fleet: 7/8 workers active',
-      '[rch] Estimated completion: +8s due to failover',
-      '[rch] Other jobs unaffected, continuing...',
+      "[rch] WARNING: vps-bravo-02 connection lost",
+      "[rch] Job J-004 (my-lib-db) failed on vps-bravo-02",
+      "[rch] Failover: rerouting J-004 -> vps-delta-01",
+      "[vps-delta-01] Compiling my-lib-db v2.0.0 (retry)",
+      "[rch] Fleet: 7/8 workers active",
+      "[rch] Estimated completion: +8s due to failover",
+      "[rch] Other jobs unaffected, continuing...",
     ],
     localTimeSec: 240,
     remoteTimeSec: 53,
     artifactsMb: 0,
   },
   {
-    id: 'complete',
-    label: 'Build Complete',
+    id: "complete",
+    label: "Build Complete",
     icon: Package,
-    color: 'teal',
-    description: 'All crates compiled successfully. Artifacts syncing back to local machine via zstd-compressed transfer.',
+    color: "teal",
+    description:
+      "All crates compiled successfully. Artifacts syncing back to local machine via zstd-compressed transfer.",
     workers: BASE_WORKERS.map((w) => {
-      if (w.id === 3) return { ...w, health: 'offline' as const, cpuPct: 0, ramPct: 0, buildProgress: 0, job: 'offline' };
-      return { ...w, health: 'done' as const, cpuPct: 5 + w.id, ramPct: 10 + w.id * 2, buildProgress: 100, job: 'done' };
+      if (w.id === 3)
+        return {
+          ...w,
+          health: "offline" as const,
+          cpuPct: 0,
+          ramPct: 0,
+          buildProgress: 0,
+          job: "offline",
+        };
+      return {
+        ...w,
+        health: "done" as const,
+        cpuPct: 5 + w.id,
+        ramPct: 10 + w.id * 2,
+        buildProgress: 100,
+        job: "done",
+      };
     }),
     buildQueue: [
-      { id: 'J-001', crate: 'my-service', assignedTo: 0, status: 'done' },
-      { id: 'J-002', crate: 'my-lib-core', assignedTo: 1, status: 'done' },
-      { id: 'J-003', crate: 'my-lib-utils', assignedTo: 2, status: 'done' },
-      { id: 'J-004', crate: 'my-lib-db', assignedTo: 6, status: 'done' },
-      { id: 'J-005', crate: 'my-lib-api', assignedTo: 4, status: 'done' },
-      { id: 'J-006', crate: 'my-lib-auth', assignedTo: 5, status: 'done' },
+      { id: "J-001", crate: "my-service", assignedTo: 0, status: "done" },
+      { id: "J-002", crate: "my-lib-core", assignedTo: 1, status: "done" },
+      { id: "J-003", crate: "my-lib-utils", assignedTo: 2, status: "done" },
+      { id: "J-004", crate: "my-lib-db", assignedTo: 6, status: "done" },
+      { id: "J-005", crate: "my-lib-api", assignedTo: 4, status: "done" },
+      { id: "J-006", crate: "my-lib-auth", assignedTo: 5, status: "done" },
     ],
     terminalLines: [
-      '[rch] All 6 crates compiled successfully',
-      '[rch] Syncing artifacts (87 MB) back to local...',
-      '[rch] zstd compress: 87 MB -> 24 MB',
-      '[rch] Transfer: 24 MB in 1.8s (13.3 MB/s)',
-      '[rch] Artifacts placed in target/release/',
-      '',
-      'Finished `release` profile in 48.3s',
-      '  (vs ~240s local estimate: 5.0x speedup)',
+      "[rch] All 6 crates compiled successfully",
+      "[rch] Syncing artifacts (87 MB) back to local...",
+      "[rch] zstd compress: 87 MB -> 24 MB",
+      "[rch] Transfer: 24 MB in 1.8s (13.3 MB/s)",
+      "[rch] Artifacts placed in target/release/",
+      "",
+      "Finished `release` profile in 48.3s",
+      "  (vs ~240s local estimate: 5.0x speedup)",
     ],
     localTimeSec: 240,
     remoteTimeSec: 48,
     artifactsMb: 87,
   },
   {
-    id: 'healthcheck',
-    label: 'Fleet Health',
+    id: "healthcheck",
+    label: "Fleet Health",
     icon: Activity,
-    color: 'violet',
-    description: 'Running rch doctor across the fleet. All nodes checked for SSH, disk, toolchain, and daemon status.',
+    color: "violet",
+    description:
+      "Running rch doctor across the fleet. All nodes checked for SSH, disk, toolchain, and daemon status.",
     workers: BASE_WORKERS.map((w) => {
-      if (w.id === 3) return { ...w, health: 'offline' as const, cpuPct: 0, ramPct: 0, buildProgress: 0, job: 'unreachable', latencyMs: 9999 };
-      return { ...w, health: 'online' as const, cpuPct: 3 + w.id, ramPct: 6 + w.id * 2, buildProgress: 0, job: 'healthy' };
+      if (w.id === 3)
+        return {
+          ...w,
+          health: "offline" as const,
+          cpuPct: 0,
+          ramPct: 0,
+          buildProgress: 0,
+          job: "unreachable",
+          latencyMs: 9999,
+        };
+      return {
+        ...w,
+        health: "online" as const,
+        cpuPct: 3 + w.id,
+        ramPct: 6 + w.id * 2,
+        buildProgress: 0,
+        job: "healthy",
+      };
     }),
     buildQueue: [],
     terminalLines: [
-      '$ rch doctor',
-      'RCH Doctor - Fleet Health Check',
-      '',
-      '  vps-alpha-01   OK  ssh OK  rustc 1.77  48 cores  ping 12ms',
-      '  vps-alpha-02   OK  ssh OK  rustc 1.77  48 cores  ping 15ms',
-      '  vps-bravo-01   OK  ssh OK  rustc 1.77  32 cores  ping 18ms',
-      '  vps-bravo-02   FAIL  ssh timeout after 5s',
-      '  vps-charlie-01 OK  ssh OK  rustc 1.77  16 cores  ping 24ms',
-      '  vps-charlie-02 OK  ssh OK  rustc 1.77  16 cores  ping 27ms',
-      '  vps-delta-01   OK  ssh OK  rustc 1.77  64 cores  ping 30ms',
-      '  vps-delta-02   OK  ssh OK  rustc 1.77  64 cores  ping 33ms',
-      '',
-      'Fleet: 7/8 healthy | 1 unreachable',
-      'Recommendation: remove or repair vps-bravo-02',
+      "$ rch doctor",
+      "RCH Doctor - Fleet Health Check",
+      "",
+      "  vps-alpha-01   OK  ssh OK  rustc 1.77  48 cores  ping 12ms",
+      "  vps-alpha-02   OK  ssh OK  rustc 1.77  48 cores  ping 15ms",
+      "  vps-bravo-01   OK  ssh OK  rustc 1.77  32 cores  ping 18ms",
+      "  vps-bravo-02   FAIL  ssh timeout after 5s",
+      "  vps-charlie-01 OK  ssh OK  rustc 1.77  16 cores  ping 24ms",
+      "  vps-charlie-02 OK  ssh OK  rustc 1.77  16 cores  ping 27ms",
+      "  vps-delta-01   OK  ssh OK  rustc 1.77  64 cores  ping 30ms",
+      "  vps-delta-02   OK  ssh OK  rustc 1.77  64 cores  ping 33ms",
+      "",
+      "Fleet: 7/8 healthy | 1 unreachable",
+      "Recommendation: remove or repair vps-bravo-02",
     ],
     localTimeSec: 0,
     remoteTimeSec: 0,
@@ -585,73 +666,135 @@ const SCENARIOS: FleetScenario[] = [
 // ---------------------------------------------------------------------------
 
 const COLOR_MAP: Record<string, { border: string; bg: string; text: string; dot: string }> = {
-  emerald: { border: 'border-emerald-400/30', bg: 'bg-emerald-500/[0.08]', text: 'text-emerald-300', dot: '#22c55e' },
-  blue: { border: 'border-blue-400/30', bg: 'bg-blue-500/[0.08]', text: 'text-blue-300', dot: '#3b82f6' },
-  amber: { border: 'border-amber-400/30', bg: 'bg-amber-500/[0.08]', text: 'text-amber-300', dot: '#f59e0b' },
-  red: { border: 'border-red-400/30', bg: 'bg-red-500/[0.08]', text: 'text-red-300', dot: '#ef4444' },
-  teal: { border: 'border-teal-400/30', bg: 'bg-teal-500/[0.08]', text: 'text-teal-300', dot: '#14b8a6' },
-  violet: { border: 'border-violet-400/30', bg: 'bg-violet-500/[0.08]', text: 'text-violet-300', dot: '#8b5cf6' },
+  emerald: {
+    border: "border-emerald-400/30",
+    bg: "bg-emerald-500/[0.08]",
+    text: "text-emerald-300",
+    dot: "#22c55e",
+  },
+  blue: {
+    border: "border-blue-400/30",
+    bg: "bg-blue-500/[0.08]",
+    text: "text-blue-300",
+    dot: "#3b82f6",
+  },
+  amber: {
+    border: "border-amber-400/30",
+    bg: "bg-amber-500/[0.08]",
+    text: "text-amber-300",
+    dot: "#f59e0b",
+  },
+  red: {
+    border: "border-red-400/30",
+    bg: "bg-red-500/[0.08]",
+    text: "text-red-300",
+    dot: "#ef4444",
+  },
+  teal: {
+    border: "border-teal-400/30",
+    bg: "bg-teal-500/[0.08]",
+    text: "text-teal-300",
+    dot: "#14b8a6",
+  },
+  violet: {
+    border: "border-violet-400/30",
+    bg: "bg-violet-500/[0.08]",
+    text: "text-violet-300",
+    dot: "#8b5cf6",
+  },
 };
 
 function healthColor(h: WorkerHealth): string {
   switch (h) {
-    case 'online': return 'text-emerald-400';
-    case 'building': return 'text-amber-400';
-    case 'done': return 'text-teal-400';
-    case 'error': return 'text-red-400';
-    case 'offline': return 'text-red-500';
-    case 'syncing': return 'text-blue-400';
+    case "online":
+      return "text-emerald-400";
+    case "building":
+      return "text-amber-400";
+    case "done":
+      return "text-teal-400";
+    case "error":
+      return "text-red-400";
+    case "offline":
+      return "text-red-500";
+    case "syncing":
+      return "text-blue-400";
   }
 }
 
 function healthBg(h: WorkerHealth): string {
   switch (h) {
-    case 'online': return 'bg-emerald-400';
-    case 'building': return 'bg-amber-400';
-    case 'done': return 'bg-teal-400';
-    case 'error': return 'bg-red-400';
-    case 'offline': return 'bg-red-500/50';
-    case 'syncing': return 'bg-blue-400';
+    case "online":
+      return "bg-emerald-400";
+    case "building":
+      return "bg-amber-400";
+    case "done":
+      return "bg-teal-400";
+    case "error":
+      return "bg-red-400";
+    case "offline":
+      return "bg-red-500/50";
+    case "syncing":
+      return "bg-blue-400";
   }
 }
 
 function healthBorder(h: WorkerHealth): string {
   switch (h) {
-    case 'online': return 'border-emerald-400/30';
-    case 'building': return 'border-amber-400/30';
-    case 'done': return 'border-teal-400/30';
-    case 'error': return 'border-red-400/30';
-    case 'offline': return 'border-red-500/20';
-    case 'syncing': return 'border-blue-400/30';
+    case "online":
+      return "border-emerald-400/30";
+    case "building":
+      return "border-amber-400/30";
+    case "done":
+      return "border-teal-400/30";
+    case "error":
+      return "border-red-400/30";
+    case "offline":
+      return "border-red-500/20";
+    case "syncing":
+      return "border-blue-400/30";
   }
 }
 
 function healthIcon(h: WorkerHealth) {
   switch (h) {
-    case 'online': return <Wifi className="h-3 w-3 text-emerald-400" />;
-    case 'building': return <Loader2 className="h-3 w-3 text-amber-400 animate-spin" />;
-    case 'done': return <CheckCircle2 className="h-3 w-3 text-teal-400" />;
-    case 'error': return <AlertTriangle className="h-3 w-3 text-red-400" />;
-    case 'offline': return <WifiOff className="h-3 w-3 text-red-500" />;
-    case 'syncing': return <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />;
+    case "online":
+      return <Wifi className="h-3 w-3 text-emerald-400" />;
+    case "building":
+      return <Loader2 className="h-3 w-3 text-amber-400 animate-spin" />;
+    case "done":
+      return <CheckCircle2 className="h-3 w-3 text-teal-400" />;
+    case "error":
+      return <AlertTriangle className="h-3 w-3 text-red-400" />;
+    case "offline":
+      return <WifiOff className="h-3 w-3 text-red-500" />;
+    case "syncing":
+      return <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />;
   }
 }
 
-function jobStatusColor(s: BuildJob['status']): string {
+function jobStatusColor(s: BuildJob["status"]): string {
   switch (s) {
-    case 'queued': return 'text-white/50';
-    case 'building': return 'text-amber-400';
-    case 'done': return 'text-emerald-400';
-    case 'failed': return 'text-red-400';
+    case "queued":
+      return "text-white/50";
+    case "building":
+      return "text-amber-400";
+    case "done":
+      return "text-emerald-400";
+    case "failed":
+      return "text-red-400";
   }
 }
 
-function jobStatusBg(s: BuildJob['status']): string {
+function jobStatusBg(s: BuildJob["status"]): string {
   switch (s) {
-    case 'queued': return 'bg-white/[0.06]';
-    case 'building': return 'bg-amber-500/[0.1]';
-    case 'done': return 'bg-emerald-500/[0.1]';
-    case 'failed': return 'bg-red-500/[0.1]';
+    case "queued":
+      return "bg-white/[0.06]";
+    case "building":
+      return "bg-amber-500/[0.1]";
+    case "done":
+      return "bg-emerald-500/[0.1]";
+    case "failed":
+      return "bg-red-500/[0.1]";
   }
 }
 
@@ -660,28 +803,79 @@ function jobStatusBg(s: BuildJob['status']): string {
 // ---------------------------------------------------------------------------
 
 function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
-  const isActive = scenario.id === 'dispatched' || scenario.id === 'compiling' || scenario.id === 'failure';
-  const isReturning = scenario.id === 'complete';
+  const isActive =
+    scenario.id === "dispatched" || scenario.id === "compiling" || scenario.id === "failure";
+  const isReturning = scenario.id === "complete";
 
   return (
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
       <div className="flex items-center gap-2 mb-2">
         <Monitor className="h-3 w-3 text-blue-400" />
-        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Network Topology</span>
+        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">
+          Network Topology
+        </span>
       </div>
       <svg viewBox="0 0 400 180" className="w-full" style={{ maxHeight: 180 }}>
         {/* Local machine */}
-        <rect x="10" y="65" width="70" height="50" rx="8" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
-        <text x="45" y="85" textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize="8" fontWeight="600">Local</text>
-        <text x="45" y="98" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="6">Machine</text>
+        <rect
+          x="10"
+          y="65"
+          width="70"
+          height="50"
+          rx="8"
+          fill="rgba(59,130,246,0.12)"
+          stroke="rgba(59,130,246,0.3)"
+          strokeWidth="1"
+        />
+        <text
+          x="45"
+          y="85"
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.8)"
+          fontSize="8"
+          fontWeight="600"
+        >
+          Local
+        </text>
+        <text x="45" y="98" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="6">
+          Machine
+        </text>
 
         {/* Dispatcher */}
-        <rect x="140" y="65" width="70" height="50" rx="8" fill="rgba(139,92,246,0.12)" stroke="rgba(139,92,246,0.3)" strokeWidth="1" />
-        <text x="175" y="85" textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize="8" fontWeight="600">RCH</text>
-        <text x="175" y="98" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="6">Dispatcher</text>
+        <rect
+          x="140"
+          y="65"
+          width="70"
+          height="50"
+          rx="8"
+          fill="rgba(139,92,246,0.12)"
+          stroke="rgba(139,92,246,0.3)"
+          strokeWidth="1"
+        />
+        <text
+          x="175"
+          y="85"
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.8)"
+          fontSize="8"
+          fontWeight="600"
+        >
+          RCH
+        </text>
+        <text x="175" y="98" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="6">
+          Dispatcher
+        </text>
 
         {/* Connection line: local -> dispatcher */}
-        <line x1="80" y1="90" x2="140" y2="90" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="4 2" />
+        <line
+          x1="80"
+          y1="90"
+          x2="140"
+          y2="90"
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth="1"
+          strokeDasharray="4 2"
+        />
 
         {/* Animated packet: local -> dispatcher */}
         {isActive && (
@@ -701,39 +895,110 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
           const row = Math.floor(i / 2);
           const wx = 280 + col * 58;
           const wy = 10 + row * 42;
-          const isOffline = w.health === 'offline';
-          const fillColor = isOffline ? 'rgba(239,68,68,0.08)' : w.health === 'building' ? 'rgba(245,158,11,0.12)' : w.health === 'done' ? 'rgba(20,184,166,0.12)' : 'rgba(255,255,255,0.04)';
-          const strokeColor = isOffline ? 'rgba(239,68,68,0.3)' : w.health === 'building' ? 'rgba(245,158,11,0.3)' : w.health === 'done' ? 'rgba(20,184,166,0.3)' : 'rgba(255,255,255,0.1)';
+          const isOffline = w.health === "offline";
+          const fillColor = isOffline
+            ? "rgba(239,68,68,0.08)"
+            : w.health === "building"
+              ? "rgba(245,158,11,0.12)"
+              : w.health === "done"
+                ? "rgba(20,184,166,0.12)"
+                : "rgba(255,255,255,0.04)";
+          const strokeColor = isOffline
+            ? "rgba(239,68,68,0.3)"
+            : w.health === "building"
+              ? "rgba(245,158,11,0.3)"
+              : w.health === "done"
+                ? "rgba(20,184,166,0.3)"
+                : "rgba(255,255,255,0.1)";
 
           return (
             <g key={w.id}>
               {/* Connection: dispatcher -> worker */}
-              <line x1="210" y1="90" x2={wx} y2={wy + 16} stroke={isOffline ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.1)'} strokeWidth="0.5" strokeDasharray={isOffline ? '2 2' : 'none'} />
+              <line
+                x1="210"
+                y1="90"
+                x2={wx}
+                y2={wy + 16}
+                stroke={isOffline ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.1)"}
+                strokeWidth="0.5"
+                strokeDasharray={isOffline ? "2 2" : "none"}
+              />
 
               {/* Animated packet: dispatcher -> worker */}
               {isActive && !isOffline && (
                 <circle r="2" fill="#f59e0b" opacity="0.8">
-                  <animateMotion dur={`${1.5 + i * 0.15}s`} repeatCount="indefinite" path={`M 210,90 L ${wx},${wy + 16}`} />
+                  <animateMotion
+                    dur={`${1.5 + i * 0.15}s`}
+                    repeatCount="indefinite"
+                    path={`M 210,90 L ${wx},${wy + 16}`}
+                  />
                 </circle>
               )}
               {isReturning && !isOffline && (
                 <circle r="2" fill="#14b8a6" opacity="0.8">
-                  <animateMotion dur={`${1.2 + i * 0.1}s`} repeatCount="indefinite" path={`M ${wx},${wy + 16} L 210,90`} />
+                  <animateMotion
+                    dur={`${1.2 + i * 0.1}s`}
+                    repeatCount="indefinite"
+                    path={`M ${wx},${wy + 16} L 210,90`}
+                  />
                 </circle>
               )}
 
               {/* Worker box */}
-              <rect x={wx - 24} y={wy} width="48" height="32" rx="6" fill={fillColor} stroke={strokeColor} strokeWidth="0.8" />
-              <text x={wx} y={wy + 14} textAnchor="middle" fill={isOffline ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.7)'} fontSize="6" fontWeight="600">
+              <rect
+                x={wx - 24}
+                y={wy}
+                width="48"
+                height="32"
+                rx="6"
+                fill={fillColor}
+                stroke={strokeColor}
+                strokeWidth="0.8"
+              />
+              <text
+                x={wx}
+                y={wy + 14}
+                textAnchor="middle"
+                fill={isOffline ? "rgba(239,68,68,0.6)" : "rgba(255,255,255,0.7)"}
+                fontSize="6"
+                fontWeight="600"
+              >
                 W-{i + 1}
               </text>
-              <text x={wx} y={wy + 24} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="5">
+              <text
+                x={wx}
+                y={wy + 24}
+                textAnchor="middle"
+                fill="rgba(255,255,255,0.35)"
+                fontSize="5"
+              >
                 {w.cpuCores}c
               </text>
 
               {/* Health dot */}
-              <circle cx={wx + 18} cy={wy + 6} r="2.5" fill={isOffline ? '#ef4444' : w.health === 'building' ? '#f59e0b' : w.health === 'done' ? '#14b8a6' : '#22c55e'} opacity={isOffline ? 0.6 : 1}>
-                {w.health === 'building' && <animate attributeName="opacity" values="1;0.4;1" dur="1.2s" repeatCount="indefinite" />}
+              <circle
+                cx={wx + 18}
+                cy={wy + 6}
+                r="2.5"
+                fill={
+                  isOffline
+                    ? "#ef4444"
+                    : w.health === "building"
+                      ? "#f59e0b"
+                      : w.health === "done"
+                        ? "#14b8a6"
+                        : "#22c55e"
+                }
+                opacity={isOffline ? 0.6 : 1}
+              >
+                {w.health === "building" && (
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.4;1"
+                    dur="1.2s"
+                    repeatCount="indefinite"
+                  />
+                )}
               </circle>
             </g>
           );
@@ -748,20 +1013,24 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
 // ---------------------------------------------------------------------------
 
 function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
-  const isOffline = worker.health === 'offline';
+  const isOffline = worker.health === "offline";
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ ...SPRING, delay: index * 0.04 }}
-      className={`rounded-lg border p-2.5 transition-colors duration-300 ${healthBorder(worker.health)} ${isOffline ? 'bg-red-500/[0.03]' : 'bg-white/[0.02]'}`}
+      className={`rounded-lg border p-2.5 transition-colors duration-300 ${healthBorder(worker.health)} ${isOffline ? "bg-red-500/[0.03]" : "bg-white/[0.02]"}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold text-white/70 font-mono truncate">{worker.name.replace('vps-', '')}</span>
+        <span className="text-[10px] font-bold text-white/70 font-mono truncate">
+          {worker.name.replace("vps-", "")}
+        </span>
         <div className="flex items-center gap-1">
-          <div className={`w-1.5 h-1.5 rounded-full ${healthBg(worker.health)} ${worker.health === 'building' || worker.health === 'syncing' ? 'animate-pulse' : ''}`} />
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${healthBg(worker.health)} ${worker.health === "building" || worker.health === "syncing" ? "animate-pulse" : ""}`}
+          />
           {healthIcon(worker.health)}
         </div>
       </div>
@@ -769,20 +1038,24 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       {/* Host + latency */}
       <div className="text-[10px] text-white/30 font-mono mb-2 flex justify-between">
         <span>{worker.host}</span>
-        <span className={isOffline ? 'text-red-400' : ''}>{isOffline ? 'timeout' : `${worker.latencyMs}ms`}</span>
+        <span className={isOffline ? "text-red-400" : ""}>
+          {isOffline ? "timeout" : `${worker.latencyMs}ms`}
+        </span>
       </div>
 
       {/* CPU bar */}
       <div className="mb-1">
         <div className="flex justify-between text-[10px] mb-0.5">
           <span className="text-white/40">CPU</span>
-          <span className={`font-mono ${worker.cpuPct > 80 ? 'text-amber-400' : 'text-white/40'}`}>{worker.cpuPct}%</span>
+          <span className={`font-mono ${worker.cpuPct > 80 ? "text-amber-400" : "text-white/40"}`}>
+            {worker.cpuPct}%
+          </span>
         </div>
         <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
           <motion.div
-            className={`h-full rounded-full ${worker.cpuPct > 80 ? 'bg-amber-400/70' : 'bg-blue-400/50'}`}
+            className={`h-full rounded-full ${worker.cpuPct > 80 ? "bg-amber-400/70" : "bg-blue-400/50"}`}
             animate={{ width: `${worker.cpuPct}%` }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           />
         </div>
       </div>
@@ -795,9 +1068,9 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
         </div>
         <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
           <motion.div
-            className={`h-full rounded-full ${worker.ramPct > 70 ? 'bg-violet-400/60' : 'bg-emerald-400/40'}`}
+            className={`h-full rounded-full ${worker.ramPct > 70 ? "bg-violet-400/60" : "bg-emerald-400/40"}`}
             animate={{ width: `${worker.ramPct}%` }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           />
         </div>
       </div>
@@ -807,24 +1080,33 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
         <div>
           <div className="flex justify-between text-[10px] mb-0.5">
             <span className="text-white/40">Build</span>
-            <span className={`font-mono ${healthColor(worker.health)}`}>{worker.buildProgress}%</span>
+            <span className={`font-mono ${healthColor(worker.health)}`}>
+              {worker.buildProgress}%
+            </span>
           </div>
           <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
             <motion.div
-              className={`h-full rounded-full ${worker.health === 'done' ? 'bg-teal-400/60' : worker.health === 'offline' ? 'bg-red-400/40' : 'bg-amber-400/60'}`}
+              className={`h-full rounded-full ${worker.health === "done" ? "bg-teal-400/60" : worker.health === "offline" ? "bg-red-400/40" : "bg-amber-400/60"}`}
               animate={{ width: `${worker.buildProgress}%` }}
-              transition={{ duration: 0.4, ease: 'easeOut' }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
             />
           </div>
         </div>
       )}
 
       {/* Job label */}
-      {worker.job && worker.job !== 'healthy' && worker.job !== 'done' && worker.job !== 'offline' && (
-        <div className={`mt-1.5 text-[10px] font-mono truncate ${healthColor(worker.health)}`}>
-          {worker.job === 'rsync' ? 'syncing...' : worker.job === 'FAILED' ? 'FAILED' : worker.job}
-        </div>
-      )}
+      {worker.job &&
+        worker.job !== "healthy" &&
+        worker.job !== "done" &&
+        worker.job !== "offline" && (
+          <div className={`mt-1.5 text-[10px] font-mono truncate ${healthColor(worker.health)}`}>
+            {worker.job === "rsync"
+              ? "syncing..."
+              : worker.job === "FAILED"
+                ? "FAILED"
+                : worker.job}
+          </div>
+        )}
     </motion.div>
   );
 }
@@ -839,7 +1121,9 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
         <div className="flex items-center gap-2 mb-2">
           <HardDrive className="h-3 w-3 text-white/40" />
-          <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Build Queue</span>
+          <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">
+            Build Queue
+          </span>
         </div>
         <p className="text-[10px] text-white/30 italic">No jobs in queue</p>
       </div>
@@ -850,7 +1134,9 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
       <div className="flex items-center gap-2 mb-2">
         <HardDrive className="h-3 w-3 text-amber-400" />
-        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Build Queue</span>
+        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">
+          Build Queue
+        </span>
         <span className="ml-auto text-[10px] text-white/30 font-mono">{jobs.length} jobs</span>
       </div>
       <div className="space-y-1">
@@ -868,10 +1154,10 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
               <span className="text-white/30 flex-shrink-0">W-{job.assignedTo + 1}</span>
             )}
             <span className={`flex-shrink-0 ${jobStatusColor(job.status)}`}>
-              {job.status === 'queued' && 'queued'}
-              {job.status === 'building' && 'building'}
-              {job.status === 'done' && 'done'}
-              {job.status === 'failed' && 'failed'}
+              {job.status === "queued" && "queued"}
+              {job.status === "building" && "building"}
+              {job.status === "done" && "done"}
+              {job.status === "failed" && "failed"}
             </span>
           </motion.div>
         ))}
@@ -894,7 +1180,9 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
       <div className="flex items-center gap-2 mb-3">
         <Clock className="h-3 w-3 text-emerald-400" />
-        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Build Time Comparison</span>
+        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">
+          Build Time Comparison
+        </span>
         <span className="ml-auto text-[10px] font-bold text-emerald-400">{speedup}x faster</span>
       </div>
       <div className="space-y-2">
@@ -904,9 +1192,9 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
           <div className="flex-1 h-5 rounded-md bg-white/[0.04] border border-white/[0.06] overflow-hidden relative">
             <motion.div
               className="h-full bg-gradient-to-r from-red-500/40 to-orange-500/40 rounded-md"
-              initial={{ width: '0%' }}
-              animate={{ width: '100%' }}
-              transition={{ duration: 1.5, ease: 'easeOut' }}
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 1.5, ease: "easeOut" }}
             />
             <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white/70">
               {Math.floor(localSec / 60)}m {localSec % 60}s
@@ -919,9 +1207,9 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
           <div className="flex-1 h-5 rounded-md bg-white/[0.04] border border-white/[0.06] overflow-hidden relative">
             <motion.div
               className="h-full bg-gradient-to-r from-emerald-500/50 to-teal-500/50 rounded-md"
-              initial={{ width: '0%' }}
+              initial={{ width: "0%" }}
               animate={{ width: `${remoteWidthPct}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut', delay: 0.3 }}
+              transition={{ duration: 0.8, ease: "easeOut", delay: 0.3 }}
             />
             <span className="absolute left-0 inset-y-0 flex items-center pl-2 text-[10px] font-bold text-emerald-300/90">
               {remoteSec}s
@@ -948,23 +1236,27 @@ function ArtifactTransfer({ mb }: { mb: number }) {
     <div className="rounded-xl border border-teal-400/20 bg-teal-500/[0.04] p-3">
       <div className="flex items-center gap-2 mb-2">
         <Package className="h-3 w-3 text-teal-400" />
-        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Artifact Sync</span>
+        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">
+          Artifact Sync
+        </span>
       </div>
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
             <motion.div
               className="h-full rounded-full bg-gradient-to-r from-teal-400/60 to-emerald-400/60"
-              initial={{ width: '0%' }}
-              animate={{ width: '100%' }}
-              transition={{ duration: 1.5, ease: 'easeOut' }}
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 1.5, ease: "easeOut" }}
             />
           </div>
         </div>
         <span className="text-[10px] font-mono text-teal-300">{mb} MB</span>
       </div>
       <div className="mt-1.5 flex items-center gap-4 text-[10px] text-white/30 font-mono">
-        <span>zstd: {mb} MB -&gt; {Math.round(mb * 0.28)} MB</span>
+        <span>
+          zstd: {mb} MB -&gt; {Math.round(mb * 0.28)} MB
+        </span>
         <span>1.8s transfer</span>
         <span>13.3 MB/s</span>
       </div>
@@ -1002,16 +1294,22 @@ function MiniTerminal({ lines }: { lines: string[] }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: i * 0.03 }}
               className={`text-[10px] font-mono leading-relaxed ${
-                line.startsWith('$') ? 'text-emerald-400' :
-                line.includes('WARNING') || line.includes('FAIL') ? 'text-red-400' :
-                line.includes('OK') || line.includes('success') || line.includes('Finished') ? 'text-emerald-300/80' :
-                line.includes('[rch]') ? 'text-blue-300/70' :
-                line.includes('[vps-') ? 'text-amber-300/60' :
-                line === '' ? '' :
-                'text-white/50'
+                line.startsWith("$")
+                  ? "text-emerald-400"
+                  : line.includes("WARNING") || line.includes("FAIL")
+                    ? "text-red-400"
+                    : line.includes("OK") || line.includes("success") || line.includes("Finished")
+                      ? "text-emerald-300/80"
+                      : line.includes("[rch]")
+                        ? "text-blue-300/70"
+                        : line.includes("[vps-")
+                          ? "text-amber-300/60"
+                          : line === ""
+                            ? ""
+                            : "text-white/50"
               }`}
             >
-              {line || '\u00A0'}
+              {line || "\u00A0"}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -1044,22 +1342,31 @@ function InteractiveFleetDashboard() {
   }, []);
 
   // Fleet summary stats
-  const onlineCount = scenario.workers.filter((w) => w.health !== 'offline').length;
-  const totalCores = scenario.workers.reduce((sum, w) => sum + (w.health !== 'offline' ? w.cpuCores : 0), 0);
-  const activeBuildCount = scenario.workers.filter((w) => w.health === 'building' || w.health === 'syncing').length;
-  const avgCpu = scenario.workers.length > 0
-    ? Math.round(scenario.workers.reduce((s, w) => s + w.cpuPct, 0) / scenario.workers.length)
-    : 0;
+  const onlineCount = scenario.workers.filter((w) => w.health !== "offline").length;
+  const totalCores = scenario.workers.reduce(
+    (sum, w) => sum + (w.health !== "offline" ? w.cpuCores : 0),
+    0,
+  );
+  const activeBuildCount = scenario.workers.filter(
+    (w) => w.health === "building" || w.health === "syncing",
+  ).length;
+  const avgCpu =
+    scenario.workers.length > 0
+      ? Math.round(scenario.workers.reduce((s, w) => s + w.cpuPct, 0) / scenario.workers.length)
+      : 0;
 
   return (
-    <div ref={ref} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={ref}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-500/[0.06] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-violet-500/[0.06] rounded-full blur-3xl pointer-events-none" />
 
       {/* Scenario-based border flash */}
       <AnimatePresence>
-        {scenario.id === 'failure' && (
+        {scenario.id === "failure" && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={inView ? { opacity: [0, 0.4, 0] } : { opacity: 0 }}
@@ -1112,7 +1419,7 @@ function InteractiveFleetDashboard() {
                   className={`rounded-xl border px-2 py-1.5 text-[10px] font-medium transition-colors flex items-center gap-1 ${
                     isActive
                       ? `${sColors.border} ${sColors.bg} ${sColors.text}`
-                      : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60'
+                      : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
                   }`}
                 >
                   <Icon className="h-3 w-3" />
@@ -1141,7 +1448,10 @@ function InteractiveFleetDashboard() {
               key={i}
               animate={{
                 scale: scenarioIdx === i ? 1.4 : 1,
-                backgroundColor: scenarioIdx === i ? (COLOR_MAP[SCENARIOS[i].color]?.dot ?? '#3b82f6') : 'rgba(255,255,255,0.15)',
+                backgroundColor:
+                  scenarioIdx === i
+                    ? (COLOR_MAP[SCENARIOS[i].color]?.dot ?? "#3b82f6")
+                    : "rgba(255,255,255,0.15)",
               }}
               transition={SPRING}
               className="w-1.5 h-1.5 rounded-full"
@@ -1214,7 +1524,10 @@ function InteractiveFleetDashboard() {
 
             {/* Build time comparison (only for scenarios with timing data) */}
             <div className="mt-3">
-              <BuildTimeComparison localSec={scenario.localTimeSec} remoteSec={scenario.remoteTimeSec} />
+              <BuildTimeComparison
+                localSec={scenario.localTimeSec}
+                remoteSec={scenario.remoteTimeSec}
+              />
             </div>
 
             {/* Artifact transfer (only for complete scenario) */}

@@ -1,22 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AnimatePresence,
-  motion,
-  useInView,
-  useReducedMotion,
-} from "@/components/motion";
-import {
-  FileText,
-  GitBranch,
-  Compass,
-  Mail,
-  Code,
-  CheckCircle,
-  RotateCcw,
-} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { CheckCircle, Code, Compass, FileText, GitBranch, Mail, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -52,10 +39,8 @@ const STEPS: Step[] = [
     label: "Plan",
     icon: FileText,
     color: "#a78bfa",
-    action:
-      "Ask 3+ frontier models for competing plans, synthesize into one",
-    output:
-      "A markdown plan covering workflows, architecture, and tests",
+    action: "Ask 3+ frontier models for competing plans, synthesize into one",
+    output: "A markdown plan covering workflows, architecture, and tests",
     timing: "~1-3 hours",
     inLoop: false,
   },
@@ -74,8 +59,7 @@ const STEPS: Step[] = [
     label: "Route",
     icon: Compass,
     color: "#FFBD2E",
-    action:
-      "Run bv --robot-triage to find highest-leverage ready bead",
+    action: "Run bv --robot-triage to find highest-leverage ready bead",
     output: "Ranked recommendations with scores and unblock counts",
     timing: "< 1 second",
     inLoop: true,
@@ -85,8 +69,7 @@ const STEPS: Step[] = [
     label: "Coordinate",
     icon: Mail,
     color: "#FF5500",
-    action:
-      "Claim bead in Agent Mail, reserve files, announce to swarm",
+    action: "Claim bead in Agent Mail, reserve files, announce to swarm",
     output: "Thread + file reservations visible to all agents",
     timing: "~ 30 seconds",
     inLoop: true,
@@ -97,10 +80,8 @@ const STEPS: Step[] = [
     icon: Code,
     iconAlt: CheckCircle,
     color: "#22c55e",
-    action:
-      "Implement, test, fresh-eyes review, close bead, repeat from step 3",
-    output:
-      "Working code + tests, updated graph, next bead queued",
+    action: "Implement, test, fresh-eyes review, close bead, repeat from step 3",
+    output: "Working code + tests, updated graph, next bead queued",
     timing: "10-60 minutes per bead",
     inLoop: true,
   },
@@ -153,18 +134,12 @@ function StepNode({
       <motion.div
         className={cn(
           "relative z-10 flex h-12 w-12 items-center justify-center rounded-full border-2 transition-colors duration-300",
-          isActive
-            ? "bg-black/60"
-            : "bg-black/30 border-white/[0.08] hover:border-white/[0.15]",
+          isActive ? "bg-black/60" : "bg-black/30 border-white/[0.08] hover:border-white/[0.15]",
         )}
         style={{
           borderColor: isActive ? step.color : undefined,
         }}
-        animate={
-          isActive && !reducedMotion
-            ? { scale: [1, 1.08, 1] }
-            : { scale: 1 }
-        }
+        animate={isActive && !reducedMotion ? { scale: [1, 1.08, 1] } : { scale: 1 }}
         transition={
           isActive && !reducedMotion
             ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
@@ -264,10 +239,7 @@ function DetailCard({
         >
           {index + 1}
         </span>
-        <span
-          className="text-sm font-bold tracking-tight"
-          style={{ color: step.color }}
-        >
+        <span className="text-sm font-bold tracking-tight" style={{ color: step.color }}>
           {step.label}
         </span>
       </div>
@@ -279,9 +251,7 @@ function DetailCard({
           <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
             Action
           </div>
-          <p className="text-sm leading-relaxed text-zinc-300 font-light">
-            {step.action}
-          </p>
+          <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.action}</p>
         </div>
 
         {/* Output */}
@@ -289,9 +259,7 @@ function DetailCard({
           <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
             Output
           </div>
-          <p className="text-sm leading-relaxed text-zinc-300 font-light">
-            {step.output}
-          </p>
+          <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.output}</p>
         </div>
 
         {/* Timing */}
@@ -332,8 +300,7 @@ function Connector({
   reducedMotion: boolean;
   vertical: boolean;
 }) {
-  const isCrossing =
-    activeIndex === fromIndex || activeIndex === fromIndex + 1;
+  const isCrossing = activeIndex === fromIndex || activeIndex === fromIndex + 1;
 
   return (
     <div
@@ -345,22 +312,18 @@ function Connector({
       <motion.div
         className={cn(
           "absolute",
-          vertical ? "inset-y-0 left-1/2 -translate-x-1/2 w-0.5" : "inset-x-0 top-1/2 -translate-y-1/2 h-0.5",
+          vertical
+            ? "inset-y-0 left-1/2 -translate-x-1/2 w-0.5"
+            : "inset-x-0 top-1/2 -translate-y-1/2 h-0.5",
         )}
         style={{
           background: isCrossing
             ? `linear-gradient(${vertical ? "to bottom" : "to right"}, ${STEPS[fromIndex].color}60, ${STEPS[fromIndex + 1].color}60)`
             : "rgba(255,255,255,0.06)",
         }}
-        animate={
-          isCrossing && !reducedMotion
-            ? { opacity: [0.5, 1, 0.5] }
-            : { opacity: 1 }
-        }
+        animate={isCrossing && !reducedMotion ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
         transition={
-          isCrossing && !reducedMotion
-            ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
-            : {}
+          isCrossing && !reducedMotion ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : {}
         }
       />
     </div>
@@ -386,11 +349,7 @@ function LoopArrow({
     return (
       <motion.div
         className="flex items-center justify-center gap-2 py-2"
-        animate={
-          isHighlighted && !reducedMotion
-            ? { opacity: [0.6, 1, 0.6] }
-            : { opacity: 0.5 }
-        }
+        animate={isHighlighted && !reducedMotion ? { opacity: [0.6, 1, 0.6] } : { opacity: 0.5 }}
         transition={
           isHighlighted && !reducedMotion
             ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
@@ -418,15 +377,9 @@ function LoopArrow({
         /* Position the loop arrow under the last three steps */
         left: "40%",
       }}
-      animate={
-        isHighlighted && !reducedMotion
-          ? { opacity: [0.5, 1, 0.5] }
-          : { opacity: 0.4 }
-      }
+      animate={isHighlighted && !reducedMotion ? { opacity: [0.5, 1, 0.5] } : { opacity: 0.4 }}
       transition={
-        isHighlighted && !reducedMotion
-          ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
-          : {}
+        isHighlighted && !reducedMotion ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}
       }
     >
       {/* Curved line using SVG */}
@@ -468,13 +421,10 @@ export function OperatingRhythmViz() {
   const reducedMotion = prefersReducedMotion ?? false;
 
   /* Auto-play timer */
-  const handleSelect = useCallback(
-    (index: number) => {
-      setActiveIndex(index);
-      setAutoPlay(false);
-    },
-    [],
-  );
+  const handleSelect = useCallback((index: number) => {
+    setActiveIndex(index);
+    setAutoPlay(false);
+  }, []);
 
   /* Keyboard navigation — only when this viz is in the viewport */
   useEffect(() => {
@@ -510,10 +460,7 @@ export function OperatingRhythmViz() {
   const activeStep = STEPS[activeIndex];
 
   return (
-    <div
-      ref={containerRef}
-      className={cn(EXHIBIT_PANEL_CLASS, "relative group/viz")}
-    >
+    <div ref={containerRef} className={cn(EXHIBIT_PANEL_CLASS, "relative group/viz")}>
       {/* Noise texture overlay */}
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[inherit]" />
 
@@ -527,14 +474,18 @@ export function OperatingRhythmViz() {
           From plan to production in five steps
         </h3>
         <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-          Steps 3-5 repeat for every bead. You stop thinking about the process after the second cycle.
+          Steps 3-5 repeat for every bead. You stop thinking about the process after the second
+          cycle.
         </p>
       </div>
 
       {/* ---- DESKTOP HORIZONTAL TIMELINE (lg+) ---- */}
       <div className="relative z-10 hidden lg:block">
         {/* Loop background: subtle pill behind steps 3-5 */}
-        <div className="absolute top-0 -bottom-12 rounded-2xl border border-dashed border-white/[0.04] bg-white/[0.015]" style={{ left: "38%", right: "0%" }} />
+        <div
+          className="absolute top-0 -bottom-12 rounded-2xl border border-dashed border-white/[0.04] bg-white/[0.015]"
+          style={{ left: "38%", right: "0%" }}
+        />
         <div
           className="absolute top-1 flex items-center gap-1 text-[0.55rem] font-bold uppercase tracking-widest"
           style={{ left: "40%", color: "rgba(255,255,255,0.12)" }}
@@ -568,11 +519,7 @@ export function OperatingRhythmViz() {
 
         {/* Loop arrow from step 5 back to step 3 */}
         <div className="relative h-10">
-          <LoopArrow
-            activeIndex={activeIndex}
-            reducedMotion={reducedMotion}
-            vertical={false}
-          />
+          <LoopArrow activeIndex={activeIndex} reducedMotion={reducedMotion} vertical={false} />
         </div>
 
         {/* Detail card below the timeline */}
@@ -591,8 +538,14 @@ export function OperatingRhythmViz() {
       {/* ---- MOBILE VERTICAL TIMELINE ---- */}
       <div className="relative z-10 lg:hidden">
         {/* Loop background behind steps 3-5 */}
-        <div className="absolute rounded-2xl border border-dashed border-white/[0.04] bg-white/[0.015]" style={{ top: "55%", bottom: "0%", left: "-4px", right: "-4px" }}>
-          <div className="flex items-center gap-1 px-3 pt-2 text-[0.55rem] font-bold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.12)" }}>
+        <div
+          className="absolute rounded-2xl border border-dashed border-white/[0.04] bg-white/[0.015]"
+          style={{ top: "55%", bottom: "0%", left: "-4px", right: "-4px" }}
+        >
+          <div
+            className="flex items-center gap-1 px-3 pt-2 text-[0.55rem] font-bold uppercase tracking-widest"
+            style={{ color: "rgba(255,255,255,0.12)" }}
+          >
             <RotateCcw className="h-3 w-3" />
             Repeating loop
           </div>
@@ -614,21 +567,14 @@ export function OperatingRhythmViz() {
                   <motion.div
                     className={cn(
                       "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors duration-300",
-                      activeIndex === i
-                        ? "bg-black/60"
-                        : "bg-black/30 border-white/[0.08]",
+                      activeIndex === i ? "bg-black/60" : "bg-black/30 border-white/[0.08]",
                     )}
                     style={{
                       borderColor: activeIndex === i ? step.color : undefined,
-                      boxShadow:
-                        activeIndex === i
-                          ? `0 0 16px ${step.color}40`
-                          : "none",
+                      boxShadow: activeIndex === i ? `0 0 16px ${step.color}40` : "none",
                     }}
                     animate={
-                      activeIndex === i && !reducedMotion
-                        ? { scale: [1, 1.06, 1] }
-                        : { scale: 1 }
+                      activeIndex === i && !reducedMotion ? { scale: [1, 1.06, 1] } : { scale: 1 }
                     }
                     transition={
                       activeIndex === i && !reducedMotion
@@ -643,10 +589,7 @@ export function OperatingRhythmViz() {
                     <step.icon
                       className="h-4 w-4"
                       style={{
-                        color:
-                          activeIndex === i
-                            ? step.color
-                            : "rgba(255,255,255,0.35)",
+                        color: activeIndex === i ? step.color : "rgba(255,255,255,0.35)",
                       }}
                     />
                   </motion.div>
@@ -658,10 +601,7 @@ export function OperatingRhythmViz() {
                     <span
                       className="text-[0.55rem] font-bold uppercase tracking-widest"
                       style={{
-                        color:
-                          activeIndex === i
-                            ? step.color
-                            : "rgba(255,255,255,0.2)",
+                        color: activeIndex === i ? step.color : "rgba(255,255,255,0.2)",
                       }}
                     >
                       Step {i + 1}
@@ -670,9 +610,7 @@ export function OperatingRhythmViz() {
                       className="text-sm font-bold tracking-tight transition-colors duration-300"
                       style={{
                         color:
-                          activeIndex === i
-                            ? "rgba(255,255,255,0.9)"
-                            : "rgba(255,255,255,0.35)",
+                          activeIndex === i ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.35)",
                       }}
                     >
                       {step.label}
@@ -683,15 +621,9 @@ export function OperatingRhythmViz() {
                   <AnimatePresence>
                     {activeIndex === i && (
                       <motion.div
-                        initial={
-                          reducedMotion ? false : { height: 0, opacity: 0 }
-                        }
+                        initial={reducedMotion ? false : { height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
-                        exit={
-                          reducedMotion
-                            ? undefined
-                            : { height: 0, opacity: 0 }
-                        }
+                        exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
                         transition={{
                           type: "spring",
                           stiffness: 300,
@@ -757,11 +689,7 @@ export function OperatingRhythmViz() {
           ))}
 
           {/* Loop indicator at the bottom on mobile */}
-          <LoopArrow
-            activeIndex={activeIndex}
-            reducedMotion={reducedMotion}
-            vertical
-          />
+          <LoopArrow activeIndex={activeIndex} reducedMotion={reducedMotion} vertical />
         </div>
       </div>
 
@@ -777,8 +705,7 @@ export function OperatingRhythmViz() {
               : "border-white/[0.06] text-white/20 bg-white/[0.02] hover:bg-white/[0.04]",
           )}
         >
-          {autoPlay ? "Auto-playing" : "Paused"} &middot;{" "}
-          {activeIndex + 1}/{STEP_COUNT}
+          {autoPlay ? "Auto-playing" : "Paused"} &middot; {activeIndex + 1}/{STEP_COUNT}
         </button>
       </div>
     </div>

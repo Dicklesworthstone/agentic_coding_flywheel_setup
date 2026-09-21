@@ -1,8 +1,18 @@
 "use client";
 
-import { type ReactNode, type HTMLAttributes, type AnchorHTMLAttributes, type TableHTMLAttributes, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
 import { Check, Copy } from "lucide-react";
-import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  type AnchorHTMLAttributes,
+  type HTMLAttributes,
+  type ReactNode,
+  type TableHTMLAttributes,
+  type TdHTMLAttributes,
+  type ThHTMLAttributes,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { copyTextToClipboard } from "@/lib/utils";
 
 /**
@@ -255,7 +265,11 @@ function Table({ children, ...props }: MarkdownProps) {
 
 function TableHead({ children, ...props }: MarkdownProps) {
   const safeProps = sanitizeProps(props) as HTMLAttributes<HTMLTableSectionElement>;
-  return <thead {...safeProps} className="bg-muted/50">{children}</thead>;
+  return (
+    <thead {...safeProps} className="bg-muted/50">
+      {children}
+    </thead>
+  );
 }
 
 function TableBody({ children, ...props }: MarkdownProps) {
@@ -265,17 +279,29 @@ function TableBody({ children, ...props }: MarkdownProps) {
 
 function TableRow({ children, ...props }: MarkdownProps) {
   const safeProps = sanitizeProps(props) as HTMLAttributes<HTMLTableRowElement>;
-  return <tr {...safeProps} className="border-b border-border/50">{children}</tr>;
+  return (
+    <tr {...safeProps} className="border-b border-border/50">
+      {children}
+    </tr>
+  );
 }
 
 function TableCell({ children, ...props }: MarkdownProps) {
   const safeProps = sanitizeProps(props) as TdHTMLAttributes<HTMLTableCellElement>;
-  return <td {...safeProps} className="px-4 py-3 text-sm">{children}</td>;
+  return (
+    <td {...safeProps} className="px-4 py-3 text-sm">
+      {children}
+    </td>
+  );
 }
 
 function TableHeader({ children, ...props }: MarkdownProps) {
   const safeProps = sanitizeProps(props) as ThHTMLAttributes<HTMLTableCellElement>;
-  return <th {...safeProps} className="px-4 py-3 text-left text-sm font-semibold">{children}</th>;
+  return (
+    <th {...safeProps} className="px-4 py-3 text-left text-sm font-semibold">
+      {children}
+    </th>
+  );
 }
 
 /**

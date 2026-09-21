@@ -1,18 +1,18 @@
 "use client";
 
-import * as React from "react";
-import { AnimatePresence, motion as m } from "@/components/motion";
-import { cn } from "@/lib/utils";
-import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
   Info,
+  type LucideIcon,
   Sparkles,
   X,
-  type LucideIcon,
 } from "lucide-react";
+import * as React from "react";
+import { AnimatePresence, motion as m } from "@/components/motion";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 type AlertVariant = "info" | "success" | "warning" | "error" | "tip" | "magic";
 
@@ -70,8 +70,7 @@ const variantStyles: Record<
     defaultIcon: Info,
   },
   magic: {
-    container:
-      "border-primary/30 bg-primary/[0.08] shadow-sm shadow-primary/10",
+    container: "border-primary/30 bg-primary/[0.08] shadow-sm shadow-primary/10",
     icon: "text-primary",
     title: "text-primary",
     defaultIcon: Sparkles,
@@ -121,7 +120,7 @@ export function AlertCard({
           className={cn(
             "relative rounded-xl border p-4 backdrop-blur-sm transition",
             styles.container,
-            className
+            className,
           )}
           initial={prefersReducedMotion ? {} : { opacity: 0, y: -8, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -135,7 +134,7 @@ export function AlertCard({
                 "absolute right-3 top-3 flex h-11 w-11 items-center justify-center",
                 "rounded-lg text-current/60 transition-colors",
                 "hover:bg-current/10 hover:text-current",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
               aria-label="Dismiss alert"
             >
@@ -147,7 +146,7 @@ export function AlertCard({
             <div
               className={cn(
                 "pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-xl",
-                styles.icon
+                styles.icon,
               )}
             >
               <div className="absolute inset-0 bg-current/15" />
@@ -165,13 +164,9 @@ export function AlertCard({
           )}
 
           <div className="flex gap-3">
-            <IconComponent
-              className={cn("mt-0.5 h-5 w-5 shrink-0", styles.icon)}
-            />
+            <IconComponent className={cn("mt-0.5 h-5 w-5 shrink-0", styles.icon)} />
             <div className="min-w-0 flex-1 space-y-1">
-              {title && (
-                <p className={cn("font-medium", styles.title)}>{title}</p>
-              )}
+              {title && <p className={cn("font-medium", styles.title)}>{title}</p>}
               <div className="text-sm text-muted-foreground">{children}</div>
             </div>
           </div>
@@ -197,15 +192,13 @@ export function OutputPreview({
     <div
       className={cn(
         "rounded-xl border border-green/30 bg-green/10 p-4 backdrop-blur-sm",
-        className
+        className,
       )}
     >
       {title && (
         <div className="mb-3 flex items-center gap-2">
           <CheckCircle2 className="h-5 w-5 text-green" />
-          <span className="font-medium text-green">
-            {title}
-          </span>
+          <span className="font-medium text-green">{title}</span>
         </div>
       )}
       {/* The terminal box is a deliberate dark island: it keeps its near-black
@@ -242,7 +235,7 @@ export function DetailsSection({
       className={cn(
         "group rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm transition",
         "hover:border-primary/20",
-        className
+        className,
       )}
       open={defaultOpen}
     >
@@ -254,12 +247,7 @@ export function DetailsSection({
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </summary>
       <div className="border-t border-border/30 px-4 py-3">{children}</div>

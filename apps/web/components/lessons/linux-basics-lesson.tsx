@@ -1,65 +1,57 @@
 "use client";
 
-import { motion, AnimatePresence } from "@/components/motion";
-import { useState, useCallback, useMemo } from "react";
 import {
-  FolderOpen,
-  Eye,
-  Move,
-  Plus,
-  Trash2,
-  Search,
   CheckCircle2,
-  MapPin,
   ChevronRight,
-  Folder,
-  FileText,
-  Home,
-  Terminal,
-  Shield,
   Clock,
-  User,
-  Users,
-  Globe,
+  Database,
+  Eye,
   FileCode,
   FileJson,
   FileLock,
-  Settings,
-  Key,
+  FileText,
+  Folder,
+  FolderOpen,
+  Globe,
   HardDrive,
-  Database,
-  ScrollText,
+  Home,
+  Key,
   Lock,
+  MapPin,
+  Move,
   Play,
+  Plus,
+  ScrollText,
+  Search,
+  Settings,
+  Shield,
+  Terminal,
+  Trash2,
+  User,
+  Users,
 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
   CommandList,
-  TipBox,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
   InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function LinuxBasicsLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Navigate the filesystem like a pro in 3 minutes.
-      </GoalBanner>
+      <GoalBanner>Navigate the filesystem like a pro in 3 minutes.</GoalBanner>
 
       {/* Where Am I */}
-      <Section
-        title="Where Am I?"
-        icon={<MapPin className="h-5 w-5" />}
-        delay={0.1}
-      >
-        <Paragraph>
-          First, let&apos;s find out where you are in the filesystem:
-        </Paragraph>
+      <Section title="Where Am I?" icon={<MapPin className="h-5 w-5" />} delay={0.1}>
+        <Paragraph>First, let&apos;s find out where you are in the filesystem:</Paragraph>
         <div className="mt-6">
           <CodeBlock code="$ pwd" />
         </div>
@@ -67,34 +59,24 @@ export function LinuxBasicsLesson() {
           <InteractiveFilesystemTree />
         </div>
         <Paragraph>
-          This prints your current directory. You should see{" "}
-          <InlineCode>/home/ubuntu</InlineCode>.
+          This prints your current directory. You should see <InlineCode>/home/ubuntu</InlineCode>.
         </Paragraph>
       </Section>
 
       <Divider />
 
       {/* What's Here */}
-      <Section
-        title="What's Here?"
-        icon={<FolderOpen className="h-5 w-5" />}
-        delay={0.15}
-      >
-        <Paragraph>
-          List the contents of your current directory:
-        </Paragraph>
+      <Section title="What's Here?" icon={<FolderOpen className="h-5 w-5" />} delay={0.15}>
+        <Paragraph>List the contents of your current directory:</Paragraph>
         <div className="mt-6">
           <CodeBlock code="$ ls" />
         </div>
         <Paragraph>
-          With ACFS, this is aliased to <InlineCode>lsd</InlineCode> which shows
-          beautiful icons.
+          With ACFS, this is aliased to <InlineCode>lsd</InlineCode> which shows beautiful icons.
         </Paragraph>
 
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4">
-            Try these variations:
-          </h4>
+          <h4 className="text-lg font-semibold text-white mb-4">Try these variations:</h4>
           <CommandList
             commands={[
               { command: "ll", description: "Long format with details" },
@@ -108,11 +90,7 @@ export function LinuxBasicsLesson() {
       <Divider />
 
       {/* Moving Around */}
-      <Section
-        title="Moving Around"
-        icon={<Move className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Moving Around" icon={<Move className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
           Navigate the filesystem with the <InlineCode>cd</InlineCode> command:
         </Paragraph>
@@ -134,8 +112,8 @@ export function LinuxBasicsLesson() {
         <div className="mt-8">
           <TipBox variant="tip">
             With <Highlight>zoxide</Highlight> installed, you can use{" "}
-            <InlineCode>z projects</InlineCode> to jump to{" "}
-            <InlineCode>/data/projects</InlineCode> after visiting it once!
+            <InlineCode>z projects</InlineCode> to jump to <InlineCode>/data/projects</InlineCode>{" "}
+            after visiting it once!
           </TipBox>
         </div>
       </Section>
@@ -143,11 +121,7 @@ export function LinuxBasicsLesson() {
       <Divider />
 
       {/* Creating Things */}
-      <Section
-        title="Creating Things"
-        icon={<Plus className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Creating Things" icon={<Plus className="h-5 w-5" />} delay={0.25}>
         <Paragraph>Create new directories and files:</Paragraph>
 
         <div className="mt-6">
@@ -167,11 +141,7 @@ export function LinuxBasicsLesson() {
       <Divider />
 
       {/* Viewing Files */}
-      <Section
-        title="Viewing Files"
-        icon={<Eye className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Viewing Files" icon={<Eye className="h-5 w-5" />} delay={0.3}>
         <Paragraph>Read file contents in different ways:</Paragraph>
 
         <div className="mt-6">
@@ -195,11 +165,7 @@ export function LinuxBasicsLesson() {
       <Divider />
 
       {/* Deleting Things */}
-      <Section
-        title="Deleting Things"
-        icon={<Trash2 className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Deleting Things" icon={<Trash2 className="h-5 w-5" />} delay={0.35}>
         <div className="mb-6">
           <TipBox variant="warning">
             There&apos;s no trash can in Linux. <strong>Deleted = gone.</strong>
@@ -220,11 +186,7 @@ export function LinuxBasicsLesson() {
       <Divider />
 
       {/* Searching */}
-      <Section
-        title="Searching"
-        icon={<Search className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Searching" icon={<Search className="h-5 w-5" />} delay={0.4}>
         <Paragraph>Find files and search their contents:</Paragraph>
 
         <div className="mt-6">
@@ -354,8 +316,27 @@ const HOME_TREE: TreeNode = {
               modified: "2026-03-10",
               description: "ACFS configuration and scripts.",
               children: [
-                { name: "config.yaml", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "1.2K", modified: "2026-03-10", description: "Main ACFS configuration." },
-                { name: "scripts", type: "folder", permissions: "drwxr-xr-x", owner: "ubuntu", group: "ubuntu", size: "4.0K", modified: "2026-03-08", children: [] },
+                {
+                  name: "config.yaml",
+                  type: "file",
+                  kind: "config",
+                  permissions: "-rw-r--r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "1.2K",
+                  modified: "2026-03-10",
+                  description: "Main ACFS configuration.",
+                },
+                {
+                  name: "scripts",
+                  type: "folder",
+                  permissions: "drwxr-xr-x",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "4.0K",
+                  modified: "2026-03-08",
+                  children: [],
+                },
               ],
             },
             {
@@ -368,10 +349,50 @@ const HOME_TREE: TreeNode = {
               modified: "2026-02-20",
               description: "SSH keys and configuration. Permissions must be strict!",
               children: [
-                { name: "authorized_keys", type: "file", kind: "key", permissions: "-rw-------", owner: "ubuntu", group: "ubuntu", size: "580", modified: "2026-02-20", description: "Public keys allowed to connect." },
-                { name: "acfs_ed25519", type: "file", kind: "key", permissions: "-rw-------", owner: "ubuntu", group: "ubuntu", size: "411", modified: "2026-02-20", description: "Private SSH key (never share!)." },
-                { name: "acfs_ed25519.pub", type: "file", kind: "key", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "97", modified: "2026-02-20", description: "Public SSH key (safe to share)." },
-                { name: "config", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "245", modified: "2026-02-18", description: "SSH client configuration." },
+                {
+                  name: "authorized_keys",
+                  type: "file",
+                  kind: "key",
+                  permissions: "-rw-------",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "580",
+                  modified: "2026-02-20",
+                  description: "Public keys allowed to connect.",
+                },
+                {
+                  name: "acfs_ed25519",
+                  type: "file",
+                  kind: "key",
+                  permissions: "-rw-------",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "411",
+                  modified: "2026-02-20",
+                  description: "Private SSH key (never share!).",
+                },
+                {
+                  name: "acfs_ed25519.pub",
+                  type: "file",
+                  kind: "key",
+                  permissions: "-rw-r--r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "97",
+                  modified: "2026-02-20",
+                  description: "Public SSH key (safe to share).",
+                },
+                {
+                  name: "config",
+                  type: "file",
+                  kind: "config",
+                  permissions: "-rw-r--r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "245",
+                  modified: "2026-02-18",
+                  description: "SSH client configuration.",
+                },
               ],
             },
             {
@@ -383,12 +404,52 @@ const HOME_TREE: TreeNode = {
               size: "4.0K",
               modified: "2026-03-01",
               children: [
-                { name: "bin", type: "folder", permissions: "drwxr-xr-x", owner: "ubuntu", group: "ubuntu", size: "4.0K", modified: "2026-03-01", description: "User-local executables (on your PATH).", children: [] },
+                {
+                  name: "bin",
+                  type: "folder",
+                  permissions: "drwxr-xr-x",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "4.0K",
+                  modified: "2026-03-01",
+                  description: "User-local executables (on your PATH).",
+                  children: [],
+                },
               ],
             },
-            { name: ".bashrc", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "3.7K", modified: "2026-03-05", description: "Bash startup script." },
-            { name: ".zshrc", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "4.1K", modified: "2026-03-11", description: "Zsh startup script (loaded by ACFS)." },
-            { name: ".gitconfig", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "312", modified: "2026-02-28", description: "Git user configuration." },
+            {
+              name: ".bashrc",
+              type: "file",
+              kind: "config",
+              permissions: "-rw-r--r--",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "3.7K",
+              modified: "2026-03-05",
+              description: "Bash startup script.",
+            },
+            {
+              name: ".zshrc",
+              type: "file",
+              kind: "config",
+              permissions: "-rw-r--r--",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "4.1K",
+              modified: "2026-03-11",
+              description: "Zsh startup script (loaded by ACFS).",
+            },
+            {
+              name: ".gitconfig",
+              type: "file",
+              kind: "config",
+              permissions: "-rw-r--r--",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "312",
+              modified: "2026-02-28",
+              description: "Git user configuration.",
+            },
           ],
         },
       ],
@@ -412,7 +473,16 @@ const HOME_TREE: TreeNode = {
           modified: "2026-03-12",
           description: "All your coding projects live here.",
           children: [
-            { name: "my-first-project", type: "folder", permissions: "drwxrwxr-x", owner: "ubuntu", group: "ubuntu", size: "4.0K", modified: "2026-03-12", children: [] },
+            {
+              name: "my-first-project",
+              type: "folder",
+              permissions: "drwxrwxr-x",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "4.0K",
+              modified: "2026-03-12",
+              children: [],
+            },
           ],
         },
       ],
@@ -439,11 +509,61 @@ const ETC_TREE: TreeNode = {
       modified: "2026-03-12",
       description: "System-wide configuration files.",
       children: [
-        { name: "hostname", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "root", group: "root", size: "12", modified: "2026-01-15", description: "Machine hostname." },
-        { name: "hosts", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "root", group: "root", size: "221", modified: "2026-01-15", description: "Static hostname-to-IP mappings." },
-        { name: "passwd", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "root", group: "root", size: "1.8K", modified: "2026-02-10", description: "User account information." },
-        { name: "shadow", type: "file", kind: "lock", permissions: "-rw-r-----", owner: "root", group: "shadow", size: "1.1K", modified: "2026-02-10", description: "Encrypted passwords (restricted!)." },
-        { name: "fstab", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "root", group: "root", size: "570", modified: "2026-01-15", description: "Filesystem mount table." },
+        {
+          name: "hostname",
+          type: "file",
+          kind: "config",
+          permissions: "-rw-r--r--",
+          owner: "root",
+          group: "root",
+          size: "12",
+          modified: "2026-01-15",
+          description: "Machine hostname.",
+        },
+        {
+          name: "hosts",
+          type: "file",
+          kind: "config",
+          permissions: "-rw-r--r--",
+          owner: "root",
+          group: "root",
+          size: "221",
+          modified: "2026-01-15",
+          description: "Static hostname-to-IP mappings.",
+        },
+        {
+          name: "passwd",
+          type: "file",
+          kind: "config",
+          permissions: "-rw-r--r--",
+          owner: "root",
+          group: "root",
+          size: "1.8K",
+          modified: "2026-02-10",
+          description: "User account information.",
+        },
+        {
+          name: "shadow",
+          type: "file",
+          kind: "lock",
+          permissions: "-rw-r-----",
+          owner: "root",
+          group: "shadow",
+          size: "1.1K",
+          modified: "2026-02-10",
+          description: "Encrypted passwords (restricted!).",
+        },
+        {
+          name: "fstab",
+          type: "file",
+          kind: "config",
+          permissions: "-rw-r--r--",
+          owner: "root",
+          group: "root",
+          size: "570",
+          modified: "2026-01-15",
+          description: "Filesystem mount table.",
+        },
         {
           name: "ssh",
           type: "folder",
@@ -454,9 +574,39 @@ const ETC_TREE: TreeNode = {
           modified: "2026-01-15",
           description: "SSH daemon configuration.",
           children: [
-            { name: "sshd_config", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "root", group: "root", size: "3.3K", modified: "2026-02-15", description: "SSH server settings." },
-            { name: "ssh_host_ed25519_key", type: "file", kind: "key", permissions: "-rw-------", owner: "root", group: "root", size: "419", modified: "2026-01-15", description: "Host private key." },
-            { name: "ssh_host_ed25519_key.pub", type: "file", kind: "key", permissions: "-rw-r--r--", owner: "root", group: "root", size: "95", modified: "2026-01-15", description: "Host public key." },
+            {
+              name: "sshd_config",
+              type: "file",
+              kind: "config",
+              permissions: "-rw-r--r--",
+              owner: "root",
+              group: "root",
+              size: "3.3K",
+              modified: "2026-02-15",
+              description: "SSH server settings.",
+            },
+            {
+              name: "ssh_host_ed25519_key",
+              type: "file",
+              kind: "key",
+              permissions: "-rw-------",
+              owner: "root",
+              group: "root",
+              size: "419",
+              modified: "2026-01-15",
+              description: "Host private key.",
+            },
+            {
+              name: "ssh_host_ed25519_key.pub",
+              type: "file",
+              kind: "key",
+              permissions: "-rw-r--r--",
+              owner: "root",
+              group: "root",
+              size: "95",
+              modified: "2026-01-15",
+              description: "Host public key.",
+            },
           ],
         },
         {
@@ -469,8 +619,27 @@ const ETC_TREE: TreeNode = {
           modified: "2026-03-01",
           description: "Nginx web server configuration.",
           children: [
-            { name: "nginx.conf", type: "file", kind: "config", permissions: "-rw-r--r--", owner: "root", group: "root", size: "1.5K", modified: "2026-03-01", description: "Main nginx config." },
-            { name: "sites-enabled", type: "folder", permissions: "drwxr-xr-x", owner: "root", group: "root", size: "4.0K", modified: "2026-03-01", children: [] },
+            {
+              name: "nginx.conf",
+              type: "file",
+              kind: "config",
+              permissions: "-rw-r--r--",
+              owner: "root",
+              group: "root",
+              size: "1.5K",
+              modified: "2026-03-01",
+              description: "Main nginx config.",
+            },
+            {
+              name: "sites-enabled",
+              type: "folder",
+              permissions: "drwxr-xr-x",
+              owner: "root",
+              group: "root",
+              size: "4.0K",
+              modified: "2026-03-01",
+              children: [],
+            },
           ],
         },
         {
@@ -483,7 +652,16 @@ const ETC_TREE: TreeNode = {
           modified: "2026-02-20",
           description: "Systemd service unit files.",
           children: [
-            { name: "system", type: "folder", permissions: "drwxr-xr-x", owner: "root", group: "root", size: "4.0K", modified: "2026-02-20", children: [] },
+            {
+              name: "system",
+              type: "folder",
+              permissions: "drwxr-xr-x",
+              owner: "root",
+              group: "root",
+              size: "4.0K",
+              modified: "2026-02-20",
+              children: [],
+            },
           ],
         },
       ],
@@ -519,11 +697,61 @@ const VAR_LOG_TREE: TreeNode = {
           modified: "2026-03-12",
           description: "System log files. Check here to debug issues.",
           children: [
-            { name: "syslog", type: "file", kind: "log", permissions: "-rw-r-----", owner: "syslog", group: "adm", size: "245K", modified: "2026-03-12", description: "Main system log." },
-            { name: "auth.log", type: "file", kind: "log", permissions: "-rw-r-----", owner: "syslog", group: "adm", size: "18K", modified: "2026-03-12", description: "Authentication and authorization log." },
-            { name: "kern.log", type: "file", kind: "log", permissions: "-rw-r-----", owner: "syslog", group: "adm", size: "67K", modified: "2026-03-12", description: "Kernel messages." },
-            { name: "dpkg.log", type: "file", kind: "log", permissions: "-rw-r--r--", owner: "root", group: "root", size: "124K", modified: "2026-03-11", description: "Package install/remove history." },
-            { name: "ufw.log", type: "file", kind: "log", permissions: "-rw-r-----", owner: "syslog", group: "adm", size: "8.2K", modified: "2026-03-12", description: "Firewall log entries." },
+            {
+              name: "syslog",
+              type: "file",
+              kind: "log",
+              permissions: "-rw-r-----",
+              owner: "syslog",
+              group: "adm",
+              size: "245K",
+              modified: "2026-03-12",
+              description: "Main system log.",
+            },
+            {
+              name: "auth.log",
+              type: "file",
+              kind: "log",
+              permissions: "-rw-r-----",
+              owner: "syslog",
+              group: "adm",
+              size: "18K",
+              modified: "2026-03-12",
+              description: "Authentication and authorization log.",
+            },
+            {
+              name: "kern.log",
+              type: "file",
+              kind: "log",
+              permissions: "-rw-r-----",
+              owner: "syslog",
+              group: "adm",
+              size: "67K",
+              modified: "2026-03-12",
+              description: "Kernel messages.",
+            },
+            {
+              name: "dpkg.log",
+              type: "file",
+              kind: "log",
+              permissions: "-rw-r--r--",
+              owner: "root",
+              group: "root",
+              size: "124K",
+              modified: "2026-03-11",
+              description: "Package install/remove history.",
+            },
+            {
+              name: "ufw.log",
+              type: "file",
+              kind: "log",
+              permissions: "-rw-r-----",
+              owner: "syslog",
+              group: "adm",
+              size: "8.2K",
+              modified: "2026-03-12",
+              description: "Firewall log entries.",
+            },
             {
               name: "nginx",
               type: "folder",
@@ -534,8 +762,28 @@ const VAR_LOG_TREE: TreeNode = {
               modified: "2026-03-12",
               description: "Nginx access and error logs.",
               children: [
-                { name: "access.log", type: "file", kind: "log", permissions: "-rw-r-----", owner: "www-data", group: "adm", size: "512K", modified: "2026-03-12", description: "HTTP request log." },
-                { name: "error.log", type: "file", kind: "log", permissions: "-rw-r-----", owner: "www-data", group: "adm", size: "3.4K", modified: "2026-03-11", description: "Nginx error log." },
+                {
+                  name: "access.log",
+                  type: "file",
+                  kind: "log",
+                  permissions: "-rw-r-----",
+                  owner: "www-data",
+                  group: "adm",
+                  size: "512K",
+                  modified: "2026-03-12",
+                  description: "HTTP request log.",
+                },
+                {
+                  name: "error.log",
+                  type: "file",
+                  kind: "log",
+                  permissions: "-rw-r-----",
+                  owner: "www-data",
+                  group: "adm",
+                  size: "3.4K",
+                  modified: "2026-03-11",
+                  description: "Nginx error log.",
+                },
               ],
             },
           ],
@@ -604,23 +852,97 @@ const NAVIGATION_TREE: TreeNode = {
               size: "4.0K",
               modified: "2026-03-12",
               children: [
-                { name: "package.json", type: "file", kind: "json", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "1.1K", modified: "2026-03-12" },
-                { name: "src", type: "folder", permissions: "drwxrwxr-x", owner: "ubuntu", group: "ubuntu", size: "4.0K", modified: "2026-03-12", children: [
-                  { name: "index.ts", type: "file", kind: "script", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "340", modified: "2026-03-12" },
-                  { name: "utils.ts", type: "file", kind: "script", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "890", modified: "2026-03-11" },
-                ] },
+                {
+                  name: "package.json",
+                  type: "file",
+                  kind: "json",
+                  permissions: "-rw-rw-r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "1.1K",
+                  modified: "2026-03-12",
+                },
+                {
+                  name: "src",
+                  type: "folder",
+                  permissions: "drwxrwxr-x",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "4.0K",
+                  modified: "2026-03-12",
+                  children: [
+                    {
+                      name: "index.ts",
+                      type: "file",
+                      kind: "script",
+                      permissions: "-rw-rw-r--",
+                      owner: "ubuntu",
+                      group: "ubuntu",
+                      size: "340",
+                      modified: "2026-03-12",
+                    },
+                    {
+                      name: "utils.ts",
+                      type: "file",
+                      kind: "script",
+                      permissions: "-rw-rw-r--",
+                      owner: "ubuntu",
+                      group: "ubuntu",
+                      size: "890",
+                      modified: "2026-03-11",
+                    },
+                  ],
+                },
               ],
             },
           ],
         },
       ],
     },
-    { name: "tmp", type: "folder", permissions: "drwxrwxrwt", owner: "root", group: "root", size: "4.0K", modified: "2026-03-12", description: "Temporary files. Cleared on reboot.", children: [] },
-    { name: "usr", type: "folder", permissions: "drwxr-xr-x", owner: "root", group: "root", size: "4.0K", modified: "2026-01-15", children: [
-      { name: "local", type: "folder", permissions: "drwxr-xr-x", owner: "root", group: "root", size: "4.0K", modified: "2026-02-28", children: [
-        { name: "bin", type: "folder", permissions: "drwxr-xr-x", owner: "root", group: "root", size: "4.0K", modified: "2026-02-28", description: "Locally installed programs.", children: [] },
-      ] },
-    ] },
+    {
+      name: "tmp",
+      type: "folder",
+      permissions: "drwxrwxrwt",
+      owner: "root",
+      group: "root",
+      size: "4.0K",
+      modified: "2026-03-12",
+      description: "Temporary files. Cleared on reboot.",
+      children: [],
+    },
+    {
+      name: "usr",
+      type: "folder",
+      permissions: "drwxr-xr-x",
+      owner: "root",
+      group: "root",
+      size: "4.0K",
+      modified: "2026-01-15",
+      children: [
+        {
+          name: "local",
+          type: "folder",
+          permissions: "drwxr-xr-x",
+          owner: "root",
+          group: "root",
+          size: "4.0K",
+          modified: "2026-02-28",
+          children: [
+            {
+              name: "bin",
+              type: "folder",
+              permissions: "drwxr-xr-x",
+              owner: "root",
+              group: "root",
+              size: "4.0K",
+              modified: "2026-02-28",
+              description: "Locally installed programs.",
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
 
@@ -660,9 +982,36 @@ const SEARCH_TREE: TreeNode = {
               size: "4.0K",
               modified: "2026-03-12",
               children: [
-                { name: "README.md", type: "file", kind: "file", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "2.1K", modified: "2026-03-10" },
-                { name: "package.json", type: "file", kind: "json", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "1.4K", modified: "2026-03-12" },
-                { name: "tsconfig.json", type: "file", kind: "json", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "580", modified: "2026-03-09" },
+                {
+                  name: "README.md",
+                  type: "file",
+                  kind: "file",
+                  permissions: "-rw-rw-r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "2.1K",
+                  modified: "2026-03-10",
+                },
+                {
+                  name: "package.json",
+                  type: "file",
+                  kind: "json",
+                  permissions: "-rw-rw-r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "1.4K",
+                  modified: "2026-03-12",
+                },
+                {
+                  name: "tsconfig.json",
+                  type: "file",
+                  kind: "json",
+                  permissions: "-rw-rw-r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "580",
+                  modified: "2026-03-09",
+                },
                 {
                   name: "src",
                   type: "folder",
@@ -672,9 +1021,38 @@ const SEARCH_TREE: TreeNode = {
                   size: "4.0K",
                   modified: "2026-03-12",
                   children: [
-                    { name: "app.tsx", type: "file", kind: "script", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "1.8K", modified: "2026-03-12", description: 'Contains "TODO: add auth"' },
-                    { name: "config.ts", type: "file", kind: "script", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "620", modified: "2026-03-11", description: 'Contains "TODO: env vars"' },
-                    { name: "utils.ts", type: "file", kind: "script", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "440", modified: "2026-03-10" },
+                    {
+                      name: "app.tsx",
+                      type: "file",
+                      kind: "script",
+                      permissions: "-rw-rw-r--",
+                      owner: "ubuntu",
+                      group: "ubuntu",
+                      size: "1.8K",
+                      modified: "2026-03-12",
+                      description: 'Contains "TODO: add auth"',
+                    },
+                    {
+                      name: "config.ts",
+                      type: "file",
+                      kind: "script",
+                      permissions: "-rw-rw-r--",
+                      owner: "ubuntu",
+                      group: "ubuntu",
+                      size: "620",
+                      modified: "2026-03-11",
+                      description: 'Contains "TODO: env vars"',
+                    },
+                    {
+                      name: "utils.ts",
+                      type: "file",
+                      kind: "script",
+                      permissions: "-rw-rw-r--",
+                      owner: "ubuntu",
+                      group: "ubuntu",
+                      size: "440",
+                      modified: "2026-03-10",
+                    },
                   ],
                 },
                 {
@@ -686,7 +1064,16 @@ const SEARCH_TREE: TreeNode = {
                   size: "4.0K",
                   modified: "2026-03-11",
                   children: [
-                    { name: "app.test.tsx", type: "file", kind: "script", permissions: "-rw-rw-r--", owner: "ubuntu", group: "ubuntu", size: "980", modified: "2026-03-11" },
+                    {
+                      name: "app.test.tsx",
+                      type: "file",
+                      kind: "script",
+                      permissions: "-rw-rw-r--",
+                      owner: "ubuntu",
+                      group: "ubuntu",
+                      size: "980",
+                      modified: "2026-03-11",
+                    },
                   ],
                 },
               ],
@@ -727,10 +1114,50 @@ const PERMS_TREE: TreeNode = {
           modified: "2026-03-12",
           description: "Owner: full access. Group: read+exec. Others: none.",
           children: [
-            { name: "deploy.sh", type: "file", kind: "script", permissions: "-rwxr-xr-x", owner: "ubuntu", group: "ubuntu", size: "2.3K", modified: "2026-03-10", description: "Executable script. Everyone can run it." },
-            { name: "secrets.env", type: "file", kind: "lock", permissions: "-rw-------", owner: "ubuntu", group: "ubuntu", size: "180", modified: "2026-03-08", description: "Only owner can read/write. No one else." },
-            { name: "notes.txt", type: "file", kind: "file", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "540", modified: "2026-03-11", description: "Owner: read+write. Everyone else: read only." },
-            { name: "shared-doc.md", type: "file", kind: "file", permissions: "-rw-rw-r--", owner: "ubuntu", group: "devteam", size: "1.2K", modified: "2026-03-12", description: "Owner + group: read+write. Others: read." },
+            {
+              name: "deploy.sh",
+              type: "file",
+              kind: "script",
+              permissions: "-rwxr-xr-x",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "2.3K",
+              modified: "2026-03-10",
+              description: "Executable script. Everyone can run it.",
+            },
+            {
+              name: "secrets.env",
+              type: "file",
+              kind: "lock",
+              permissions: "-rw-------",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "180",
+              modified: "2026-03-08",
+              description: "Only owner can read/write. No one else.",
+            },
+            {
+              name: "notes.txt",
+              type: "file",
+              kind: "file",
+              permissions: "-rw-r--r--",
+              owner: "ubuntu",
+              group: "ubuntu",
+              size: "540",
+              modified: "2026-03-11",
+              description: "Owner: read+write. Everyone else: read only.",
+            },
+            {
+              name: "shared-doc.md",
+              type: "file",
+              kind: "file",
+              permissions: "-rw-rw-r--",
+              owner: "ubuntu",
+              group: "devteam",
+              size: "1.2K",
+              modified: "2026-03-12",
+              description: "Owner + group: read+write. Others: read.",
+            },
             {
               name: ".ssh",
               type: "folder",
@@ -741,8 +1168,28 @@ const PERMS_TREE: TreeNode = {
               modified: "2026-02-20",
               description: "Locked down: only owner has any access.",
               children: [
-                { name: "id_ed25519", type: "file", kind: "key", permissions: "-rw-------", owner: "ubuntu", group: "ubuntu", size: "411", modified: "2026-02-20", description: "Private key: owner read/write only (required by SSH)." },
-                { name: "id_ed25519.pub", type: "file", kind: "key", permissions: "-rw-r--r--", owner: "ubuntu", group: "ubuntu", size: "97", modified: "2026-02-20", description: "Public key: readable by all." },
+                {
+                  name: "id_ed25519",
+                  type: "file",
+                  kind: "key",
+                  permissions: "-rw-------",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "411",
+                  modified: "2026-02-20",
+                  description: "Private key: owner read/write only (required by SSH).",
+                },
+                {
+                  name: "id_ed25519.pub",
+                  type: "file",
+                  kind: "key",
+                  permissions: "-rw-r--r--",
+                  owner: "ubuntu",
+                  group: "ubuntu",
+                  size: "97",
+                  modified: "2026-02-20",
+                  description: "Public key: readable by all.",
+                },
               ],
             },
           ],
@@ -773,7 +1220,11 @@ function buildScenarios(): ScenarioDef[] {
       tree: ETC_TREE,
       defaultExpanded: ["/", "/etc"],
       defaultSelected: "/etc",
-      terminalLines: ["$ ls /etc/", "# System-wide configuration lives here", "# Most files owned by root"],
+      terminalLines: [
+        "$ ls /etc/",
+        "# System-wide configuration lives here",
+        "# Most files owned by root",
+      ],
       color: "text-blue-400",
     },
     {
@@ -784,7 +1235,11 @@ function buildScenarios(): ScenarioDef[] {
       tree: VAR_LOG_TREE,
       defaultExpanded: ["/", "/var", "/var/log"],
       defaultSelected: "/var/log",
-      terminalLines: ["$ tail -f /var/log/syslog", "# Watch logs in real time", "# Press Ctrl+C to stop"],
+      terminalLines: [
+        "$ tail -f /var/log/syslog",
+        "# Watch logs in real time",
+        "# Press Ctrl+C to stop",
+      ],
       color: "text-emerald-400",
     },
     {
@@ -795,7 +1250,12 @@ function buildScenarios(): ScenarioDef[] {
       tree: NAVIGATION_TREE,
       defaultExpanded: ["/", "/data", "/data/projects"],
       defaultSelected: "/data/projects",
-      terminalLines: ["$ cd /data/projects/my-app", "$ ls -la", "$ cd ..   # go up one level", "$ cd -    # go to previous dir"],
+      terminalLines: [
+        "$ cd /data/projects/my-app",
+        "$ ls -la",
+        "$ cd ..   # go up one level",
+        "$ cd -    # go to previous dir",
+      ],
       color: "text-violet-400",
     },
     {
@@ -804,9 +1264,20 @@ function buildScenarios(): ScenarioDef[] {
       icon: <Search className="h-3.5 w-3.5" />,
       description: "Find files and search contents with find/rg",
       tree: SEARCH_TREE,
-      defaultExpanded: ["/", "/data", "/data/projects", "/data/projects/webapp", "/data/projects/webapp/src"],
+      defaultExpanded: [
+        "/",
+        "/data",
+        "/data/projects",
+        "/data/projects/webapp",
+        "/data/projects/webapp/src",
+      ],
       defaultSelected: "/data/projects/webapp/src/app.tsx",
-      terminalLines: ['$ rg "TODO" /data/projects/webapp/', "src/app.tsx:  // TODO: add auth", "src/config.ts: // TODO: env vars", '$ fd ".tsx" /data/projects/webapp/'],
+      terminalLines: [
+        '$ rg "TODO" /data/projects/webapp/',
+        "src/app.tsx:  // TODO: add auth",
+        "src/config.ts: // TODO: env vars",
+        '$ fd ".tsx" /data/projects/webapp/',
+      ],
       color: "text-pink-400",
     },
     {
@@ -817,7 +1288,12 @@ function buildScenarios(): ScenarioDef[] {
       tree: PERMS_TREE,
       defaultExpanded: ["/", "/home", "/home/ubuntu"],
       defaultSelected: "/home/ubuntu/deploy.sh",
-      terminalLines: ["$ ls -la ~/", "# drwxr-x--- = dir, owner:rwx, group:r-x, other:---", "$ chmod 600 secrets.env", "$ chmod +x deploy.sh"],
+      terminalLines: [
+        "$ ls -la ~/",
+        "# drwxr-x--- = dir, owner:rwx, group:r-x, other:---",
+        "$ chmod 600 secrets.env",
+        "$ chmod +x deploy.sh",
+      ],
       color: "text-orange-400",
     },
   ];
@@ -835,9 +1311,9 @@ function InteractiveFilesystemTree() {
     () => new Set(scenarios[0].defaultExpanded),
   );
   const [selectedPath, setSelectedPath] = useState(scenarios[0].defaultSelected);
-  const [terminalHistory, setTerminalHistory] = useState<string[]>(
-    () => [...scenarios[0].terminalLines],
-  );
+  const [terminalHistory, setTerminalHistory] = useState<string[]>(() => [
+    ...scenarios[0].terminalLines,
+  ]);
   const [showDetail, setShowDetail] = useState(true);
 
   const switchScenario = useCallback(
@@ -900,12 +1376,8 @@ function InteractiveFilesystemTree() {
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
         <div className="flex items-center gap-2">
           <FolderOpen className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-white/80">
-            Filesystem Explorer
-          </span>
-          <span className="text-[10px] text-white/30 ml-1">
-            Click directories to explore
-          </span>
+          <span className="text-sm font-medium text-white/80">Filesystem Explorer</span>
+          <span className="text-[10px] text-white/30 ml-1">Click directories to explore</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
@@ -964,9 +1436,7 @@ function InteractiveFilesystemTree() {
               transition={{ delay: i * 0.04, duration: 0.15 }}
               className="flex items-center gap-1 shrink-0"
             >
-              {i > 0 && (
-                <ChevronRight className="h-3 w-3 text-white/20" />
-              )}
+              {i > 0 && <ChevronRight className="h-3 w-3 text-white/20" />}
               <span
                 className={`text-xs font-mono px-1.5 py-0.5 rounded ${
                   i === breadcrumbs.length - 1
@@ -1092,11 +1562,13 @@ function FileDetailPanel({
     <div className="p-4 space-y-4 h-full bg-white/[0.01]">
       {/* File/folder name and icon */}
       <div className="flex items-center gap-2.5">
-        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-          node.type === "folder"
-            ? "bg-amber-500/15 text-amber-400"
-            : "bg-blue-500/15 text-blue-400"
-        }`}>
+        <div
+          className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+            node.type === "folder"
+              ? "bg-amber-500/15 text-amber-400"
+              : "bg-blue-500/15 text-blue-400"
+          }`}
+        >
           {getFileIcon(node, true)}
         </div>
         <div className="min-w-0 flex-1">
@@ -1122,7 +1594,11 @@ function FileDetailPanel({
           <DetailRow icon={<Shield className="h-3 w-3" />} label="Perms" value={node.permissions} />
         )}
         {node.owner && (
-          <DetailRow icon={<User className="h-3 w-3" />} label="Owner" value={`${node.owner}:${node.group ?? ""}`} />
+          <DetailRow
+            icon={<User className="h-3 w-3" />}
+            label="Owner"
+            value={`${node.owner}:${node.group ?? ""}`}
+          />
         )}
         {node.size && (
           <DetailRow icon={<HardDrive className="h-3 w-3" />} label="Size" value={node.size} />
@@ -1204,9 +1680,30 @@ function PermissionsBreakdown({ permissions }: { permissions: string }) {
 
       {/* Three columns: owner, group, other */}
       <div className="grid grid-cols-3 gap-2">
-        <PermColumn label="Owner" bits={owner} labels={labels} descriptions={descriptions} color="text-emerald-400" icon={<User className="h-3 w-3" />} />
-        <PermColumn label="Group" bits={group} labels={labels} descriptions={descriptions} color="text-blue-400" icon={<Users className="h-3 w-3" />} />
-        <PermColumn label="Other" bits={other} labels={labels} descriptions={descriptions} color="text-orange-400" icon={<Globe className="h-3 w-3" />} />
+        <PermColumn
+          label="Owner"
+          bits={owner}
+          labels={labels}
+          descriptions={descriptions}
+          color="text-emerald-400"
+          icon={<User className="h-3 w-3" />}
+        />
+        <PermColumn
+          label="Group"
+          bits={group}
+          labels={labels}
+          descriptions={descriptions}
+          color="text-blue-400"
+          icon={<Users className="h-3 w-3" />}
+        />
+        <PermColumn
+          label="Other"
+          bits={other}
+          labels={labels}
+          descriptions={descriptions}
+          color="text-orange-400"
+          icon={<Globe className="h-3 w-3" />}
+        />
       </div>
     </motion.div>
   );
@@ -1243,9 +1740,7 @@ function PermColumn({
             }`}
           >
             <span
-              className={`font-mono font-bold w-3 text-center ${
-                isSet ? color : "text-white/15"
-              }`}
+              className={`font-mono font-bold w-3 text-center ${isSet ? color : "text-white/15"}`}
             >
               {bit}
             </span>
@@ -1331,9 +1826,7 @@ function TreeNodeRow({
 
         {/* File size hint (compact) */}
         {!isFolder && node.size && (
-          <span className="ml-auto text-[10px] text-white/20 font-mono shrink-0">
-            {node.size}
-          </span>
+          <span className="ml-auto text-[10px] text-white/20 font-mono shrink-0">{node.size}</span>
         )}
 
         {/* Permission hint on folder */}
@@ -1355,17 +1848,11 @@ function TreeNodeRow({
             className="overflow-hidden"
           >
             {/* Tree line */}
-            <div
-              className="relative"
-              style={{ marginLeft: `${depth * 18 + 19}px` }}
-            >
+            <div className="relative" style={{ marginLeft: `${depth * 18 + 19}px` }}>
               <div className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]" />
               <div className="pl-0">
                 {node.children!.map((child) => {
-                  const childPath =
-                    path === "/"
-                      ? `/${child.name}`
-                      : `${path}/${child.name}`;
+                  const childPath = path === "/" ? `/${child.name}` : `${path}/${child.name}`;
                   return (
                     <TreeNodeRow
                       key={childPath}
@@ -1397,29 +1884,61 @@ function getFileIcon(node: TreeNode, large: boolean, isSelected?: boolean) {
 
   if (node.type === "folder") {
     if (node.isHome) {
-      return <Home className={`${size} shrink-0 ${isSelected ? selectedColor : "text-amber-400/80"}`} />;
+      return (
+        <Home className={`${size} shrink-0 ${isSelected ? selectedColor : "text-amber-400/80"}`} />
+      );
     }
-    return <Folder className={`${size} shrink-0 ${isSelected ? selectedColor : "text-amber-400/80"}`} />;
+    return (
+      <Folder className={`${size} shrink-0 ${isSelected ? selectedColor : "text-amber-400/80"}`} />
+    );
   }
 
   const kind = node.kind ?? "file";
   switch (kind) {
     case "config":
-      return <Settings className={`${size} shrink-0 ${isSelected ? selectedColor : "text-blue-400/70"}`} />;
+      return (
+        <Settings
+          className={`${size} shrink-0 ${isSelected ? selectedColor : "text-blue-400/70"}`}
+        />
+      );
     case "script":
-      return <FileCode className={`${size} shrink-0 ${isSelected ? selectedColor : "text-green-400/70"}`} />;
+      return (
+        <FileCode
+          className={`${size} shrink-0 ${isSelected ? selectedColor : "text-green-400/70"}`}
+        />
+      );
     case "key":
-      return <Key className={`${size} shrink-0 ${isSelected ? selectedColor : "text-yellow-400/70"}`} />;
+      return (
+        <Key className={`${size} shrink-0 ${isSelected ? selectedColor : "text-yellow-400/70"}`} />
+      );
     case "log":
-      return <ScrollText className={`${size} shrink-0 ${isSelected ? selectedColor : "text-emerald-400/70"}`} />;
+      return (
+        <ScrollText
+          className={`${size} shrink-0 ${isSelected ? selectedColor : "text-emerald-400/70"}`}
+        />
+      );
     case "json":
-      return <FileJson className={`${size} shrink-0 ${isSelected ? selectedColor : "text-orange-400/70"}`} />;
+      return (
+        <FileJson
+          className={`${size} shrink-0 ${isSelected ? selectedColor : "text-orange-400/70"}`}
+        />
+      );
     case "lock":
-      return <FileLock className={`${size} shrink-0 ${isSelected ? selectedColor : "text-red-400/70"}`} />;
+      return (
+        <FileLock
+          className={`${size} shrink-0 ${isSelected ? selectedColor : "text-red-400/70"}`}
+        />
+      );
     case "binary":
-      return <Database className={`${size} shrink-0 ${isSelected ? selectedColor : "text-purple-400/70"}`} />;
+      return (
+        <Database
+          className={`${size} shrink-0 ${isSelected ? selectedColor : "text-purple-400/70"}`}
+        />
+      );
     default:
-      return <FileText className={`${size} shrink-0 ${isSelected ? selectedColor : "text-white/40"}`} />;
+      return (
+        <FileText className={`${size} shrink-0 ${isSelected ? selectedColor : "text-white/40"}`} />
+      );
   }
 }
 
@@ -1458,7 +1977,9 @@ function VerificationCard() {
           <CheckCircle2 className="h-7 w-7 text-white" />
         </div>
         <div>
-          <h4 className="text-lg font-bold text-white group-hover:text-emerald-300 transition-colors">All Commands Work?</h4>
+          <h4 className="text-lg font-bold text-white group-hover:text-emerald-300 transition-colors">
+            All Commands Work?
+          </h4>
           <p className="text-emerald-300/80 group-hover:text-emerald-200 transition-colors">
             You&apos;re ready for the next lesson!
           </p>

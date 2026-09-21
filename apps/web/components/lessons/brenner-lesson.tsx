@@ -1,45 +1,45 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  FlaskConical,
-  Terminal,
-  Zap,
+  AlertTriangle,
+  ArrowRight,
   BookOpen,
-  Search,
-  Settings,
-  Play,
-  Users,
-  Lightbulb,
   CheckCircle2,
-  FileText,
-  Link2,
-  TrendingUp,
+  Clock,
   Database,
   Eye,
+  FileText,
+  FlaskConical,
+  Lightbulb,
+  Link2,
+  Minus,
   Network,
-  ArrowRight,
+  Play,
+  Search,
+  Settings,
   Sparkles,
   Target,
-  AlertTriangle,
-  ThumbsUp,
+  Terminal,
   ThumbsDown,
-  Minus,
-  Clock,
-} from 'lucide-react';
+  ThumbsUp,
+  TrendingUp,
+  Users,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function BrennerLesson() {
   return (
@@ -51,9 +51,9 @@ export function BrennerLesson() {
       {/* Section 1: What Is Brenner Bot */}
       <Section title="What Is Brenner Bot?" icon={<FlaskConical className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>Brenner Bot</Highlight> is a research orchestration platform inspired by
-          Nobel laureate Sydney Brenner&apos;s scientific methodology. It coordinates multi-agent
-          AI research sessions with systematic problem formulation and rigorous constraint-based
+          <Highlight>Brenner Bot</Highlight> is a research orchestration platform inspired by Nobel
+          laureate Sydney Brenner&apos;s scientific methodology. It coordinates multi-agent AI
+          research sessions with systematic problem formulation and rigorous constraint-based
           reasoning.
         </Paragraph>
         <Paragraph>
@@ -105,7 +105,9 @@ export function BrennerLesson() {
         <div className="mt-8 grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30">
             <span className="text-rose-400 font-semibold">Problem Formulation</span>
-            <p className="text-white/80 text-sm mt-1">Clear statement of what you&apos;re trying to understand</p>
+            <p className="text-white/80 text-sm mt-1">
+              Clear statement of what you&apos;re trying to understand
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">Discriminative Design</span>
@@ -113,7 +115,9 @@ export function BrennerLesson() {
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">Third Alternative</span>
-            <p className="text-white/80 text-sm mt-1">Always consider &quot;both hypotheses are wrong&quot;</p>
+            <p className="text-white/80 text-sm mt-1">
+              Always consider &quot;both hypotheses are wrong&quot;
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">Constraint Reasoning</span>
@@ -126,16 +130,18 @@ export function BrennerLesson() {
 
       {/* Section 3: Quick Start */}
       <Section title="Quick Start" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
-        <Paragraph>
-          Get started with these essential commands.
-        </Paragraph>
+        <Paragraph>Get started with these essential commands.</Paragraph>
 
         <CommandList
           commands={[
-            { command: 'brenner --version', description: 'Check installation' },
-            { command: 'brenner doctor', description: 'Run diagnostics' },
-            { command: 'brenner corpus search "query"', description: 'Search transcripts' },
-            { command: 'brenner session start --thread-id <id> --to <A,B> --excerpt-file <path> --question "<topic>"', description: 'Start research session' },
+            { command: "brenner --version", description: "Check installation" },
+            { command: "brenner doctor", description: "Run diagnostics" },
+            { command: 'brenner corpus search "query"', description: "Search transcripts" },
+            {
+              command:
+                'brenner session start --thread-id <id> --to <A,B> --excerpt-file <path> --question "<topic>"',
+              description: "Start research session",
+            },
           ]}
         />
 
@@ -148,9 +154,7 @@ export function BrennerLesson() {
 
       {/* Section 4: Corpus Search */}
       <Section title="Corpus Search" icon={<Search className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          Search the primary source corpus for relevant passages.
-        </Paragraph>
+        <Paragraph>Search the primary source corpus for relevant passages.</Paragraph>
 
         <CodeBlock
           code={`# Search the transcript corpus
@@ -177,34 +181,44 @@ brenner excerpt build --sections 42-50 --json`}
 
       {/* Section 5: Research Sessions */}
       <Section title="Research Sessions" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          Launch multi-agent research workflows.
-        </Paragraph>
+        <Paragraph>Launch multi-agent research workflows.</Paragraph>
 
         <CommandList
           commands={[
-            { command: 'brenner session start --thread-id <id> --to <A,B> --excerpt-file <path> --question "<q>"', description: 'Start new session' },
-            { command: 'brenner session status --thread-id <id> --watch', description: 'Follow an existing session' },
-            { command: 'brenner session compile --thread-id <id>', description: 'Compile the session artifact' },
+            {
+              command:
+                'brenner session start --thread-id <id> --to <A,B> --excerpt-file <path> --question "<q>"',
+              description: "Start new session",
+            },
+            {
+              command: "brenner session status --thread-id <id> --watch",
+              description: "Follow an existing session",
+            },
+            {
+              command: "brenner session compile --thread-id <id>",
+              description: "Compile the session artifact",
+            },
           ]}
         />
 
-        <Paragraph>
-          Sessions produce structured artifacts:
-        </Paragraph>
+        <Paragraph>Sessions produce structured artifacts:</Paragraph>
 
         <div className="grid gap-2 text-sm">
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Hypothesis Slates</span> — Multiple competing explanations
+            <span className="text-primary font-medium">Hypothesis Slates</span> — Multiple competing
+            explanations
           </div>
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Discriminative Tests</span> — Experiments that distinguish hypotheses
+            <span className="text-primary font-medium">Discriminative Tests</span> — Experiments
+            that distinguish hypotheses
           </div>
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Assumption Ledgers</span> — Explicit premises with verification
+            <span className="text-primary font-medium">Assumption Ledgers</span> — Explicit premises
+            with verification
           </div>
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Adversarial Critiques</span> — Challenges to the framing itself
+            <span className="text-primary font-medium">Adversarial Critiques</span> — Challenges to
+            the framing itself
           </div>
         </div>
       </Section>
@@ -213,9 +227,7 @@ brenner excerpt build --sections 42-50 --json`}
 
       {/* Section 6: Tool Integration */}
       <Section title="Tool Integration" icon={<Zap className="h-5 w-5" />} delay={0.35}>
-        <Paragraph>
-          Brenner Bot integrates with other flywheel tools.
-        </Paragraph>
+        <Paragraph>Brenner Bot integrates with other flywheel tools.</Paragraph>
 
         <div className="space-y-4">
           <motion.div
@@ -226,8 +238,8 @@ brenner excerpt build --sections 42-50 --json`}
           >
             <h4 className="font-semibold text-primary mb-2">Brenner + Agent Mail</h4>
             <p className="text-muted-foreground text-sm">
-              Research sessions use Agent Mail for durable threads between agents.
-              Each agent has an inbox/outbox with acknowledgment tracking.
+              Research sessions use Agent Mail for durable threads between agents. Each agent has an
+              inbox/outbox with acknowledgment tracking.
             </p>
           </motion.div>
           <motion.div
@@ -238,8 +250,8 @@ brenner excerpt build --sections 42-50 --json`}
           >
             <h4 className="font-semibold text-primary mb-2">Brenner + NTM</h4>
             <p className="text-muted-foreground text-sm">
-              NTM spawns parallel agent sessions for research. Use NTM to manage
-              the tmux layout while Brenner coordinates the research flow.
+              NTM spawns parallel agent sessions for research. Use NTM to manage the tmux layout
+              while Brenner coordinates the research flow.
             </p>
           </motion.div>
           <motion.div
@@ -250,8 +262,8 @@ brenner excerpt build --sections 42-50 --json`}
           >
             <h4 className="font-semibold text-primary mb-2">Brenner + CASS</h4>
             <p className="text-muted-foreground text-sm">
-              Research session history is indexed by CASS. Search past sessions
-              to build on previous research findings.
+              Research session history is indexed by CASS. Search past sessions to build on previous
+              research findings.
             </p>
           </motion.div>
         </div>
@@ -261,19 +273,20 @@ brenner excerpt build --sections 42-50 --json`}
 
       {/* Section 7: Web Interface */}
       <Section title="Web Interface" icon={<Settings className="h-5 w-5" />} delay={0.4}>
-        <Paragraph>
-          The web app at brennerbot.org provides additional features.
-        </Paragraph>
+        <Paragraph>The web app at brennerbot.org provides additional features.</Paragraph>
 
         <div className="grid gap-2 text-sm">
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Corpus Browsing</span> — Full-text search with section navigation
+            <span className="text-primary font-medium">Corpus Browsing</span> — Full-text search
+            with section navigation
           </div>
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Excerpt Composition</span> — Build cited passages from selections
+            <span className="text-primary font-medium">Excerpt Composition</span> — Build cited
+            passages from selections
           </div>
           <div className="p-2 rounded bg-card/30 border border-border/50">
-            <span className="text-primary font-medium">Session Visualization</span> — View research session structure
+            <span className="text-primary font-medium">Session Visualization</span> — View research
+            session structure
           </div>
         </div>
 
@@ -316,7 +329,7 @@ const RESEARCH_PHASES: ResearchPhase[] = [
     bgColor: "bg-blue-500/10",
     description: "Define competing hypotheses with explicit assumptions",
     terminalLines: [
-      "$ brenner session start --thread-id BR-0847 --to Claude,Codex,Gemini --excerpt-file excerpt.md --question \"gene regulation\"",
+      '$ brenner session start --thread-id BR-0847 --to Claude,Codex,Gemini --excerpt-file excerpt.md --question "gene regulation"',
       "Session #BR-0847 initialized",
       "Loading corpus sections 42-58...",
       "Generating hypothesis slate...",
@@ -336,12 +349,12 @@ const RESEARCH_PHASES: ResearchPhase[] = [
     bgColor: "bg-violet-500/10",
     description: "Query the 236-section transcript corpus for evidence",
     terminalLines: [
-      "$ brenner corpus search \"transcriptional control\"",
+      '$ brenner corpus search "transcriptional control"',
       "Searching 236 sections...",
       "Found 14 matches across 8 sections",
-      "\u00a742: \"...the key insight was control...\"",
-      "\u00a745: \"...not just transcription but...\"",
-      "\u00a751: \"...you have to think about...\"",
+      '\u00a742: "...the key insight was control..."',
+      '\u00a745: "...not just transcription but..."',
+      '\u00a751: "...you have to think about..."',
       "Indexing quote bank...",
     ],
   },
@@ -480,14 +493,70 @@ interface EvidenceItem {
 }
 
 const EVIDENCE_ITEMS: EvidenceItem[] = [
-  { id: "e1", text: "Control at transcription level observed", section: "\u00a742", supports: "h1", stance: "supports", appearsAtPhase: 1 },
-  { id: "e2", text: "Post-translational effects are secondary", section: "\u00a745", supports: "h1", stance: "supports", appearsAtPhase: 1 },
-  { id: "e3", text: "Protein modification drives phenotype shift", section: "\u00a748", supports: "h2", stance: "supports", appearsAtPhase: 2 },
-  { id: "e4", text: "Transcription alone insufficient", section: "\u00a751", supports: "h1", stance: "contradicts", appearsAtPhase: 2 },
-  { id: "e5", text: "Multiple layers interact synergistically", section: "\u00a754", supports: "h3", stance: "supports", appearsAtPhase: 3 },
-  { id: "e6", text: "Combinatorial model explains outliers", section: "\u00a758", supports: "h3", stance: "supports", appearsAtPhase: 3 },
-  { id: "e7", text: "Single-mechanism models consistently fail", section: "\u00a761", supports: "h3", stance: "supports", appearsAtPhase: 4 },
-  { id: "e8", text: "Cross-model consensus on multi-layer regulation", section: "\u00a764", supports: "h3", stance: "supports", appearsAtPhase: 4 },
+  {
+    id: "e1",
+    text: "Control at transcription level observed",
+    section: "\u00a742",
+    supports: "h1",
+    stance: "supports",
+    appearsAtPhase: 1,
+  },
+  {
+    id: "e2",
+    text: "Post-translational effects are secondary",
+    section: "\u00a745",
+    supports: "h1",
+    stance: "supports",
+    appearsAtPhase: 1,
+  },
+  {
+    id: "e3",
+    text: "Protein modification drives phenotype shift",
+    section: "\u00a748",
+    supports: "h2",
+    stance: "supports",
+    appearsAtPhase: 2,
+  },
+  {
+    id: "e4",
+    text: "Transcription alone insufficient",
+    section: "\u00a751",
+    supports: "h1",
+    stance: "contradicts",
+    appearsAtPhase: 2,
+  },
+  {
+    id: "e5",
+    text: "Multiple layers interact synergistically",
+    section: "\u00a754",
+    supports: "h3",
+    stance: "supports",
+    appearsAtPhase: 3,
+  },
+  {
+    id: "e6",
+    text: "Combinatorial model explains outliers",
+    section: "\u00a758",
+    supports: "h3",
+    stance: "supports",
+    appearsAtPhase: 3,
+  },
+  {
+    id: "e7",
+    text: "Single-mechanism models consistently fail",
+    section: "\u00a761",
+    supports: "h3",
+    stance: "supports",
+    appearsAtPhase: 4,
+  },
+  {
+    id: "e8",
+    text: "Cross-model consensus on multi-layer regulation",
+    section: "\u00a764",
+    supports: "h3",
+    stance: "supports",
+    appearsAtPhase: 4,
+  },
 ];
 
 interface CorpusSource {
@@ -583,10 +652,13 @@ function InteractiveResearchPipeline() {
     terminalTimerRef.current = initial;
   }, []);
 
-  const goToPhase = useCallback((phase: number) => {
-    setActivePhase(phase);
-    animateTerminal(phase);
-  }, [animateTerminal]);
+  const goToPhase = useCallback(
+    (phase: number) => {
+      setActivePhase(phase);
+      animateTerminal(phase);
+    },
+    [animateTerminal],
+  );
 
   useEffect(() => {
     animateTerminal(0);
@@ -708,25 +780,16 @@ function InteractiveResearchPipeline() {
           {/* Left column: terminal + corpus search */}
           <div className="space-y-4">
             {/* Mini terminal */}
-            <MiniTerminal
-              phase={currentPhase}
-              lineCount={terminalLineCount}
-            />
+            <MiniTerminal phase={currentPhase} lineCount={terminalLineCount} />
 
             {/* Corpus search visualization */}
-            <CorpusSearchViz
-              activePhase={activePhase}
-              sources={CORPUS_SOURCES}
-            />
+            <CorpusSearchViz activePhase={activePhase} sources={CORPUS_SOURCES} />
           </div>
 
           {/* Right column: confidence + knowledge graph */}
           <div className="space-y-4">
             {/* Hypothesis confidence meters */}
-            <ConfidencePanel
-              hypotheses={HYPOTHESES}
-              activePhase={activePhase}
-            />
+            <ConfidencePanel hypotheses={HYPOTHESES} activePhase={activePhase} />
 
             {/* Knowledge graph */}
             <KnowledgeGraph
@@ -824,7 +887,9 @@ function PhaseTimeline({
                   transition={springTransition}
                 />
               )}
-              <span className={isActive ? phase.textColor : isPast ? "text-white/50" : "text-white/30"}>
+              <span
+                className={isActive ? phase.textColor : isPast ? "text-white/50" : "text-white/30"}
+              >
                 {phase.icon}
               </span>
               <span className="hidden sm:inline">{phase.label}</span>
@@ -847,13 +912,7 @@ function PhaseTimeline({
 // MINI TERMINAL
 // =============================================================================
 
-function MiniTerminal({
-  phase,
-  lineCount,
-}: {
-  phase: ResearchPhase;
-  lineCount: number;
-}) {
+function MiniTerminal({ phase, lineCount }: { phase: ResearchPhase; lineCount: number }) {
   const terminalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -879,7 +938,10 @@ function MiniTerminal({
           <div className="h-2 w-2 rounded-full bg-emerald-500/50" />
         </div>
       </div>
-      <div ref={terminalRef} className="p-3 font-mono text-xs space-y-0.5 h-[154px] overflow-y-auto">
+      <div
+        ref={terminalRef}
+        className="p-3 font-mono text-xs space-y-0.5 h-[154px] overflow-y-auto"
+      >
         <AnimatePresence mode="popLayout">
           {visibleLines.map((line, i) => {
             const isCommand = line.startsWith("$");
@@ -890,16 +952,12 @@ function MiniTerminal({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ ...springTransition, delay: 0.02 }}
               >
-                <span className={isCommand ? "text-emerald-400" : "text-white/60"}>
-                  {line}
-                </span>
+                <span className={isCommand ? "text-emerald-400" : "text-white/60"}>{line}</span>
               </motion.div>
             );
           })}
         </AnimatePresence>
-        {isTyping && (
-          <span className="brenner-cursor text-emerald-400">_</span>
-        )}
+        {isTyping && <span className="brenner-cursor text-emerald-400">_</span>}
       </div>
     </div>
   );
@@ -957,7 +1015,10 @@ function CorpusSearchViz({
                   className="flex items-center gap-2 flex-1 px-2 py-1 rounded border bg-white/[0.02]"
                   style={{ borderColor: `${source.color}20` }}
                 >
-                  <div className="h-2 w-2 rounded-full brenner-pulse" style={{ backgroundColor: source.color, animationDelay: `${i * 0.3}s` }} />
+                  <div
+                    className="h-2 w-2 rounded-full brenner-pulse"
+                    style={{ backgroundColor: source.color, animationDelay: `${i * 0.3}s` }}
+                  />
                   <span className="text-xs text-white/60 flex-1">{source.label}</span>
                   <span className="text-xs text-white/30 font-mono">{source.sections}</span>
                   <span
@@ -992,18 +1053,17 @@ function ConfidencePanel({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <TrendingUp className="h-3.5 w-3.5 text-amber-400" />
         <span className="text-xs text-white/50">Hypothesis Confidence</span>
-        <span className="ml-auto text-xs text-white/30">
-          Phase {activePhase + 1}
-        </span>
+        <span className="ml-auto text-xs text-white/30">Phase {activePhase + 1}</span>
       </div>
       <div className="p-3 space-y-3">
         {hypotheses.map((hyp) => {
           const confidence = CONFIDENCE_BY_PHASE[hyp.id][activePhase];
-          const prevConfidence = activePhase > 0 ? CONFIDENCE_BY_PHASE[hyp.id][activePhase - 1] : hyp.initialConfidence;
+          const prevConfidence =
+            activePhase > 0 ? CONFIDENCE_BY_PHASE[hyp.id][activePhase - 1] : hyp.initialConfidence;
           const delta = confidence - prevConfidence;
-          const isLeading = confidence === Math.max(
-            ...hypotheses.map((h) => CONFIDENCE_BY_PHASE[h.id][activePhase])
-          );
+          const isLeading =
+            confidence ===
+            Math.max(...hypotheses.map((h) => CONFIDENCE_BY_PHASE[h.id][activePhase]));
 
           return (
             <div key={hyp.id} className="space-y-1">
@@ -1013,9 +1073,7 @@ function ConfidencePanel({
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: hyp.color }}
                   />
-                  <span className={`text-xs font-medium ${hyp.textColor}`}>
-                    {hyp.shortLabel}
-                  </span>
+                  <span className={`text-xs font-medium ${hyp.textColor}`}>{hyp.shortLabel}</span>
                   {isLeading && (
                     <motion.span
                       initial={{ opacity: 0, scale: 0.8 }}
@@ -1029,10 +1087,13 @@ function ConfidencePanel({
                 <div className="flex items-center gap-2">
                   {delta !== 0 && (
                     <span className={`text-xs ${delta > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {delta > 0 ? "+" : ""}{delta}%
+                      {delta > 0 ? "+" : ""}
+                      {delta}%
                     </span>
                   )}
-                  <span className="text-xs text-white/60 font-mono w-8 text-right">{confidence}%</span>
+                  <span className="text-xs text-white/60 font-mono w-8 text-right">
+                    {confidence}%
+                  </span>
                 </div>
               </div>
               {/* Confidence bar */}
@@ -1069,7 +1130,12 @@ function ConfidencePanel({
                         }}
                         initial={{ height: 0 }}
                         animate={{ height: `${(val / 100) * 32}px` }}
-                        transition={{ type: "spring", stiffness: 150, damping: 20, delay: phaseIdx * 0.05 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 150,
+                          damping: 20,
+                          delay: phaseIdx * 0.05,
+                        }}
                       />
                     );
                   })}
@@ -1162,9 +1228,7 @@ function KnowledgeGraph({
 
         {/* Phase label */}
         <div className="absolute bottom-2 right-3">
-          <span className="text-xs text-white/20 font-mono">
-            t={activePhase}
-          </span>
+          <span className="text-xs text-white/20 font-mono">t={activePhase}</span>
         </div>
       </div>
     </div>
@@ -1264,13 +1328,17 @@ function EvidenceBoard({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Hypotheses column */}
           <div className="space-y-2">
-            <span className="text-xs text-white/40 font-medium uppercase tracking-wider">Hypotheses</span>
+            <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
+              Hypotheses
+            </span>
             {hypotheses.map((hyp) => {
               const confidence = CONFIDENCE_BY_PHASE[hyp.id][activePhase];
               return (
                 <div
                   key={hyp.id}
-                  ref={(el) => { hypothesisRefs.current.set(hyp.id, el); }}
+                  ref={(el) => {
+                    hypothesisRefs.current.set(hyp.id, el);
+                  }}
                   className="p-2 rounded-lg border"
                   style={{
                     borderColor: `${hyp.color}30`,
@@ -1297,12 +1365,16 @@ function EvidenceBoard({
 
           {/* Evidence cards column (spans 2) */}
           <div className="sm:col-span-2 space-y-2">
-            <span className="text-xs text-white/40 font-medium uppercase tracking-wider">Evidence</span>
+            <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
+              Evidence
+            </span>
             <AnimatePresence>
               {evidence.map((ev) => (
                 <motion.div
                   key={ev.id}
-                  ref={(el) => { evidenceRefs.current.set(ev.id, el); }}
+                  ref={(el) => {
+                    evidenceRefs.current.set(ev.id, el);
+                  }}
                   initial={{ opacity: 0, y: 8, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
@@ -1321,8 +1393,7 @@ function EvidenceBoard({
                     <span className="text-xs text-white/30 font-mono">{ev.section}</span>
                   </div>
                   <span className="text-xs text-white/20 whitespace-nowrap">
-                    <Clock className="h-3 w-3 inline mr-0.5" />
-                    P{ev.appearsAtPhase + 1}
+                    <Clock className="h-3 w-3 inline mr-0.5" />P{ev.appearsAtPhase + 1}
                   </span>
                 </motion.div>
               ))}

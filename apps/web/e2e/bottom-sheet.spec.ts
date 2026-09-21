@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 /**
  * BottomSheet Component E2E Tests
@@ -43,9 +43,7 @@ test.describe("BottomSheet Component", () => {
       await expect(dialog).toHaveAttribute("aria-modal", "true");
       console.log("[E2E] Bottom sheet visible with correct ARIA attributes");
     } else {
-      console.log(
-        "[E2E] No jargon triggers found - BottomSheet not yet integrated. Skipping."
-      );
+      console.log("[E2E] No jargon triggers found - BottomSheet not yet integrated. Skipping.");
       test.skip();
     }
   });
@@ -180,9 +178,7 @@ test.describe("BottomSheet Component", () => {
         await expect(dialog).not.toBeVisible({ timeout: 2000 });
         console.log("[E2E] Bottom sheet dismissed via swipe gesture");
       } else {
-        console.log(
-          "[E2E] Could not get dialog bounding box - skipping swipe test"
-        );
+        console.log("[E2E] Could not get dialog bounding box - skipping swipe test");
         test.skip();
       }
     } else {
@@ -200,9 +196,7 @@ test.describe("BottomSheet Component", () => {
 
     if (hasTrigger) {
       // Check initial scroll state
-      const initialOverflow = await page.evaluate(
-        () => document.body.style.overflow
-      );
+      const initialOverflow = await page.evaluate(() => document.body.style.overflow);
       console.log(`[E2E] Initial body overflow: "${initialOverflow}"`);
 
       await jargonTrigger.click();
@@ -210,9 +204,7 @@ test.describe("BottomSheet Component", () => {
       await expect(dialog).toBeVisible({ timeout: 5000 });
 
       // Check scroll lock
-      const lockedOverflow = await page.evaluate(
-        () => document.body.style.overflow
-      );
+      const lockedOverflow = await page.evaluate(() => document.body.style.overflow);
       console.log(`[E2E] Body overflow when sheet open: "${lockedOverflow}"`);
       expect(lockedOverflow).toBe("hidden");
 
@@ -221,9 +213,7 @@ test.describe("BottomSheet Component", () => {
       await expect(dialog).not.toBeVisible({ timeout: 2000 });
 
       // Check scroll restored
-      const restoredOverflow = await page.evaluate(
-        () => document.body.style.overflow
-      );
+      const restoredOverflow = await page.evaluate(() => document.body.style.overflow);
       console.log(`[E2E] Body overflow after close: "${restoredOverflow}"`);
       expect(restoredOverflow).not.toBe("hidden");
     } else {
@@ -252,18 +242,14 @@ test.describe("BottomSheet Reduced Motion", () => {
       // but without slide animation (using opacity instead)
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible({ timeout: 5000 });
-      console.log(
-        "[E2E] Bottom sheet visible with reduced motion preference respected"
-      );
+      console.log("[E2E] Bottom sheet visible with reduced motion preference respected");
 
       // Escape should still work
       await page.keyboard.press("Escape");
       await expect(dialog).not.toBeVisible({ timeout: 2000 });
       console.log("[E2E] Sheet closed correctly with reduced motion");
     } else {
-      console.log(
-        "[E2E] No jargon triggers found - skipping reduced motion test"
-      );
+      console.log("[E2E] No jargon triggers found - skipping reduced motion test");
       test.skip();
     }
   });

@@ -1,11 +1,23 @@
 "use client";
 
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FileQuestion,
+  Home,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Type,
+  Wrench,
+} from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, BookOpen, Home, Search, Wrench, ShieldCheck, Type, FileQuestion, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
-import { getAllTerms, type JargonTerm } from "@/lib/jargon";
-import { motion, springs, staggerContainer, fadeUp } from "@/components/motion";
+import { type ReactNode, useMemo, useState } from "react";
+import { fadeUp, motion, springs, staggerContainer } from "@/components/motion";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getAllTerms, type JargonTerm } from "@/lib/jargon";
 
 type GlossaryCategory = "concepts" | "tools" | "protocols" | "acronyms";
 type CategoryFilter = "all" | GlossaryCategory;
@@ -19,14 +31,51 @@ function toAnchorId(value: string): string {
 }
 
 const TOOL_TERMS = new Set([
-  "tmux", "zsh", "bash", "bun", "uv", "cargo", "rust", "go", "git", "gh",
-  "lazygit", "rg", "ripgrep", "fzf", "direnv", "zoxide", "atuin", "ntm",
-  "bv", "br", "ubs", "cass", "cm", "caam", "slb", "dcg", "vault", "wrangler",
-  "supabase", "vercel", "postgres",
+  "tmux",
+  "zsh",
+  "bash",
+  "bun",
+  "uv",
+  "cargo",
+  "rust",
+  "go",
+  "git",
+  "gh",
+  "lazygit",
+  "rg",
+  "ripgrep",
+  "fzf",
+  "direnv",
+  "zoxide",
+  "atuin",
+  "ntm",
+  "bv",
+  "br",
+  "ubs",
+  "cass",
+  "cm",
+  "caam",
+  "slb",
+  "dcg",
+  "vault",
+  "wrangler",
+  "supabase",
+  "vercel",
+  "postgres",
 ]);
 
 const PROTOCOL_TERMS = new Set([
-  "ssh", "mcp", "oauth", "jwt", "api", "http", "https", "dns", "tcp", "udp", "tls",
+  "ssh",
+  "mcp",
+  "oauth",
+  "jwt",
+  "api",
+  "http",
+  "https",
+  "dns",
+  "tcp",
+  "udp",
+  "tls",
 ]);
 
 function categorizeTerm(term: JargonTerm): GlossaryCategory {
@@ -120,37 +169,33 @@ function TermCard({ term }: { term: JargonTerm }) {
   const categoryMeta = CATEGORY_META.find((c) => c.id === inferredCategory);
 
   return (
-    <motion.div
-      variants={fadeUp}
-      whileHover={{ y: -2 }}
-      transition={springs.snappy}
-    >
+    <motion.div variants={fadeUp} whileHover={{ y: -2 }} transition={springs.snappy}>
       <div
         id={anchorId}
         className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl scroll-mt-28 transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
       >
         {/* Hover gradient */}
         {categoryMeta && (
-          <div className={`absolute inset-0 bg-gradient-to-br ${categoryMeta.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+          <div
+            className={`absolute inset-0 bg-gradient-to-br ${categoryMeta.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+          />
         )}
 
         <div className="relative p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <h2 className="font-mono text-lg font-bold text-white">
-                  {term.term}
-                </h2>
+                <h2 className="font-mono text-lg font-bold text-white">{term.term}</h2>
                 {categoryMeta && (
-                  <span className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${categoryMeta.gradient} border border-white/[0.08] px-2.5 py-0.5 text-xs text-white/80`}>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${categoryMeta.gradient} border border-white/[0.08] px-2.5 py-0.5 text-xs text-white/80`}
+                  >
                     {categoryMeta.icon}
                     {categoryMeta.label}
                   </span>
                 )}
               </div>
-              <p className="text-sm text-white/50 leading-relaxed">
-                {term.short}
-              </p>
+              <p className="text-sm text-white/50 leading-relaxed">{term.short}</p>
             </div>
             <Link
               href={`#${anchorId}`}
@@ -190,27 +235,21 @@ function TermCard({ term }: { term: JargonTerm }) {
 
               {term.analogy && (
                 <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 to-violet-500/5 p-4">
-                  <p className="mb-1 font-semibold text-white">
-                    Think of it like…
-                  </p>
+                  <p className="mb-1 font-semibold text-white">Think of it like…</p>
                   <p className="text-white/70">{term.analogy}</p>
                 </div>
               )}
 
               {term.why && (
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
-                  <p className="mb-1 font-semibold text-white">
-                    Why it matters
-                  </p>
+                  <p className="mb-1 font-semibold text-white">Why it matters</p>
                   <p>{term.why}</p>
                 </div>
               )}
 
               {term.related && term.related.length > 0 && (
                 <div>
-                  <p className="mb-3 font-semibold text-white">
-                    Related terms
-                  </p>
+                  <p className="mb-3 font-semibold text-white">Related terms</p>
                   <div className="flex flex-wrap gap-2">
                     {term.related.map((related) => {
                       const relatedAnchor = toAnchorId(related);
@@ -268,20 +307,32 @@ export default function GlossaryPage() {
       }
     }
     return [...groups.entries()]
-      .map(([letter, terms]) => [letter, terms.sort((a, b) => a.term.localeCompare(b.term))] as const)
+      .map(
+        ([letter, terms]) => [letter, terms.sort((a, b) => a.term.localeCompare(b.term))] as const,
+      )
       .sort(([a], [b]) => a.localeCompare(b));
   }, [filteredTerms]);
 
   return (
-    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-hidden">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="text-aa-floor min-h-screen bg-black relative overflow-x-hidden"
+    >
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}
         <div className="absolute w-[700px] h-[700px] bg-primary/10 blur-[180px] rounded-full -top-48 left-1/4 hidden sm:block sm:animate-float" />
         {/* Secondary orb */}
-        <div className="absolute w-[500px] h-[500px] bg-emerald-500/10 blur-[150px] rounded-full top-1/2 -right-32 hidden sm:block sm:animate-float" style={{ animationDelay: "2s" }} />
+        <div
+          className="absolute w-[500px] h-[500px] bg-emerald-500/10 blur-[150px] rounded-full top-1/2 -right-32 hidden sm:block sm:animate-float"
+          style={{ animationDelay: "2s" }}
+        />
         {/* Tertiary orb */}
-        <div className="absolute w-[400px] h-[400px] bg-violet-500/8 blur-[120px] rounded-full bottom-0 left-0 hidden sm:block sm:animate-float" style={{ animationDelay: "4s" }} />
+        <div
+          className="absolute w-[400px] h-[400px] bg-violet-500/8 blur-[120px] rounded-full bottom-0 left-0 hidden sm:block sm:animate-float"
+          style={{ animationDelay: "4s" }}
+        />
         {/* Grid */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:80px_80px]" />
       </div>
@@ -400,13 +451,8 @@ export default function GlossaryPage() {
           animate={{ opacity: 1 }}
           transition={{ ...springs.smooth, delay: 0.4 }}
         >
-          Showing{" "}
-          <span className="font-mono text-white font-medium">
-            {filteredTerms.length}
-          </span>{" "}
-          of{" "}
-          <span className="font-mono text-white font-medium">{allTerms.length}</span>{" "}
-          terms
+          Showing <span className="font-mono text-white font-medium">{filteredTerms.length}</span>{" "}
+          of <span className="font-mono text-white font-medium">{allTerms.length}</span> terms
         </motion.p>
 
         {/* Terms */}
@@ -420,10 +466,7 @@ export default function GlossaryPage() {
             groupedTerms.map(([letter, terms]) => (
               <div key={letter} className="space-y-4">
                 {/* Letter header */}
-                <motion.div
-                  className="sticky top-16 z-10"
-                  variants={fadeUp}
-                >
+                <motion.div className="sticky top-16 z-10" variants={fadeUp}>
                   <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-black/80 backdrop-blur-xl px-5 py-3">
                     <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent" />
                     <span className="relative font-mono text-lg font-bold bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">

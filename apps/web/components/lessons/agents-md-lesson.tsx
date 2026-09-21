@@ -1,48 +1,34 @@
 "use client";
 
+import { AlertTriangle, FileText, Layers, Rocket, Star, Wrench } from "lucide-react";
 import {
-  FileText,
-  Star,
-  Wrench,
-  AlertTriangle,
-  Layers,
-  Rocket,
-} from "lucide-react";
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function AgentsMdLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Write AGENTS.md files that transform any project into an agent-ready
-        workspace — the single most important file for AI coding agent
-        onboarding.
+        Write AGENTS.md files that transform any project into an agent-ready workspace — the single
+        most important file for AI coding agent onboarding.
       </GoalBanner>
 
       {/* Section 1: Why AGENTS.md? */}
-      <Section
-        title="Why AGENTS.md?"
-        icon={<FileText className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Why AGENTS.md?" icon={<FileText className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          Every AI agent —{" "}
-          <Highlight>Claude Code, Codex, Antigravity</Highlight> — reads AGENTS.md
-          at session start. It&apos;s the{" "}
-          <Highlight>&quot;API contract&quot;</Highlight> between you and the
-          agents working in your project. Without it, agents guess conventions,
-          make wrong assumptions, and produce inconsistent code.
+          Every AI agent — <Highlight>Claude Code, Codex, Antigravity</Highlight> — reads AGENTS.md
+          at session start. It&apos;s the <Highlight>&quot;API contract&quot;</Highlight> between
+          you and the agents working in your project. Without it, agents guess conventions, make
+          wrong assumptions, and produce inconsistent code.
         </Paragraph>
 
         <div className="mt-8">
@@ -78,15 +64,10 @@ export function AgentsMdLesson() {
       <Divider />
 
       {/* Section 2: The Gold Standard Template */}
-      <Section
-        title="The Gold Standard Template"
-        icon={<Star className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="The Gold Standard Template" icon={<Star className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          Here is the <Highlight>canonical structure</Highlight> based on
-          real-world battle-tested templates. Every AGENTS.md should follow this
-          general shape:
+          Here is the <Highlight>canonical structure</Highlight> based on real-world battle-tested
+          templates. Every AGENTS.md should follow this general shape:
         </Paragraph>
 
         <div className="mt-6">
@@ -126,9 +107,8 @@ Brief description of modules, key files, data flow.
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Keep AGENTS.md under 200 lines. Agents have limited context
-            windows — every unnecessary line wastes tokens that could hold your
-            actual code.
+            Keep AGENTS.md under 200 lines. Agents have limited context windows — every unnecessary
+            line wastes tokens that could hold your actual code.
           </TipBox>
         </div>
       </Section>
@@ -136,15 +116,10 @@ Brief description of modules, key files, data flow.
       <Divider />
 
       {/* Section 3: Project-Specific Sections */}
-      <Section
-        title="Project-Specific Sections"
-        icon={<Wrench className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Project-Specific Sections" icon={<Wrench className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          Customize your AGENTS.md for your{" "}
-          <Highlight>tech stack and workflows</Highlight>. Here&apos;s what a
-          Rust project section looks like:
+          Customize your AGENTS.md for your <Highlight>tech stack and workflows</Highlight>.
+          Here&apos;s what a Rust project section looks like:
         </Paragraph>
 
         <div className="mt-6">
@@ -200,36 +175,30 @@ rch exec -- cargo clippy -- -D warnings  # Treat warnings as errors
       <Divider />
 
       {/* Section 4: Common Mistakes */}
-      <Section
-        title="Common Mistakes"
-        icon={<AlertTriangle className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Common Mistakes" icon={<AlertTriangle className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          What <Highlight>NOT</Highlight> to put in AGENTS.md. These
-          anti-patterns actively harm agent performance:
+          What <Highlight>NOT</Highlight> to put in AGENTS.md. These anti-patterns actively harm
+          agent performance:
         </Paragraph>
 
         <div className="mt-4 space-y-3">
           <Paragraph>
-            <strong>Too long (&gt;500 lines)</strong> — agents compact context
-            and lose later sections.
+            <strong>Too long (&gt;500 lines)</strong> — agents compact context and lose later
+            sections.
           </Paragraph>
           <Paragraph>
-            <strong>Duplicating README content</strong> — link to it instead of
-            copying.
+            <strong>Duplicating README content</strong> — link to it instead of copying.
           </Paragraph>
           <Paragraph>
-            <strong>Vague rules</strong> (&quot;write good code&quot;) — be
-            specific (&quot;use thiserror for error types&quot;).
+            <strong>Vague rules</strong> (&quot;write good code&quot;) — be specific (&quot;use
+            thiserror for error types&quot;).
           </Paragraph>
           <Paragraph>
-            <strong>Missing safety rules</strong> — agents will run destructive
-            commands without explicit prohibitions.
+            <strong>Missing safety rules</strong> — agents will run destructive commands without
+            explicit prohibitions.
           </Paragraph>
           <Paragraph>
-            <strong>No build/test commands</strong> — agents will guess and get
-            them wrong.
+            <strong>No build/test commands</strong> — agents will guess and get them wrong.
           </Paragraph>
         </div>
 
@@ -251,9 +220,8 @@ following industry best practices and design patterns.
 
         <div className="mt-6">
           <TipBox variant="warning">
-            <strong>The #1 mistake is making AGENTS.md too long.</strong> Claude
-            Code compacts context after ~100k tokens. If your AGENTS.md is 800
-            lines, the bottom half gets lost.
+            <strong>The #1 mistake is making AGENTS.md too long.</strong> Claude Code compacts
+            context after ~100k tokens. If your AGENTS.md is 800 lines, the bottom half gets lost.
           </TipBox>
         </div>
       </Section>
@@ -261,15 +229,10 @@ following industry best practices and design patterns.
       <Divider />
 
       {/* Section 5: Fleet Standardization */}
-      <Section
-        title="Fleet Standardization"
-        icon={<Layers className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Fleet Standardization" icon={<Layers className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          How to maintain <Highlight>consistent AGENTS.md across 20+
-          projects</Highlight>. Use a gold standard template and customize
-          per-project:
+          How to maintain <Highlight>consistent AGENTS.md across 20+ projects</Highlight>. Use a
+          gold standard template and customize per-project:
         </Paragraph>
 
         <div className="mt-6">
@@ -294,10 +257,9 @@ all project-specific sections"`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            When standardizing, <strong>ALWAYS</strong> preserve
-            project-specific sections. The boilerplate sections (Rule 0, Safety,
-            Git conventions) should match the template, but architecture and
-            conventions are unique to each project.
+            When standardizing, <strong>ALWAYS</strong> preserve project-specific sections. The
+            boilerplate sections (Rule 0, Safety, Git conventions) should match the template, but
+            architecture and conventions are unique to each project.
           </TipBox>
         </div>
       </Section>
@@ -311,9 +273,8 @@ all project-specific sections"`}
         delay={0.35}
       >
         <Paragraph>
-          The ACFS <Highlight>newproj</Highlight> wizard auto-generates
-          AGENTS.md for new projects. It detects tech stacks and generates
-          appropriate sections automatically:
+          The ACFS <Highlight>newproj</Highlight> wizard auto-generates AGENTS.md for new projects.
+          It detects tech stacks and generates appropriate sections automatically:
         </Paragraph>
 
         <div className="mt-6">
@@ -321,8 +282,7 @@ all project-specific sections"`}
             commands={[
               {
                 command: "acfs newproj",
-                description:
-                  "TUI wizard guides you through project setup",
+                description: "TUI wizard guides you through project setup",
               },
               {
                 command: "# Auto-detects: package.json, Cargo.toml, pyproject.toml",
@@ -331,13 +291,11 @@ all project-specific sections"`}
               },
               {
                 command: "# Generates AGENTS.md with 15 sections",
-                description:
-                  "Required + optional sections based on detected tech stack",
+                description: "Required + optional sections based on detected tech stack",
               },
               {
                 command: "# Includes DCG, UBS, and Agent Mail config",
-                description:
-                  "Safety rules, build commands, and agent coordination baked in",
+                description: "Safety rules, build commands, and agent coordination baked in",
               },
             ]}
           />
@@ -345,8 +303,8 @@ all project-specific sections"`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            <strong>Every new project starts agent-ready.</strong> No manual
-            AGENTS.md writing needed for standard stacks.
+            <strong>Every new project starts agent-ready.</strong> No manual AGENTS.md writing
+            needed for standard stacks.
           </TipBox>
         </div>
       </Section>

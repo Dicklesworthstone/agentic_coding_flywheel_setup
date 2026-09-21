@@ -1,42 +1,42 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo, useId } from 'react';
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  BarChart3,
-  Terminal,
-  DollarSign,
-  PieChart,
-  Clock,
-  Play,
-  Shield,
-  TrendingUp,
-  Zap,
-  ArrowUpRight,
-  ArrowDownRight,
-  AlertTriangle,
   Activity,
-  RefreshCw,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowLeftRight,
+  ArrowUpRight,
+  BarChart3,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Gauge,
-  ArrowLeftRight,
+  Clock,
+  DollarSign,
   Flame,
+  Gauge,
+  PieChart,
+  Play,
+  RefreshCw,
+  Shield,
   Sparkles,
-  CheckCircle2,
-} from 'lucide-react';
+  Terminal,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 function InteractiveCostDashboard() {
   return <InteractiveCostDashboardImpl />;
@@ -52,14 +52,14 @@ export function CautLesson() {
       {/* Section 1: What Is CAUT */}
       <Section title="What Is CAUT?" icon={<BarChart3 className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CAUT (Coding Agent Usage Tracker)</Highlight> monitors token
-          consumption and API costs across all your AI coding agents. It aggregates
-          usage from Claude, GPT, and Gemini into a single dashboard.
+          <Highlight>CAUT (Coding Agent Usage Tracker)</Highlight> monitors token consumption and
+          API costs across all your AI coding agents. It aggregates usage from Claude, GPT, and
+          Gemini into a single dashboard.
         </Paragraph>
         <Paragraph>
-          When running multiple agents simultaneously, costs can escalate quickly.
-          CAUT gives you visibility into which agents, sessions, and providers are
-          consuming the most tokens, helping you optimize your workflow.
+          When running multiple agents simultaneously, costs can escalate quickly. CAUT gives you
+          visibility into which agents, sessions, and providers are consuming the most tokens,
+          helping you optimize your workflow.
         </Paragraph>
 
         <div className="mt-8">
@@ -100,9 +100,7 @@ export function CautLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>
-          Get a quick overview of your usage.
-        </Paragraph>
+        <Paragraph>Get a quick overview of your usage.</Paragraph>
 
         <CodeBlock
           code={`# Show today's usage summary
@@ -130,16 +128,16 @@ caut sessions --sort tokens`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'caut summary', description: 'Usage summary for current period' },
-            { command: 'caut breakdown', description: 'Per-provider cost breakdown' },
-            { command: 'caut sessions', description: 'Token usage by session' },
-            { command: 'caut export --format csv', description: 'Export usage data' },
+            { command: "caut summary", description: "Usage summary for current period" },
+            { command: "caut breakdown", description: "Per-provider cost breakdown" },
+            { command: "caut sessions", description: "Token usage by session" },
+            { command: "caut export --format csv", description: "Export usage data" },
           ]}
         />
 
         <TipBox variant="info">
-          CAUT reads usage data from agent log files and API response headers.
-          No additional API calls are made.
+          CAUT reads usage data from agent log files and API response headers. No additional API
+          calls are made.
         </TipBox>
       </Section>
 
@@ -147,9 +145,7 @@ caut sessions --sort tokens`}
 
       {/* Section 4: Cost Optimization */}
       <Section title="Cost Optimization" icon={<DollarSign className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          Use CAUT data to optimize your agent spending.
-        </Paragraph>
+        <Paragraph>Use CAUT data to optimize your agent spending.</Paragraph>
 
         <CodeBlock
           code={`# Find your most expensive sessions
@@ -178,7 +174,9 @@ caut alert --daily-budget 50`}
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">CAUT + CAAM</span>
-            <p className="text-white/80 text-sm mt-1">Track usage per account for billing insights</p>
+            <p className="text-white/80 text-sm mt-1">
+              Track usage per account for billing insights
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">CAUT + NTM</span>
@@ -186,7 +184,9 @@ caut alert --daily-budget 50`}
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">CAUT + TRU</span>
-            <p className="text-white/80 text-sm mt-1">Measure TRU compression savings in real tokens</p>
+            <p className="text-white/80 text-sm mt-1">
+              Measure TRU compression savings in real tokens
+            </p>
           </div>
         </div>
       </Section>
@@ -247,16 +247,14 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     icon: <Activity className="h-3.5 w-3.5" />,
     description: "All providers running within budget. Steady token flow across 3 agents.",
     budgetUsed: 28,
-    totalCost: 14.20,
+    totalCost: 14.2,
     savings: 0,
     providers: {
-      anthropic: { cost: 7.20, tokensK: 480, rateLimited: false, accountName: "work-primary" },
-      openai: { cost: 4.50, tokensK: 450, rateLimited: false, accountName: "team-openai" },
-      google: { cost: 2.50, tokensK: 360, rateLimited: false, accountName: "gcp-main" },
+      anthropic: { cost: 7.2, tokensK: 480, rateLimited: false, accountName: "work-primary" },
+      openai: { cost: 4.5, tokensK: 450, rateLimited: false, accountName: "team-openai" },
+      google: { cost: 2.5, tokensK: 360, rateLimited: false, accountName: "gcp-main" },
     },
-    alerts: [
-      { level: "info", message: "3 agents active across 2 sessions" },
-    ],
+    alerts: [{ level: "info", message: "3 agents active across 2 sessions" }],
     logLines: [
       "09:14:02  anthropic  480K tokens  $7.20  work-primary",
       "09:14:02  openai     450K tokens  $4.50  team-openai",
@@ -269,12 +267,12 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     icon: <AlertTriangle className="h-3.5 w-3.5" />,
     description: "Anthropic spend approaching daily budget threshold. CAUT fires a warning.",
     budgetUsed: 62,
-    totalCost: 31.40,
+    totalCost: 31.4,
     savings: 0,
     providers: {
-      anthropic: { cost: 18.90, tokensK: 1260, rateLimited: false, accountName: "work-primary" },
-      openai: { cost: 8.00, tokensK: 800, rateLimited: false, accountName: "team-openai" },
-      google: { cost: 4.50, tokensK: 640, rateLimited: false, accountName: "gcp-main" },
+      anthropic: { cost: 18.9, tokensK: 1260, rateLimited: false, accountName: "work-primary" },
+      openai: { cost: 8.0, tokensK: 800, rateLimited: false, accountName: "team-openai" },
+      google: { cost: 4.5, tokensK: 640, rateLimited: false, accountName: "gcp-main" },
     },
     alerts: [
       { level: "warn", message: "Daily budget 62% consumed - $31.40 of $50.00" },
@@ -292,12 +290,12 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     icon: <Flame className="h-3.5 w-3.5" />,
     description: "Agent swarm spawned 5 new sessions. Token burn rate triples in minutes.",
     budgetUsed: 84,
-    totalCost: 42.10,
+    totalCost: 42.1,
     savings: 0,
     providers: {
-      anthropic: { cost: 24.80, tokensK: 1650, rateLimited: false, accountName: "work-primary" },
-      openai: { cost: 11.30, tokensK: 1130, rateLimited: false, accountName: "team-openai" },
-      google: { cost: 6.00, tokensK: 860, rateLimited: false, accountName: "gcp-main" },
+      anthropic: { cost: 24.8, tokensK: 1650, rateLimited: false, accountName: "work-primary" },
+      openai: { cost: 11.3, tokensK: 1130, rateLimited: false, accountName: "team-openai" },
+      google: { cost: 6.0, tokensK: 860, rateLimited: false, accountName: "gcp-main" },
     },
     alerts: [
       { level: "error", message: "SPIKE: Burn rate jumped from $4.20/hr to $12.60/hr" },
@@ -317,12 +315,12 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     icon: <ArrowLeftRight className="h-3.5 w-3.5" />,
     description: "CAAM rotates Anthropic to a backup account. Cost tracking seamlessly follows.",
     budgetUsed: 84,
-    totalCost: 42.10,
+    totalCost: 42.1,
     savings: 0,
     providers: {
-      anthropic: { cost: 24.80, tokensK: 1650, rateLimited: false, accountName: "work-backup" },
-      openai: { cost: 11.30, tokensK: 1130, rateLimited: false, accountName: "team-openai" },
-      google: { cost: 6.00, tokensK: 860, rateLimited: false, accountName: "gcp-main" },
+      anthropic: { cost: 24.8, tokensK: 1650, rateLimited: false, accountName: "work-backup" },
+      openai: { cost: 11.3, tokensK: 1130, rateLimited: false, accountName: "team-openai" },
+      google: { cost: 6.0, tokensK: 860, rateLimited: false, accountName: "gcp-main" },
     },
     alerts: [
       { level: "info", message: "CAAM rotated anthropic: work-primary -> work-backup" },
@@ -341,12 +339,12 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     icon: <Shield className="h-3.5 w-3.5" />,
     description: "OpenAI account hits TPM limit. CAAM swaps to backup while CAUT logs the event.",
     budgetUsed: 88,
-    totalCost: 44.30,
+    totalCost: 44.3,
     savings: 0,
     providers: {
-      anthropic: { cost: 25.50, tokensK: 1700, rateLimited: false, accountName: "work-backup" },
-      openai: { cost: 12.80, tokensK: 1280, rateLimited: true, accountName: "team-openai-2" },
-      google: { cost: 6.00, tokensK: 860, rateLimited: false, accountName: "gcp-main" },
+      anthropic: { cost: 25.5, tokensK: 1700, rateLimited: false, accountName: "work-backup" },
+      openai: { cost: 12.8, tokensK: 1280, rateLimited: true, accountName: "team-openai-2" },
+      google: { cost: 6.0, tokensK: 860, rateLimited: false, accountName: "gcp-main" },
     },
     alerts: [
       { level: "error", message: "OpenAI team-openai: 429 Too Many Requests (TPM limit)" },
@@ -364,14 +362,15 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     id: "optimization",
     label: "Optimization",
     icon: <Sparkles className="h-3.5 w-3.5" />,
-    description: "CAUT applies cost optimization: shifts heavy tasks to cheaper providers and enables caching.",
+    description:
+      "CAUT applies cost optimization: shifts heavy tasks to cheaper providers and enables caching.",
     budgetUsed: 64,
-    totalCost: 32.00,
-    savings: 12.30,
+    totalCost: 32.0,
+    savings: 12.3,
     providers: {
-      anthropic: { cost: 16.20, tokensK: 1080, rateLimited: false, accountName: "work-backup" },
-      openai: { cost: 8.40, tokensK: 840, rateLimited: false, accountName: "team-openai-2" },
-      google: { cost: 7.40, tokensK: 1060, rateLimited: false, accountName: "gcp-main" },
+      anthropic: { cost: 16.2, tokensK: 1080, rateLimited: false, accountName: "work-backup" },
+      openai: { cost: 8.4, tokensK: 840, rateLimited: false, accountName: "team-openai-2" },
+      google: { cost: 7.4, tokensK: 1060, rateLimited: false, accountName: "gcp-main" },
     },
     alerts: [
       { level: "success", message: "Optimization applied: shifted 30% of prompts to google" },
@@ -403,7 +402,12 @@ function seededUnitInterval(seed: number, index: number): number {
 }
 
 // Generates deterministic sparkline data points to avoid hydration mismatches.
-function generateSparkline(base: number, volatility: number, points: number, seedKey: string): number[] {
+function generateSparkline(
+  base: number,
+  volatility: number,
+  points: number,
+  seedKey: string,
+): number[] {
   const result: number[] = [];
   let current = base;
   const seed = hashSeed(`${seedKey}:${base}:${volatility}:${points}`);
@@ -450,10 +454,7 @@ function SparklineChart({
           <stop offset="100%" stopColor={color} stopOpacity={0.0} />
         </linearGradient>
       </defs>
-      <polygon
-        points={areaPoints}
-        fill={`url(#${gradientId})`}
-      />
+      <polygon points={areaPoints} fill={`url(#${gradientId})`} />
       <polyline
         points={points}
         fill="none"
@@ -493,7 +494,9 @@ function ProviderBar({
           <div
             className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${provider.gradientFrom} ${provider.gradientTo}`}
           />
-          <span className={`text-sm font-semibold ${isHighlighted ? provider.color : "text-white/70"}`}>
+          <span
+            className={`text-sm font-semibold ${isHighlighted ? provider.color : "text-white/70"}`}
+          >
             {provider.name}
           </span>
           {provider.rateLimited && (
@@ -508,9 +511,7 @@ function ProviderBar({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-white/30 font-mono">
-            {provider.accountName}
-          </span>
+          <span className="text-[10px] text-white/30 font-mono">{provider.accountName}</span>
           <span className={`text-xs font-semibold font-mono ${provider.color}`}>
             ${provider.currentCost.toFixed(2)}
           </span>
@@ -654,7 +655,7 @@ function SavingsCounter({ target }: { target: number }) {
       const elapsed = timestamp - startTimeRef.current;
       const duration = 800;
       const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
+      const eased = 1 - (1 - progress) ** 3;
       const current = startValueRef.current + (target - startValueRef.current) * eased;
 
       setDisplayed(current);
@@ -776,7 +777,10 @@ function LiveLog({ lines }: { lines: string[] }) {
   const inView = useInView(rootRef, { amount: 0.15 });
 
   return (
-    <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/50 overflow-hidden">
+    <div
+      ref={rootRef}
+      className="rounded-xl border border-white/[0.08] bg-black/50 overflow-hidden"
+    >
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Terminal className="h-3 w-3 text-white/30" />
         <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
@@ -935,7 +939,6 @@ function InteractiveCostDashboardImpl() {
     };
   }, [isAccountStep, stepIndex]);
 
-
   const setScenarioStep = useCallback((nextStep: number | ((current: number) => number)) => {
     setStepIndex((current) => {
       const resolved = typeof nextStep === "function" ? nextStep(current) : nextStep;
@@ -961,14 +964,17 @@ function InteractiveCostDashboardImpl() {
   const isAccountSwitchStep = step.id === "account-switch";
   const isRateLimitStep = step.id === "rate-limit";
   const accountSwitchFrom = isRateLimitStep
-    ? prevStep?.providers.openai.accountName ?? ""
-    : prevStep?.providers.anthropic.accountName ?? "";
+    ? (prevStep?.providers.openai.accountName ?? "")
+    : (prevStep?.providers.anthropic.accountName ?? "");
   const accountSwitchTo = isRateLimitStep
     ? step.providers.openai.accountName
     : step.providers.anthropic.accountName;
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -980,7 +986,9 @@ function InteractiveCostDashboardImpl() {
           <div className="flex items-center gap-2">
             <motion.div
               animate={inView ? { rotate: [0, 360] } : { rotate: 0 }}
-              transition={inView ? { duration: 20, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+              transition={
+                inView ? { duration: 20, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+              }
             >
               <Activity className="h-4 w-4 text-white/40" />
             </motion.div>
@@ -1148,9 +1156,7 @@ function InteractiveCostDashboardImpl() {
                     step.providers.anthropic.tokensK +
                     step.providers.openai.tokensK +
                     step.providers.google.tokensK;
-                  return total >= 1000
-                    ? `${(total / 1000).toFixed(1)}M`
-                    : `${total}K`;
+                  return total >= 1000 ? `${(total / 1000).toFixed(1)}M` : `${total}K`;
                 })()}
               </motion.div>
             </AnimatePresence>
@@ -1256,7 +1262,8 @@ function InteractiveCostDashboardImpl() {
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
           <TrendingUp className="h-3.5 w-3.5 text-white/30 shrink-0" />
           <span className="text-xs text-white/40">
-            Step through scenarios to see how CAUT tracks costs, detects spikes, and applies optimizations in real time.
+            Step through scenarios to see how CAUT tracks costs, detects spikes, and applies
+            optimizations in real time.
           </span>
         </div>
       </div>

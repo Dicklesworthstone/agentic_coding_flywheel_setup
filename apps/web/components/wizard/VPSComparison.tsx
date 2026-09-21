@@ -12,15 +12,15 @@
  * @see bd-w8fx, bd-jspqj
  */
 
+import { AlertTriangle, Clock, ExternalLink, Star } from "lucide-react";
 import { useState } from "react";
-import { AlertTriangle, ExternalLink, Star, Clock } from "lucide-react";
 import { TrackedLink } from "@/components/tracked-link";
 import { cn } from "@/lib/utils";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
-  VPS_PROVIDERS,
-  PRICING_LAST_UPDATED,
   isBelowRamRecommendation,
+  PRICING_LAST_UPDATED,
+  VPS_PROVIDERS,
   type VPSPlan,
   type VPSProvider,
 } from "@/lib/vpsProviders";
@@ -40,21 +40,13 @@ function BelowTargetBadge() {
   );
 }
 
-function ProviderMobileCard({
-  provider,
-  tier,
-}: {
-  provider: VPSProvider;
-  tier: PlanTier;
-}) {
+function ProviderMobileCard({ provider, tier }: { provider: VPSProvider; tier: PlanTier }) {
   const plan = provider[tier];
   return (
     <div
       className={cn(
         "rounded-xl border p-4 space-y-3",
-        provider.isTopPick
-          ? "border-primary/30 bg-primary/5"
-          : "border-border/50 bg-card/50"
+        provider.isTopPick ? "border-primary/30 bg-primary/5" : "border-border/50 bg-card/50",
       )}
     >
       <div className="flex items-center justify-between">
@@ -67,9 +59,7 @@ function ProviderMobileCard({
             </span>
           )}
         </div>
-        <span className="text-lg font-bold text-foreground">
-          {formatPrice(plan)}
-        </span>
+        <span className="text-lg font-bold text-foreground">{formatPrice(plan)}</span>
       </div>
 
       {isBelowRamRecommendation(plan) && <BelowTargetBadge />}
@@ -108,15 +98,9 @@ function ProviderMobileCard({
         </TrackedLink>
       </div>
 
-      {plan.note && (
-        <p className="text-xs text-amber">{plan.note}</p>
-      )}
-      {plan.priceNote && (
-        <p className="text-xs text-muted-foreground">Price: {plan.priceNote}</p>
-      )}
-      {provider.note && (
-        <p className="text-xs text-muted-foreground">{provider.note}</p>
-      )}
+      {plan.note && <p className="text-xs text-amber">{plan.note}</p>}
+      {plan.priceNote && <p className="text-xs text-muted-foreground">Price: {plan.priceNote}</p>}
+      {provider.note && <p className="text-xs text-muted-foreground">{provider.note}</p>}
     </div>
   );
 }
@@ -127,9 +111,7 @@ export function VPSComparison() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-foreground">
-          Quick comparison
-        </h2>
+        <h2 className="font-semibold text-foreground">Quick comparison</h2>
         {/* Tier toggle */}
         <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5 text-sm">
           <button
@@ -140,7 +122,7 @@ export function VPSComparison() {
               "rounded-md px-3 py-1 font-medium transition-colors",
               tier === "recommended"
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             64 GB
@@ -153,7 +135,7 @@ export function VPSComparison() {
               "rounded-md px-3 py-1 font-medium transition-colors",
               tier === "budget"
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             48 GB
@@ -167,116 +149,86 @@ export function VPSComparison() {
           keeps the rounded border. */}
       <div className="hidden overflow-x-auto sm:block">
         <div className="min-w-[44rem] overflow-hidden rounded-xl border border-border/50">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border/50 bg-muted/30">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Provider
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Plan
-              </th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                RAM
-              </th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                vCPU
-              </th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                Storage
-              </th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                Price
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Activation
-              </th>
-              <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                Link
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {VPS_PROVIDERS.map((provider, i) => {
-              const plan = provider[tier];
-              return (
-                <tr
-                  key={provider.id}
-                  className={cn(
-                    "border-b border-border/30 last:border-0 transition-colors",
-                    provider.isTopPick
-                      ? "bg-primary/5"
-                      : i % 2 === 1
-                        ? "bg-muted/10"
-                        : ""
-                  )}
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">
-                        {provider.name}
-                      </span>
-                      {provider.isTopPick && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/20 px-1.5 py-0.5 text-xs font-medium text-primary">
-                          <Star className="h-2.5 w-2.5" />
-                          Top pick
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {provider.bestFor}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {/* Plan/price caveats live in the notes under the table;
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/50 bg-muted/30">
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Provider</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Plan</th>
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">RAM</th>
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">vCPU</th>
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Storage</th>
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Price</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  Activation
+                </th>
+                <th className="px-4 py-3 text-center font-medium text-muted-foreground">Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              {VPS_PROVIDERS.map((provider, i) => {
+                const plan = provider[tier];
+                return (
+                  <tr
+                    key={provider.id}
+                    className={cn(
+                      "border-b border-border/30 last:border-0 transition-colors",
+                      provider.isTopPick ? "bg-primary/5" : i % 2 === 1 ? "bg-muted/10" : "",
+                    )}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{provider.name}</span>
+                        {provider.isTopPick && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/20 px-1.5 py-0.5 text-xs font-medium text-primary">
+                            <Star className="h-2.5 w-2.5" />
+                            Top pick
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{provider.bestFor}</p>
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {/* Plan/price caveats live in the notes under the table;
                         repeating them in the cells squeezed the columns off
                         the card at 1280px. */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span>{plan.name}</span>
-                      {isBelowRamRecommendation(plan) && <BelowTargetBadge />}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-foreground">
-                    {plan.ramGB}GB
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-foreground">
-                    {plan.vCPU}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-foreground">
-                    {plan.storageGB}GB
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-semibold text-foreground">
-                    {formatPrice(plan)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {provider.activationTime}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <TrackedLink
-                      href={provider.url}
-                      trackingId={`vps-table-${provider.id}`}
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                    >
-                      Visit
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </TrackedLink>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>{plan.name}</span>
+                        {isBelowRamRecommendation(plan) && <BelowTargetBadge />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-foreground">
+                      {plan.ramGB}GB
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-foreground">{plan.vCPU}</td>
+                    <td className="px-4 py-3 text-right font-mono text-foreground">
+                      {plan.storageGB}GB
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-foreground">
+                      {formatPrice(plan)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{provider.activationTime}</td>
+                    <td className="px-4 py-3 text-center">
+                      <TrackedLink
+                        href={provider.url}
+                        trackingId={`vps-table-${provider.id}`}
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        Visit
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </TrackedLink>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
       {/* Mobile cards — hidden on desktop */}
       <div className="space-y-3 sm:hidden">
         {VPS_PROVIDERS.map((provider) => (
-          <ProviderMobileCard
-            key={provider.id}
-            provider={provider}
-            tier={tier}
-          />
+          <ProviderMobileCard key={provider.id} provider={provider} tier={tier} />
         ))}
       </div>
 
@@ -284,18 +236,16 @@ export function VPSComparison() {
       <ul className="hidden space-y-1 text-xs text-muted-foreground sm:block">
         {VPS_PROVIDERS.filter((provider) => provider.note).map((provider) => (
           <li key={provider.id}>
-            <span className="font-medium text-foreground">{provider.name}:</span>{" "}
-            {provider.note}
+            <span className="font-medium text-foreground">{provider.name}:</span> {provider.note}
           </li>
         ))}
       </ul>
 
       {/* Footer note */}
       <p className="text-xs text-muted-foreground">
-        Prices are approximate list prices, last verified {PRICING_LAST_UPDATED}:
-        Contabo lists EUR (24-month introductory rate) converted to USD; OVH shows
-        a &quot;from&quot; price that assumes a 12-month term. Month-to-month billing
-        costs more.
+        Prices are approximate list prices, last verified {PRICING_LAST_UPDATED}: Contabo lists EUR
+        (24-month introductory rate) converted to USD; OVH shows a &quot;from&quot; price that
+        assumes a 12-month term. Month-to-month billing costs more.
       </p>
     </div>
   );

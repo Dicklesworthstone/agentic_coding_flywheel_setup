@@ -1,9 +1,9 @@
 import {
-  manifestModules,
-  manifestSelectionProfiles,
   type ManifestModuleMetadata,
   type ManifestSelectionProfile,
   type ManifestSelectionProfileId,
+  manifestModules,
+  manifestSelectionProfiles,
 } from "./generated/manifest-modules";
 
 export type ModuleSelectionProfileId = ManifestSelectionProfileId;
@@ -78,7 +78,11 @@ const PHASE_ALIASES: Record<string, string> = {
 };
 
 const SELECTION_LIST_FIELDS = [
-  "onlyModules", "onlyPhases", "skipModules", "skipTags", "skipCategories",
+  "onlyModules",
+  "onlyPhases",
+  "skipModules",
+  "skipTags",
+  "skipCategories",
 ] as const;
 
 /** Validate before normalization: dropping a bad --only value can mean "install all". */
@@ -92,23 +96,40 @@ function validateSelectionInput(input: unknown): string[] {
   }
   const fields = Object.getOwnPropertyDescriptors(input);
   const allowed = new Set<string>([...SELECTION_LIST_FIELDS, "profile", "noDeps"]);
-  if (Reflect.ownKeys(fields).some((key) => typeof key !== "string" || !allowed.has(key))
-      || Object.values(fields).some((field) => !field.enumerable || !("value" in field))) {
+  if (
+    Reflect.ownKeys(fields).some((key) => typeof key !== "string" || !allowed.has(key)) ||
+    Object.values(fields).some((field) => !field.enumerable || !("value" in field))
+  ) {
     return ["Selection contains an unsupported field or accessor."];
   }
   const errors: string[] = [];
   for (const key of SELECTION_LIST_FIELDS) {
     const value: unknown = fields[key]?.value;
     if (value === undefined) continue;
-    if (!Array.isArray(value) || value.length > 1024
-        || Array.from(value).some((entry) => typeof entry !== "string" || !entry.length
-          || entry.length > 256 || entry.trim() !== entry || /[\x00-\x1f\x7f]/.test(entry))) {
+    if (
+      !Array.isArray(value) ||
+      value.length > 1024 ||
+      Array.from(value).some(
+        (entry) =>
+          typeof entry !== "string" ||
+          !entry.length ||
+          entry.length > 256 ||
+          entry.trim() !== entry ||
+          /[\x00-\x1f\x7f]/.test(entry),
+      )
+    ) {
       errors.push(`${key} must be a bounded array of nonblank, unpadded strings.`);
     }
   }
   const profile: unknown = fields.profile?.value;
-  if (profile !== undefined && (typeof profile !== "string" || !profile.length
-      || profile.length > 256 || profile.trim() !== profile || /[\x00-\x1f\x7f]/.test(profile))) {
+  if (
+    profile !== undefined &&
+    (typeof profile !== "string" ||
+      !profile.length ||
+      profile.length > 256 ||
+      profile.trim() !== profile ||
+      /[\x00-\x1f\x7f]/.test(profile))
+  ) {
     errors.push("profile must be a nonblank profile ID.");
   }
   if (fields.noDeps?.value !== undefined && typeof fields.noDeps.value !== "boolean") {
@@ -122,9 +143,16 @@ function validateModuleCatalogue(modules: ManifestModuleMetadata[]): string[] {
   const byId = new Map<string, ManifestModuleMetadata>();
   const position = new Map<string, number>();
   for (const [index, module] of modules.entries()) {
-    if (!module || typeof module.id !== "string" || !module.id.length
-        || !Number.isInteger(module.phase) || module.phase < 1 || module.phase > 10
-        || !Array.isArray(module.dependencies) || !Array.isArray(module.tags)) {
+    if (
+      !module ||
+      typeof module.id !== "string" ||
+      !module.id.length ||
+      !Number.isInteger(module.phase) ||
+      module.phase < 1 ||
+      module.phase > 10 ||
+      !Array.isArray(module.dependencies) ||
+      !Array.isArray(module.tags)
+    ) {
       return ["Manifest module metadata is malformed."];
     }
     if (byId.has(module.id)) return [`Manifest error: duplicate module ID ${module.id}`];
@@ -146,7 +174,9 @@ function validateModuleCatalogue(modules: ManifestModuleMetadata[]): string[] {
       dependents.set(id, children);
     }
   }
-  const queue = modules.filter((module) => indegree.get(module.id) === 0).map((module) => module.id);
+  const queue = modules
+    .filter((module) => indegree.get(module.id) === 0)
+    .map((module) => module.id);
   for (let index = 0; index < queue.length; index++) {
     for (const id of dependents.get(queue[index]) ?? []) {
       const remaining = indegree.get(id)! - 1;
@@ -154,7 +184,8 @@ function validateModuleCatalogue(modules: ManifestModuleMetadata[]): string[] {
       if (remaining === 0) queue.push(id);
     }
   }
-  if (queue.length !== modules.length) return ["Manifest error: dependency cycle in module catalogue."];
+  if (queue.length !== modules.length)
+    return ["Manifest error: dependency cycle in module catalogue."];
   for (const module of modules) {
     for (const id of module.dependencies) {
       if (position.get(id)! > position.get(module.id)!) {
@@ -230,8 +261,15 @@ export function resolveModuleSelection(
   const inputErrors = validateSelectionInput(input);
   const validationErrors = inputErrors.length ? inputErrors : validateModuleCatalogue(modules);
   if (validationErrors.length) {
-    return { ok: false, included: [], excluded: [], warnings: [], errors: validationErrors,
-      selectedCount: 0, availableCount: modules.length };
+    return {
+      ok: false,
+      included: [],
+      excluded: [],
+      warnings: [],
+      errors: validationErrors,
+      selectedCount: 0,
+      availableCount: modules.length,
+    };
   }
   const normalized = normalizeSelection(input, profiles);
   const warnings: string[] = [];
@@ -257,7 +295,10 @@ export function resolveModuleSelection(
         if (!moduleById.has(moduleId)) {
           errors.push(`Unknown module id in --only: ${moduleId}`);
         } else {
-          desired.set(moduleId, normalized.profile ? `profile ${normalized.profile.id}` : "explicitly requested");
+          desired.set(
+            moduleId,
+            normalized.profile ? `profile ${normalized.profile.id}` : "explicitly requested",
+          );
         }
       }
     } else if (normalized.onlyPhases.length > 0) {
@@ -272,7 +313,9 @@ export function resolveModuleSelection(
           if (selectedPhases.has(String(moduleMetadata.phase))) {
             desired.set(
               moduleMetadata.id,
-              normalized.profile ? `profile ${normalized.profile.id}` : `phase ${moduleMetadata.phase}`,
+              normalized.profile
+                ? `profile ${normalized.profile.id}`
+                : `phase ${moduleMetadata.phase}`,
             );
           }
         }
@@ -319,7 +362,9 @@ export function resolveModuleSelection(
       for (const moduleId of normalized.onlyModules) {
         const skipReason = skipped.get(moduleId);
         if (skipReason) {
-          errors.push(`Selection error: ${moduleId} was requested with --only and excluded by ${skipReason}`);
+          errors.push(
+            `Selection error: ${moduleId} was requested with --only and excluded by ${skipReason}`,
+          );
         }
       }
     }
@@ -404,11 +449,14 @@ export function resolveModuleSelection(
     }
   }
 
-  const included = errors.length === 0
-    ? modules
-        .filter((moduleMetadata) => desired.has(moduleMetadata.id))
-        .map((moduleMetadata) => moduleEntry(moduleMetadata, desired.get(moduleMetadata.id) ?? "included"))
-    : [];
+  const included =
+    errors.length === 0
+      ? modules
+          .filter((moduleMetadata) => desired.has(moduleMetadata.id))
+          .map((moduleMetadata) =>
+            moduleEntry(moduleMetadata, desired.get(moduleMetadata.id) ?? "included"),
+          )
+      : [];
 
   if (errors.length === 0) {
     for (const moduleMetadata of modules) {
@@ -447,8 +495,10 @@ function quoteInstallArg(value: string): string {
 function exactSkippedModules(normalized: NormalizedSelection): string[] {
   const skipped = new Set(normalized.skipModules);
   for (const module of manifestModules) {
-    if (normalized.skipCategories.includes(module.category)
-        || normalized.skipTags.some((tag) => module.tags.includes(tag))) {
+    if (
+      normalized.skipCategories.includes(module.category) ||
+      normalized.skipTags.some((tag) => module.tags.includes(tag))
+    ) {
       skipped.add(module.id);
     }
   }
@@ -462,7 +512,9 @@ function exactSkippedModules(normalized: NormalizedSelection): string[] {
  */
 export function lowerModuleSelectionGroups(input: ModuleSelectionInput = {}): ModuleSelectionInput {
   if (!resolveModuleSelection(input).ok) {
-    throw new Error("Cannot export an invalid module selection; correct the selection before sharing it.");
+    throw new Error(
+      "Cannot export an invalid module selection; correct the selection before sharing it.",
+    );
   }
   const normalized = normalizeSelection(input, manifestSelectionProfiles);
   return {
@@ -483,8 +535,8 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
   const normalized = normalizeSelection(input, manifestSelectionProfiles);
   const args: string[] = [];
   const profileHasSelectors = Boolean(
-    normalized.profile
-      && (normalized.profile.onlyModules.length > 0 || normalized.profile.onlyPhases.length > 0),
+    normalized.profile &&
+      (normalized.profile.onlyModules.length > 0 || normalized.profile.onlyPhases.length > 0),
   );
 
   if (normalized.profile && profileHasSelectors) {
@@ -536,7 +588,9 @@ export function formatModuleSelectionPlan(plan: ModuleSelectionPlan): string {
 
   lines.push("Execution order:");
   plan.included.forEach((entry, index) => {
-    lines.push(`  ${String(index + 1).padStart(2, " ")}. [Phase ${entry.phase}] ${entry.id} (${entry.reason})`);
+    lines.push(
+      `  ${String(index + 1).padStart(2, " ")}. [Phase ${entry.phase}] ${entry.id} (${entry.reason})`,
+    );
   });
 
   return lines.join("\n");

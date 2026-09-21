@@ -7,15 +7,12 @@
  * commands page and the wizard accounts step — actually render it.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  defaultManifestAgents,
-  manifestAgents,
-} from "./generated/manifest-web-index";
+import { defaultManifestAgents, manifestAgents } from "./generated/manifest-web-index";
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

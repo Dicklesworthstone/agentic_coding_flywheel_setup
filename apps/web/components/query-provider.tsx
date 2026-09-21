@@ -1,12 +1,12 @@
 "use client";
 
-import { QueryClient, type Query } from "@tanstack/react-query";
-import {
-  PersistQueryClientProvider,
-  type PersistQueryClientOptions,
-} from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { useState, type ReactNode } from "react";
+import { type Query, QueryClient } from "@tanstack/react-query";
+import {
+  type PersistQueryClientOptions,
+  PersistQueryClientProvider,
+} from "@tanstack/react-query-persist-client";
+import { type ReactNode, useState } from "react";
 import { wizardStepsKeys } from "../lib/wizardSteps";
 
 const PERSIST_KEY = "acfs-query-cache";
@@ -57,9 +57,7 @@ function makePersister() {
   } catch {
     // localStorage unavailable (private browsing, quota exceeded, etc.)
     // Fall back to the in-memory-only cache - app will still work
-    console.warn(
-      "[ACFS] localStorage unavailable, running without query persistence"
-    );
+    console.warn("[ACFS] localStorage unavailable, running without query persistence");
     return createSyncStoragePersister({ storage: undefined, key: PERSIST_KEY });
   }
 }

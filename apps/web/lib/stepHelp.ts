@@ -63,7 +63,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
       {
         symptom: "option requires an argument -- N (Windows)",
         solution:
-          "Older PowerShell versions drop the empty \"\" after -N before ssh-keygen sees it (and ssh-keygen may then sit waiting for a passphrase — press Ctrl+C first). Copy the exact command from this page instead of typing it; it selects the right empty-passphrase argument for your PowerShell version automatically.",
+          'Older PowerShell versions drop the empty "" after -N before ssh-keygen sees it (and ssh-keygen may then sit waiting for a passphrase — press Ctrl+C first). Copy the exact command from this page instead of typing it; it selects the right empty-passphrase argument for your PowerShell version automatically.',
       },
       {
         symptom: "The key file already exists",
@@ -167,9 +167,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
           "Check your VPS network: try 'ping 8.8.8.8'. If that works but github.com doesn't, inspect DNS with 'resolvectl status' or reboot the VPS before retrying.",
       },
     ],
-    tips: [
-      "Run all preflight commands on the VPS (your SSH session), not your local machine.",
-    ],
+    tips: ["Run all preflight commands on the VPS (your SSH session), not your local machine."],
   },
 
   9: {
@@ -237,8 +235,7 @@ export function getDebugInfo(currentStep: number): string {
   const os = getUserOS();
   const ip = getVPSIP();
   const completed = getCompletedSteps();
-  const ua =
-    typeof navigator !== "undefined" ? navigator.userAgent : "unknown";
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "unknown";
 
   return [
     "# ACFS Wizard Debug Info",

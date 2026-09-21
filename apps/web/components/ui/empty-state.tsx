@@ -1,9 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 import { motion, springs } from "@/components/motion";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
-import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
   /** Icon to display */
@@ -72,7 +72,7 @@ export function EmptyState({
       className={cn(
         "flex flex-col items-center justify-center text-center",
         variantStyles[variant],
-        className
+        className,
       )}
       initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -85,18 +85,14 @@ export function EmptyState({
           "bg-gradient-to-br from-muted/80 to-muted/40",
           "shadow-inner",
           iconContainerSizes[variant],
-          iconContainerClassName
+          iconContainerClassName,
         )}
         initial={reducedMotion ? {} : { scale: 0.9 }}
         animate={{ scale: 1 }}
         transition={reducedMotion ? { duration: 0 } : { ...springs.snappy, delay: 0.1 }}
       >
         <Icon
-          className={cn(
-            "text-muted-foreground/60",
-            iconSizes[variant],
-            iconClassName
-          )}
+          className={cn("text-muted-foreground/60", iconSizes[variant], iconClassName)}
           strokeWidth={1.5}
         />
       </motion.div>
@@ -108,7 +104,7 @@ export function EmptyState({
           variant === "default" && "text-lg",
           variant === "compact" && "text-base",
           variant === "inline" && "text-sm",
-          titleClassName
+          titleClassName,
         )}
         initial={reducedMotion ? {} : { opacity: 0, y: 5 }}
         animate={{ opacity: 1, y: 0 }}
@@ -124,7 +120,7 @@ export function EmptyState({
           variant === "default" && "text-sm",
           variant === "compact" && "text-sm",
           variant === "inline" && "text-xs",
-          descriptionClassName
+          descriptionClassName,
         )}
         initial={reducedMotion ? {} : { opacity: 0, y: 5 }}
         animate={{ opacity: 1, y: 0 }}

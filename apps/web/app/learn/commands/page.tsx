@@ -1,43 +1,33 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Bot,
+  ChevronRight,
   Cloud,
   Code2,
   Cpu,
   GitBranch,
   Home,
   Search,
+  Sparkles,
   Terminal,
   Wrench,
-  ChevronRight,
-  Sparkles,
 } from "lucide-react";
-import { motion } from "@/components/motion";
+import Link from "next/link";
+import { type ReactNode, useMemo, useState } from "react";
 import { AgentRoster } from "@/components/agent-roster";
 import { CommandCard } from "@/components/command-card";
-import {
-  defaultManifestAgents,
-  manifestAgents,
-} from "@/lib/generated/manifest-web-index";
-import { springs, staggerDelay } from "@/lib/design-tokens";
+import { motion } from "@/components/motion";
 import {
   ALL_COMMANDS as GENERATED_COMMANDS,
   getManifestCommandByCliName,
   getManifestCommandDocsUrl,
 } from "@/lib/commands";
+import { springs, staggerDelay } from "@/lib/design-tokens";
+import { defaultManifestAgents, manifestAgents } from "@/lib/generated/manifest-web-index";
 
-type CommandCategory =
-  | "agents"
-  | "stack"
-  | "search"
-  | "git"
-  | "system"
-  | "languages"
-  | "cloud";
+type CommandCategory = "agents" | "stack" | "search" | "git" | "system" | "languages" | "cloud";
 
 type CategoryFilter = "all" | CommandCategory;
 
@@ -298,7 +288,7 @@ const COMMANDS: CommandEntry[] = [
     name: "fd",
     fullName: "fd-find",
     description: "Fast file finder",
-    example: 'fd \"\\.ts$\" apps/web',
+    example: 'fd "\\.ts$" apps/web',
     category: "search",
   },
   {
@@ -452,25 +442,24 @@ function mergeCanonicalCommandEntry(command: CommandEntry): CommandEntry {
         : manifestCommand.cliAliases.length > 0
           ? manifestCommand.cliAliases
           : undefined,
-    learnMoreHref:
-      command.learnMoreHref ?? getManifestCommandDocsUrl(manifestCommand.moduleId),
+    learnMoreHref: command.learnMoreHref ?? getManifestCommandDocsUrl(manifestCommand.moduleId),
   };
 }
 
 const MERGED_COMMANDS = COMMANDS.map(mergeCanonicalCommandEntry);
 const EXISTING_COMMAND_NAMES = new Set(MERGED_COMMANDS.map((command) => command.name));
 
-const GENERATED_COMMAND_ENTRIES: CommandEntry[] = GENERATED_COMMANDS
-  .filter((command) => !EXISTING_COMMAND_NAMES.has(command.name))
-  .map((command) => ({
-    name: command.name,
-    fullName: command.fullName,
-    description: command.description,
-    example: command.example,
-    category: command.category,
-    aliases: command.aliases,
-    learnMoreHref: command.docsUrl,
-  }));
+const GENERATED_COMMAND_ENTRIES: CommandEntry[] = GENERATED_COMMANDS.filter(
+  (command) => !EXISTING_COMMAND_NAMES.has(command.name),
+).map((command) => ({
+  name: command.name,
+  fullName: command.fullName,
+  description: command.description,
+  example: command.example,
+  category: command.category,
+  aliases: command.aliases,
+  learnMoreHref: command.docsUrl,
+}));
 
 const ALL_COMMAND_ENTRIES: CommandEntry[] = [...MERGED_COMMANDS, ...GENERATED_COMMAND_ENTRIES];
 
@@ -532,14 +521,18 @@ function CategoryCard({
     >
       <div className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-500 hover:border-white/[0.15] hover:bg-white/[0.04]">
         {/* Gradient glow on hover */}
-        <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+        <div
+          className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+        />
 
         {/* Header */}
         <div className="relative border-b border-white/[0.06] p-6">
           <div className="flex items-start gap-5">
             {/* Icon with glow */}
             <div className="relative shrink-0">
-              <div className={`absolute inset-0 bg-gradient-to-br ${gradient} rounded-xl blur-xl opacity-50 group-hover:opacity-80 transition-opacity duration-500 scale-110`} />
+              <div
+                className={`absolute inset-0 bg-gradient-to-br ${gradient} rounded-xl blur-xl opacity-50 group-hover:opacity-80 transition-opacity duration-500 scale-110`}
+              />
               <motion.div
                 className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.08] border border-white/[0.12] text-white transition duration-300 group-hover:scale-110"
                 whileHover={{ rotate: 5 }}
@@ -560,20 +553,18 @@ function CategoryCard({
           {commands.map((cmd) => {
             const anchorId = toAnchorId(cmd.name);
             return (
-              <div key={`${cmd.category}:${cmd.name}`} id={anchorId} className="scroll-mt-28 group/cmd">
+              <div
+                key={`${cmd.category}:${cmd.name}`}
+                id={anchorId}
+                className="scroll-mt-28 group/cmd"
+              >
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex items-baseline gap-3">
-                      <code className="font-mono text-lg font-bold text-white">
-                        {cmd.name}
-                      </code>
-                      <span className="text-sm font-medium text-white/60">
-                        {cmd.fullName}
-                      </span>
+                      <code className="font-mono text-lg font-bold text-white">{cmd.name}</code>
+                      <span className="text-sm font-medium text-white/60">{cmd.fullName}</span>
                     </div>
-                    <p className="mt-1 text-sm text-white/50 leading-relaxed">
-                      {cmd.description}
-                    </p>
+                    <p className="mt-1 text-sm text-white/50 leading-relaxed">{cmd.description}</p>
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     <Link
@@ -650,15 +641,25 @@ export default function CommandReferencePage() {
   const hasAnyResults = filteredCommands.length > 0;
 
   return (
-    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-clip">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="text-aa-floor min-h-screen bg-black relative overflow-x-clip"
+    >
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}
         <div className="absolute w-[700px] h-[700px] bg-primary/10 blur-[180px] rounded-full -top-48 left-1/4 hidden sm:block sm:animate-float" />
         {/* Secondary orb */}
-        <div className="absolute w-[500px] h-[500px] bg-violet-500/10 blur-[150px] rounded-full top-1/2 -right-32 hidden sm:block sm:animate-float" style={{ animationDelay: "2s" }} />
+        <div
+          className="absolute w-[500px] h-[500px] bg-violet-500/10 blur-[150px] rounded-full top-1/2 -right-32 hidden sm:block sm:animate-float"
+          style={{ animationDelay: "2s" }}
+        />
         {/* Tertiary orb */}
-        <div className="absolute w-[400px] h-[400px] bg-emerald-500/8 blur-[120px] rounded-full bottom-0 left-0 hidden sm:block sm:animate-float" style={{ animationDelay: "4s" }} />
+        <div
+          className="absolute w-[400px] h-[400px] bg-emerald-500/8 blur-[120px] rounded-full bottom-0 left-0 hidden sm:block sm:animate-float"
+          style={{ animationDelay: "4s" }}
+        />
         {/* Grid */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:80px_80px]" />
       </div>
@@ -720,8 +721,7 @@ export default function CommandReferencePage() {
             </span>
           </h1>
           <p className="mx-auto max-w-2xl text-lg text-white/50 leading-relaxed">
-            A quick, searchable list of the commands you&apos;ll use most in an
-            ACFS environment.
+            A quick, searchable list of the commands you&apos;ll use most in an ACFS environment.
           </p>
         </motion.section>
 
@@ -825,9 +825,7 @@ export default function CommandReferencePage() {
                   <Search className="h-8 w-8 text-white/50" />
                 </div>
               </div>
-              <p className="text-lg text-white/60">
-                No commands match your search.
-              </p>
+              <p className="text-lg text-white/60">No commands match your search.</p>
               <p className="text-sm text-white/25 mt-2">
                 Try a different keyword or clear the filter.
               </p>

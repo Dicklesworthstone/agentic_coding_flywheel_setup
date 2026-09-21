@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import { useDrag } from "@use-gesture/react";
-import { motion, springs, AnimatePresence } from "@/components/motion";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs } from "@/components/motion";
 import { cn } from "@/lib/utils";
 import type { AgentInfo } from "./AgentHeroCard";
 import { agentPersonalities } from "./AgentHeroCard";
@@ -52,7 +52,7 @@ export function AgentCarousel({
           // Positive mx = swiped right = go to previous
           if (mx > 0 && currentIndex > 0) {
             onIndexChange(currentIndex - 1);
-          // Negative mx = swiped left = go to next
+            // Negative mx = swiped left = go to next
           } else if (mx < 0 && currentIndex < agents.length - 1) {
             onIndexChange(currentIndex + 1);
           }
@@ -63,7 +63,7 @@ export function AgentCarousel({
       axis: "x",
       filterTaps: true,
       rubberband: true,
-    }
+    },
   );
 
   // Keyboard navigation
@@ -131,18 +131,13 @@ export function AgentCarousel({
               className={cn(
                 "relative h-2.5 rounded-full transition-[width] duration-300",
                 "min-w-[44px] min-h-[44px] flex items-center justify-center", // Touch target
-                isActive ? "w-8" : "w-2.5"
+                isActive ? "w-8" : "w-2.5",
               )}
             >
               <motion.div
-                className={cn(
-                  "h-2.5 rounded-full",
-                  isActive ? "w-8" : "w-2.5"
-                )}
+                className={cn("h-2.5 rounded-full", isActive ? "w-8" : "w-2.5")}
                 style={{
-                  backgroundColor: isActive
-                    ? personality.glowColor
-                    : "oklch(0.5 0 0 / 0.3)",
+                  backgroundColor: isActive ? personality.glowColor : "oklch(0.5 0 0 / 0.3)",
                 }}
                 layoutId={`dot-${agent.id}`}
                 transition={springs.snappy}

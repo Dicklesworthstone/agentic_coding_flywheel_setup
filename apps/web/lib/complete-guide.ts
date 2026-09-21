@@ -58,10 +58,28 @@ export const COMPLETE_GUIDE_MODEL_SOURCES = [
 ] as const;
 
 export const VALIDATION_GATES = [
-  ["Foundation", "Goals, workflows, stack, architecture direction, AGENTS.md, and best-practices guides exist and are coherent"],
-  ["Plan", "Markdown plan covers workflows, architecture, sequencing, constraints, testing expectations, and major failure paths"],
-  ["Translation", "Every material plan element maps to one or more beads, checked in both directions"],
-  ["Bead", "Beads are self-contained, dependency-correct, rich in context, and explicit about test obligations"],
-  ["Launch", "Agent Mail, file reservations, bead IDs, bv, AGENTS.md, and staggered startup are all ready"],
-  ["Ship", "Reviews, tests, UBS, remaining-work beads, and feedback capture into reusable artifacts are complete"],
+  [
+    "Foundation",
+    "Goals, workflows, stack, architecture direction, AGENTS.md, and best-practices guides exist and are coherent",
+  ],
+  [
+    "Plan",
+    "Markdown plan covers workflows, architecture, sequencing, constraints, testing expectations, and major failure paths",
+  ],
+  [
+    "Translation",
+    "Every material plan element maps to one or more beads, checked in both directions",
+  ],
+  [
+    "Bead",
+    "Beads are self-contained, dependency-correct, rich in context, and explicit about test obligations",
+  ],
+  [
+    "Launch",
+    "Agent Mail, file reservations, bead IDs, bv, AGENTS.md, and staggered startup are all ready",
+  ],
+  [
+    "Ship",
+    "Reviews, tests, UBS, remaining-work beads, and feedback capture into reusable artifacts are complete",
+  ],
 ] as const;

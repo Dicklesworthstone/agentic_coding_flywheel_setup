@@ -34,9 +34,7 @@ const planEvolutionSource = await Bun.file(
 
 describe("complete guide derived claims", () => {
   test("prompt count matches the rendered prompt blocks", () => {
-    expect(pageSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(
-      COMPLETE_GUIDE_PROMPT_COUNT,
-    );
+    expect(pageSource.match(/<PromptBlock\b/g)?.length ?? 0).toBe(COMPLETE_GUIDE_PROMPT_COUNT);
   });
 
   test("validation gates and workflow phase count remain explicit", () => {

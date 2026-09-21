@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildProviderProvisioningPacket,
+  manualStepsForProvider,
   PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS,
   PROVIDER_PACKET_EXPECTED_ARTIFACTS,
   PROVIDER_PACKET_FORBIDDEN_FIELD_NAMES,
@@ -9,9 +10,8 @@ import {
   PROVIDER_PACKET_SUPPORT_BUNDLE_SAFE_PATHS,
   PROVIDER_PROVISIONING_PACKET_SCHEMA,
   PROVIDER_PROVISIONING_PACKET_SCHEMA_VERSION,
-  manualStepsForProvider,
-  serializeProviderProvisioningPacketJson,
   type ProviderProvisioningPacketInput,
+  serializeProviderProvisioningPacketJson,
 } from "./providerProvisioningPacket";
 import { VPS_PROVIDERS } from "./vpsProviders";
 
@@ -52,7 +52,14 @@ describe("provider provisioning packet contract", () => {
     expect(safePathText).not.toContain("password");
     expect(safePathText).not.toContain("rawuserdata");
     expect(PROVIDER_PACKET_FORBIDDEN_FIELD_NAMES).toEqual(
-      expect.arrayContaining(["provider_api_key", "sshPrivateKey", "token", "password", "ip", "hostname"]),
+      expect.arrayContaining([
+        "provider_api_key",
+        "sshPrivateKey",
+        "token",
+        "password",
+        "ip",
+        "hostname",
+      ]),
     );
     expect(PROVIDER_PACKET_REDACTED_FIELD_PATHS).toEqual(
       expect.arrayContaining([
@@ -66,9 +73,9 @@ describe("provider provisioning packet contract", () => {
 
   test("defines support-safe verification commands and expected artifact metadata", () => {
     const commandIds = PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS.map((command) => command.id);
-    const supportSafeCommandIds = PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS
-      .filter((command) => command.supportBundleSafe)
-      .map((command) => command.id);
+    const supportSafeCommandIds = PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS.filter(
+      (command) => command.supportBundleSafe,
+    ).map((command) => command.id);
     const artifactIds = PROVIDER_PACKET_EXPECTED_ARTIFACTS.map((artifact) => artifact.id);
 
     expect(commandIds).toEqual(["ssh-root", "installer", "doctor", "support-bundle"]);
@@ -82,7 +89,9 @@ describe("provider provisioning packet contract", () => {
       "support-report",
       "support-manifest",
     ]);
-    expect(PROVIDER_PACKET_EXPECTED_ARTIFACTS.every((artifact) => artifact.redactionRequired)).toBe(true);
+    expect(PROVIDER_PACKET_EXPECTED_ARTIFACTS.every((artifact) => artifact.redactionRequired)).toBe(
+      true,
+    );
   });
 
   test("documents manual remaining steps for every current wizard provider", () => {
@@ -192,7 +201,9 @@ describe("buildProviderProvisioningPacket", () => {
     });
     expect(packet.install.commandRunLocation).toBe("cloud-init");
     expect(packet.compatibility.readinessStatus).toBe("unknown");
-    expect(packet.provider.manualStepsRemaining.join("\n")).toContain("Paste the ACFS cloud-init template");
+    expect(packet.provider.manualStepsRemaining.join("\n")).toContain(
+      "Paste the ACFS cloud-init template",
+    );
   });
 
   test("blocks known provider packets with unsupported Ubuntu images", () => {
@@ -207,8 +218,9 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.provider.name).toBe("OVH");
     expect(packet.stage).toBe("blocked");
     expect(packet.osImage.readinessStatus).toBe("unsupported");
-    expect(packet.compatibility.readinessChecks.find((check) => check.id === "os")?.status)
-      .toBe("unsupported");
+    expect(packet.compatibility.readinessChecks.find((check) => check.id === "os")?.status).toBe(
+      "unsupported",
+    );
   });
 
   test("flags plan-size mismatches as unsupported capacity without losing the selected plan", () => {
@@ -226,8 +238,9 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.size.sourcePlan?.name).toBe("VPS-4");
     expect(packet.compatibility.selectedPlanStatus).toBe("fail");
     expect(packet.compatibility.readinessStatus).toBe("unsupported");
-    expect(packet.compatibility.readinessChecks.find((check) => check.id === "capacity")?.status)
-      .toBe("unsupported");
+    expect(
+      packet.compatibility.readinessChecks.find((check) => check.id === "capacity")?.status,
+    ).toBe("unsupported");
   });
 
   test("keeps unknown providers advisory and support-safe", () => {
@@ -305,7 +318,9 @@ describe("buildProviderProvisioningPacket", () => {
 
     expect(packet.provider.id).toBe("other");
     expect(packet.region.id).toBe("not-listed");
-    expect(packet.provenance.generatedAt).toBe(new Date(packet.provenance.generatedAt).toISOString());
+    expect(packet.provenance.generatedAt).toBe(
+      new Date(packet.provenance.generatedAt).toISOString(),
+    );
     expect(json).not.toContain("2001:db8::7");
     expect(json).not.toContain("2001:db8::8");
     expect(json).not.toContain("203.0.113.42");
@@ -332,7 +347,8 @@ describe("buildProviderProvisioningPacket", () => {
   test("omits private-key material pasted into the public-key field", () => {
     const packet = buildProviderProvisioningPacket({
       ...baseInput,
-      sshPublicKeyMaterial: "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----",
+      sshPublicKeyMaterial:
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----",
     });
     const json = serializeProviderProvisioningPacketJson(packet);
 
@@ -382,7 +398,14 @@ describe("buildProviderProvisioningPacket", () => {
     expect(json).not.toContain("stack.dcg");
   });
 
-  for (const ubuntuVersion of ["", "Debian 26.04", "26.04 trailing text", "99.99", "28.04", "password=secret"]) {
+  for (const ubuntuVersion of [
+    "",
+    "Debian 26.04",
+    "26.04 trailing text",
+    "99.99",
+    "28.04",
+    "password=secret",
+  ]) {
     test(`does not turn an invalid image into a ready packet: ${JSON.stringify(ubuntuVersion)}`, () => {
       const packet = buildProviderProvisioningPacket({ ...baseInput, ubuntuVersion });
       expect(packet.osImage.version).toBe("unknown");
@@ -426,7 +449,11 @@ describe("buildProviderProvisioningPacket", () => {
   });
 
   test("does not export an executable installer for an undersized plan on a supported image", () => {
-    const packet = buildProviderProvisioningPacket({ ...baseInput, targetAgents: 100, workloadId: "heavy" });
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      targetAgents: 100,
+      workloadId: "heavy",
+    });
     expect(packet.osImage.readinessStatus).toBe("supported");
     expect(packet.stage).toBe("blocked");
     expect(packet.install.command).not.toContain("curl");

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { forwardRef, type AnchorHTMLAttributes } from 'react';
-import Link from 'next/link';
-import { trackOutboundLink, sendEvent } from '@/lib/analytics';
+import Link from "next/link";
+import { type AnchorHTMLAttributes, forwardRef } from "react";
+import { sendEvent, trackOutboundLink } from "@/lib/analytics";
 
 interface TrackedLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   href: string;
@@ -19,15 +19,15 @@ export const TrackedLink = forwardRef<HTMLAnchorElement, TrackedLinkProps>(
   ({ href, trackingId, isExternal, onClick, children, ...props }, ref) => {
     // Detect if link is external
     const isExternalLink =
-      isExternal ?? (href.startsWith('http://') || href.startsWith('https://'));
+      isExternal ?? (href.startsWith("http://") || href.startsWith("https://"));
 
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-      const linkText = typeof children === 'string' ? children : trackingId || href;
+      const linkText = typeof children === "string" ? children : trackingId || href;
 
       if (isExternalLink) {
         trackOutboundLink(href, linkText);
       } else {
-        sendEvent('internal_link_click', {
+        sendEvent("internal_link_click", {
           link_href: href,
           link_text: linkText,
           tracking_id: trackingId,
@@ -57,9 +57,9 @@ export const TrackedLink = forwardRef<HTMLAnchorElement, TrackedLinkProps>(
         {children}
       </Link>
     );
-  }
+  },
 );
 
-TrackedLink.displayName = 'TrackedLink';
+TrackedLink.displayName = "TrackedLink";
 
 export default TrackedLink;

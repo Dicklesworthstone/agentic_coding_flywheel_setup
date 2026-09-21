@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
 import { ArrowLeft, Home, Search, Terminal } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { CommandRefCard } from "@/components/command-ref-card";
 import { ALL_COMMANDS, COMMAND_CATEGORIES, type CommandCategory } from "@/lib/commands";
 
@@ -17,9 +17,7 @@ const CATEGORY_FILTERS: Array<{ id: CategoryFilter; label: string }> = [
 ];
 
 function getCategoryLabel(category: CommandCategory): string {
-  return (
-    COMMAND_CATEGORIES.find((item) => item.id === category)?.label ?? category
-  );
+  return COMMAND_CATEGORIES.find((item) => item.id === category)?.label ?? category;
 }
 
 export function CommandReference() {
@@ -78,13 +76,10 @@ export function CommandReference() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 shadow-lg shadow-primary/20">
             <Terminal className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-            Command Reference
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Command Reference</h1>
           <p className="mx-auto max-w-2xl text-base text-muted-foreground md:text-lg">
-            A quick lookup for every command ACFS installs. Search by name or
-            description, copy examples, and jump to detailed docs when you need
-            them.
+            A quick lookup for every command ACFS installs. Search by name or description, copy
+            examples, and jump to detailed docs when you need them.
           </p>
         </div>
 
@@ -120,16 +115,13 @@ export function CommandReference() {
           <span>
             Showing {filteredCommands.length} of {ALL_COMMANDS.length} commands
           </span>
-          {category !== "all" ? (
-            <span>Category: {getCategoryLabel(category)}</span>
-          ) : null}
+          {category !== "all" ? <span>Category: {getCategoryLabel(category)}</span> : null}
         </div>
 
         <div className="grid gap-5">
           {filteredCommands.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
-              No commands match your search yet. Try a different keyword or
-              switch categories.
+              No commands match your search yet. Try a different keyword or switch categories.
             </div>
           ) : (
             filteredCommands.map((command) => (

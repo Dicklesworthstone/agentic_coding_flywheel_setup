@@ -1,49 +1,46 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   BookOpen,
-  Users,
-  ExternalLink,
-  Check,
-  Shield,
   Bot,
+  Check,
+  ChevronDown,
   Cloud,
   DollarSign,
+  ExternalLink,
+  Shield,
   Sparkles,
   Terminal,
-  ChevronDown,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCard } from "@/components/alert-card";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import { AgentRoster } from "@/components/agent-roster";
-import {
-  defaultManifestAgents,
-  manifestAgents,
-} from "@/lib/generated/manifest-web-index";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
-import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useCheckedServices } from "@/lib/userPreferences";
-import { withCurrentSearch } from "@/lib/utils";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideStep,
-  GuideExplain,
-  GuideTip,
-} from "@/components/simpler-guide";
+import { AlertCard } from "@/components/alert-card";
 import { Jargon } from "@/components/jargon";
 import {
-  SERVICES,
+  GuideExplain,
+  GuideSection,
+  GuideStep,
+  GuideTip,
+  SimplerGuide,
+} from "@/components/simpler-guide";
+import { TrackedLink } from "@/components/tracked-link";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { defaultManifestAgents, manifestAgents } from "@/lib/generated/manifest-web-index";
+import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import {
   getGoogleSsoServices,
   getServicesByTier,
+  SERVICES,
   type Service,
   type ServiceTier,
 } from "@/lib/services";
-import { TrackedLink } from "@/components/tracked-link";
+import { useCheckedServices } from "@/lib/userPreferences";
+import { withCurrentSearch } from "@/lib/utils";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 const TIER_META: Record<
   ServiceTier,
@@ -106,22 +103,11 @@ function ServiceCard({ service, isChecked, onToggle }: ServiceCardProps) {
     >
       {/* Checkbox + service name share one label, so the whole header row
           (min 44px tall) toggles the box instead of a detached 16px target. */}
-      <label
-        htmlFor={checkboxId}
-        className="flex min-h-11 cursor-pointer items-center gap-3 py-1"
-      >
-        <Checkbox
-          id={checkboxId}
-          checked={isChecked}
-          onCheckedChange={onToggle}
-        />
+      <label htmlFor={checkboxId} className="flex min-h-11 cursor-pointer items-center gap-3 py-1">
+        <Checkbox id={checkboxId} checked={isChecked} onCheckedChange={onToggle} />
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-semibold text-foreground">
-            {service.name}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            by {service.provider}
-          </span>
+          <span className="font-semibold text-foreground">{service.name}</span>
+          <span className="text-xs text-muted-foreground">by {service.provider}</span>
           {service.requiresSubscription && (
             <span
               className="inline-flex items-center gap-1 rounded-full bg-amber/10 px-2 py-0.5 text-xs font-medium text-amber"
@@ -132,25 +118,17 @@ function ServiceCard({ service, isChecked, onToggle }: ServiceCardProps) {
             </span>
           )}
         </span>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {checkboxLabel}
-        </span>
-        {isChecked && (
-          <Check className="h-5 w-5 shrink-0 text-green" />
-        )}
+        <span className="shrink-0 text-xs text-muted-foreground">{checkboxLabel}</span>
+        {isChecked && <Check className="h-5 w-5 shrink-0 text-green" />}
       </label>
       <div className="min-w-0 space-y-2 pl-7">
-        <p className="text-sm text-muted-foreground">
-          {service.shortDescription}
-        </p>
+        <p className="text-sm text-muted-foreground">{service.shortDescription}</p>
         {service.requiresSubscription && (
           <p className="text-xs text-amber">
             Paid plan needed to actually use this service on your VPS.
           </p>
         )}
-        <p className="text-xs text-muted-foreground/80">
-          {service.whyNeeded}
-        </p>
+        <p className="text-xs text-muted-foreground/80">{service.whyNeeded}</p>
         <div className="flex flex-wrap gap-2 pt-1">
           {service.supportsGoogleSso && (
             <TrackedLink
@@ -204,16 +182,9 @@ interface TierSectionProps {
   onToggleService: (serviceId: string) => void;
 }
 
-function TierSection({
-  tier,
-  services,
-  checkedServices,
-  onToggleService,
-}: TierSectionProps) {
+function TierSection({ tier, services, checkedServices, onToggleService }: TierSectionProps) {
   const [isOpen, setIsOpen] = useState(TIER_META[tier].defaultOpen);
-  const checkedCount = services.filter((service) =>
-    checkedServices.has(service.id)
-  ).length;
+  const checkedCount = services.filter((service) => checkedServices.has(service.id)).length;
   const meta = TIER_META[tier];
 
   if (services.length === 0) return null;
@@ -309,9 +280,7 @@ export default function AccountsPage() {
   };
 
   const essentialServices = tieredServices.essential;
-  const essentialChecked = essentialServices.filter((s) =>
-    checkedServices.has(s.id)
-  );
+  const essentialChecked = essentialServices.filter((s) => checkedServices.has(s.id));
 
   return (
     <div className="space-y-8">
@@ -329,9 +298,8 @@ export default function AccountsPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Set up essential accounts for your{" "}
-          <Jargon term="vps">VPS</Jargon> now. Recommended and optional services
-          can wait until you need them.
+          Set up essential accounts for your <Jargon term="vps">VPS</Jargon> now. Recommended and
+          optional services can wait until you need them.
         </p>
       </div>
 
@@ -339,28 +307,32 @@ export default function AccountsPage() {
       <AlertCard variant="warning" icon={DollarSign} title="Subscription costs ahead">
         Some AI coding agents require expensive subscriptions to use after installation:
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-          <li><strong>Claude Code</strong>: Requires Claude Max ($200/mo)</li>
-          <li><strong>Codex CLI</strong>: Requires ChatGPT Pro ($200/mo)</li>
-          <li><strong>Antigravity CLI</strong>: Requires eligible Google/Gemini access</li>
+          <li>
+            <strong>Claude Code</strong>: Requires Claude Max ($200/mo)
+          </li>
+          <li>
+            <strong>Codex CLI</strong>: Requires ChatGPT Pro ($200/mo)
+          </li>
+          <li>
+            <strong>Antigravity CLI</strong>: Requires eligible Google/Gemini access
+          </li>
         </ul>
         <p className="mt-2 text-sm">
-          <strong>You don&apos;t need all of them!</strong> Start with one agent (Claude Code is recommended)
-          and add others later if you want different AI perspectives.
+          <strong>You don&apos;t need all of them!</strong> Start with one agent (Claude Code is
+          recommended) and add others later if you want different AI perspectives.
         </p>
       </AlertCard>
 
       {/* Google SSO tip - uses getGoogleSsoServices() to show count */}
       <AlertCard variant="tip" icon={Sparkles} title="Quick signup with Google">
-        {getGoogleSsoServices().length} of {SERVICES.length} services support Google SSO.
-        Use the same Google account for all of them to streamline your setup.
+        {getGoogleSsoServices().length} of {SERVICES.length} services support Google SSO. Use the
+        same Google account for all of them to streamline your setup.
       </AlertCard>
 
       {/* Progress indicator */}
       <div className="rounded-xl border border-border/50 bg-card/50 p-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            Essential accounts:
-          </span>
+          <span className="text-sm text-muted-foreground">Essential accounts:</span>
           <span className="font-medium">
             {essentialChecked.length} / {essentialServices.length}
           </span>
@@ -404,9 +376,9 @@ export default function AccountsPage() {
               Compatible agents
             </h2>
             <p className="text-sm text-muted-foreground">
-              ACFS installs {defaultManifestAgents.length} of these{" "}
-              {manifestAgents.length} agents by default. Each one needs its own account, so
-              sign up only for the agents you plan to use.
+              ACFS installs {defaultManifestAgents.length} of these {manifestAgents.length} agents
+              by default. Each one needs its own account, so sign up only for the agents you plan to
+              use.
             </p>
           </div>
         </div>
@@ -420,8 +392,8 @@ export default function AccountsPage() {
             You don&apos;t need all of them right now! We&apos;ve organized them into three tiers:
             <br />
             <br />
-            <strong>Essential (do now):</strong> GitHub for code backup and Claude Code
-            for AI assistance. These two are all you need to start.
+            <strong>Essential (do now):</strong> GitHub for code backup and Claude Code for AI
+            assistance. These two are all you need to start.
             <br />
             <br />
             <strong>Recommended (after first project):</strong> Add Codex CLI and Antigravity CLI
@@ -435,31 +407,31 @@ export default function AccountsPage() {
           <GuideSection title="How to Sign Up Efficiently">
             <div className="space-y-4">
               <GuideStep number={1} title="Use Google SSO when available">
-                Click the green &quot;Sign up with Google&quot; button. This is
-                fastest and you won&apos;t need to remember extra passwords.
+                Click the green &quot;Sign up with Google&quot; button. This is fastest and you
+                won&apos;t need to remember extra passwords.
               </GuideStep>
 
               <GuideStep number={2} title="Check the box after signing up">
-                After you create an essential account, check the box next to it.
-                Recommended and optional checkboxes are just notes for later.
+                After you create an essential account, check the box next to it. Recommended and
+                optional checkboxes are just notes for later.
               </GuideStep>
 
               <GuideStep number={3} title="Focus on the Essential tier first">
-                Knock out the two essential accounts. You can leave recommended
-                and optional services for later.
+                Knock out the two essential accounts. You can leave recommended and optional
+                services for later.
               </GuideStep>
 
               <GuideStep number={4} title="You can come back later">
-                Don&apos;t want to create all accounts now? That&apos;s fine!
-                Click &quot;Skip for now&quot; and create them after installation.
+                Don&apos;t want to create all accounts now? That&apos;s fine! Click &quot;Skip for
+                now&quot; and create them after installation.
               </GuideStep>
             </div>
           </GuideSection>
 
           <GuideTip>
-            <strong>Pro tip:</strong> Open each signup link in a new tab
-            (Cmd+click on Mac, Ctrl+click on Linux/Windows). That way you can create
-            multiple accounts quickly without losing your place here.
+            <strong>Pro tip:</strong> Open each signup link in a new tab (Cmd+click on Mac,
+            Ctrl+click on Linux/Windows). That way you can create multiple accounts quickly without
+            losing your place here.
           </GuideTip>
 
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
@@ -481,8 +453,8 @@ export default function AccountsPage() {
         <p className="text-sm text-muted-foreground">
           <strong className="text-foreground">Don&apos;t want to create accounts now?</strong>{" "}
           That&apos;s completely fine! You can skip this step and create accounts after
-          installation. The ACFS installer will still install all the tools—you&apos;ll
-          just need to authenticate them later when you&apos;re ready to use them.
+          installation. The ACFS installer will still install all the tools—you&apos;ll just need to
+          authenticate them later when you&apos;re ready to use them.
         </p>
       </div>
 

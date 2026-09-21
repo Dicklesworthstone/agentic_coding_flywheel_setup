@@ -8,9 +8,9 @@
  * route is built from tool-data keys via generateStaticParams()).
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { TOOL_IDS, TOOLS } from "../app/learn/tools/[tool]/tool-data";
 import { COMMANDS } from "./commands";
-import { TOOLS, TOOL_IDS } from "../app/learn/tools/[tool]/tool-data";
 
 describe("agy command reference entry", () => {
   test("an `agy` command exists in the agents category", () => {

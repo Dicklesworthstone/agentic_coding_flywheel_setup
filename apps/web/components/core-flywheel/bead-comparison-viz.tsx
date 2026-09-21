@@ -1,19 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
-import {
-  motion,
-  AnimatePresence,
-  useInView,
-  useReducedMotion,
-} from "@/components/motion";
 import { LayoutGroup } from "framer-motion";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-  GitBranch,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, GitBranch } from "lucide-react";
+import { useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 /* -------------------------------------------------------------------------- */
@@ -115,9 +105,7 @@ function TerminalBlock({
   const isWeak = variant === "weak";
 
   /* Line count display */
-  const displayCount = isWeak
-    ? lines.length
-    : lines.filter((l) => l.trim()).length;
+  const displayCount = isWeak ? lines.length : lines.filter((l) => l.trim()).length;
 
   return (
     <div
@@ -157,22 +145,13 @@ function TerminalBlock({
       {/* #3: macOS-style window dots */}
       <div className="flex items-center gap-1.5 mb-3 relative z-10">
         <span
-          className={cn(
-            "w-2.5 h-2.5 rounded-full",
-            isWeak ? "bg-red-500/60" : "bg-emerald-500/60",
-          )}
+          className={cn("w-2.5 h-2.5 rounded-full", isWeak ? "bg-red-500/60" : "bg-emerald-500/60")}
         />
         <span
-          className={cn(
-            "w-2.5 h-2.5 rounded-full",
-            isWeak ? "bg-red-500/35" : "bg-emerald-500/35",
-          )}
+          className={cn("w-2.5 h-2.5 rounded-full", isWeak ? "bg-red-500/35" : "bg-emerald-500/35")}
         />
         <span
-          className={cn(
-            "w-2.5 h-2.5 rounded-full",
-            isWeak ? "bg-red-500/20" : "bg-emerald-500/20",
-          )}
+          className={cn("w-2.5 h-2.5 rounded-full", isWeak ? "bg-red-500/20" : "bg-emerald-500/20")}
         />
       </div>
 
@@ -209,9 +188,7 @@ function TerminalBlock({
       <div
         className={cn(
           "rounded-xl border p-4 font-mono text-[13px] leading-snug relative z-10 overflow-x-auto",
-          isWeak
-            ? "border-red-500/10 bg-black/40"
-            : "border-emerald-500/10 bg-black/40",
+          isWeak ? "border-red-500/10 bg-black/40" : "border-emerald-500/10 bg-black/40",
         )}
       >
         {lines.map((line, i) => (
@@ -223,9 +200,7 @@ function TerminalBlock({
                 : {
                     opacity: 0,
                     x: isWeak ? -8 : 8,
-                    ...(!isWeak
-                      ? { backgroundColor: "rgba(16,185,129,0.05)" }
-                      : {}),
+                    ...(!isWeak ? { backgroundColor: "rgba(16,185,129,0.05)" } : {}),
                   }
             }
             animate={
@@ -233,9 +208,7 @@ function TerminalBlock({
                 ? {
                     opacity: 1,
                     x: 0,
-                    ...(!isWeak
-                      ? { backgroundColor: "rgba(16,185,129,0)" }
-                      : {}),
+                    ...(!isWeak ? { backgroundColor: "rgba(16,185,129,0)" } : {}),
                   }
                 : undefined
             }
@@ -405,8 +378,8 @@ export function BeadComparisonViz() {
             </h3>
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-            A weak artifact names a topic. A strong one carries scope,
-            constraints, and a test plan. See the difference.
+            A weak artifact names a topic. A strong one carries scope, constraints, and a test plan.
+            See the difference.
           </p>
         </div>
 
@@ -421,9 +394,7 @@ export function BeadComparisonViz() {
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   "relative z-10 px-5 py-3 sm:py-2.5 rounded-xl text-sm sm:text-sm font-bold tracking-wide transition-colors duration-300 flex items-center gap-2 min-h-[48px] sm:min-h-[44px]",
-                  activeTab === tab
-                    ? "text-[#FF5500]"
-                    : "text-white/40 hover:text-white/80",
+                  activeTab === tab ? "text-[#FF5500]" : "text-white/40 hover:text-white/80",
                 )}
               >
                 {/* #1: Sliding pill behind active tab */}

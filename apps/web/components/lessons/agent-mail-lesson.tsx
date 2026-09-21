@@ -1,65 +1,57 @@
 "use client";
 
-import { motion, AnimatePresence, useInView } from "@/components/motion";
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
-  Mail,
-  Users,
-  FileText,
-  Lock,
-  MessageSquare,
-  Send,
-  Inbox,
-  Search,
-  Bot,
-  Workflow,
-  CheckCircle,
   AlertTriangle,
-  Unlock,
-  Play,
+  ArrowRight,
+  Bot,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
-  Pause,
-  X,
-  ArrowRight,
   Clock,
-  RotateCcw,
   Eye,
+  FileText,
+  Inbox,
+  Lock,
+  Mail,
+  MessageSquare,
+  Pause,
+  Play,
+  RotateCcw,
+  Search,
+  Send,
+  Unlock,
+  Users,
+  Workflow,
+  X,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function AgentMailLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Coordinate multiple agents without conflicts using Agent Mail.
-      </GoalBanner>
+      <GoalBanner>Coordinate multiple agents without conflicts using Agent Mail.</GoalBanner>
 
       {/* What Is Agent Mail */}
-      <Section
-        title="What Is Agent Mail?"
-        icon={<Mail className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is Agent Mail?" icon={<Mail className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>MCP Agent Mail</Highlight> is a coordination system that
-          lets multiple AI agents work on the same project without stepping on
-          each other&apos;s toes.
+          <Highlight>MCP Agent Mail</Highlight> is a coordination system that lets multiple AI
+          agents work on the same project without stepping on each other&apos;s toes.
         </Paragraph>
         <Paragraph>
-          Think of it as email + file locking for agents. Agents can send
-          messages, claim files they&apos;re working on, and stay in sync—all
-          persisted in git.
+          Think of it as email + file locking for agents. Agents can send messages, claim files
+          they&apos;re working on, and stay in sync—all persisted in git.
         </Paragraph>
 
         <div className="mt-8">
@@ -95,14 +87,9 @@ export function AgentMailLesson() {
       <Divider />
 
       {/* Why Coordination Matters */}
-      <Section
-        title="Why Coordination Matters"
-        icon={<Users className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Why Coordination Matters" icon={<Users className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          Without coordination, multiple agents working on the same codebase
-          can:
+          Without coordination, multiple agents working on the same codebase can:
         </Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -122,8 +109,8 @@ export function AgentMailLesson() {
 
         <div className="mt-6">
           <TipBox variant="info">
-            Agent Mail is available as an MCP server. Your agents can use it
-            automatically when configured!
+            Agent Mail is available as an MCP server. Your agents can use it automatically when
+            configured!
           </TipBox>
         </div>
       </Section>
@@ -131,11 +118,7 @@ export function AgentMailLesson() {
       <Divider />
 
       {/* Core Concepts */}
-      <Section
-        title="Core Concepts"
-        icon={<Workflow className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Core Concepts" icon={<Workflow className="h-5 w-5" />} delay={0.2}>
         <div className="space-y-8">
           {/* Project & Agents */}
           <ConceptCard
@@ -231,11 +214,7 @@ acknowledge_message(
       <Divider />
 
       {/* Common Patterns */}
-      <Section
-        title="Common Patterns"
-        icon={<Workflow className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Common Patterns" icon={<Workflow className="h-5 w-5" />} delay={0.25}>
         <div className="space-y-6">
           <PatternCard
             title="Starting a Session"
@@ -274,22 +253,14 @@ acknowledge_message(
       <Divider />
 
       {/* The Coordination Flow */}
-      <Section
-        title="The Coordination Flow"
-        icon={<Workflow className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="The Coordination Flow" icon={<Workflow className="h-5 w-5" />} delay={0.3}>
         <InteractiveCoordinationSim />
       </Section>
 
       <Divider />
 
       {/* Best Practices */}
-      <Section
-        title="Best Practices"
-        icon={<CheckCircle className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Best Practices" icon={<CheckCircle className="h-5 w-5" />} delay={0.35}>
         <div className="space-y-4">
           <BestPractice
             title="Reserve before editing"
@@ -315,9 +286,8 @@ acknowledge_message(
 
         <div className="mt-6">
           <TipBox variant="warning">
-            If you see <code>FILE_RESERVATION_CONFLICT</code>, another agent
-            has the file. Wait for expiry, adjust your patterns, or use
-            non-exclusive reservations.
+            If you see <code>FILE_RESERVATION_CONFLICT</code>, another agent has the file. Wait for
+            expiry, adjust your patterns, or use non-exclusive reservations.
           </TipBox>
         </div>
       </Section>
@@ -325,11 +295,7 @@ acknowledge_message(
       <Divider />
 
       {/* Quick Reference */}
-      <Section
-        title="Quick Reference"
-        icon={<FileText className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Quick Reference" icon={<FileText className="h-5 w-5" />} delay={0.4}>
         <div className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
           <div className="p-5 border-b border-white/[0.06] bg-gradient-to-r from-primary/10 to-violet-500/10">
             <span className="font-bold text-white text-lg">Key Functions</span>
@@ -355,13 +321,7 @@ acknowledge_message(
 // =============================================================================
 // PROBLEM CARD
 // =============================================================================
-function ProblemCard({
-  problem,
-  solution,
-}: {
-  problem: string;
-  solution: string;
-}) {
+function ProblemCard({ problem, solution }: { problem: string; solution: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -785,9 +745,7 @@ function getAgentNameById(id: AgentId): string {
   return found ? found.name : id;
 }
 
-function getLogTypeColor(
-  type: ActivityLogEntry["type"]
-): { text: string; bg: string } {
+function getLogTypeColor(type: ActivityLogEntry["type"]): { text: string; bg: string } {
   switch (type) {
     case "register":
       return { text: "text-violet-400", bg: "bg-violet-500/20" };
@@ -807,13 +765,7 @@ function getLogTypeColor(
 // ---------------------------------------------------------------------------
 // Thread viewer modal
 // ---------------------------------------------------------------------------
-function ThreadViewer({
-  message,
-  onClose,
-}: {
-  message: MailMessage;
-  onClose: () => void;
-}) {
+function ThreadViewer({ message, onClose }: { message: MailMessage; onClose: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -861,14 +813,10 @@ function ThreadViewer({
               <span className="text-xs font-semibold text-emerald-400">
                 {getAgentNameById(message.to)}
               </span>
-              <span className="text-[10px] text-white/30 ml-auto">
-                {message.timestamp}
-              </span>
+              <span className="text-[10px] text-white/30 ml-auto">{message.timestamp}</span>
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-              <p className="text-sm text-white/70 leading-relaxed">
-                {message.body}
-              </p>
+              <p className="text-sm text-white/70 leading-relaxed">{message.body}</p>
             </div>
           </div>
 
@@ -934,12 +882,18 @@ function AgentInboxCard({
       {agent.registered && !isConflictAgent && (
         <motion.div
           className={`absolute inset-0 blur-xl pointer-events-none ${
-            agent.bgAccent === 'bg-blue-500' ? 'bg-blue-500/10' :
-            agent.bgAccent === 'bg-emerald-500' ? 'bg-emerald-500/10' :
-            agent.bgAccent === 'bg-red-500' ? 'bg-red-500/10' : 'bg-white/10'
+            agent.bgAccent === "bg-blue-500"
+              ? "bg-blue-500/10"
+              : agent.bgAccent === "bg-emerald-500"
+                ? "bg-emerald-500/10"
+                : agent.bgAccent === "bg-red-500"
+                  ? "bg-red-500/10"
+                  : "bg-white/10"
           }`}
           animate={active ? { opacity: [0.2, 0.45, 0.2] } : { opacity: 0.2 }}
-          transition={active ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
+          transition={
+            active ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }
+          }
         />
       )}
 
@@ -980,7 +934,9 @@ function AgentInboxCard({
           >
             <motion.div
               className="h-full w-full rounded-full bg-emerald-400"
-              animate={active ? { scale: [1, 1.8, 1], opacity: [1, 0, 1] } : { scale: 1, opacity: 1 }}
+              animate={
+                active ? { scale: [1, 1.8, 1], opacity: [1, 0, 1] } : { scale: 1, opacity: 1 }
+              }
               transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             />
           </motion.div>
@@ -1059,8 +1015,10 @@ function AgentInboxCard({
                       <Mail className="h-3 w-3 text-white/30 shrink-0" />
                     )}
                     <span className="text-xs text-white/60 truncate flex-1 group-hover/msg:text-white/80 transition-colors">
-                      {isSender ? `To ${getAgentNameById(msg.to)}` : `From ${getAgentNameById(msg.from)}`}:{" "}
-                      {msg.subject}
+                      {isSender
+                        ? `To ${getAgentNameById(msg.to)}`
+                        : `From ${getAgentNameById(msg.from)}`}
+                      : {msg.subject}
                     </span>
                     {msg.acknowledged && (
                       <CheckCircle className="h-3 w-3 text-emerald-400 shrink-0" />
@@ -1070,12 +1028,8 @@ function AgentInboxCard({
                 );
               })}
           </AnimatePresence>
-          {agent.messages.filter(
-            (m) => m.to === agent.id || m.from === agent.id
-          ).length === 0 && (
-            <p className="text-[10px] text-white/15 italic px-2 py-1">
-              No messages yet
-            </p>
+          {agent.messages.filter((m) => m.to === agent.id || m.from === agent.id).length === 0 && (
+            <p className="text-[10px] text-white/15 italic px-2 py-1">No messages yet</p>
           )}
         </div>
       </div>
@@ -1147,7 +1101,10 @@ function InteractiveCoordinationSim() {
   }, []);
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary/8 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-violet-500/8 rounded-full blur-[100px] pointer-events-none" />
@@ -1182,9 +1139,7 @@ function InteractiveCoordinationSim() {
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-violet-500/30 bg-violet-500/10"
           >
             <Workflow className="h-4 w-4 text-violet-400" />
-            <span className="text-xs font-semibold text-violet-300">
-              Mail Hub
-            </span>
+            <span className="text-xs font-semibold text-violet-300">Mail Hub</span>
             {currentStep >= 0 && (
               <motion.span
                 initial={{ scale: 0 }}
@@ -1193,7 +1148,9 @@ function InteractiveCoordinationSim() {
               >
                 <motion.span
                   className="h-full w-full rounded-full bg-emerald-400"
-                  animate={inView ? { scale: [1, 2, 1], opacity: [1, 0, 1] } : { scale: 1, opacity: 1 }}
+                  animate={
+                    inView ? { scale: [1, 2, 1], opacity: [1, 0, 1] } : { scale: 1, opacity: 1 }
+                  }
                   transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                 />
               </motion.span>
@@ -1204,8 +1161,7 @@ function InteractiveCoordinationSim() {
         {/* ---- Agent Inbox Cards (3 columns) ---- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {agents.map((agent) => {
-            const isConflictAgent =
-              conflict !== null && conflict.agent === agent.id;
+            const isConflictAgent = conflict !== null && conflict.agent === agent.id;
             return (
               <AgentInboxCard
                 key={agent.id}
@@ -1267,9 +1223,7 @@ function InteractiveCoordinationSim() {
           <div className="px-5 py-3 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.04] to-transparent flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-white/50" />
-              <span className="text-sm font-semibold text-white/70">
-                File Reservation Map
-              </span>
+              <span className="text-sm font-semibold text-white/70">File Reservation Map</span>
             </div>
             {/* Legend */}
             <div className="hidden sm:flex items-center gap-3">
@@ -1277,9 +1231,13 @@ function InteractiveCoordinationSim() {
                 <div key={a.id} className="flex items-center gap-1.5">
                   <div
                     className={`h-2.5 w-2.5 rounded-full ${
-                      a.bgAccent === 'bg-blue-500' ? 'bg-blue-500/60' :
-                      a.bgAccent === 'bg-emerald-500' ? 'bg-emerald-500/60' :
-                      a.bgAccent === 'bg-red-500' ? 'bg-red-500/60' : 'bg-white/60'
+                      a.bgAccent === "bg-blue-500"
+                        ? "bg-blue-500/60"
+                        : a.bgAccent === "bg-emerald-500"
+                          ? "bg-emerald-500/60"
+                          : a.bgAccent === "bg-red-500"
+                            ? "bg-red-500/60"
+                            : "bg-white/60"
                     }`}
                   />
                   <span className="text-[10px] text-white/40">{a.name}</span>
@@ -1290,20 +1248,14 @@ function InteractiveCoordinationSim() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-white/[0.04] p-px">
             {files.map((file) => {
               const ownerColors = getFileOwnerColor(file.owner);
-              const ownerName = file.owner
-                ? getAgentNameById(file.owner)
-                : null;
+              const ownerName = file.owner ? getAgentNameById(file.owner) : null;
 
               return (
                 <motion.div
                   key={file.path}
                   animate={{
                     backgroundColor: file.conflictFlash
-                      ? [
-                          "rgba(239,68,68,0.15)",
-                          "rgba(239,68,68,0.03)",
-                          "rgba(239,68,68,0.15)",
-                        ]
+                      ? ["rgba(239,68,68,0.15)", "rgba(239,68,68,0.03)", "rgba(239,68,68,0.15)"]
                       : ownerColors.rgbaBg,
                   }}
                   transition={
@@ -1319,9 +1271,7 @@ function InteractiveCoordinationSim() {
                       scale: file.conflictFlash ? [1, 1.15, 1] : 1,
                     }}
                     transition={
-                      file.conflictFlash
-                        ? { duration: 0.2, repeat: 4 }
-                        : { duration: 0.3 }
+                      file.conflictFlash ? { duration: 0.2, repeat: 4 } : { duration: 0.3 }
                     }
                   >
                     <FileText
@@ -1385,19 +1335,14 @@ function InteractiveCoordinationSim() {
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.04] to-transparent flex items-center gap-2">
             <Clock className="h-4 w-4 text-white/50" />
-            <span className="text-sm font-semibold text-white/70">
-              Activity Log
-            </span>
+            <span className="text-sm font-semibold text-white/70">Activity Log</span>
             {activityLog.length > 0 && (
               <span className="ml-auto text-[10px] text-white/30 font-mono">
                 {activityLog.length} event{activityLog.length !== 1 ? "s" : ""}
               </span>
             )}
           </div>
-          <div
-            ref={logContainerRef}
-            className="max-h-[160px] overflow-y-auto scrollbar-thin"
-          >
+          <div ref={logContainerRef} className="max-h-[160px] overflow-y-auto scrollbar-thin">
             <AnimatePresence>
               {activityLog.length === 0 && (
                 <motion.div
@@ -1482,13 +1427,10 @@ function InteractiveCoordinationSim() {
                       {STEP_ICON_MAP[SIM_STEP_DEFS[currentStep].icon]}
                     </span>
                     <p className="text-sm font-semibold text-white">
-                      Step {currentStep + 1}:{" "}
-                      {SIM_STEP_DEFS[currentStep].label}
+                      Step {currentStep + 1}: {SIM_STEP_DEFS[currentStep].label}
                     </p>
                   </div>
-                  <p className="text-xs text-white/50">
-                    {SIM_STEP_DEFS[currentStep].description}
-                  </p>
+                  <p className="text-xs text-white/50">{SIM_STEP_DEFS[currentStep].description}</p>
                 </motion.div>
               ) : (
                 <motion.p
@@ -1599,10 +1541,7 @@ function InteractiveCoordinationSim() {
       {/* ---- Thread Viewer Modal ---- */}
       <AnimatePresence>
         {selectedMessage && (
-          <ThreadViewer
-            message={selectedMessage}
-            onClose={() => setSelectedMessage(null)}
-          />
+          <ThreadViewer message={selectedMessage} onClose={() => setSelectedMessage(null)} />
         )}
       </AnimatePresence>
     </div>
@@ -1612,13 +1551,7 @@ function InteractiveCoordinationSim() {
 // =============================================================================
 // BEST PRACTICE
 // =============================================================================
-function BestPractice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function BestPractice({ title, description }: { title: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -1630,7 +1563,9 @@ function BestPractice({
         <CheckCircle className="h-5 w-5" />
       </div>
       <div>
-        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">{title}</p>
+        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+          {title}
+        </p>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>
@@ -1651,7 +1586,9 @@ function FunctionRow({ name, purpose }: { name: string; purpose: string }) {
       <code className="text-sm text-primary font-mono font-medium px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/15 transition-colors">
         {name}
       </code>
-      <span className="text-white/50 text-sm group-hover:text-white/70 transition-colors">{purpose}</span>
+      <span className="text-white/50 text-sm group-hover:text-white/70 transition-colors">
+        {purpose}
+      </span>
     </motion.div>
   );
 }

@@ -1,26 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { KeyRound, ShieldCheck, Terminal } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { CommandCard } from "@/components/command-card";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
+import { CommandCard } from "@/components/command-card";
+import { Jargon } from "@/components/jargon";
+import {
+  GuideCaution,
+  GuideExplain,
+  GuideSection,
+  GuideStep,
+  GuideTip,
+  SimplerGuide,
+} from "@/components/simpler-guide";
+import { Button } from "@/components/ui/button";
 import { buildKeyRepairCommands, buildSshKeyLoginCommands } from "@/lib/commandBuilder";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideStep,
-  GuideExplain,
-  GuideTip,
-  GuideCaution,
-} from "@/components/simpler-guide";
-import { Jargon } from "@/components/jargon";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 export default function VerifyKeyConnectionPage() {
   const router = useRouter();
@@ -72,8 +72,10 @@ export default function VerifyKeyConnectionPage() {
   // Both shell dialects come from the command builder: the Windows form is
   // the PowerShell spelling ($HOME), never the %USERPROFILE% form that only
   // works inside a Windows Terminal profile.
-  const { command: sshKeyCommand, windowsCommand: sshKeyCommandWindows } =
-    buildSshKeyLoginCommands(effectiveUsername, vpsIP);
+  const { command: sshKeyCommand, windowsCommand: sshKeyCommandWindows } = buildSshKeyLoginCommands(
+    effectiveUsername,
+    vpsIP,
+  );
   const keyRepair = buildKeyRepairCommands(effectiveUsername, vpsIP);
 
   return (
@@ -88,18 +90,18 @@ export default function VerifyKeyConnectionPage() {
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               Verify key-based connection
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~1 min
-            </p>
+            <p className="text-sm text-muted-foreground">~1 min</p>
           </div>
         </div>
         <p className="text-muted-foreground">
-          Make sure your <Jargon term="ssh">SSH</Jargon> key works so you never need the password again.
+          Make sure your <Jargon term="ssh">SSH</Jargon> key works so you never need the password
+          again.
         </p>
       </div>
 
       <AlertCard variant="info" icon={ShieldCheck} title="Why this matters">
-        This confirms the installer set up your key correctly and that future logins are fast and secure.
+        This confirms the installer set up your key correctly and that future logins are fast and
+        secure.
       </AlertCard>
 
       {/* Step 1: Disconnect */}
@@ -143,9 +145,7 @@ export default function VerifyKeyConnectionPage() {
         >
           <Terminal className="mt-0.5 h-5 w-5 text-primary" />
           <div>
-            <p className="font-medium text-foreground">
-              Windows User? Set up one-click VPS access
-            </p>
+            <p className="font-medium text-foreground">Windows User? Set up one-click VPS access</p>
             <p className="text-sm text-muted-foreground">
               Create a Windows Terminal profile to connect to your VPS with a single click →
             </p>
@@ -160,18 +160,19 @@ export default function VerifyKeyConnectionPage() {
           <AlertCard variant="warning" title="Still asks for a password?">
             <div className="space-y-2">
               <p>
-                If you can still sign in as {effectiveUsername}, copy your local ACFS public key into that account:
+                If you can still sign in as {effectiveUsername}, copy your local ACFS public key
+                into that account:
               </p>
               <CommandCard {...keyRepair.user} />
               <p className="text-xs text-muted-foreground">
-                This uses the {effectiveUsername} account and does not ask for the VPS root password.
+                This uses the {effectiveUsername} account and does not ask for the VPS root
+                password.
               </p>
-              <p className="pt-2">
-                If that cannot connect, use the root fallback:
-              </p>
+              <p className="pt-2">If that cannot connect, use the root fallback:</p>
               <CommandCard {...keyRepair.root} />
               <p className="text-xs text-muted-foreground">
-                This asks for the VPS root password once. ACFS skips exact duplicate public key lines on reruns.
+                This asks for the VPS root password once. ACFS skips exact duplicate public key
+                lines on reruns.
               </p>
             </div>
           </AlertCard>
@@ -191,43 +192,60 @@ export default function VerifyKeyConnectionPage() {
       <SimplerGuide>
         <div className="space-y-6">
           <GuideExplain term="Key-based authentication">
-            Instead of typing a password, your computer proves it has a secret key that matches
-            the public key stored on your VPS. It&apos;s faster and more secure than passwords.
+            Instead of typing a password, your computer proves it has a secret key that matches the
+            public key stored on your VPS. It&apos;s faster and more secure than passwords.
           </GuideExplain>
 
           <GuideSection title="Step-by-step verification">
             <div className="space-y-4">
               <GuideStep number={1} title="Exit the current session">
-                Type <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">exit</code> and
-                press Enter to return to your local terminal.
+                Type <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">exit</code>{" "}
+                and press Enter to return to your local terminal.
               </GuideStep>
 
               <GuideStep number={2} title="Reconnect with your key">
-                Paste the SSH command above (with <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">-i</code>)
-                and press Enter. You should NOT be asked for a password.
+                Paste the SSH command above (with{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">-i</code>) and
+                press Enter. You should NOT be asked for a password.
               </GuideStep>
 
               <GuideStep number={3} title="Confirm the prompt">
-                Look for <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{userPrompt}</code> and a
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">$</code> at the end.
+                Look for{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                  {userPrompt}
+                </code>{" "}
+                and a<code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">$</code> at
+                the end.
               </GuideStep>
             </div>
           </GuideSection>
 
           <GuideTip>
-            If you see a password prompt, stop and fix it now—this step prevents future login headaches.
+            If you see a password prompt, stop and fix it now—this step prevents future login
+            headaches.
           </GuideTip>
 
           <GuideCaution>
-            <strong>Using a different key?</strong> Make sure you&apos;re pointing to the same key you created earlier:
-            <code className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">~/.ssh/acfs_ed25519</code>.
+            <strong>Using a different key?</strong> Make sure you&apos;re pointing to the same key
+            you created earlier:
+            <code className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              ~/.ssh/acfs_ed25519
+            </code>
+            .
           </GuideCaution>
         </div>
       </SimplerGuide>
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          onClick={handleContinue}
+          disabled={isNavigating}
+          size="lg"
+          disableMotion
+        >
           {isNavigating ? "Loading..." : "My key works, continue"}
         </Button>
       </div>

@@ -10,7 +10,7 @@
  * - Props are properly typed
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { BottomSheet } from "./bottom-sheet";
 
 describe("BottomSheet component", () => {

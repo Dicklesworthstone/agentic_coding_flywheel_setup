@@ -1,67 +1,60 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Brain,
-  Lightbulb,
+  AlertCircle,
+  Archive,
   BookOpen,
+  Brain,
+  Bug,
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  Cpu,
   Database,
-  Terminal,
+  FileText,
+  GitBranch,
+  Layers,
+  Lightbulb,
+  Pause,
+  Play,
+  RefreshCw,
+  Search,
+  Settings,
   Sparkles,
   Target,
-  AlertCircle,
-  CheckCircle,
-  FileText,
-  Zap,
-  RefreshCw,
-  Archive,
-  Cpu,
-  Layers,
-  Search,
-  Play,
-  Pause,
-  ChevronRight,
-  GitBranch,
-  Bug,
-  Settings,
+  Terminal,
   Users,
-  Clock,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function CmLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Build procedural memory for agents that improves over time.
-      </GoalBanner>
+      <GoalBanner>Build procedural memory for agents that improves over time.</GoalBanner>
 
       {/* What Is CM */}
-      <Section
-        title="What Is CM?"
-        icon={<Brain className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is CM?" icon={<Brain className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CM (CASS Memory System)</Highlight> gives AI agents
-          effective memory by extracting lessons from past sessions and making
-          them retrievable for future work.
+          <Highlight>CM (CASS Memory System)</Highlight> gives AI agents effective memory by
+          extracting lessons from past sessions and making them retrievable for future work.
         </Paragraph>
         <Paragraph>
-          Think of it like how humans learn: you encounter a problem, solve it,
-          and remember the solution. CM does this for your agents automatically.
+          Think of it like how humans learn: you encounter a problem, solve it, and remember the
+          solution. CM does this for your agents automatically.
         </Paragraph>
 
         <div className="mt-8">
@@ -97,17 +90,13 @@ export function CmLesson() {
       <Divider />
 
       {/* How It Works */}
-      <Section
-        title="How It Works"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="How It Works" icon={<Sparkles className="h-5 w-5" />} delay={0.15}>
         <InteractiveMemoryPipeline />
 
         <div className="mt-8">
           <TipBox variant="info">
-            CM builds a &quot;playbook&quot; of rules over time. The more
-            sessions you analyze, the smarter your agents become!
+            CM builds a &quot;playbook&quot; of rules over time. The more sessions you analyze, the
+            smarter your agents become!
           </TipBox>
         </div>
       </Section>
@@ -121,8 +110,8 @@ export function CmLesson() {
         delay={0.2}
       >
         <Paragraph>
-          The <code>cm onboard</code> command guides you through analyzing past
-          sessions and extracting valuable rules:
+          The <code>cm onboard</code> command guides you through analyzing past sessions and
+          extracting valuable rules:
         </Paragraph>
 
         <div className="mt-6">
@@ -133,11 +122,7 @@ export function CmLesson() {
       <Divider />
 
       {/* Essential Commands */}
-      <Section
-        title="Essential Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.25}>
         <CommandList
           commands={[
             {
@@ -163,7 +148,7 @@ export function CmLesson() {
             {
               command: 'cm context "task description" --json',
               description: "Get relevant context for a task",
-            }
+            },
           ]}
         />
       </Section>
@@ -171,14 +156,9 @@ export function CmLesson() {
       <Divider />
 
       {/* Using Context */}
-      <Section
-        title="Using Context Before Tasks"
-        icon={<Target className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Using Context Before Tasks" icon={<Target className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          Before starting complex tasks, retrieve relevant context from your
-          playbook:
+          Before starting complex tasks, retrieve relevant context from your playbook:
         </Paragraph>
 
         <div className="mt-6">
@@ -222,8 +202,8 @@ export function CmLesson() {
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Reference rule IDs in your work. For example: &quot;Following
-            b-8f3a2c, using bcrypt with cost 12...&quot;
+            Reference rule IDs in your work. For example: &quot;Following b-8f3a2c, using bcrypt
+            with cost 12...&quot;
           </TipBox>
         </div>
       </Section>
@@ -231,11 +211,7 @@ export function CmLesson() {
       <Divider />
 
       {/* The Protocol */}
-      <Section
-        title="The Memory Protocol"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="The Memory Protocol" icon={<Zap className="h-5 w-5" />} delay={0.35}>
         <div className="space-y-6">
           <ProtocolStep
             number={1}
@@ -272,11 +248,7 @@ export function CmLesson() {
       <Divider />
 
       {/* Rule Categories */}
-      <Section
-        title="Rule Categories"
-        icon={<FileText className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Rule Categories" icon={<FileText className="h-5 w-5" />} delay={0.4}>
         <div className="grid gap-4 sm:grid-cols-2">
           <CategoryCard
             name="debugging"
@@ -314,11 +286,7 @@ export function CmLesson() {
       <Divider />
 
       {/* Best Practices */}
-      <Section
-        title="Best Practices"
-        icon={<CheckCircle className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="Best Practices" icon={<CheckCircle className="h-5 w-5" />} delay={0.45}>
         <div className="space-y-4">
           <BestPractice
             title="Run cm context before complex tasks"
@@ -346,11 +314,7 @@ export function CmLesson() {
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.5}
-      >
+      <Section title="Try It Now" icon={<Terminal className="h-5 w-5" />} delay={0.5}>
         <CodeBlock
           code={`# Check your playbook status
 $ cm onboard status
@@ -397,25 +361,121 @@ interface QueryExample {
 const SPRING_CONFIG = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 const SESSION_DATA: SessionCard[] = [
-  { id: "s1", date: "Mar 10", topic: "Fix auth token refresh loop", icon: <Bug className="h-3.5 w-3.5" />, color: "#f87171" },
-  { id: "s2", date: "Mar 9", topic: "Refactor DB connection pool", icon: <Database className="h-3.5 w-3.5" />, color: "#60a5fa" },
-  { id: "s3", date: "Mar 8", topic: "Add rate limiting middleware", icon: <Settings className="h-3.5 w-3.5" />, color: "#a78bfa" },
-  { id: "s4", date: "Mar 7", topic: "Migrate to TypeScript strict", icon: <FileText className="h-3.5 w-3.5" />, color: "#34d399" },
-  { id: "s5", date: "Mar 5", topic: "Setup CI/CD pipeline", icon: <GitBranch className="h-3.5 w-3.5" />, color: "#fbbf24" },
-  { id: "s6", date: "Mar 3", topic: "Debug memory leak in worker", icon: <Bug className="h-3.5 w-3.5" />, color: "#f87171" },
-  { id: "s7", date: "Mar 1", topic: "Implement caching layer", icon: <Layers className="h-3.5 w-3.5" />, color: "#2dd4bf" },
-  { id: "s8", date: "Feb 28", topic: "Code review standards doc", icon: <Users className="h-3.5 w-3.5" />, color: "#fb923c" },
+  {
+    id: "s1",
+    date: "Mar 10",
+    topic: "Fix auth token refresh loop",
+    icon: <Bug className="h-3.5 w-3.5" />,
+    color: "#f87171",
+  },
+  {
+    id: "s2",
+    date: "Mar 9",
+    topic: "Refactor DB connection pool",
+    icon: <Database className="h-3.5 w-3.5" />,
+    color: "#60a5fa",
+  },
+  {
+    id: "s3",
+    date: "Mar 8",
+    topic: "Add rate limiting middleware",
+    icon: <Settings className="h-3.5 w-3.5" />,
+    color: "#a78bfa",
+  },
+  {
+    id: "s4",
+    date: "Mar 7",
+    topic: "Migrate to TypeScript strict",
+    icon: <FileText className="h-3.5 w-3.5" />,
+    color: "#34d399",
+  },
+  {
+    id: "s5",
+    date: "Mar 5",
+    topic: "Setup CI/CD pipeline",
+    icon: <GitBranch className="h-3.5 w-3.5" />,
+    color: "#fbbf24",
+  },
+  {
+    id: "s6",
+    date: "Mar 3",
+    topic: "Debug memory leak in worker",
+    icon: <Bug className="h-3.5 w-3.5" />,
+    color: "#f87171",
+  },
+  {
+    id: "s7",
+    date: "Mar 1",
+    topic: "Implement caching layer",
+    icon: <Layers className="h-3.5 w-3.5" />,
+    color: "#2dd4bf",
+  },
+  {
+    id: "s8",
+    date: "Feb 28",
+    topic: "Code review standards doc",
+    icon: <Users className="h-3.5 w-3.5" />,
+    color: "#fb923c",
+  },
 ];
 
 const MEMORY_RULES: MemoryRule[] = [
-  { id: "r1", rule: "Always use connection pooling with max 20 connections", category: "code", sourceSessions: ["s2", "s7"], isNew: false },
-  { id: "r2", rule: "Check for circular refs before debugging memory leaks", category: "debug", sourceSessions: ["s6"], isNew: false },
-  { id: "r3", rule: "Rate limiters need both IP and user-level buckets", category: "arch", sourceSessions: ["s3"], isNew: false },
-  { id: "r4", rule: "Use strict: true in tsconfig from project start", category: "code", sourceSessions: ["s4"], isNew: false },
-  { id: "r5", rule: "Token refresh needs mutex to prevent race conditions", category: "debug", sourceSessions: ["s1"], isNew: true },
-  { id: "r6", rule: "CI must run type-check before tests to fail fast", category: "arch", sourceSessions: ["s5"], isNew: false },
-  { id: "r7", rule: "PRs need at least one approval plus passing CI", category: "team", sourceSessions: ["s8"], isNew: false },
-  { id: "r8", rule: "Cache invalidation via TTL + event-driven hybrid", category: "arch", sourceSessions: ["s7", "s2"], isNew: true },
+  {
+    id: "r1",
+    rule: "Always use connection pooling with max 20 connections",
+    category: "code",
+    sourceSessions: ["s2", "s7"],
+    isNew: false,
+  },
+  {
+    id: "r2",
+    rule: "Check for circular refs before debugging memory leaks",
+    category: "debug",
+    sourceSessions: ["s6"],
+    isNew: false,
+  },
+  {
+    id: "r3",
+    rule: "Rate limiters need both IP and user-level buckets",
+    category: "arch",
+    sourceSessions: ["s3"],
+    isNew: false,
+  },
+  {
+    id: "r4",
+    rule: "Use strict: true in tsconfig from project start",
+    category: "code",
+    sourceSessions: ["s4"],
+    isNew: false,
+  },
+  {
+    id: "r5",
+    rule: "Token refresh needs mutex to prevent race conditions",
+    category: "debug",
+    sourceSessions: ["s1"],
+    isNew: true,
+  },
+  {
+    id: "r6",
+    rule: "CI must run type-check before tests to fail fast",
+    category: "arch",
+    sourceSessions: ["s5"],
+    isNew: false,
+  },
+  {
+    id: "r7",
+    rule: "PRs need at least one approval plus passing CI",
+    category: "team",
+    sourceSessions: ["s8"],
+    isNew: false,
+  },
+  {
+    id: "r8",
+    rule: "Cache invalidation via TTL + event-driven hybrid",
+    category: "arch",
+    sourceSessions: ["s7", "s2"],
+    isNew: true,
+  },
 ];
 
 const CATEGORY_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -526,18 +586,24 @@ function InteractiveMemoryPipeline() {
     return clearAutoPlayTimers;
   }, [isAutoPlaying, clearAutoPlayTimers]);
 
-  const handleSessionClick = useCallback((sessionId: string) => {
-    if (isAutoPlaying) return;
-    setSelectedSession((prev) => (prev === sessionId ? null : sessionId));
-    setActiveQuery(null);
-  }, [isAutoPlaying]);
+  const handleSessionClick = useCallback(
+    (sessionId: string) => {
+      if (isAutoPlaying) return;
+      setSelectedSession((prev) => (prev === sessionId ? null : sessionId));
+      setActiveQuery(null);
+    },
+    [isAutoPlaying],
+  );
 
-  const handleQueryClick = useCallback((example: QueryExample) => {
-    if (isAutoPlaying) return;
-    setActiveQuery((prev) => (prev?.label === example.label ? null : example));
-    setSelectedSession(null);
-    setGlowingRules(new Set());
-  }, [isAutoPlaying]);
+  const handleQueryClick = useCallback(
+    (example: QueryExample) => {
+      if (isAutoPlaying) return;
+      setActiveQuery((prev) => (prev?.label === example.label ? null : example));
+      setSelectedSession(null);
+      setGlowingRules(new Set());
+    },
+    [isAutoPlaying],
+  );
 
   const toggleAutoPlay = useCallback(() => {
     if (isAutoPlaying) {
@@ -557,7 +623,9 @@ function InteractiveMemoryPipeline() {
   const highlightedRuleIds = activeQuery
     ? new Set(activeQuery.matchingRules)
     : selectedSession
-      ? new Set(MEMORY_RULES.filter((r) => r.sourceSessions.includes(selectedSession)).map((r) => r.id))
+      ? new Set(
+          MEMORY_RULES.filter((r) => r.sourceSessions.includes(selectedSession)).map((r) => r.id),
+        )
       : new Set<string>();
 
   return (
@@ -691,12 +759,19 @@ function MemorySessionArchive({
   const inView = useInView(rootRef, { amount: 0.15 });
 
   return (
-    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.06]">
         <Archive className="h-3.5 w-3.5 text-blue-400" />
-        <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Session Archive</span>
-        <span className="ml-auto text-[10px] text-white/30 font-mono">{sessions.length} sessions</span>
+        <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
+          Session Archive
+        </span>
+        <span className="ml-auto text-[10px] text-white/30 font-mono">
+          {sessions.length} sessions
+        </span>
       </div>
 
       {/* Scrollable session list */}
@@ -725,12 +800,8 @@ function MemorySessionArchive({
               <div
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition duration-200"
                 style={{
-                  borderColor: isSelected
-                    ? `${session.color}40`
-                    : "rgba(255,255,255,0.04)",
-                  backgroundColor: isSelected
-                    ? `${session.color}10`
-                    : "rgba(255,255,255,0.01)",
+                  borderColor: isSelected ? `${session.color}40` : "rgba(255,255,255,0.04)",
+                  backgroundColor: isSelected ? `${session.color}10` : "rgba(255,255,255,0.01)",
                 }}
               >
                 <div
@@ -791,16 +862,16 @@ function MemoryAnalysisEngine({
   sessions: SessionCard[];
 }) {
   const isProcessing = processingStage >= 0;
-  const feedSession = feedingSession
-    ? sessions.find((s) => s.id === feedingSession)
-    : null;
+  const feedSession = feedingSession ? sessions.find((s) => s.id === feedingSession) : null;
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.06]">
         <Cpu className="h-3.5 w-3.5 text-violet-400" />
-        <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Analysis Engine</span>
+        <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
+          Analysis Engine
+        </span>
         {isProcessing && (
           <motion.span
             initial={{ opacity: 0 }}
@@ -833,7 +904,7 @@ function MemoryAnalysisEngine({
                     opacity: isProcessing ? 0.4 : 0.08,
                   }}
                 />
-              ))
+              )),
             )}
 
             {/* Neural nodes */}
@@ -845,9 +916,7 @@ function MemoryAnalysisEngine({
                   cy={50 + row * 35}
                   r={isProcessing && col === processingStage ? 5 : 2.5}
                   fill={
-                    isProcessing && col <= processingStage
-                      ? "#8b5cf6"
-                      : "rgba(255,255,255,0.15)"
+                    isProcessing && col <= processingStage ? "#8b5cf6" : "rgba(255,255,255,0.15)"
                   }
                   style={{
                     transition: "all 0.4s ease",
@@ -857,7 +926,7 @@ function MemoryAnalysisEngine({
                         : "none",
                   }}
                 />
-              ))
+              )),
             )}
           </svg>
 
@@ -903,9 +972,8 @@ function MemoryAnalysisEngine({
                   transition={SPRING_CONFIG}
                   className="w-full h-1.5 rounded-full border"
                   style={{
-                    borderColor: isDone || isActive
-                      ? "rgba(139,92,246,0.3)"
-                      : "rgba(255,255,255,0.06)",
+                    borderColor:
+                      isDone || isActive ? "rgba(139,92,246,0.3)" : "rgba(255,255,255,0.06)",
                   }}
                 >
                   {(isDone || isActive) && (
@@ -921,9 +989,7 @@ function MemoryAnalysisEngine({
                 <span
                   className="text-[10px] font-medium"
                   style={{
-                    color: isDone || isActive
-                      ? "#8b5cf6"
-                      : "rgba(255,255,255,0.25)",
+                    color: isDone || isActive ? "#8b5cf6" : "rgba(255,255,255,0.25)",
                   }}
                 >
                   {stage}
@@ -971,7 +1037,9 @@ function MemoryRuleBank({
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.06]">
         <Database className="h-3.5 w-3.5 text-emerald-400" />
-        <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">Memory Bank</span>
+        <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
+          Memory Bank
+        </span>
         <span className="ml-auto text-[10px] text-white/30 font-mono">{rules.length} rules</span>
       </div>
 
@@ -985,7 +1053,10 @@ function MemoryRuleBank({
               {/* Category label */}
               <div className="flex items-center gap-1.5 px-1.5 py-1">
                 <div style={{ color: meta.color }}>{meta.icon}</div>
-                <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: meta.color }}>
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: meta.color }}
+                >
                   {meta.label}
                 </span>
               </div>
@@ -1002,9 +1073,7 @@ function MemoryRuleBank({
                       key={rule.id}
                       animate={{
                         scale: isHighlighted ? 1.02 : 1,
-                        borderColor: isHighlighted
-                          ? `${meta.color}40`
-                          : "rgba(255,255,255,0.04)",
+                        borderColor: isHighlighted ? `${meta.color}40` : "rgba(255,255,255,0.04)",
                       }}
                       transition={SPRING_CONFIG}
                       className="relative px-2.5 py-1.5 rounded-lg border overflow-hidden"
@@ -1024,9 +1093,7 @@ function MemoryRuleBank({
                         />
                       )}
 
-                      <p className="relative text-xs text-white/60 leading-snug">
-                        {rule.rule}
-                      </p>
+                      <p className="relative text-xs text-white/60 leading-snug">{rule.rule}</p>
 
                       {/* Source session badges */}
                       {isHighlighted && selectedSession && (
@@ -1117,9 +1184,7 @@ function MemoryContextQuery({
       <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] bg-white/[0.02]">
         <Search className="h-3.5 w-3.5 text-white/30 shrink-0" />
         <span className="text-xs text-white/40 flex-1 truncate">
-          {activeQuery
-            ? activeQuery.query
-            : "Describe your task to find relevant memories..."}
+          {activeQuery ? activeQuery.query : "Describe your task to find relevant memories..."}
         </span>
         {activeQuery && (
           <motion.span
@@ -1234,7 +1299,9 @@ function ProtocolStep({
         {number}
       </div>
       <div className="pt-1">
-        <h4 className="font-bold text-white text-lg group-hover:text-primary transition-colors">{title}</h4>
+        <h4 className="font-bold text-white text-lg group-hover:text-primary transition-colors">
+          {title}
+        </h4>
         <p className="text-sm text-white/60 mt-1">{description}</p>
       </div>
     </motion.div>
@@ -1272,13 +1339,7 @@ function CategoryCard({
 // =============================================================================
 // BEST PRACTICE
 // =============================================================================
-function BestPractice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function BestPractice({ title, description }: { title: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -1290,7 +1351,9 @@ function BestPractice({
         <Lightbulb className="h-5 w-5" />
       </div>
       <div>
-        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">{title}</p>
+        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+          {title}
+        </p>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>

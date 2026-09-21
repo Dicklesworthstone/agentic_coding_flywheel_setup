@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { Timer } from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 /**
  * ToolStorm v2 — a tilted accretion-disk vortex of 16k GPU-animated particles
@@ -36,8 +36,24 @@ const PALETTE = {
 // land on PATH (see lib/generated/manifest-tools.ts). Kept to a readable
 // handful: the full index lives further down the page.
 const TOOL_NAMES = [
-  "ntm", "cass", "am", "dcg", "bv", "slb", "ubs", "cm",
-  "ru", "rch", "fsfs", "caam", "ee", "ms", "pt", "asb", "jfp", "br",
+  "ntm",
+  "cass",
+  "am",
+  "dcg",
+  "bv",
+  "slb",
+  "ubs",
+  "cm",
+  "ru",
+  "rch",
+  "fsfs",
+  "caam",
+  "ee",
+  "ms",
+  "pt",
+  "asb",
+  "jfp",
+  "br",
 ] as const;
 
 const SPRITE_COLORS = [PALETTE.green, PALETTE.cyan, PALETTE.purple, PALETTE.amber] as const;
@@ -93,7 +109,10 @@ function makeGlowTexture(inner: string, mid: string): THREE.CanvasTexture {
 }
 
 /** Monospace tool-name plate with neon glow. */
-function makeToolTexture(name: string, color: string): { texture: THREE.CanvasTexture; aspect: number } {
+function makeToolTexture(
+  name: string,
+  color: string,
+): { texture: THREE.CanvasTexture; aspect: number } {
   const fontSize = 52;
   const pad = 30;
   const canvas = document.createElement("canvas");
@@ -224,7 +243,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     for (let i = 0; i < PARTICLES; i++) {
       const i3 = i * 3;
       // Radius: dense toward center, long tail outward
-      const r = Math.pow(Math.random(), 0.72) * DISK_RADIUS + 0.4;
+      const r = Math.random() ** 0.72 * DISK_RADIUS + 0.4;
       radiusAttr[i] = r;
 
       // Three log-spiral arms + scatter that widens with radius
@@ -233,12 +252,12 @@ export default function ToolStorm({ className }: { className?: string }) {
       angleAttr[i] = arm + SPIRAL_PITCH * Math.log(r + 1) + randn() * scatter;
 
       // Differential (Keplerian-ish) rotation: inner orbits much faster
-      speedAttr[i] = (1.15 / Math.pow(r + 0.9, 0.85)) * SHEAR;
+      speedAttr[i] = (1.15 / (r + 0.9) ** 0.85) * SHEAR;
 
       // Disk thickness: central bulge, thin rim
       yAttr[i] = randn() * (1.35 * Math.exp(-r / 4.2) + 0.16);
       // Power-law sizes: mostly dust, occasional bright stars
-      sizeAttr[i] = 1.4 + Math.pow(Math.random(), 3.2) * 5.2;
+      sizeAttr[i] = 1.4 + Math.random() ** 3.2 * 5.2;
       seedAttr[i] = Math.random();
 
       tmpColor.copy(diskColor(r));
@@ -250,7 +269,10 @@ export default function ToolStorm({ className }: { className?: string }) {
     }
 
     const particleGeo = new THREE.BufferGeometry();
-    particleGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(PARTICLES * 3), 3)); // unused by shader but required
+    particleGeo.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(PARTICLES * 3), 3),
+    ); // unused by shader but required
     particleGeo.setAttribute("aRadius", new THREE.BufferAttribute(radiusAttr, 1));
     particleGeo.setAttribute("aAngle", new THREE.BufferAttribute(angleAttr, 1));
     particleGeo.setAttribute("aSpeed", new THREE.BufferAttribute(speedAttr, 1));
@@ -394,7 +416,7 @@ export default function ToolStorm({ className }: { className?: string }) {
         material,
         radius,
         angle: (index / TOOL_NAMES.length) * Math.PI * 2 + Math.random() * 0.8,
-        speed: (1.15 / Math.pow(radius + 0.9, 0.85)) * SHEAR,
+        speed: (1.15 / (radius + 0.9) ** 0.85) * SHEAR,
         baseOpacity: 1,
       });
       disk.add(sprite);

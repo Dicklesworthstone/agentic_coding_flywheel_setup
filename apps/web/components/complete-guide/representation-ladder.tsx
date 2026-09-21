@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { Bug, Repeat } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { Hl } from "@/components/complete-guide/guide-components";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 const EXHIBIT_PANEL_CLASS =
   "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
@@ -54,9 +54,8 @@ export function RepresentationLadder() {
             Where you catch the bug determines the rework bill
           </h4>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
-            Inject the same mistake at different layers. The deeper it lands,
-            the more downstream structure has already hardened around it. 
-            This is the <Hl>Law of Rework Escalation</Hl>.
+            Inject the same mistake at different layers. The deeper it lands, the more downstream
+            structure has already hardened around it. This is the <Hl>Law of Rework Escalation</Hl>.
           </p>
         </div>
 
@@ -99,34 +98,44 @@ export function RepresentationLadder() {
                     className="relative rounded-3xl border transition duration-700 overflow-hidden h-full min-h-[90px]"
                     style={{
                       borderColor: isBugSource
-                        ? '#FF5500'
+                        ? "#FF5500"
                         : isCascade
-                          ? '#FFBD2E'
-                          : 'rgba(255,255,255,0.03)',
+                          ? "#FFBD2E"
+                          : "rgba(255,255,255,0.03)",
                       background: isBugSource
-                        ? 'rgba(255, 85, 0, 0.05)'
+                        ? "rgba(255, 85, 0, 0.05)"
                         : isCascade
-                          ? 'rgba(255, 189, 46, 0.05)'
-                          : 'rgba(255,255,255,0.01)',
+                          ? "rgba(255, 189, 46, 0.05)"
+                          : "rgba(255,255,255,0.01)",
                     }}
                   >
                     <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-                    
+
                     <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-4 h-full">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
-                          <span className={`text-[0.6rem] font-black uppercase tracking-[0.2em] transition-colors ${isBugSource ? 'text-[#FF5500]' : isCascade ? 'text-[#FFBD2E]' : 'text-white/30'}`}>
+                          <span
+                            className={`text-[0.6rem] font-black uppercase tracking-[0.2em] transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white/30"}`}
+                          >
                             {layer.id} layer
                           </span>
-                          {isBugSource && <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-ping" />}
+                          {isBugSource && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-ping" />
+                          )}
                         </div>
-                        <span className={`text-xl font-bold tracking-tight transition-colors ${isBugSource ? 'text-[#FF5500]' : isCascade ? 'text-[#FFBD2E]' : 'text-white'}`}>
+                        <span
+                          className={`text-xl font-bold tracking-tight transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white"}`}
+                        >
                           {layer.label}
                         </span>
                       </div>
                       <div className="text-left sm:text-right shrink-0">
-                        <span className="text-[0.6rem] font-black uppercase tracking-[0.3em] text-white/20 block mb-1">Price</span>
-                        <div className={`text-3xl font-black tracking-tighter transition-colors ${isBugSource ? 'text-[#FF5500]' : isCascade ? 'text-[#FFBD2E]' : 'text-white/40'}`}>
+                        <span className="text-[0.6rem] font-black uppercase tracking-[0.3em] text-white/20 block mb-1">
+                          Price
+                        </span>
+                        <div
+                          className={`text-3xl font-black tracking-tighter transition-colors ${isBugSource ? "text-[#FF5500]" : isCascade ? "text-[#FFBD2E]" : "text-white/40"}`}
+                        >
                           {layer.cost}
                         </div>
                       </div>
@@ -176,7 +185,9 @@ export function RepresentationLadder() {
 
         <div className="flex flex-col gap-8">
           <div className="p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03]">
-            <span className="text-[0.6rem] font-black text-white/20 uppercase tracking-[0.4em]">Rework Intuition</span>
+            <span className="text-[0.6rem] font-black text-white/20 uppercase tracking-[0.4em]">
+              Rework Intuition
+            </span>
             <div className="mt-8 flex flex-col gap-6">
               {[
                 { l: "Plan Space", t: "Fixes are pure reasoning. Zero code churn." },
@@ -184,7 +195,9 @@ export function RepresentationLadder() {
                 { l: "Code Space", t: "Fixes pay the double-tax: implementation + cleanup." },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
-                  <span className="text-[0.7rem] font-bold text-white/40 tracking-wide">{item.l}</span>
+                  <span className="text-[0.7rem] font-bold text-white/40 tracking-wide">
+                    {item.l}
+                  </span>
                   <p className="text-sm text-zinc-400 font-extralight leading-relaxed">{item.t}</p>
                 </div>
               ))}
@@ -200,7 +213,9 @@ export function RepresentationLadder() {
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="p-10 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03] shadow-inner"
             >
-              <span className="text-[0.6rem] font-black text-[#FF5500] uppercase tracking-[0.5em] block mb-6">Strategic Takeaway</span>
+              <span className="text-[0.6rem] font-black text-[#FF5500] uppercase tracking-[0.5em] block mb-6">
+                Strategic Takeaway
+              </span>
               <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
                 {bugLevel === null &&
                   "Planning earns its keep because it is the cheapest layer for global reasoning. Press 'Inject' on any layer to visualize the cost cascade."}

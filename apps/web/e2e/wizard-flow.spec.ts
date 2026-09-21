@@ -1,5 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * Standard timeouts for different scenarios.
@@ -92,7 +92,7 @@ async function setupWizardState(
     acfsRef?: string;
     completedSteps?: number[];
     commandCompletions?: string[];
-  } = {}
+  } = {},
 ) {
   await page.goto("/");
   await page.evaluate(
@@ -131,7 +131,7 @@ async function setupWizardState(
       completedStepsKey: COMPLETED_STEPS_KEY,
       commandCompletionPrefix: COMMAND_COMPLETION_PREFIX,
       acfsRefKey: ACFS_REF_KEY,
-    }
+    },
   );
 }
 
@@ -164,7 +164,7 @@ test.describe("Wizard Flow", () => {
   });
 
   test("should navigate from home to wizard", async ({ page }) => {
-    // Clear localStorage by adding an init script for the very first load, 
+    // Clear localStorage by adding an init script for the very first load,
     // or just clear it after goto.
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());
@@ -178,7 +178,9 @@ test.describe("Wizard Flow", () => {
     // Should be on step 1 (OS selection)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/os-selection"));
     await expect(page.locator("h1").first()).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1 }).first()).toContainText(/OS|operating|computer/i);
+    await expect(page.getByRole("heading", { level: 1 }).first()).toContainText(
+      /OS|operating|computer/i,
+    );
   });
 
   test("should complete step 1: OS selection", async ({ page }) => {
@@ -191,10 +193,10 @@ test.describe("Wizard Flow", () => {
     await expect(page.locator("h1").first()).toBeVisible({ timeout: 10000 });
 
     // Select macOS
-    await page.getByRole('radio', { name: /Mac/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
 
     // Wait for Continue button to be visible and clickable
-    const continueBtn = page.getByRole('main').getByRole('button', { name: /continue/i });
+    const continueBtn = page.getByRole("main").getByRole("button", { name: /continue/i });
     await expect(continueBtn).toBeVisible();
     await continueBtn.click();
 
@@ -207,8 +209,11 @@ test.describe("Wizard Flow", () => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
     await page.waitForLoadState("domcontentloaded");
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
 
     // Now on step 2
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
@@ -216,7 +221,10 @@ test.describe("Wizard Flow", () => {
     await expect(page.locator("h1").first()).toContainText(/terminal/i);
 
     // Click continue
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
 
     // Should navigate to step 3
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
@@ -226,9 +234,15 @@ test.describe("Wizard Flow", () => {
   test("should complete step 3: Generate SSH key", async ({ page }) => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
 
     // Now on step 3
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
@@ -249,39 +263,75 @@ test.describe("Wizard Flow", () => {
 
     await expect(page.getByText(/safe to rerun/i)).toBeVisible();
     await expect(page.getByText(/No prompts expected/i)).toBeVisible();
-    await expect(page.locator("code").filter({
-      hasText: "ssh-keygen -y -f ~/.ssh/acfs_ed25519",
-    }).first()).toBeVisible();
-    await expect(page.locator("code").filter({
-      hasText: 'ssh-keygen -t ed25519 -C "acfs" -f ~/.ssh/acfs_ed25519 -N ""',
-    }).first()).toBeVisible();
+    await expect(
+      page
+        .locator("code")
+        .filter({
+          hasText: "ssh-keygen -y -f ~/.ssh/acfs_ed25519",
+        })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("code")
+        .filter({
+          hasText: 'ssh-keygen -t ed25519 -C "acfs" -f ~/.ssh/acfs_ed25519 -N ""',
+        })
+        .first(),
+    ).toBeVisible();
 
     await setupWizardState(page, { os: "windows", completedSteps: [1, 2] });
     await page.goto("/wizard/generate-ssh-key");
     await page.waitForLoadState("domcontentloaded");
 
-    await expect(page.locator("code").filter({
-      hasText: "Test-Path $HOME\\.ssh\\acfs_ed25519",
-    }).first()).toBeVisible();
-    await expect(page.locator("code").filter({
-      hasText: "Set-Content $HOME\\.ssh\\acfs_ed25519.pub",
-    }).first()).toBeVisible();
+    await expect(
+      page
+        .locator("code")
+        .filter({
+          hasText: "Test-Path $HOME\\.ssh\\acfs_ed25519",
+        })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("code")
+        .filter({
+          hasText: "Set-Content $HOME\\.ssh\\acfs_ed25519.pub",
+        })
+        .first(),
+    ).toBeVisible();
     // PowerShell 5.1 drops a literal empty "" argument, so the Windows command
     // must pick the empty-passphrase argument per PowerShell version instead.
-    await expect(page.locator("code").filter({
-      hasText: "-N $NoPass",
-    }).first()).toBeVisible();
-    await expect(page.locator("code").filter({
-      hasText: "PSNativeCommandArgumentPassing",
-    }).first()).toBeVisible();
+    await expect(
+      page
+        .locator("code")
+        .filter({
+          hasText: "-N $NoPass",
+        })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("code")
+        .filter({
+          hasText: "PSNativeCommandArgumentPassing",
+        })
+        .first(),
+    ).toBeVisible();
   });
 
   test("should complete step 4: Rent VPS", async ({ page }) => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await page.click('main button:has-text("I saved my public key")');
 
     // Now on step 4
@@ -338,7 +388,9 @@ test.describe("Wizard Flow", () => {
     const readiness = page.getByTestId("provider-readiness-check");
 
     await expect(calculator.getByLabel("Target agent count")).toHaveValue("25");
-    await expect(calculator.getByRole("button", { name: /Heavy/i })).toHaveClass(/border-primary\/50/);
+    await expect(calculator.getByRole("button", { name: /Heavy/i })).toHaveClass(
+      /border-primary\/50/,
+    );
     await expect(readiness.getByLabel("Provider")).toHaveValue("ovh");
     await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-3");
     await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("24.04");
@@ -376,20 +428,26 @@ test.describe("Wizard Flow", () => {
     await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("25.10");
     await expect(readiness.getByLabel("Region")).toHaveValue("us-east");
 
-    await expect.poll(async () => page.evaluate((key) => {
-      const value = localStorage.getItem(key);
-      return value ? JSON.parse(value) : null;
-    }, VPS_READINESS_SELECTION_KEY)).toEqual({
-      providerId: "ovh",
-      planName: "VPS-4",
-      ubuntuVersion: "25.10",
-      region: "us-east",
-      targetAgents: 15,
-      workloadId: "heavy",
-    });
+    await expect
+      .poll(async () =>
+        page.evaluate((key) => {
+          const value = localStorage.getItem(key);
+          return value ? JSON.parse(value) : null;
+        }, VPS_READINESS_SELECTION_KEY),
+      )
+      .toEqual({
+        providerId: "ovh",
+        planName: "VPS-4",
+        ubuntuVersion: "25.10",
+        region: "us-east",
+        targetAgents: 15,
+        workloadId: "heavy",
+      });
   });
 
-  test("should surface provider readiness states for supported, unknown, and unsafe choices", async ({ page }, testInfo) => {
+  test("should surface provider readiness states for supported, unknown, and unsafe choices", async ({
+    page,
+  }, testInfo) => {
     await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
     await page.goto("/wizard/rent-vps");
     await page.waitForLoadState("domcontentloaded");
@@ -409,7 +467,7 @@ test.describe("Wizard Flow", () => {
       readinessCategory: string,
       selectedRecommendation: string,
       expectedLabel: string,
-      expectedSummary: RegExp | string
+      expectedSummary: RegExp | string,
     ) => {
       matrixLog.push({
         readinessCategory,
@@ -425,7 +483,7 @@ test.describe("Wizard Flow", () => {
       "supported",
       "Contabo Cloud VPS 16",
       "Supported",
-      "Ready for the selected target."
+      "Ready for the selected target.",
     );
 
     await providerSelect.selectOption("other");
@@ -433,7 +491,7 @@ test.describe("Wizard Flow", () => {
       "unknown",
       "manual spec comparison",
       "Unknown",
-      "Not in the ACFS provider table; compare the specs manually."
+      "Not in the ACFS provider table; compare the specs manually.",
     );
 
     await providerSelect.selectOption("ovh");
@@ -443,7 +501,7 @@ test.describe("Wizard Flow", () => {
       "unsafe",
       "choose Ubuntu 24.04+ before checkout",
       "Unsupported",
-      /Ubuntu 20\.04 is below the ACFS minimum/
+      /Ubuntu 20\.04 is below the ACFS minimum/,
     );
 
     await writeFile(artifactPath, JSON.stringify(matrixLog, null, 2));
@@ -456,9 +514,15 @@ test.describe("Wizard Flow", () => {
   test("should complete step 5: Create VPS with IP address", async ({ page }) => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await page.click('main button:has-text("I saved my public key")');
     await page.click('main button:has-text("I rented a VPS")');
 
@@ -474,7 +538,7 @@ test.describe("Wizard Flow", () => {
     }
 
     // Enter IP address (use type() + blur() for cross-browser reliability)
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("192.168.1.100");
     await ipInput.blur();
@@ -497,10 +561,10 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
   test("should NOT get stuck on loading spinner when prerequisites are met", async ({ page }) => {
     // This is the critical test for the bug that was fixed
     // Set up localStorage with required data
-    await setupWizardState(page, { 
-      os: "mac", 
+    await setupWizardState(page, {
+      os: "mac",
       ip: "192.168.1.100",
-      completedSteps: [1, 2, 3, 4, 5]
+      completedSteps: [1, 2, 3, 4, 5],
     });
 
     // Navigate to SSH connect page
@@ -531,7 +595,7 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
 
     // Once h1 is visible, the loading spinner should NOT be visible
     // The loading spinner uses Terminal icon with animate-pulse
-    const loadingSpinner = page.locator('svg.animate-pulse');
+    const loadingSpinner = page.locator("svg.animate-pulse");
     await expect(loadingSpinner).not.toBeVisible();
   });
 
@@ -539,7 +603,7 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
     // Set up OS and completed steps, but no IP
     await setupWizardState(page, {
       os: "mac",
-      completedSteps: [1, 2, 3, 4, 5]
+      completedSteps: [1, 2, 3, 4, 5],
     });
 
     // Navigate to SSH connect page
@@ -612,7 +676,7 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
     expect(bodyText).toContain('If "root" is disabled, try ubuntu and become root');
     expect(bodyText).toContain("Switch the ubuntu fallback session into a root shell");
     expect(bodyText).toContain("continue only after your prompt ends with");
-    await expect(page.locator('code').filter({ hasText: "sudo -i" }).first()).toBeVisible();
+    await expect(page.locator("code").filter({ hasText: "sudo -i" }).first()).toBeVisible();
   });
 
   test("should bracket IPv6 hosts in SSH commands", async ({ page }) => {
@@ -630,8 +694,11 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
 test.describe("State Persistence", () => {
   test("should persist OS selection across page reloads", async ({ page }) => {
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Windows/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Windows/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
 
     // Reload the page
     await page.reload();
@@ -661,7 +728,7 @@ test.describe("State Persistence", () => {
     }
 
     // Enter IP address (use type() + blur() for cross-browser reliability)
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("10.0.0.50");
     await ipInput.blur();
@@ -695,8 +762,11 @@ test.describe("Navigation", () => {
     }
 
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
 
     // Now on step 2, click on step 1 in sidebar
     await page.click('text="Choose Your OS"');
@@ -720,14 +790,17 @@ test.describe("Navigation", () => {
     await expect(bottomNav.getByRole("button", { name: /^Back$/i })).toBeVisible();
     // One forward control at a time: the dock's copy or the page's own button.
     await expect(
-      page.locator('[data-testid="wizard-dock-next"], [data-wizard-primary-cta]').first()
+      page.locator('[data-testid="wizard-dock-next"], [data-wizard-primary-cta]').first(),
     ).toBeVisible();
   });
 
   test("should navigate using back button", async ({ page }) => {
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
 
     // Now on step 2 (URL may include query params)
     await expect(page).toHaveURL(/\/wizard\/install-terminal/);
@@ -749,7 +822,7 @@ test.describe("IP Address Validation", () => {
     await page.goto("/wizard/create-vps");
     await expect(page.locator("h1").first()).toBeVisible();
 
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
 
     // Clear any existing value and type the invalid IP (more reliable than fill across browsers)
     await input.clear();
@@ -757,7 +830,9 @@ test.describe("IP Address Validation", () => {
     await input.blur();
 
     // Should show error (allow extra time for React state updates)
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test("should accept valid IP addresses", async ({ page }) => {
@@ -768,7 +843,7 @@ test.describe("IP Address Validation", () => {
     await page.goto("/wizard/create-vps");
     await expect(page.locator("h1").first()).toBeVisible();
 
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
 
     // Clear any existing value and type the valid IP
     await input.clear();
@@ -787,7 +862,7 @@ test.describe("IP Address Validation", () => {
     await page.goto("/wizard/create-vps");
     await expect(page.locator("h1").first()).toBeVisible();
 
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
 
     // Clear any existing value and type the out-of-range IP
     await input.clear();
@@ -795,7 +870,9 @@ test.describe("IP Address Validation", () => {
     await input.blur();
 
     // Should show error (allow extra time for React state updates)
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({
+      timeout: 10000,
+    });
   });
 });
 
@@ -807,7 +884,7 @@ test.describe("Command Card Copy Functionality", () => {
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
 
     // Find a command card with copy button
-    await expect(page.getByRole('button', { name: /copy/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /copy/i }).first()).toBeVisible();
   });
 });
 
@@ -817,7 +894,7 @@ test.describe("Beginner Guide", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Find and click the SimplerGuide toggle - it MUST be visible
-    const guideToggle = page.getByRole('button', { name: /make it simpler/i });
+    const guideToggle = page.getByRole("button", { name: /make it simpler/i });
     await expect(guideToggle).toBeVisible({ timeout: 5000 });
     await guideToggle.click();
 
@@ -827,7 +904,9 @@ test.describe("Beginner Guide", () => {
 });
 
 test.describe("Complete Wizard Flow Integration", () => {
-  test("should continue from OS selection using detected OS (desktop only)", async ({ page }, testInfo) => {
+  test("should continue from OS selection using detected OS (desktop only)", async ({
+    page,
+  }, testInfo) => {
     test.skip(/Mobile/i.test(testInfo.project.name), "Auto-detect is disabled on mobile");
 
     await page.goto("/wizard/os-selection");
@@ -837,7 +916,10 @@ test.describe("Complete Wizard Flow Integration", () => {
 
     // On desktop projects, the OS should be auto-detected and the Continue button enabled.
     await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeEnabled();
-    await page.getByRole("main").getByRole("button", { name: /^continue$/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /^continue$/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toMatch(/^(mac|windows)$/);
   });
@@ -860,12 +942,18 @@ test.describe("Complete Wizard Flow Integration", () => {
     // Continue would then submit the auto-detected OS (the desktop project's
     // user agent is Windows), which this test explicitly asserts against.
     await selectOS(page, /Mac/i);
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
 
     // Step 2: Install Terminal
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
 
     // Step 3: Generate SSH Key
@@ -884,7 +972,7 @@ test.describe("Complete Wizard Flow Integration", () => {
     }
     // Users often paste IPs with surrounding whitespace - test that trimming works
     // Use type() + blur() for cross-browser reliability
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type(" 192.168.1.100 ");
     await ipInput.blur();
@@ -948,7 +1036,9 @@ test.describe("Query Param Fallback", () => {
     await expect(page.getByText(/Windows Terminal/i).first()).toBeVisible();
   });
 
-  test("should honor ?os but refuse to import a VPS IP from a deep-link and land on the next reachable step", async ({ page }) => {
+  test("should honor ?os but refuse to import a VPS IP from a deep-link and land on the next reachable step", async ({
+    page,
+  }) => {
     // Privacy contract: host addresses are never imported from URL query params
     // (lib/userPreferences.ts getVPSIP), so a fresh browser only has step 1
     // implied by ?os. The wizard layout gate (app/wizard/layout.tsx) therefore
@@ -965,7 +1055,9 @@ test.describe("Query Param Fallback", () => {
 });
 
 test.describe("No localStorage (query-only resilience)", () => {
-  test("should complete the wizard when localStorage is unavailable", async ({ page }, testInfo) => {
+  test("should complete the wizard when localStorage is unavailable", async ({
+    page,
+  }, testInfo) => {
     await page.addInitScript(() => {
       const throwing = () => {
         throw new Error("localStorage blocked");
@@ -982,17 +1074,25 @@ test.describe("No localStorage (query-only resilience)", () => {
 
     // On mobile, auto-detect is disabled, so Continue should start disabled.
     if (/Mobile/i.test(testInfo.project.name)) {
-      await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeDisabled();
+      await expect(
+        page.getByRole("main").getByRole("button", { name: /^continue$/i }),
+      ).toBeDisabled();
     }
 
     // Select an OS
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /^continue$/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /^continue$/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
 
     // Step 2 -> Step 3
-    await page.getByRole("main").getByRole("button", { name: /continue/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
 
     // Step 3 -> Step 4
@@ -1010,7 +1110,7 @@ test.describe("No localStorage (query-only resilience)", () => {
       await checkboxes.nth(i).click();
     }
 
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("10.10.10.10");
     await ipInput.blur();
@@ -1047,7 +1147,10 @@ test.describe("Step 7: Accounts Page", () => {
     await expect(optionalSignupChecks.first()).toBeVisible();
     await expect(optionalSignupChecks.first()).not.toBeChecked();
 
-    await page.getByRole("main").getByRole("button", { name: /continue to pre-flight check/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue to pre-flight check/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/preflight-check"));
   });
 });
@@ -1070,7 +1173,9 @@ test.describe("Step 8: Pre-Flight Check Page", () => {
     await expect(commandElement).not.toContainText("$(date +%s)");
   });
 
-  test("should wait for saved pinned ref before exposing the preflight command", async ({ page }) => {
+  test("should wait for saved pinned ref before exposing the preflight command", async ({
+    page,
+  }) => {
     await setupWizardState(page, {
       os: "mac",
       ip: "192.168.1.100",
@@ -1085,12 +1190,16 @@ test.describe("Step 8: Pre-Flight Check Page", () => {
     await expect(commandElement).not.toContainText("/main/scripts/preflight.sh");
   });
 
-  test("should preserve the ubuntu-to-root fallback in local-machine mistake guidance", async ({ page }) => {
+  test("should preserve the ubuntu-to-root fallback in local-machine mistake guidance", async ({
+    page,
+  }) => {
     await page.goto("/wizard/preflight-check");
     await page.waitForLoadState("domcontentloaded");
 
     await expect(page.getByText(/If your provider disabled root login/i)).toBeVisible();
-    await expect(page.locator("code").filter({ hasText: "ssh ubuntu@192.168.1.100" }).first()).toBeVisible();
+    await expect(
+      page.locator("code").filter({ hasText: "ssh ubuntu@192.168.1.100" }).first(),
+    ).toBeVisible();
     await expect(page.locator("code").filter({ hasText: "sudo -i" }).first()).toBeVisible();
     await expect(page.getByText(/ubuntu Linux account password/i).first()).toBeVisible();
     await expect(page.getByText(/provider console or root SSH path/i).first()).toBeVisible();
@@ -1121,7 +1230,7 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // The curl command should be visible
-    await expect(page.locator('text=curl -fsSL').first()).toBeVisible();
+    await expect(page.locator("text=curl -fsSL").first()).toBeVisible();
   });
 
   test("should download redacted handoff runbook artifacts", async ({ page }) => {
@@ -1172,7 +1281,7 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Copy button should be present
-    await expect(page.getByRole('button', { name: /copy/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /copy/i }).first()).toBeVisible();
   });
 
   test("should have expandable 'What it installs' section", async ({ page }) => {
@@ -1208,10 +1317,12 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Warning message should be visible
-    await expect(page.locator('text=/don.t close the terminal/i')).toBeVisible();
+    await expect(page.locator("text=/don.t close the terminal/i")).toBeVisible();
   });
 
-  test("should not tell fresh root users to switch before the installer creates the user", async ({ page }) => {
+  test("should not tell fresh root users to switch before the installer creates the user", async ({
+    page,
+  }) => {
     await page.goto("/wizard/run-installer");
     await page.waitForLoadState("domcontentloaded");
     // The page renders a spinner until its preference queries resolve; wait for
@@ -1241,7 +1352,7 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Pin checkbox should be visible
-    const pinCheckbox = page.locator('#pin-ref');
+    const pinCheckbox = page.locator("#pin-ref");
     await expect(pinCheckbox).toBeVisible();
     // Should be unchecked by default
     await expect(pinCheckbox).not.toBeChecked();
@@ -1256,7 +1367,7 @@ test.describe("Step 9: Run Installer Page", () => {
     await expect(refInput).not.toBeVisible();
 
     // Enable the pin toggle
-    await page.locator('#pin-ref').click();
+    await page.locator("#pin-ref").click();
 
     // Now input should be visible
     await expect(refInput).toBeVisible();
@@ -1269,13 +1380,13 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Get the default command (without pinning)
-    const commandElement = page.locator('code').filter({ hasText: 'curl -fsSL' }).first();
+    const commandElement = page.locator("code").filter({ hasText: "curl -fsSL" }).first();
     const defaultCommand = await commandElement.textContent();
-    expect(defaultCommand).not.toContain('ACFS_REF=');
-    expect(defaultCommand).not.toContain('--ref');
+    expect(defaultCommand).not.toContain("ACFS_REF=");
+    expect(defaultCommand).not.toContain("--ref");
 
     // Enable pinning and set a custom ref
-    await page.locator('#pin-ref').click();
+    await page.locator("#pin-ref").click();
     const refInput = page.locator('input[placeholder*="main, v1.0.0"]');
     await refInput.clear();
     await refInput.fill("v1.2.3");
@@ -1283,7 +1394,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
     // Command should now include the pinned ref as an installer argument
     await expect(commandElement).toContainText('--ref "v1.2.3"');
-    await expect(commandElement).toContainText('v1.2.3/install.sh');
+    await expect(commandElement).toContainText("v1.2.3/install.sh");
   });
 
   test("should include commit SHA in command when pinned", async ({ page }) => {
@@ -1291,16 +1402,16 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Enable pinning with a commit SHA
-    await page.locator('#pin-ref').click();
+    await page.locator("#pin-ref").click();
     const refInput = page.locator('input[placeholder*="main, v1.0.0"]');
     await refInput.clear();
     await refInput.fill("abc123def456");
     await refInput.blur();
 
     // Command should include the SHA
-    const commandElement = page.locator('code').filter({ hasText: 'curl -fsSL' }).first();
+    const commandElement = page.locator("code").filter({ hasText: "curl -fsSL" }).first();
     await expect(commandElement).toContainText('--ref "abc123def456"');
-    await expect(commandElement).toContainText('abc123def456/install.sh');
+    await expect(commandElement).toContainText("abc123def456/install.sh");
   });
 
   test("should revert to default command when pin toggle is disabled", async ({ page }) => {
@@ -1308,24 +1419,23 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Enable pinning
-    await page.locator('#pin-ref').click();
+    await page.locator("#pin-ref").click();
     const refInput = page.locator('input[placeholder*="main, v1.0.0"]');
     await refInput.clear();
     await refInput.fill("custom-ref");
     await refInput.blur();
 
     // Verify pinned command
-    const commandElement = page.locator('code').filter({ hasText: 'curl -fsSL' }).first();
+    const commandElement = page.locator("code").filter({ hasText: "curl -fsSL" }).first();
     await expect(commandElement).toContainText('--ref "custom-ref"');
 
     // Disable pinning
-    await page.locator('#pin-ref').click();
+    await page.locator("#pin-ref").click();
 
     // Command should no longer include the pinned ref argument
-    await expect(commandElement).not.toContainText('ACFS_REF=');
-    await expect(commandElement).not.toContainText('--ref');
+    await expect(commandElement).not.toContainText("ACFS_REF=");
+    await expect(commandElement).not.toContainText("--ref");
   });
-
 });
 
 // =============================================================================
@@ -1352,7 +1462,7 @@ test.describe("Step 10: Reconnect Ubuntu Page", () => {
     await expect(h1).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
 
     // Loading spinner should NOT be visible once content loads
-    const loadingSpinner = page.locator('svg.animate-spin');
+    const loadingSpinner = page.locator("svg.animate-spin");
     await expect(loadingSpinner).not.toBeVisible();
   });
 
@@ -1401,7 +1511,7 @@ test.describe("Step 10: Reconnect Ubuntu Page", () => {
   test("should redirect to create-vps when IP is missing", async ({ page }) => {
     await setupWizardState(page, {
       os: "mac",
-      completedSteps: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+      completedSteps: [1, 2, 3, 4, 5, 6, 7, 8, 9],
     }); // No IP
 
     await page.goto("/wizard/reconnect-ubuntu");
@@ -1458,7 +1568,7 @@ test.describe("Step 12: Status Check Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Should have at least one copy button
-    const copyButtons = page.getByRole('button', { name: /copy/i });
+    const copyButtons = page.getByRole("button", { name: /copy/i });
     await expect(copyButtons.first()).toBeVisible();
   });
 
@@ -1467,14 +1577,16 @@ test.describe("Step 12: Status Check Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Troubleshooting section should mention source ~/.zshrc (use .first() as page may have multiple instances)
-    await expect(page.locator('text=/source.*zshrc/i').first()).toBeVisible();
+    await expect(page.locator("text=/source.*zshrc/i").first()).toBeVisible();
   });
 
   test("should show GitHub authentication as recommended but non-blocking", async ({ page }) => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
 
-    const continueButton = page.getByRole("main").getByRole("button", { name: /everything looks good/i });
+    const continueButton = page
+      .getByRole("main")
+      .getByRole("button", { name: /everything looks good/i });
 
     await expect(page.getByText("Developer Tools")).toBeVisible();
     await expect(page.getByText("gh auth login")).toBeVisible();
@@ -1490,7 +1602,9 @@ test.describe("Step 12: Status Check Page", () => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
 
-    const continueButton = page.getByRole("main").getByRole("button", { name: /everything looks good/i });
+    const continueButton = page
+      .getByRole("main")
+      .getByRole("button", { name: /everything looks good/i });
     const optionalLoginChecks = page.getByLabel("Optional: I logged in to this tool");
 
     await expect(page.getByText(/only the doctor checkbox is required/i)).toBeVisible();
@@ -1565,24 +1679,32 @@ test.describe("Step 13: Launch Onboarding Page", () => {
     await expect(page.locator("h1").first()).toContainText(/congratulations|set up|ready/i);
   });
 
-  test("should present Codex and Antigravity authentication as optional follow-up", async ({ page }) => {
+  test("should present Codex and Antigravity authentication as optional follow-up", async ({
+    page,
+  }) => {
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");
 
-    await expect(page.getByRole("heading", {
-      name: /authenticate the ai tools you plan to use/i,
-    })).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /authenticate the ai tools you plan to use/i,
+      }),
+    ).toBeVisible();
     await expect(page.getByText(/start with claude code/i)).toBeVisible();
     await expect(page.getByText(/codex and antigravity can wait/i)).toBeVisible();
     await expect(page.getByText(/antigravity cli \(optional\)/i)).toBeVisible();
     await expect(page.getByText(/sign in with your google account/i)).toBeVisible();
-    await expect(page.getByText(/before using ai coding assistants, you need to authenticate them/i)).toHaveCount(0);
+    await expect(
+      page.getByText(/before using ai coding assistants, you need to authenticate them/i),
+    ).toHaveCount(0);
     // The retired Gemini-CLI API-key path must be gone (no GEMINI_API_KEY instructions).
     await expect(page.getByText(/your-gemini-api-key/i)).toHaveCount(0);
     await expect(page.getByText(/mkdir -p ~\/\.gemini/i)).toHaveCount(0);
   });
 
-  test("should redirect to status-check when final-step prerequisites are missing", async ({ page }) => {
+  test("should redirect to status-check when final-step prerequisites are missing", async ({
+    page,
+  }) => {
     // Seed steps 1-12 but leave the doctor check unmarked, so the final step's
     // own guard (not the generic access guard) is what redirects. Clearing all
     // state instead would correctly fall back to os-selection via the layout
@@ -1597,7 +1719,9 @@ test.describe("Step 13: Launch Onboarding Page", () => {
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/status-check"));
   });
 
-  test("should return to launch-onboarding from the Windows detour when opened there", async ({ page }) => {
+  test("should return to launch-onboarding from the Windows detour when opened there", async ({
+    page,
+  }) => {
     await page.goto("/wizard/launch-onboarding");
     await page.getByRole("link", { name: /windows user\? set up one-click vps access/i }).click();
     await expect(page).toHaveURL(/\/wizard\/windows-terminal-setup/);
@@ -1620,11 +1744,13 @@ test.describe("Create VPS - Button Disabled States", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Enter valid IP but don't check any boxes
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("192.168.1.100");
     await ipInput.blur();
-    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.locator('text="Valid IP address"')).toBeVisible({
+      timeout: TIMEOUTS.VALIDATION,
+    });
 
     // Continue button should be disabled
     const continueButton = page.locator('main button:has-text("Continue to SSH")');
@@ -1640,11 +1766,13 @@ test.describe("Create VPS - Button Disabled States", () => {
     await checkboxes.first().click();
 
     // Enter valid IP - button should still be disabled (not all checkboxes checked)
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("192.168.1.100");
     await ipInput.blur();
-    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.locator('text="Valid IP address"')).toBeVisible({
+      timeout: TIMEOUTS.VALIDATION,
+    });
 
     const continueButton = page.locator('main button:has-text("Continue to SSH")');
     await expect(continueButton).toBeDisabled();
@@ -1678,13 +1806,15 @@ test.describe("Create VPS - Button Disabled States", () => {
     }
 
     // Enter invalid IP
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("not-an-ip");
     await ipInput.blur();
 
     // Wait for validation error
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({
+      timeout: TIMEOUTS.VALIDATION,
+    });
 
     // Continue button should be disabled
     const continueButton = page.locator('main button:has-text("Continue to SSH")');
@@ -1703,11 +1833,13 @@ test.describe("Create VPS - Button Disabled States", () => {
     }
 
     // Enter valid IP
-    const ipInput = page.locator('[data-vps-ip-input]');
+    const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
     await ipInput.type("192.168.1.100");
     await ipInput.blur();
-    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.locator('text="Valid IP address"')).toBeVisible({
+      timeout: TIMEOUTS.VALIDATION,
+    });
 
     // NOW button should be enabled
     const continueButton = page.locator('main button:has-text("Continue to SSH")');
@@ -1735,13 +1867,15 @@ test.describe("Form Validation - Error States", () => {
     await page.goto("/wizard/create-vps");
     await page.waitForLoadState("domcontentloaded");
 
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
     await input.clear();
     await input.type("abc");
     await input.blur();
 
     // Error should appear
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test("should clear error when valid IP is entered", async ({ page }) => {
@@ -1749,7 +1883,7 @@ test.describe("Form Validation - Error States", () => {
     await page.goto("/wizard/create-vps");
     await page.waitForLoadState("domcontentloaded");
 
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
 
     // Clear any existing value and type the invalid IP (more reliable than fill across browsers)
     await input.clear();
@@ -1757,7 +1891,9 @@ test.describe("Form Validation - Error States", () => {
     await input.blur();
 
     // Should show error (allow extra time for React state updates)
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({
+      timeout: 10000,
+    });
 
     // Now enter valid
     await input.clear();
@@ -1774,7 +1910,7 @@ test.describe("Form Validation - Error States", () => {
     await page.goto("/wizard/create-vps");
     await page.waitForLoadState("domcontentloaded");
 
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
 
     // Test empty string
     await input.clear();
@@ -1785,7 +1921,9 @@ test.describe("Form Validation - Error States", () => {
     await input.clear();
     await input.type("192.168");
     await input.blur();
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({
+      timeout: 10000,
+    });
 
     // Test valid edge cases
     await input.clear();
@@ -1808,8 +1946,11 @@ test.describe("Edge Cases - Reload and Navigation", () => {
     // Go through first few steps
     await page.goto("/wizard/os-selection");
     await page.evaluate(() => localStorage.clear());
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
 
     // Reload the page
@@ -1827,11 +1968,17 @@ test.describe("Edge Cases - Reload and Navigation", () => {
   test("should handle multiple rapid back/forward navigations", async ({ page }) => {
     await page.goto("/wizard/os-selection");
     await page.evaluate(() => localStorage.clear());
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
 
-    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /continue/i })
+      .click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
 
     // Back/forward navigation - wait for URL changes to complete
@@ -1887,12 +2034,14 @@ test.describe("Mobile Navigation", () => {
     await page.waitForLoadState("domcontentloaded");
 
     const bottomNav = page.locator(".bottom-nav-safe");
-    await expect(bottomNav.getByRole("button", { name: /^Back$/i })).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await expect(bottomNav.getByRole("button", { name: /^Back$/i })).toBeVisible({
+      timeout: TIMEOUTS.PAGE_LOAD,
+    });
     // The dock's forward button only shows while the page's own primary
     // button is off screen (one forward control at a time), so assert that
     // exactly one forward affordance is available.
     await expect(
-      page.locator('[data-testid="wizard-dock-next"], [data-wizard-primary-cta]').first()
+      page.locator('[data-testid="wizard-dock-next"], [data-wizard-primary-cta]').first(),
     ).toBeVisible();
   });
 
@@ -1910,7 +2059,7 @@ test.describe("Mobile Navigation", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Select OS first
-    await page.getByRole('radio', { name: /Mac/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
 
     // Click mobile Next button (the dock mirrors the page button and hides
     // while that button is on screen; scroll to the top so the dock's copy
@@ -1925,7 +2074,7 @@ test.describe("Mobile Navigation", () => {
   test("should navigate back using mobile Back button", async ({ page }) => {
     // Start on step 2
     await page.goto("/wizard/os-selection");
-    await page.getByRole('radio', { name: /Mac/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
 
     const bottomNav = page.locator(".bottom-nav-safe");
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -1952,7 +2101,7 @@ test.describe("Mobile Navigation", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Desktop sidebar should not be visible
-    const sidebar = page.locator('aside.hidden.md\\:block');
+    const sidebar = page.locator("aside.hidden.md\\:block");
     // Check that it has display: none or is not visible
     await expect(sidebar).not.toBeVisible();
   });
@@ -1972,10 +2121,12 @@ test.describe("OS Selection - Edge Cases", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // On mobile, Continue should be disabled until OS is selected
-    await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeDisabled();
+    await expect(
+      page.getByRole("main").getByRole("button", { name: /^continue$/i }),
+    ).toBeDisabled();
 
     // Select an OS
-    await page.getByRole('radio', { name: /Mac/i }).click();
+    await page.getByRole("radio", { name: /Mac/i }).click();
 
     // Now Continue should be enabled
     await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeEnabled();
@@ -1991,7 +2142,9 @@ test.describe("OS Selection - Edge Cases", () => {
 
     // There should be a "Detected" or "Selected" badge visible
     // (depending on whether user has clicked it)
-    await expect(page.locator('text=/Detected|Selected/')).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await expect(page.locator("text=/Detected|Selected/")).toBeVisible({
+      timeout: TIMEOUTS.PAGE_LOAD,
+    });
   });
 
   test("should toggle selection between Mac and Windows", async ({ page }) => {
@@ -2001,13 +2154,19 @@ test.describe("OS Selection - Edge Cases", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Select Mac
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await expect(page.getByRole('radio', { name: /Mac/i })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole("radio", { name: /Mac/i }).click();
+    await expect(page.getByRole("radio", { name: /Mac/i })).toHaveAttribute("aria-checked", "true");
 
     // Select Windows
-    await page.getByRole('radio', { name: /Windows/i }).click();
-    await expect(page.getByRole('radio', { name: /Windows/i })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('radio', { name: /Mac/i })).toHaveAttribute('aria-checked', 'false');
+    await page.getByRole("radio", { name: /Windows/i }).click();
+    await expect(page.getByRole("radio", { name: /Windows/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByRole("radio", { name: /Mac/i })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 });
 
@@ -2033,7 +2192,7 @@ test.describe("Accessibility", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Continue button should be accessible
-    const continueButton = page.getByRole('main').getByRole('button', { name: /continue/i });
+    const continueButton = page.getByRole("main").getByRole("button", { name: /continue/i });
     await expect(continueButton).toBeVisible();
     await expect(continueButton).toBeEnabled();
   });
@@ -2044,7 +2203,7 @@ test.describe("Accessibility", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // IP input should be accessible
-    const input = page.locator('[data-vps-ip-input]');
+    const input = page.locator("[data-vps-ip-input]");
     await expect(input).toBeVisible();
     await expect(input).toBeEnabled();
   });
@@ -2061,7 +2220,7 @@ test.describe("Accessibility", () => {
 
     // First checkbox should be clickable
     await checkboxes.first().click();
-    await expect(checkboxes.first()).toHaveAttribute('aria-checked', 'true');
+    await expect(checkboxes.first()).toHaveAttribute("aria-checked", "true");
   });
 });
 
@@ -2099,7 +2258,7 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Installer command should include --mode vibe
-    await expect(page.locator('code').filter({ hasText: '--mode vibe' }).first()).toBeVisible();
+    await expect(page.locator("code").filter({ hasText: "--mode vibe" }).first()).toBeVisible();
   });
 
   test("should update installer command when mode is changed to safe", async ({ page }) => {
@@ -2111,7 +2270,7 @@ test.describe("Command Builder Panel", () => {
     await safeModeBtn.click();
 
     // Installer command should now include --mode safe
-    await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();
+    await expect(page.locator("code").filter({ hasText: "--mode safe" }).first()).toBeVisible();
   });
 
   test("should persist a module profile and expose its resolved plan", async ({ page }) => {
@@ -2137,7 +2296,9 @@ test.describe("Command Builder Panel", () => {
 
     await page.reload();
     await page.waitForLoadState("domcontentloaded");
-    await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText('--profile "minimal"');
+    await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText(
+      '--profile "minimal"',
+    );
   });
 
   test("should show advanced settings when clicked", async ({ page }) => {
@@ -2145,7 +2306,7 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Advanced settings should be hidden initially
-    const usernameInput = page.locator('#cb-user');
+    const usernameInput = page.locator("#cb-user");
     await expect(usernameInput).not.toBeVisible();
 
     // Click Advanced toggle
@@ -2153,7 +2314,7 @@ test.describe("Command Builder Panel", () => {
 
     // Now username and ref inputs should be visible
     await expect(usernameInput).toBeVisible();
-    await expect(page.locator('#cb-ref')).toBeVisible();
+    await expect(page.locator("#cb-ref")).toBeVisible();
   });
 
   test("should update SSH user command when username is changed", async ({ page }) => {
@@ -2167,14 +2328,16 @@ test.describe("Command Builder Panel", () => {
     await page.click('main button:has-text("Advanced")');
 
     // Change username
-    const usernameInput = page.locator('#cb-user');
+    const usernameInput = page.locator("#cb-user");
     await usernameInput.clear();
     await usernameInput.fill("devuser");
     await usernameInput.blur();
 
     // Command label and command should update
     await expect(page.locator('text="SSH as devuser"')).toBeVisible();
-    await expect(page.locator('code').filter({ hasText: 'devuser@192.168.1.100' }).first()).toBeVisible();
+    await expect(
+      page.locator("code").filter({ hasText: "devuser@192.168.1.100" }).first(),
+    ).toBeVisible();
   });
 
   test("should include --ref in installer command when ref is set", async ({ page }) => {
@@ -2185,15 +2348,15 @@ test.describe("Command Builder Panel", () => {
     await page.click('main button:has-text("Advanced")');
 
     // Set a pinned ref
-    const refInput = page.locator('#cb-ref');
+    const refInput = page.locator("#cb-ref");
     await refInput.clear();
     await refInput.fill("v1.0.0");
     await refInput.blur();
 
     // Installer command should include the pinned ref
-    const commandElement = page.locator('code').filter({ hasText: 'curl -fsSL' }).first();
+    const commandElement = page.locator("code").filter({ hasText: "curl -fsSL" }).first();
     await expect(commandElement).toContainText('--ref "v1.0.0"');
-    await expect(commandElement).toContainText('v1.0.0/install.sh');
+    await expect(commandElement).toContainText("v1.0.0/install.sh");
   });
 
   test("should have share link button that copies URL", async ({ page }) => {
@@ -2235,7 +2398,7 @@ test.describe("Command Builder Panel", () => {
 
     // Check icon should appear briefly (indicating copied state)
     // The button contains an SVG that changes from Copy to Check
-    await expect(copyBtn.locator('svg.text-green')).toBeVisible();
+    await expect(copyBtn.locator("svg.text-green")).toBeVisible();
   });
 
   test("should restore non-sensitive query state and scrub a supplied IP", async ({ page }) => {
@@ -2243,11 +2406,13 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     await expect(page).not.toHaveURL(/(?:\?|&)ip=/);
-    await expect(page.locator('code').filter({ hasText: '192.168.1.100' }).first()).toBeVisible();
-    await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();
+    await expect(page.locator("code").filter({ hasText: "192.168.1.100" }).first()).toBeVisible();
+    await expect(page.locator("code").filter({ hasText: "--mode safe" }).first()).toBeVisible();
   });
 
-  test("should hard-navigate across the privacy zone without retaining router secrets", async ({ page }) => {
+  test("should hard-navigate across the privacy zone without retaining router secrets", async ({
+    page,
+  }) => {
     const consoleErrors: string[] = [];
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
@@ -2256,15 +2421,17 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     const secret = "sk-proj-abcdefghijklmnopqrstuvwxyz012345";
-    await page.evaluate((value) => {
-      window.history.pushState(
-        { __NA: true, renderedSearch: `token=${value}` },
-        "",
-        `/wizard/launch-onboarding?mode=safe&token=${value}`,
-      );
-    }, secret).catch(() => {
-      // A hard navigation may destroy the evaluation context before it returns.
-    });
+    await page
+      .evaluate((value) => {
+        window.history.pushState(
+          { __NA: true, renderedSearch: `token=${value}` },
+          "",
+          `/wizard/launch-onboarding?mode=safe&token=${value}`,
+        );
+      }, secret)
+      .catch(() => {
+        // A hard navigation may destroy the evaluation context before it returns.
+      });
     // The privacy guard (components/analytics-provider.tsx) answers a
     // zone-crossing pushState with an async window.location.assign() to the
     // scrubbed URL. waitForLoadState alone resolves on the *old* document, so
@@ -2287,11 +2454,13 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // IP input should be visible when no IP is stored
-    const ipInput = page.locator('#cb-ip');
+    const ipInput = page.locator("#cb-ip");
     await expect(ipInput).toBeVisible();
 
     // Should show placeholder message
-    await expect(page.locator('text="Enter your VPS IP to generate personalized commands."')).toBeVisible();
+    await expect(
+      page.locator('text="Enter your VPS IP to generate personalized commands."'),
+    ).toBeVisible();
   });
 
   test("should validate IP input and show error for invalid IP", async ({ page }) => {
@@ -2304,7 +2473,7 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Enter invalid IP
-    const ipInput = page.locator('#cb-ip');
+    const ipInput = page.locator("#cb-ip");
     await ipInput.fill("not-an-ip");
     await ipInput.blur();
 
@@ -2322,7 +2491,7 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Enter valid IP
-    const ipInput = page.locator('#cb-ip');
+    const ipInput = page.locator("#cb-ip");
     await ipInput.fill("203.0.113.42");
     await ipInput.blur();
 
@@ -2341,7 +2510,9 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     await expect(page.locator('text="ssh root@[2001:db8::99]"').first()).toBeVisible();
-    await expect(page.locator('text="ssh -i ~/.ssh/acfs_ed25519 ubuntu@[2001:db8::99]"').first()).toBeVisible();
+    await expect(
+      page.locator('text="ssh -i ~/.ssh/acfs_ed25519 ubuntu@[2001:db8::99]"').first(),
+    ).toBeVisible();
   });
 });
 
@@ -2372,7 +2543,7 @@ test.describe("Command Builder Panel - Mobile", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Code blocks should have overflow-x-auto for scrolling
-    const codeBlock = page.locator('code.overflow-x-auto').first();
+    const codeBlock = page.locator("code.overflow-x-auto").first();
     await expect(codeBlock).toBeVisible();
   });
 
@@ -2384,7 +2555,7 @@ test.describe("Command Builder Panel - Mobile", () => {
     await page.click('main button:has-text("Safe")');
 
     // Command should update
-    await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();
+    await expect(page.locator("code").filter({ hasText: "--mode safe" }).first()).toBeVisible();
   });
 
   test("should serialize a selected module profile on mobile", async ({ page }) => {
@@ -2396,6 +2567,8 @@ test.describe("Command Builder Panel - Mobile", () => {
     await expect(agentsOnlyProfile).toHaveAttribute("aria-pressed", "true");
 
     await expect(page).toHaveURL(/(?:\?|&)profile=agents-only(?:&|$)/);
-    await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText('--profile "agents-only"');
+    await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText(
+      '--profile "agents-only"',
+    );
   });
 });

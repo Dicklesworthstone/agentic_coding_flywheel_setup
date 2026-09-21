@@ -20,7 +20,7 @@ function Skeleton({ className, shimmer = true, ...props }: SkeletonProps) {
           // Subtle pulse animation layered with shimmer
           "animate-pulse",
         ],
-        className
+        className,
       )}
       {...props}
     />
@@ -37,10 +37,7 @@ function SkeletonText({
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton
           key={i}
-          className={cn(
-            "h-4",
-            i === lines - 1 && lines > 1 ? "w-3/4" : "w-full"
-          )}
+          className={cn("h-4", i === lines - 1 && lines > 1 ? "w-3/4" : "w-full")}
         />
       ))}
     </div>
@@ -50,10 +47,7 @@ function SkeletonText({
 function SkeletonCard({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn(
-        "rounded-xl border border-border/50 bg-card/50 p-6 space-y-4",
-        className
-      )}
+      className={cn("rounded-xl border border-border/50 bg-card/50 p-6 space-y-4", className)}
       {...props}
     >
       {/* Icon placeholder */}
@@ -77,12 +71,7 @@ function SkeletonAvatar({
     lg: "h-14 w-14",
   };
 
-  return (
-    <Skeleton
-      className={cn("rounded-full", sizeClasses[size], className)}
-      {...props}
-    />
-  );
+  return <Skeleton className={cn("rounded-full", sizeClasses[size], className)} {...props} />;
 }
 
 function SkeletonButton({
@@ -96,12 +85,7 @@ function SkeletonButton({
     lg: "h-12 w-36",
   };
 
-  return (
-    <Skeleton
-      className={cn("rounded-lg", sizeClasses[size], className)}
-      {...props}
-    />
-  );
+  return <Skeleton className={cn("rounded-lg", sizeClasses[size], className)} {...props} />;
 }
 
-export { Skeleton, SkeletonText, SkeletonCard, SkeletonAvatar, SkeletonButton };
+export { Skeleton, SkeletonAvatar, SkeletonButton, SkeletonCard, SkeletonText };

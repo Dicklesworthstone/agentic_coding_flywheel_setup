@@ -13,24 +13,15 @@
  * - The legacy gemini entry is retained (no over-migration)
  */
 
-import { describe, test, expect } from "bun:test";
-import {
-  AgentHeroCard,
-  agentPersonalities,
-  type AgentType,
-} from "./AgentHeroCard";
+import { describe, expect, test } from "bun:test";
+import { AgentHeroCard, type AgentType, agentPersonalities } from "./AgentHeroCard";
 
 // Compile-time exhaustiveness guard: if a member is added to AgentType without a
 // matching agentPersonalities entry (or vice-versa), this line fails type-check.
 const _exhaustive: Record<AgentType, unknown> = agentPersonalities;
 void _exhaustive;
 
-const EXPECTED_AGENTS: AgentType[] = [
-  "claude",
-  "codex",
-  "antigravity",
-  "gemini",
-];
+const EXPECTED_AGENTS: AgentType[] = ["claude", "codex", "antigravity", "gemini"];
 
 describe("AgentHeroCard component", () => {
   test("AgentHeroCard is exported as a function", () => {
@@ -44,9 +35,7 @@ describe("AgentHeroCard component", () => {
 
 describe("agentPersonalities exhaustiveness", () => {
   test("has exactly the expected agent keys", () => {
-    expect(Object.keys(agentPersonalities).sort()).toEqual(
-      [...EXPECTED_AGENTS].sort(),
-    );
+    expect(Object.keys(agentPersonalities).sort()).toEqual([...EXPECTED_AGENTS].sort());
   });
 
   test("every agent has a non-empty gradient and tagline", () => {
@@ -74,9 +63,7 @@ describe("antigravity is a first-class agent", () => {
   });
 
   test("antigravity has a visually distinct gradient from gemini", () => {
-    expect(agentPersonalities.antigravity.gradient).not.toBe(
-      agentPersonalities.gemini.gradient,
-    );
+    expect(agentPersonalities.antigravity.gradient).not.toBe(agentPersonalities.gemini.gradient);
   });
 });
 

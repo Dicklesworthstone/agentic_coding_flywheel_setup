@@ -1,54 +1,52 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
 import {
-  RefreshCw,
-  Cpu,
-  Mail,
-  Shield,
-  ShieldAlert,
-  Search,
-  Brain,
-  LayoutDashboard,
-  Users,
-  Zap,
-  Play,
-  Terminal,
-  Sparkles,
-  CheckCircle2,
-  GitMerge,
-  Pause,
-  RotateCw,
-  ChevronRight,
-  Target,
-  FileCode,
-  TestTube,
-  Eye,
-  Rocket,
   Activity,
   BookOpen,
-  Clock,
-  TrendingUp,
   Bot,
+  Brain,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Eye,
+  FileCode,
+  GitMerge,
+  LayoutDashboard,
   type LucideIcon,
+  Mail,
+  Pause,
+  Play,
+  RefreshCw,
+  Rocket,
+  RotateCw,
+  Search,
+  Shield,
+  ShieldAlert,
+  Sparkles,
+  Target,
+  Terminal,
+  TestTube,
+  TrendingUp,
+  Users,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function FlywheelLoopLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Understand how all the tools work together.
-      </GoalBanner>
+      <GoalBanner>Understand how all the tools work together.</GoalBanner>
 
       {/* The ACFS Flywheel */}
       <Section
@@ -322,8 +320,8 @@ br close <task-id>`,
 
         <div className="mt-6">
           <TipBox variant="info">
-            This is why it&apos;s called a <strong>flywheel</strong> - it gets
-            better the more you use it.
+            This is why it&apos;s called a <strong>flywheel</strong> - it gets better the more you
+            use it.
           </TipBox>
         </div>
       </Section>
@@ -338,9 +336,7 @@ br close <task-id>`,
           delay: 0.3,
         }}
       >
-        <Paragraph>
-          You&apos;re ready! Here&apos;s how to start your first project:
-        </Paragraph>
+        <Paragraph>You&apos;re ready! Here&apos;s how to start your first project:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -469,11 +465,7 @@ const FLYWHEEL_NODES: FlywheelToolNode[] = [
     label: "Guard",
     sublabel: "DCG + SLB",
     command: "dcg / slb",
-    cases: [
-      "Block dangerous commands",
-      "Two-person rule",
-      "Account switching",
-    ],
+    cases: ["Block dangerous commands", "Two-person rule", "Account switching"],
     color: "#ef4444",
     glowColor: "rgba(239,68,68,0.6)",
   },
@@ -499,8 +491,7 @@ function arcPath(fromIdx: number, toIdx: number): string {
   const from = nodePos(fromIdx);
   const to = nodePos(toIdx);
   // Control point pulled toward center for a nice curve
-  const midAngle =
-    (((nodeAngleDeg(fromIdx) + nodeAngleDeg(toIdx)) / 2) * Math.PI) / 180;
+  const midAngle = (((nodeAngleDeg(fromIdx) + nodeAngleDeg(toIdx)) / 2) * Math.PI) / 180;
   const cpRadius = RADIUS * 0.72;
   const cx = CX + cpRadius * Math.cos(midAngle);
   const cy = CY + cpRadius * Math.sin(midAngle);
@@ -515,12 +506,9 @@ function AnimatedFlywheel() {
   const activeIdx = selectedIdx ?? hoveredIdx;
   const isPaused = activeIdx !== null;
 
-  const handleNodeClick = useCallback(
-    (idx: number) => {
-      setSelectedIdx((prev) => (prev === idx ? null : idx));
-    },
-    []
-  );
+  const handleNodeClick = useCallback((idx: number) => {
+    setSelectedIdx((prev) => (prev === idx ? null : idx));
+  }, []);
 
   const handleBackgroundClick = useCallback(() => {
     setSelectedIdx(null);
@@ -605,22 +593,73 @@ function AnimatedFlywheel() {
             </filter>
             {/* Per-node glow filters with their color */}
             {FLYWHEEL_NODES.map((node, i) => (
-              <filter key={`glow-${i}`} id={`node-glow-${i}`} x="-80%" y="-80%" width="260%" height="260%">
-                <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor={node.glowColor} floodOpacity="0.9" />
+              <filter
+                key={`glow-${i}`}
+                id={`node-glow-${i}`}
+                x="-80%"
+                y="-80%"
+                width="260%"
+                height="260%"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="0"
+                  stdDeviation="8"
+                  floodColor={node.glowColor}
+                  floodOpacity="0.9"
+                />
               </filter>
             ))}
           </defs>
 
           {/* ---- Pulsing center hub ---- */}
-          <circle cx={CX} cy={CY} r={38} fill="none" stroke="hsl(var(--primary))" strokeOpacity="0.18" strokeWidth="2">
+          <circle
+            cx={CX}
+            cy={CY}
+            r={38}
+            fill="none"
+            stroke="hsl(var(--primary))"
+            strokeOpacity="0.18"
+            strokeWidth="2"
+          >
             <animate attributeName="r" values="38;48;38" dur="3s" repeatCount="indefinite" />
-            <animate attributeName="stroke-opacity" values="0.18;0.28;0.18" dur="3s" repeatCount="indefinite" />
+            <animate
+              attributeName="stroke-opacity"
+              values="0.18;0.28;0.18"
+              dur="3s"
+              repeatCount="indefinite"
+            />
           </circle>
-          <circle cx={CX} cy={CY} r={30} fill="hsl(var(--primary))" fillOpacity="0.08" stroke="hsl(var(--primary))" strokeOpacity="0.3" strokeWidth="1.5" />
-          <text x={CX} y={CY - 6} textAnchor="middle" fill="white" fontSize="11" fontWeight="700" opacity="0.9">
+          <circle
+            cx={CX}
+            cy={CY}
+            r={30}
+            fill="hsl(var(--primary))"
+            fillOpacity="0.08"
+            stroke="hsl(var(--primary))"
+            strokeOpacity="0.3"
+            strokeWidth="1.5"
+          />
+          <text
+            x={CX}
+            y={CY - 6}
+            textAnchor="middle"
+            fill="white"
+            fontSize="11"
+            fontWeight="700"
+            opacity="0.9"
+          >
             ACFS
           </text>
-          <text x={CX} y={CY + 10} textAnchor="middle" fill="hsl(var(--primary))" fontSize="9" fontWeight="500" opacity="0.7">
+          <text
+            x={CX}
+            y={CY + 10}
+            textAnchor="middle"
+            fill="hsl(var(--primary))"
+            fontSize="9"
+            fontWeight="500"
+            opacity="0.7"
+          >
             Flywheel
           </text>
 
@@ -629,8 +668,7 @@ function AnimatedFlywheel() {
             {/* Connection arcs (dim lines + animated dashes) */}
             {connections.map((conn, i) => {
               const isAdjacentToActive =
-                activeIdx !== null &&
-                (conn.from === activeIdx || conn.to === activeIdx);
+                activeIdx !== null && (conn.from === activeIdx || conn.to === activeIdx);
               const baseOpacity = activeIdx !== null ? (isAdjacentToActive ? 0.5 : 0.08) : 0.2;
               const dashOpacity = activeIdx !== null ? (isAdjacentToActive ? 0.8 : 0.1) : 0.4;
 
@@ -662,9 +700,12 @@ function AnimatedFlywheel() {
             {/* Energy particles traveling along paths */}
             {connections.map((conn, i) =>
               [0, 1, 2].map((particleIdx) => {
-                const particleOpacity = activeIdx !== null
-                  ? (conn.from === activeIdx || conn.to === activeIdx ? 0.9 : 0.1)
-                  : 0.7;
+                const particleOpacity =
+                  activeIdx !== null
+                    ? conn.from === activeIdx || conn.to === activeIdx
+                      ? 0.9
+                      : 0.1
+                    : 0.7;
                 return (
                   <circle
                     key={`particle-${i}-${particleIdx}`}
@@ -680,7 +721,7 @@ function AnimatedFlywheel() {
                     }}
                   />
                 );
-              })
+              }),
             )}
 
             {/* ---- Tool nodes ---- */}
@@ -780,9 +821,7 @@ function AnimatedFlywheel() {
                 />
                 <h4 className="font-bold text-white text-sm">
                   {activeNode.label}{" "}
-                  <span className="font-normal text-white/50">
-                    ({activeNode.sublabel})
-                  </span>
+                  <span className="font-normal text-white/50">({activeNode.sublabel})</span>
                 </h4>
               </div>
               <code className="inline-block px-2 py-1 rounded bg-black/30 border border-white/[0.08] text-xs font-mono text-primary mb-3">
@@ -790,10 +829,7 @@ function AnimatedFlywheel() {
               </code>
               <ul className="space-y-1.5">
                 {activeNode.cases.map((c, ci) => (
-                  <li
-                    key={ci}
-                    className="text-sm text-white/60 flex items-center gap-2"
-                  >
+                  <li key={ci} className="text-sm text-white/60 flex items-center gap-2">
                     <div
                       className="h-1.5 w-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: activeNode.color, opacity: 0.7 }}
@@ -874,9 +910,7 @@ function ToolCard({
 
           {example && (
             <div className="mt-4 rounded-xl bg-black/20 border border-white/[0.06] overflow-hidden">
-              <pre className="p-3 text-xs font-mono text-white/70 overflow-x-auto">
-                {example}
-              </pre>
+              <pre className="p-3 text-xs font-mono text-white/70 overflow-x-auto">{example}</pre>
             </div>
           )}
         </div>
@@ -901,7 +935,8 @@ function FlywheelEffectList() {
   return (
     <div className="space-y-3">
       {effects.map((item, i) => (
-        <motion.div key={i}
+        <motion.div
+          key={i}
           {...{
             initial: { opacity: 0, x: -20 },
             animate: { opacity: 1, x: 0 },
@@ -945,7 +980,9 @@ function HelpCard({
       <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.08] text-sm font-mono text-primary mb-2 group-hover:bg-black/40 transition-colors">
         {command}
       </code>
-      <span className="text-sm text-white/60 group-hover:text-white/80 transition-colors">{description}</span>
+      <span className="text-sm text-white/60 group-hover:text-white/80 transition-colors">
+        {description}
+      </span>
     </motion.div>
   );
 }
@@ -1097,11 +1134,7 @@ function getCycleDuration(cycle: number): number {
 function lerpHexColor(cool: string, warm: string, t: number): string {
   const parse = (hex: string) => {
     const h = hex.replace("#", "");
-    return [
-      parseInt(h.slice(0, 2), 16),
-      parseInt(h.slice(2, 4), 16),
-      parseInt(h.slice(4, 6), 16),
-    ];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
   };
   const c = parse(cool);
   const w = parse(warm);
@@ -1112,12 +1145,7 @@ function lerpHexColor(cool: string, warm: string, t: number): string {
 }
 
 /** Get position on a circle */
-function getCirclePoint(
-  cx: number,
-  cy: number,
-  radius: number,
-  angleDeg: number
-) {
+function getCirclePoint(cx: number, cy: number, radius: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
 }
@@ -1181,9 +1209,12 @@ function MiniTerminal({
     timers.push(setTimeout(() => setVisibleLines(0), 0));
     commands.forEach((_, i) => {
       timers.push(
-        setTimeout(() => {
-          setVisibleLines(i + 1);
-        }, (i + 1) * 600)
+        setTimeout(
+          () => {
+            setVisibleLines(i + 1);
+          },
+          (i + 1) * 600,
+        ),
       );
     });
     return () => timers.forEach(clearTimeout);
@@ -1197,9 +1228,7 @@ function MiniTerminal({
           <div className="w-2 h-2 rounded-full bg-yellow-500/60" />
           <div className="w-2 h-2 rounded-full bg-green-500/60" />
         </div>
-        <span className="text-[10px] text-white/30 font-mono ml-1">
-          {stageName}
-        </span>
+        <span className="text-[10px] text-white/30 font-mono ml-1">{stageName}</span>
       </div>
       <div className="p-3 space-y-1.5 font-mono text-xs min-h-[60px]">
         {commands.map((cmd, i) => (
@@ -1236,9 +1265,7 @@ function VelocityBar({
 }) {
   const isReached = metric.cycle <= currentCycle;
   const isCurrent = metric.cycle === currentCycle;
-  const barWidth = isReached
-    ? `${100 - (metric.cycle - 1) * 18}%`
-    : "10%";
+  const barWidth = isReached ? `${100 - (metric.cycle - 1) * 18}%` : "10%";
   const warmth = Math.min((metric.cycle - 1) / (maxCycle - 1), 1);
   const barColor = lerpHexColor("#6366f1", "#f97316", warmth);
 
@@ -1287,11 +1314,8 @@ function VelocityBar({
           >
             {metric.duration}
           </span>
-          <span
-            className={`text-[10px] ${isReached ? "text-white/60" : "text-white/15"}`}
-          >
-            {metric.tasks} task{metric.tasks !== 1 ? "s" : ""} &middot;{" "}
-            {metric.bugs} bugs
+          <span className={`text-[10px] ${isReached ? "text-white/60" : "text-white/15"}`}>
+            {metric.tasks} task{metric.tasks !== 1 ? "s" : ""} &middot; {metric.bugs} bugs
           </span>
         </div>
       </div>
@@ -1338,8 +1362,21 @@ function StageNode({
     >
       {/* Outer glow ring */}
       {isActive && (
-        <circle cx={cx} cy={cy} r={nodeRadius + 6} fill="none" stroke={stageColor} strokeWidth="1" opacity="0.3">
-          <animate attributeName="r" values={`${nodeRadius + 4};${nodeRadius + 8};${nodeRadius + 4}`} dur="2s" repeatCount="indefinite" />
+        <circle
+          cx={cx}
+          cy={cy}
+          r={nodeRadius + 6}
+          fill="none"
+          stroke={stageColor}
+          strokeWidth="1"
+          opacity="0.3"
+        >
+          <animate
+            attributeName="r"
+            values={`${nodeRadius + 4};${nodeRadius + 8};${nodeRadius + 4}`}
+            dur="2s"
+            repeatCount="indefinite"
+          />
           <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite" />
         </circle>
       )}
@@ -1480,7 +1517,7 @@ function InteractiveFlywheelCycle() {
 
   // Stable initial particle offsets (no Math.random in render)
   const [particleOffsets] = useState<number[]>(() =>
-    Array.from({ length: STAGE_COUNT * 3 }, () => Math.random())
+    Array.from({ length: STAGE_COUNT * 3 }, () => Math.random()),
   );
 
   const animFrameRef = useRef<number>(0);
@@ -1497,17 +1534,11 @@ function InteractiveFlywheelCycle() {
   }, [cycle]);
 
   const maxCycle = 5;
-  const warmth = useMemo(
-    () => Math.min((cycle - 1) / (maxCycle - 1), 1),
-    [cycle]
-  );
+  const warmth = useMemo(() => Math.min((cycle - 1) / (maxCycle - 1), 1), [cycle]);
 
   const stageColors = useMemo(
-    () =>
-      FLYWHEEL_STAGES_V2.map((s) =>
-        lerpHexColor(s.color, s.warmColor, warmth)
-      ),
-    [warmth]
+    () => FLYWHEEL_STAGES_V2.map((s) => lerpHexColor(s.color, s.warmColor, warmth)),
+    [warmth],
   );
 
   // Animation loop
@@ -1540,8 +1571,7 @@ function InteractiveFlywheelCycle() {
   }, []);
 
   const normalizedRotation = rotation % 360;
-  const derivedStageIdx =
-    Math.floor((normalizedRotation / 360) * STAGE_COUNT) % STAGE_COUNT;
+  const derivedStageIdx = Math.floor((normalizedRotation / 360) * STAGE_COUNT) % STAGE_COUNT;
   const derivedCycle = Math.min(Math.floor(rotation / 360) + 1, maxCycle);
 
   useEffect(() => {
@@ -1597,7 +1627,7 @@ function InteractiveFlywheelCycle() {
         const angle = i * arcAngle;
         return getCirclePoint(ringCx, ringCy, ringR, angle);
       }),
-    [arcAngle, ringCx, ringCy, ringR]
+    [arcAngle, ringCx, ringCy, ringR],
   );
 
   // Build arc paths for energy particles
@@ -1635,10 +1665,7 @@ function InteractiveFlywheelCycle() {
     return "Peak flywheel!";
   }, [cycle]);
 
-  const particleDuration = useMemo(
-    () => getCycleDuration(cycle) / STAGE_COUNT,
-    [cycle]
-  );
+  const particleDuration = useMemo(() => getCycleDuration(cycle) / STAGE_COUNT, [cycle]);
 
   return (
     <motion.div
@@ -1673,14 +1700,10 @@ function InteractiveFlywheelCycle() {
             <RotateCw
               className="h-4 w-4 text-white/60"
               style={{
-                animation: isPlaying
-                  ? `spin ${getCycleDuration(cycle)}ms linear infinite`
-                  : "none",
+                animation: isPlaying ? `spin ${getCycleDuration(cycle)}ms linear infinite` : "none",
               }}
             />
-            <span className="text-sm font-medium text-white/70">
-              The Flywheel in Action
-            </span>
+            <span className="text-sm font-medium text-white/70">The Flywheel in Action</span>
             <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/30 border border-white/[0.08]">
               {STAGE_COUNT} stages
             </span>
@@ -1729,8 +1752,7 @@ function InteractiveFlywheelCycle() {
                       stiffness: 200,
                       damping: 25,
                     },
-                    className:
-                      "h-3 w-3 rounded-full transition-colors duration-700 relative",
+                    className: "h-3 w-3 rounded-full transition-colors duration-700 relative",
                     style: {
                       backgroundColor:
                         i < cycle
@@ -1743,11 +1765,7 @@ function InteractiveFlywheelCycle() {
                     <span
                       className="absolute inset-0 rounded-full animate-ping"
                       style={{
-                        backgroundColor: lerpHexColor(
-                          "#6366f1",
-                          "#f97316",
-                          dotWarmth
-                        ),
+                        backgroundColor: lerpHexColor("#6366f1", "#f97316", dotWarmth),
                         opacity: 0.4,
                       }}
                     />
@@ -1757,9 +1775,7 @@ function InteractiveFlywheelCycle() {
             })}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-white/60">
-              Cycle {cycle}
-            </span>
+            <span className="text-xs font-medium text-white/60">Cycle {cycle}</span>
             <span className="text-white/20">&middot;</span>
             <span
               className="text-xs font-medium"
@@ -1773,10 +1789,7 @@ function InteractiveFlywheelCycle() {
         </div>
 
         {/* SVG Flywheel Diagram */}
-        <div
-          className="flex justify-center mb-5"
-          onClick={handleBackgroundClick}
-        >
+        <div className="flex justify-center mb-5" onClick={handleBackgroundClick}>
           <svg
             viewBox={`0 0 ${viewSize} ${viewSize}`}
             className="w-full max-w-[480px] aspect-square"
@@ -1828,8 +1841,7 @@ function InteractiveFlywheelCycle() {
             {/* Ring arc segments */}
             {ringSegments.map((d, i) => {
               const isActive = displayStageIdx === i;
-              const isHighlighted =
-                activeStageIdx === i && selectedStageIdx === null;
+              const isHighlighted = activeStageIdx === i && selectedStageIdx === null;
               return (
                 <path
                   key={`ring-seg-${i}`}
@@ -1839,9 +1851,7 @@ function InteractiveFlywheelCycle() {
                   strokeWidth={isActive ? 6 : isHighlighted ? 4 : 2.5}
                   strokeLinecap="round"
                   opacity={isActive ? 0.9 : isHighlighted ? 0.6 : 0.25}
-                  filter={
-                    isActive ? `url(#ifc-glow-${i})` : undefined
-                  }
+                  filter={isActive ? `url(#ifc-glow-${i})` : undefined}
                   style={{ transition: "stroke-width 0.3s, opacity 0.3s" }}
                 />
               );
@@ -1935,27 +1945,11 @@ function InteractiveFlywheelCycle() {
               }}
             >
               <circle cx={ringCx} cy={ringCy - ringR} r={4} fill="white" opacity={0.95}>
-                <animate
-                  attributeName="r"
-                  values="3;5;3"
-                  dur="1.2s"
-                  repeatCount="indefinite"
-                />
+                <animate attributeName="r" values="3;5;3" dur="1.2s" repeatCount="indefinite" />
               </circle>
               {/* Trailing glow */}
-              <circle
-                cx={ringCx}
-                cy={ringCy - ringR}
-                r={10}
-                fill="white"
-                opacity={0.15}
-              >
-                <animate
-                  attributeName="r"
-                  values="8;14;8"
-                  dur="1.2s"
-                  repeatCount="indefinite"
-                />
+              <circle cx={ringCx} cy={ringCy - ringR} r={10} fill="white" opacity={0.15}>
+                <animate attributeName="r" values="8;14;8" dur="1.2s" repeatCount="indefinite" />
                 <animate
                   attributeName="opacity"
                   values="0.15;0.05;0.15"
@@ -1980,7 +1974,7 @@ function InteractiveFlywheelCycle() {
                     size={1.5 + Math.min(cycle * 0.3, 1.5)}
                   />
                 );
-              })
+              }),
             )}
 
             {/* Direction arrows between nodes */}
@@ -1990,18 +1984,10 @@ function InteractiveFlywheelCycle() {
               const midY = (pos.y + nextPos.y) / 2;
               // Push slightly outward
               const midAngle = (i * arcAngle + (i + 1) * arcAngle) / 2;
-              const outward = getCirclePoint(
-                ringCx,
-                ringCy,
-                ringR + 2,
-                midAngle
-              );
+              const outward = getCirclePoint(ringCx, ringCy, ringR + 2, midAngle);
               const ax = (midX + outward.x) / 2;
               const ay = (midY + outward.y) / 2;
-              const angle = Math.atan2(
-                nextPos.y - pos.y,
-                nextPos.x - pos.x
-              );
+              const angle = Math.atan2(nextPos.y - pos.y, nextPos.x - pos.x);
               const angleDeg = (angle * 180) / Math.PI;
 
               return (
@@ -2012,11 +1998,7 @@ function InteractiveFlywheelCycle() {
                     transformOrigin: "0 0",
                   }}
                 >
-                  <polygon
-                    points="-4,-3 4,0 -4,3"
-                    fill={stageColors[i]}
-                    opacity={0.3}
-                  />
+                  <polygon points="-4,-3 4,0 -4,3" fill={stageColors[i]} opacity={0.3} />
                 </g>
               );
             })}
@@ -2028,9 +2010,7 @@ function InteractiveFlywheelCycle() {
                 stage={stage}
                 index={i}
                 isActive={displayStageIdx === i}
-                isHighlighted={
-                  activeStageIdx === i && selectedStageIdx === null
-                }
+                isHighlighted={activeStageIdx === i && selectedStageIdx === null}
                 stageColor={stageColors[i]}
                 cx={stagePositions[i].x}
                 cy={stagePositions[i].y}
@@ -2105,17 +2085,13 @@ function InteractiveFlywheelCycle() {
                   })()}
                 </div>
                 <div>
-                  <h4 className="font-bold text-white text-sm">
-                    {displayStage.label}
-                  </h4>
+                  <h4 className="font-bold text-white text-sm">{displayStage.label}</h4>
                   <span className="text-[10px] text-white/30">
                     Stage {displayStageIdx + 1} of {STAGE_COUNT}
                   </span>
                 </div>
                 {selectedStageIdx !== null && (
-                  <span className="ml-auto text-[10px] text-white/30">
-                    click again to deselect
-                  </span>
+                  <span className="ml-auto text-[10px] text-white/30">click again to deselect</span>
                 )}
               </div>
               <p className="text-sm text-white/60 mb-4 leading-relaxed">
@@ -2167,12 +2143,8 @@ function InteractiveFlywheelCycle() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Clock className="h-4 w-4 text-white/40" />
-                <h4 className="text-sm font-bold text-white">
-                  Velocity Over Cycles
-                </h4>
-                <span className="ml-auto text-[10px] text-white/30">
-                  Time per iteration
-                </span>
+                <h4 className="text-sm font-bold text-white">Velocity Over Cycles</h4>
+                <span className="ml-auto text-[10px] text-white/30">Time per iteration</span>
               </div>
               <div className="space-y-2">
                 {CYCLE_METRICS.map((metric, i) => (
@@ -2186,9 +2158,7 @@ function InteractiveFlywheelCycle() {
                 ))}
               </div>
               <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                <span className="text-[10px] text-white/30">
-                  Each cycle compounds improvements
-                </span>
+                <span className="text-[10px] text-white/30">Each cycle compounds improvements</span>
                 <div className="flex items-center gap-1.5">
                   <TrendingUp className="h-3 w-3 text-emerald-400/60" />
                   <span className="text-[10px] text-emerald-400/60 font-medium">
@@ -2213,9 +2183,7 @@ function InteractiveFlywheelCycle() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Users className="h-4 w-4 text-white/40" />
-                <h4 className="text-sm font-bold text-white">
-                  Agent Assignment
-                </h4>
+                <h4 className="text-sm font-bold text-white">Agent Assignment</h4>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {FLYWHEEL_STAGES_V2.map((stage, i) => {
@@ -2249,19 +2217,13 @@ function InteractiveFlywheelCycle() {
                           border: `1px solid ${stageColors[i]}30`,
                         }}
                       >
-                        <StageIcon
-                          className="h-3.5 w-3.5"
-                          style={{ color: stageColors[i] }}
-                        />
+                        <StageIcon className="h-3.5 w-3.5" style={{ color: stageColors[i] }} />
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs font-medium text-white/80 truncate">
                           {stage.shortLabel}
                         </div>
-                        <div
-                          className="text-[10px] truncate"
-                          style={{ color: stageColors[i] }}
-                        >
+                        <div className="text-[10px] truncate" style={{ color: stageColors[i] }}>
                           {stage.agent}
                         </div>
                       </div>

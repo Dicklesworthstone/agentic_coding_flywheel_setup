@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * Production smoke tests that run against the live site.
@@ -54,7 +54,7 @@ async function waitForPageSettled(page: Page): Promise<void> {
 test.describe("Production Smoke Tests", () => {
   test.skip(
     !process.env.PLAYWRIGHT_BASE_URL?.includes("agent-flywheel.com"),
-    "Only runs against production"
+    "Only runs against production",
   );
 
   test("homepage loads without JS errors or failed requests", async ({ page }) => {
@@ -121,7 +121,7 @@ test.describe("Production Smoke Tests", () => {
     // Hero + install command render regardless of WebGL availability.
     await expect(page.locator("h1").first()).toBeVisible();
     await expect(
-      page.getByText("curl -fsSL https://agent-flywheel.com/install | bash").first()
+      page.getByText("curl -fsSL https://agent-flywheel.com/install | bash").first(),
     ).toBeVisible();
 
     // Copy button gives visible feedback.

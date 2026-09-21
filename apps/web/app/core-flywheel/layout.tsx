@@ -15,7 +15,9 @@ export const metadata: Metadata = {
     url: "https://agent-flywheel.com/core-flywheel",
     siteName: "Agent Flywheel",
     locale: "en_US",
-    images: [{ url: `/core-flywheel/opengraph-image?v=${ogVersion}`, width: 1200, height: 630, alt }],
+    images: [
+      { url: `/core-flywheel/opengraph-image?v=${ogVersion}`, width: 1200, height: 630, alt },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -24,11 +26,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function CoreFlywheelLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function CoreFlywheelLayout({ children }: { children: React.ReactNode }) {
   // Dark-only editorial surface (#020408 background, white text): keep the
   // dark tokens even when the wizard's light theme is active.
   return <div className="dark bg-background text-foreground">{children}</div>;

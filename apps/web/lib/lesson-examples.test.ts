@@ -21,8 +21,8 @@
  * the wrong command.
  */
 
-import { describe, test, expect } from "bun:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
@@ -102,7 +102,10 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "apr",
     wrong: /apr refine\b|apr run \d+ --pass\b/,
-    right: { pattern: /apr run 1\b/, in: [O("13_apr.md"), L("apr-lesson.tsx"), COMMANDS, TOOL_DATA] },
+    right: {
+      pattern: /apr run 1\b/,
+      in: [O("13_apr.md"), L("apr-lesson.tsx"), COMMANDS, TOOL_DATA],
+    },
   },
   {
     issue: "#394",
@@ -125,14 +128,20 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "ru",
     wrong: /ru commit-sweep\b[^\n"'`]*--(parallel|with-release|resume|prompt)\b/,
-    right: { pattern: /ru commit-sweep\b/, in: [L("flywheel-loop-lesson.tsx"), ONBOARD_SH, JARGON] },
+    right: {
+      pattern: /ru commit-sweep\b/,
+      in: [L("flywheel-loop-lesson.tsx"), ONBOARD_SH, JARGON],
+    },
   },
   {
     issue: "#394",
     cli: "ru",
     // The old `ru agent-sweep --prompt "..."` broadcast is `ntm send --all`.
     wrong: /--prompt "Update AGENTS\.md/,
-    right: { pattern: /ntm send myproject --all "Update AGENTS\.md/, in: [L("agents-md-lesson.tsx")] },
+    right: {
+      pattern: /ntm send myproject --all "Update AGENTS\.md/,
+      in: [L("agents-md-lesson.tsx")],
+    },
   },
   // sbh 0.6.0: ballast is a subcommand group; cleanup is `clean`; recovery
   // is `emergency`; quarantine restore is `undo`.
@@ -140,7 +149,10 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "sbh",
     wrong: /sbh (release|restore|create|cleanup|analyze|purge-caches|reclaim)\b/,
-    right: { pattern: /sbh ballast (release|replenish)\b/, in: [O("34_sbh.md"), L("sbh-lesson.tsx")] },
+    right: {
+      pattern: /sbh ballast (release|replenish)\b/,
+      in: [O("34_sbh.md"), L("sbh-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
@@ -153,7 +165,10 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "jfp",
     wrong: /jfp install(ed)?\b/,
-    right: { pattern: /jsm install (idea-wizard|<id>|perf-review-pro)/, in: [O("12_jfp.md"), L("jfp-lesson.tsx")] },
+    right: {
+      pattern: /jsm install (idea-wizard|<id>|perf-review-pro)/,
+      in: [O("12_jfp.md"), L("jfp-lesson.tsx")],
+    },
   },
   // ms 0.2.2: skills are loaded, imported or built; never invoked/created.
   {
@@ -207,7 +222,10 @@ const ROWS: ExampleRow[] = [
     cli: "xf",
     // The query is quoted, so scan the whole line rather than stopping at a quote.
     wrong: /xf search\b[^\n]*--(from|to|sentiment|stats)\b|xf threads\b/,
-    right: { pattern: /--since 2024-01-01 --until 2024-06-30/, in: [O("15_xf.md"), L("xf-lesson.tsx")] },
+    right: {
+      pattern: /--since 2024-01-01 --until 2024-06-30/,
+      in: [O("15_xf.md"), L("xf-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
@@ -226,8 +244,12 @@ const ROWS: ExampleRow[] = [
   {
     issue: "#394",
     cli: "brenner",
-    wrong: /brenner (corpus list|session (list|resume)|publish|crossref|synthesize)\b|excerpt build\b[^\n"'`]*--format\b/,
-    right: { pattern: /brenner corpus search "/, in: [O("19_brenner_bot.md"), L("brenner-lesson.tsx")] },
+    wrong:
+      /brenner (corpus list|session (list|resume)|publish|crossref|synthesize)\b|excerpt build\b[^\n"'`]*--format\b/,
+    right: {
+      pattern: /brenner corpus search "/,
+      in: [O("19_brenner_bot.md"), L("brenner-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
@@ -251,7 +273,8 @@ const ROWS: ExampleRow[] = [
   {
     issue: "#394",
     cli: "casr",
-    wrong: /casr (capture|export|extract|distill|verify|session|preview)\b|casr resume\b[^\n"'`]*--(to|from|session)\b/,
+    wrong:
+      /casr (capture|export|extract|distill|verify|session|preview)\b|casr resume\b[^\n"'`]*--(to|from|session)\b/,
     right: {
       pattern: /casr resume cod <session-id>/,
       in: [O("35_casr.md"), L("casr-lesson.tsx"), FLYWHEEL, MANIFEST],
@@ -275,7 +298,8 @@ const ROWS: ExampleRow[] = [
     cli: "dsr",
     // `dsr release` needs <tool> <version>; versions are bare (1.2.3, not
     // v1.2.3) and there is no --sign (signing is part of the pipeline).
-    wrong: /dsr release(['"`]|\s*$)|dsr release \w+ (--version )?v\d|dsr release\b[^\n"'`]*--sign\b/m,
+    wrong:
+      /dsr release(['"`]|\s*$)|dsr release \w+ (--version )?v\d|dsr release\b[^\n"'`]*--sign\b/m,
     right: { pattern: /dsr fallback ntm --version/, in: [L("dsr-lesson.tsx")] },
   },
   // caam 0.1.18: next (alias rotate) <tool>; history --limit.
@@ -283,7 +307,10 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "caam",
     wrong: /caam (failover|log)\b|caam rotate --all-agents\b/,
-    right: { pattern: /caam next (codex|claude|gemini)\b/, in: [L("caam-lesson.tsx"), L("debugging-agents-lesson.tsx")] },
+    right: {
+      pattern: /caam next (codex|claude|gemini)\b/,
+      in: [L("caam-lesson.tsx"), L("debugging-agents-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
@@ -316,13 +343,19 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "ntm",
     wrong: /ntm (launch|layout|pause)\b|ntm spawn\b[^\n"'`]*--(agents|task)\b/,
-    right: { pattern: /ntm spawn myproject --cc=/, in: [L("welcome-lesson.tsx"), L("flywheel-loop-lesson.tsx")] },
+    right: {
+      pattern: /ntm spawn myproject --cc=/,
+      in: [L("welcome-lesson.tsx"), L("flywheel-loop-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
     cli: "ntm",
     wrong: /ntm interrupt\b[^\n"'`]*pane-\d/,
-    right: { pattern: /ntm interrupt (myproject|<session>)/, in: [L("debugging-agents-lesson.tsx"), L("ntm-palette-lesson.tsx")] },
+    right: {
+      pattern: /ntm interrupt (myproject|<session>)/,
+      in: [L("debugging-agents-lesson.tsx"), L("ntm-palette-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
@@ -397,7 +430,10 @@ const ROWS: ExampleRow[] = [
     issue: "#394",
     cli: "acfs",
     wrong: /acfs status --verbose\b/,
-    right: { pattern: /\bbr (list|ready)\b/, in: [L("welcome-lesson.tsx"), L("flywheel-loop-lesson.tsx")] },
+    right: {
+      pattern: /\bbr (list|ready)\b/,
+      in: [L("welcome-lesson.tsx"), L("flywheel-loop-lesson.tsx")],
+    },
   },
   {
     issue: "#394",
@@ -432,7 +468,10 @@ describe("lesson examples match the installed CLIs", () => {
 
     test(`${row.issue} ${label} is gone from every doc source`, () => {
       const offenders = SOURCES.filter((rel) => row.wrong.test(contentOf(rel)));
-      expect({ wrong: row.wrong.source, offenders }).toEqual({ wrong: row.wrong.source, offenders: [] });
+      expect({ wrong: row.wrong.source, offenders }).toEqual({
+        wrong: row.wrong.source,
+        offenders: [],
+      });
     });
 
     if (row.right) {

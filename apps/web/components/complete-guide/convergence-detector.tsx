@@ -40,7 +40,8 @@ function getConvergencePhase(score: number) {
 
 function getConvergenceVerdict(score: number) {
   if (score < 0.5) return "Keep polishing. You are still discovering meaningful shape changes.";
-  if (score < 0.75) return "Close, but not there yet. Watch for oscillation and repeated re-openings.";
+  if (score < 0.75)
+    return "Close, but not there yet. Watch for oscillation and repeated re-openings.";
   if (score < 0.9) return "The plan is ready to hand off into implementation with high confidence.";
   return "Diminishing returns have started. Another polishing round is unlikely to move the architecture.";
 }
@@ -89,15 +90,13 @@ export function ConvergenceDetector() {
             Convergence is measurable, not a vibe
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">
-            Drag the signals or jump to a preset. The methodology only moves to
-            code when refinement has clearly stopped changing the architecture.
+            Drag the signals or jump to a preset. The methodology only moves to code when refinement
+            has clearly stopped changing the architecture.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-            Presets
-          </span>
+          <span className="text-[10px] uppercase tracking-[0.22em] text-white/35">Presets</span>
           {PRESETS.map((preset) => (
             <button
               key={preset.label}
@@ -163,7 +162,12 @@ export function ConvergenceDetector() {
         <motion.div
           initial={reducedMotion ? false : { opacity: 0, scale: 0.92 }}
           animate={isInView ? { opacity: 1, scale: 1 } : undefined}
-          transition={{ type: "spring", stiffness: 200, damping: 24, delay: reducedMotion ? 0 : 0.18 }}
+          transition={{
+            type: "spring",
+            stiffness: 200,
+            damping: 24,
+            delay: reducedMotion ? 0 : 0.18,
+          }}
           className="rounded-[28px] border border-white/10 bg-slate-950/65 p-5"
         >
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
@@ -187,7 +191,10 @@ export function ConvergenceDetector() {
                 <div className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-white/35">
                   score
                 </div>
-                <div className="mt-1 text-4xl font-black tabular-nums" style={{ color: phase.color }}>
+                <div
+                  className="mt-1 text-4xl font-black tabular-nums"
+                  style={{ color: phase.color }}
+                >
                   {(score * 100).toFixed(0)}
                 </div>
               </div>
@@ -197,7 +204,10 @@ export function ConvergenceDetector() {
               <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/35">
                 Current phase
               </div>
-              <div className="mt-2 text-2xl font-black tracking-[-0.03em]" style={{ color: phase.color }}>
+              <div
+                className="mt-2 text-2xl font-black tracking-[-0.03em]"
+                style={{ color: phase.color }}
+              >
                 {phase.label}
               </div>
               <p className="mt-2 text-sm leading-relaxed text-white/62">{phase.desc}</p>

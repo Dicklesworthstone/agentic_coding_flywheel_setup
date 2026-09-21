@@ -1,54 +1,52 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Palette,
-  Sparkles,
-  Code2,
-  FileText,
+  ArrowRight,
   Bug,
-  TestTube,
-  Layers,
-  Send,
-  FolderOpen,
-  Lightbulb,
-  Play,
-  Copy,
   Check,
   ChevronRight,
-  Search,
-  Command,
-  Terminal,
-  Settings,
-  Monitor,
-  Zap,
   Clock,
-  ArrowRight,
-  Keyboard,
-  X,
+  Code2,
+  Command,
+  Copy,
   CornerDownLeft,
+  FileText,
+  FolderOpen,
   Hash,
+  Keyboard,
+  Layers,
+  Lightbulb,
+  Monitor,
+  Palette,
+  Play,
+  Search,
+  Send,
+  Settings,
+  Sparkles,
   Star,
+  Terminal,
+  TestTube,
+  X,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import { copyTextToClipboard } from "@/lib/utils";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
   InlineCode,
-  BulletList,
+  Paragraph,
+  Section,
 } from "./lesson-components";
 
 export function NtmPaletteLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Discover the pre-built prompts that supercharge your agents.
-      </GoalBanner>
+      <GoalBanner>Discover the pre-built prompts that supercharge your agents.</GoalBanner>
 
       {/* What Is The Command Palette */}
       <Section
@@ -57,20 +55,18 @@ export function NtmPaletteLesson() {
         delay={0.1}
       >
         <Paragraph>
-          NTM ships with a <Highlight>command palette</Highlight> - a collection
-          of battle-tested prompts for common development tasks.
+          NTM ships with a <Highlight>command palette</Highlight> - a collection of battle-tested
+          prompts for common development tasks.
         </Paragraph>
         <Paragraph>
-          These aren&apos;t just prompts. They&apos;re carefully crafted
-          instructions that get the best results from coding agents.
+          These aren&apos;t just prompts. They&apos;re carefully crafted instructions that get the
+          best results from coding agents.
         </Paragraph>
 
         <div className="mt-6">
           <CodeBlock code="ntm palette" />
         </div>
-        <Paragraph>
-          This opens an interactive browser of all available prompts.
-        </Paragraph>
+        <Paragraph>This opens an interactive browser of all available prompts.</Paragraph>
         <div className="mt-8">
           <InteractivePaletteBrowser />
         </div>
@@ -79,66 +75,42 @@ export function NtmPaletteLesson() {
       <Divider />
 
       {/* Palette Categories */}
-      <Section
-        title="Palette Categories"
-        icon={<Layers className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Palette Categories" icon={<Layers className="h-5 w-5" />} delay={0.15}>
         <Paragraph>The prompts are organized into categories:</Paragraph>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <CategoryCard
             icon={<Layers className="h-5 w-5" />}
             title="Architecture & Design"
-            items={[
-              "System design analysis",
-              "Architecture review",
-              "API design patterns",
-            ]}
+            items={["System design analysis", "Architecture review", "API design patterns"]}
             gradient="from-violet-500/20 to-purple-500/20"
             delay={0.1}
           />
           <CategoryCard
             icon={<Code2 className="h-5 w-5" />}
             title="Code Quality"
-            items={[
-              "Code review prompts",
-              "Refactoring suggestions",
-              "Bug hunting strategies",
-            ]}
+            items={["Code review prompts", "Refactoring suggestions", "Bug hunting strategies"]}
             gradient="from-sky-500/20 to-blue-500/20"
             delay={0.2}
           />
           <CategoryCard
             icon={<TestTube className="h-5 w-5" />}
             title="Testing"
-            items={[
-              "Test generation",
-              "Coverage analysis",
-              "Edge case discovery",
-            ]}
+            items={["Test generation", "Coverage analysis", "Edge case discovery"]}
             gradient="from-emerald-500/20 to-teal-500/20"
             delay={0.3}
           />
           <CategoryCard
             icon={<FileText className="h-5 w-5" />}
             title="Documentation"
-            items={[
-              "README generation",
-              "API documentation",
-              "Inline comment review",
-            ]}
+            items={["README generation", "API documentation", "Inline comment review"]}
             gradient="from-amber-500/20 to-orange-500/20"
             delay={0.4}
           />
           <CategoryCard
             icon={<Bug className="h-5 w-5" />}
             title="Debugging"
-            items={[
-              "Error analysis",
-              "Performance profiling",
-              "Memory leak detection",
-            ]}
+            items={["Error analysis", "Performance profiling", "Memory leak detection"]}
             gradient="from-red-500/20 to-rose-500/20"
             delay={0.5}
           />
@@ -148,28 +120,24 @@ export function NtmPaletteLesson() {
       <Divider />
 
       {/* Using Palette Prompts */}
-      <Section
-        title="Using Palette Prompts"
-        icon={<Send className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Using Palette Prompts" icon={<Send className="h-5 w-5" />} delay={0.2}>
         <div className="space-y-8">
           <UsageOption
             number={1}
             title="Copy and Send"
             steps={[
-              <>Open the palette: <InlineCode>ntm palette</InlineCode></>,
+              <>
+                Open the palette: <InlineCode>ntm palette</InlineCode>
+              </>,
               "Select a prompt",
               "Copy it",
-              <>Use <InlineCode>ntm send</InlineCode> or paste directly</>,
+              <>
+                Use <InlineCode>ntm send</InlineCode> or paste directly
+              </>,
             ]}
           />
 
-          <UsageOption
-            number={2}
-            title="Send Without The TUI (Power Move)"
-            steps={[]}
-          >
+          <UsageOption number={2} title="Send Without The TUI (Power Move)" steps={[]}>
             <div className="mt-4">
               <CodeBlock
                 code={`# One-off prompt to every agent in the session
@@ -180,11 +148,11 @@ ntm send myproject -t code_review --file src/main.go`}
               />
             </div>
             <p className="mt-3 text-white/60">
-              The palette itself is interactive-only (no <InlineCode>--send</InlineCode>{" "}
-              flag). <InlineCode>ntm send</InlineCode> is the non-interactive sender:
-              it targets all agents by default, or use <InlineCode>--cc</InlineCode>,{" "}
-              <InlineCode>--cod</InlineCode>, <InlineCode>--agy</InlineCode>, or{" "}
-              <InlineCode>--pane=N</InlineCode> to pick recipients.
+              The palette itself is interactive-only (no <InlineCode>--send</InlineCode> flag).{" "}
+              <InlineCode>ntm send</InlineCode> is the non-interactive sender: it targets all agents
+              by default, or use <InlineCode>--cc</InlineCode>, <InlineCode>--cod</InlineCode>,{" "}
+              <InlineCode>--agy</InlineCode>, or <InlineCode>--pane=N</InlineCode> to pick
+              recipients.
             </p>
           </UsageOption>
         </div>
@@ -193,11 +161,7 @@ ntm send myproject -t code_review --file src/main.go`}
       <Divider />
 
       {/* Example Prompts */}
-      <Section
-        title="Example Prompts"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Example Prompts" icon={<Sparkles className="h-5 w-5" />} delay={0.25}>
         <Paragraph>Here are a few examples from the palette:</Paragraph>
 
         <div className="mt-8 space-y-6">
@@ -248,37 +212,29 @@ Create a simple diagram if helpful.`}
         </div>
 
         <Paragraph>
-          Create <InlineCode>.md</InlineCode> files with your prompts, and
-          they&apos;ll appear in the palette.
+          Create <InlineCode>.md</InlineCode> files with your prompts, and they&apos;ll appear in
+          the palette.
         </Paragraph>
       </Section>
 
       <Divider />
 
       {/* Pro Tips */}
-      <Section
-        title="Pro Tips"
-        icon={<Lightbulb className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Pro Tips" icon={<Lightbulb className="h-5 w-5" />} delay={0.35}>
         <div className="mt-4">
           <BulletList
             items={[
               <span key="1">
-                <strong>Start broad, then narrow</strong> - Use high-level
-                prompts first
+                <strong>Start broad, then narrow</strong> - Use high-level prompts first
               </span>,
               <span key="2">
-                <strong>Combine agents</strong> - Send different prompts to
-                different agents
+                <strong>Combine agents</strong> - Send different prompts to different agents
               </span>,
               <span key="3">
-                <strong>Build on responses</strong> - Use agent output in
-                follow-up prompts
+                <strong>Build on responses</strong> - Use agent output in follow-up prompts
               </span>,
               <span key="4">
-                <strong>Save good prompts</strong> - Add working prompts to your
-                custom palette
+                <strong>Save good prompts</strong> - Add working prompts to your custom palette
               </span>,
             ]}
           />
@@ -288,11 +244,7 @@ Create a simple diagram if helpful.`}
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Play className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Try It Now" icon={<Play className="h-5 w-5" />} delay={0.4}>
         <CodeBlock
           code={`# Open the palette
 $ ntm palette
@@ -372,13 +324,18 @@ function UsageOption({
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold shadow-lg shadow-primary/20 group-hover:shadow-primary/40 group-hover:scale-110 transition duration-300">
           {number}
         </div>
-        <h4 className="text-lg font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
+        <h4 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
+          {title}
+        </h4>
       </div>
 
       {steps.length > 0 && (
         <ol className="space-y-2 ml-14">
           {steps.map((step, i) => (
-            <li key={i} className="text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors">
+            <li
+              key={i}
+              className="text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors"
+            >
               <span className="text-primary font-medium">{i + 1}.</span>
               {step}
             </li>
@@ -663,7 +620,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "1"],
     fullText:
-      "ntm send <session> -t code_review --file <path>\nSend the built-in code_review prompt template to the agents.\nThe prompt covers security, performance, readability, and edge cases.\n\nEquivalent to: opening `ntm palette` and picking \"Code Review\"",
+      'ntm send <session> -t code_review --file <path>\nSend the built-in code_review prompt template to the agents.\nThe prompt covers security, performance, readability, and edge cases.\n\nEquivalent to: opening `ntm palette` and picking "Code Review"',
     starred: true,
   },
   {
@@ -673,7 +630,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "2"],
     fullText:
-      "ntm send <session> -t test --file <path>\nSend the built-in test prompt template so the agents write\ncomprehensive tests using the project's testing framework conventions.\n\nEquivalent to: opening `ntm palette` and picking \"Test Generation\"",
+      'ntm send <session> -t test --file <path>\nSend the built-in test prompt template so the agents write\ncomprehensive tests using the project\'s testing framework conventions.\n\nEquivalent to: opening `ntm palette` and picking "Test Generation"',
   },
   {
     id: "quick-fix",
@@ -682,7 +639,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "3"],
     fullText:
-      "ntm send <session> -t fix --var issue=\"<error>\" --file <path>\nSend the built-in fix template with the error text. The agent will\ntrace the error, identify root cause, and suggest a fix.\n(Pipe a log in instead: cat error.log | ntm send <session> --cc)\n\nEquivalent to: opening `ntm palette` and picking \"Error Analysis\"",
+      'ntm send <session> -t fix --var issue="<error>" --file <path>\nSend the built-in fix template with the error text. The agent will\ntrace the error, identify root cause, and suggest a fix.\n(Pipe a log in instead: cat error.log | ntm send <session> --cc)\n\nEquivalent to: opening `ntm palette` and picking "Error Analysis"',
   },
   {
     id: "quick-docs",
@@ -691,7 +648,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "4"],
     fullText:
-      "ntm send <session> -t document --file <path>\nSend the built-in document template so the agents add\ndoc comments, function descriptions, and usage examples.\n\nEquivalent to: opening `ntm palette` and picking \"Inline Comments\"",
+      'ntm send <session> -t document --file <path>\nSend the built-in document template so the agents add\ndoc comments, function descriptions, and usage examples.\n\nEquivalent to: opening `ntm palette` and picking "Inline Comments"',
   },
 ];
 
@@ -775,7 +732,7 @@ function HighlightedText({ text, indices }: { text: string; indices: number[] })
           </span>
         ) : (
           <span key={i}>{char}</span>
-        )
+        ),
       )}
     </>
   );
@@ -802,13 +759,7 @@ function KeyCombo({ keys }: { keys: string[] }) {
 // ---------------------------------------------------------------------------
 // Mini terminal
 // ---------------------------------------------------------------------------
-function MiniTerminal({
-  lines,
-  isTyping,
-}: {
-  lines: string[];
-  isTyping: boolean;
-}) {
+function MiniTerminal({ lines, isTyping }: { lines: string[]; isTyping: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { amount: 0.15 });
   return (
@@ -839,7 +790,11 @@ function MiniTerminal({
         {isTyping && (
           <motion.span
             animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-            transition={inView ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+            transition={
+              inView
+                ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" }
+                : { duration: 0.2 }
+            }
             className="inline-block h-3.5 w-1.5 bg-emerald-400/80 ml-0.5"
           />
         )}
@@ -990,11 +945,7 @@ function InteractivePaletteBrowser() {
       setCopied(false);
       copiedTimerRef.current = null;
     }, 1500);
-    setTerminalLines((prev) => [
-      ...prev.slice(-4),
-      "!  Copied to clipboard",
-      "",
-    ]);
+    setTerminalLines((prev) => [...prev.slice(-4), "!  Copied to clipboard", ""]);
   }
 
   function handleSend() {
@@ -1054,9 +1005,7 @@ function InteractivePaletteBrowser() {
             </kbd>
           </div>
         </motion.button>
-        <span className="text-xs text-white/30">
-          {PALETTE_COMMANDS.length} commands available
-        </span>
+        <span className="text-xs text-white/30">{PALETTE_COMMANDS.length} commands available</span>
       </motion.div>
 
       <AnimatePresence mode="wait">
@@ -1129,7 +1078,7 @@ function InteractivePaletteBrowser() {
                     key={group.name}
                     onClick={() => {
                       setActiveCategoryFilter(
-                        activeCategoryFilter === group.name ? null : group.name
+                        activeCategoryFilter === group.name ? null : group.name,
                       );
                       setSelectedIndex(0);
                     }}
@@ -1204,9 +1153,7 @@ function InteractivePaletteBrowser() {
                           <span className="text-[10px] font-medium uppercase tracking-wider text-white/25">
                             {group.name}
                           </span>
-                          <span className="text-[10px] text-white/15">
-                            {items.length}
-                          </span>
+                          <span className="text-[10px] text-white/15">{items.length}</span>
                         </div>
                         <AnimatePresence mode="popLayout">
                           <div className="space-y-0.5">
@@ -1292,9 +1239,7 @@ function InteractivePaletteBrowser() {
                       <p className="text-sm text-white/30">
                         No commands match &quot;{searchQuery}&quot;
                       </p>
-                      <p className="text-xs text-white/20 mt-1">
-                        Try a different search term
-                      </p>
+                      <p className="text-xs text-white/20 mt-1">Try a different search term</p>
                     </motion.div>
                   )}
                 </div>
@@ -1315,9 +1260,7 @@ function InteractivePaletteBrowser() {
                       {/* Command header */}
                       <div className="border-b border-white/[0.06] px-5 py-4">
                         <div className="flex items-center gap-2.5 mb-2">
-                          <span
-                            className={`${findGroupForCommand(activeCommand).badgeText}`}
-                          >
+                          <span className={`${findGroupForCommand(activeCommand).badgeText}`}>
                             {findGroupForCommand(activeCommand).icon}
                           </span>
                           <span
@@ -1329,12 +1272,8 @@ function InteractivePaletteBrowser() {
                             <Star className="h-3 w-3 text-amber-400/60 fill-amber-400/40" />
                           )}
                         </div>
-                        <h3 className="text-base font-bold text-white">
-                          {activeCommand.title}
-                        </h3>
-                        <p className="mt-1 text-xs text-white/50">
-                          {activeCommand.description}
-                        </p>
+                        <h3 className="text-base font-bold text-white">{activeCommand.title}</h3>
+                        <p className="mt-1 text-xs text-white/50">{activeCommand.description}</p>
 
                         {/* Keybinding visualization */}
                         <div className="mt-3 flex items-center gap-2">
@@ -1343,9 +1282,7 @@ function InteractivePaletteBrowser() {
                           <div className="flex items-center gap-1">
                             {activeCommand.shortcut.map((key, i) => (
                               <span key={i} className="flex items-center gap-1">
-                                {i > 0 && (
-                                  <ArrowRight className="h-2.5 w-2.5 text-white/15" />
-                                )}
+                                {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-white/15" />}
                                 <motion.kbd
                                   initial={{ opacity: 0, y: 4 }}
                                   animate={{ opacity: 1, y: 0 }}
@@ -1456,7 +1393,12 @@ function InteractivePaletteBrowser() {
                         animate={inView ? { y: [0, -6, 0] } : { y: 0 }}
                         transition={
                           inView
-                            ? { duration: 3, repeat: Infinity, repeatType: "loop", ease: "easeInOut" }
+                            ? {
+                                duration: 3,
+                                repeat: Infinity,
+                                repeatType: "loop",
+                                ease: "easeInOut",
+                              }
                             : { duration: 0.2 }
                         }
                         className="mb-4"

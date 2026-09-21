@@ -1,8 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   AlertTriangle,
   Calculator,
@@ -17,43 +14,42 @@ import {
   Server,
   Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCard } from "@/components/alert-card";
+import { Jargon } from "@/components/jargon";
+import {
+  GuideCaution,
+  GuideExplain,
+  GuideSection,
+  GuideStep,
+  GuideTip,
+  SimplerGuide,
+} from "@/components/simpler-guide";
 import { TrackedLink } from "@/components/tracked-link";
+import { Button } from "@/components/ui/button";
 import { VPSComparison } from "@/components/wizard/VPSComparison";
-import { cn } from "@/lib/utils";
+import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { useVPSReadinessSelection, type VPSReadinessSelection } from "@/lib/userPreferences";
+import { cn, withCurrentSearch } from "@/lib/utils";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
   ACFS_RECOMMENDED_UBUNTU,
-  VPS_PROVIDERS,
-  VPS_TOP_PICK,
-  VPS_UBUNTU_IMAGE_OPTIONS,
-  VPS_WORKLOAD_PROFILES,
   calculateRequiredSpecs,
   describePlan,
   evaluateProviderPlans,
   isBelowRamRecommendation,
-  validateVPSReadiness,
   type PlanStatus,
+  VPS_PROVIDERS,
+  VPS_TOP_PICK,
+  VPS_UBUNTU_IMAGE_OPTIONS,
+  VPS_WORKLOAD_PROFILES,
   type VPSPlan,
   type VPSReadinessStatus,
+  validateVPSReadiness,
 } from "@/lib/vpsProviders";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
-import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { withCurrentSearch } from "@/lib/utils";
-import {
-  useVPSReadinessSelection,
-  type VPSReadinessSelection,
-} from "@/lib/userPreferences";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideStep,
-  GuideExplain,
-  GuideTip,
-  GuideCaution,
-} from "@/components/simpler-guide";
-import { Jargon } from "@/components/jargon";
 
 interface ProviderInfo {
   id: string;
@@ -87,7 +83,7 @@ const PROVIDER_PROSE: Partial<Record<string, ProviderProse>> = {
     tagline: "Polished panel, fast activation, but small plans only",
     leadPros: ["Great EU and US data centers with anti-DDoS included"],
     trailingPros: [
-      "Listed prices are OVH's \"from\" price with a 12-month term; month-to-month costs more",
+      'Listed prices are OVH\'s "from" price with a 12-month term; month-to-month costs more',
     ],
     recommendedReason: `the largest VPS OVH sells, below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target; fine for a small swarm, otherwise pick Contabo`,
   },
@@ -156,8 +152,7 @@ function ScreenshotFigure({ file, alt, caption }: ScreenshotSpec) {
         />
       </a>
       <figcaption className="text-xs text-muted-foreground">
-        {caption}{" "}
-        <span className="sr-only">(opens full size in a new tab)</span>
+        {caption} <span className="sr-only">(opens full size in a new tab)</span>
       </figcaption>
     </figure>
   );
@@ -171,12 +166,14 @@ interface ProviderCardProps {
 
 function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
   return (
-    <div className={cn(
-      "overflow-hidden rounded-xl border transition duration-200",
-      isExpanded
-        ? "border-primary/30 bg-card/80 shadow-md"
-        : "border-border/50 bg-card/50 hover:border-primary/20"
-    )}>
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border transition duration-200",
+        isExpanded
+          ? "border-primary/30 bg-card/80 shadow-md"
+          : "border-border/50 bg-card/50 hover:border-primary/20",
+      )}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -184,12 +181,12 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
         className="flex w-full items-center justify-between p-4 text-left"
       >
         <div className="flex items-center gap-3">
-          <div className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-lg font-bold transition-colors",
-            isExpanded
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground"
-          )}>
+          <div
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-lg font-bold transition-colors",
+              isExpanded ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+            )}
+          >
             {provider.name[0]}
           </div>
           <div>
@@ -200,7 +197,7 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
         <ChevronDown
           className={cn(
             "h-5 w-5 text-muted-foreground transition-transform duration-200",
-            isExpanded && "rotate-180"
+            isExpanded && "rotate-180",
           )}
         />
       </button>
@@ -223,9 +220,7 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
               <p className="text-sm">
                 <span className="font-medium text-foreground">Recommended plan:</span>{" "}
-                <span className="text-muted-foreground">
-                  {provider.recommended}
-                </span>
+                <span className="text-muted-foreground">{provider.recommended}</span>
               </p>
             </div>
           )}
@@ -250,7 +245,10 @@ const SPEC_CHECKLIST = [
   { label: "CPU", value: "12-16 vCPU" },
   { label: "RAM", value: "64GB recommended (48GB workable, 32GB minimum)" },
   { label: "Storage", value: "250GB+ NVMe SSD" },
-  { label: "Price", value: `~$${VPS_MONTHLY_USD}/month for 64GB (approximate; see the comparison table)` },
+  {
+    label: "Price",
+    value: `~$${VPS_MONTHLY_USD}/month for 64GB (approximate; see the comparison table)`,
+  },
 ];
 
 const AGENT_COUNT_PRESETS = [5, 10, 15, 25, 50];
@@ -278,10 +276,7 @@ const PLAN_STATUS_COPY: Record<PlanStatus, { label: string; className: string }>
   },
 };
 
-const READINESS_STATUS_COPY: Record<
-  VPSReadinessStatus,
-  { label: string; className: string }
-> = {
+const READINESS_STATUS_COPY: Record<VPSReadinessStatus, { label: string; className: string }> = {
   supported: {
     label: "Supported",
     className: "border-green/35 bg-green/8 text-green",
@@ -395,8 +390,9 @@ function CapacityPlanner() {
             Plan calculator
           </h2>
           <p className="text-sm text-muted-foreground">
-            Capacity uses the same conservative model as <code className="rounded bg-muted px-1">acfs capacity</code>:
-            reserve host headroom, then size RAM, CPU, and disk per active agent.
+            Capacity uses the same conservative model as{" "}
+            <code className="rounded bg-muted px-1">acfs capacity</code>: reserve host headroom,
+            then size RAM, CPU, and disk per active agent.
           </p>
         </div>
         <a
@@ -412,7 +408,10 @@ function CapacityPlanner() {
         <div className="space-y-5">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <label htmlFor="agent-count" className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <label
+                htmlFor="agent-count"
+                className="flex items-center gap-2 text-sm font-medium text-foreground"
+              >
                 <Users className="h-4 w-4 text-primary" />
                 Target agent count
               </label>
@@ -425,10 +424,12 @@ function CapacityPlanner() {
               max={50}
               step={5}
               value={agentCount}
-              onChange={(event) => updatePlannerSelection({
-                ...plannerSelection,
-                targetAgents: Number(event.target.value),
-              })}
+              onChange={(event) =>
+                updatePlannerSelection({
+                  ...plannerSelection,
+                  targetAgents: Number(event.target.value),
+                })
+              }
               className="h-6 w-full cursor-pointer accent-primary"
               aria-label="Target agent count"
             />
@@ -438,15 +439,17 @@ function CapacityPlanner() {
                   key={count}
                   type="button"
                   aria-pressed={agentCount === count}
-                  onClick={() => updatePlannerSelection({
-                    ...plannerSelection,
-                    targetAgents: count,
-                  })}
+                  onClick={() =>
+                    updatePlannerSelection({
+                      ...plannerSelection,
+                      targetAgents: count,
+                    })
+                  }
                   className={cn(
                     "rounded-md border px-2 py-1 text-xs font-medium transition-colors",
                     agentCount === count
                       ? "border-primary/50 bg-primary/15 text-primary"
-                      : "border-border/50 bg-background/40 text-muted-foreground hover:text-foreground"
+                      : "border-border/50 bg-background/40 text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {count}
@@ -463,15 +466,17 @@ function CapacityPlanner() {
                   key={profile.id}
                   type="button"
                   aria-pressed={workloadId === profile.id}
-                  onClick={() => updatePlannerSelection({
-                    ...plannerSelection,
-                    workloadId: profile.id,
-                  })}
+                  onClick={() =>
+                    updatePlannerSelection({
+                      ...plannerSelection,
+                      workloadId: profile.id,
+                    })
+                  }
                   className={cn(
                     "rounded-lg border p-3 text-left transition-colors",
                     workloadId === profile.id
                       ? "border-primary/50 bg-primary/10"
-                      : "border-border/50 bg-background/40 hover:border-primary/25"
+                      : "border-border/50 bg-background/40 hover:border-primary/25",
                   )}
                 >
                   <span className="flex items-center justify-between gap-3">
@@ -497,7 +502,8 @@ function CapacityPlanner() {
                 {minimumSpecs.ramGB} GB RAM / {minimumSpecs.vCPU} vCPU
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Enough to try {agentCount} {workload.label.toLowerCase()} agents with little spare room.
+                Enough to try {agentCount} {workload.label.toLowerCase()} agents with little spare
+                room.
               </p>
             </div>
             <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
@@ -531,7 +537,7 @@ function CapacityPlanner() {
               "rounded-lg border p-3",
               bestListedPlan
                 ? statusCopy(bestListedPlan.status).className
-                : "border-destructive/35 bg-destructive/10 text-destructive"
+                : "border-destructive/35 bg-destructive/10 text-destructive",
             )}
           >
             <div className="flex items-start gap-2">
@@ -568,14 +574,23 @@ function CapacityPlanner() {
                       {entry.providerName} {entry.plan.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {entry.plan.ramGB} GB RAM, {entry.plan.vCPU} vCPU, ${entry.plan.priceUSD}/mo approx.
+                      {entry.plan.ramGB} GB RAM, {entry.plan.vCPU} vCPU, ${entry.plan.priceUSD}/mo
+                      approx.
                       {isBelowRamRecommendation(entry.plan) && (
-                        <span className="text-amber"> Below the {ACFS_RECOMMENDED_MIN_RAM_GB} GB recommendation.</span>
+                        <span className="text-amber">
+                          {" "}
+                          Below the {ACFS_RECOMMENDED_MIN_RAM_GB} GB recommendation.
+                        </span>
                       )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", copy.className)}>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-xs font-medium",
+                        copy.className,
+                      )}
+                    >
                       {copy.label}
                     </span>
                     <span className="font-mono text-xs text-muted-foreground">
@@ -589,15 +604,24 @@ function CapacityPlanner() {
         </div>
       </div>
 
-      <div data-testid="provider-readiness-check" className="space-y-4 rounded-lg border border-border/50 bg-background/35 p-3">
+      <div
+        data-testid="provider-readiness-check"
+        className="space-y-4 rounded-lg border border-border/50 bg-background/35 p-3"
+      >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="font-medium text-foreground">Provider readiness check</h3>
             <p className="text-sm text-muted-foreground">
-              Advisory guardrails for the plan, Ubuntu image, region, and target agent count before you pay.
+              Advisory guardrails for the plan, Ubuntu image, region, and target agent count before
+              you pay.
             </p>
           </div>
-          <span className={cn("w-fit rounded-full border px-2 py-0.5 text-xs font-medium", readinessStatusCopy.className)}>
+          <span
+            className={cn(
+              "w-fit rounded-full border px-2 py-0.5 text-xs font-medium",
+              readinessStatusCopy.className,
+            )}
+          >
             {readinessStatusCopy.label}
           </span>
         </div>
@@ -625,10 +649,12 @@ function CapacityPlanner() {
             <select
               aria-label="Plan"
               value={readinessPlanName}
-              onChange={(event) => updatePlannerSelection({
-                ...plannerSelection,
-                planName: event.target.value,
-              })}
+              onChange={(event) =>
+                updatePlannerSelection({
+                  ...plannerSelection,
+                  planName: event.target.value,
+                })
+              }
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
               {readinessPlans.map((plan) => (
@@ -645,20 +671,26 @@ function CapacityPlanner() {
             <select
               aria-label="Ubuntu image"
               value={ubuntuVersion}
-              onChange={(event) => updatePlannerSelection({
-                ...plannerSelection,
-                ubuntuVersion: event.target.value,
-              })}
+              onChange={(event) =>
+                updatePlannerSelection({
+                  ...plannerSelection,
+                  ubuntuVersion: event.target.value,
+                })
+              }
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
-              {!VPS_UBUNTU_IMAGE_OPTIONS.some((version) => version === ubuntuVersion) && ubuntuVersion !== "unknown" && (
-                <option value={ubuntuVersion} disabled>
-                  Ubuntu {ubuntuVersion} — unsupported saved image
-                </option>
-              )}
+              {!VPS_UBUNTU_IMAGE_OPTIONS.some((version) => version === ubuntuVersion) &&
+                ubuntuVersion !== "unknown" && (
+                  <option value={ubuntuVersion} disabled>
+                    Ubuntu {ubuntuVersion} — unsupported saved image
+                  </option>
+                )}
               {VPS_UBUNTU_IMAGE_OPTIONS.map((version) => (
                 <option key={version} value={version}>
-                  Ubuntu {version} LTS{version === ACFS_RECOMMENDED_UBUNTU ? " (recommended)" : " (upgrade review required)"}
+                  Ubuntu {version} LTS
+                  {version === ACFS_RECOMMENDED_UBUNTU
+                    ? " (recommended)"
+                    : " (upgrade review required)"}
                 </option>
               ))}
               <option value="unknown">Image unknown — verify before installing</option>
@@ -670,10 +702,12 @@ function CapacityPlanner() {
             <select
               aria-label="Region"
               value={readinessRegion}
-              onChange={(event) => updatePlannerSelection({
-                ...plannerSelection,
-                region: event.target.value,
-              })}
+              onChange={(event) =>
+                updatePlannerSelection({
+                  ...plannerSelection,
+                  region: event.target.value,
+                })
+              }
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
               {readinessRegions.map((region) => (
@@ -689,8 +723,9 @@ function CapacityPlanner() {
         <div className={cn("rounded-lg border p-3", readinessStatusCopy.className)}>
           <p className="font-medium">{readiness.summary}</p>
           <p className="mt-1 text-sm opacity-90">
-            Verify these choices in the provider console before checkout. Changing a selection here does not upgrade an existing server.
-            Unsupported images and unresolved OS checks withhold executable installer commands from provisioning packets.
+            Verify these choices in the provider console before checkout. Changing a selection here
+            does not upgrade an existing server. Unsupported images and unresolved OS checks
+            withhold executable installer commands from provisioning packets.
           </p>
         </div>
 
@@ -701,7 +736,12 @@ function CapacityPlanner() {
               <div key={check.id} className="rounded-lg border border-border/50 bg-card/40 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-medium text-foreground">{check.label}</p>
-                  <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium", copy.className)}>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium",
+                      copy.className,
+                    )}
+                  >
                     {copy.label}
                   </span>
                 </div>
@@ -755,7 +795,10 @@ export default function RentVPSPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              Rent a <Jargon term="vps" gradientHeading>VPS</Jargon>
+              Rent a{" "}
+              <Jargon term="vps" gradientHeading>
+                VPS
+              </Jargon>
             </h1>
             <p className="text-sm text-muted-foreground">
               ~10 min (+ provider account verification, sometimes hours)
@@ -763,7 +806,8 @@ export default function RentVPSPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Pick a <Jargon term="vps">VPS</Jargon> provider and rent a server. This is where your <Jargon term="ai-agents">coding agents</Jargon> will live.
+          Pick a <Jargon term="vps">VPS</Jargon> provider and rent a server. This is where your{" "}
+          <Jargon term="ai-agents">coding agents</Jargon> will live.
         </p>
       </div>
 
@@ -778,9 +822,7 @@ export default function RentVPSPage() {
         <div className="grid gap-2 sm:grid-cols-2">
           {SPEC_CHECKLIST.map((spec) => (
             <div key={spec.label} className="flex gap-2 text-sm">
-              <span className="font-medium text-muted-foreground min-w-20">
-                {spec.label}:
-              </span>
+              <span className="font-medium text-muted-foreground min-w-20">{spec.label}:</span>
               <span className="text-foreground">{spec.value}</span>
             </div>
           ))}
@@ -794,16 +836,17 @@ export default function RentVPSPage() {
       <AlertCard variant="warning" title="Before you sign up">
         <div className="space-y-2 text-sm">
           <p>
-            <strong className="text-foreground">Credit card required:</strong> Both providers require
-            a valid credit card for signup. Prepaid cards may not work.
+            <strong className="text-foreground">Credit card required:</strong> Both providers
+            require a valid credit card for signup. Prepaid cards may not work.
           </p>
           <p>
-            <strong className="text-foreground">Email verification:</strong> You&apos;ll need to verify
-            your email address. Check your spam folder if you don&apos;t see the verification email.
+            <strong className="text-foreground">Email verification:</strong> You&apos;ll need to
+            verify your email address. Check your spam folder if you don&apos;t see the verification
+            email.
           </p>
           <p className="text-muted-foreground">
-            Some providers (especially Contabo) may require additional identity verification for
-            new accounts. This usually takes a few minutes but can occasionally take up to 24 hours.
+            Some providers (especially Contabo) may require additional identity verification for new
+            accounts. This usually takes a few minutes but can occasionally take up to 24 hours.
           </p>
         </div>
       </AlertCard>
@@ -840,11 +883,15 @@ export default function RentVPSPage() {
               No affiliate deals, just honest recommendations
             </p>
             <p className="text-[13px] leading-relaxed text-[oklch(0.65_0.02_260)] sm:text-sm">
-              I&apos;m Jeffrey Emanuel, and I have <span className="font-medium text-[oklch(0.75_0.02_260)]">zero financial relationship</span> with
-              Contabo, OVH, or any cloud provider. No affiliate links, no kickbacks, no sponsored content.
-              I recommend these because I use them myself. They offer beefy machines (48GB+ RAM) at
-              a fraction of what AWS, GCP, or Azure charge. On those big providers, equivalent specs
-              would cost <span className="font-medium text-[oklch(0.75_0.02_260)]">3-5× more</span>.
+              I&apos;m Jeffrey Emanuel, and I have{" "}
+              <span className="font-medium text-[oklch(0.75_0.02_260)]">
+                zero financial relationship
+              </span>{" "}
+              with Contabo, OVH, or any cloud provider. No affiliate links, no kickbacks, no
+              sponsored content. I recommend these because I use them myself. They offer beefy
+              machines (48GB+ RAM) at a fraction of what AWS, GCP, or Azure charge. On those big
+              providers, equivalent specs would cost{" "}
+              <span className="font-medium text-[oklch(0.75_0.02_260)]">3-5× more</span>.
             </p>
           </div>
         </div>
@@ -853,33 +900,35 @@ export default function RentVPSPage() {
       {/* Other providers note */}
       <AlertCard variant="tip" title="Using a different provider?">
         Any provider with an <Jargon term="ubuntu">Ubuntu</Jargon> <Jargon term="vps">VPS</Jargon>,{" "}
-        <Jargon term="ssh">SSH</Jargon> access, and a first-login root password or root console works.
-        Choose password authentication when it is offered; ACFS sets up your SSH key after the first install.
+        <Jargon term="ssh">SSH</Jargon> access, and a first-login root password or root console
+        works. Choose password authentication when it is offered; ACFS sets up your SSH key after
+        the first install.
       </AlertCard>
 
       {/* Beginner Guide */}
       <SimplerGuide>
         <div className="space-y-6">
           <GuideExplain term="a VPS (Virtual Private Server)">
-            A dedicated server in a data center that runs 24/7, even when your laptop is closed.
-            You get root access and full control.
-            <br /><br />
+            A dedicated server in a data center that runs 24/7, even when your laptop is closed. You
+            get root access and full control.
+            <br />
+            <br />
             <strong>Why do you need one?</strong>
             <br />
-            AI coding assistants work best on a dedicated server that&apos;s always on.
-            Running them on your laptop would drain your battery and slow everything down.
-            With a VPS, your AI assistants can work even when you&apos;re asleep.
+            AI coding assistants work best on a dedicated server that&apos;s always on. Running them
+            on your laptop would drain your battery and slow everything down. With a VPS, your AI
+            assistants can work even when you&apos;re asleep.
           </GuideExplain>
 
           <GuideSection title="Why 64GB RAM?">
             <div className="rounded-lg border border-amber/30 bg-amber/8 p-4 mb-4">
               <p className="font-medium text-foreground mb-2">⚡ This matters a lot!</p>
               <p className="text-sm text-muted-foreground">
-                Each AI coding agent (like Claude Code) uses about 2GB of RAM when running.
-                To get the full power of this approach, you&apos;ll want enough room for 10-16
-                standard agents on one host, with more capacity for light work or multi-host
-                swarms. That&apos;s significant RAM just for agents, plus room for your development
-                tools and databases.
+                Each AI coding agent (like Claude Code) uses about 2GB of RAM when running. To get
+                the full power of this approach, you&apos;ll want enough room for 10-16 standard
+                agents on one host, with more capacity for light work or multi-host swarms.
+                That&apos;s significant RAM just for agents, plus room for your development tools
+                and databases.
               </p>
             </div>
             <ul className="space-y-2 text-sm">
@@ -887,17 +936,20 @@ export default function RentVPSPage() {
                 <strong>32GB RAM:</strong> Absolute minimum. Can run 5-8 agents. Not recommended.
               </li>
               <li>
-                <strong>48GB RAM:</strong> Workable but tight. Run 10+ agents. (~${VPS_BUDGET_MONTHLY_USD}/month)
+                <strong>48GB RAM:</strong> Workable but tight. Run 10+ agents. (~$
+                {VPS_BUDGET_MONTHLY_USD}/month)
               </li>
               <li>
-                <strong>64GB RAM:</strong> Just get this. Run 10-16 standard agents, or around 20 light agents, with headroom. (~${VPS_MONTHLY_USD}/month)
+                <strong>64GB RAM:</strong> Just get this. Run 10-16 standard agents, or around 20
+                light agents, with headroom. (~${VPS_MONTHLY_USD}/month)
               </li>
             </ul>
             <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <p className="text-sm text-muted-foreground">
-                <strong>Just get 64GB.</strong> You&apos;re spending $400+/month on AI subscriptions, so the
-                extra ~${VPS_UPGRADE_DELTA_USD}/month for 64GB vs 48GB is noise. Don&apos;t bottleneck a $400+/month
-                investment to save ${VPS_UPGRADE_DELTA_USD}. The headroom matters when you&apos;re running 15+ agents
+                <strong>Just get 64GB.</strong> You&apos;re spending $400+/month on AI
+                subscriptions, so the extra ~${VPS_UPGRADE_DELTA_USD}/month for 64GB vs 48GB is
+                noise. Don&apos;t bottleneck a $400+/month investment to save $
+                {VPS_UPGRADE_DELTA_USD}. The headroom matters when you&apos;re running 15+ agents
                 plus databases, build tools, and language servers.
               </p>
             </div>
@@ -905,79 +957,91 @@ export default function RentVPSPage() {
 
           <GuideSection title="The Reality of VPS Performance">
             <p className="mb-3 text-sm text-muted-foreground">
-              A VPS isn&apos;t a dedicated machine. It&apos;s a slice of a larger physical server shared
-              with other customers. Understanding this helps you set realistic expectations:
+              A VPS isn&apos;t a dedicated machine. It&apos;s a slice of a larger physical server
+              shared with other customers. Understanding this helps you set realistic expectations:
             </p>
             <ul className="space-y-3 text-sm">
               <li>
-                <strong>Shared resources:</strong> Your &quot;16 vCPU&quot; VPS shares the physical CPU
-                with other tenants. When neighbors run heavy workloads, your performance dips.
+                <strong>Shared resources:</strong> Your &quot;16 vCPU&quot; VPS shares the physical
+                CPU with other tenants. When neighbors run heavy workloads, your performance dips.
                 This is normal and expected.
               </li>
               <li>
                 <strong>Overselling is common:</strong> Providers bet that not everyone uses their
-                full allocation simultaneously. When you&apos;re sleeping, they effectively reuse that
-                capacity. This is how they offer low prices, and why performance can be inconsistent.
+                full allocation simultaneously. When you&apos;re sleeping, they effectively reuse
+                that capacity. This is how they offer low prices, and why performance can be
+                inconsistent.
               </li>
               <li>
-                <strong>Dedicated servers exist:</strong> If you want guaranteed, consistent performance,
-                bare-metal dedicated servers are available, but they cost 3-10× more. For most users,
-                VPS is the right price/performance tradeoff.
+                <strong>Dedicated servers exist:</strong> If you want guaranteed, consistent
+                performance, bare-metal dedicated servers are available, but they cost 3-10× more.
+                For most users, VPS is the right price/performance tradeoff.
               </li>
             </ul>
             <div className="mt-4 rounded-lg border border-primary/30 bg-primary/8 p-3">
               <p className="text-sm text-muted-foreground">
-                <strong>💡 This is another reason to get 64GB:</strong> You won&apos;t always get the full
-                performance you&apos;d expect from those specs. Having headroom means your agents keep
-                running smoothly even when the underlying hardware is contested. Think of the extra
-                RAM as insurance against noisy neighbors.
+                <strong>💡 This is another reason to get 64GB:</strong> You won&apos;t always get
+                the full performance you&apos;d expect from those specs. Having headroom means your
+                agents keep running smoothly even when the underlying hardware is contested. Think
+                of the extra RAM as insurance against noisy neighbors.
               </p>
             </div>
           </GuideSection>
 
           <GuideSection title="The Full Investment">
             <p className="mb-4 text-sm text-muted-foreground">
-              To use the agentic coding approach, you&apos;ll need subscriptions to AI services
-              in addition to your VPS. Here&apos;s what the full setup looks like:
+              To use the agentic coding approach, you&apos;ll need subscriptions to AI services in
+              addition to your VPS. Here&apos;s what the full setup looks like:
             </p>
             <div className="space-y-3">
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
                 <p className="font-medium text-foreground">Claude Max ($200/month)</p>
                 <p className="text-sm text-muted-foreground">
-                  High Claude Code usage limits. For serious multi-agent workflows, consider
-                  2 accounts ($400/month) to maximize parallel capacity.
+                  High Claude Code usage limits. For serious multi-agent workflows, consider 2
+                  accounts ($400/month) to maximize parallel capacity.
                 </p>
               </div>
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
-                <p className="font-medium text-foreground">ChatGPT Pro ($200/month): Critical for Planning</p>
+                <p className="font-medium text-foreground">
+                  ChatGPT Pro ($200/month): Critical for Planning
+                </p>
                 <p className="text-sm text-muted-foreground">
                   Access to GPT 5.2 Pro with Extended Thinking in the ChatGPT webapp. This is
                   <strong> the key to making this approach work</strong>: you use it to write,
                   revise, and iterate on comprehensive plan documents in markdown. Everything
                   depends on having an extremely detailed, granular plan, which you then convert
-                  into trackable tasks using <Jargon term="beads">Beads</Jargon>. The extended thinking capability is unmatched
-                  for this kind of strategic planning work.
+                  into trackable tasks using <Jargon term="beads">Beads</Jargon>. The extended
+                  thinking capability is unmatched for this kind of strategic planning work.
                 </p>
               </div>
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="font-medium text-foreground">Total for full setup:</p>
                 <p className="text-sm text-muted-foreground">
-                  VPS (~${VPS_MONTHLY_USD}) + Claude Max x2 ($400) + ChatGPT Pro ($200) = <strong>~${VPS_MONTHLY_USD + 600}/month</strong>
-                  <br /><br />
-                  <em>This sounds like a lot, but compare it to hiring: a junior developer in the US
-                  costs $100k+/year (~$8,300+/month). For less than 10% of that, you get AI agents
-                  working 24/7 with no vacation, no onboarding, and instant scaling.</em>
+                  VPS (~${VPS_MONTHLY_USD}) + Claude Max x2 ($400) + ChatGPT Pro ($200) ={" "}
+                  <strong>~${VPS_MONTHLY_USD + 600}/month</strong>
+                  <br />
+                  <br />
+                  <em>
+                    This sounds like a lot, but compare it to hiring: a junior developer in the US
+                    costs $100k+/year (~$8,300+/month). For less than 10% of that, you get AI agents
+                    working 24/7 with no vacation, no onboarding, and instant scaling.
+                  </em>
                 </p>
               </div>
             </div>
             <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/8 p-3">
               <p className="text-sm text-muted-foreground">
-                <strong>⚠️ Realistic minimum investment:</strong> VPS (~${VPS_MONTHLY_USD}/month for 64GB) + Claude Max ($200/month) + ChatGPT Pro ($200/month) = <strong>~${VPS_MONTHLY_USD + 400}/month</strong>.
-                The $20/month Claude Pro tier does <em>not</em> have enough capacity for agentic workflows; you&apos;ll
-                hit rate limits almost immediately. Claude Max is required for execution, and ChatGPT Pro&apos;s extended
-                thinking is essential for creating the detailed plan documents that make this approach work.
-                <br /><br />
-                <strong>Perspective:</strong> A junior US developer costs ~$8k+/month. This is ~5% of that, for AI agents that work 24/7.
+                <strong>⚠️ Realistic minimum investment:</strong> VPS (~${VPS_MONTHLY_USD}/month for
+                64GB) + Claude Max ($200/month) + ChatGPT Pro ($200/month) ={" "}
+                <strong>~${VPS_MONTHLY_USD + 400}/month</strong>. The $20/month Claude Pro tier does{" "}
+                <em>not</em> have enough capacity for agentic workflows; you&apos;ll hit rate limits
+                almost immediately. Claude Max is required for execution, and ChatGPT Pro&apos;s
+                extended thinking is essential for creating the detailed plan documents that make
+                this approach work.
+                <br />
+                <br />
+                <strong>Perspective:</strong> A junior US developer costs ~$8k+/month. This is ~5%
+                of that, for AI agents that work 24/7.
               </p>
             </div>
           </GuideSection>
@@ -988,22 +1052,26 @@ export default function RentVPSPage() {
             </p>
             <ul className="space-y-3">
               <li>
-                <strong>Contabo:</strong> Our top recommendation! Best specs for the price.
-                {" "}{describePlan(CONTABO.recommended)} is our top pick; {describePlan(CONTABO.budget)} for budget.
-                Interface is basic but functional. Usually activates within minutes (occasionally up to ~1 hour).
+                <strong>Contabo:</strong> Our top recommendation! Best specs for the price.{" "}
+                {describePlan(CONTABO.recommended)} is our top pick; {describePlan(CONTABO.budget)}{" "}
+                for budget. Interface is basic but functional. Usually activates within minutes
+                (occasionally up to ~1 hour).
               </li>
               <li>
-                <strong>OVH:</strong> Polished interface and fast activation, but its VPS range now tops out at
-                {" "}{describePlan(OVH.recommended)}, below the {ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target.
-                Fine for a small swarm of ~4-6 standard agents; otherwise pick Contabo.
+                <strong>OVH:</strong> Polished interface and fast activation, but its VPS range now
+                tops out at {describePlan(OVH.recommended)}, below the {ACFS_RECOMMENDED_MIN_RAM_GB}
+                GB ACFS target. Fine for a small swarm of ~4-6 standard agents; otherwise pick
+                Contabo.
               </li>
             </ul>
             <div className="mt-4 rounded-lg border border-primary/30 bg-primary/8 p-3">
               <p className="text-sm text-muted-foreground">
-                <strong>💡 About pricing:</strong> USD prices on this page are <strong>approximate</strong>.
-                Contabo lists EUR prices (its 24-month introductory rate, incl. VAT) and OVH shows a &quot;from&quot; price
-                that assumes a 12-month term, so month-to-month billing costs more. We still recommend starting
-                monthly so you can cancel anytime. US datacenters may add a location fee; the checkout page shows the final price.
+                <strong>💡 About pricing:</strong> USD prices on this page are{" "}
+                <strong>approximate</strong>. Contabo lists EUR prices (its 24-month introductory
+                rate, incl. VAT) and OVH shows a &quot;from&quot; price that assumes a 12-month
+                term, so month-to-month billing costs more. We still recommend starting monthly so
+                you can cancel anytime. US datacenters may add a location fee; the checkout page
+                shows the final price.
               </p>
             </div>
           </GuideSection>
@@ -1012,7 +1080,11 @@ export default function RentVPSPage() {
             <div className="space-y-4">
               <GuideStep number={1} title="Go to Contabo's website">
                 Click on &quot;Contabo&quot; above, or go to{" "}
-                <TrackedLink href="https://contabo.com/en-us/vps/" trackingId="contabo-guide-link" className="text-primary underline">
+                <TrackedLink
+                  href="https://contabo.com/en-us/vps/"
+                  trackingId="contabo-guide-link"
+                  className="text-primary underline"
+                >
                   contabo.com/en-us/vps
                   <span className="sr-only"> (opens in new tab)</span>
                 </TrackedLink>
@@ -1024,8 +1096,9 @@ export default function RentVPSPage() {
               </GuideStep>
 
               <GuideStep number={2} title="Choose a plan with enough resources">
-                Look for a plan with <strong>12+ vCPU</strong> and <strong>48GB+ RAM</strong> (32GB absolute minimum).
-                Fast SSD storage is standard on the recommended plans. Click &quot;Configure&quot; or &quot;Order&quot;.
+                Look for a plan with <strong>12+ vCPU</strong> and <strong>48GB+ RAM</strong> (32GB
+                absolute minimum). Fast SSD storage is standard on the recommended plans. Click
+                &quot;Configure&quot; or &quot;Order&quot;.
                 <ScreenshotFigure
                   file="contabo_us_02_plans.png"
                   alt="Contabo plans list highlighting Cloud VPS options (older screenshot; plan names may differ)"
@@ -1035,13 +1108,20 @@ export default function RentVPSPage() {
 
               <GuideStep number={3} title="Configure your VPS">
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li><strong>Region:</strong> Choose closest to you (US or EU)</li>
-                  <li><strong>Storage:</strong> Keep the default NVMe option</li>
-                  <li><strong>Image:</strong> Select Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS</li>
+                  <li>
+                    <strong>Region:</strong> Choose closest to you (US or EU)
+                  </li>
+                  <li>
+                    <strong>Storage:</strong> Keep the default NVMe option
+                  </li>
+                  <li>
+                    <strong>Image:</strong> Select Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS
+                  </li>
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Confirm this image is available in your selected region. For Ubuntu 22.04 or 24.04,
-                  complete a supported LTS upgrade first; do not rely on ACFS&apos;s legacy automatic upgrade path.
+                  Confirm this image is available in your selected region. For Ubuntu 22.04 or
+                  24.04, complete a supported LTS upgrade first; do not rely on ACFS&apos;s legacy
+                  automatic upgrade path.
                 </p>
                 <ScreenshotFigure
                   file="contabo_us_03_order_page.png"
@@ -1060,16 +1140,17 @@ export default function RentVPSPage() {
               </GuideStep>
 
               <GuideStep number={5} title="Add payment method">
-                Contabo accepts credit cards and PayPal. You&apos;ll be charged for the
-                first month upfront.
-                <br /><br />
-                <strong>Tip:</strong> Monthly billing is fine to start. You can switch to
-                annual billing later for a small discount.
+                Contabo accepts credit cards and PayPal. You&apos;ll be charged for the first month
+                upfront.
+                <br />
+                <br />
+                <strong>Tip:</strong> Monthly billing is fine to start. You can switch to annual
+                billing later for a small discount.
               </GuideStep>
 
               <GuideStep number={6} title="Complete the order">
-                Review your order and complete checkout. Contabo activates servers
-                quickly, usually within minutes (occasionally up to ~1 hour).
+                Review your order and complete checkout. Contabo activates servers quickly, usually
+                within minutes (occasionally up to ~1 hour).
               </GuideStep>
             </div>
           </GuideSection>
@@ -1078,7 +1159,11 @@ export default function RentVPSPage() {
             <div className="space-y-4">
               <GuideStep number={1} title="Go to OVH's VPS page">
                 Click on &quot;OVH&quot; above, or go to{" "}
-                <TrackedLink href="https://us.ovhcloud.com/vps/" trackingId="ovh-guide-link" className="text-primary underline">
+                <TrackedLink
+                  href="https://us.ovhcloud.com/vps/"
+                  trackingId="ovh-guide-link"
+                  className="text-primary underline"
+                >
                   us.ovhcloud.com/vps
                   <span className="sr-only"> (opens in new tab)</span>
                 </TrackedLink>
@@ -1089,19 +1174,25 @@ export default function RentVPSPage() {
                 />
               </GuideStep>
 
-              <GuideStep number={2} title={`Choose ${OVH.recommended.name} (${OVH.recommended.ramGB}GB, the largest OVH sells)`}>
-                OVH&apos;s current VPS range tops out below the {ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target:
+              <GuideStep
+                number={2}
+                title={`Choose ${OVH.recommended.name} (${OVH.recommended.ramGB}GB, the largest OVH sells)`}
+              >
+                OVH&apos;s current VPS range tops out below the {ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS
+                target:
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   <li>
-                    <strong>{OVH.recommended.name}:</strong> {OVH.recommended.ramGB}GB RAM, {OVH.recommended.vCPU} vCore
-                    (~${OVH.recommended.priceUSD}/month) — enough for a small swarm of ~4-6 standard agents
+                    <strong>{OVH.recommended.name}:</strong> {OVH.recommended.ramGB}GB RAM,{" "}
+                    {OVH.recommended.vCPU} vCore (~${OVH.recommended.priceUSD}/month) — enough for a
+                    small swarm of ~4-6 standard agents
                   </li>
                   <li>
-                    <strong>{OVH.budget.name}:</strong> {OVH.budget.ramGB}GB RAM (~${OVH.budget.priceUSD}/month) — only for
-                    trying ACFS with 1-2 agents
+                    <strong>{OVH.budget.name}:</strong> {OVH.budget.ramGB}GB RAM (~$
+                    {OVH.budget.priceUSD}/month) — only for trying ACFS with 1-2 agents
                   </li>
                 </ul>
-                If you want the 48-64GB host this guide recommends, use Contabo instead. Otherwise click &quot;Order&quot; to continue.
+                If you want the 48-64GB host this guide recommends, use Contabo instead. Otherwise
+                click &quot;Order&quot; to continue.
                 <ScreenshotFigure
                   file="ovh_us_02_plans.png"
                   alt="OVH plans list (older screenshot; the current lineup is VPS-1 to VPS-4)"
@@ -1112,9 +1203,15 @@ export default function RentVPSPage() {
               <GuideStep number={3} title="Configure your order">
                 During configuration, look for:
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li><strong>Image/OS:</strong> Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS</li>
-                  <li><strong>Region:</strong> Closest to you (US-East/US-West/EU)</li>
-                  <li><strong>Authentication:</strong> Password (skip SSH keys for now)</li>
+                  <li>
+                    <strong>Image/OS:</strong> Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS
+                  </li>
+                  <li>
+                    <strong>Region:</strong> Closest to you (US-East/US-West/EU)
+                  </li>
+                  <li>
+                    <strong>Authentication:</strong> Password (skip SSH keys for now)
+                  </li>
                 </ul>
                 <ScreenshotFigure
                   file="ovh_us_03_order.png"
@@ -1122,22 +1219,23 @@ export default function RentVPSPage() {
                   caption="Order flow — pick Ubuntu + region, then continue to checkout."
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Confirm this image is available before paying. Older LTS images require a supported upgrade
-                  before installation; an arbitrary newer version is not automatically a reviewed ACFS image.
+                  Confirm this image is available before paying. Older LTS images require a
+                  supported upgrade before installation; an arbitrary newer version is not
+                  automatically a reviewed ACFS image.
                 </p>
               </GuideStep>
 
               <GuideStep number={4} title="Create an account + pay">
-                OVH will prompt you to create an account and add a payment method.
-                Once the order completes, activation is usually instant.
+                OVH will prompt you to create an account and add a payment method. Once the order
+                completes, activation is usually instant.
               </GuideStep>
             </div>
           </GuideSection>
 
           <GuideSection title="Understanding the specs">
             <p className="mb-3">
-              When choosing a plan, you&apos;ll see terms like vCPU, RAM, and NVMe.
-              Here&apos;s what they mean:
+              When choosing a plan, you&apos;ll see terms like vCPU, RAM, and NVMe. Here&apos;s what
+              they mean:
             </p>
             <ul className="space-y-2">
               <li>
@@ -1149,8 +1247,8 @@ export default function RentVPSPage() {
                 multiple AI agents. 32GB is absolute minimum; 48GB+ is recommended.
               </li>
               <li>
-                <strong>Storage (250GB+ NVMe):</strong> Long-term storage for files, databases,
-                and AI model caches. NVMe is fast. 250GB is a good starting point.
+                <strong>Storage (250GB+ NVMe):</strong> Long-term storage for files, databases, and
+                AI model caches. NVMe is fast. 250GB is a good starting point.
               </li>
               <li>
                 <strong>Ubuntu:</strong> The operating system we&apos;ll install. It&apos;s like
@@ -1161,35 +1259,44 @@ export default function RentVPSPage() {
 
           <GuideSection title="Backup Strategy">
             <p className="mb-3 text-sm text-muted-foreground">
-              Both providers offer VPS snapshots (~$2-5/month) for quick restore points. But for code,
-              <strong> <Jargon term="github">GitHub</Jargon> is your real backup</strong>:
+              Both providers offer VPS snapshots (~$2-5/month) for quick restore points. But for
+              code,
+              <strong>
+                {" "}
+                <Jargon term="github">GitHub</Jargon> is your real backup
+              </strong>
+              :
             </p>
             <ul className="space-y-2 text-sm">
               <li>
-                <strong>Push to GitHub regularly.</strong> If your VPS dies, your code is safe. We install the{" "}
-                <code className="rounded bg-muted px-1">gh</code> CLI for easy GitHub access.
+                <strong>Push to GitHub regularly.</strong> If your VPS dies, your code is safe. We
+                install the <code className="rounded bg-muted px-1">gh</code> CLI for easy GitHub
+                access.
               </li>
               <li>
-                <strong>Open-source = free everything.</strong> Public repos, unlimited Actions, GitHub Pages, all free.
+                <strong>Open-source = free everything.</strong> Public repos, unlimited Actions,
+                GitHub Pages, all free.
               </li>
               <li>
-                <strong>Private projects:</strong> Free tier works for individuals. Teams or heavy CI/CD may need
-                GitHub Pro ($4/month) or Team ($4/user/month) for more Actions minutes.
+                <strong>Private projects:</strong> Free tier works for individuals. Teams or heavy
+                CI/CD may need GitHub Pro ($4/month) or Team ($4/user/month) for more Actions
+                minutes.
               </li>
             </ul>
           </GuideSection>
 
           <GuideTip>
-            <strong>TL;DR:</strong> Get Contabo <strong>{CONTABO.recommended.name}</strong> ({CONTABO.recommended.ramGB}GB RAM,
-            {" "}{CONTABO.recommended.vCPU} vCPU, ~${CONTABO.recommended.priceUSD}/month approx.).
-            Don&apos;t overthink it. 64GB is the right choice when you&apos;re investing $400+/month in AI subscriptions.
-            Contabo can take up to an hour to provision (usually minutes); OVH is faster but its plans top out at {OVH.recommended.ramGB}GB.
+            <strong>TL;DR:</strong> Get Contabo <strong>{CONTABO.recommended.name}</strong> (
+            {CONTABO.recommended.ramGB}GB RAM, {CONTABO.recommended.vCPU} vCPU, ~$
+            {CONTABO.recommended.priceUSD}/month approx.). Don&apos;t overthink it. 64GB is the
+            right choice when you&apos;re investing $400+/month in AI subscriptions. Contabo can
+            take up to an hour to provision (usually minutes); OVH is faster but its plans top out
+            at {OVH.recommended.ramGB}GB.
           </GuideTip>
 
           <GuideCaution>
-            <strong>Keep your account credentials safe!</strong> Write down your
-            login email and password somewhere secure. You&apos;ll need them to
-            manage your VPS later.
+            <strong>Keep your account credentials safe!</strong> Write down your login email and
+            password somewhere secure. You&apos;ll need them to manage your VPS later.
           </GuideCaution>
         </div>
       </SimplerGuide>
@@ -1201,7 +1308,14 @@ export default function RentVPSPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          onClick={handleContinue}
+          disabled={isNavigating}
+          size="lg"
+          disableMotion
+        >
           {isNavigating ? "Loading..." : "I rented a VPS"}
         </Button>
       </div>

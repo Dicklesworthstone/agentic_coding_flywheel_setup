@@ -1,8 +1,8 @@
 "use client";
 
+import { Radar, Target } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { motion, useInView, useReducedMotion } from "@/components/motion";
-import { Radar, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function getConvergencePhase(s: number) {
@@ -21,10 +21,34 @@ function getConvergenceVerdict(s: number) {
 }
 
 const CONVERGENCE_SIGNALS = [
-  { id: "dependencies", label: "Dependencies Stabilizing", weight: 0.25, weightLabel: "25%", color: "#A1A1AA" },
-  { id: "similarity", label: "Content Similarity Rising", weight: 0.30, weightLabel: "30%", color: "#FFBD2E" },
-  { id: "length", label: "Length Delta Approaching Zero", weight: 0.20, weightLabel: "20%", color: "#FF5500" },
-  { id: "semantics", label: "Semantic Density Plateau", weight: 0.25, weightLabel: "25%", color: "#FFFFFF" },
+  {
+    id: "dependencies",
+    label: "Dependencies Stabilizing",
+    weight: 0.25,
+    weightLabel: "25%",
+    color: "#A1A1AA",
+  },
+  {
+    id: "similarity",
+    label: "Content Similarity Rising",
+    weight: 0.3,
+    weightLabel: "30%",
+    color: "#FFBD2E",
+  },
+  {
+    id: "length",
+    label: "Length Delta Approaching Zero",
+    weight: 0.2,
+    weightLabel: "20%",
+    color: "#FF5500",
+  },
+  {
+    id: "semantics",
+    label: "Semantic Density Plateau",
+    weight: 0.25,
+    weightLabel: "25%",
+    color: "#FFFFFF",
+  },
 ] as const;
 
 const CONVERGENCE_PRESETS = [
@@ -39,13 +63,13 @@ export function ConvergenceViz() {
   const isInView = useInView(ref, { once: false, margin: "-50px" });
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = prefersReducedMotion ?? false;
-  
+
   // 0.0 to 1.0
   const [values, setValues] = useState([0.3, 0.2, 0.4, 0.3]);
   const [particles] = useState(() =>
     Array.from({ length: 40 }, (_, i) => ({
       id: i,
-      angle: (i / 40) * Math.PI * 2 + (i * 137.508 * Math.PI / 180) % (Math.PI * 2),
+      angle: (i / 40) * Math.PI * 2 + (((i * 137.508 * Math.PI) / 180) % (Math.PI * 2)),
       distance: ((i * 7 + 3) % 40) / 40,
       speed: 0.2 + ((i * 13 + 5) % 40) / 50,
       size: 2 + ((i * 11 + 7) % 30) / 10,
@@ -61,22 +85,29 @@ export function ConvergenceViz() {
   const verdict = getConvergenceVerdict(score);
 
   const updateSignal = useCallback((idx: number, val: number) => {
-    setValues(prev => { const next = [...prev]; next[idx] = val; return next; });
+    setValues((prev) => {
+      const next = [...prev];
+      next[idx] = val;
+      return next;
+    });
   }, []);
 
   // Visual constants
   const center = 150;
   const maxRadius = 120;
-  
-  // Calculate dynamic radius based on convergence score. 
+
+  // Calculate dynamic radius based on convergence score.
   // High score (1.0) = tight radius (converged). Low score (0.0) = wide radius (chaotic).
   const convergenceRadius = maxRadius * (1 - score * 0.85); // Never quite 0
   const rotationSpeed = (1 - score) * 10 + 2; // Fast when chaotic, slow when converged
 
   return (
-    <div ref={ref} className="my-12 rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl transition duration-500 hover:border-primary/20 overflow-hidden relative group/viz">
+    <div
+      ref={ref}
+      className="my-12 rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl transition duration-500 hover:border-primary/20 overflow-hidden relative group/viz"
+    >
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-      
+
       {/* HEADER */}
       <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
         <div>
@@ -88,16 +119,21 @@ export function ConvergenceViz() {
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FFBD2E]/10 text-[#FFBD2E] border border-[#FFBD2E]/20 shadow-inner">
               <Radar className="h-4 w-4" />
             </span>
-            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">Convergence Detection</h3>
+            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              Convergence Detection
+            </h3>
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-            Drag the sliders or pick a preset to see how beads tighten into a stable state before implementation begins.
+            Drag the sliders or pick a preset to see how beads tighten into a stable state before
+            implementation begins.
           </p>
         </div>
 
         {/* PRESETS */}
         <div className="mt-6 sm:mt-0 flex flex-wrap gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
-          <span className="text-[0.6rem] text-white/30 self-center mx-2 uppercase tracking-widest font-bold">Presets</span>
+          <span className="text-[0.6rem] text-white/30 self-center mx-2 uppercase tracking-widest font-bold">
+            Presets
+          </span>
           {CONVERGENCE_PRESETS.map((preset) => (
             <button
               key={preset.label}
@@ -111,16 +147,17 @@ export function ConvergenceViz() {
       </div>
 
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-8 p-6 sm:p-8">
-        
         {/* Sliders Area */}
         <div className="flex flex-col justify-center space-y-8 bg-[#0A0D14] p-6 sm:p-8 rounded-2xl border border-white/[0.04] shadow-inner relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-          
+
           {CONVERGENCE_SIGNALS.map((signal, idx) => (
             <div key={signal.label} className="relative z-10">
               <div className="flex items-baseline justify-between mb-3">
                 <span className="text-sm font-bold text-white/90">{signal.label}</span>
-                <span className="text-[0.65rem] text-white/40 uppercase tracking-widest font-bold bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05]">Weight: {signal.weightLabel}</span>
+                <span className="text-[0.65rem] text-white/40 uppercase tracking-widest font-bold bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05]">
+                  Weight: {signal.weightLabel}
+                </span>
               </div>
               <div className="relative flex items-center gap-5">
                 <div className="relative flex-1 group/slider">
@@ -140,7 +177,10 @@ export function ConvergenceViz() {
                     }}
                   />
                 </div>
-                <div className="w-12 text-right text-sm font-mono font-black" style={{ color: signal.color }}>
+                <div
+                  className="w-12 text-right text-sm font-mono font-black"
+                  style={{ color: signal.color }}
+                >
                   {(values[idx] * 100).toFixed(0)}%
                 </div>
               </div>
@@ -151,20 +191,22 @@ export function ConvergenceViz() {
         {/* Physics Visualizer Area */}
         <div className="relative bg-[#020408] rounded-2xl border border-white/[0.05] overflow-hidden flex flex-col min-h-[350px] shadow-lg">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.02),transparent_70%)] pointer-events-none" />
-          
+
           {/* SVG Canvas */}
           <div className="flex-1 relative flex items-center justify-center min-h-[250px] overflow-hidden">
             {/* Background glowing orb representing the target state */}
-            <motion.div 
+            <motion.div
               className="absolute w-20 h-20 rounded-full blur-[30px] pointer-events-none mix-blend-screen"
-              style={{ backgroundColor: score > 0.8 ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA" }}
-              animate={{ 
+              style={{
+                backgroundColor: score > 0.8 ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA",
+              }}
+              animate={{
                 scale: 1 + score * 1.5,
-                opacity: score * 0.4 + 0.1
+                opacity: score * 0.4 + 0.1,
               }}
               transition={{ duration: 0.5 }}
             />
-            
+
             <Target className="absolute h-10 w-10 text-white/5" />
 
             {/* Particle System */}
@@ -177,11 +219,11 @@ export function ConvergenceViz() {
                 {particles.map((p) => {
                   const signalScore = values[p.signalIdx];
                   const color = score > 0.8 ? "#FFBD2E" : score > 0.5 ? "#FF5500" : "#A1A1AA";
-                  const currentRad = (p.distance * convergenceRadius) + (convergenceRadius * 0.2);
+                  const currentRad = p.distance * convergenceRadius + convergenceRadius * 0.2;
                   const x = center + Math.cos(p.angle) * currentRad;
                   const y = center + Math.sin(p.angle) * currentRad;
                   const particleOpacity = 0.35 + signalScore * 0.65;
-                  
+
                   return (
                     <motion.div
                       key={p.id}
@@ -208,13 +250,17 @@ export function ConvergenceViz() {
                 })}
               </motion.div>
             )}
-            
+
             {/* Fallback for reduced motion */}
             {(reducedMotion || !isInView) && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div 
+                <div
                   className="rounded-full border-2 border-[#FFBD2E]/30 flex items-center justify-center"
-                  style={{ width: convergenceRadius * 2, height: convergenceRadius * 2, transition: 'all 0.5s ease-out' }}
+                  style={{
+                    width: convergenceRadius * 2,
+                    height: convergenceRadius * 2,
+                    transition: "all 0.5s ease-out",
+                  }}
                 />
               </div>
             )}
@@ -223,11 +269,19 @@ export function ConvergenceViz() {
           {/* Status HUD Footer */}
           <div className="p-5 sm:p-6 bg-white/[0.01] border-t border-white/[0.05] flex flex-col gap-4 backdrop-blur-md relative z-10">
             <div className="flex items-center justify-between">
-              <span className="text-[0.65rem] uppercase tracking-widest text-white/40 font-bold">Overall Convergence</span>
-              <span className={cn(
-                "text-lg font-black tracking-tight",
-                score > 0.8 ? "text-[#FFBD2E] drop-shadow-[0_0_10px_rgba(255,189,46,0.5)]" : score > 0.5 ? "text-[#FF5500] drop-shadow-[0_0_10px_rgba(255,85,0,0.5)]" : "text-zinc-400 drop-shadow-[0_0_10px_rgba(161,161,170,0.5)]"
-              )}>
+              <span className="text-[0.65rem] uppercase tracking-widest text-white/40 font-bold">
+                Overall Convergence
+              </span>
+              <span
+                className={cn(
+                  "text-lg font-black tracking-tight",
+                  score > 0.8
+                    ? "text-[#FFBD2E] drop-shadow-[0_0_10px_rgba(255,189,46,0.5)]"
+                    : score > 0.5
+                      ? "text-[#FF5500] drop-shadow-[0_0_10px_rgba(255,85,0,0.5)]"
+                      : "text-zinc-400 drop-shadow-[0_0_10px_rgba(161,161,170,0.5)]",
+                )}
+              >
                 {(score * 100).toFixed(1)}%
               </span>
             </div>
@@ -241,15 +295,18 @@ export function ConvergenceViz() {
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
-              <span className={cn(
-                "text-sm font-bold tracking-tight",
-                score > 0.8 ? "text-[#FFBD2E]" : score > 0.5 ? "text-[#FF5500]" : "text-zinc-400"
-              )}>{phase}</span>
+              <span
+                className={cn(
+                  "text-sm font-bold tracking-tight",
+                  score > 0.8 ? "text-[#FFBD2E]" : score > 0.5 ? "text-[#FF5500]" : "text-zinc-400",
+                )}
+              >
+                {phase}
+              </span>
               <span className="text-xs text-white/50 font-light">{verdict}</span>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

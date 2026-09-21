@@ -9,8 +9,8 @@
  * @see bd-331g
  */
 
-import { Moon, Sun, Monitor } from "lucide-react";
-import { useTheme, type ThemeMode } from "@/lib/hooks/useTheme";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { type ThemeMode, useTheme } from "@/lib/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 const MODE_CONFIG: Record<ThemeMode, { icon: typeof Moon; label: string }> = {
@@ -38,7 +38,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
         "hover:bg-muted hover:text-foreground hover:scale-105",
         "active:scale-95",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        className
+        className,
       )}
       aria-label={label}
       title={label}

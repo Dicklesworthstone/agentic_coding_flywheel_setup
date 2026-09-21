@@ -1,64 +1,64 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Terminal,
-  Image as ImageIcon,
-  Cloud,
-  Download,
-  Eye,
-  Share2,
-  CheckCircle,
   AlertCircle,
-  CloudDrizzle,
-  Droplets,
-  Camera,
-  FileImage,
-  Loader2,
-  Link,
-  Wifi,
-  Shield,
-  Zap,
-  Globe,
-  Layers,
   ArrowRight,
+  Camera,
+  CheckCircle,
+  Cloud,
+  CloudDrizzle,
   Copy,
+  Download,
+  Droplets,
+  Eye,
+  FileImage,
+  Globe,
   HardDrive,
+  Image as ImageIcon,
+  Layers,
+  Link,
+  Loader2,
   Lock,
-  Unlock,
   RefreshCw,
-} from 'lucide-react';
+  Share2,
+  Shield,
+  Terminal,
+  Unlock,
+  Wifi,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function GiilLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Download cloud-hosted images for visual debugging with giil.
-      </GoalBanner>
+      <GoalBanner>Download cloud-hosted images for visual debugging with giil.</GoalBanner>
 
       {/* Section 1: What Is GIIL */}
       <Section title="What Is GIIL?" icon={<ImageIcon className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>GIIL</Highlight> (Get Image from Internet Link) downloads full-resolution images
-          from cloud sharing services directly to your terminal. When a user shares a screenshot via
-          iCloud, Dropbox, or Google Photos, GIIL fetches the actual image for AI agent analysis.
+          <Highlight>GIIL</Highlight> (Get Image from Internet Link) downloads full-resolution
+          images from cloud sharing services directly to your terminal. When a user shares a
+          screenshot via iCloud, Dropbox, or Google Photos, GIIL fetches the actual image for AI
+          agent analysis.
         </Paragraph>
         <Paragraph>
-          This bridges the gap between mobile screenshots and terminal-based debugging. Users capture
-          bugs on their phone, share a link, and agents can immediately view and analyze the image.
+          This bridges the gap between mobile screenshots and terminal-based debugging. Users
+          capture bugs on their phone, share a link, and agents can immediately view and analyze the
+          image.
         </Paragraph>
 
         <div className="mt-8">
@@ -95,9 +95,7 @@ export function GiilLesson() {
 
       {/* Section 2: Supported Platforms */}
       <Section title="Supported Platforms" icon={<Cloud className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>
-          GIIL extracts images from these cloud sharing services:
-        </Paragraph>
+        <Paragraph>GIIL extracts images from these cloud sharing services:</Paragraph>
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
             <h4 className="font-semibold text-white mb-2">iCloud</h4>
@@ -121,10 +119,15 @@ export function GiilLesson() {
       <Divider />
 
       {/* Interactive Cloud Download Visualization */}
-      <Section title="Try It: Cloud Download Simulator" icon={<Download className="h-5 w-5" />} delay={0.17}>
+      <Section
+        title="Try It: Cloud Download Simulator"
+        icon={<Download className="h-5 w-5" />}
+        delay={0.17}
+      >
         <Paragraph>
-          Click a cloud provider below to simulate downloading an image with <Highlight>giil</Highlight>.
-          Watch the terminal command, progress bar, and image preview in action.
+          Click a cloud provider below to simulate downloading an image with{" "}
+          <Highlight>giil</Highlight>. Watch the terminal command, progress bar, and image preview
+          in action.
         </Paragraph>
         <div className="mt-6">
           <InteractiveCloudDownload />
@@ -137,11 +140,14 @@ export function GiilLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'giil "<url>"', description: 'Download image from cloud link' },
-            { command: 'giil "<url>" --output ~/screenshots', description: 'Save to custom directory' },
-            { command: 'giil "<url>" --json', description: 'Output JSON metadata' },
-            { command: 'giil "<url>" --all', description: 'Download all images from album' },
-            { command: 'giil --help', description: 'Show all options' },
+            { command: 'giil "<url>"', description: "Download image from cloud link" },
+            {
+              command: 'giil "<url>" --output ~/screenshots',
+              description: "Save to custom directory",
+            },
+            { command: 'giil "<url>" --json', description: "Output JSON metadata" },
+            { command: 'giil "<url>" --all', description: "Download all images from album" },
+            { command: "giil --help", description: "Show all options" },
           ]}
         />
 
@@ -160,52 +166,69 @@ export function GiilLesson() {
 
         <div className="mt-6 space-y-4">
           <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold">1</div>
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold">
+              1
+            </div>
             <div>
               <h4 className="font-semibold text-white">User Screenshots Bug</h4>
-              <p className="text-slate-400 text-sm">User captures the issue on their phone or desktop</p>
+              <p className="text-slate-400 text-sm">
+                User captures the issue on their phone or desktop
+              </p>
             </div>
           </div>
           <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">2</div>
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">
+              2
+            </div>
             <div>
               <h4 className="font-semibold text-white">Share Cloud Link</h4>
-              <p className="text-slate-400 text-sm">User shares iCloud/Dropbox/Google Photos link with agent</p>
+              <p className="text-slate-400 text-sm">
+                User shares iCloud/Dropbox/Google Photos link with agent
+              </p>
             </div>
           </div>
           <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold">3</div>
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold">
+              3
+            </div>
             <div>
               <h4 className="font-semibold text-white">GIIL Downloads Image</h4>
-              <p className="text-slate-400 text-sm"><code className="text-xs">giil &quot;&lt;url&gt;&quot;</code> fetches full-resolution image to working directory</p>
+              <p className="text-slate-400 text-sm">
+                <code className="text-xs">giil &quot;&lt;url&gt;&quot;</code> fetches
+                full-resolution image to working directory
+              </p>
             </div>
           </div>
           <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 font-bold">4</div>
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 font-bold">
+              4
+            </div>
             <div>
               <h4 className="font-semibold text-white">Agent Analyzes</h4>
-              <p className="text-slate-400 text-sm">AI agent can now view and understand the visual context</p>
+              <p className="text-slate-400 text-sm">
+                AI agent can now view and understand the visual context
+              </p>
             </div>
           </div>
         </div>
 
-        <CodeBlock code={`# Example: User reports UI bug
+        <CodeBlock
+          code={`# Example: User reports UI bug
 # They share: https://share.icloud.com/photos/abc123
 
 # Download the screenshot
 giil "https://share.icloud.com/photos/abc123"
 
 # Image saved to current directory
-# Agent can now analyze: screenshot.jpg`} />
+# Agent can now analyze: screenshot.jpg`}
+        />
       </Section>
 
       <Divider />
 
       {/* Section 5: Exit Codes */}
       <Section title="Exit Codes" icon={<CheckCircle className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          GIIL uses specific exit codes to indicate different outcomes:
-        </Paragraph>
+        <Paragraph>GIIL uses specific exit codes to indicate different outcomes:</Paragraph>
 
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
@@ -236,8 +259,8 @@ giil "https://share.icloud.com/photos/abc123"
         </div>
 
         <TipBox variant="warning">
-          Exit code 11 (auth required) means the link is private. Ask the user to update
-          sharing settings to &quot;Anyone with the link.&quot;
+          Exit code 11 (auth required) means the link is private. Ask the user to update sharing
+          settings to &quot;Anyone with the link.&quot;
         </TipBox>
       </Section>
 
@@ -245,7 +268,8 @@ giil "https://share.icloud.com/photos/abc123"
 
       {/* Section 6: Advanced Usage */}
       <Section title="Advanced Usage" icon={<Terminal className="h-5 w-5" />} delay={0.35}>
-        <CodeBlock code={`# Download to specific directory
+        <CodeBlock
+          code={`# Download to specific directory
 giil "https://share.icloud.com/photos/abc123" --output ~/debug-screenshots
 
 # Get JSON metadata (useful for scripting)
@@ -259,11 +283,12 @@ if giil "$URL" 2>/dev/null; then
   echo "Image ready for analysis"
 else
   echo "Download failed with code $?"
-fi`} />
+fi`}
+        />
 
         <TipBox variant="info">
-          GIIL only supports images. For videos or documents, you&apos;ll need to download
-          them manually or use a different tool.
+          GIIL only supports images. For videos or documents, you&apos;ll need to download them
+          manually or use a different tool.
         </TipBox>
       </Section>
     </div>
@@ -272,7 +297,7 @@ fi`} />
 
 /* ─── Provider data for InteractiveCloudDownload ─── */
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 interface CloudProvider {
   id: string;
@@ -301,183 +326,183 @@ interface CloudProvider {
 
 const CLOUD_PROVIDERS: CloudProvider[] = [
   {
-    id: 'icloud',
-    name: 'iCloud',
+    id: "icloud",
+    name: "iCloud",
     icon: <Cloud className="h-5 w-5" />,
-    brandColor: 'bg-blue-500',
-    borderColor: 'border-blue-500/30',
-    textColor: 'text-blue-400',
-    gradient: 'from-blue-500/20 to-cyan-500/20',
-    glowColor: 'shadow-blue-500/20',
-    url: 'https://share.icloud.com/photos/0a9Xk_login-bug-screenshot',
-    urlPattern: 'share.icloud.com/photos/*',
-    protocol: 'iCloud Web API',
-    bypassMethod: 'Token extraction from share page meta tags',
+    brandColor: "bg-blue-500",
+    borderColor: "border-blue-500/30",
+    textColor: "text-blue-400",
+    gradient: "from-blue-500/20 to-cyan-500/20",
+    glowColor: "shadow-blue-500/20",
+    url: "https://share.icloud.com/photos/0a9Xk_login-bug-screenshot",
+    urlPattern: "share.icloud.com/photos/*",
+    protocol: "iCloud Web API",
+    bypassMethod: "Token extraction from share page meta tags",
     file: {
-      name: 'login-bug-screenshot.jpg',
+      name: "login-bug-screenshot.jpg",
       sizeBytes: 2516582,
-      size: '2.4 MB',
-      dimensions: '2532 x 1170',
-      format: 'JPEG',
-      colorDepth: '24-bit sRGB',
+      size: "2.4 MB",
+      dimensions: "2532 x 1170",
+      format: "JPEG",
+      colorDepth: "24-bit sRGB",
     },
-    imageGradient: 'from-blue-600/40 via-cyan-500/30 to-sky-400/40',
+    imageGradient: "from-blue-600/40 via-cyan-500/30 to-sky-400/40",
     pipelineSteps: [
-      'GET share page HTML',
-      'Extract data-token from meta',
-      'POST /api/records/resolve',
-      'Follow downloadURL redirect',
-      'Stream binary to disk',
+      "GET share page HTML",
+      "Extract data-token from meta",
+      "POST /api/records/resolve",
+      "Follow downloadURL redirect",
+      "Stream binary to disk",
     ],
   },
   {
-    id: 'dropbox',
-    name: 'Dropbox',
+    id: "dropbox",
+    name: "Dropbox",
     icon: <Droplets className="h-5 w-5" />,
-    brandColor: 'bg-indigo-500',
-    borderColor: 'border-indigo-500/30',
-    textColor: 'text-indigo-400',
-    gradient: 'from-indigo-500/20 to-blue-500/20',
-    glowColor: 'shadow-indigo-500/20',
-    url: 'https://dropbox.com/s/xr7kz/dashboard-overflow.png',
-    urlPattern: 'dropbox.com/s/*',
-    protocol: 'Dropbox Content API',
-    bypassMethod: 'dl=1 parameter forces raw binary download',
+    brandColor: "bg-indigo-500",
+    borderColor: "border-indigo-500/30",
+    textColor: "text-indigo-400",
+    gradient: "from-indigo-500/20 to-blue-500/20",
+    glowColor: "shadow-indigo-500/20",
+    url: "https://dropbox.com/s/xr7kz/dashboard-overflow.png",
+    urlPattern: "dropbox.com/s/*",
+    protocol: "Dropbox Content API",
+    bypassMethod: "dl=1 parameter forces raw binary download",
     file: {
-      name: 'dashboard-overflow.png',
+      name: "dashboard-overflow.png",
       sizeBytes: 1887436,
-      size: '1.8 MB',
-      dimensions: '1920 x 1080',
-      format: 'PNG',
-      colorDepth: '32-bit RGBA',
+      size: "1.8 MB",
+      dimensions: "1920 x 1080",
+      format: "PNG",
+      colorDepth: "32-bit RGBA",
     },
-    imageGradient: 'from-indigo-600/40 via-violet-500/30 to-blue-400/40',
+    imageGradient: "from-indigo-600/40 via-violet-500/30 to-blue-400/40",
     pipelineSteps: [
-      'Rewrite URL: ?dl=1',
-      'Follow 302 to dl.dropbox.com',
-      'Negotiate content-type',
-      'Verify image/* MIME',
-      'Stream binary to disk',
+      "Rewrite URL: ?dl=1",
+      "Follow 302 to dl.dropbox.com",
+      "Negotiate content-type",
+      "Verify image/* MIME",
+      "Stream binary to disk",
     ],
   },
   {
-    id: 'google-photos',
-    name: 'Google Photos',
+    id: "google-photos",
+    name: "Google Photos",
     icon: <Camera className="h-5 w-5" />,
-    brandColor: 'bg-emerald-500',
-    borderColor: 'border-emerald-500/30',
-    textColor: 'text-emerald-400',
-    gradient: 'from-emerald-500/20 to-teal-500/20',
-    glowColor: 'shadow-emerald-500/20',
-    url: 'https://photos.google.com/share/AF1Q_mobile-crash',
-    urlPattern: 'photos.google.com/share/*',
-    protocol: 'Google Photos Embed API',
-    bypassMethod: 'Parse data-image-url from share embed page',
+    brandColor: "bg-emerald-500",
+    borderColor: "border-emerald-500/30",
+    textColor: "text-emerald-400",
+    gradient: "from-emerald-500/20 to-teal-500/20",
+    glowColor: "shadow-emerald-500/20",
+    url: "https://photos.google.com/share/AF1Q_mobile-crash",
+    urlPattern: "photos.google.com/share/*",
+    protocol: "Google Photos Embed API",
+    bypassMethod: "Parse data-image-url from share embed page",
     file: {
-      name: 'mobile-crash-report.jpg',
+      name: "mobile-crash-report.jpg",
       sizeBytes: 3250585,
-      size: '3.1 MB',
-      dimensions: '2778 x 1284',
-      format: 'JPEG',
-      colorDepth: '24-bit sRGB',
+      size: "3.1 MB",
+      dimensions: "2778 x 1284",
+      format: "JPEG",
+      colorDepth: "24-bit sRGB",
     },
-    imageGradient: 'from-emerald-600/40 via-teal-500/30 to-green-400/40',
+    imageGradient: "from-emerald-600/40 via-teal-500/30 to-green-400/40",
     pipelineSteps: [
-      'GET share/embed page',
-      'Scrape data-image-url',
-      'Append =w0-h0 for full res',
-      'GET image with referer',
-      'Stream binary to disk',
+      "GET share/embed page",
+      "Scrape data-image-url",
+      "Append =w0-h0 for full res",
+      "GET image with referer",
+      "Stream binary to disk",
     ],
   },
   {
-    id: 'google-drive',
-    name: 'Google Drive',
+    id: "google-drive",
+    name: "Google Drive",
     icon: <HardDrive className="h-5 w-5" />,
-    brandColor: 'bg-yellow-500',
-    borderColor: 'border-yellow-500/30',
-    textColor: 'text-yellow-400',
-    gradient: 'from-yellow-500/20 to-amber-500/20',
-    glowColor: 'shadow-yellow-500/20',
-    url: 'https://drive.google.com/file/d/1Bk9q_error-toast/view',
-    urlPattern: 'drive.google.com/file/d/*',
-    protocol: 'Google Drive Export API',
-    bypassMethod: 'Convert /view to /export?format=png',
+    brandColor: "bg-yellow-500",
+    borderColor: "border-yellow-500/30",
+    textColor: "text-yellow-400",
+    gradient: "from-yellow-500/20 to-amber-500/20",
+    glowColor: "shadow-yellow-500/20",
+    url: "https://drive.google.com/file/d/1Bk9q_error-toast/view",
+    urlPattern: "drive.google.com/file/d/*",
+    protocol: "Google Drive Export API",
+    bypassMethod: "Convert /view to /export?format=png",
     file: {
-      name: 'error-toast-dialog.png',
+      name: "error-toast-dialog.png",
       sizeBytes: 945210,
-      size: '923 KB',
-      dimensions: '1440 x 900',
-      format: 'PNG',
-      colorDepth: '32-bit RGBA',
+      size: "923 KB",
+      dimensions: "1440 x 900",
+      format: "PNG",
+      colorDepth: "32-bit RGBA",
     },
-    imageGradient: 'from-yellow-600/40 via-amber-500/30 to-orange-400/40',
+    imageGradient: "from-yellow-600/40 via-amber-500/30 to-orange-400/40",
     pipelineSteps: [
-      'Extract file ID from URL',
-      'GET /uc?export=download&id=',
-      'Handle virus scan warning',
-      'Follow confirm token redirect',
-      'Stream binary to disk',
+      "Extract file ID from URL",
+      "GET /uc?export=download&id=",
+      "Handle virus scan warning",
+      "Follow confirm token redirect",
+      "Stream binary to disk",
     ],
   },
   {
-    id: 'direct-url',
-    name: 'Direct URL',
+    id: "direct-url",
+    name: "Direct URL",
     icon: <Globe className="h-5 w-5" />,
-    brandColor: 'bg-purple-500',
-    borderColor: 'border-purple-500/30',
-    textColor: 'text-purple-400',
-    gradient: 'from-purple-500/20 to-pink-500/20',
-    glowColor: 'shadow-purple-500/20',
-    url: 'https://cdn.example.com/screenshots/navbar-bug.webp',
-    urlPattern: '*.jpg, *.png, *.webp (any URL)',
-    protocol: 'HTTP/2 Direct',
-    bypassMethod: 'Direct binary download with content-type check',
+    brandColor: "bg-purple-500",
+    borderColor: "border-purple-500/30",
+    textColor: "text-purple-400",
+    gradient: "from-purple-500/20 to-pink-500/20",
+    glowColor: "shadow-purple-500/20",
+    url: "https://cdn.example.com/screenshots/navbar-bug.webp",
+    urlPattern: "*.jpg, *.png, *.webp (any URL)",
+    protocol: "HTTP/2 Direct",
+    bypassMethod: "Direct binary download with content-type check",
     file: {
-      name: 'navbar-bug.webp',
+      name: "navbar-bug.webp",
       sizeBytes: 578432,
-      size: '565 KB',
-      dimensions: '1366 x 768',
-      format: 'WebP',
-      colorDepth: '24-bit sRGB',
+      size: "565 KB",
+      dimensions: "1366 x 768",
+      format: "WebP",
+      colorDepth: "24-bit sRGB",
     },
-    imageGradient: 'from-purple-600/40 via-pink-500/30 to-fuchsia-400/40',
+    imageGradient: "from-purple-600/40 via-pink-500/30 to-fuchsia-400/40",
     pipelineSteps: [
-      'HEAD request for content-type',
-      'Verify image/* MIME type',
-      'GET with range support check',
-      'Detect WebP/AVIF format',
-      'Stream binary to disk',
+      "HEAD request for content-type",
+      "Verify image/* MIME type",
+      "GET with range support check",
+      "Detect WebP/AVIF format",
+      "Stream binary to disk",
     ],
   },
   {
-    id: 'batch-album',
-    name: 'Batch Album',
+    id: "batch-album",
+    name: "Batch Album",
     icon: <Layers className="h-5 w-5" />,
-    brandColor: 'bg-rose-500',
-    borderColor: 'border-rose-500/30',
-    textColor: 'text-rose-400',
-    gradient: 'from-rose-500/20 to-orange-500/20',
-    glowColor: 'shadow-rose-500/20',
-    url: 'https://photos.google.com/share/album_3imgs --all',
-    urlPattern: 'any album URL + --all flag',
-    protocol: 'Batch Parallel Download',
-    bypassMethod: 'Enumerate album, download all images concurrently',
+    brandColor: "bg-rose-500",
+    borderColor: "border-rose-500/30",
+    textColor: "text-rose-400",
+    gradient: "from-rose-500/20 to-orange-500/20",
+    glowColor: "shadow-rose-500/20",
+    url: "https://photos.google.com/share/album_3imgs --all",
+    urlPattern: "any album URL + --all flag",
+    protocol: "Batch Parallel Download",
+    bypassMethod: "Enumerate album, download all images concurrently",
     file: {
-      name: '3 images (album)',
+      name: "3 images (album)",
       sizeBytes: 7340032,
-      size: '7.0 MB',
-      dimensions: 'various',
-      format: 'Mixed',
-      colorDepth: 'Mixed',
+      size: "7.0 MB",
+      dimensions: "various",
+      format: "Mixed",
+      colorDepth: "Mixed",
     },
-    imageGradient: 'from-rose-600/40 via-orange-500/30 to-amber-400/40',
+    imageGradient: "from-rose-600/40 via-orange-500/30 to-amber-400/40",
     pipelineSteps: [
-      'GET album share page',
-      'Enumerate image entries',
-      'Spawn parallel downloads (3)',
-      'Verify each image on disk',
-      'Report batch summary',
+      "GET album share page",
+      "Enumerate image entries",
+      "Spawn parallel downloads (3)",
+      "Verify each image on disk",
+      "Report batch summary",
     ],
   },
 ];
@@ -485,22 +510,22 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
 /* ─── InteractiveCloudDownload component ─── */
 
 type DownloadPhase =
-  | 'idle'
-  | 'pasting'
-  | 'detecting'
-  | 'negotiating'
-  | 'downloading'
-  | 'processing'
-  | 'done';
+  | "idle"
+  | "pasting"
+  | "detecting"
+  | "negotiating"
+  | "downloading"
+  | "processing"
+  | "done";
 
 const PHASE_LABELS: Record<DownloadPhase, string> = {
-  idle: 'Ready',
-  pasting: 'Pasting URL',
-  detecting: 'Detecting Provider',
-  negotiating: 'API Negotiation',
-  downloading: 'Downloading',
-  processing: 'Processing',
-  done: 'Complete',
+  idle: "Ready",
+  pasting: "Pasting URL",
+  detecting: "Detecting Provider",
+  negotiating: "API Negotiation",
+  downloading: "Downloading",
+  processing: "Processing",
+  done: "Complete",
 };
 
 function formatBytes(bytes: number, progress: number): string {
@@ -511,7 +536,7 @@ function formatBytes(bytes: number, progress: number): string {
 }
 
 function formatSpeed(bytes: number, progress: number): string {
-  if (progress <= 0 || progress > 100) return '-- KB/s';
+  if (progress <= 0 || progress > 100) return "-- KB/s";
   const fraction = Math.min(progress, 100) / 100;
   const speed = (bytes * fraction) / (fraction * 2.5);
   if (speed < 1024) return `${speed.toFixed(0)} B/s`;
@@ -553,10 +578,10 @@ function PipelineStep({
       <span
         className={
           isComplete
-            ? 'text-white/60 line-through decoration-white/20'
+            ? "text-white/60 line-through decoration-white/20"
             : isActive
-              ? 'text-white/90'
-              : 'text-white/30'
+              ? "text-white/90"
+              : "text-white/30"
         }
       >
         {step}
@@ -578,11 +603,13 @@ function ConnectionBadge({
     <div className="flex items-center gap-1.5">
       <div
         className={`h-1.5 w-1.5 rounded-full ${
-          isConnected ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-white/20'
+          isConnected ? "bg-emerald-400 shadow-sm shadow-emerald-400/50" : "bg-white/20"
         }`}
       />
-      <span className={`text-[10px] font-mono ${isConnected ? provider.textColor : 'text-white/30'}`}>
-        {isConnected ? 'connected' : 'standby'}
+      <span
+        className={`text-[10px] font-mono ${isConnected ? provider.textColor : "text-white/30"}`}
+      >
+        {isConnected ? "connected" : "standby"}
       </span>
     </div>
   );
@@ -591,17 +618,17 @@ function ConnectionBadge({
 /* ─── Typing effect for URL pasting ─── */
 
 function useTypingEffect(text: string, isActive: boolean, speed: number = 20) {
-  const [displayed, setDisplayed] = useState('');
+  const [displayed, setDisplayed] = useState("");
   const [isDone, setIsDone] = useState(false);
 
   useEffect(() => {
     if (!isActive) {
-      setDisplayed('');
+      setDisplayed("");
       setIsDone(false);
       return;
     }
     let i = 0;
-    setDisplayed('');
+    setDisplayed("");
     setIsDone(false);
     const interval = setInterval(() => {
       i++;
@@ -622,7 +649,7 @@ function useTypingEffect(text: string, isActive: boolean, speed: number = 20) {
 
 function InteractiveCloudDownload() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [phase, setPhase] = useState<DownloadPhase>('idle');
+  const [phase, setPhase] = useState<DownloadPhase>("idle");
   const [progress, setProgress] = useState(0);
   const [imageBlur, setImageBlur] = useState(20);
   const [pipelineStep, setPipelineStep] = useState(0);
@@ -637,11 +664,11 @@ function InteractiveCloudDownload() {
 
   const activeProvider = CLOUD_PROVIDERS.find((p) => p.id === selectedProvider);
 
-  const typingActive = phase === 'pasting' && !!activeProvider;
+  const typingActive = phase === "pasting" && !!activeProvider;
   const { displayed: typedUrl, isDone: typingDone } = useTypingEffect(
-    activeProvider?.url ?? '',
+    activeProvider?.url ?? "",
     typingActive,
-    15
+    15,
   );
 
   const cleanup = useCallback(() => {
@@ -665,9 +692,9 @@ function InteractiveCloudDownload() {
 
   // Typing done -> move to detecting
   useEffect(() => {
-    if (typingDone && phase === 'pasting') {
+    if (typingDone && phase === "pasting") {
       timerRef.current = setTimeout(() => {
-        setPhase('detecting');
+        setPhase("detecting");
       }, 300);
     }
     return () => {
@@ -680,12 +707,12 @@ function InteractiveCloudDownload() {
 
   // Phase transition logic
   useEffect(() => {
-    if (phase === 'detecting') {
+    if (phase === "detecting") {
       timerRef.current = setTimeout(() => {
-        setPhase('negotiating');
+        setPhase("negotiating");
         setPipelineStep(0);
       }, 900);
-    } else if (phase === 'negotiating') {
+    } else if (phase === "negotiating") {
       let step = 0;
       const totalSteps = activeProvider?.pipelineSteps.length ?? 5;
       pipelineTimerRef.current = setInterval(() => {
@@ -696,13 +723,13 @@ function InteractiveCloudDownload() {
             pipelineTimerRef.current = null;
           }
           callbackRef.current = () => {
-            setPhase('downloading');
+            setPhase("downloading");
             setProgress(0);
           };
         }
         setPipelineStep(step);
       }, 400);
-    } else if (phase === 'downloading') {
+    } else if (phase === "downloading") {
       intervalRef.current = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 100) {
@@ -710,13 +737,13 @@ function InteractiveCloudDownload() {
               clearInterval(intervalRef.current);
               intervalRef.current = null;
             }
-            callbackRef.current = () => setPhase('processing');
+            callbackRef.current = () => setPhase("processing");
             return 100;
           }
           return prev + 2;
         });
       }, 40);
-    } else if (phase === 'processing') {
+    } else if (phase === "processing") {
       timerRef.current = setTimeout(() => {
         setImageBlur(20);
         let blurValue = 20;
@@ -728,12 +755,12 @@ function InteractiveCloudDownload() {
               clearInterval(intervalRef.current);
               intervalRef.current = null;
             }
-            callbackRef.current = () => setPhase('done');
+            callbackRef.current = () => setPhase("done");
           }
           setImageBlur(blurValue);
         }, 50);
       }, 0);
-    } else if (phase === 'done' && activeProvider) {
+    } else if (phase === "done" && activeProvider) {
       setCompletedDownloads((prev) => {
         if (prev.includes(activeProvider.id)) return prev;
         return [...prev, activeProvider.id];
@@ -774,16 +801,27 @@ function InteractiveCloudDownload() {
       setPipelineStep(0);
       setShowProtocol(false);
       timerRef.current = setTimeout(() => {
-        setPhase('pasting');
+        setPhase("pasting");
       }, 50);
     },
-    [cleanup]
+    [cleanup],
   );
 
-  const phaseIndex = ['idle', 'pasting', 'detecting', 'negotiating', 'downloading', 'processing', 'done'].indexOf(phase);
+  const phaseIndex = [
+    "idle",
+    "pasting",
+    "detecting",
+    "negotiating",
+    "downloading",
+    "processing",
+    "done",
+  ].indexOf(phase);
 
   return (
-    <div ref={ref} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl">
+    <div
+      ref={ref}
+      className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl"
+    >
       {/* Header with phase indicator */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -792,17 +830,19 @@ function InteractiveCloudDownload() {
           </div>
           <div>
             <h3 className="text-sm font-bold text-white">Cloud Image Download Pipeline</h3>
-            <p className="text-xs text-white/40">Select a provider to simulate the full download pipeline</p>
+            <p className="text-xs text-white/40">
+              Select a provider to simulate the full download pipeline
+            </p>
           </div>
         </div>
-        {phase !== 'idle' && (
+        {phase !== "idle" && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={SPRING}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03]"
           >
-            {phase === 'done' ? (
+            {phase === "done" ? (
               <CheckCircle className="h-3 w-3 text-emerald-400" />
             ) : (
               <Loader2 className="h-3 w-3 animate-spin text-white/50" />
@@ -815,31 +855,33 @@ function InteractiveCloudDownload() {
       </div>
 
       {/* Phase progress dots */}
-      {phase !== 'idle' && (
+      {phase !== "idle" && (
         <motion.div
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={SPRING}
           className="flex items-center gap-1 mb-6"
         >
-          {['pasting', 'detecting', 'negotiating', 'downloading', 'processing', 'done'].map((p, i) => {
-            const thisIndex = i + 1;
-            const isPhaseComplete = phaseIndex > thisIndex;
-            const isCurrentPhase = phaseIndex === thisIndex;
-            return (
-              <div key={p} className="flex items-center gap-1">
-                <div
-                  className={`h-1.5 rounded-full transition-[width,background-color] duration-300 ${
-                    isPhaseComplete
-                      ? 'w-8 bg-emerald-500/60'
-                      : isCurrentPhase
-                        ? 'w-8 bg-white/40'
-                        : 'w-4 bg-white/10'
-                  }`}
-                />
-              </div>
-            );
-          })}
+          {["pasting", "detecting", "negotiating", "downloading", "processing", "done"].map(
+            (p, i) => {
+              const thisIndex = i + 1;
+              const isPhaseComplete = phaseIndex > thisIndex;
+              const isCurrentPhase = phaseIndex === thisIndex;
+              return (
+                <div key={p} className="flex items-center gap-1">
+                  <div
+                    className={`h-1.5 rounded-full transition-[width,background-color] duration-300 ${
+                      isPhaseComplete
+                        ? "w-8 bg-emerald-500/60"
+                        : isCurrentPhase
+                          ? "w-8 bg-white/40"
+                          : "w-4 bg-white/10"
+                    }`}
+                  />
+                </div>
+              );
+            },
+          )}
         </motion.div>
       )}
 
@@ -859,12 +901,14 @@ function InteractiveCloudDownload() {
               className={`relative rounded-xl border p-3 text-left transition-colors overflow-hidden ${
                 isActive
                   ? `${provider.borderColor} bg-gradient-to-br ${provider.gradient}`
-                  : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]'
+                  : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]"
               }`}
             >
               {/* Subtle glow when active */}
               {isActive && (
-                <div className={`absolute inset-0 ${provider.glowColor} shadow-lg opacity-30 pointer-events-none`} />
+                <div
+                  className={`absolute inset-0 ${provider.glowColor} shadow-lg opacity-30 pointer-events-none`}
+                />
               )}
 
               <div className="relative">
@@ -881,7 +925,9 @@ function InteractiveCloudDownload() {
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-400/60" />
                   )}
                 </div>
-                <p className="text-[10px] text-white/30 truncate font-mono">{provider.urlPattern}</p>
+                <p className="text-[10px] text-white/30 truncate font-mono">
+                  {provider.urlPattern}
+                </p>
                 <div className="mt-1.5">
                   <ConnectionBadge provider={provider} isConnected={isActive && phaseIndex >= 3} />
                 </div>
@@ -920,11 +966,17 @@ function InteractiveCloudDownload() {
                     <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
                   </div>
-                  <span className="text-[10px] text-white/30 ml-2 font-mono">giil -- cloud image downloader</span>
+                  <span className="text-[10px] text-white/30 ml-2 font-mono">
+                    giil -- cloud image downloader
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Wifi className={`h-3 w-3 ${phaseIndex >= 3 ? 'text-emerald-400' : 'text-white/20'}`} />
-                  <Shield className={`h-3 w-3 ${phaseIndex >= 4 ? 'text-emerald-400' : 'text-white/20'}`} />
+                  <Wifi
+                    className={`h-3 w-3 ${phaseIndex >= 3 ? "text-emerald-400" : "text-white/20"}`}
+                  />
+                  <Shield
+                    className={`h-3 w-3 ${phaseIndex >= 4 ? "text-emerald-400" : "text-white/20"}`}
+                  />
                 </div>
               </div>
 
@@ -936,19 +988,21 @@ function InteractiveCloudDownload() {
                   <div className="flex-1 break-all">
                     <span className="text-white/80">giil &quot;</span>
                     <span className={activeProvider.textColor}>
-                      {phase === 'pasting' ? typedUrl : activeProvider.url}
+                      {phase === "pasting" ? typedUrl : activeProvider.url}
                     </span>
-                    {phase === 'pasting' && !typingDone && (
+                    {phase === "pasting" && !typingDone && (
                       <motion.span
                         animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-                        transition={inView ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
+                        transition={
+                          inView ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }
+                        }
                         className="text-white/80"
                       >
                         |
                       </motion.span>
                     )}
                     <span className="text-white/80">&quot;</span>
-                    {activeProvider.id === 'batch-album' && (
+                    {activeProvider.id === "batch-album" && (
                       <span className="text-amber-400"> --all</span>
                     )}
                   </div>
@@ -956,7 +1010,7 @@ function InteractiveCloudDownload() {
 
                 {/* Phase: Detecting provider */}
                 <AnimatePresence mode="wait">
-                  {phase === 'detecting' && (
+                  {phase === "detecting" && (
                     <motion.div
                       key="detecting"
                       initial={{ opacity: 0 }}
@@ -976,7 +1030,9 @@ function InteractiveCloudDownload() {
                       >
                         <ArrowRight className="h-3 w-3 text-white/30" />
                         <span className="text-white/50">Pattern match:</span>
-                        <span className={activeProvider.textColor}>{activeProvider.urlPattern}</span>
+                        <span className={activeProvider.textColor}>
+                          {activeProvider.urlPattern}
+                        </span>
                       </motion.div>
                       <motion.div
                         initial={{ opacity: 0 }}
@@ -986,14 +1042,15 @@ function InteractiveCloudDownload() {
                       >
                         <CheckCircle className={`h-3 w-3 ${activeProvider.textColor}`} />
                         <span className="text-white/70">
-                          Identified: <span className={activeProvider.textColor}>{activeProvider.name}</span>
+                          Identified:{" "}
+                          <span className={activeProvider.textColor}>{activeProvider.name}</span>
                         </span>
                       </motion.div>
                     </motion.div>
                   )}
 
                   {/* Phase: API Negotiation */}
-                  {phase === 'negotiating' && (
+                  {phase === "negotiating" && (
                     <motion.div
                       key="negotiating"
                       initial={{ opacity: 0 }}
@@ -1019,7 +1076,7 @@ function InteractiveCloudDownload() {
                   )}
 
                   {/* Phase: Downloading */}
-                  {(phase === 'downloading' || phase === 'processing' || phase === 'done') && (
+                  {(phase === "downloading" || phase === "processing" || phase === "done") && (
                     <motion.div
                       key="download-block"
                       initial={{ opacity: 0 }}
@@ -1037,11 +1094,15 @@ function InteractiveCloudDownload() {
                           className={`absolute inset-y-0 left-0 rounded-full bg-gradient-to-r ${activeProvider.gradient}`}
                           style={{ width: `${Math.min(progress, 100)}%` }}
                         />
-                        {phase === 'downloading' && (
+                        {phase === "downloading" && (
                           <motion.div
                             className="absolute inset-y-0 w-20 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                            animate={inView ? { x: ['-80px', '400px'] } : { x: '-80px' }}
-                            transition={inView ? { duration: 1.2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                            animate={inView ? { x: ["-80px", "400px"] } : { x: "-80px" }}
+                            transition={
+                              inView
+                                ? { duration: 1.2, repeat: Infinity, ease: "linear" }
+                                : { duration: 0.2 }
+                            }
                           />
                         )}
                       </div>
@@ -1050,7 +1111,8 @@ function InteractiveCloudDownload() {
                       <div className="flex items-center justify-between text-[10px]">
                         <div className="flex items-center gap-3">
                           <span className="text-white/50">
-                            {formatBytes(activeProvider.file.sizeBytes, progress)} / {activeProvider.file.size}
+                            {formatBytes(activeProvider.file.sizeBytes, progress)} /{" "}
+                            {activeProvider.file.size}
                           </span>
                           <span className="text-white/30">|</span>
                           <span className={activeProvider.textColor}>
@@ -1060,7 +1122,7 @@ function InteractiveCloudDownload() {
                         <div className="flex items-center gap-2">
                           <Zap className="h-2.5 w-2.5 text-amber-400/60" />
                           <span className="text-white/40">
-                            {phase === 'downloading'
+                            {phase === "downloading"
                               ? formatSpeed(activeProvider.file.sizeBytes, progress)
                               : activeProvider.file.size}
                           </span>
@@ -1072,7 +1134,7 @@ function InteractiveCloudDownload() {
 
                 {/* Success output */}
                 <AnimatePresence>
-                  {phase === 'done' && (
+                  {phase === "done" && (
                     <motion.div
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1082,13 +1144,14 @@ function InteractiveCloudDownload() {
                       <div className="flex items-center gap-2 text-emerald-400">
                         <CheckCircle className="h-3.5 w-3.5" />
                         <span>
-                          {activeProvider.id === 'batch-album'
-                            ? 'Saved 3 images to ./album_3imgs/'
+                          {activeProvider.id === "batch-album"
+                            ? "Saved 3 images to ./album_3imgs/"
                             : `Saved to ./${activeProvider.file.name}`}
                         </span>
                       </div>
                       <div className="text-white/30 text-[10px] pl-5">
-                        {activeProvider.file.format} | {activeProvider.file.dimensions} | {activeProvider.file.size} | {activeProvider.file.colorDepth}
+                        {activeProvider.file.format} | {activeProvider.file.dimensions} |{" "}
+                        {activeProvider.file.size} | {activeProvider.file.colorDepth}
                       </div>
                     </motion.div>
                   )}
@@ -1101,7 +1164,7 @@ function InteractiveCloudDownload() {
               {phaseIndex >= 3 && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
+                  animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={SPRING}
                   className="overflow-hidden"
@@ -1118,10 +1181,7 @@ function InteractiveCloudDownload() {
                         <span className="text-white/70 font-medium">Protocol Analysis</span>
                         <span className="text-white/30 font-mono">({activeProvider.protocol})</span>
                       </div>
-                      <motion.div
-                        animate={{ rotate: showProtocol ? 90 : 0 }}
-                        transition={SPRING}
-                      >
+                      <motion.div animate={{ rotate: showProtocol ? 90 : 0 }} transition={SPRING}>
                         <ArrowRight className="h-3 w-3 text-white/30" />
                       </motion.div>
                     </button>
@@ -1130,7 +1190,7 @@ function InteractiveCloudDownload() {
                       {showProtocol && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
+                          animate={{ opacity: 1, height: "auto" }}
                           exit={{ opacity: 0, height: 0 }}
                           transition={SPRING}
                           className="overflow-hidden"
@@ -1160,14 +1220,16 @@ function InteractiveCloudDownload() {
                                   <div key={step} className="flex items-center gap-2">
                                     <div
                                       className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                        phase === 'done'
+                                        phase === "done"
                                           ? `bg-gradient-to-br ${activeProvider.gradient} text-white`
-                                          : 'bg-white/[0.06] text-white/30'
+                                          : "bg-white/[0.06] text-white/30"
                                       }`}
                                     >
                                       {i + 1}
                                     </div>
-                                    <span className="text-[10px] text-white/50 font-mono">{step}</span>
+                                    <span className="text-[10px] text-white/50 font-mono">
+                                      {step}
+                                    </span>
                                     {i < activeProvider.pipelineSteps.length - 1 && (
                                       <ArrowRight className="h-2 w-2 text-white/15 flex-shrink-0 ml-auto" />
                                     )}
@@ -1186,10 +1248,10 @@ function InteractiveCloudDownload() {
 
             {/* Image preview area */}
             <AnimatePresence>
-              {(phase === 'processing' || phase === 'done') && (
+              {(phase === "processing" || phase === "done") && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
+                  animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={SPRING}
                   className="overflow-hidden"
@@ -1200,7 +1262,7 @@ function InteractiveCloudDownload() {
                         <FileImage className="h-4 w-4" />
                         <span>Image Preview</span>
                       </div>
-                      {phase === 'done' && (
+                      {phase === "done" && (
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
@@ -1217,7 +1279,9 @@ function InteractiveCloudDownload() {
                       className="relative w-full h-52 rounded-lg overflow-hidden"
                       style={{ filter: `blur(${imageBlur}px)` }}
                     >
-                      <div className={`absolute inset-0 bg-gradient-to-br ${activeProvider.imageGradient}`} />
+                      <div
+                        className={`absolute inset-0 bg-gradient-to-br ${activeProvider.imageGradient}`}
+                      />
                       <div className="absolute inset-0">
                         <div className="relative w-full h-full">
                           {/* Mock UI elements */}
@@ -1251,7 +1315,7 @@ function InteractiveCloudDownload() {
 
                     {/* File metadata grid */}
                     <AnimatePresence>
-                      {phase === 'done' && (
+                      {phase === "done" && (
                         <motion.div
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
@@ -1260,21 +1324,33 @@ function InteractiveCloudDownload() {
                         >
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">File</p>
+                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                                File
+                              </p>
                               <p className="text-[11px] font-mono text-white/80 truncate">
                                 {activeProvider.file.name}
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">Size</p>
-                              <p className="text-[11px] font-mono text-white/80">{activeProvider.file.size}</p>
+                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                                Size
+                              </p>
+                              <p className="text-[11px] font-mono text-white/80">
+                                {activeProvider.file.size}
+                              </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">Dimensions</p>
-                              <p className="text-[11px] font-mono text-white/80">{activeProvider.file.dimensions}</p>
+                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                                Dimensions
+                              </p>
+                              <p className="text-[11px] font-mono text-white/80">
+                                {activeProvider.file.dimensions}
+                              </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">Format</p>
+                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                                Format
+                              </p>
                               <p className="text-[11px] font-mono text-white/80">
                                 {activeProvider.file.format} / {activeProvider.file.colorDepth}
                               </p>
@@ -1294,7 +1370,7 @@ function InteractiveCloudDownload() {
                             </div>
                             <code className={`text-xs ${activeProvider.textColor} break-all`}>
                               giil &quot;{activeProvider.url}&quot;
-                              {activeProvider.id === 'batch-album' ? ' --all' : ''}
+                              {activeProvider.id === "batch-album" ? " --all" : ""}
                             </code>
                           </div>
                         </motion.div>
@@ -1306,7 +1382,7 @@ function InteractiveCloudDownload() {
             </AnimatePresence>
 
             {/* Download gallery (completed items) */}
-            {completedDownloads.length > 1 && phase === 'done' && (
+            {completedDownloads.length > 1 && phase === "done" && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1328,7 +1404,7 @@ function InteractiveCloudDownload() {
                         animate={{ opacity: 1, scale: 1 }}
                         transition={SPRING}
                         className={`relative h-14 rounded-lg overflow-hidden border ${
-                          id === selectedProvider ? p.borderColor : 'border-white/[0.06]'
+                          id === selectedProvider ? p.borderColor : "border-white/[0.06]"
                         }`}
                       >
                         <div className={`absolute inset-0 bg-gradient-to-br ${p.imageGradient}`} />
@@ -1365,8 +1441,13 @@ function InteractiveCloudDownload() {
               <ArrowRight className="h-4 w-4" />
               <ImageIcon className="h-5 w-5" />
             </div>
-            <p className="text-white/30 text-sm">Select a cloud provider to see the full download pipeline</p>
-            <p className="text-white/20 text-xs">URL paste &rarr; provider detection &rarr; API negotiation &rarr; download &rarr; preview</p>
+            <p className="text-white/30 text-sm">
+              Select a cloud provider to see the full download pipeline
+            </p>
+            <p className="text-white/20 text-xs">
+              URL paste &rarr; provider detection &rarr; API negotiation &rarr; download &rarr;
+              preview
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

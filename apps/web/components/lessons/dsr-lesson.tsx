@@ -1,50 +1,50 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Terminal,
-  Package,
-  Server,
-  GitBranch,
-  Play,
-  Shield,
-  Hammer,
   Archive,
-  Upload,
+  Check,
   CheckCircle2,
-  XCircle,
-  Loader2,
-  Sparkles,
-  Tag,
   ChevronLeft,
   ChevronRight,
-  Hash,
-  Lock,
+  Copy,
+  Cpu,
   Eye,
   FileCheck,
+  GitBranch,
   Globe,
-  Cpu,
-  MonitorSmartphone,
+  Hammer,
+  Hash,
   Layers,
-  Copy,
-  Check,
-} from 'lucide-react';
+  Loader2,
+  Lock,
+  MonitorSmartphone,
+  Package,
+  Play,
+  Server,
+  Shield,
+  Sparkles,
+  Tag,
+  Terminal,
+  Upload,
+  XCircle,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
+import { copyTextToClipboard } from "@/lib/utils";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
-import { copyTextToClipboard } from '@/lib/utils';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 export function DsrLesson() {
   return (
@@ -56,14 +56,13 @@ export function DsrLesson() {
       {/* Section 1: What Is DSR */}
       <Section title="What Is DSR?" icon={<Package className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>DSR (Doodlestein Self-Releaser)</Highlight> is fallback release
-          infrastructure for when GitHub Actions is throttled or unavailable.
-          It builds release artifacts locally using <code>act</code> (local GitHub Actions runner)
-          and publishes them directly.
+          <Highlight>DSR (Doodlestein Self-Releaser)</Highlight> is fallback release infrastructure
+          for when GitHub Actions is throttled or unavailable. It builds release artifacts locally
+          using <code>act</code> (local GitHub Actions runner) and publishes them directly.
         </Paragraph>
         <Paragraph>
-          When CI is backed up or your Actions minutes are exhausted, DSR lets you
-          cut a release from your local machine with the same reproducibility as CI.
+          When CI is backed up or your Actions minutes are exhausted, DSR lets you cut a release
+          from your local machine with the same reproducibility as CI.
         </Paragraph>
 
         <div className="mt-8">
@@ -106,16 +105,22 @@ export function DsrLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'dsr release <tool> <version>', description: 'Upload the built artifacts as a GitHub release' },
-            { command: 'dsr build --repo ntm', description: 'Build a tool\'s artifacts without publishing' },
-            { command: 'dsr status', description: 'Check release readiness' },
-            { command: 'dsr --help', description: 'Show all options' },
+            {
+              command: "dsr release <tool> <version>",
+              description: "Upload the built artifacts as a GitHub release",
+            },
+            {
+              command: "dsr build --repo ntm",
+              description: "Build a tool's artifacts without publishing",
+            },
+            { command: "dsr status", description: "Check release readiness" },
+            { command: "dsr --help", description: "Show all options" },
           ]}
         />
 
         <TipBox>
-          DSR is a safety net, not a replacement for CI. Use it when Actions is down
-          or throttled and you need to ship now.
+          DSR is a safety net, not a replacement for CI. Use it when Actions is down or throttled
+          and you need to ship now.
         </TipBox>
       </Section>
 
@@ -123,7 +128,8 @@ export function DsrLesson() {
 
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# Check if you're ready to release
+        <CodeBlock
+          code={`# Check if you're ready to release
 dsr status
 
 # Build release artifacts locally
@@ -133,7 +139,8 @@ dsr build --repo ntm
 dsr release ntm 1.2.3
 
 # Or run the whole pipeline: check -> build -> release
-dsr fallback ntm`} />
+dsr fallback ntm`}
+        />
       </Section>
     </div>
   );
@@ -143,7 +150,15 @@ dsr fallback ntm`} />
 // Types & Constants
 // ---------------------------------------------------------------------------
 
-type PipelinePhase = 'idle' | 'building' | 'verifying' | 'signing' | 'checksums' | 'uploading' | 'publishing' | 'done';
+type PipelinePhase =
+  | "idle"
+  | "building"
+  | "verifying"
+  | "signing"
+  | "checksums"
+  | "uploading"
+  | "publishing"
+  | "done";
 
 interface ToolScenario {
   id: string;
@@ -166,87 +181,87 @@ interface PlatformTarget {
 }
 
 const PLATFORM_TARGETS: PlatformTarget[] = [
-  { os: 'linux', arch: 'amd64', label: 'linux/amd64', icon: Cpu, sizeKb: 14200 },
-  { os: 'linux', arch: 'arm64', label: 'linux/arm64', icon: Cpu, sizeKb: 13800 },
-  { os: 'darwin', arch: 'amd64', label: 'darwin/amd64', icon: MonitorSmartphone, sizeKb: 15100 },
-  { os: 'darwin', arch: 'arm64', label: 'darwin/arm64', icon: MonitorSmartphone, sizeKb: 14600 },
+  { os: "linux", arch: "amd64", label: "linux/amd64", icon: Cpu, sizeKb: 14200 },
+  { os: "linux", arch: "arm64", label: "linux/arm64", icon: Cpu, sizeKb: 13800 },
+  { os: "darwin", arch: "amd64", label: "darwin/amd64", icon: MonitorSmartphone, sizeKb: 15100 },
+  { os: "darwin", arch: "arm64", label: "darwin/arm64", icon: MonitorSmartphone, sizeKb: 14600 },
 ];
 
 const TOOL_SCENARIOS: ToolScenario[] = [
   {
-    id: 'ntm',
-    label: 'NTM Release',
+    id: "ntm",
+    label: "NTM Release",
     icon: Layers,
-    toolName: 'ntm',
-    version: 'v2.4.1',
-    description: 'Node Tool Manager release with cross-platform binaries',
-    command: 'dsr release ntm 2.4.1',
+    toolName: "ntm",
+    version: "v2.4.1",
+    description: "Node Tool Manager release with cross-platform binaries",
+    command: "dsr release ntm 2.4.1",
     targets: PLATFORM_TARGETS,
-    checksumPrefix: 'a3f8c2',
+    checksumPrefix: "a3f8c2",
   },
   {
-    id: 'ubs',
-    label: 'UBS Release',
+    id: "ubs",
+    label: "UBS Release",
     icon: Server,
-    toolName: 'ubs',
-    version: 'v1.8.0',
-    description: 'Universal Build System packaging for all platforms',
-    command: 'dsr release ubs 1.8.0',
+    toolName: "ubs",
+    version: "v1.8.0",
+    description: "Universal Build System packaging for all platforms",
+    command: "dsr release ubs 1.8.0",
     targets: PLATFORM_TARGETS,
-    checksumPrefix: 'e7d1b9',
+    checksumPrefix: "e7d1b9",
   },
   {
-    id: 'bv',
-    label: 'BV Release',
+    id: "bv",
+    label: "BV Release",
     icon: Eye,
-    toolName: 'bv',
-    version: 'v3.1.2',
-    description: 'Build Verifier release with integrity checks',
-    command: 'dsr release bv 3.1.2',
+    toolName: "bv",
+    version: "v3.1.2",
+    description: "Build Verifier release with integrity checks",
+    command: "dsr release bv 3.1.2",
     targets: PLATFORM_TARGETS.slice(0, 2),
-    checksumPrefix: '4b2e7a',
+    checksumPrefix: "4b2e7a",
   },
   {
-    id: 'cass',
-    label: 'CASS Release',
+    id: "cass",
+    label: "CASS Release",
     icon: Shield,
-    toolName: 'cass',
-    version: 'v4.0.0',
-    description: 'CASS Agent Safety System with signed artifacts',
-    command: 'dsr release cass 4.0.0 --verify-tag',
+    toolName: "cass",
+    version: "v4.0.0",
+    description: "CASS Agent Safety System with signed artifacts",
+    command: "dsr release cass 4.0.0 --verify-tag",
     targets: PLATFORM_TARGETS,
-    checksumPrefix: 'f9c3d5',
+    checksumPrefix: "f9c3d5",
   },
   {
-    id: 'cm',
-    label: 'CM Release',
+    id: "cm",
+    label: "CM Release",
     icon: Archive,
-    toolName: 'cm',
-    version: 'v2.2.3',
-    description: 'CASS Memory System with incremental update',
-    command: 'dsr release cm 2.2.3',
+    toolName: "cm",
+    version: "v2.2.3",
+    description: "CASS Memory System with incremental update",
+    command: "dsr release cm 2.2.3",
     targets: PLATFORM_TARGETS.slice(0, 3),
-    checksumPrefix: '8d4f1e',
+    checksumPrefix: "8d4f1e",
   },
   {
-    id: 'batch',
-    label: 'Full Fallback Pipeline',
+    id: "batch",
+    label: "Full Fallback Pipeline",
     icon: Globe,
-    toolName: 'ntm',
-    version: 'v2025.03',
-    description: 'Check, build, sign, and release in one run when Actions is throttled',
-    command: 'dsr fallback ntm --version 2025.03',
+    toolName: "ntm",
+    version: "v2025.03",
+    description: "Check, build, sign, and release in one run when Actions is throttled",
+    command: "dsr fallback ntm --version 2025.03",
     targets: PLATFORM_TARGETS,
-    checksumPrefix: 'c1a9e6',
+    checksumPrefix: "c1a9e6",
   },
 ];
 
 const PIPELINE_STAGES = [
-  { id: 'build', label: 'Build', icon: Hammer, color: 'blue' },
-  { id: 'verify', label: 'Verify', icon: FileCheck, color: 'cyan' },
-  { id: 'sign', label: 'Sign', icon: Lock, color: 'violet' },
-  { id: 'upload', label: 'Upload', icon: Upload, color: 'amber' },
-  { id: 'publish', label: 'Publish', icon: Tag, color: 'emerald' },
+  { id: "build", label: "Build", icon: Hammer, color: "blue" },
+  { id: "verify", label: "Verify", icon: FileCheck, color: "cyan" },
+  { id: "sign", label: "Sign", icon: Lock, color: "violet" },
+  { id: "upload", label: "Upload", icon: Upload, color: "amber" },
+  { id: "publish", label: "Publish", icon: Tag, color: "emerald" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -255,7 +270,7 @@ const PIPELINE_STAGES = [
 
 function InteractiveReleasePipeline() {
   const [activeScenario, setActiveScenario] = useState(0);
-  const [phase, setPhase] = useState<PipelinePhase>('idle');
+  const [phase, setPhase] = useState<PipelinePhase>("idle");
   const [isDraft, setIsDraft] = useState(true);
   const [buildProgress, setBuildProgress] = useState<number[]>(() => [0, 0, 0, 0]);
   const [stageProgress, setStageProgress] = useState<number[]>(() => [0, 0, 0, 0, 0]);
@@ -295,13 +310,13 @@ function InteractiveReleasePipeline() {
     }
   }, [terminalLines]);
 
-  const addTerminalLine = useCallback((text: string, type: TerminalLine['type'] = 'output') => {
+  const addTerminalLine = useCallback((text: string, type: TerminalLine["type"] = "output") => {
     setTerminalLines((prev) => [...prev, { text, type, id: Date.now() + Math.random() }]);
   }, []);
 
   const resetPipeline = useCallback(() => {
     clearAllTimers();
-    setPhase('idle');
+    setPhase("idle");
     setBuildProgress([0, 0, 0, 0]);
     setStageProgress([0, 0, 0, 0, 0]);
     setChecksumRevealed(false);
@@ -309,10 +324,13 @@ function InteractiveReleasePipeline() {
     setShowConfetti(false);
   }, [clearAllTimers]);
 
-  const handleScenarioChange = useCallback((idx: number) => {
-    resetPipeline();
-    setActiveScenario(idx);
-  }, [resetPipeline]);
+  const handleScenarioChange = useCallback(
+    (idx: number) => {
+      resetPipeline();
+      setActiveScenario(idx);
+    },
+    [resetPipeline],
+  );
 
   const handlePrev = useCallback(() => {
     const newIdx = activeScenario <= 0 ? TOOL_SCENARIOS.length - 1 : activeScenario - 1;
@@ -325,16 +343,19 @@ function InteractiveReleasePipeline() {
   }, [activeScenario, handleScenarioChange]);
 
   const startPipeline = useCallback(() => {
-    if (phase !== 'idle' && phase !== 'done') return;
+    if (phase !== "idle" && phase !== "done") return;
     resetPipeline();
 
     // Use setTimeout to avoid synchronous state update in the callback scope
     const tStart = setTimeout(() => {
-      setPhase('building');
-      addTerminalLine(`$ ${scenario.command}`, 'command');
-      addTerminalLine(`[dsr] Starting release for ${scenario.toolName} ${scenario.version}`, 'info');
-      addTerminalLine(`[dsr] CI is throttled - switching to local build mode`, 'warning');
-      addTerminalLine('', 'output');
+      setPhase("building");
+      addTerminalLine(`$ ${scenario.command}`, "command");
+      addTerminalLine(
+        `[dsr] Starting release for ${scenario.toolName} ${scenario.version}`,
+        "info",
+      );
+      addTerminalLine(`[dsr] CI is throttled - switching to local build mode`, "warning");
+      addTerminalLine("", "output");
 
       // Build phase: animate per-platform progress bars
       const targetCount = scenario.targets.length;
@@ -345,7 +366,7 @@ function InteractiveReleasePipeline() {
         const stepDuration = baseDuration / steps;
         let step = 0;
 
-        addTerminalLine(`[build] Compiling ${scenario.toolName} for ${target.label}...`, 'output');
+        addTerminalLine(`[build] Compiling ${scenario.toolName} for ${target.label}...`, "output");
 
         const interval = setInterval(() => {
           step++;
@@ -357,7 +378,7 @@ function InteractiveReleasePipeline() {
           if (step >= steps) {
             clearInterval(interval);
             completedBuilds++;
-            addTerminalLine(`[build] ${target.label} done (${target.sizeKb}KB)`, 'success');
+            addTerminalLine(`[build] ${target.label} done (${target.sizeKb}KB)`, "success");
             setBuildProgress((prev) => {
               const next = [...prev];
               next[tIdx] = 100;
@@ -370,44 +391,44 @@ function InteractiveReleasePipeline() {
                 next[0] = 100;
                 return next;
               });
-              
+
               const t1 = setTimeout(() => {
-                setPhase('signing');
-                addTerminalLine(`[sign] Generating Ed25519 signatures...`, 'command');
-                addTerminalLine('', 'output');
+                setPhase("signing");
+                addTerminalLine(`[sign] Generating Ed25519 signatures...`, "command");
+                addTerminalLine("", "output");
 
                 // Animate signing progress
                 animateStageProgress(1, 1000, () => {
-                  addTerminalLine('[sign] Artifacts signed successfully', 'success');
+                  addTerminalLine("[sign] Artifacts signed successfully", "success");
                   const t2 = setTimeout(() => {
-                    setPhase('checksums');
-                    addTerminalLine(`[checksum] Calculating SHA256 hashes...`, 'command');
-                    addTerminalLine('', 'output');
+                    setPhase("checksums");
+                    addTerminalLine(`[checksum] Calculating SHA256 hashes...`, "command");
+                    addTerminalLine("", "output");
 
                     animateStageProgress(2, 600, () => {
                       setChecksumRevealed(true);
-                      addTerminalLine('[checksum] checksums.yaml updated', 'success');
+                      addTerminalLine("[checksum] checksums.yaml updated", "success");
                       const t3 = setTimeout(() => {
-                        setPhase('uploading');
-                        addTerminalLine(`[upload] Uploading to GitHub release...`, 'command');
-                        addTerminalLine('', 'output');
+                        setPhase("uploading");
+                        addTerminalLine(`[upload] Uploading to GitHub release...`, "command");
+                        addTerminalLine("", "output");
 
                         // Upload phase
                         const t4 = setTimeout(() => {
-                          setPhase('publishing');
-                          addTerminalLine(`[release] Uploading to GitHub Releases...`, 'command');
-                          addTerminalLine('', 'output');
+                          setPhase("publishing");
+                          addTerminalLine(`[release] Uploading to GitHub Releases...`, "command");
+                          addTerminalLine("", "output");
 
                           // Publish phase
                           const t5 = setTimeout(() => {
-                            setPhase('done');
+                            setPhase("done");
                             addTerminalLine(
-                              `[publish] ${scenario.toolName} ${scenario.version} ${isDraft ? 'draft' : 'release'} created!`,
-                              'success',
+                              `[publish] ${scenario.toolName} ${scenario.version} ${isDraft ? "draft" : "release"} created!`,
+                              "success",
                             );
                             addTerminalLine(
                               `[dsr] https://github.com/acfs/${scenario.toolName}/releases/tag/${scenario.version}`,
-                              'info',
+                              "info",
                             );
                             setShowConfetti(true);
                             const tConfettiEnd = setTimeout(() => {
@@ -455,7 +476,10 @@ function InteractiveReleasePipeline() {
   }, [phase, scenario, isDraft, addTerminalLine, resetPipeline]);
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-orange-500/[0.04] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-indigo-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -464,9 +488,7 @@ function InteractiveReleasePipeline() {
       <div className="relative p-6 sm:p-8 space-y-6">
         {/* Header */}
         <div className="text-center">
-          <p className="text-sm font-semibold text-white/80">
-            Release Pipeline Control Room
-          </p>
+          <p className="text-sm font-semibold text-white/80">Release Pipeline Control Room</p>
           <p className="text-xs text-white/50 mt-1">
             Watch DSR build, verify, sign, and publish release artifacts locally
           </p>
@@ -479,9 +501,7 @@ function InteractiveReleasePipeline() {
             <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">
               CI Throttled
             </span>
-            <span className="text-[10px] text-red-400/60">
-              &mdash; Actions minutes exhausted
-            </span>
+            <span className="text-[10px] text-red-400/60">&mdash; Actions minutes exhausted</span>
           </div>
         </div>
 
@@ -492,7 +512,7 @@ function InteractiveReleasePipeline() {
           onPrev={handlePrev}
           onNext={handleNext}
           onSelect={handleScenarioChange}
-          disabled={phase !== 'idle' && phase !== 'done'}
+          disabled={phase !== "idle" && phase !== "done"}
         />
 
         {/* Scenario Info Card */}
@@ -527,7 +547,11 @@ function InteractiveReleasePipeline() {
         </AnimatePresence>
 
         {/* Draft/Final Toggle */}
-        <DraftFinalToggle isDraft={isDraft} setIsDraft={setIsDraft} disabled={phase !== 'idle' && phase !== 'done'} />
+        <DraftFinalToggle
+          isDraft={isDraft}
+          setIsDraft={setIsDraft}
+          disabled={phase !== "idle" && phase !== "done"}
+        />
 
         {/* Main visualization grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -537,11 +561,7 @@ function InteractiveReleasePipeline() {
             <ArtifactFlowDiagram phase={phase} stageProgress={stageProgress} isDraft={isDraft} />
 
             {/* Build progress per platform */}
-            <PlatformBuildGrid
-              targets={scenario.targets}
-              progress={buildProgress}
-              phase={phase}
-            />
+            <PlatformBuildGrid targets={scenario.targets} progress={buildProgress} phase={phase} />
           </div>
 
           {/* Right: Checksum Verification + Terminal */}
@@ -561,7 +581,7 @@ function InteractiveReleasePipeline() {
 
         {/* Success banner */}
         <AnimatePresence>
-          {phase === 'done' && (
+          {phase === "done" && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -572,7 +592,7 @@ function InteractiveReleasePipeline() {
               <div className="flex items-center justify-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-emerald-400" />
                 <span className="text-sm font-bold text-emerald-300">
-                  {scenario.toolName} {scenario.version} {isDraft ? 'Draft' : 'Release'} Published!
+                  {scenario.toolName} {scenario.version} {isDraft ? "Draft" : "Release"} Published!
                 </span>
                 <Sparkles className="h-4 w-4 text-emerald-400" />
               </div>
@@ -592,18 +612,20 @@ function InteractiveReleasePipeline() {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             transition={SPRING}
-            disabled={phase !== 'idle' && phase !== 'done'}
+            disabled={phase !== "idle" && phase !== "done"}
             className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
-              phase !== 'idle' && phase !== 'done'
-                ? 'border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait'
-                : 'border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20'
+              phase !== "idle" && phase !== "done"
+                ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
+                : "border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
             }`}
           >
-            {phase !== 'idle' && phase !== 'done' ? (
+            {phase !== "idle" && phase !== "done" ? (
               <>
                 <motion.div
                   animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                  transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                  transition={
+                    inView ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+                  }
                 >
                   <Loader2 className="h-4 w-4" />
                 </motion.div>
@@ -612,12 +634,12 @@ function InteractiveReleasePipeline() {
             ) : (
               <>
                 <Play className="h-4 w-4" />
-                {phase === 'done' ? 'Run Again' : 'Start Release'}
+                {phase === "done" ? "Run Again" : "Start Release"}
               </>
             )}
           </motion.button>
 
-          {phase === 'done' && (
+          {phase === "done" && (
             <motion.button
               type="button"
               onClick={resetPipeline}
@@ -684,9 +706,7 @@ function ScenarioStepper({
           >
             <div
               className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
-                idx === activeIndex
-                  ? 'w-6 bg-orange-400'
-                  : 'w-2 bg-white/20 hover:bg-white/40'
+                idx === activeIndex ? "w-6 bg-orange-400" : "w-2 bg-white/20 hover:bg-white/40"
               }`}
             />
             {idx === activeIndex && (
@@ -734,7 +754,9 @@ function DraftFinalToggle({
 }) {
   return (
     <div className="flex items-center justify-center gap-3">
-      <span className={`text-xs font-medium transition-colors ${isDraft ? 'text-amber-400' : 'text-white/30'}`}>
+      <span
+        className={`text-xs font-medium transition-colors ${isDraft ? "text-amber-400" : "text-white/30"}`}
+      >
         Draft
       </span>
       <motion.button
@@ -745,17 +767,19 @@ function DraftFinalToggle({
         transition={SPRING}
         className={`relative h-6 w-11 rounded-full border transition-colors ${
           isDraft
-            ? 'border-amber-500/30 bg-amber-500/20'
-            : 'border-emerald-500/30 bg-emerald-500/20'
-        } ${disabled ? 'opacity-40' : 'cursor-pointer'}`}
+            ? "border-amber-500/30 bg-amber-500/20"
+            : "border-emerald-500/30 bg-emerald-500/20"
+        } ${disabled ? "opacity-40" : "cursor-pointer"}`}
       >
         <motion.div
-          className={`absolute top-0.5 h-5 w-5 rounded-full ${isDraft ? 'bg-amber-400' : 'bg-emerald-400'}`}
+          className={`absolute top-0.5 h-5 w-5 rounded-full ${isDraft ? "bg-amber-400" : "bg-emerald-400"}`}
           animate={{ left: isDraft ? 2 : 20 }}
           transition={SPRING}
         />
       </motion.button>
-      <span className={`text-xs font-medium transition-colors ${!isDraft ? 'text-emerald-400' : 'text-white/30'}`}>
+      <span
+        className={`text-xs font-medium transition-colors ${!isDraft ? "text-emerald-400" : "text-white/30"}`}
+      >
         Final
       </span>
     </div>
@@ -767,11 +791,11 @@ function DraftFinalToggle({
 // ---------------------------------------------------------------------------
 
 const STAGE_COLORS: Record<string, { fill: string; stroke: string; text: string }> = {
-  build: { fill: '#3b82f6', stroke: '#60a5fa', text: '#93c5fd' },
-  verify: { fill: '#06b6d4', stroke: '#22d3ee', text: '#67e8f9' },
-  sign: { fill: '#8b5cf6', stroke: '#a78bfa', text: '#c4b5fd' },
-  upload: { fill: '#f59e0b', stroke: '#fbbf24', text: '#fcd34d' },
-  publish: { fill: '#10b981', stroke: '#34d399', text: '#6ee7b7' },
+  build: { fill: "#3b82f6", stroke: "#60a5fa", text: "#93c5fd" },
+  verify: { fill: "#06b6d4", stroke: "#22d3ee", text: "#67e8f9" },
+  sign: { fill: "#8b5cf6", stroke: "#a78bfa", text: "#c4b5fd" },
+  upload: { fill: "#f59e0b", stroke: "#fbbf24", text: "#fcd34d" },
+  publish: { fill: "#10b981", stroke: "#34d399", text: "#6ee7b7" },
 };
 
 function ArtifactFlowDiagram({
@@ -806,7 +830,12 @@ function ArtifactFlowDiagram({
         </span>
       </div>
 
-      <svg viewBox="0 0 500 180" className="w-full" role="img" aria-label="Release pipeline artifact flow diagram">
+      <svg
+        viewBox="0 0 500 180"
+        className="w-full"
+        role="img"
+        aria-label="Release pipeline artifact flow diagram"
+      >
         {/* Background grid dots */}
         {Array.from({ length: 20 }, (_, i) =>
           Array.from({ length: 8 }, (__, j) => (
@@ -835,9 +864,9 @@ function ArtifactFlowDiagram({
                 y1={y}
                 x2={x2}
                 y2={y}
-                stroke={isActive ? colors.stroke : 'rgba(255,255,255,0.08)'}
+                stroke={isActive ? colors.stroke : "rgba(255,255,255,0.08)"}
                 strokeWidth={2}
-                strokeDasharray={isActive ? 'none' : '4 4'}
+                strokeDasharray={isActive ? "none" : "4 4"}
               />
               {isActive && inView && (
                 <motion.circle
@@ -847,7 +876,12 @@ function ArtifactFlowDiagram({
                   fill={colors.fill}
                   initial={{ cx: x1 }}
                   animate={{ cx: x2 }}
-                  transition={{ duration: 0.8, ease: 'easeInOut', repeat: Infinity, repeatDelay: 0.5 }}
+                  transition={{
+                    duration: 0.8,
+                    ease: "easeInOut",
+                    repeat: Infinity,
+                    repeatDelay: 0.5,
+                  }}
                 />
               )}
             </g>
@@ -874,8 +908,14 @@ function ArtifactFlowDiagram({
                 width={w}
                 height={h}
                 rx={8}
-                fill={isActive || isComplete ? `${colors.fill}22` : 'rgba(255,255,255,0.02)'}
-                stroke={isActive ? colors.stroke : isComplete ? `${colors.stroke}66` : 'rgba(255,255,255,0.08)'}
+                fill={isActive || isComplete ? `${colors.fill}22` : "rgba(255,255,255,0.02)"}
+                stroke={
+                  isActive
+                    ? colors.stroke
+                    : isComplete
+                      ? `${colors.stroke}66`
+                      : "rgba(255,255,255,0.08)"
+                }
                 strokeWidth={isActive ? 2 : 1}
               />
 
@@ -914,7 +954,7 @@ function ArtifactFlowDiagram({
                 textAnchor="middle"
                 fontSize={9}
                 fontWeight={600}
-                fill={isActive || isComplete ? colors.text : 'rgba(255,255,255,0.3)'}
+                fill={isActive || isComplete ? colors.text : "rgba(255,255,255,0.3)"}
               >
                 {stage.label}
               </text>
@@ -924,14 +964,33 @@ function ArtifactFlowDiagram({
                 <circle cx={x + w / 2} cy={y + 36} r={5} fill={colors.fill} opacity={0.8} />
               )}
               {isComplete && (
-                <text x={x + w / 2} y={y + 39} textAnchor="middle" fontSize={7} fill="white" fontWeight={700}>
+                <text
+                  x={x + w / 2}
+                  y={y + 39}
+                  textAnchor="middle"
+                  fontSize={7}
+                  fill="white"
+                  fontWeight={700}
+                >
                   &#10003;
                 </text>
               )}
               {isActive && (
-                <circle cx={x + w / 2} cy={y + 36} r={4} fill="none" stroke={colors.stroke} strokeWidth={1.5}>
+                <circle
+                  cx={x + w / 2}
+                  cy={y + 36}
+                  r={4}
+                  fill="none"
+                  stroke={colors.stroke}
+                  strokeWidth={1.5}
+                >
                   <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite" />
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.4;1"
+                    dur="1.5s"
+                    repeatCount="indefinite"
+                  />
                 </circle>
               )}
             </g>
@@ -939,34 +998,103 @@ function ArtifactFlowDiagram({
         })}
 
         {/* Source label */}
-        <text x={30} y={105} fontSize={8} fill="rgba(255,255,255,0.35)" fontWeight={500}>Local Machine</text>
-        <rect x={30} y={110} width={80} height={30} rx={6} fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
-        <text x={70} y={129} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,0.4)" fontFamily="monospace">act runner</text>
+        <text x={30} y={105} fontSize={8} fill="rgba(255,255,255,0.35)" fontWeight={500}>
+          Local Machine
+        </text>
+        <rect
+          x={30}
+          y={110}
+          width={80}
+          height={30}
+          rx={6}
+          fill="rgba(255,255,255,0.03)"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={1}
+        />
+        <text
+          x={70}
+          y={129}
+          textAnchor="middle"
+          fontSize={8}
+          fill="rgba(255,255,255,0.4)"
+          fontFamily="monospace"
+        >
+          act runner
+        </text>
 
         {/* Arrow from source to pipeline */}
-        <line x1={110} y1={125} x2={160} y2={125} stroke="rgba(255,255,255,0.1)" strokeWidth={1} strokeDasharray="3 3" />
-        <line x1={160} y1={125} x2={160} y2={80} stroke="rgba(255,255,255,0.1)" strokeWidth={1} strokeDasharray="3 3" />
+        <line
+          x1={110}
+          y1={125}
+          x2={160}
+          y2={125}
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth={1}
+          strokeDasharray="3 3"
+        />
+        <line
+          x1={160}
+          y1={125}
+          x2={160}
+          y2={80}
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth={1}
+          strokeDasharray="3 3"
+        />
 
         {/* Destination label */}
-        <text x={345} y={105} fontSize={8} fill="rgba(255,255,255,0.35)" fontWeight={500}>GitHub Release</text>
-        <rect x={345} y={110} width={120} height={30} rx={6} fill={phase === 'done' ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.03)'} stroke={phase === 'done' ? 'rgba(52,211,153,0.3)' : 'rgba(255,255,255,0.08)'} strokeWidth={1} />
-        <text x={405} y={129} textAnchor="middle" fontSize={8} fill={phase === 'done' ? 'rgba(110,231,183,0.8)' : 'rgba(255,255,255,0.4)'} fontFamily="monospace">
-          {isDraft ? 'draft release' : 'final release'}
+        <text x={345} y={105} fontSize={8} fill="rgba(255,255,255,0.35)" fontWeight={500}>
+          GitHub Release
+        </text>
+        <rect
+          x={345}
+          y={110}
+          width={120}
+          height={30}
+          rx={6}
+          fill={phase === "done" ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)"}
+          stroke={phase === "done" ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}
+          strokeWidth={1}
+        />
+        <text
+          x={405}
+          y={129}
+          textAnchor="middle"
+          fontSize={8}
+          fill={phase === "done" ? "rgba(110,231,183,0.8)" : "rgba(255,255,255,0.4)"}
+          fontFamily="monospace"
+        >
+          {isDraft ? "draft release" : "final release"}
         </text>
 
         {/* Arrow from pipeline to destination */}
-        <line x1={410} y1={80} x2={410} y2={110} stroke="rgba(255,255,255,0.1)" strokeWidth={1} strokeDasharray="3 3" />
+        <line
+          x1={410}
+          y1={80}
+          x2={410}
+          y2={110}
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth={1}
+          strokeDasharray="3 3"
+        />
 
         {/* Phase indicator text */}
-        <text x={250} y={170} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,0.25)" fontWeight={500}>
-          {phase === 'idle' && 'Ready to release'}
-          {phase === 'building' && 'Building artifacts...'}
-          {phase === 'verifying' && 'Verifying checksums...'}
-          {phase === 'checksums' && 'Calculating checksums...'}
-          {phase === 'signing' && 'Signing with GPG...'}
-          {phase === 'uploading' && 'Uploading to GitHub...'}
-          {phase === 'publishing' && 'Creating release...'}
-          {phase === 'done' && 'Release complete!'}
+        <text
+          x={250}
+          y={170}
+          textAnchor="middle"
+          fontSize={9}
+          fill="rgba(255,255,255,0.25)"
+          fontWeight={500}
+        >
+          {phase === "idle" && "Ready to release"}
+          {phase === "building" && "Building artifacts..."}
+          {phase === "verifying" && "Verifying checksums..."}
+          {phase === "checksums" && "Calculating checksums..."}
+          {phase === "signing" && "Signing with GPG..."}
+          {phase === "uploading" && "Uploading to GitHub..."}
+          {phase === "publishing" && "Creating release..."}
+          {phase === "done" && "Release complete!"}
         </text>
       </svg>
     </div>
@@ -1002,7 +1130,7 @@ function PlatformBuildGrid({
         {targets.map((target, idx) => {
           const pct = progress[idx] || 0;
           const isComplete = pct >= 100;
-          const isBuilding = phase === 'building' && pct > 0 && pct < 100;
+          const isBuilding = phase === "building" && pct > 0 && pct < 100;
           const TargetIcon = target.icon;
 
           return (
@@ -1014,26 +1142,26 @@ function PlatformBuildGrid({
               className="group"
             >
               <div className="flex items-center gap-2">
-                <TargetIcon className={`h-3 w-3 ${isComplete ? 'text-emerald-400' : isBuilding ? 'text-blue-400' : 'text-white/30'}`} />
+                <TargetIcon
+                  className={`h-3 w-3 ${isComplete ? "text-emerald-400" : isBuilding ? "text-blue-400" : "text-white/30"}`}
+                />
                 <span className="text-[10px] font-mono text-white/60">{target.label}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-white/30">
-                  {isComplete ? `${target.sizeKb}KB` : isBuilding ? `${Math.round(pct)}%` : '--'}
+                  {isComplete ? `${target.sizeKb}KB` : isBuilding ? `${Math.round(pct)}%` : "--"}
                 </span>
                 {isComplete && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={SPRING}
-                  >
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={SPRING}>
                     <CheckCircle2 className="h-3 w-3 text-emerald-400" />
                   </motion.div>
                 )}
                 {isBuilding && (
                   <motion.div
                     animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                    transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                    transition={
+                      inView ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+                    }
                   >
                     <Loader2 className="h-3 w-3 text-blue-400" />
                   </motion.div>
@@ -1044,13 +1172,11 @@ function PlatformBuildGrid({
               <div className="h-1 w-full rounded-full bg-white/[0.06] overflow-hidden">
                 <motion.div
                   className={`h-full rounded-full ${
-                    isComplete
-                      ? 'bg-emerald-500/60'
-                      : 'bg-blue-500/60'
+                    isComplete ? "bg-emerald-500/60" : "bg-blue-500/60"
                   }`}
-                  initial={{ width: '0%' }}
+                  initial={{ width: "0%" }}
                   animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.1, ease: 'linear' }}
+                  transition={{ duration: 0.1, ease: "linear" }}
                 />
               </div>
             </motion.div>
@@ -1088,21 +1214,23 @@ function ChecksumVerification({
   revealed: boolean;
   phase: PipelinePhase;
 }) {
-  const isVerifying = phase === 'verifying';
-  const isVerified = phase !== 'idle' && phase !== 'building' && phase !== 'verifying';
+  const isVerifying = phase === "verifying";
+  const isVerified = phase !== "idle" && phase !== "building" && phase !== "verifying";
 
   // Generate stable per-target hashes from the prefix
-  const hashes = useMemo(() =>
-    targets.map((t, i) => {
-      const seed = checksumPrefix + t.label + i;
-      let hash = '';
-      for (let j = 0; j < 64; j++) {
-        const code = seed.charCodeAt(j % seed.length);
-        hash += ((code * (j + 7) * (i + 3)) % 16).toString(16);
-      }
-      return hash;
-    }),
-  [targets, checksumPrefix]);
+  const hashes = useMemo(
+    () =>
+      targets.map((t, i) => {
+        const seed = checksumPrefix + t.label + i;
+        let hash = "";
+        for (let j = 0; j < 64; j++) {
+          const code = seed.charCodeAt(j % seed.length);
+          hash += ((code * (j + 7) * (i + 3)) % 16).toString(16);
+        }
+        return hash;
+      }),
+    [targets, checksumPrefix],
+  );
 
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1156,7 +1284,12 @@ function ChecksumVerification({
             animate={{ opacity: 1 }}
             className="ml-auto flex items-center gap-1 text-[10px] text-cyan-400 font-mono"
           >
-            <motion.div animate={inView ? { rotate: 360 } : { rotate: 0 }} transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}>
+            <motion.div
+              animate={inView ? { rotate: 360 } : { rotate: 0 }}
+              transition={
+                inView ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+              }
+            >
               <Loader2 className="h-3 w-3" />
             </motion.div>
             verifying
@@ -1177,10 +1310,16 @@ function ChecksumVerification({
               <span className="text-[10px] font-mono text-white/40 w-24 shrink-0 truncate">
                 {target.label}
               </span>
-              <div className={`flex-1 font-mono text-[10px] leading-tight truncate transition-colors ${
-                isVerified ? 'text-emerald-400/70' : isVerifying ? 'text-cyan-400/60' : 'text-white/25'
-              }`}>
-                {revealed ? hashes[idx] : '•'.repeat(64)}
+              <div
+                className={`flex-1 font-mono text-[10px] leading-tight truncate transition-colors ${
+                  isVerified
+                    ? "text-emerald-400/70"
+                    : isVerifying
+                      ? "text-cyan-400/60"
+                      : "text-white/25"
+                }`}
+              >
+                {revealed ? hashes[idx] : "•".repeat(64)}
               </div>
               {revealed && (
                 <button
@@ -1203,7 +1342,7 @@ function ChecksumVerification({
                 className="mt-1 h-px bg-gradient-to-r from-cyan-400/40 via-cyan-400/80 to-cyan-400/40"
                 initial={{ scaleX: 0, originX: 0 }}
                 animate={{ scaleX: 1 }}
-                transition={{ duration: 1.2, delay: idx * 0.2, ease: 'easeInOut' }}
+                transition={{ duration: 1.2, delay: idx * 0.2, ease: "easeInOut" }}
               />
             )}
           </motion.div>
@@ -1219,17 +1358,17 @@ function ChecksumVerification({
 
 interface TerminalLine {
   text: string;
-  type: 'command' | 'output' | 'info' | 'success' | 'warning' | 'error';
+  type: "command" | "output" | "info" | "success" | "warning" | "error";
   id: number;
 }
 
-const TERMINAL_LINE_COLORS: Record<TerminalLine['type'], string> = {
-  command: 'text-cyan-300',
-  output: 'text-white/50',
-  info: 'text-blue-400',
-  success: 'text-emerald-400',
-  warning: 'text-amber-400',
-  error: 'text-red-400',
+const TERMINAL_LINE_COLORS: Record<TerminalLine["type"], string> = {
+  command: "text-cyan-300",
+  output: "text-white/50",
+  info: "text-blue-400",
+  success: "text-emerald-400",
+  warning: "text-amber-400",
+  error: "text-red-400",
 };
 
 function MiniTerminal({
@@ -1243,7 +1382,10 @@ function MiniTerminal({
   const inView = useInView(rootRef, { amount: 0.15 });
 
   return (
-    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-black/40 overflow-hidden">
+    <div
+      ref={rootRef}
+      className="rounded-2xl border border-white/[0.08] bg-black/40 overflow-hidden"
+    >
       {/* Terminal header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <div className="flex items-center gap-1.5">
@@ -1275,11 +1417,7 @@ function MiniTerminal({
               transition={{ duration: 0.15 }}
               className={`font-mono text-[10px] leading-relaxed ${TERMINAL_LINE_COLORS[line.type]}`}
             >
-              {line.text === '' ? (
-                <br />
-              ) : (
-                line.text
-              )}
+              {line.text === "" ? <br /> : line.text}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -1289,7 +1427,9 @@ function MiniTerminal({
           <motion.span
             className="inline-block h-3 w-1.5 bg-cyan-400/60"
             animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-            transition={inView ? { duration: 0.8, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+            transition={
+              inView ? { duration: 0.8, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
           />
         )}
       </div>
@@ -1302,9 +1442,14 @@ function MiniTerminal({
 // ---------------------------------------------------------------------------
 
 const CONFETTI_COLORS = [
-  'bg-emerald-400', 'bg-green-400', 'bg-teal-400',
-  'bg-blue-400', 'bg-violet-400', 'bg-amber-400',
-  'bg-rose-400', 'bg-orange-400',
+  "bg-emerald-400",
+  "bg-green-400",
+  "bg-teal-400",
+  "bg-blue-400",
+  "bg-violet-400",
+  "bg-amber-400",
+  "bg-rose-400",
+  "bg-orange-400",
 ];
 
 function ConfettiParticles() {

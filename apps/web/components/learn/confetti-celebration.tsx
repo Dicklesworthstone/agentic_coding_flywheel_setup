@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
 import confetti from "canvas-confetti";
 import { PartyPopper, Sparkles, Trophy } from "lucide-react";
+import { useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 
@@ -22,7 +22,6 @@ const FINAL_MESSAGES = [
   "Congratulations! You're now an agent pro!",
   "Amazing! You've mastered the fundamentals!",
 ] as const;
-
 
 /**
  * Fire a confetti burst from the center of the screen
@@ -122,7 +121,7 @@ export function useConfetti() {
         fireConfetti();
       }
     },
-    [prefersReducedMotion]
+    [prefersReducedMotion],
   );
 
   return { celebrate, prefersReducedMotion };
@@ -185,27 +184,19 @@ export function FinalCelebrationModal({
           </div>
         </div>
 
-        <h2
-          id="celebration-title"
-          className="mb-2 text-2xl font-bold tracking-tight"
-        >
+        <h2 id="celebration-title" className="mb-2 text-2xl font-bold tracking-tight">
           <span className="text-gradient-cosmic">Congratulations!</span>
         </h2>
 
-        <p className="mb-2 text-lg text-foreground">
-          You&apos;ve completed all lessons!
-        </p>
+        <p className="mb-2 text-lg text-foreground">You&apos;ve completed all lessons!</p>
 
         <p className="mb-6 text-muted-foreground">
-          You now have a solid foundation in agentic coding. Time to put your
-          knowledge into practice!
+          You now have a solid foundation in agentic coding. Time to put your knowledge into
+          practice!
         </p>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Button
-            onClick={onGoToDashboard}
-            className="bg-primary text-primary-foreground"
-          >
+          <Button onClick={onGoToDashboard} className="bg-primary text-primary-foreground">
             <Sparkles className="mr-2 h-4 w-4" />
             Back to Dashboard
           </Button>
@@ -234,9 +225,7 @@ export function CompletionToast({ message, isVisible }: CompletionToastProps) {
   return (
     <div
       className={`fixed left-1/2 top-20 z-50 -translate-x-1/2 rounded-full border border-primary/30 bg-card/95 px-6 py-3 shadow-lg backdrop-blur-sm ${
-        prefersReducedMotion
-          ? ""
-          : "animate-in fade-in slide-in-from-top-4 duration-300"
+        prefersReducedMotion ? "" : "animate-in fade-in slide-in-from-top-4 duration-300"
       }`}
       role="status"
       aria-live="polite"

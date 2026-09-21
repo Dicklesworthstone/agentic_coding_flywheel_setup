@@ -1,24 +1,14 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { Apple, ChevronRight, Laptop, Monitor, Sparkles, Terminal } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Apple, Monitor, Sparkles, Laptop, ChevronRight, Terminal } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useCallback, useState } from "react";
+import { GuideExplain, GuideSection, GuideTip, SimplerGuide } from "@/components/simpler-guide";
 import { Button } from "@/components/ui/button";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideExplain,
-  GuideTip,
-} from "@/components/simpler-guide";
-import {
-  useUserOS,
-  useDetectedOS,
-  type OperatingSystem,
-} from "@/lib/userPreferences";
-import { withCurrentSearch } from "@/lib/utils";
+import { type OperatingSystem, useDetectedOS, useUserOS } from "@/lib/userPreferences";
+import { cn, withCurrentSearch } from "@/lib/utils";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 interface OSCardProps {
   icon: React.ReactNode;
@@ -37,7 +27,7 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
         "group relative flex w-full flex-col items-center gap-4 rounded-2xl border p-8 text-center transition duration-300",
         selected
           ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
-          : "border-border/50 bg-card/50 hover:border-primary/30 hover:bg-card/80 hover:shadow-md"
+          : "border-border/50 bg-card/50 hover:border-primary/30 hover:bg-card/80 hover:shadow-md",
       )}
       style={{ touchAction: "manipulation" }}
       onClick={onClick}
@@ -53,12 +43,12 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
     >
       {/* Detected badge */}
       {detected && (
-        <div className={cn(
-          "absolute -top-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-xs font-medium transition",
-          selected
-            ? "bg-primary text-primary-foreground"
-            : "bg-primary/20 text-primary"
-        )}>
+        <div
+          className={cn(
+            "absolute -top-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-xs font-medium transition",
+            selected ? "bg-primary text-primary-foreground" : "bg-primary/20 text-primary",
+          )}
+        >
           {selected ? "Selected" : "Detected"}
         </div>
       )}
@@ -77,7 +67,7 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
           "relative flex h-20 w-20 items-center justify-center rounded-2xl transition duration-300",
           selected
             ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
-            : "bg-muted text-muted-foreground group-hover:bg-muted/80 group-hover:text-foreground"
+            : "bg-muted text-muted-foreground group-hover:bg-muted/80 group-hover:text-foreground",
         )}
       >
         {icon}
@@ -91,15 +81,19 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
         <span className="block text-xl font-bold tracking-tight transition-colors text-foreground">
           {title}
         </span>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {description}
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
 
       {/* Selection indicator */}
       {selected && (
         <div className="absolute bottom-4 right-4 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground animate-scale-in">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={3}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
@@ -130,7 +124,7 @@ export default function OSSelectionPage() {
     (os: OperatingSystem) => {
       setStoredOS(os);
     },
-    [setStoredOS]
+    [setStoredOS],
   );
 
   // Navigate only when Continue is clicked
@@ -173,9 +167,7 @@ export default function OSSelectionPage() {
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               What computer are you using?
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~30 sec
-            </p>
+            <p className="text-sm text-muted-foreground">~30 sec</p>
           </div>
         </div>
         <p className="text-muted-foreground">
@@ -223,9 +215,15 @@ export default function OSSelectionPage() {
         <p className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground">Tip:</span>{" "}
           {hasDetection ? (
-            <>We guessed your OS from your browser. If that&apos;s wrong, pick the right one. Otherwise just hit Continue.</>
+            <>
+              We guessed your OS from your browser. If that&apos;s wrong, pick the right one.
+              Otherwise just hit Continue.
+            </>
           ) : (
-            <>If you&apos;re on a phone/tablet, pick the computer you&apos;ll use for the next steps (Mac, Windows, or Linux).</>
+            <>
+              If you&apos;re on a phone/tablet, pick the computer you&apos;ll use for the next steps
+              (Mac, Windows, or Linux).
+            </>
           )}
         </p>
       </div>
@@ -235,43 +233,46 @@ export default function OSSelectionPage() {
         <div className="space-y-6">
           <GuideSection title="What is this asking?">
             <p>
-              We need to know what type of computer you&apos;re using so we can show you
-              the right instructions. Different computers need slightly different steps.
+              We need to know what type of computer you&apos;re using so we can show you the right
+              instructions. Different computers need slightly different steps.
             </p>
           </GuideSection>
 
           <GuideExplain term="an Operating System">
-            An operating system (or &quot;OS&quot;) is the main software that runs your
-            computer. It&apos;s like the foundation that everything else runs on top of.
-            <br /><br />
-            <strong>Mac</strong> = Apple computers (MacBook, iMac, Mac Mini, Mac Studio).
-            If you see an Apple logo when your computer starts, you have a Mac.
-            <br /><br />
-            <strong>Windows</strong> = Most non-Apple computers (Dell, HP, Lenovo, etc.).
-            If you see a Windows logo (four colored squares) when your computer starts,
-            you have Windows.
-            <br /><br />
-            <strong>Linux</strong> = If you&apos;re already using Ubuntu, Debian, Fedora, Arch,
-            or another Linux distribution. You probably already know if you&apos;re running Linux!
+            An operating system (or &quot;OS&quot;) is the main software that runs your computer.
+            It&apos;s like the foundation that everything else runs on top of.
+            <br />
+            <br />
+            <strong>Mac</strong> = Apple computers (MacBook, iMac, Mac Mini, Mac Studio). If you see
+            an Apple logo when your computer starts, you have a Mac.
+            <br />
+            <br />
+            <strong>Windows</strong> = Most non-Apple computers (Dell, HP, Lenovo, etc.). If you see
+            a Windows logo (four colored squares) when your computer starts, you have Windows.
+            <br />
+            <br />
+            <strong>Linux</strong> = If you&apos;re already using Ubuntu, Debian, Fedora, Arch, or
+            another Linux distribution. You probably already know if you&apos;re running Linux!
             Selecting Linux will skip the terminal installation step since you already have one.
           </GuideExplain>
 
           <GuideSection title="How do I know which one I have?">
             <ul className="list-disc space-y-2 pl-5">
               <li>
-                <strong>Mac:</strong> Look at the top-left corner of your screen. Do you
-                see the Apple menu (top-left Apple logo)? Click it and select &quot;About This Mac&quot; and
+                <strong>Mac:</strong> Look at the top-left corner of your screen. Do you see the
+                Apple menu (top-left Apple logo)? Click it and select &quot;About This Mac&quot; and
                 it will say something like &quot;macOS Sonoma&quot; or &quot;macOS Ventura&quot;.
               </li>
               <li>
-                <strong>Windows:</strong> Look at the bottom-left corner of your screen.
-                Do you see a Windows icon (four blue squares)? That means you have Windows.
-                You can also press the Windows key on your keyboard (between Ctrl and Alt).
+                <strong>Windows:</strong> Look at the bottom-left corner of your screen. Do you see
+                a Windows icon (four blue squares)? That means you have Windows. You can also press
+                the Windows key on your keyboard (between Ctrl and Alt).
               </li>
               <li>
-                <strong>Linux:</strong> If you installed Linux yourself (Ubuntu, Fedora, Arch, etc.),
-                you already know! Open a terminal and type <code className="rounded bg-muted px-1">uname -a</code> to
-                confirm. You&apos;ll see &quot;Linux&quot; in the output.
+                <strong>Linux:</strong> If you installed Linux yourself (Ubuntu, Fedora, Arch,
+                etc.), you already know! Open a terminal and type{" "}
+                <code className="rounded bg-muted px-1">uname -a</code> to confirm. You&apos;ll see
+                &quot;Linux&quot; in the output.
               </li>
             </ul>
           </GuideSection>
@@ -279,8 +280,8 @@ export default function OSSelectionPage() {
           <GuideTip>
             {hasDetection ? (
               <>
-                We tried to detect your computer type automatically. If it looks right, you can just click
-                &quot;Continue&quot;. If it looks wrong, click the right one first.
+                We tried to detect your computer type automatically. If it looks right, you can just
+                click &quot;Continue&quot;. If it looks wrong, click the right one first.
               </>
             ) : (
               <>

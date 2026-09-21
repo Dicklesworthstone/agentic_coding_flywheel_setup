@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,6 +9,8 @@ import {
   RotateCcw,
   Users,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 const EXHIBIT_PANEL_CLASS =
@@ -128,8 +128,10 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption: "The queue recovers slowly, but the first round of wasted motion cannot be reclaimed.",
-        verdict: "Some progress appears, but the cycle has already paid unnecessary coordination tax.",
+        caption:
+          "The queue recovers slowly, but the first round of wasted motion cannot be reclaimed.",
+        verdict:
+          "Some progress appears, but the cycle has already paid unnecessary coordination tax.",
         metrics: { conflicts: 2, idleBurn: 31, completed: 2 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
@@ -145,8 +147,10 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption: "Throughput returns, but two agents spent most of the early phase negotiating for the same lock.",
-        verdict: "The herd eventually moves, but not before burning the exact cycles parallelism was supposed to save.",
+        caption:
+          "Throughput returns, but two agents spent most of the early phase negotiating for the same lock.",
+        verdict:
+          "The herd eventually moves, but not before burning the exact cycles parallelism was supposed to save.",
         metrics: { conflicts: 2, idleBurn: 28, completed: 3 },
         agents: [
           { status: "Done", progress: 100, tone: "done", target: "br-201" },
@@ -171,7 +175,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
     frames: [
       {
         caption: "Only the first agent is awake. The rest are still off the critical path.",
-        verdict: "The swarm keeps optionality because it has not synchronized itself into contention.",
+        verdict:
+          "The swarm keeps optionality because it has not synchronized itself into contention.",
         metrics: { conflicts: 0, idleBurn: 2, completed: 0 },
         agents: [
           { status: "Booting", progress: 20, tone: "boot" },
@@ -238,7 +243,8 @@ const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
         ],
       },
       {
-        caption: "Each agent spends its first serious cycle on a different bead instead of on lock arbitration.",
+        caption:
+          "Each agent spends its first serious cycle on a different bead instead of on lock arbitration.",
         verdict: "More of the swarm's attention ends up in shipping, not queue negotiation.",
         metrics: { conflicts: 0, idleBurn: 12, completed: 4 },
         agents: [
@@ -288,13 +294,7 @@ function getBeadToneClasses(tone: BeadTone) {
   }
 }
 
-function ScenarioPanel({
-  scenarioId,
-  phaseIndex,
-}: {
-  scenarioId: ScenarioId;
-  phaseIndex: number;
-}) {
+function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; phaseIndex: number }) {
   const scenario = SCENARIOS[scenarioId];
   const frame = scenario.frames[phaseIndex];
   const accent = scenario.accent;
@@ -327,15 +327,21 @@ function ScenarioPanel({
         <div className="flex gap-2 shrink-0">
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
             <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">conflicts</div>
-            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">{frame.metrics.conflicts}</div>
+            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
+              {frame.metrics.conflicts}
+            </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
             <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">idle burn</div>
-            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">{frame.metrics.idleBurn}</div>
+            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
+              {frame.metrics.idleBurn}
+            </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
             <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">completed</div>
-            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">{frame.metrics.completed}</div>
+            <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
+              {frame.metrics.completed}
+            </div>
           </div>
         </div>
       </div>
@@ -368,14 +374,18 @@ function ScenarioPanel({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] sm:text-xs font-semibold text-white truncate max-w-[60px] sm:max-w-none">{agent.role}</span>
+                    <span className="text-[11px] sm:text-xs font-semibold text-white truncate max-w-[60px] sm:max-w-none">
+                      {agent.role}
+                    </span>
                     {agentFrame.target && (
                       <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 whitespace-nowrap">
                         {agentFrame.target}
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-white/75 truncate pr-2">{agentFrame.status}</div>
+                  <div className="mt-0.5 text-[11px] text-white/75 truncate pr-2">
+                    {agentFrame.status}
+                  </div>
                 </div>
                 <div className="text-[11px] sm:text-xs font-black tabular-nums text-white shrink-0 pr-1">
                   {agentFrame.progress}%
@@ -390,10 +400,7 @@ function ScenarioPanel({
         {frame.beads.map((bead) => (
           <div
             key={`${scenarioId}-${bead.id}-${phaseIndex}`}
-            className={cn(
-              "rounded-[14px] border p-2",
-              getBeadToneClasses(bead.tone),
-            )}
+            className={cn("rounded-[14px] border p-2", getBeadToneClasses(bead.tone))}
           >
             <div className="flex items-center justify-between gap-1.5">
               <span className="font-mono text-[11px] text-white/72 truncate">{bead.id}</span>
@@ -408,7 +415,9 @@ function ScenarioPanel({
             <div className="mt-1.5 text-[11px] uppercase tracking-[0.18em] text-white/35 truncate">
               {bead.owner ? `owner ${bead.owner}` : "frontier"}
             </div>
-            <div className="mt-0.5 text-[10px] sm:text-xs text-white/72 truncate pr-1">{bead.note}</div>
+            <div className="mt-0.5 text-[10px] sm:text-xs text-white/72 truncate pr-1">
+              {bead.note}
+            </div>
           </div>
         ))}
       </div>
@@ -479,8 +488,8 @@ export function SwarmExecutionViz() {
             The same swarm can either stampede or flow
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">
-            Advance phase by phase and compare the exact same four agents under
-            two launch strategies. The lesson is timing, not talent.
+            Advance phase by phase and compare the exact same four agents under two launch
+            strategies. The lesson is timing, not talent.
           </p>
         </div>
 
@@ -498,7 +507,11 @@ export function SwarmExecutionViz() {
             }}
             className="flex min-h-[44px] items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white/78 transition-colors hover:bg-white/[0.08]"
           >
-            {comparisonPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {comparisonPlaying ? (
+              <Pause className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
             {comparisonPlaying ? "Pause" : "Play"}
           </button>
           <button
@@ -580,11 +593,11 @@ export function SwarmExecutionViz() {
           <p className="mt-3 text-sm leading-relaxed text-white/76">
             At this phase, the herd path has <strong>{herdFrame.metrics.conflicts}</strong> lock
             conflict{herdFrame.metrics.conflicts === 1 ? "" : "s"} and{" "}
-            <strong>{herdFrame.metrics.idleBurn}</strong> units of idle burn,
-            while the staggered path has <strong>{staggeredFrame.metrics.conflicts}</strong>{" "}
-            conflicts and <strong>{staggeredFrame.metrics.idleBurn}</strong> idle burn. The
-            difference is not smarter agents. It is whether the system lets them reach distinct
-            frontier at distinct times.
+            <strong>{herdFrame.metrics.idleBurn}</strong> units of idle burn, while the staggered
+            path has <strong>{staggeredFrame.metrics.conflicts}</strong> conflicts and{" "}
+            <strong>{staggeredFrame.metrics.idleBurn}</strong> idle burn. The difference is not
+            smarter agents. It is whether the system lets them reach distinct frontier at distinct
+            times.
           </p>
         </motion.div>
       </AnimatePresence>

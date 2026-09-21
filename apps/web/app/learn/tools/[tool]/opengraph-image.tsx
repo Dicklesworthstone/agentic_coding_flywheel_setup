@@ -29,6 +29,6 @@ export default async function Image({ params }: { params: Promise<{ tool: string
       theme: "tools",
       tags: [doc.id.toUpperCase(), "Learning Hub", "ACFS"],
     },
-    "opengraph"
+    "opengraph",
   );
 }

@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { toScopedDistDir } from "../next.config";
 
-const scriptPath = fileURLToPath(
-  new URL("./prepare-isolated-tsconfig.mjs", import.meta.url),
-);
+const scriptPath = fileURLToPath(new URL("./prepare-isolated-tsconfig.mjs", import.meta.url));
 const packagePath = fileURLToPath(new URL("../package.json", import.meta.url));
 
 describe("prepare-isolated-tsconfig", () => {
@@ -54,11 +52,7 @@ describe("prepare-isolated-tsconfig", () => {
 
   test("uses one injective, fail-closed scope grammar in every wrapper", () => {
     const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-    const scopedScriptNames = [
-      "build:isolated",
-      "lint:isolated",
-      "type-check:isolated",
-    ];
+    const scopedScriptNames = ["build:isolated", "lint:isolated", "type-check:isolated"];
 
     for (const scriptName of scopedScriptNames) {
       const script = packageJson.scripts?.[scriptName];

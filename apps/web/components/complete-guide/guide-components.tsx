@@ -1,24 +1,18 @@
 "use client";
 
 import {
-  useRef,
-  useState,
-  useCallback,
-  useEffect,
-  type ReactNode,
-} from "react";
-import { motion, useReducedMotion, useInView, AnimatePresence } from "@/components/motion";
-import {
-  Check,
-  Copy,
-  ChevronDown,
-  Lightbulb,
   AlertTriangle,
-  Quote,
+  Check,
+  ChevronDown,
+  Copy,
   Info,
+  Lightbulb,
+  Quote,
   Terminal,
   Zap,
 } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import {
   CodeBlock as SharedCodeBlock,
   type CodeBlockProps as SharedCodeBlockProps,
@@ -27,7 +21,8 @@ import { copyTextToClipboard } from "@/lib/utils";
 
 export { FlywheelDiagram } from "./flywheel-diagram";
 
-const PROMPT_HIGHLIGHT_PATTERN = /(\[[A-Z_]+\]|\b(?:Do we have|Search|Review|Read|Write|Fix|Create|Update|OK|Look|Execute)\b)/g;
+const PROMPT_HIGHLIGHT_PATTERN =
+  /(\[[A-Z_]+\]|\b(?:Do we have|Search|Review|Read|Write|Fix|Create|Update|OK|Look|Execute)\b)/g;
 const PROMPT_HIGHLIGHT_KEYWORDS = new Set([
   "Do we have",
   "Search",
@@ -46,10 +41,7 @@ function renderHighlightedPrompt(text: string): ReactNode[] {
   return text.split(PROMPT_HIGHLIGHT_PATTERN).map((part, partIndex) => {
     if (/^\[[A-Z_]+\]$/.test(part)) {
       return (
-        <span
-          key={partIndex}
-          className="text-white/60 font-medium bg-white/10 px-1 rounded"
-        >
+        <span key={partIndex} className="text-white/60 font-medium bg-white/10 px-1 rounded">
           {part}
         </span>
       );
@@ -78,13 +70,7 @@ interface GuideSectionProps {
   children: ReactNode;
 }
 
-export function GuideSection({
-  id,
-  number,
-  title,
-  icon,
-  children,
-}: GuideSectionProps) {
+export function GuideSection({ id, number, title, icon, children }: GuideSectionProps) {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const prefersReducedMotion = useReducedMotion();
@@ -103,7 +89,7 @@ export function GuideSection({
       {typeof number === "string" && number !== "" && (
         <div className="absolute -left-32 top-0 hidden xl:flex items-center justify-end w-24 pointer-events-none select-none">
           <span className="text-[8rem] font-black text-white/[0.015] leading-none tracking-tighter">
-            {number.padStart(2, '0')}
+            {number.padStart(2, "0")}
           </span>
         </div>
       )}
@@ -113,7 +99,9 @@ export function GuideSection({
         <div className="flex flex-col sm:flex-row sm:items-start gap-5 sm:gap-6">
           {typeof number === "string" && number !== "" && (
             <div className="flex h-12 w-12 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-[1rem] bg-gradient-to-b from-[#FF5500]/10 to-transparent border border-[#FF5500]/20 font-mono text-2xl sm:text-3xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_16px_-4px_rgba(0,0,0,0.5)] transition duration-500 group-hover:bg-[#FF5500]/20 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
-              <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">{number}</span>
+              <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">
+                {number}
+              </span>
             </div>
           )}
 
@@ -125,14 +113,14 @@ export function GuideSection({
             )}
 
             <div className="flex-1 min-w-0">
-              {title.startsWith('Phase ') ? (
+              {title.startsWith("Phase ") ? (
                 <div className="flex flex-col gap-2">
                   <span className="text-[#FF5500] font-mono text-[0.75rem] uppercase tracking-[0.3em] font-bold flex items-center gap-3">
                     <span className="w-8 h-px bg-[#FF5500]/40" />
-                    {title.split(':')[0]}
+                    {title.split(":")[0]}
                   </span>
                   <h2 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tighter leading-[1.1] drop-shadow-lg group-hover:text-zinc-100 transition-colors">
-                    {title.split(':').slice(1).join(':').trim()}
+                    {title.split(":").slice(1).join(":").trim()}
                   </h2>
                 </div>
               ) : (
@@ -146,7 +134,7 @@ export function GuideSection({
 
         {/* Minimalist divider */}
         <div className="mt-8 sm:mt-12 h-[1px] w-full bg-gradient-to-r from-white/[0.08] via-white/[0.02] to-transparent relative overflow-hidden">
-          <motion.div 
+          <motion.div
             initial={{ x: "-100%" }}
             animate={isInView ? { x: "200%" } : {}}
             transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity, repeatDelay: 4 }}
@@ -162,13 +150,7 @@ export function GuideSection({
 // =============================================================================
 // SUBSECTION
 // =============================================================================
-export function SubSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+export function SubSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-20 first:mt-12 group/sub relative">
       <div className="absolute -left-4 sm:-left-8 top-1.5 bottom-0 w-[3px] bg-white/[0.02] group-hover/sub:bg-[#FF5500]/20 transition-colors duration-500 hidden sm:block rounded-full" />
@@ -184,18 +166,12 @@ export function SubSection({
 // =============================================================================
 // PARAGRAPH
 // =============================================================================
-export function P({
-  children,
-  highlight,
-}: {
-  children: ReactNode;
-  highlight?: boolean;
-}) {
+export function P({ children, highlight }: { children: ReactNode; highlight?: boolean }) {
   return (
     <p
       className={`text-[1.1rem] sm:text-[1.2rem] leading-[1.8] tracking-[-0.01em] ${
-        highlight 
-          ? "text-white font-normal bg-gradient-to-r from-[#FF5500]/10 to-transparent p-6 sm:p-8 rounded-2xl border-l-4 border-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]" 
+        highlight
+          ? "text-white font-normal bg-gradient-to-r from-[#FF5500]/10 to-transparent p-6 sm:p-8 rounded-2xl border-l-4 border-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
           : "text-zinc-300 font-light"
       }`}
     >
@@ -221,9 +197,7 @@ export function BlockQuote({ children }: { children: ReactNode }) {
 // =============================================================================
 // CODE BLOCK - Terminal-style wrapper
 // =============================================================================
-export function CodeBlock(
-  props: Omit<SharedCodeBlockProps, "variant" | "copyable">,
-) {
+export function CodeBlock(props: Omit<SharedCodeBlockProps, "variant" | "copyable">) {
   return <SharedCodeBlock {...props} variant="terminal" copyable />;
 }
 
@@ -232,9 +206,8 @@ export function IllustrativeDisclosure() {
     <div className="-mt-7 mb-10 flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm leading-relaxed text-zinc-500">
       <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#FFBD2E]" />
       <span>
-        Illustrative simulation: scores, percentages, timings, and agent state in
-        this exhibit explain the mechanism; they are not measured benchmarks or
-        performance guarantees.
+        Illustrative simulation: scores, percentages, timings, and agent state in this exhibit
+        explain the mechanism; they are not measured benchmarks or performance guarantees.
       </span>
     </div>
   );
@@ -277,7 +250,7 @@ export function PromptBlock({
   return (
     <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 my-12 shadow-xl">
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      
+
       {/* Top bar — refined metal */}
       <div className="relative flex items-center justify-between px-5 sm:px-6 py-3.5 bg-white/[0.015] border-b border-white/[0.04] z-10 backdrop-blur-md">
         <div className="flex items-center gap-4">
@@ -286,7 +259,9 @@ export function PromptBlock({
             <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FFBD2E] transition-colors duration-500 shadow-sm" />
             <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FF5500] transition-colors duration-500 shadow-sm" />
           </div>
-          <span className="ml-2 text-[0.7rem] font-bold text-white/50 tracking-wider uppercase">{title}</span>
+          <span className="ml-2 text-[0.7rem] font-bold text-white/50 tracking-wider uppercase">
+            {title}
+          </span>
         </div>
         <motion.button
           type="button"
@@ -295,7 +270,11 @@ export function PromptBlock({
           aria-label={copied ? "Copied" : `Copy prompt: ${title}`}
           className="flex min-h-[44px] items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-[0.7rem] font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-[#FF5500]" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-[#FF5500]" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
           <span className="hidden sm:inline">{copied ? "Copied" : "Copy"}</span>
         </motion.button>
       </div>
@@ -324,7 +303,9 @@ export function PromptBlock({
                   <Terminal className="h-3 w-3 text-zinc-400" />
                 </div>
                 <div>
-                  <span className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest block mb-1">Context</span>
+                  <span className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest block mb-1">
+                    Context
+                  </span>
                   <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed">{where}</p>
                 </div>
               </div>
@@ -335,8 +316,12 @@ export function PromptBlock({
                   <Lightbulb className="h-3 w-3 text-[#FF5500]" />
                 </div>
                 <div>
-                  <span className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-widest block mb-1">Psychology</span>
-                  <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed italic">{whyItWorks}</p>
+                  <span className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-widest block mb-1">
+                    Psychology
+                  </span>
+                  <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed italic">
+                    {whyItWorks}
+                  </p>
                 </div>
               </div>
             )}
@@ -363,10 +348,13 @@ export function DataTable({
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 my-12 relative z-10">
         {rows.map((row, ri) => (
-          <div key={ri} className="flex flex-col p-6 sm:p-8 rounded-[2rem] bg-[#05070A] border border-white/[0.04] shadow-2xl relative group/card hover:border-[#FF5500]/30 transition duration-500 hover:-translate-y-2 overflow-hidden">
+          <div
+            key={ri}
+            className="flex flex-col p-6 sm:p-8 rounded-[2rem] bg-[#05070A] border border-white/[0.04] shadow-2xl relative group/card hover:border-[#FF5500]/30 transition duration-500 hover:-translate-y-2 overflow-hidden"
+          >
             <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
-            
+
             <div className="relative z-10 flex flex-col h-full">
               <div className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.6)]" />
@@ -375,18 +363,26 @@ export function DataTable({
               <div className="text-xl sm:text-2xl font-black text-white tracking-tight mb-5 group-hover/card:text-[#FF5500] transition-colors leading-[1.15]">
                 {row[0]}
               </div>
-              
+
               {headers[1] && row[1] && (
                 <div className="mb-6 flex-1">
-                  <div className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] mb-2">{headers[1]}</div>
-                  <div className="text-[1.05rem] text-zinc-300 font-light leading-relaxed">{row[1]}</div>
+                  <div className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
+                    {headers[1]}
+                  </div>
+                  <div className="text-[1.05rem] text-zinc-300 font-light leading-relaxed">
+                    {row[1]}
+                  </div>
                 </div>
               )}
-              
+
               {headers[2] && row[2] && (
                 <div className="mt-auto pt-5 border-t border-white/[0.06]">
-                  <div className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] mb-2">{headers[2]}</div>
-                  <div className="text-[1rem] text-zinc-400 font-medium italic leading-relaxed">{row[2]}</div>
+                  <div className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
+                    {headers[2]}
+                  </div>
+                  <div className="text-[1rem] text-zinc-400 font-medium italic leading-relaxed">
+                    {row[2]}
+                  </div>
                 </div>
               )}
             </div>
@@ -423,8 +419,17 @@ export function DataTable({
                 className="transition-colors duration-300 hover:bg-white/[0.02] hover:bg-gradient-to-r hover:from-[#FF5500]/[0.03] hover:to-transparent group/row"
               >
                 {row.map((cell, cellPosition) => (
-                  <td key={cellPosition} className="px-8 py-6 text-[1.05rem] font-light text-zinc-300 align-top leading-relaxed">
-                    {Object.is(cellPosition, 0) ? <span className="text-white font-medium group-hover/row:text-[#FF5500] transition-colors">{cell}</span> : cell}
+                  <td
+                    key={cellPosition}
+                    className="px-8 py-6 text-[1.05rem] font-light text-zinc-300 align-top leading-relaxed"
+                  >
+                    {Object.is(cellPosition, 0) ? (
+                      <span className="text-white font-medium group-hover/row:text-[#FF5500] transition-colors">
+                        {cell}
+                      </span>
+                    ) : (
+                      cell
+                    )}
                   </td>
                 ))}
               </tr>
@@ -453,24 +458,30 @@ export function PhaseCard({
   children?: ReactNode;
 }) {
   return (
-    <div
-      className="group relative rounded-3xl bg-[#05070a] p-8 sm:p-12 overflow-hidden transition duration-700 hover:-translate-y-2 border border-white/[0.04] hover:border-[#FF5500]/30 shadow-2xl"
-    >
+    <div className="group relative rounded-3xl bg-[#05070a] p-8 sm:p-12 overflow-hidden transition duration-700 hover:-translate-y-2 border border-white/[0.04] hover:border-[#FF5500]/30 shadow-2xl">
       {/* Background layer */}
-      <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient} transition-opacity duration-1000 pointer-events-none mix-blend-screen`} />
-      
+      <div
+        className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient} transition-opacity duration-1000 pointer-events-none mix-blend-screen`}
+      />
+
       <div className="relative z-10 flex flex-col gap-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/5 font-mono text-2xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-700 group-hover:scale-110 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
             {phase}
           </div>
           <div className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent hidden sm:block" />
-          <div className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest">Step Verification</div>
+          <div className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest">
+            Step Verification
+          </div>
         </div>
 
         <div className="max-w-3xl">
-          <h3 className="font-bold text-white text-2xl sm:text-3xl tracking-tight mb-4 group-hover:text-[#FF5500] transition-colors duration-500">{title}</h3>
-          <p className="text-[1.05rem] sm:text-[1.15rem] text-zinc-400 leading-relaxed font-light">{description}</p>
+          <h3 className="font-bold text-white text-2xl sm:text-3xl tracking-tight mb-4 group-hover:text-[#FF5500] transition-colors duration-500">
+            {title}
+          </h3>
+          <p className="text-[1.05rem] sm:text-[1.15rem] text-zinc-400 leading-relaxed font-light">
+            {description}
+          </p>
           {children && <div className="mt-8">{children}</div>}
         </div>
       </div>
@@ -523,13 +534,19 @@ export function TipBox({
       <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover/tip:opacity-[0.08] transition-opacity duration-700 pointer-events-none group-hover/tip:scale-110">
         {c.icon}
       </div>
-      
+
       <div className="relative z-10 flex flex-col gap-4">
-        <div className={`text-[0.7rem] font-bold ${c.color} uppercase tracking-widest flex items-center gap-2.5`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${c.dot} shadow-[0_0_8px_currentColor] animate-pulse`} />
+        <div
+          className={`text-[0.7rem] font-bold ${c.color} uppercase tracking-widest flex items-center gap-2.5`}
+        >
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${c.dot} shadow-[0_0_8px_currentColor] animate-pulse`}
+          />
           {c.title}
         </div>
-        <div className="text-zinc-300 text-[1rem] sm:text-[1.1rem] leading-[1.7] font-light tracking-[-0.01em] [&>strong]:text-white [&>strong]:font-medium">{children}</div>
+        <div className="text-zinc-300 text-[1rem] sm:text-[1.1rem] leading-[1.7] font-light tracking-[-0.01em] [&>strong]:text-white [&>strong]:font-medium">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -581,7 +598,9 @@ export function BulletList({ items }: { items: (string | ReactNode)[] }) {
             <div className="absolute inset-0 bg-[#FF5500]/30 blur-[4px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="h-1.5 w-1.5 rounded-full bg-[#FF5500] group-hover:scale-125 transition-transform duration-300 shadow-[0_0_8px_rgba(255,85,0,0.6)]" />
           </div>
-          <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light group-hover:text-zinc-100 transition-colors duration-300">{item}</span>
+          <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light group-hover:text-zinc-100 transition-colors duration-300">
+            {item}
+          </span>
         </li>
       ))}
     </ul>
@@ -599,7 +618,9 @@ export function NumberedList({ items }: { items: (string | ReactNode)[] }) {
           <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.03] border border-white/10 text-xs sm:text-sm font-bold text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-300 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/5 group-hover:shadow-[0_0_15px_rgba(255,85,0,0.2)] group-hover:-translate-y-0.5">
             {i + 1}
           </span>
-          <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light pt-0.5 group-hover:text-zinc-100 transition-colors duration-300">{item}</span>
+          <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light pt-0.5 group-hover:text-zinc-100 transition-colors duration-300">
+            {item}
+          </span>
         </li>
       ))}
     </ol>
@@ -638,8 +659,14 @@ export function StatCard({
       <div className="relative z-10 text-3xl sm:text-5xl font-black bg-gradient-to-br from-white via-[#FF5500] to-violet-400 bg-clip-text text-transparent tracking-tighter drop-shadow-md group-hover:scale-105 transition-transform duration-500">
         {value}
       </div>
-      <div className="relative z-10 mt-3 text-sm sm:text-base text-zinc-300 font-medium tracking-wide uppercase">{label}</div>
-      {sublabel && <div className="relative z-10 mt-1.5 text-xs sm:text-sm text-zinc-500 font-light">{sublabel}</div>}
+      <div className="relative z-10 mt-3 text-sm sm:text-base text-zinc-300 font-medium tracking-wide uppercase">
+        {label}
+      </div>
+      {sublabel && (
+        <div className="relative z-10 mt-1.5 text-xs sm:text-sm text-zinc-500 font-light">
+          {sublabel}
+        </div>
+      )}
     </div>
   );
 }
@@ -662,16 +689,16 @@ export function PrincipleCard({
   const hasContent = children !== null && children !== undefined && children !== false;
 
   return (
-    <div
-      className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 hover:-translate-y-1 my-6 shadow-xl"
-    >
+    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 hover:-translate-y-1 my-6 shadow-xl">
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      
+
       {/* Background Texture */}
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
-      
+
       {/* Hover glow overlay */}
-      <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient || "from-[#FF5500]/[0.05] to-transparent"} transition-opacity duration-500 pointer-events-none`} />
+      <div
+        className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient || "from-[#FF5500]/[0.05] to-transparent"} transition-opacity duration-500 pointer-events-none`}
+      />
 
       <button
         onClick={() => hasContent && setOpen(!open)}
@@ -680,14 +707,20 @@ export function PrincipleCard({
         disabled={!hasContent}
       >
         <div className="mt-0.5 sm:mt-0 flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.03] border border-white/10 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition duration-500">
-          <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">{number}</span>
+          <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">
+            {number}
+          </span>
         </div>
         <div className="flex-1 min-w-0">
-          <h4 className="font-bold text-white text-lg sm:text-xl leading-tight tracking-tight group-hover:text-[#FF5500] transition-colors duration-300 pr-4">{title}</h4>
+          <h4 className="font-bold text-white text-lg sm:text-xl leading-tight tracking-tight group-hover:text-[#FF5500] transition-colors duration-300 pr-4">
+            {title}
+          </h4>
         </div>
         {hasContent && (
           <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/[0.03] border border-white/[0.05] group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/20 transition duration-300 shrink-0 self-center">
-            <ChevronDown className={`h-4 w-4 text-zinc-400 group-hover:text-[#FF5500] transition-transform duration-500 ${open ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`h-4 w-4 text-zinc-400 group-hover:text-[#FF5500] transition-transform duration-500 ${open ? "rotate-180" : ""}`}
+            />
           </div>
         )}
       </button>
@@ -732,7 +765,7 @@ export function OperatorCard({
     <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 transition duration-500 hover:border-[#FF5500]/40 hover:-translate-y-1 my-8 overflow-hidden shadow-xl">
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-      
+
       {/* Corner glow */}
       <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#FF5500]/10 blur-[60px] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
@@ -741,11 +774,15 @@ export function OperatorCard({
           <span>{number}</span>
         </div>
         <div className="min-w-0 flex-1">
-          <h4 className="font-bold text-white text-lg sm:text-xl tracking-tight mb-1.5 group-hover:text-[#FF5500] transition-colors duration-300">{name}</h4>
-          <p className="text-[1rem] sm:text-[1.05rem] text-zinc-300 leading-relaxed font-light">{definition}</p>
+          <h4 className="font-bold text-white text-lg sm:text-xl tracking-tight mb-1.5 group-hover:text-[#FF5500] transition-colors duration-300">
+            {name}
+          </h4>
+          <p className="text-[1rem] sm:text-[1.05rem] text-zinc-300 leading-relaxed font-light">
+            {definition}
+          </p>
         </div>
       </div>
-      
+
       <div className="relative z-10 mt-6 pt-6 border-t border-white/[0.04] space-y-4">
         {trigger && (
           <div className="flex items-start gap-4 bg-[#FF5500]/[0.03] rounded-xl p-4 sm:p-5 border border-[#FF5500]/10">
@@ -753,8 +790,12 @@ export function OperatorCard({
               <Zap className="h-3 w-3" />
             </span>
             <div>
-              <span className="text-[#FF5500] font-bold uppercase tracking-widest text-[0.65rem] block mb-1">Trigger</span>
-              <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">{trigger}</span>
+              <span className="text-[#FF5500] font-bold uppercase tracking-widest text-[0.65rem] block mb-1">
+                Trigger
+              </span>
+              <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">
+                {trigger}
+              </span>
             </div>
           </div>
         )}
@@ -764,17 +805,24 @@ export function OperatorCard({
               <AlertTriangle className="h-3 w-3" />
             </span>
             <div>
-              <span className="text-[#FF5F56]/80 font-bold uppercase tracking-widest text-[0.65rem] block mb-1">Failure Mode</span>
-              <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">{failureMode}</span>
+              <span className="text-[#FF5F56]/80 font-bold uppercase tracking-widest text-[0.65rem] block mb-1">
+                Failure Mode
+              </span>
+              <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">
+                {failureMode}
+              </span>
             </div>
           </div>
         )}
-        {children && <div className="text-zinc-400 text-[0.95rem] sm:text-[1rem] font-light leading-relaxed pt-2 px-1">{children}</div>}
+        {children && (
+          <div className="text-zinc-400 text-[0.95rem] sm:text-[1rem] font-light leading-relaxed pt-2 px-1">
+            {children}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
 
 // =============================================================================
 // TABLE OF CONTENTS - Desktop sidebar + mobile drawer
@@ -797,7 +845,7 @@ export function TableOfContents({
           if (entry.isIntersecting) setActiveId(entry.target.id);
         }
       },
-      { rootMargin: "-20% 0px -75% 0px" }
+      { rootMargin: "-20% 0px -75% 0px" },
     );
 
     for (const item of items) {
@@ -849,7 +897,9 @@ export function TableOfContents({
               }`}
             >
               {item.number && (
-                <span className={`font-mono text-[10px] ${isActive ? "text-primary" : "text-zinc-500"}`}>
+                <span
+                  className={`font-mono text-[10px] ${isActive ? "text-primary" : "text-zinc-500"}`}
+                >
                   {item.number.padStart(2, "0")}
                 </span>
               )}
@@ -862,10 +912,10 @@ export function TableOfContents({
   );
 }
 
-export * from "./plan-to-beads-viz";
-export * from "./swarm-execution-viz";
 export * from "./agent-mail-viz";
-export * from "./plan-evolution-studio";
-export * from "./flywheel-diagram";
 export * from "./context-horizon-viz";
 export * from "./convergence-viz";
+export * from "./flywheel-diagram";
+export * from "./plan-evolution-studio";
+export * from "./plan-to-beads-viz";
+export * from "./swarm-execution-viz";

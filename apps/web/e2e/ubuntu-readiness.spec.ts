@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const STORAGE_KEY = "agent-flywheel-vps-readiness-selection";
 const host = {
@@ -12,14 +12,18 @@ const host = {
 
 async function openPlanner(page: Page, saved: unknown = null) {
   await page.goto("/");
-  await page.evaluate(({ key, selection }) => {
-    localStorage.clear();
-    localStorage.setItem("agent-flywheel-user-os", "mac");
-    localStorage.setItem("agent-flywheel-wizard-completed-steps", JSON.stringify(
-      Array.from({ length: 13 }, (_, index) => index + 1),
-    ));
-    if (selection !== null) localStorage.setItem(key, JSON.stringify(selection));
-  }, { key: STORAGE_KEY, selection: saved });
+  await page.evaluate(
+    ({ key, selection }) => {
+      localStorage.clear();
+      localStorage.setItem("agent-flywheel-user-os", "mac");
+      localStorage.setItem(
+        "agent-flywheel-wizard-completed-steps",
+        JSON.stringify(Array.from({ length: 13 }, (_, index) => index + 1)),
+      );
+      if (selection !== null) localStorage.setItem(key, JSON.stringify(selection));
+    },
+    { key: STORAGE_KEY, selection: saved },
+  );
   await page.goto("/wizard/rent-vps");
   await expect(page.getByTestId("provider-readiness-check")).toBeVisible({ timeout: 10000 });
 }
@@ -35,14 +39,21 @@ test.describe("Ubuntu lifecycle readiness", () => {
   test("new planners use and persist the reviewed LTS recommendation", async ({ page }) => {
     await openPlanner(page);
     await expect(page.getByLabel("Ubuntu image", { exact: true })).toHaveValue("26.04");
-    await expect(page.getByTestId("provider-readiness-check")).toContainText("Ready for the selected target.");
+    await expect(page.getByTestId("provider-readiness-check")).toContainText(
+      "Ready for the selected target.",
+    );
     await expect.poll(() => storedImage(page)).toBe("26.04");
     await page.reload();
     await expect(page.getByLabel("Ubuntu image", { exact: true })).toHaveValue("26.04");
   });
 
   test("saved unsafe choices stay visible until explicitly corrected", async ({ page }) => {
-    await openPlanner(page, { ...host, ubuntuVersion: "25.10", planName: "Cloud VPS 8", region: "retired-region" });
+    await openPlanner(page, {
+      ...host,
+      ubuntuVersion: "25.10",
+      planName: "Cloud VPS 8",
+      region: "retired-region",
+    });
     const readiness = page.getByTestId("provider-readiness-check");
     const image = page.getByLabel("Ubuntu image", { exact: true });
     await expect(image).toHaveValue("25.10");
@@ -78,7 +89,9 @@ test.describe("Ubuntu lifecycle readiness", () => {
     const image = page.getByLabel("Ubuntu image", { exact: true });
     await expect(image).toHaveValue("24.04");
     await expect(image.locator("option:checked")).toContainText("upgrade review required");
-    await expect(page.getByTestId("provider-readiness-check")).toContainText("legacy automatic upgrade path");
+    await expect(page.getByTestId("provider-readiness-check")).toContainText(
+      "legacy automatic upgrade path",
+    );
     await expect.poll(() => storedImage(page)).toBe("24.04");
   });
 });

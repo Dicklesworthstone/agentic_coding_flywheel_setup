@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { motion, AnimatePresence, useReducedMotion, useInView } from "@/components/motion";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 // =============================================================================
 // DATA
@@ -65,17 +65,27 @@ function createInitialState(): SimState {
   const beads: SimBead[] = BEAD_TITLES.map((title, i) => ({
     id: i,
     title,
-    status: i < AGENT_NAMES.length ? "in_progress" as const : "unclaimed" as const,
+    status: i < AGENT_NAMES.length ? ("in_progress" as const) : ("unclaimed" as const),
     assignedTo: i < AGENT_NAMES.length ? AGENT_NAMES[i] : null,
   }));
 
-  return { agents, beads, log: ["Swarm initialized. All agents working."], killed: 0, recovered: 0, completed: 0 };
+  return {
+    agents,
+    beads,
+    log: ["Swarm initialized. All agents working."],
+    killed: 0,
+    recovered: 0,
+    completed: 0,
+  };
 }
 
 /** Pure function: advance simulation by one tick. */
 function tick(state: SimState): SimState {
-  const agents = state.agents.map(a => ({ ...a, justCompleted: Math.max(0, a.justCompleted - 1) }));
-  const beads = state.beads.map(b => ({ ...b }));
+  const agents = state.agents.map((a) => ({
+    ...a,
+    justCompleted: Math.max(0, a.justCompleted - 1),
+  }));
+  const beads = state.beads.map((b) => ({ ...b }));
   const log = [...state.log];
   const { killed } = state;
   let { recovered, completed } = state;
@@ -85,7 +95,7 @@ function tick(state: SimState): SimState {
     if (
       bead.status === "in_progress" &&
       bead.assignedTo !== null &&
-      !agents.some(a => a.alive && a.name === bead.assignedTo)
+      !agents.some((a) => a.alive && a.name === bead.assignedTo)
     ) {
       bead.status = "orphaned";
     }
@@ -103,7 +113,7 @@ function tick(state: SimState): SimState {
     if (!agent.alive || agent.currentBead === null || agent.progress < 100) continue;
 
     const beadId = agent.currentBead;
-    const bead = beads.find(b => b.id === beadId);
+    const bead = beads.find((b) => b.id === beadId);
     if (bead) {
       bead.status = "completed";
       bead.assignedTo = null;
@@ -113,7 +123,7 @@ function tick(state: SimState): SimState {
     log.unshift(`${agent.name} completed ${BEAD_TITLES[beadId]}.`);
 
     // Claim next unclaimed bead
-    const nextBead = beads.find(b => b.status === "unclaimed");
+    const nextBead = beads.find((b) => b.status === "unclaimed");
     if (nextBead) {
       nextBead.status = "in_progress";
       nextBead.assignedTo = agent.name;
@@ -131,7 +141,7 @@ function tick(state: SimState): SimState {
     if (!agent.alive || agent.currentBead !== null) continue;
 
     // Orphaned beads first (recovery)
-    const orphan = beads.find(b => b.status === "orphaned");
+    const orphan = beads.find((b) => b.status === "orphaned");
     if (orphan) {
       orphan.status = "in_progress";
       orphan.assignedTo = agent.name;
@@ -143,7 +153,7 @@ function tick(state: SimState): SimState {
     }
 
     // Then unclaimed
-    const unclaimed = beads.find(b => b.status === "unclaimed");
+    const unclaimed = beads.find((b) => b.status === "unclaimed");
     if (unclaimed) {
       unclaimed.status = "in_progress";
       unclaimed.assignedTo = agent.name;
@@ -174,7 +184,7 @@ export function CrashRecoveryViz() {
     if (!isInView) return;
 
     const interval = setInterval(() => {
-      setState(prev => tick(prev));
+      setState((prev) => tick(prev));
     }, 200);
 
     return () => clearInterval(interval);
@@ -187,29 +197,32 @@ export function CrashRecoveryViz() {
     return () => clearTimeout(timer);
   }, [selectedAgent]);
 
-  const handleAgentClick = useCallback((agentId: string) => {
-    const isTouchDevice = typeof window !== "undefined" && "ontouchstart" in window;
+  const handleAgentClick = useCallback(
+    (agentId: string) => {
+      const isTouchDevice = typeof window !== "undefined" && "ontouchstart" in window;
 
-    if (isTouchDevice && selectedAgent !== agentId) {
-      // First tap: select (show kill overlay)
-      setSelectedAgent(agentId);
-      return;
-    }
+      if (isTouchDevice && selectedAgent !== agentId) {
+        // First tap: select (show kill overlay)
+        setSelectedAgent(agentId);
+        return;
+      }
 
-    // Second tap on mobile, or any click on desktop: kill
-    setState(prev => {
-      const agent = prev.agents.find(a => a.id === agentId);
-      if (!agent || !agent.alive) return prev;
+      // Second tap on mobile, or any click on desktop: kill
+      setState((prev) => {
+        const agent = prev.agents.find((a) => a.id === agentId);
+        if (!agent || !agent.alive) return prev;
 
-      const agents = prev.agents.map(a =>
-        a.id === agentId ? { ...a, alive: false, currentBead: null, progress: 0 } : { ...a }
-      );
-      const log = [`${agent.name} crashed! Bead remains in_progress...`, ...prev.log].slice(0, 8);
+        const agents = prev.agents.map((a) =>
+          a.id === agentId ? { ...a, alive: false, currentBead: null, progress: 0 } : { ...a },
+        );
+        const log = [`${agent.name} crashed! Bead remains in_progress...`, ...prev.log].slice(0, 8);
 
-      return { ...prev, agents, log, killed: prev.killed + 1 };
-    });
-    setSelectedAgent(null);
-  }, [selectedAgent]);
+        return { ...prev, agents, log, killed: prev.killed + 1 };
+      });
+      setSelectedAgent(null);
+    },
+    [selectedAgent],
+  );
 
   const reset = useCallback(() => {
     setState(createInitialState());
@@ -217,24 +230,31 @@ export function CrashRecoveryViz() {
   }, []);
 
   const { agents, beads, log, killed, recovered, completed } = state;
-  const aliveCount = agents.filter(a => a.alive).length;
-  const orphanedCount = beads.filter(b => b.status === "orphaned").length;
+  const aliveCount = agents.filter((a) => a.alive).length;
+  const orphanedCount = beads.filter((b) => b.status === "orphaned").length;
 
   const springTransition = rm
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 200, damping: 30 };
 
   return (
-    <div ref={containerRef} className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl">
+    <div
+      ref={containerRef}
+      className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl"
+    >
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] px-5 py-5 sm:px-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h4 className="text-lg font-bold text-white tracking-tight">Fungible Agent Crash Recovery</h4>
+            <h4 className="text-lg font-bold text-white tracking-tight">
+              Fungible Agent Crash Recovery
+            </h4>
             <p className="mt-1 text-sm text-zinc-400">
-              <span className="hidden sm:inline">Click any agent to kill it. Watch the swarm self-heal.</span>
+              <span className="hidden sm:inline">
+                Click any agent to kill it. Watch the swarm self-heal.
+              </span>
               <span className="sm:hidden">Tap an agent, then tap again to kill it.</span>
             </p>
           </div>
@@ -250,11 +270,18 @@ export function CrashRecoveryViz() {
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-            <span className="text-zinc-400">Alive: <span className="text-white font-bold">{aliveCount}/{agents.length}</span></span>
+            <span className="text-zinc-400">
+              Alive:{" "}
+              <span className="text-white font-bold">
+                {aliveCount}/{agents.length}
+              </span>
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-            <span className="text-zinc-400">Killed: <span className="text-white font-bold">{killed}</span></span>
+            <span className="text-zinc-400">
+              Killed: <span className="text-white font-bold">{killed}</span>
+            </span>
           </div>
           {orphanedCount > 0 && (
             <div className="flex items-center gap-2">
@@ -264,11 +291,15 @@ export function CrashRecoveryViz() {
           )}
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-            <span className="text-zinc-400">Recovered: <span className="text-white font-bold">{recovered}</span></span>
+            <span className="text-zinc-400">
+              Recovered: <span className="text-white font-bold">{recovered}</span>
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.6)]" />
-            <span className="text-zinc-400">Completed: <span className="text-white font-bold">{completed}</span></span>
+            <span className="text-zinc-400">
+              Completed: <span className="text-white font-bold">{completed}</span>
+            </span>
           </div>
         </div>
       </div>
@@ -277,16 +308,18 @@ export function CrashRecoveryViz() {
       <div className="relative z-10 grid gap-0 lg:grid-cols-[1fr_280px]">
         {/* Agents */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 p-5 sm:p-8">
-          {agents.map(agent => {
+          {agents.map((agent) => {
             const isSelected = selectedAgent === agent.id;
-            const showKillOverlay = agent.alive && (isSelected);
+            const showKillOverlay = agent.alive && isSelected;
 
             return (
               <motion.button
                 key={agent.id}
                 onClick={() => handleAgentClick(agent.id)}
                 disabled={!agent.alive}
-                aria-label={agent.alive ? `Kill agent ${agent.name}` : `Agent ${agent.name} is crashed`}
+                aria-label={
+                  agent.alive ? `Kill agent ${agent.name}` : `Agent ${agent.name} is crashed`
+                }
                 className={`relative rounded-xl border p-4 text-left transition-colors min-h-[44px] ${
                   agent.alive
                     ? agent.justCompleted > 0
@@ -312,7 +345,9 @@ export function CrashRecoveryViz() {
                 {/* Current work */}
                 {agent.alive && agent.currentBead !== null ? (
                   <div>
-                    <div className="text-[10px] text-zinc-500 mb-1.5 truncate">{BEAD_TITLES[agent.currentBead]}</div>
+                    <div className="text-[10px] text-zinc-500 mb-1.5 truncate">
+                      {BEAD_TITLES[agent.currentBead]}
+                    </div>
                     <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                       <motion.div
                         className="h-full rounded-full"
@@ -321,7 +356,9 @@ export function CrashRecoveryViz() {
                         transition={springTransition}
                       />
                     </div>
-                    <div className="text-[10px] text-zinc-500 mt-1 text-right">{Math.floor(agent.progress)}%</div>
+                    <div className="text-[10px] text-zinc-500 mt-1 text-right">
+                      {Math.floor(agent.progress)}%
+                    </div>
                   </div>
                 ) : agent.alive ? (
                   <div className="text-[10px] text-zinc-500 italic">Idle, scanning for work...</div>
@@ -331,9 +368,11 @@ export function CrashRecoveryViz() {
 
                 {/* Kill overlay: desktop hover OR mobile tap-to-select */}
                 {agent.alive && (
-                  <div className={`absolute inset-0 rounded-xl flex items-center justify-center transition-opacity bg-red-500/10 border border-red-500/20 ${
-                    showKillOverlay ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                  }`}>
+                  <div
+                    className={`absolute inset-0 rounded-xl flex items-center justify-center transition-opacity bg-red-500/10 border border-red-500/20 ${
+                      showKillOverlay ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
                     <span className="text-xs font-bold text-red-400">
                       {isSelected ? "Tap Again to Kill" : "Click to Kill"}
                     </span>
@@ -346,7 +385,9 @@ export function CrashRecoveryViz() {
 
         {/* Event log */}
         <div className="border-t lg:border-t-0 lg:border-l border-white/[0.04] p-5 sm:p-6 bg-black/20">
-          <div className="text-[11px] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3">Event Log</div>
+          <div className="text-[11px] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3">
+            Event Log
+          </div>
           <div className="space-y-2" role="log" aria-live="polite">
             <AnimatePresence mode="popLayout" initial={false}>
               {log.map((entry, i) => (
@@ -357,11 +398,15 @@ export function CrashRecoveryViz() {
                   exit={rm ? {} : { opacity: 0, x: -10 }}
                   transition={springTransition}
                   className={`text-[11px] leading-relaxed ${
-                    entry.includes("crashed") ? "text-red-400" :
-                    entry.includes("recovered") ? "text-amber-400" :
-                    entry.includes("completed") ? "text-emerald-400" :
-                    entry.includes("claimed") ? "text-sky-400" :
-                    "text-zinc-500"
+                    entry.includes("crashed")
+                      ? "text-red-400"
+                      : entry.includes("recovered")
+                        ? "text-amber-400"
+                        : entry.includes("completed")
+                          ? "text-emerald-400"
+                          : entry.includes("claimed")
+                            ? "text-sky-400"
+                            : "text-zinc-500"
                   }`}
                 >
                   {entry}
@@ -378,13 +423,12 @@ export function CrashRecoveryViz() {
           {killed === 0
             ? "Every agent is fungible. Kill any of them to see the swarm self-heal without downtime or data loss."
             : aliveCount === 0
-            ? `All ${killed} agents killed. In a real swarm, you would spin up replacements with ntm add PROJECT --cc=1 and they would immediately pick up the orphaned beads. Hit Reset to try again.`
-            : recovered > 0
-            ? `${killed} agent${killed > 1 ? "s" : ""} killed, ${recovered} bead${recovered > 1 ? "s" : ""} recovered. The swarm continues. No bottlenecks, no single points of failure. Like RaptorQ fountain codes: any agent catches any bead in any order.`
-            : orphanedCount > 0
-            ? `${killed} agent${killed > 1 ? "s" : ""} killed. ${orphanedCount} orphaned bead${orphanedCount > 1 ? "s" : ""} waiting for recovery. Watch the next idle agent pick ${orphanedCount > 1 ? "them" : "it"} up.`
-            : `${killed} agent${killed > 1 ? "s" : ""} killed. The orphaned bead will be picked up by the next idle agent. No ringleader needed.`
-          }
+              ? `All ${killed} agents killed. In a real swarm, you would spin up replacements with ntm add PROJECT --cc=1 and they would immediately pick up the orphaned beads. Hit Reset to try again.`
+              : recovered > 0
+                ? `${killed} agent${killed > 1 ? "s" : ""} killed, ${recovered} bead${recovered > 1 ? "s" : ""} recovered. The swarm continues. No bottlenecks, no single points of failure. Like RaptorQ fountain codes: any agent catches any bead in any order.`
+                : orphanedCount > 0
+                  ? `${killed} agent${killed > 1 ? "s" : ""} killed. ${orphanedCount} orphaned bead${orphanedCount > 1 ? "s" : ""} waiting for recovery. Watch the next idle agent pick ${orphanedCount > 1 ? "them" : "it"} up.`
+                  : `${killed} agent${killed > 1 ? "s" : ""} killed. The orphaned bead will be picked up by the next idle agent. No ringleader needed.`}
         </p>
       </div>
     </div>

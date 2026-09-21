@@ -1,27 +1,22 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
-  AnimatePresence,
-  motion,
-  useInView,
-  useReducedMotion,
-} from "@/components/motion";
-import {
-  FileText,
-  Layers,
   BookOpen,
-  Rocket,
-  Radio,
+  Bot,
   Code,
   Eye,
-  ShieldCheck,
+  FileText,
+  Layers,
   Lightbulb,
+  Radio,
+  Rocket,
+  ShieldCheck,
   User,
-  Bot,
   Wrench,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -102,8 +97,7 @@ const STAGES: TimelineStage[] = [
     who: "Agents (automatically)",
     what: "Register with Agent Mail, discover peers, claim beads, reserve files, announce what they\u2019re working on.",
     tools: "Agent Mail MCP, br, bv",
-    insight:
-      "You never type these commands. Agents do it because AGENTS.md tells them to.",
+    insight: "You never type these commands. Agents do it because AGENTS.md tells them to.",
   },
   {
     id: "implement",
@@ -114,8 +108,7 @@ const STAGES: TimelineStage[] = [
     who: "Agents (automatically)",
     what: "Write code, run tests, do fresh-eyes self-review, close the bead, pick the next one via bv.",
     tools: "br, bv, code editor",
-    insight:
-      "The bead carries all the context. The agent doesn\u2019t need to ask you what to do.",
+    insight: "The bead carries all the context. The agent doesn\u2019t need to ask you what to do.",
   },
   {
     id: "tend",
@@ -126,8 +119,7 @@ const STAGES: TimelineStage[] = [
     who: "You (every 10\u201315 min)",
     what: "Check bv for stuck beads, rescue confused agents by telling them to reread AGENTS.md, add missing beads.",
     tools: "bv --robot-triage, Agent Mail inbox",
-    insight:
-      "About 5 minutes of checking every 15 minutes.",
+    insight: "About 5 minutes of checking every 15 minutes.",
   },
   {
     id: "review",
@@ -138,8 +130,7 @@ const STAGES: TimelineStage[] = [
     who: "You direct, agents execute",
     what: "Send review prompts. Agents do random code exploration, cross-agent review, test coverage, and UI polish.",
     tools: "Your review prompts \u2192 agents\u2019 code analysis",
-    insight:
-      "You decide when quality is high enough. Agents do the actual reviewing.",
+    insight: "You decide when quality is high enough. Agents do the actual reviewing.",
   },
 ];
 
@@ -209,18 +200,9 @@ function stageNodeGradient(stage: TimelineStage): string | undefined {
 /*  Detail card                                                       */
 /* ------------------------------------------------------------------ */
 
-function DetailCard({
-  stage,
-  reducedMotion,
-}: {
-  stage: TimelineStage;
-  reducedMotion: boolean;
-}) {
+function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMotion: boolean }) {
   const dur = reducedMotion ? 0 : 0.4;
-  const borderColor =
-    stage.actor === "both"
-      ? AGENT_COLOR
-      : stage.color;
+  const borderColor = stage.actor === "both" ? AGENT_COLOR : stage.color;
 
   return (
     <motion.div
@@ -262,7 +244,12 @@ function DetailCard({
                   : stage.actor === "both"
                     ? `${AGENT_COLOR}10`
                     : `${HUMAN_COLOR}18`,
-              color: stage.actor === "agent" ? AGENT_COLOR : stage.actor === "both" ? "#e2e8f0" : HUMAN_COLOR,
+              color:
+                stage.actor === "agent"
+                  ? AGENT_COLOR
+                  : stage.actor === "both"
+                    ? "#e2e8f0"
+                    : HUMAN_COLOR,
               border: `1px solid ${stage.actor === "agent" ? `${AGENT_COLOR}30` : stage.actor === "both" ? "rgba(255,255,255,0.08)" : `${HUMAN_COLOR}30`}`,
             }}
           >
@@ -304,18 +291,14 @@ function DetailCard({
             <Wrench size={10} className="opacity-50" />
             Tools
           </span>
-          <p className="text-sm text-white/90 font-mono font-medium break-all">
-            {stage.tools}
-          </p>
+          <p className="text-sm text-white/90 font-mono font-medium break-all">{stage.tools}</p>
         </div>
       </div>
 
       {/* What */}
       <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-        <p className="text-sm leading-relaxed text-zinc-400 font-light">
-          {stage.what}
-        </p>
+        <p className="text-sm leading-relaxed text-zinc-400 font-light">{stage.what}</p>
       </div>
 
       {/* Insight */}
@@ -325,15 +308,10 @@ function DetailCard({
           size={16}
           className="mt-0.5 shrink-0"
           style={{
-            color:
-              stage.actor === "agent"
-                ? AGENT_COLOR
-                : HUMAN_COLOR,
+            color: stage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
           }}
         />
-        <p className="text-sm leading-relaxed text-zinc-400 font-light italic">
-          {stage.insight}
-        </p>
+        <p className="text-sm leading-relaxed text-zinc-400 font-light italic">{stage.insight}</p>
       </div>
     </motion.div>
   );
@@ -441,9 +419,7 @@ function DesktopTimeline({
                       ? nodeColor
                       : `${nodeColor}22`,
                   border: `2px solid ${isActive ? nodeColor : isPast ? `${nodeColor}66` : `${nodeColor}25`}`,
-                  boxShadow: isActive
-                    ? `0 0 20px ${nodeColor}40, 0 0 40px ${nodeColor}15`
-                    : "none",
+                  boxShadow: isActive ? `0 0 20px ${nodeColor}40, 0 0 40px ${nodeColor}15` : "none",
                 }}
                 transition={{ duration: dur }}
               >
@@ -532,11 +508,7 @@ function MobileTimeline({
                 ? `0 4px 24px -4px ${nodeColor}30, 0 0 0 1px ${nodeColor}15`
                 : undefined,
             }}
-            animate={
-              isActive && !reducedMotion
-                ? { scale: [1, 1.01, 1] }
-                : { scale: 1 }
-            }
+            animate={isActive && !reducedMotion ? { scale: [1, 1.01, 1] } : { scale: 1 }}
             transition={
               isActive && !reducedMotion
                 ? {
@@ -555,14 +527,10 @@ function MobileTimeline({
                 isActive ? "shadow-lg" : ""
               }`}
               style={{
-                background: isActive
-                  ? gradient || `${nodeColor}20`
-                  : "rgba(255,255,255,0.02)",
+                background: isActive ? gradient || `${nodeColor}20` : "rgba(255,255,255,0.02)",
                 borderWidth: 1,
                 borderStyle: "solid",
-                borderColor: isActive
-                  ? `${nodeColor}50`
-                  : "rgba(255,255,255,0.04)",
+                borderColor: isActive ? `${nodeColor}50` : "rgba(255,255,255,0.04)",
               }}
             >
               <Icon
@@ -685,9 +653,7 @@ export function HumanAgentTimelineViz() {
             </h3>
             <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
               You design the system and tend the swarm.{" "}
-              <span className="text-white/60">
-                Agents do the coordination work.
-              </span>
+              <span className="text-white/60">Agents do the coordination work.</span>
             </p>
           </div>
 
@@ -697,15 +663,9 @@ export function HumanAgentTimelineViz() {
               Breakdown
             </span>
             <div className="flex items-center gap-4 text-sm font-mono">
-              <span style={{ color: HUMAN_COLOR }}>
-                {humanCount} you
-              </span>
-              <span style={{ color: AGENT_COLOR }}>
-                {agentCount} agents
-              </span>
-              <span className="text-white/50">
-                {bothCount} both
-              </span>
+              <span style={{ color: HUMAN_COLOR }}>{humanCount} you</span>
+              <span style={{ color: AGENT_COLOR }}>{agentCount} agents</span>
+              <span className="text-white/50">{bothCount} both</span>
             </div>
           </div>
         </div>
@@ -719,26 +679,15 @@ export function HumanAgentTimelineViz() {
         {/* Timeline */}
         {isInView && (
           <>
-            <DesktopTimeline
-              activeIndex={activeIndex}
-              onSelect={handleSelect}
-              reducedMotion={rm}
-            />
-            <MobileTimeline
-              activeIndex={activeIndex}
-              onSelect={handleSelect}
-              reducedMotion={rm}
-            />
+            <DesktopTimeline activeIndex={activeIndex} onSelect={handleSelect} reducedMotion={rm} />
+            <MobileTimeline activeIndex={activeIndex} onSelect={handleSelect} reducedMotion={rm} />
           </>
         )}
 
         {/* Detail card */}
         <div className="min-h-[280px]">
           <AnimatePresence mode="wait">
-            <DetailCard
-              stage={currentStage}
-              reducedMotion={rm}
-            />
+            <DetailCard stage={currentStage} reducedMotion={rm} />
           </AnimatePresence>
         </div>
 
@@ -767,19 +716,12 @@ export function HumanAgentTimelineViz() {
                       width: index === activeIndex ? 20 : 8,
                       height: 8,
                       background:
-                        index === activeIndex
-                          ? gradient || dotColor
-                          : "rgba(255,255,255,0.1)",
-                      boxShadow:
-                        index === activeIndex
-                          ? `0 0 10px ${dotColor}60`
-                          : "none",
+                        index === activeIndex ? gradient || dotColor : "rgba(255,255,255,0.1)",
+                      boxShadow: index === activeIndex ? `0 0 10px ${dotColor}60` : "none",
                     }}
                     layout
                     transition={
-                      rm
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 200, damping: 25 }
+                      rm ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 25 }
                     }
                   />
                 </button>
@@ -795,10 +737,7 @@ export function HumanAgentTimelineViz() {
               disabled={activeIndex >= STAGE_COUNT - 1}
               className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               style={{
-                background:
-                  currentStage.actor === "agent"
-                    ? AGENT_COLOR
-                    : HUMAN_COLOR,
+                background: currentStage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
               }}
             >
               Advance

@@ -19,12 +19,18 @@ function inputs(ubuntuVersion?: string): TeamProfileInputs {
     ref: "a1b6c2f34aac7596e676688c36cb57cbbb869f3c",
     generatedAt: "2026-09-17T00:00:00Z",
     moduleSelection: { onlyModules: ["lang.bun"] },
-    ...(ubuntuVersion === undefined ? {} : {
-      providerSelection: {
-        providerId: "other", planName: "custom plan", ubuntuVersion,
-        region: "not-listed", targetAgents: 10, workloadId: "standard" as const,
-      },
-    }),
+    ...(ubuntuVersion === undefined
+      ? {}
+      : {
+          providerSelection: {
+            providerId: "other",
+            planName: "custom plan",
+            ubuntuVersion,
+            region: "not-listed",
+            targetAgents: 10,
+            workloadId: "standard" as const,
+          },
+        }),
   };
 }
 const blockedText = "Blocked until incompatibilities and refusals are resolved.";
@@ -41,7 +47,11 @@ function assertBlockedProfile(version: string): void {
   assert.ok(review.includes(blockedText));
   assert.ok(!review.includes("curl -fsSL"));
   assert.ok(formatTeamProfileImportDiffMarkdown(diff).includes(blockedText));
-  assert.equal(serializeTeamProfileJson(profile), before, "review/import must not rewrite the selected image");
+  assert.equal(
+    serializeTeamProfileJson(profile),
+    before,
+    "review/import must not rewrite the selected image",
+  );
 }
 
 test("new default profiles use the same LTS recommendation as install commands", () => {
@@ -68,7 +78,11 @@ for (const version of VPS_UBUNTU_IMAGE_OPTIONS) {
     assert.deepEqual(profile.compatibility.targetUbuntuVersions, [version]);
     assert.equal(profile.install.modulePlan.ok, true);
     assert.equal(diff.ok, true, JSON.stringify(diff.findings));
-    assert.ok(!diff.safeDefaults.changes.some((change) => change.field === "providerDefaults.operatingSystem"));
+    assert.ok(
+      !diff.safeDefaults.changes.some(
+        (change) => change.field === "providerDefaults.operatingSystem",
+      ),
+    );
     assert.ok(diff.installerCommand.command?.includes("--target-ubuntu=26.04"));
     assert.ok(diff.installerCommand.command?.includes('--only "lang.bun"'));
     assert.ok(diff.installerCommand.command?.includes(`--ref "${profile.install.ref.value}"`));
@@ -77,8 +91,12 @@ for (const version of VPS_UBUNTU_IMAGE_OPTIONS) {
     assert.ok(review.includes("Installer destination: Ubuntu 26.04 LTS"));
     assert.ok(review.includes("curl -fsSL"));
     assert.ok(!review.includes(blockedText));
-    assert.equal(profile.install.modulePlan.warnings.some((warning) => warning.includes("upgrades and reboots")),
-      version !== ACFS_RECOMMENDED_UBUNTU);
+    assert.equal(
+      profile.install.modulePlan.warnings.some((warning) =>
+        warning.includes("upgrades and reboots"),
+      ),
+      version !== ACFS_RECOMMENDED_UBUNTU,
+    );
   });
 }
 
@@ -91,7 +109,14 @@ for (const version of ["25.10", "25.04", "24.10", "20.04", "26.10", "99.99"]) {
   });
 }
 
-for (const version of ["", "   ", "Debian 26.04", "26.04; touch /tmp/INJECTED", "Bearer PRIVATE_VALUE", "203.0.113.42"]) {
+for (const version of [
+  "",
+  "   ",
+  "Debian 26.04",
+  "26.04; touch /tmp/INJECTED",
+  "Bearer PRIVATE_VALUE",
+  "203.0.113.42",
+]) {
   test(`malformed saved source ${JSON.stringify(version)} is blocked instead of silently approved`, () => {
     assertBlockedProfile(version);
     const profile = buildTeamProfile(inputs(version));
@@ -116,8 +141,13 @@ for (const version of ["25.10", "26.10", "99.99"]) {
     const diff = buildTeamProfileImportDiff(profile, { ubuntuVersion: "26.04" });
     assert.equal(diff.ok, false);
     assert.equal(diff.installerCommand.command, null);
-    assert.ok(diff.findings.some((finding) => finding.code === "team_profile_ubuntu_unsupported"
-      && finding.path === "compatibility.targetUbuntuVersions"));
+    assert.ok(
+      diff.findings.some(
+        (finding) =>
+          finding.code === "team_profile_ubuntu_unsupported" &&
+          finding.path === "compatibility.targetUbuntuVersions",
+      ),
+    );
     assert.ok(!formatTeamProfileReviewMarkdown(profile).includes("curl -fsSL"));
   });
 }
@@ -134,30 +164,50 @@ test("accepts an explicitly reviewed list of supported LTS starting images", () 
 
 test("saved provider image participates in import compatibility when explicit current OS is absent", () => {
   const profile = buildTeamProfile(inputs("26.04"));
-  const diff = buildTeamProfileImportDiff(profile, { providerSelection: { ubuntuVersion: "24.04" } });
+  const diff = buildTeamProfileImportDiff(profile, {
+    providerSelection: { ubuntuVersion: "24.04" },
+  });
   assert.equal(diff.ok, false);
   assert.equal(diff.installerCommand.command, null);
   assert.ok(diff.findings.some((finding) => finding.code === "team_profile_ubuntu_unsupported"));
-  assert.ok(diff.safeDefaults.changes.some((change) => change.field === "providerDefaults.operatingSystem"
-    && change.current === "ubuntu-24.04" && change.next === "ubuntu-26.04"));
+  assert.ok(
+    diff.safeDefaults.changes.some(
+      (change) =>
+        change.field === "providerDefaults.operatingSystem" &&
+        change.current === "ubuntu-24.04" &&
+        change.next === "ubuntu-26.04",
+    ),
+  );
 });
 
 test("an explicit current OS takes precedence over saved provider image metadata", () => {
   const profile = buildTeamProfile(inputs("26.04"));
   const diff = buildTeamProfileImportDiff(profile, {
-    ubuntuVersion: "26.04", providerSelection: { ubuntuVersion: "24.04" },
+    ubuntuVersion: "26.04",
+    providerSelection: { ubuntuVersion: "24.04" },
   });
   assert.equal(diff.ok, true, JSON.stringify(diff.findings));
-  assert.ok(!diff.safeDefaults.changes.some((change) => change.field === "providerDefaults.operatingSystem"));
+  assert.ok(
+    !diff.safeDefaults.changes.some(
+      (change) => change.field === "providerDefaults.operatingSystem",
+    ),
+  );
 });
 
 test("an unsupported current source is refused even when package defaults are valid", () => {
   const profile = buildTeamProfile(inputs("26.04"));
-  const diff = buildTeamProfileImportDiff(profile, { providerSelection: { ubuntuVersion: "25.10" } });
+  const diff = buildTeamProfileImportDiff(profile, {
+    providerSelection: { ubuntuVersion: "25.10" },
+  });
   assert.equal(diff.ok, false);
   assert.equal(diff.installerCommand.command, null);
-  assert.ok(diff.findings.some((finding) => finding.code === "team_profile_ubuntu_unsupported"
-    && finding.path === "current.ubuntuVersion"));
+  assert.ok(
+    diff.findings.some(
+      (finding) =>
+        finding.code === "team_profile_ubuntu_unsupported" &&
+        finding.path === "current.ubuntuVersion",
+    ),
+  );
 });
 
 test("tampering with cached success flags cannot approve an unsupported release", () => {
@@ -175,12 +225,20 @@ test("provider defaults cannot name an unsupported release even if compatibility
   profile.providerDefaults.operatingSystem = "ubuntu-25.10";
   const diff = buildTeamProfileImportDiff(profile);
   assert.equal(diff.installerCommand.command, null);
-  assert.ok(diff.findings.some((finding) => finding.path === "providerDefaults.operatingSystem"
-    && finding.code === "team_profile_ubuntu_unsupported"));
+  assert.ok(
+    diff.findings.some(
+      (finding) =>
+        finding.path === "providerDefaults.operatingSystem" &&
+        finding.code === "team_profile_ubuntu_unsupported",
+    ),
+  );
 });
 
 test("profile review revalidates selectors without throwing or printing a runnable command", () => {
-  const profile = buildTeamProfile({ ...inputs("26.04"), moduleSelection: { onlyModules: ["not.real"] } });
+  const profile = buildTeamProfile({
+    ...inputs("26.04"),
+    moduleSelection: { onlyModules: ["not.real"] },
+  });
   const review = formatTeamProfileReviewMarkdown(profile);
   assert.ok(review.includes(blockedText));
   assert.ok(!review.includes("curl -fsSL"));

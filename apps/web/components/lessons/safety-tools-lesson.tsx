@@ -1,58 +1,52 @@
 "use client";
 
-import type React from "react";
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
+  Activity,
+  AlertTriangle,
+  Ban,
+  CheckCircle,
+  Clock,
+  Eye,
+  Key,
+  Lock,
+  RefreshCw,
   Shield,
   ShieldAlert,
-  Key,
-  Users,
-  AlertTriangle,
-  Lock,
-  Terminal,
-  CheckCircle,
-  XCircle,
-  UserCheck,
-  RefreshCw,
-  Zap,
-  Eye,
   ShieldCheck,
-  Clock,
+  Terminal,
   ToggleLeft,
   ToggleRight,
-  Ban,
-  Activity,
+  UserCheck,
+  Users,
+  XCircle,
+  Zap,
 } from "lucide-react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function SafetyToolsLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Use DCG, SLB and CAAM for layered safety and account management.
-      </GoalBanner>
+      <GoalBanner>Use DCG, SLB and CAAM for layered safety and account management.</GoalBanner>
 
       {/* Introduction */}
-      <Section
-        title="Safety First"
-        icon={<Shield className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Safety First" icon={<Shield className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          AI agents are powerful but can cause damage if misused. The
-          Agent Flywheel stack includes three safety tools:
+          AI agents are powerful but can cause damage if misused. The Agent Flywheel stack includes
+          three safety tools:
         </Paragraph>
 
         <div className="mt-8">
@@ -88,9 +82,9 @@ export function SafetyToolsLesson() {
         delay={0.15}
       >
         <Paragraph>
-          <Highlight>SLB</Highlight> implements a &quot;two-person rule&quot;
-          for dangerous commands. Just like nuclear launch codes require two
-          keys, SLB requires two approvals before executing risky operations.
+          <Highlight>SLB</Highlight> implements a &quot;two-person rule&quot; for dangerous
+          commands. Just like nuclear launch codes require two keys, SLB requires two approvals
+          before executing risky operations.
         </Paragraph>
 
         <div className="mt-8">
@@ -99,11 +93,7 @@ export function SafetyToolsLesson() {
       </Section>
 
       {/* When to Use SLB */}
-      <Section
-        title="When to Use SLB"
-        icon={<AlertTriangle className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="When to Use SLB" icon={<AlertTriangle className="h-5 w-5" />} delay={0.2}>
         <div className="space-y-4">
           <DangerCard
             command="rm -rf /"
@@ -129,18 +119,14 @@ export function SafetyToolsLesson() {
 
         <div className="mt-6">
           <TipBox variant="warning">
-            Never bypass SLB protections. If a command requires two approvals,
-            there&apos;s a reason. Get a second opinion.
+            Never bypass SLB protections. If a command requires two approvals, there&apos;s a
+            reason. Get a second opinion.
           </TipBox>
         </div>
       </Section>
 
       {/* SLB Commands */}
-      <Section
-        title="SLB Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="SLB Commands" icon={<Terminal className="h-5 w-5" />} delay={0.25}>
         <CommandList
           commands={[
             {
@@ -176,29 +162,25 @@ export function SafetyToolsLesson() {
         delay={0.3}
       >
         <Paragraph>
-          <Highlight>DCG</Highlight> blocks dangerous commands before they run.
-          It inspects every command from Claude Code and stops destructive
-          patterns like hard resets, force pushes, and recursive deletes.
+          <Highlight>DCG</Highlight> blocks dangerous commands before they run. It inspects every
+          command from Claude Code and stops destructive patterns like hard resets, force pushes,
+          and recursive deletes.
         </Paragraph>
         <Paragraph>
-          If a command is safe, it runs normally. If it&apos;s risky, DCG blocks
-          it and suggests a safer alternative.
+          If a command is safe, it runs normally. If it&apos;s risky, DCG blocks it and suggests a
+          safer alternative.
         </Paragraph>
 
         <div className="mt-6">
           <TipBox variant="warning">
-            Treat a DCG block as a safety checkpoint. Read the explanation and
-            prefer the safer command whenever possible.
+            Treat a DCG block as a safety checkpoint. Read the explanation and prefer the safer
+            command whenever possible.
           </TipBox>
         </div>
       </Section>
 
       {/* DCG Commands */}
-      <Section
-        title="DCG Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="DCG Commands" icon={<Terminal className="h-5 w-5" />} delay={0.35}>
         <CommandList
           commands={[
             {
@@ -234,9 +216,9 @@ export function SafetyToolsLesson() {
         delay={0.3}
       >
         <Paragraph>
-          <Highlight>CAAM</Highlight> enables sub-100ms account switching for
-          subscription-based AI services (Claude Max, Codex CLI, and Google/Antigravity access).
-          Swap OAuth tokens instantly without re-authenticating.
+          <Highlight>CAAM</Highlight> enables sub-100ms account switching for subscription-based AI
+          services (Claude Max, Codex CLI, and Google/Antigravity access). Swap OAuth tokens
+          instantly without re-authenticating.
         </Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -264,11 +246,7 @@ export function SafetyToolsLesson() {
       </Section>
 
       {/* CAAM Use Cases */}
-      <Section
-        title="CAAM Use Cases"
-        icon={<UserCheck className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="CAAM Use Cases" icon={<UserCheck className="h-5 w-5" />} delay={0.35}>
         <div className="space-y-4">
           <UseCase
             scenario="Personal vs Work"
@@ -290,11 +268,7 @@ export function SafetyToolsLesson() {
       </Section>
 
       {/* CAAM Commands */}
-      <Section
-        title="CAAM Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="CAAM Commands" icon={<Terminal className="h-5 w-5" />} delay={0.4}>
         <CommandList
           commands={[
             {
@@ -324,14 +298,8 @@ export function SafetyToolsLesson() {
       <Divider />
 
       {/* Integration with Agents */}
-      <Section
-        title="Integration with Agents"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.45}
-      >
-        <Paragraph>
-          DCG, SLB, and CAAM integrate with Claude Code, Codex, and Gemini:
-        </Paragraph>
+      <Section title="Integration with Agents" icon={<Zap className="h-5 w-5" />} delay={0.45}>
+        <Paragraph>DCG, SLB, and CAAM integrate with Claude Code, Codex, and Gemini:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -361,11 +329,7 @@ $ claude "continue the project"
       <Divider />
 
       {/* Best Practices */}
-      <Section
-        title="Best Practices"
-        icon={<CheckCircle className="h-5 w-5" />}
-        delay={0.5}
-      >
+      <Section title="Best Practices" icon={<CheckCircle className="h-5 w-5" />} delay={0.5}>
         <div className="grid gap-6 md:grid-cols-3">
           {/* SLB Best Practices */}
           <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
@@ -414,11 +378,7 @@ $ claude "continue the project"
       <Divider />
 
       {/* Quick Reference */}
-      <Section
-        title="Quick Reference"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.55}
-      >
+      <Section title="Quick Reference" icon={<Terminal className="h-5 w-5" />} delay={0.55}>
         <div className="grid gap-4 md:grid-cols-3">
           <QuickRefCard
             title="SLB"
@@ -468,9 +428,24 @@ interface DcgCommand {
 }
 
 const DCG_COMMANDS: DcgCommand[] = [
-  { cmd: "rm -rf /", blocked: true, rule: "Recursive delete at root - catastrophic", label: "rm -rf /" },
-  { cmd: "git reset --hard HEAD~10", blocked: true, rule: "Hard reset destroys uncommitted work", label: "git reset --hard" },
-  { cmd: "DROP TABLE users;", blocked: true, rule: "DROP TABLE on production database", label: "DROP TABLE" },
+  {
+    cmd: "rm -rf /",
+    blocked: true,
+    rule: "Recursive delete at root - catastrophic",
+    label: "rm -rf /",
+  },
+  {
+    cmd: "git reset --hard HEAD~10",
+    blocked: true,
+    rule: "Hard reset destroys uncommitted work",
+    label: "git reset --hard",
+  },
+  {
+    cmd: "DROP TABLE users;",
+    blocked: true,
+    rule: "DROP TABLE on production database",
+    label: "DROP TABLE",
+  },
   { cmd: "git status", blocked: false, label: "git status" },
   { cmd: "ls -la /tmp", blocked: false, label: "ls -la /tmp" },
   { cmd: "echo 'hello world'", blocked: false, label: "echo hello" },
@@ -535,7 +510,7 @@ function InteractiveSafetyDemo() {
 
   const typedText = useTypewriter(
     activeDcgCmd?.cmd ?? "",
-    activeDcgCmd !== null && dcgResult === null
+    activeDcgCmd !== null && dcgResult === null,
   );
 
   // Cleanup timers on unmount
@@ -628,7 +603,10 @@ function InteractiveSafetyDemo() {
   const springSmooth = { type: "spring" as const, stiffness: 200, damping: 25 };
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background ambient glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-red-500/[0.06] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-emerald-500/[0.06] rounded-full blur-3xl pointer-events-none" />
@@ -653,11 +631,7 @@ function InteractiveSafetyDemo() {
                 : "border-red-500/30 bg-red-500/10 text-red-400"
             }`}
           >
-            {isProtected ? (
-              <ToggleRight className="h-4 w-4" />
-            ) : (
-              <ToggleLeft className="h-4 w-4" />
-            )}
+            {isProtected ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
             {isProtected ? "Protected" : "Unprotected"}
           </button>
         </div>
@@ -699,7 +673,9 @@ function InteractiveSafetyDemo() {
                     {dcgResult === null && (
                       <motion.span
                         animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-                        transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
+                        transition={
+                          inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }
+                        }
                         className="text-white/60"
                       >
                         |
@@ -765,9 +741,7 @@ function InteractiveSafetyDemo() {
                   </AnimatePresence>
                 </div>
               ) : (
-                <p className="text-white/30 text-xs">
-                  Click a command below to test DCG...
-                </p>
+                <p className="text-white/30 text-xs">Click a command below to test DCG...</p>
               )}
             </motion.div>
 
@@ -804,9 +778,7 @@ function InteractiveSafetyDemo() {
               <span className="text-xs font-bold text-white/70 uppercase tracking-wider">
                 SLB Launch Console
               </span>
-              <span className="ml-auto text-[10px] text-white/30 font-mono">
-                two-person rule
-              </span>
+              <span className="ml-auto text-[10px] text-white/30 font-mono">two-person rule</span>
             </div>
 
             <div className="p-4 space-y-4">
@@ -815,9 +787,7 @@ function InteractiveSafetyDemo() {
                 <p className="text-[10px] uppercase tracking-wider text-amber-400/60 font-semibold mb-1">
                   Critical Command Pending
                 </p>
-                <code className="text-sm text-amber-300 font-mono">
-                  {SLB_CRITICAL_CMD}
-                </code>
+                <code className="text-sm text-amber-300 font-mono">{SLB_CRITICAL_CMD}</code>
               </div>
 
               {/* Approval slots */}
@@ -863,9 +833,7 @@ function InteractiveSafetyDemo() {
                       {slbApproval1 ? "Approved" : "Approval 1"}
                     </span>
                     {!slbApproval1 && !slbExecuted && (
-                      <span className="text-[10px] text-primary/60">
-                        Click to approve
-                      </span>
+                      <span className="text-[10px] text-primary/60">Click to approve</span>
                     )}
                   </div>
                 </motion.button>
@@ -911,9 +879,7 @@ function InteractiveSafetyDemo() {
                       {slbApproval2 ? "Approved" : "Approval 2"}
                     </span>
                     {!slbApproval2 && !slbExecuted && (
-                      <span className="text-[10px] text-primary/60">
-                        Click to approve
-                      </span>
+                      <span className="text-[10px] text-primary/60">Click to approve</span>
                     )}
                   </div>
                 </motion.button>
@@ -1058,15 +1024,7 @@ function InteractiveSafetyDemo() {
 // =============================================================================
 // DANGER CARD
 // =============================================================================
-function DangerCard({
-  command,
-  risk,
-  slb,
-}: {
-  command: string;
-  risk: string;
-  slb: string;
-}) {
+function DangerCard({ command, risk, slb }: { command: string; risk: string; slb: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -1114,7 +1072,9 @@ function CaamFeature({
         {icon}
       </div>
       <div>
-        <h4 className="font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
+        <h4 className="font-semibold text-white group-hover:text-primary transition-colors">
+          {title}
+        </h4>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>
@@ -1124,13 +1084,7 @@ function CaamFeature({
 // =============================================================================
 // USE CASE
 // =============================================================================
-function UseCase({
-  scenario,
-  description,
-}: {
-  scenario: string;
-  description: string;
-}) {
+function UseCase({ scenario, description }: { scenario: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -1142,7 +1096,9 @@ function UseCase({
         <UserCheck className="h-5 w-5" />
       </div>
       <div>
-        <span className="font-medium text-white group-hover:text-primary transition-colors">{scenario}</span>
+        <span className="font-medium text-white group-hover:text-primary transition-colors">
+          {scenario}
+        </span>
         <span className="text-white/50 mx-2">—</span>
         <span className="text-sm text-white/50">{description}</span>
       </div>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, memo } from "react";
-import { motion, useReducedMotion, AnimatePresence } from "@/components/motion";
-import { Layers, Wrench, Search, X, Sparkles } from "lucide-react";
+import { Layers, Search, Sparkles, Wrench, X } from "lucide-react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "@/components/motion";
+import type { TldrFlywheelTool } from "@/lib/tldr-content";
 import { cn, isInteractiveKeyboardTarget } from "@/lib/utils";
 import { TldrToolCard } from "./tldr-tool-card";
-import type { TldrFlywheelTool } from "@/lib/tldr-content";
 
 // =============================================================================
 // TYPES
@@ -49,9 +49,7 @@ const ToolSearchBar = memo(function ToolSearchBar({
         <div
           className={cn(
             "relative rounded-2xl border bg-card/50 backdrop-blur-md transition duration-300",
-            isFocused
-              ? "border-primary/50 bg-card/70"
-              : "border-border/50 hover:border-border"
+            isFocused ? "border-primary/50 bg-card/70" : "border-border/50 hover:border-border",
           )}
           style={{
             boxShadow: isFocused
@@ -63,10 +61,11 @@ const ToolSearchBar = memo(function ToolSearchBar({
           <div
             className={cn(
               "pointer-events-none absolute -inset-px rounded-2xl transition-opacity duration-300",
-              isFocused ? "opacity-100" : "opacity-0"
+              isFocused ? "opacity-100" : "opacity-0",
             )}
             style={{
-              background: "linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.2), transparent)",
+              background:
+                "linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.2), transparent)",
             }}
           />
 
@@ -75,7 +74,7 @@ const ToolSearchBar = memo(function ToolSearchBar({
             <Search
               className={cn(
                 "h-5 w-5 transition-colors duration-200",
-                isFocused ? "text-primary" : "text-muted-foreground"
+                isFocused ? "text-primary" : "text-muted-foreground",
               )}
               aria-hidden="true"
             />
@@ -136,15 +135,8 @@ const ToolSearchBar = memo(function ToolSearchBar({
                 ) : (
                   <>
                     <Sparkles className="h-3.5 w-3.5 text-primary" />
-                    Showing{" "}
-                    <span className="font-semibold text-white">
-                      {resultCount}
-                    </span>{" "}
-                    of{" "}
-                    <span className="font-semibold text-white">
-                      {totalCount}
-                    </span>{" "}
-                    tools
+                    Showing <span className="font-semibold text-white">{resultCount}</span> of{" "}
+                    <span className="font-semibold text-white">{totalCount}</span> tools
                   </>
                 )}
               </span>
@@ -184,12 +176,9 @@ const EmptySearchState = memo(function EmptySearchState({
       >
         <Search className="h-10 w-10 text-primary" />
       </div>
-      <h3 className="mt-6 text-xl font-bold text-white">
-        No tools match &quot;{query}&quot;
-      </h3>
+      <h3 className="mt-6 text-xl font-bold text-white">No tools match &quot;{query}&quot;</h3>
       <p className="mt-2 text-sm text-muted-foreground">
-        Try searching for &quot;session&quot;, &quot;memory&quot;, or
-        &quot;search&quot;
+        Try searching for &quot;session&quot;, &quot;memory&quot;, or &quot;search&quot;
       </p>
       <button
         onClick={onClear}
@@ -243,14 +232,15 @@ const SectionHeader = memo(function SectionHeader({
         <div
           className={cn(
             "relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg sm:h-14 sm:w-14",
-            iconBg
+            iconBg,
           )}
           style={{
-            boxShadow: accentColor === "primary"
-              ? "0 0 30px -5px rgba(139, 92, 246, 0.4)"
-              : accentColor === "accent"
-              ? "0 0 30px -5px rgba(251, 191, 36, 0.4)"
-              : "0 0 30px -5px rgba(34, 197, 94, 0.4)",
+            boxShadow:
+              accentColor === "primary"
+                ? "0 0 30px -5px rgba(139, 92, 246, 0.4)"
+                : accentColor === "accent"
+                  ? "0 0 30px -5px rgba(251, 191, 36, 0.4)"
+                  : "0 0 30px -5px rgba(34, 197, 94, 0.4)",
           }}
         >
           <Icon className={cn("h-6 w-6 text-white drop-shadow sm:h-7 sm:w-7")} />
@@ -260,13 +250,11 @@ const SectionHeader = memo(function SectionHeader({
 
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <h2 className="text-xl font-bold text-white sm:text-2xl md:text-3xl">
-              {title}
-            </h2>
+            <h2 className="text-xl font-bold text-white sm:text-2xl md:text-3xl">{title}</h2>
             <span
               className={cn(
                 "rounded-full px-2.5 py-1 text-xs font-bold ring-1 sm:px-3 sm:text-sm",
-                colors.split(" ").slice(2).join(" ")
+                colors.split(" ").slice(2).join(" "),
               )}
             >
               {count}
@@ -283,11 +271,12 @@ const SectionHeader = memo(function SectionHeader({
         <div
           className="h-px flex-1"
           style={{
-            background: accentColor === "primary"
-              ? "linear-gradient(90deg, rgba(139, 92, 246, 0.5), transparent)"
-              : accentColor === "accent"
-              ? "linear-gradient(90deg, rgba(251, 191, 36, 0.5), transparent)"
-              : "linear-gradient(90deg, rgba(34, 197, 94, 0.5), transparent)",
+            background:
+              accentColor === "primary"
+                ? "linear-gradient(90deg, rgba(139, 92, 246, 0.5), transparent)"
+                : accentColor === "accent"
+                  ? "linear-gradient(90deg, rgba(251, 191, 36, 0.5), transparent)"
+                  : "linear-gradient(90deg, rgba(34, 197, 94, 0.5), transparent)",
           }}
         />
       </div>
@@ -313,9 +302,9 @@ function filterTools(tools: TldrFlywheelTool[], query: string): TldrFlywheelTool
       tool.whyItsUseful,
       ...tool.techStack,
       ...tool.keyFeatures,
-    ].map(s => s.toLowerCase());
+    ].map((s) => s.toLowerCase());
 
-    return searchFields.some(field => field.includes(normalizedQuery));
+    return searchFields.some((field) => field.includes(normalizedQuery));
   });
 }
 
@@ -358,11 +347,7 @@ export function TldrToolGrid({ tools, className }: TldrToolGridProps) {
         searchInputRef.current?.focus();
       }
       // Clear search on Escape, but only from the search box itself
-      if (
-        e.key === "Escape" &&
-        searchQuery &&
-        e.target === searchInputRef.current
-      ) {
+      if (e.key === "Escape" && searchQuery && e.target === searchInputRef.current) {
         setSearchQuery("");
         searchInputRef.current?.blur();
       }
@@ -422,10 +407,7 @@ export function TldrToolGrid({ tools, className }: TldrToolGridProps) {
                   }}
                   className="h-full"
                 >
-                  <TldrToolCard
-                    tool={tool}
-                    allTools={tools}
-                  />
+                  <TldrToolCard tool={tool} allTools={tools} />
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -459,10 +441,7 @@ export function TldrToolGrid({ tools, className }: TldrToolGridProps) {
                   }}
                   className="h-full"
                 >
-                  <TldrToolCard
-                    tool={tool}
-                    allTools={tools}
-                  />
+                  <TldrToolCard tool={tool} allTools={tools} />
                 </motion.div>
               ))}
             </AnimatePresence>

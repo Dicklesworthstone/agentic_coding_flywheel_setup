@@ -240,300 +240,294 @@ function titleFontSize(title: string, variant: SocialImageVariant): number {
 
 export function createSocialImage(
   data: SocialImageData,
-  variant: SocialImageVariant
+  variant: SocialImageVariant,
 ): ImageResponse {
   const width = 1200;
   const height = variant === "twitter" ? 600 : 630;
   const palette = PALETTES[data.theme ?? "default"];
-  const safeDescription = trimText(
-    data.description,
-    variant === "twitter" ? 128 : 150
-  );
+  const safeDescription = trimText(data.description, variant === "twitter" ? 128 : 150);
   const safeTags = (data.tags ?? []).slice(0, 3);
   const safePath = trimText(data.path, 66);
 
   return new ImageResponse(
-    (
+    <div
+      style={{
+        height: "100%",
+        width: "100%",
+        display: "flex",
+        position: "relative",
+        overflow: "hidden",
+        alignItems: "stretch",
+        justifyContent: "flex-start",
+        background: `linear-gradient(140deg, ${palette.bgStart} 0%, ${palette.bgMid} 56%, ${palette.bgEnd} 100%)`,
+        fontFamily: "Inter, system-ui, -apple-system, Segoe UI, sans-serif",
+      }}
+    >
       <div
         style={{
-          height: "100%",
-          width: "100%",
           display: "flex",
-          position: "relative",
-          overflow: "hidden",
-          alignItems: "stretch",
-          justifyContent: "flex-start",
-          background: `linear-gradient(140deg, ${palette.bgStart} 0%, ${palette.bgMid} 56%, ${palette.bgEnd} 100%)`,
-          fontFamily: "Inter, system-ui, -apple-system, Segoe UI, sans-serif",
+          position: "absolute",
+          inset: 0,
+          opacity: 0.05,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='44' height='44' viewBox='0 0 44 44' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='${encodeURIComponent(
+            palette.grid,
+          )}' stroke-width='0.55'%3E%3Cpath d='M0 22h44M22 0v44'/%3E%3C/g%3E%3C/svg%3E")`,
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: -140,
+          left: -120,
+          width: 430,
+          height: 430,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${palette.orbA} 0%, transparent 66%)`,
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          right: -140,
+          bottom: -170,
+          width: 520,
+          height: 520,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${palette.orbB} 0%, transparent 70%)`,
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          right: 36,
+          top: 32,
+          color: "#64748b",
+          fontSize: 22,
+          letterSpacing: "0.02em",
+          opacity: 0.9,
+        }}
+      >
+        {`agent-flywheel.com${safePath}`}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          width: "100%",
+          height: "100%",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: variant === "twitter" ? 44 : 52,
+          padding: variant === "twitter" ? "56px 58px 60px 58px" : "58px 64px 62px 64px",
+          zIndex: 2,
         }}
       >
         <div
           style={{
             display: "flex",
-            position: "absolute",
-            inset: 0,
-            opacity: 0.05,
-            backgroundImage: `url(\"data:image/svg+xml,%3Csvg width='44' height='44' viewBox='0 0 44 44' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='${encodeURIComponent(
-              palette.grid
-            )}' stroke-width='0.55'%3E%3Cpath d='M0 22h44M22 0v44'/%3E%3C/g%3E%3C/svg%3E\")`,
-          }}
-        />
-
-        <div
-          style={{
-            display: "flex",
-            position: "absolute",
-            top: -140,
-            left: -120,
-            width: 430,
-            height: 430,
-            borderRadius: "50%",
-            background: `radial-gradient(circle, ${palette.orbA} 0%, transparent 66%)`,
-          }}
-        />
-
-        <div
-          style={{
-            display: "flex",
-            position: "absolute",
-            right: -140,
-            bottom: -170,
-            width: 520,
-            height: 520,
-            borderRadius: "50%",
-            background: `radial-gradient(circle, ${palette.orbB} 0%, transparent 70%)`,
-          }}
-        />
-
-        <div
-          style={{
-            display: "flex",
-            position: "absolute",
-            right: 36,
-            top: 32,
-            color: "#64748b",
-            fontSize: 22,
-            letterSpacing: "0.02em",
-            opacity: 0.9,
+            width: variant === "twitter" ? 268 : 286,
+            height: variant === "twitter" ? 268 : 286,
+            alignItems: "center",
+            justifyContent: "center",
+            position: "relative",
+            flexShrink: 0,
           }}
         >
-          {`agent-flywheel.com${safePath}`}
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              width: "100%",
+              height: "100%",
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${palette.orbA} 0%, transparent 72%)`,
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              width: variant === "twitter" ? 190 : 204,
+              height: variant === "twitter" ? 190 : 204,
+              borderRadius: "50%",
+              border: `3px solid ${palette.accent}`,
+              boxShadow: `0 0 0 1px ${palette.accentSoft}`,
+              opacity: 0.86,
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              width: variant === "twitter" ? 138 : 150,
+              height: variant === "twitter" ? 138 : 150,
+              borderRadius: "50%",
+              border: `1.5px solid ${palette.accentSoft}`,
+              opacity: 0.48,
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              width: variant === "twitter" ? 10 : 12,
+              height: variant === "twitter" ? 10 : 12,
+              borderRadius: "50%",
+              background: palette.accent,
+              boxShadow: `0 0 18px ${palette.accent}`,
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              width: 2,
+              height: variant === "twitter" ? 154 : 168,
+              background: palette.accentSoft,
+              opacity: 0.4,
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              width: variant === "twitter" ? 154 : 168,
+              height: 2,
+              background: palette.accentSoft,
+              opacity: 0.4,
+            }}
+          />
         </div>
 
         <div
           style={{
             display: "flex",
-            width: "100%",
-            height: "100%",
-            alignItems: "center",
+            flexDirection: "column",
+            alignItems: "flex-start",
             justifyContent: "center",
-            gap: variant === "twitter" ? 44 : 52,
-            padding:
-              variant === "twitter" ? "56px 58px 60px 58px" : "58px 64px 62px 64px",
-            zIndex: 2,
+            flex: 1,
+            minWidth: 0,
+            maxWidth: 760,
           }}
         >
           <div
             style={{
               display: "flex",
-              width: variant === "twitter" ? 268 : 286,
-              height: variant === "twitter" ? 268 : 286,
               alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-              flexShrink: 0,
+              borderRadius: 999,
+              padding: "8px 18px",
+              background: palette.badgeBg,
+              border: `1px solid ${palette.badgeBorder}`,
+              marginBottom: 18,
             }}
           >
-            <div
+            <span
               style={{
                 display: "flex",
-                position: "absolute",
-                width: "100%",
-                height: "100%",
-                borderRadius: "50%",
-                background: `radial-gradient(circle, ${palette.orbA} 0%, transparent 72%)`,
+                color: palette.badgeText,
+                fontSize: 22,
+                letterSpacing: "0.1em",
+                fontWeight: 600,
+                textTransform: "uppercase",
               }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                position: "absolute",
-                width: variant === "twitter" ? 190 : 204,
-                height: variant === "twitter" ? 190 : 204,
-                borderRadius: "50%",
-                border: `3px solid ${palette.accent}`,
-                boxShadow: `0 0 0 1px ${palette.accentSoft}`,
-                opacity: 0.86,
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                position: "absolute",
-                width: variant === "twitter" ? 138 : 150,
-                height: variant === "twitter" ? 138 : 150,
-                borderRadius: "50%",
-                border: `1.5px solid ${palette.accentSoft}`,
-                opacity: 0.48,
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                position: "absolute",
-                width: variant === "twitter" ? 10 : 12,
-                height: variant === "twitter" ? 10 : 12,
-                borderRadius: "50%",
-                background: palette.accent,
-                boxShadow: `0 0 18px ${palette.accent}`,
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                position: "absolute",
-                width: 2,
-                height: variant === "twitter" ? 154 : 168,
-                background: palette.accentSoft,
-                opacity: 0.4,
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                position: "absolute",
-                width: variant === "twitter" ? 154 : 168,
-                height: 2,
-                background: palette.accentSoft,
-                opacity: 0.4,
-              }}
-            />
+            >
+              {data.badge}
+            </span>
           </div>
 
-          <div
+          <h1
             style={{
               display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              flex: 1,
-              minWidth: 0,
-              maxWidth: 760,
+              margin: 0,
+              marginBottom: 16,
+              fontSize: titleFontSize(data.title, variant),
+              lineHeight: 1.14,
+              letterSpacing: "-0.03em",
+              fontWeight: 700,
+              color: "transparent",
+              background: `linear-gradient(118deg, ${palette.titleStart} 0%, ${palette.titleEnd} 100%)`,
+              backgroundClip: "text",
+              maxWidth: "100%",
             }}
           >
+            {data.title}
+          </h1>
+
+          <p
+            style={{
+              display: "flex",
+              margin: 0,
+              marginBottom: safeTags.length > 0 ? 26 : 0,
+              fontSize: variant === "twitter" ? 38 : 40,
+              lineHeight: 1.45,
+              color: palette.body,
+              maxWidth: "100%",
+            }}
+          >
+            {safeDescription}
+          </p>
+
+          {safeTags.length > 0 ? (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                borderRadius: 999,
-                padding: "8px 18px",
-                background: palette.badgeBg,
-                border: `1px solid ${palette.badgeBorder}`,
-                marginBottom: 18,
+                gap: 14,
               }}
             >
-              <span
-                style={{
-                  display: "flex",
-                  color: palette.badgeText,
-                  fontSize: 22,
-                  letterSpacing: "0.1em",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                }}
-              >
-                {data.badge}
-              </span>
-            </div>
-
-            <h1
-              style={{
-                display: "flex",
-                margin: 0,
-                marginBottom: 16,
-                fontSize: titleFontSize(data.title, variant),
-                lineHeight: 1.14,
-                letterSpacing: "-0.03em",
-                fontWeight: 700,
-                color: "transparent",
-                background: `linear-gradient(118deg, ${palette.titleStart} 0%, ${palette.titleEnd} 100%)`,
-                backgroundClip: "text",
-                maxWidth: "100%",
-              }}
-            >
-              {data.title}
-            </h1>
-
-            <p
-              style={{
-                display: "flex",
-                margin: 0,
-                marginBottom: safeTags.length > 0 ? 26 : 0,
-                fontSize: variant === "twitter" ? 38 : 40,
-                lineHeight: 1.45,
-                color: palette.body,
-                maxWidth: "100%",
-              }}
-            >
-              {safeDescription}
-            </p>
-
-            {safeTags.length > 0 ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                }}
-              >
-                {safeTags.map((tag) => (
-                  <div
-                    key={tag}
+              {safeTags.map((tag) => (
+                <div
+                  key={tag}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    borderRadius: 14,
+                    padding: "8px 14px",
+                    background: palette.tagBg,
+                    border: `1px solid ${palette.tagBorder}`,
+                  }}
+                >
+                  <span
                     style={{
                       display: "flex",
-                      alignItems: "center",
-                      borderRadius: 14,
-                      padding: "8px 14px",
-                      background: palette.tagBg,
-                      border: `1px solid ${palette.tagBorder}`,
+                      color: palette.tagText,
+                      fontSize: 24,
+                      fontWeight: 500,
+                      lineHeight: 1.2,
                     }}
                   >
-                    <span
-                      style={{
-                        display: "flex",
-                        color: palette.tagText,
-                        fontSize: 24,
-                        fontWeight: 500,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
+                    {tag}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
-
-        <div
-          style={{
-            display: "flex",
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 4,
-            background: `linear-gradient(90deg, transparent 0%, ${palette.accent} 25%, ${palette.accentSoft} 50%, ${palette.accent} 75%, transparent 100%)`,
-          }}
-        />
       </div>
-    ),
-    { width, height }
+
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 4,
+          background: `linear-gradient(90deg, transparent 0%, ${palette.accent} 25%, ${palette.accentSoft} 50%, ${palette.accent} 75%, transparent 100%)`,
+        }}
+      />
+    </div>,
+    { width, height },
   );
 }

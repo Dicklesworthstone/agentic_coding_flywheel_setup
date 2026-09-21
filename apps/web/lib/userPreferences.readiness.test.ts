@@ -29,7 +29,16 @@ describe("saved VPS readiness is evidence, not a recommendation", () => {
     });
   }
 
-  for (const ubuntuVersion of [undefined, null, 26.04, "", "Debian 26.04", "Ubuntu 26.04 trailing text", "28.04", "password=secret"]) {
+  for (const ubuntuVersion of [
+    undefined,
+    null,
+    26.04,
+    "",
+    "Debian 26.04",
+    "Ubuntu 26.04 trailing text",
+    "28.04",
+    "password=secret",
+  ]) {
     test(`does not invent an installed image from ${JSON.stringify(ubuntuVersion)}`, () => {
       const restored = normalizeVPSReadinessSelection({ ...selectedHost, ubuntuVersion });
       expect(restored?.ubuntuVersion).toBe("unknown");
@@ -55,18 +64,23 @@ describe("saved VPS readiness is evidence, not a recommendation", () => {
   });
 
   test("does not replace an unrecognized region with the first supported region", () => {
-    const restored = normalizeVPSReadinessSelection({ ...selectedHost, region: "not-a-reviewed-region" });
+    const restored = normalizeVPSReadinessSelection({
+      ...selectedHost,
+      region: "not-a-reviewed-region",
+    });
     expect(restored?.region).toBe("not-listed");
     expect(normalizeVPSReadinessSelection(restored)).toEqual(restored);
   });
 
   test("preserves known plan names and canonicalizes known provider/region aliases", () => {
-    expect(normalizeVPSReadinessSelection({
-      ...selectedHost,
-      providerId: " CONTABO ",
-      planName: " cloud vps 12 ",
-      region: "united states",
-    })).toEqual({ ...selectedHost, planName: "Cloud VPS 12" });
+    expect(
+      normalizeVPSReadinessSelection({
+        ...selectedHost,
+        providerId: " CONTABO ",
+        planName: " cloud vps 12 ",
+        region: "united states",
+      }),
+    ).toEqual({ ...selectedHost, planName: "Cloud VPS 12" });
   });
 
   test("incomplete stored objects cannot become purchase-ready hosts", () => {
@@ -92,11 +106,18 @@ describe("saved VPS readiness is evidence, not a recommendation", () => {
   });
 
   test("retains existing numeric and workload normalization", () => {
-    expect(normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: 13, workloadId: "invalid" }))
-      .toEqual({ ...selectedHost, targetAgents: 15 });
-    expect(normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: Infinity })?.targetAgents).toBe(10);
-    expect(normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: -10 })?.targetAgents).toBe(5);
-    expect(normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: 100 })?.targetAgents).toBe(50);
+    expect(
+      normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: 13, workloadId: "invalid" }),
+    ).toEqual({ ...selectedHost, targetAgents: 15 });
+    expect(
+      normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: Infinity })?.targetAgents,
+    ).toBe(10);
+    expect(
+      normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: -10 })?.targetAgents,
+    ).toBe(5);
+    expect(
+      normalizeVPSReadinessSelection({ ...selectedHost, targetAgents: 100 })?.targetAgents,
+    ).toBe(50);
   });
 
   for (const value of [null, undefined, [], "26.04", 42]) {

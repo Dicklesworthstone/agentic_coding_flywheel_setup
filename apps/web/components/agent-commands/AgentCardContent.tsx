@@ -1,9 +1,9 @@
 "use client";
 
+import { Check, Code2, Copy, Sparkles, Terminal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Copy, Check, Terminal, Sparkles, Code2 } from "lucide-react";
-import { motion, AnimatePresence, springs, useReducedMotion } from "@/components/motion";
 import { CommandCard } from "@/components/command-card";
+import { AnimatePresence, motion, springs, useReducedMotion } from "@/components/motion";
 import { cn, copyTextToClipboard } from "@/lib/utils";
 import type { AgentInfo } from "./AgentHeroCard";
 import { agentPersonalities } from "./AgentHeroCard";
@@ -85,7 +85,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                     "min-h-[48px]", // Touch target
                     activeTab === tab.id
                       ? "border-b-2 border-primary text-white bg-white/[0.02]"
-                      : "text-white/50 hover:text-white/80 hover:bg-white/[0.02]"
+                      : "text-white/50 hover:text-white/80 hover:bg-white/[0.02]",
                   )}
                 >
                   {tab.icon}
@@ -111,12 +111,11 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                         key={i}
                         initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }}
+                        transition={
+                          reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }
+                        }
                       >
-                        <CommandCard
-                          command={example.command}
-                          description={example.description}
-                        />
+                        <CommandCard command={example.command} description={example.description} />
                       </motion.div>
                     ))}
                   </motion.div>
@@ -138,12 +137,14 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                           initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           whileHover={reducedMotion ? {} : { x: 4, scale: 1.01 }}
-                          transition={reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }}
+                          transition={
+                            reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }
+                          }
                         >
                           <div
                             className={cn(
                               "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg group-hover/tip:scale-110 transition-transform duration-300",
-                              personality.bgGlow
+                              personality.bgGlow,
                             )}
                           >
                             <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -166,8 +167,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                     transition={reducedMotion ? { duration: 0 } : springs.snappy}
                   >
                     <p className="mb-4 text-sm text-white/50">
-                      All these commands launch {agent.name}. Copy and paste into
-                      your terminal.
+                      All these commands launch {agent.name}. Copy and paste into your terminal.
                     </p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {[agent.command, ...agent.aliases].map((alias, i) => (
@@ -180,12 +180,14 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                             "min-h-[56px] transition duration-300",
                             copiedAlias === alias
                               ? "border-emerald-500/50 bg-emerald-500/10"
-                              : "border-white/[0.06] bg-white/[0.02] hover:border-primary/40 hover:bg-white/[0.04]"
+                              : "border-white/[0.06] bg-white/[0.02] hover:border-primary/40 hover:bg-white/[0.04]",
                           )}
                           initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           whileHover={reducedMotion ? {} : { x: 4, scale: 1.02 }}
-                          transition={reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }}
+                          transition={
+                            reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }
+                          }
                           whileTap={reducedMotion ? {} : { scale: 0.98 }}
                         >
                           <div className="flex items-center gap-3">
@@ -202,9 +204,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                                 className="flex items-center gap-1 text-emerald-400"
                               >
                                 <Check className="h-4 w-4" />
-                                <span className="text-xs font-medium">
-                                  Copied!
-                                </span>
+                                <span className="text-xs font-medium">Copied!</span>
                               </motion.div>
                             ) : (
                               <motion.div
@@ -215,9 +215,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                                 className="flex items-center gap-1 text-white/60 opacity-0 transition-opacity group-hover/alias:opacity-100"
                               >
                                 <Copy className="h-4 w-4" />
-                                <span className="hidden text-xs sm:inline">
-                                  Copy
-                                </span>
+                                <span className="hidden text-xs sm:inline">Copy</span>
                               </motion.div>
                             )}
                           </AnimatePresence>

@@ -1,9 +1,8 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { motion } from "@/components/motion";
-import { springs } from "@/components/motion";
+import { motion, springs } from "@/components/motion";
 import { useScrollReveal } from "@/lib/hooks/useScrollReveal";
+import { cn } from "@/lib/utils";
 
 interface SectionContainerProps {
   children: React.ReactNode;
@@ -73,9 +72,7 @@ export function SectionContainer({
   };
 
   const content = (
-    <div className={cn("mx-auto px-6 relative", maxWidthClasses[maxWidth])}>
-      {children}
-    </div>
+    <div className={cn("mx-auto px-6 relative", maxWidthClasses[maxWidth])}>{children}</div>
   );
 
   return (
@@ -86,7 +83,7 @@ export function SectionContainer({
         "py-24 relative overflow-hidden",
         withBorder && "border-t border-border/30",
         withBackground && "bg-card/20",
-        className
+        className,
       )}
     >
       {withOrbs && orbClasses[orbVariant]}

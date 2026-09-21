@@ -1,39 +1,39 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Minimize2,
-  Terminal,
-  Zap,
-  FileCode,
-  BarChart3,
-  Settings,
-  Play,
-  Shield,
   ArrowRight,
-  RotateCcw,
+  BarChart3,
+  Braces,
   ChevronLeft,
   ChevronRight,
-  Gauge,
-  Sparkles,
   Code2,
-  Database,
-  Braces,
   Component,
-} from 'lucide-react';
+  Database,
+  FileCode,
+  Gauge,
+  Minimize2,
+  Play,
+  RotateCcw,
+  Settings,
+  Shield,
+  Sparkles,
+  Terminal,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 function InteractiveTokenCompressor() {
   return <InteractiveTokenCompressorImpl />;
@@ -50,13 +50,13 @@ export function TruLesson() {
       <Section title="What Is TRU?" icon={<Minimize2 className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>TRU (toon_rust)</Highlight> converts source code into a compact,
-          token-optimized notation that preserves semantic meaning while dramatically
-          reducing token count. Feed more code context into LLMs without hitting limits.
+          token-optimized notation that preserves semantic meaning while dramatically reducing token
+          count. Feed more code context into LLMs without hitting limits.
         </Paragraph>
         <Paragraph>
-          When working with large codebases, context windows fill up fast. TRU
-          compresses code by 40-70% in token count while keeping it understandable
-          to LLMs, letting you include more files in each request.
+          When working with large codebases, context windows fill up fast. TRU compresses code by
+          40-70% in token count while keeping it understandable to LLMs, letting you include more
+          files in each request.
         </Paragraph>
 
         <div className="mt-8">
@@ -97,9 +97,7 @@ export function TruLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>
-          Convert a file or directory to token-optimized notation.
-        </Paragraph>
+        <Paragraph>Convert a file or directory to token-optimized notation.</Paragraph>
 
         <CodeBlock
           code={`# Convert a single file
@@ -125,10 +123,16 @@ toon compress --stats src/main.rs
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'toon compress <file>', description: 'Compress a file to token-optimized format' },
-            { command: 'toon compress --stats <file>', description: 'Compress with token count comparison' },
-            { command: 'toon decompress <file>', description: 'Restore from compressed notation' },
-            { command: 'toon --help', description: 'Show all available options' },
+            {
+              command: "toon compress <file>",
+              description: "Compress a file to token-optimized format",
+            },
+            {
+              command: "toon compress --stats <file>",
+              description: "Compress with token count comparison",
+            },
+            { command: "toon decompress <file>", description: "Restore from compressed notation" },
+            { command: "toon --help", description: "Show all available options" },
           ]}
         />
       </Section>
@@ -165,8 +169,8 @@ for _ in 2..=n{let t=a+b;a=b;b=t}b}`}
         />
 
         <TipBox variant="info">
-          The compressed output is still valid, readable code. LLMs understand it
-          perfectly since they process tokens, not visual formatting.
+          The compressed output is still valid, readable code. LLMs understand it perfectly since
+          they process tokens, not visual formatting.
         </TipBox>
       </Section>
 
@@ -174,26 +178,32 @@ for _ in 2..=n{let t=a+b;a=b;b=t}b}`}
 
       {/* Section 5: Integration */}
       <Section title="Flywheel Integration" icon={<Shield className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          Combine TRU with other flywheel tools for maximum context efficiency.
-        </Paragraph>
+        <Paragraph>Combine TRU with other flywheel tools for maximum context efficiency.</Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">TRU + S2P</span>
-            <p className="text-white/80 text-sm mt-1">Generate prompts, then compress for more context</p>
+            <p className="text-white/80 text-sm mt-1">
+              Generate prompts, then compress for more context
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">TRU + FSFS</span>
-            <p className="text-white/80 text-sm mt-1">Search results compressed for LLM consumption</p>
+            <p className="text-white/80 text-sm mt-1">
+              Search results compressed for LLM consumption
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">TRU + PCR</span>
-            <p className="text-white/80 text-sm mt-1">Post-compaction reminders with compressed context</p>
+            <p className="text-white/80 text-sm mt-1">
+              Post-compaction reminders with compressed context
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">TRU + CASR</span>
-            <p className="text-white/80 text-sm mt-1">Cross-agent session context stays within limits</p>
+            <p className="text-white/80 text-sm mt-1">
+              Cross-agent session context stays within limits
+            </p>
           </div>
         </div>
       </Section>
@@ -220,12 +230,12 @@ interface CodeSample {
 
 const CODE_SAMPLES: CodeSample[] = [
   {
-    id: 'typescript-class',
-    lang: 'TypeScript',
-    label: 'TypeScript Class',
+    id: "typescript-class",
+    lang: "TypeScript",
+    label: "TypeScript Class",
     icon: <Braces className="h-3.5 w-3.5" />,
-    color: 'text-blue-400',
-    gradient: 'from-blue-500/20 to-cyan-500/20',
+    color: "text-blue-400",
+    gradient: "from-blue-500/20 to-cyan-500/20",
     original: `export class UserRepository {
   private readonly db: Database;
   private readonly cache: CacheService;
@@ -286,12 +296,12 @@ ret u}}`,
     compressedTokens: 132,
   },
   {
-    id: 'java-interface',
-    lang: 'Java',
-    label: 'Java Interface',
+    id: "java-interface",
+    lang: "Java",
+    label: "Java Interface",
     icon: <Code2 className="h-3.5 w-3.5" />,
-    color: 'text-orange-400',
-    gradient: 'from-orange-500/20 to-red-500/20',
+    color: "text-orange-400",
+    gradient: "from-orange-500/20 to-red-500/20",
     original: `public interface PaymentGateway {
   /**
    * Process a payment transaction.
@@ -343,12 +353,12 @@ ret s==TxnStatus.COMPLETED||s==TxnStatus.PARTIALLY_REFUNDED;}}`,
     compressedTokens: 78,
   },
   {
-    id: 'python-module',
-    lang: 'Python',
-    label: 'Python Module',
+    id: "python-module",
+    lang: "Python",
+    label: "Python Module",
     icon: <FileCode className="h-3.5 w-3.5" />,
-    color: 'text-yellow-400',
-    gradient: 'from-yellow-500/20 to-green-500/20',
+    color: "text-yellow-400",
+    gradient: "from-yellow-500/20 to-green-500/20",
     original: `from dataclasses import dataclass, field
 from typing import Optional, List
 from datetime import datetime
@@ -405,12 +415,12 @@ def to_summary(self)->dict:ret{"task_id":self.task_id,
     compressedTokens: 108,
   },
   {
-    id: 'go-struct',
-    lang: 'Go',
-    label: 'Go Struct',
+    id: "go-struct",
+    lang: "Go",
+    label: "Go Struct",
     icon: <Settings className="h-3.5 w-3.5" />,
-    color: 'text-cyan-400',
-    gradient: 'from-cyan-500/20 to-blue-500/20',
+    color: "text-cyan-400",
+    gradient: "from-cyan-500/20 to-blue-500/20",
     original: `type ServerConfig struct {
 	Host         string        \`json:"host"\`
 	Port         int           \`json:"port"\`
@@ -465,12 +475,12 @@ func(c*SrvCfg)Addr()str{ret sprintf("%s:%d",c.Host,c.Port)}`,
     compressedTokens: 106,
   },
   {
-    id: 'react-component',
-    lang: 'React',
-    label: 'React Component',
+    id: "react-component",
+    lang: "React",
+    label: "React Component",
     icon: <Component className="h-3.5 w-3.5" />,
-    color: 'text-violet-400',
-    gradient: 'from-violet-500/20 to-purple-500/20',
+    color: "text-violet-400",
+    gradient: "from-violet-500/20 to-purple-500/20",
     original: `export function DataTable<T extends Record<string, unknown>>({
   data,
   columns,
@@ -579,12 +589,12 @@ cn="border-t hover:bg-gray-50 cursor-pointer">
     compressedTokens: 198,
   },
   {
-    id: 'sql-query',
-    lang: 'SQL',
-    label: 'SQL Query',
+    id: "sql-query",
+    lang: "SQL",
+    label: "SQL Query",
     icon: <Database className="h-3.5 w-3.5" />,
-    color: 'text-emerald-400',
-    gradient: 'from-emerald-500/20 to-teal-500/20',
+    color: "text-emerald-400",
+    gradient: "from-emerald-500/20 to-teal-500/20",
     original: `-- Get top customers with their order statistics
 -- for the current quarter, including running totals
 SELECT
@@ -660,7 +670,7 @@ function AnimatedCounter({
       const elapsed = now - start;
       const progress = Math.min(elapsed / ms, 1);
       // Ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
+      const eased = 1 - (1 - progress) ** 3;
       const current = Math.round(from + (to - from) * eased);
       setDisplay(current);
       if (progress < 1) {
@@ -680,13 +690,7 @@ function AnimatedCounter({
 // ---------------------------------------------------------------------------
 // Compression gauge / dial
 // ---------------------------------------------------------------------------
-function CompressionGauge({
-  percentage,
-  isActive,
-}: {
-  percentage: number;
-  isActive: boolean;
-}) {
+function CompressionGauge({ percentage, isActive }: { percentage: number; isActive: boolean }) {
   const radius = 52;
   const stroke = 8;
   const circumference = 2 * Math.PI * radius;
@@ -719,7 +723,7 @@ function CompressionGauge({
           animate={{
             strokeDashoffset: isActive ? offset : circumference,
           }}
-          transition={{ type: 'spring', stiffness: 40, damping: 15, delay: 0.3 }}
+          transition={{ type: "spring", stiffness: 40, damping: 15, delay: 0.3 }}
         />
         <defs>
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -737,15 +741,11 @@ function CompressionGauge({
               initial={{ opacity: 0, scale: 0.5 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="text-center"
             >
-              <span className="text-2xl font-bold font-mono text-emerald-400">
-                {percentage}%
-              </span>
-              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">
-                reduced
-              </p>
+              <span className="text-2xl font-bold font-mono text-emerald-400">{percentage}%</span>
+              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">reduced</p>
             </motion.div>
           ) : (
             <motion.div
@@ -793,7 +793,7 @@ function ContextWindowBar({
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="text-emerald-400 font-mono"
             >
               +{savedTokens.toLocaleString()} tokens recovered
@@ -817,7 +817,7 @@ function ContextWindowBar({
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: `${recoveredPct}%`, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 60, damping: 18, delay: 0.5 }}
+              transition={{ type: "spring", stiffness: 60, damping: 18, delay: 0.5 }}
             >
               <div className="h-full rounded-full bg-gradient-to-r from-emerald-500/40 to-cyan-500/40 shadow-[0_0_20px_rgba(52,211,153,0.3)]" />
             </motion.div>
@@ -870,8 +870,8 @@ function ParticleBurst({ isActive }: { isActive: boolean }) {
               style={{
                 width: p.size,
                 height: p.size,
-                left: '50%',
-                top: '50%',
+                left: "50%",
+                top: "50%",
               }}
               initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
               animate={{ x, y, opacity: 0, scale: 0 }}
@@ -879,7 +879,7 @@ function ParticleBurst({ isActive }: { isActive: boolean }) {
               transition={{
                 duration: p.duration,
                 delay: p.delay,
-                ease: 'easeOut',
+                ease: "easeOut",
               }}
             />
           );
@@ -891,15 +891,15 @@ function ParticleBurst({ isActive }: { isActive: boolean }) {
 // ---------------------------------------------------------------------------
 // Compression phase indicator
 // ---------------------------------------------------------------------------
-type CompressionPhase = 'idle' | 'scanning' | 'tokenizing' | 'compressing' | 'optimizing' | 'done';
+type CompressionPhase = "idle" | "scanning" | "tokenizing" | "compressing" | "optimizing" | "done";
 
 const PHASE_CONFIG: Record<CompressionPhase, { label: string; color: string }> = {
-  idle: { label: 'Ready', color: 'text-white/40' },
-  scanning: { label: 'Scanning AST...', color: 'text-blue-400' },
-  tokenizing: { label: 'Tokenizing...', color: 'text-cyan-400' },
-  compressing: { label: 'Compressing identifiers...', color: 'text-violet-400' },
-  optimizing: { label: 'Optimizing output...', color: 'text-amber-400' },
-  done: { label: 'Compression complete', color: 'text-emerald-400' },
+  idle: { label: "Ready", color: "text-white/40" },
+  scanning: { label: "Scanning AST...", color: "text-blue-400" },
+  tokenizing: { label: "Tokenizing...", color: "text-cyan-400" },
+  compressing: { label: "Compressing identifiers...", color: "text-violet-400" },
+  optimizing: { label: "Optimizing output...", color: "text-amber-400" },
+  done: { label: "Compression complete", color: "text-emerald-400" },
 };
 
 function PhaseIndicator({ phase, active }: { phase: CompressionPhase; active: boolean }) {
@@ -911,18 +911,20 @@ function PhaseIndicator({ phase, active }: { phase: CompressionPhase; active: bo
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+        transition={{ type: "spring", stiffness: 200, damping: 25 }}
         className={`flex items-center gap-2 text-xs font-medium ${config.color}`}
       >
-        {phase !== 'idle' && phase !== 'done' && (
+        {phase !== "idle" && phase !== "done" && (
           <motion.div
             animate={active ? { rotate: 360 } : { rotate: 0 }}
-            transition={active ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
           >
             <Minimize2 className="h-3 w-3" />
           </motion.div>
         )}
-        {phase === 'done' && <Sparkles className="h-3 w-3" />}
+        {phase === "done" && <Sparkles className="h-3 w-3" />}
         <span>{config.label}</span>
       </motion.div>
     </AnimatePresence>
@@ -932,16 +934,10 @@ function PhaseIndicator({ phase, active }: { phase: CompressionPhase; active: bo
 // ---------------------------------------------------------------------------
 // Token highlight overlay for original code
 // ---------------------------------------------------------------------------
-function HighlightedCode({
-  code,
-  phase,
-}: {
-  code: string;
-  phase: CompressionPhase;
-}) {
-  const lines = code.split('\n');
-  const isScanning = phase === 'scanning' || phase === 'tokenizing';
-  const isCompressing = phase === 'compressing' || phase === 'optimizing';
+function HighlightedCode({ code, phase }: { code: string; phase: CompressionPhase }) {
+  const lines = code.split("\n");
+  const isScanning = phase === "scanning" || phase === "tokenizing";
+  const isCompressing = phase === "compressing" || phase === "optimizing";
 
   return (
     <pre className="p-4 text-xs font-mono leading-relaxed overflow-x-auto max-h-72 overflow-y-auto">
@@ -949,9 +945,7 @@ function HighlightedCode({
         <div key={lineIdx} className="relative">
           <motion.span
             animate={{
-              color: isCompressing
-                ? 'rgba(255,255,255,0.3)'
-                : 'rgba(255,255,255,0.7)',
+              color: isCompressing ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.7)",
             }}
             transition={{ duration: 0.4 }}
           >
@@ -973,7 +967,7 @@ function HighlightedCode({
               />
             )}
           </AnimatePresence>
-          {line === '' && '\n'}
+          {line === "" && "\n"}
         </div>
       ))}
     </pre>
@@ -985,7 +979,7 @@ function HighlightedCode({
 // ---------------------------------------------------------------------------
 function InteractiveTokenCompressorImpl() {
   const [selectedSample, setSelectedSample] = useState(0);
-  const [phase, setPhase] = useState<CompressionPhase>('idle');
+  const [phase, setPhase] = useState<CompressionPhase>("idle");
   const [displayedTokens, setDisplayedTokens] = useState(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [showParticles, setShowParticles] = useState(false);
@@ -993,18 +987,15 @@ function InteractiveTokenCompressorImpl() {
   const inView = useInView(rootRef, { amount: 0.15 });
 
   const sample = CODE_SAMPLES[selectedSample];
-  const isCompressed = phase === 'done';
-  const isRunning = phase !== 'idle' && phase !== 'done';
+  const isCompressed = phase === "done";
+  const isRunning = phase !== "idle" && phase !== "done";
 
   const reductionPct = useMemo(
     () => Math.round((1 - sample.compressedTokens / sample.originalTokens) * 100),
     [sample],
   );
 
-  const savedTokens = useMemo(
-    () => sample.originalTokens - sample.compressedTokens,
-    [sample],
-  );
+  const savedTokens = useMemo(() => sample.originalTokens - sample.compressedTokens, [sample]);
 
   const clearTimers = useCallback(() => {
     for (const t of timersRef.current) clearTimeout(t);
@@ -1014,7 +1005,7 @@ function InteractiveTokenCompressorImpl() {
   const handleCompress = useCallback(() => {
     if (isRunning) return;
     clearTimers();
-    setPhase('idle');
+    setPhase("idle");
     setDisplayedTokens(sample.originalTokens);
     setShowParticles(false);
 
@@ -1024,18 +1015,18 @@ function InteractiveTokenCompressorImpl() {
       timersRef.current.push(t);
     };
 
-    schedule(() => setPhase('scanning'), 50);
-    schedule(() => setPhase('tokenizing'), 600);
+    schedule(() => setPhase("scanning"), 50);
+    schedule(() => setPhase("tokenizing"), 600);
     schedule(() => {
-      setPhase('compressing');
+      setPhase("compressing");
       setDisplayedTokens(Math.round(sample.originalTokens * 0.7));
     }, 1200);
     schedule(() => {
-      setPhase('optimizing');
+      setPhase("optimizing");
       setDisplayedTokens(Math.round(sample.originalTokens * 0.4));
     }, 1900);
     schedule(() => {
-      setPhase('done');
+      setPhase("done");
       setDisplayedTokens(sample.compressedTokens);
       setShowParticles(true);
     }, 2500);
@@ -1044,7 +1035,7 @@ function InteractiveTokenCompressorImpl() {
 
   const handleReset = useCallback(() => {
     clearTimers();
-    setPhase('idle');
+    setPhase("idle");
     setDisplayedTokens(0);
     setShowParticles(false);
   }, [clearTimers]);
@@ -1053,7 +1044,7 @@ function InteractiveTokenCompressorImpl() {
     (idx: number) => {
       clearTimers();
       setSelectedSample(idx);
-      setPhase('idle');
+      setPhase("idle");
       setDisplayedTokens(0);
       setShowParticles(false);
     },
@@ -1073,7 +1064,10 @@ function InteractiveTokenCompressorImpl() {
   useEffect(() => clearTimers, [clearTimers]);
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-indigo-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -1089,8 +1083,8 @@ function InteractiveTokenCompressorImpl() {
             </span>
           </div>
           <p className="text-xs text-white/40 max-w-md mx-auto">
-            Select a code sample, run compression, and watch tokens shrink in real time.
-            See exactly how much context window you recover.
+            Select a code sample, run compression, and watch tokens shrink in real time. See exactly
+            how much context window you recover.
           </p>
         </div>
 
@@ -1101,7 +1095,7 @@ function InteractiveTokenCompressorImpl() {
             onClick={handlePrev}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25 }}
             className="flex items-center justify-center w-8 h-8 rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/80 transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -1115,11 +1109,11 @@ function InteractiveTokenCompressorImpl() {
                 onClick={() => handleSelectSample(i)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
                   selectedSample === i
                     ? `border-white/[0.15] bg-white/[0.06] ${s.color}`
-                    : 'border-white/[0.06] bg-white/[0.01] text-white/40 hover:text-white/60'
+                    : "border-white/[0.06] bg-white/[0.01] text-white/40 hover:text-white/60"
                 }`}
               >
                 {s.icon}
@@ -1134,7 +1128,7 @@ function InteractiveTokenCompressorImpl() {
             onClick={handleNext}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25 }}
             className="flex items-center justify-center w-8 h-8 rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/80 transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
@@ -1144,7 +1138,9 @@ function InteractiveTokenCompressorImpl() {
         {/* Sample info bar */}
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isCompressed ? 'bg-emerald-400' : isRunning ? 'bg-blue-400 animate-pulse' : 'bg-white/20'}`} />
+            <div
+              className={`w-2 h-2 rounded-full ${isCompressed ? "bg-emerald-400" : isRunning ? "bg-blue-400 animate-pulse" : "bg-white/20"}`}
+            />
             <span className="text-xs text-white/60 font-medium">{sample.label}</span>
             <span className="text-[10px] text-white/30 font-mono">{sample.lang}</span>
           </div>
@@ -1196,7 +1192,7 @@ function InteractiveTokenCompressorImpl() {
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 4 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     className="flex items-center gap-2"
                   >
                     <span className="text-[10px] font-mono text-emerald-400">
@@ -1225,13 +1221,19 @@ function InteractiveTokenCompressorImpl() {
                             ? { scale: [1, 1.3, 1], opacity: [0.3, 0.6, 0.3] }
                             : { scale: 1, opacity: 0.3 }
                         }
-                        transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
+                        transition={
+                          inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }
+                        }
                         className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl"
                         style={{ width: 60, height: 60, left: -10, top: -10 }}
                       />
                       <motion.div
                         animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                        transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                        transition={
+                          inView
+                            ? { duration: 2, repeat: Infinity, ease: "linear" }
+                            : { duration: 0.2 }
+                        }
                       >
                         <Minimize2 className="h-10 w-10 text-blue-400/80" />
                       </motion.div>
@@ -1269,13 +1271,13 @@ function InteractiveTokenCompressorImpl() {
                     key="compressed-result"
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     className="p-4 text-xs text-emerald-300/80 font-mono leading-relaxed overflow-x-auto max-h-72 overflow-y-auto"
                   >
                     {sample.compressed}
                   </motion.pre>
                 )}
-                {phase === 'idle' && (
+                {phase === "idle" && (
                   <motion.div
                     key="placeholder-idle"
                     initial={{ opacity: 0 }}
@@ -1301,9 +1303,9 @@ function InteractiveTokenCompressorImpl() {
           {isCompressed && (
             <motion.div
               initial={{ opacity: 0, y: 20, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: 20, height: 0 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="space-y-4 overflow-hidden"
             >
               {/* Stats row with gauge */}
@@ -1314,11 +1316,13 @@ function InteractiveTokenCompressorImpl() {
                     <div className="flex items-center gap-4">
                       {/* Before */}
                       <div className="text-center">
-                        <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Before</p>
+                        <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">
+                          Before
+                        </p>
                         <motion.div
                           initial={{ scale: 1.2, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
-                          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                          transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         >
                           <span className="text-xl font-bold font-mono text-white/70">
                             {sample.originalTokens.toLocaleString()}
@@ -1331,7 +1335,7 @@ function InteractiveTokenCompressorImpl() {
                       <motion.div
                         initial={{ scale: 0, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.1 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.1 }}
                         className="relative"
                       >
                         <ArrowRight className="h-5 w-5 text-emerald-400/60" />
@@ -1340,11 +1344,13 @@ function InteractiveTokenCompressorImpl() {
 
                       {/* After */}
                       <div className="text-center">
-                        <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">After</p>
+                        <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">
+                          After
+                        </p>
                         <motion.div
                           initial={{ scale: 1.2, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
-                          transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.15 }}
+                          transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.15 }}
                         >
                           <span className="text-xl font-bold font-mono text-emerald-400">
                             {sample.compressedTokens.toLocaleString()}
@@ -1358,7 +1364,7 @@ function InteractiveTokenCompressorImpl() {
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.25 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.25 }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20"
                     >
                       <Sparkles className="h-3 w-3 text-emerald-400" />
@@ -1384,7 +1390,7 @@ function InteractiveTokenCompressorImpl() {
                         <motion.div
                           initial={{ height: 0 }}
                           animate={{ height: 80 }}
-                          transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.1 }}
+                          transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.1 }}
                           className="w-10 rounded-t-lg bg-gradient-to-t from-white/[0.08] to-white/[0.15]"
                         />
                         <span className="text-[10px] text-white/40 font-medium">Before</span>
@@ -1397,7 +1403,7 @@ function InteractiveTokenCompressorImpl() {
                         <motion.div
                           initial={{ height: 80 }}
                           animate={{ height: 80 * (1 - reductionPct / 100) }}
-                          transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.3 }}
+                          transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.3 }}
                           className="w-10 rounded-t-lg bg-gradient-to-t from-emerald-500/30 to-emerald-400/50"
                         />
                         <span className="text-[10px] text-emerald-400/60 font-medium">After</span>
@@ -1423,17 +1429,17 @@ function InteractiveTokenCompressorImpl() {
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {[
-                    { label: 'Identifier shortening', pct: '25%', color: 'bg-blue-400' },
-                    { label: 'Whitespace removal', pct: '30%', color: 'bg-violet-400' },
-                    { label: 'Comment stripping', pct: '20%', color: 'bg-amber-400' },
-                    { label: 'Syntax optimization', pct: '25%', color: 'bg-emerald-400' },
+                    { label: "Identifier shortening", pct: "25%", color: "bg-blue-400" },
+                    { label: "Whitespace removal", pct: "30%", color: "bg-violet-400" },
+                    { label: "Comment stripping", pct: "20%", color: "bg-amber-400" },
+                    { label: "Syntax optimization", pct: "25%", color: "bg-emerald-400" },
                   ].map((technique, i) => (
                     <motion.div
                       key={technique.label}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{
-                        type: 'spring',
+                        type: "spring",
                         stiffness: 200,
                         damping: 25,
                         delay: 0.1 * i,
@@ -1460,19 +1466,21 @@ function InteractiveTokenCompressorImpl() {
             onClick={handleCompress}
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25 }}
             disabled={isRunning}
             className={`flex items-center gap-2 rounded-2xl border px-6 py-2.5 text-sm font-medium transition-colors ${
               isRunning
-                ? 'border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait'
-                : 'border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
+                ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
+                : "border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
             }`}
           >
             {isRunning ? (
               <>
                 <motion.div
                   animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                  transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                  transition={
+                    inView ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+                  }
                 >
                   <Minimize2 className="h-4 w-4" />
                 </motion.div>
@@ -1481,7 +1489,7 @@ function InteractiveTokenCompressorImpl() {
             ) : (
               <>
                 <Zap className="h-4 w-4" />
-                {isCompressed ? 'Re-Compress' : 'Compress'}
+                {isCompressed ? "Re-Compress" : "Compress"}
               </>
             )}
           </motion.button>
@@ -1494,7 +1502,7 @@ function InteractiveTokenCompressorImpl() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
                 className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-white/50 hover:text-white/70 transition-colors"
@@ -1514,7 +1522,7 @@ function InteractiveTokenCompressorImpl() {
               type="button"
               onClick={() => handleSelectSample(i)}
               className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                i === selectedSample ? 'bg-white/60' : 'bg-white/15 hover:bg-white/25'
+                i === selectedSample ? "bg-white/60" : "bg-white/15 hover:bg-white/25"
               }`}
             />
           ))}

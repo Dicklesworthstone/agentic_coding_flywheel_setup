@@ -1,36 +1,36 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from "@/components/motion";
 import {
-  Terminal,
+  AlertTriangle,
   BellRing,
   BookOpen,
-  RefreshCw,
-  Play,
-  FileText,
   Brain,
-  Shrink,
+  CheckCircle2,
+  FileText,
+  Play,
+  RefreshCw,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
-  CheckCircle2,
+  Shrink,
+  Terminal,
   XCircle,
-  AlertTriangle,
   Zap,
-  RotateCcw,
-} from 'lucide-react';
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 function CompactionSimulator() {
   return <CompactionSimulatorImpl />;
@@ -46,15 +46,15 @@ export function PcrLesson() {
       {/* Section 1: What Is PCR */}
       <Section title="What Is PCR?" icon={<BellRing className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>PCR (Post-Compact Reminder)</Highlight> is a Claude Code hook
-          that fires after context compaction and forces the agent to re-read AGENTS.md.
-          This prevents agents from &ldquo;forgetting&rdquo; project rules and conventions
-          after their context window is compressed.
+          <Highlight>PCR (Post-Compact Reminder)</Highlight> is a Claude Code hook that fires after
+          context compaction and forces the agent to re-read AGENTS.md. This prevents agents from
+          &ldquo;forgetting&rdquo; project rules and conventions after their context window is
+          compressed.
         </Paragraph>
         <Paragraph>
           Without PCR, agents that hit context limits lose awareness of project-specific
-          instructions. PCR ensures continuity by automatically injecting a reminder
-          to re-read the project guidelines.
+          instructions. PCR ensures continuity by automatically injecting a reminder to re-read the
+          project guidelines.
         </Paragraph>
 
         <div className="mt-8">
@@ -96,25 +96,25 @@ export function PcrLesson() {
             {
               command:
                 'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh" | bash -s -- --yes',
-              description: 'Install or repair PCR',
+              description: "Install or repair PCR",
             },
             {
               command: 'test -x "$HOME/.local/bin/claude-post-compact-reminder"',
-              description: 'Verify the hook script exists',
+              description: "Verify the hook script exists",
             },
             {
               command:
                 'echo \'{"session_id":"demo","source":"compact"}\' | ~/.local/bin/claude-post-compact-reminder',
-              description: 'Simulate a compact event and inspect the reminder output',
+              description: "Simulate a compact event and inspect the reminder output",
             },
           ]}
         />
 
         <TipBox>
-          Restart Claude Code after installing or repairing PCR so the updated
-          `SessionStart` hook configuration is loaded. If you are running from a
-          local copy of the installer script, `./install-post-compact-reminder.sh --status`
-          and `--doctor` provide fuller health checks than the raw file probes above.
+          Restart Claude Code after installing or repairing PCR so the updated `SessionStart` hook
+          configuration is loaded. If you are running from a local copy of the installer script,
+          `./install-post-compact-reminder.sh --status` and `--doctor` provide fuller health checks
+          than the raw file probes above.
         </TipBox>
       </Section>
 
@@ -122,7 +122,8 @@ export function PcrLesson() {
 
       {/* Section 3: How It Works */}
       <Section title="How It Works" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# PCR registers a SessionStart hook in Claude Code settings
+        <CodeBlock
+          code={`# PCR registers a SessionStart hook in Claude Code settings
 # with matcher: "compact". Claude sends JSON on stdin when that event fires.
 
 # Simulate the exact compact payload locally:
@@ -130,18 +131,19 @@ echo '{"session_id":"demo","source":"compact"}' | \\
   ~/.local/bin/claude-post-compact-reminder
 
 # Normal startup events stay quiet because the hook only emits output when
-# source == "compact".`} />
+# source == "compact".`}
+        />
 
         <Paragraph>
-          PCR does not parse <Highlight>AGENTS.md</Highlight> or <Highlight>CLAUDE.md</Highlight>{' '}
-          itself. Its job is narrower and safer: emit a reminder after compaction so the
-          agent re-reads the project instructions before continuing.
+          PCR does not parse <Highlight>AGENTS.md</Highlight> or <Highlight>CLAUDE.md</Highlight>{" "}
+          itself. Its job is narrower and safer: emit a reminder after compaction so the agent
+          re-reads the project instructions before continuing.
         </Paragraph>
 
         <Paragraph>
-          You can also change the reminder tone without touching the hook script by
-          re-running the installer with templates like <Highlight>minimal</Highlight>,{' '}
-          <Highlight>detailed</Highlight>, <Highlight>checklist</Highlight>, or{' '}
+          You can also change the reminder tone without touching the hook script by re-running the
+          installer with templates like <Highlight>minimal</Highlight>,{" "}
+          <Highlight>detailed</Highlight>, <Highlight>checklist</Highlight>, or{" "}
           <Highlight>default</Highlight>.
         </Paragraph>
       </Section>
@@ -151,10 +153,10 @@ echo '{"session_id":"demo","source":"compact"}' | \\
       {/* Section 4: Interactive Compaction Simulator */}
       <Section title="See PCR in Action" icon={<Zap className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
-          Watch what happens when context compaction hits &mdash; with and without PCR.
-          Click <Highlight>Fill Context</Highlight> to simulate a long session, then
-          <Highlight> Compact</Highlight> to trigger compaction. Toggle PCR on/off to
-          compare the outcomes.
+          Watch what happens when context compaction hits &mdash; with and without PCR. Click{" "}
+          <Highlight>Fill Context</Highlight> to simulate a long session, then
+          <Highlight> Compact</Highlight> to trigger compaction. Toggle PCR on/off to compare the
+          outcomes.
         </Paragraph>
         <div className="mt-6">
           <CompactionSimulator />
@@ -179,27 +181,112 @@ interface ContextItem {
 
 /** Project rules that the agent must remember. */
 const PROJECT_RULES: ContextItem[] = [
-  { id: 1, label: "Never delete files without permission", type: "rule", color: "text-rose-400", iconType: "shield" },
+  {
+    id: 1,
+    label: "Never delete files without permission",
+    type: "rule",
+    color: "text-rose-400",
+    iconType: "shield",
+  },
   { id: 2, label: "Use bun, never npm", type: "rule", color: "text-rose-400", iconType: "shield" },
-  { id: 3, label: "Follow RCH offloading requirements", type: "rule", color: "text-rose-400", iconType: "shield" },
-  { id: 4, label: "Read AGENTS.md for task assignments", type: "rule", color: "text-rose-400", iconType: "shield" },
+  {
+    id: 3,
+    label: "Follow RCH offloading requirements",
+    type: "rule",
+    color: "text-rose-400",
+    iconType: "shield",
+  },
+  {
+    id: 4,
+    label: "Read AGENTS.md for task assignments",
+    type: "rule",
+    color: "text-rose-400",
+    iconType: "shield",
+  },
 ];
 
 /** Conversation messages that accumulate over time. */
 const SESSION_MESSAGES: ContextItem[] = [
-  { id: 10, label: "Implement auth middleware", type: "message", color: "text-blue-400", iconType: "brain" },
-  { id: 11, label: "Add PKCE flow support", type: "message", color: "text-blue-400", iconType: "brain" },
-  { id: 12, label: "Refactor token storage", type: "message", color: "text-blue-400", iconType: "brain" },
-  { id: 13, label: "Debug OAuth callback", type: "message", color: "text-blue-400", iconType: "brain" },
-  { id: 14, label: "Write integration tests", type: "message", color: "text-blue-400", iconType: "brain" },
-  { id: 15, label: "Update API documentation", type: "message", color: "text-blue-400", iconType: "brain" },
-  { id: 16, label: "Fix session expiry handling", type: "code", color: "text-emerald-400", iconType: "file" },
-  { id: 17, label: "Add rate limiting logic", type: "code", color: "text-emerald-400", iconType: "file" },
-  { id: 18, label: "Optimize DB queries", type: "code", color: "text-emerald-400", iconType: "file" },
-  { id: 19, label: "Configure CI pipeline", type: "code", color: "text-emerald-400", iconType: "file" },
+  {
+    id: 10,
+    label: "Implement auth middleware",
+    type: "message",
+    color: "text-blue-400",
+    iconType: "brain",
+  },
+  {
+    id: 11,
+    label: "Add PKCE flow support",
+    type: "message",
+    color: "text-blue-400",
+    iconType: "brain",
+  },
+  {
+    id: 12,
+    label: "Refactor token storage",
+    type: "message",
+    color: "text-blue-400",
+    iconType: "brain",
+  },
+  {
+    id: 13,
+    label: "Debug OAuth callback",
+    type: "message",
+    color: "text-blue-400",
+    iconType: "brain",
+  },
+  {
+    id: 14,
+    label: "Write integration tests",
+    type: "message",
+    color: "text-blue-400",
+    iconType: "brain",
+  },
+  {
+    id: 15,
+    label: "Update API documentation",
+    type: "message",
+    color: "text-blue-400",
+    iconType: "brain",
+  },
+  {
+    id: 16,
+    label: "Fix session expiry handling",
+    type: "code",
+    color: "text-emerald-400",
+    iconType: "file",
+  },
+  {
+    id: 17,
+    label: "Add rate limiting logic",
+    type: "code",
+    color: "text-emerald-400",
+    iconType: "file",
+  },
+  {
+    id: 18,
+    label: "Optimize DB queries",
+    type: "code",
+    color: "text-emerald-400",
+    iconType: "file",
+  },
+  {
+    id: 19,
+    label: "Configure CI pipeline",
+    type: "code",
+    color: "text-emerald-400",
+    iconType: "file",
+  },
 ];
 
-type SimPhase = "empty" | "filling" | "full" | "compacting" | "compacted" | "pcr-firing" | "restored";
+type SimPhase =
+  | "empty"
+  | "filling"
+  | "full"
+  | "compacting"
+  | "compacted"
+  | "pcr-firing"
+  | "restored";
 
 const FILL_INTERVAL_MS = 300;
 const COMPACT_ANIM_MS = 800;
@@ -225,7 +312,7 @@ function CompactionSimulatorImpl() {
   const scheduleTransition = useCallback((callback: () => void, delay: number) => {
     const timer = setTimeout(() => {
       transitionTimersRef.current = transitionTimersRef.current.filter(
-        (pendingTimer) => pendingTimer !== timer
+        (pendingTimer) => pendingTimer !== timer,
       );
       callback();
     }, delay);
@@ -351,17 +438,19 @@ function CompactionSimulatorImpl() {
               <ShieldAlert className="h-5 w-5 text-red-400" />
             )}
             <div className="flex flex-col items-start">
-              <span className="text-xs font-semibold text-white/80">
-                PCR Hook
-              </span>
-              <span className={`text-[10px] font-medium ${pcrEnabled ? "text-emerald-400" : "text-red-400"}`}>
+              <span className="text-xs font-semibold text-white/80">PCR Hook</span>
+              <span
+                className={`text-[10px] font-medium ${pcrEnabled ? "text-emerald-400" : "text-red-400"}`}
+              >
                 {pcrEnabled ? "Enabled" : "Disabled"}
               </span>
             </div>
             {/* Toggle track */}
-            <div className={`relative w-10 h-5 rounded-full transition-colors duration-300 ${
-              pcrEnabled ? "bg-emerald-500/30" : "bg-red-500/30"
-            }`}>
+            <div
+              className={`relative w-10 h-5 rounded-full transition-colors duration-300 ${
+                pcrEnabled ? "bg-emerald-500/30" : "bg-red-500/30"
+              }`}
+            >
               <motion.div
                 animate={{ x: pcrEnabled ? 20 : 0 }}
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -453,9 +542,7 @@ function CompactionSimulatorImpl() {
           style={{ borderColor: statusInfo.borderHex }}
         >
           <statusInfo.Icon className={`h-4 w-4 ${statusInfo.iconColor} shrink-0`} />
-          <span className={`text-xs font-medium ${statusInfo.textColor}`}>
-            {statusInfo.label}
-          </span>
+          <span className={`text-xs font-medium ${statusInfo.textColor}`}>{statusInfo.label}</span>
         </motion.div>
 
         {/* Context window visualization */}
@@ -504,7 +591,11 @@ function CompactionSimulatorImpl() {
                     <FileText className={`h-3 w-3 shrink-0 ${item.color}`} />
                   )}
                   <span className={`text-xs font-mono ${item.color} opacity-80`}>
-                    {item.type === "rule" ? "[RULE] " : item.type === "message" ? "[MSG] " : "[CODE] "}
+                    {item.type === "rule"
+                      ? "[RULE] "
+                      : item.type === "message"
+                        ? "[MSG] "
+                        : "[CODE] "}
                     {item.label}
                   </span>
                 </motion.div>
@@ -565,17 +656,21 @@ function CompactionSimulatorImpl() {
                 ) : (
                   <XCircle className="h-4 w-4 text-red-400" />
                 )}
-                <span className={`text-sm font-semibold ${
-                  phase === "restored" ? "text-emerald-300" : "text-red-300"
-                }`}>
+                <span
+                  className={`text-sm font-semibold ${
+                    phase === "restored" ? "text-emerald-300" : "text-red-300"
+                  }`}
+                >
                   {phase === "restored"
                     ? "Rules Restored Successfully"
                     : "Rules Lost After Compaction"}
                 </span>
               </div>
-              <p className={`text-xs leading-relaxed ${
-                phase === "restored" ? "text-emerald-400/70" : "text-red-400/70"
-              }`}>
+              <p
+                className={`text-xs leading-relaxed ${
+                  phase === "restored" ? "text-emerald-400/70" : "text-red-400/70"
+                }`}
+              >
                 {phase === "restored"
                   ? "PCR detected the compaction event and reminded the agent to re-read AGENTS.md. All project rules and conventions have been restored to the context window."
                   : "Without PCR, the agent has no reminder to re-read project rules. It will continue working but may violate conventions like using npm instead of bun, or deleting files without permission."}

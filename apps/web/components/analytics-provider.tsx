@@ -1,38 +1,38 @@
-'use client';
+"use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
+import Script from "next/script";
 import {
-  useEffect,
+  type ReactNode,
+  Suspense,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
-  type ReactNode,
-  Suspense,
-} from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
-import Script from 'next/script';
+} from "react";
 import {
-  GA_MEASUREMENT_ID,
   analyticsContextContainsSensitiveState,
   disableAnalyticsForDocument,
+  GA_MEASUREMENT_ID,
+  getOrCreateUserId,
   isAnalyticsPrivacyAllowed,
   sanitizeAnalyticsReferrer,
-  trackSessionStart,
+  sendEvent,
+  setUserProperties,
   trackPagePerformance,
   trackScrollDepth,
+  trackSessionStart,
   trackTimeOnPage,
-  getOrCreateUserId,
-  setUserProperties,
-  sendEvent,
-} from '@/lib/analytics';
+} from "@/lib/analytics";
 import {
-  queryContainsSensitiveState,
+  inspectSensitiveNavigationUrl,
   isPrivateWizardPath,
+  queryContainsSensitiveState,
   safeGetItem,
   safeSetItem,
-  inspectSensitiveNavigationUrl,
   stripSensitiveQueryState,
-} from '@/lib/utils';
+} from "@/lib/utils";
 
 interface AnalyticsProviderProps {
   children: ReactNode;
@@ -41,7 +41,7 @@ interface AnalyticsProviderProps {
 type DataLayerEntry = Record<string, unknown> | readonly unknown[];
 type AnalyticsWindow = Window & {
   dataLayer?: DataLayerEntry[];
-  gtag?: NonNullable<Window['gtag']>;
+  gtag?: NonNullable<Window["gtag"]>;
 };
 
 /**
@@ -51,16 +51,15 @@ type AnalyticsWindow = Window & {
 function AnalyticsTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const pagePath =
-    pathname ?? (typeof window !== 'undefined' ? window.location.pathname : null);
+  const pagePath = pathname ?? (typeof window !== "undefined" ? window.location.pathname : null);
   const parameterSearchQuery =
     searchParams?.toString() ??
-    (typeof window !== 'undefined' ? window.location.search.slice(1) : '');
-  const liveSearchQuery = typeof window !== 'undefined'
-    ? window.location.search.slice(1)
-    : parameterSearchQuery;
-  const sensitiveQuery = queryContainsSensitiveState(parameterSearchQuery)
-    || queryContainsSensitiveState(liveSearchQuery);
+    (typeof window !== "undefined" ? window.location.search.slice(1) : "");
+  const liveSearchQuery =
+    typeof window !== "undefined" ? window.location.search.slice(1) : parameterSearchQuery;
+  const sensitiveQuery =
+    queryContainsSensitiveState(parameterSearchQuery) ||
+    queryContainsSensitiveState(liveSearchQuery);
   const searchQuery = stripSensitiveQueryState(liveSearchQuery);
   const gaId = GA_MEASUREMENT_ID?.trim();
   const privacyAllowed = isAnalyticsPrivacyAllowed();
@@ -78,8 +77,8 @@ function AnalyticsTracker() {
     const dataLayer = analyticsWindow.dataLayer ?? [];
     analyticsWindow.dataLayer = dataLayer;
 
-    const gtag: NonNullable<Window['gtag']> = (command, targetId, config) => {
-      if (typeof config === 'undefined') {
+    const gtag: NonNullable<Window["gtag"]> = (command, targetId, config) => {
+      if (typeof config === "undefined") {
         dataLayer.push([command, targetId]);
         return;
       }
@@ -92,7 +91,7 @@ function AnalyticsTracker() {
     }
 
     if (!hasInitializedGa.current && analyticsWindow.gtag) {
-      analyticsWindow.gtag('js', new Date());
+      analyticsWindow.gtag("js", new Date());
       hasInitializedGa.current = true;
     }
   }, [gaId, sensitiveQuery, privacyAllowed]);
@@ -103,40 +102,40 @@ function AnalyticsTracker() {
 
     const url = searchQuery ? `${pagePath}?${searchQuery}` : pagePath;
     const analyticsWindow = window as AnalyticsWindow;
-    const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
+    const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || "");
 
     // Reset tracking for new page
     scrollDepthsReached.current.clear();
     pageStartTime.current = Date.now();
 
     // Track pageview
-    analyticsWindow.gtag?.('config', gaId, {
+    analyticsWindow.gtag?.("config", gaId, {
       page_path: url,
       page_location: `${window.location.origin}${url}`,
       page_referrer: sanitizedReferrer.referrer || undefined,
       page_title: document.title,
-      cookie_flags: 'SameSite=None;Secure',
+      cookie_flags: "SameSite=None;Secure",
       send_page_view: true,
       allow_google_signals: false,
       allow_ad_personalization_signals: false,
       custom_map: {
-        dimension1: 'user_type',
-        dimension2: 'wizard_step',
-        dimension3: 'selected_os',
-        dimension4: 'vps_provider',
-        dimension5: 'terminal_app',
+        dimension1: "user_type",
+        dimension2: "wizard_step",
+        dimension3: "selected_os",
+        dimension4: "vps_provider",
+        dimension5: "terminal_app",
       },
     });
 
     // Track page performance after load
-    if (document.readyState === 'complete') {
+    if (document.readyState === "complete") {
       trackPagePerformance();
     } else {
-      window.addEventListener('load', trackPagePerformance, { once: true });
+      window.addEventListener("load", trackPagePerformance, { once: true });
     }
 
     return () => {
-      window.removeEventListener('load', trackPagePerformance);
+      window.removeEventListener("load", trackPagePerformance);
     };
   }, [pagePath, searchQuery, gaId, sensitiveQuery, privacyAllowed]);
 
@@ -151,17 +150,16 @@ function AnalyticsTracker() {
     // Set user ID for cross-session tracking
     setUserProperties({
       user_id: userId,
-      first_visit_date: safeGetItem('acfs_first_visit') || new Date().toISOString(),
+      first_visit_date: safeGetItem("acfs_first_visit") || new Date().toISOString(),
     });
 
     // Store first visit date
-    if (!safeGetItem('acfs_first_visit')) {
-      safeSetItem('acfs_first_visit', new Date().toISOString());
+    if (!safeGetItem("acfs_first_visit")) {
+      safeSetItem("acfs_first_visit", new Date().toISOString());
     }
 
     // Track enhanced session start
     trackSessionStart();
-
   }, [gaId, sensitiveQuery, privacyAllowed]);
 
   // Scroll depth tracking
@@ -186,8 +184,8 @@ function AnalyticsTracker() {
   useEffect(() => {
     if (!gaId || sensitiveQuery || !privacyAllowed) return;
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [handleScroll, gaId, sensitiveQuery, privacyAllowed]);
 
   // Time on page tracking
@@ -223,19 +221,19 @@ function AnalyticsTracker() {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         const timeSpent = Math.floor((Date.now() - pageStartTime.current) / 1000);
-        sendEvent('page_hidden', {
+        sendEvent("page_hidden", {
           page_path: pagePath,
           time_spent_seconds: timeSpent,
         });
       } else {
-        sendEvent('page_visible', {
+        sendEvent("page_visible", {
           page_path: pagePath,
         });
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [pagePath, gaId, sensitiveQuery, privacyAllowed]);
 
   // Track page exit
@@ -247,16 +245,16 @@ function AnalyticsTracker() {
 
       // Use GA4 gtag with beacon transport (Measurement Protocol api_secret cannot
       // be safely used client-side).
-      sendEvent('page_exit', {
+      sendEvent("page_exit", {
         page_path: pagePath,
         time_spent_seconds: timeSpent,
         scroll_depths_reached: Array.from(scrollDepthsReached.current),
-        transport_type: 'beacon',
+        transport_type: "beacon",
       });
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [pagePath, gaId, sensitiveQuery, privacyAllowed]);
 
   if (sensitiveQuery || !privacyAllowed || !gaId) return null;
@@ -285,13 +283,14 @@ function PrivacyControlledScripts() {
     const originalReplaceState = browserHistory.replaceState;
     const documentIsPrivate = isPrivateWizardPath(window.location.pathname);
     if (documentTainted.current === null) {
-      documentTainted.current = !isAnalyticsPrivacyAllowed()
-        || analyticsContextContainsSensitiveState(
-        window.location.search,
-        document.referrer || '',
-        window.location.href,
-      )
-        || isPrivateWizardPath(window.location.pathname);
+      documentTainted.current =
+        !isAnalyticsPrivacyAllowed() ||
+        analyticsContextContainsSensitiveState(
+          window.location.search,
+          document.referrer || "",
+          window.location.href,
+        ) ||
+        isPrivateWizardPath(window.location.pathname);
       if (documentTainted.current) {
         disableAnalyticsForDocument();
       }
@@ -303,7 +302,7 @@ function PrivacyControlledScripts() {
     };
 
     const routeInCurrentDocument = (
-      method: 'push' | 'replace',
+      method: "push" | "replace",
       data: unknown,
       unused: string,
       value?: string | URL | null,
@@ -312,7 +311,7 @@ function PrivacyControlledScripts() {
       const result = inspectSensitiveNavigationUrl(value, current.href);
       const destination = result.value;
       let target: URL | null = null;
-      if (typeof destination === 'string') {
+      if (typeof destination === "string") {
         try {
           target = new URL(destination, current);
         } catch {
@@ -320,14 +319,15 @@ function PrivacyControlledScripts() {
         }
       }
 
-      const crossesPrivacyZone = target?.origin === current.origin
-        && isPrivateWizardPath(target.pathname) !== isPrivateWizardPath(current.pathname);
+      const crossesPrivacyZone =
+        target?.origin === current.origin &&
+        isPrivateWizardPath(target.pathname) !== isPrivateWizardPath(current.pathname);
       if (result.sensitiveStateDetected || crossesPrivacyZone) {
         markDocumentTainted();
       }
       if (result.sensitiveStateRemoved || crossesPrivacyZone) {
         if (target?.origin === current.origin) {
-          if (method === 'replace') {
+          if (method === "replace") {
             window.location.replace(target.href);
           } else {
             window.location.assign(target.href);
@@ -336,36 +336,33 @@ function PrivacyControlledScripts() {
         }
       }
 
-      if (method === 'replace') {
+      if (method === "replace") {
         originalReplaceState.call(browserHistory, data, unused, destination);
       } else {
         originalPushState.call(browserHistory, data, unused, destination);
       }
     };
 
-    const guardedPushState: History['pushState'] = (data, unused, value) => {
-      routeInCurrentDocument('push', data, unused, value);
+    const guardedPushState: History["pushState"] = (data, unused, value) => {
+      routeInCurrentDocument("push", data, unused, value);
     };
-    const guardedReplaceState: History['replaceState'] = (data, unused, value) => {
-      routeInCurrentDocument('replace', data, unused, value);
+    const guardedReplaceState: History["replaceState"] = (data, unused, value) => {
+      routeInCurrentDocument("replace", data, unused, value);
     };
 
     browserHistory.pushState = guardedPushState;
     browserHistory.replaceState = guardedReplaceState;
 
     const scrubCurrentLocation = (): void => {
-      const result = inspectSensitiveNavigationUrl(
-        window.location.href,
-        window.location.href,
-      );
+      const result = inspectSensitiveNavigationUrl(window.location.href, window.location.href);
       if (isPrivateWizardPath(window.location.pathname) !== documentIsPrivate) {
         markDocumentTainted();
         window.location.replace(
-          typeof result.value === 'string' ? result.value : window.location.href,
+          typeof result.value === "string" ? result.value : window.location.href,
         );
         return;
       }
-      if (result.sensitiveStateRemoved && typeof result.value === 'string') {
+      if (result.sensitiveStateRemoved && typeof result.value === "string") {
         markDocumentTainted();
         window.location.replace(result.value);
       }
@@ -374,8 +371,8 @@ function PrivacyControlledScripts() {
     const handlePopState = (): void => {
       scrubCurrentLocation();
     };
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('hashchange', handlePopState);
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("hashchange", handlePopState);
 
     scrubCurrentLocation();
     if (!documentTainted.current) {
@@ -384,8 +381,8 @@ function PrivacyControlledScripts() {
     }
 
     return () => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('hashchange', handlePopState);
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("hashchange", handlePopState);
       if (browserHistory.pushState === guardedPushState) {
         browserHistory.pushState = originalPushState;
       }
@@ -396,9 +393,7 @@ function PrivacyControlledScripts() {
   }, []);
 
   if (!analyticsAllowed) return null;
-  return (
-    <AnalyticsTracker />
-  );
+  return <AnalyticsTracker />;
 }
 
 /**

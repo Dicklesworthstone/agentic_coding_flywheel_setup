@@ -1,11 +1,9 @@
-import type { ReactNode } from "react";
 import {
   BellRing,
   Bot,
   Brain,
   Cpu,
   FileText,
-  Power,
   GitBranch,
   GitMerge,
   GraduationCap,
@@ -13,6 +11,7 @@ import {
   KeyRound,
   LayoutGrid,
   Package,
+  Power,
   Repeat,
   Save,
   Search,
@@ -22,6 +21,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { getManifestCommand } from "@/lib/manifest-adapter";
 
 export type ToolId =
@@ -100,9 +100,7 @@ const manifestShortIdByToolId: Partial<Record<ToolId, string>> = {
   pfr: "pfr",
 };
 
-function withCanonicalManifestMetadata(
-  tools: Record<ToolId, ToolCard>
-): Record<ToolId, ToolCard> {
+function withCanonicalManifestMetadata(tools: Record<ToolId, ToolCard>): Record<ToolId, ToolCard> {
   return Object.fromEntries(
     Object.entries(tools).map(([toolId, tool]) => {
       const shortId = manifestShortIdByToolId[toolId as ToolId];
@@ -120,7 +118,7 @@ function withCanonicalManifestMetadata(
           quickCommand: manifest.commandExample ?? tool.quickCommand,
         },
       ];
-    })
+    }),
   ) as Record<ToolId, ToolCard>;
 }
 
@@ -293,7 +291,8 @@ const RAW_TOOLS: Record<ToolId, ToolCard> = {
   ms: {
     id: "ms",
     title: "Meta Skill",
-    tagline: "Local-first knowledge management with hybrid semantic search and Git-backed audit trails",
+    tagline:
+      "Local-first knowledge management with hybrid semantic search and Git-backed audit trails",
     icon: <GraduationCap className="h-8 w-8" aria-hidden="true" />,
     gradient: "from-purple-500/20 via-violet-500/20 to-purple-500/20",
     glowColor: "rgba(139,92,246,0.4)",

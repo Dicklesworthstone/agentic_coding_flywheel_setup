@@ -1,18 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import {
-  Lightbulb,
+  CheckCircle,
+  ChevronRight,
   FileText,
   GitBranch,
-  Zap,
-  User,
-  CheckCircle,
-  Play,
+  Lightbulb,
   Pause,
-  ChevronRight,
+  Play,
+  User,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -160,19 +160,13 @@ function StageNode({
         <motion.div
           className={cn(
             "flex h-11 w-11 items-center justify-center rounded-xl border transition duration-500",
-            isActive
-              ? "border-transparent"
-              : "border-white/[0.06] bg-white/[0.02]",
+            isActive ? "border-transparent" : "border-white/[0.06] bg-white/[0.02]",
           )}
           style={{
             backgroundColor: isActive ? `${stage.color}18` : undefined,
             borderColor: isActive ? `${stage.color}30` : undefined,
           }}
-          animate={
-            isActive && !reducedMotion
-              ? { scale: [1, 1.08, 1] }
-              : { scale: 1 }
-          }
+          animate={isActive && !reducedMotion ? { scale: [1, 1.08, 1] } : { scale: 1 }}
           transition={{
             duration: 2,
             repeat: Infinity,
@@ -181,7 +175,13 @@ function StageNode({
         >
           <Icon
             className="h-5 w-5 transition-colors duration-500"
-            style={{ color: isActive ? stage.color : isPast ? `${stage.color}99` : "rgba(255,255,255,0.25)" }}
+            style={{
+              color: isActive
+                ? stage.color
+                : isPast
+                  ? `${stage.color}99`
+                  : "rgba(255,255,255,0.25)",
+            }}
           />
         </motion.div>
 
@@ -201,11 +201,7 @@ function StageNode({
         <span
           className="text-[0.6rem] font-black uppercase tracking-[0.2em]"
           style={{
-            color: isActive
-              ? stage.color
-              : isPast
-                ? `${stage.color}80`
-                : "rgba(255,255,255,0.2)",
+            color: isActive ? stage.color : isPast ? `${stage.color}80` : "rgba(255,255,255,0.2)",
             transition: "color 700ms cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         >
@@ -310,13 +306,7 @@ function ConnectorLine({
   );
 }
 
-function DetailPanel({
-  stage,
-  reducedMotion,
-}: {
-  stage: Stage;
-  reducedMotion: boolean;
-}) {
+function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: boolean }) {
   return (
     <motion.div
       key={stage.id}
@@ -332,10 +322,7 @@ function DetailPanel({
           className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2 mb-4"
           style={{ color: stage.color }}
         >
-          <span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: stage.color }}
-          />
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
           Active Stage
         </div>
         <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-none">
@@ -382,9 +369,7 @@ function DetailPanel({
               >
                 {card.label}
               </span>
-              <p className="text-[1rem] leading-relaxed text-zinc-300 font-light">
-                {card.value}
-              </p>
+              <p className="text-[1rem] leading-relaxed text-zinc-300 font-light">{card.value}</p>
             </div>
           </motion.div>
         ))}
@@ -475,14 +460,7 @@ function DiagonalTrail({
       </defs>
 
       {/* Background trail */}
-      <line
-        x1="20"
-        y1="0"
-        x2="20"
-        y2={height}
-        stroke="rgba(255,255,255,0.04)"
-        strokeWidth="2"
-      />
+      <line x1="20" y1="0" x2="20" y2={height} stroke="rgba(255,255,255,0.04)" strokeWidth="2" />
 
       {/* Active trail */}
       <motion.line
@@ -497,11 +475,7 @@ function DiagonalTrail({
         animate={{
           pathLength: (activeIndex + 1) / nodeCount,
         }}
-        transition={
-          reducedMotion
-            ? { duration: 0 }
-            : { duration: 0.8, ease: [0.16, 1, 0.3, 1] }
-        }
+        transition={reducedMotion ? { duration: 0 } : { duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
       />
 
       {/* Dot markers at each node position */}
@@ -536,13 +510,10 @@ export function ArtifactLadderViz() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [autoPlay, setAutoPlay] = useState(false);
 
-  const handleSelect = useCallback(
-    (index: number) => {
-      setActiveIndex(index);
-      setAutoPlay(false);
-    },
-    [],
-  );
+  const handleSelect = useCallback((index: number) => {
+    setActiveIndex(index);
+    setAutoPlay(false);
+  }, []);
 
   const toggleAutoPlay = useCallback(() => {
     setAutoPlay((prev) => !prev);
@@ -602,9 +573,8 @@ export function ArtifactLadderViz() {
             What you produce at each stage
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight">
-            An idea becomes a plan, a plan becomes beads, beads become
-            finished code. Click any stage to see the artifact, what it
-            means, and your next move.
+            An idea becomes a plan, a plan becomes beads, beads become finished code. Click any
+            stage to see the artifact, what it means, and your next move.
           </p>
         </div>
 
@@ -627,11 +597,7 @@ export function ArtifactLadderViz() {
                   : "bg-white/20",
               )}
             />
-            {autoPlay ? (
-              <Pause className="h-3.5 w-3.5" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
+            {autoPlay ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             <span className="text-[0.65rem] font-black uppercase tracking-[0.2em]">
               {autoPlay ? "Auto-Play Active" : "Auto-Play"}
             </span>
@@ -643,10 +609,7 @@ export function ArtifactLadderViz() {
       <div className="relative z-10 mt-16 grid gap-12 lg:grid-cols-[0.9fr_1.1fr] items-start">
         {/* Left: Ladder */}
         <div className="relative flex flex-col">
-          <DiagonalTrail
-            activeIndex={activeIndex}
-            reducedMotion={reducedMotion}
-          />
+          <DiagonalTrail activeIndex={activeIndex} reducedMotion={reducedMotion} />
 
           <div className="flex flex-col">
             {STAGES.map((stage, index) => {
@@ -701,7 +664,9 @@ export function ArtifactLadderViz() {
           {/* Colored top border that transitions with active stage */}
           <motion.div
             className="absolute top-0 left-0 right-0 h-[3px] pointer-events-none"
-            animate={{ background: `linear-gradient(to right, ${activeStage.color}00, ${activeStage.color}, ${activeStage.color}00)` }}
+            animate={{
+              background: `linear-gradient(to right, ${activeStage.color}00, ${activeStage.color}, ${activeStage.color}00)`,
+            }}
             transition={{ duration: 0.8 }}
           />
 
@@ -722,11 +687,7 @@ export function ArtifactLadderViz() {
           />
 
           <AnimatePresence mode="wait">
-            <DetailPanel
-              key={activeStage.id}
-              stage={activeStage}
-              reducedMotion={reducedMotion}
-            />
+            <DetailPanel key={activeStage.id} stage={activeStage} reducedMotion={reducedMotion} />
           </AnimatePresence>
         </div>
       </div>
@@ -767,8 +728,7 @@ export function ArtifactLadderViz() {
             Plan to Bead
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-extralight">
-            Prose becomes executable memory. This is where agents stop
-            guessing.
+            Prose becomes executable memory. This is where agents stop guessing.
           </p>
         </div>
 
@@ -781,8 +741,8 @@ export function ArtifactLadderViz() {
             The Insight
           </div>
           <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-medium">
-            Each completed bead reshapes the graph and unblocks new work.
-            Finished beads create ready beads.
+            Each completed bead reshapes the graph and unblocks new work. Finished beads create
+            ready beads.
           </p>
         </div>
       </motion.div>

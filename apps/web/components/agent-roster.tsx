@@ -1,11 +1,10 @@
 import { ExternalLink } from "lucide-react";
-
-import { cn } from "@/lib/utils";
 import {
-  manifestAgents,
   type ManifestAgent,
   type ManifestAgentStatus,
+  manifestAgents,
 } from "@/lib/generated/manifest-web-index";
+import { cn } from "@/lib/utils";
 
 /**
  * "Compatible Agents" roster (#392).
@@ -71,9 +70,7 @@ const VARIANT_STYLES: Record<
 
 function Code({ children, className }: { children: string; className: string }) {
   return (
-    <code className={cn("rounded px-1.5 py-0.5 font-mono text-xs", className)}>
-      {children}
-    </code>
+    <code className={cn("rounded px-1.5 py-0.5 font-mono text-xs", className)}>{children}</code>
   );
 }
 
@@ -173,7 +170,10 @@ export function AgentRoster({
                     href={agent.docsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={cn("inline-flex items-center gap-1 text-xs font-medium", styles.link)}
+                    className={cn(
+                      "inline-flex items-center gap-1 text-xs font-medium",
+                      styles.link,
+                    )}
                   >
                     Docs
                     <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -189,8 +189,8 @@ export function AgentRoster({
         <p className={cn("border-t px-4 py-3 text-xs", styles.head)}>
           Turn any agent on or off at install time with its module id:{" "}
           <Code className={styles.code}>{`--only ${onlyExample.moduleId}`}</Code> installs one plus
-          its dependencies,{" "}
-          <Code className={styles.code}>{`--skip ${skipExample.moduleId}`}</Code> leaves one out.
+          its dependencies, <Code className={styles.code}>{`--skip ${skipExample.moduleId}`}</Code>{" "}
+          leaves one out.
         </p>
       )}
     </div>

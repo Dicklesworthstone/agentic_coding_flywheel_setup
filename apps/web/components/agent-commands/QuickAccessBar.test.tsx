@@ -12,7 +12,7 @@
  * - The legacy gmi row is retained and clearly labeled (no over-migration)
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { QuickAccessBar, quickCommands } from "./QuickAccessBar";
 
 describe("QuickAccessBar component", () => {

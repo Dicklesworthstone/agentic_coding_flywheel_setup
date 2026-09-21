@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import Script from 'next/script';
-import { useEffect } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
-import { Analytics } from '@vercel/analytics/react';
-import { SpeedInsights } from '@vercel/speed-insights/next';
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { usePathname, useSearchParams } from "next/navigation";
+import Script from "next/script";
+import { useEffect } from "react";
 import {
   isPrivateWizardPath,
   queryContainsSensitiveState,
   stripSensitiveQueryState,
   vendorEventIsPrivacySafe,
-} from '@/lib/utils';
+} from "@/lib/utils";
 
 // Environment variables for third-party services
 // Note: GA4 is handled by AnalyticsProvider to avoid duplicate scripts
@@ -18,19 +18,21 @@ const GTM_ID_RAW = process.env.NEXT_PUBLIC_GTM_ID;
 const CLARITY_PROJECT_ID_RAW = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
 
 function isValidGtmId(value: unknown): value is string {
-  return typeof value === 'string' && /^GTM-[A-Z0-9]+$/.test(value);
+  return typeof value === "string" && /^GTM-[A-Z0-9]+$/.test(value);
 }
 
 function isValidClarityProjectId(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-zA-Z0-9]+$/.test(value);
+  return typeof value === "string" && /^[a-zA-Z0-9]+$/.test(value);
 }
 
 const GTM_ID = isValidGtmId(GTM_ID_RAW) ? GTM_ID_RAW : undefined;
-const CLARITY_PROJECT_ID = isValidClarityProjectId(CLARITY_PROJECT_ID_RAW) ? CLARITY_PROJECT_ID_RAW : undefined;
+const CLARITY_PROJECT_ID = isValidClarityProjectId(CLARITY_PROJECT_ID_RAW)
+  ? CLARITY_PROJECT_ID_RAW
+  : undefined;
 // Only enable Vercel Analytics when explicitly configured (requires Vercel project config)
-const ENABLE_VERCEL_ANALYTICS = process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === 'true';
+const ENABLE_VERCEL_ANALYTICS = process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "true";
 // Only enable Speed Insights when explicitly configured (requires Vercel Pro)
-const ENABLE_SPEED_INSIGHTS = process.env.NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS === 'true';
+const ENABLE_SPEED_INSIGHTS = process.env.NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS === "true";
 
 type DataLayerEntry = Record<string, unknown> | readonly unknown[];
 type TagManagerWindow = Window & {
@@ -45,16 +47,15 @@ type TagManagerWindow = Window & {
 export function ThirdPartyScripts() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const pagePath =
-    pathname ?? (typeof window !== 'undefined' ? window.location.pathname : null);
+  const pagePath = pathname ?? (typeof window !== "undefined" ? window.location.pathname : null);
   const parameterSearchQuery =
     searchParams?.toString() ??
-    (typeof window !== 'undefined' ? window.location.search.slice(1) : '');
-  const liveSearchQuery = typeof window !== 'undefined'
-    ? window.location.search.slice(1)
-    : parameterSearchQuery;
-  const sensitiveQuery = queryContainsSensitiveState(parameterSearchQuery)
-    || queryContainsSensitiveState(liveSearchQuery);
+    (typeof window !== "undefined" ? window.location.search.slice(1) : "");
+  const liveSearchQuery =
+    typeof window !== "undefined" ? window.location.search.slice(1) : parameterSearchQuery;
+  const sensitiveQuery =
+    queryContainsSensitiveState(parameterSearchQuery) ||
+    queryContainsSensitiveState(liveSearchQuery);
   const searchQuery = stripSensitiveQueryState(liveSearchQuery);
   const privateWizardPath = pagePath !== null && isPrivateWizardPath(pagePath);
 
@@ -66,7 +67,7 @@ export function ThirdPartyScripts() {
     const dataLayer = tagManagerWindow.dataLayer ?? [];
     tagManagerWindow.dataLayer = dataLayer;
     dataLayer.push({
-      event: 'virtual_pageview',
+      event: "virtual_pageview",
       page_path: pagePath,
       page_search: searchQuery || undefined,
     });
@@ -79,7 +80,7 @@ export function ThirdPartyScripts() {
     ENABLE_SPEED_INSIGHTS;
 
   const filterVendorEvent = <T extends { url: string }>(event: T): T | null => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === "undefined") return null;
     return vendorEventIsPrivacySafe(event.url, window.location.href) ? event : null;
   };
 

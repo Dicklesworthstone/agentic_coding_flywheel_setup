@@ -1,54 +1,54 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
-import Link from "next/link";
-import { motion, useReducedMotion } from "@/components/motion";
 import {
+  Activity,
   AlignLeft,
-  Search,
+  Archive,
+  BarChart3,
+  Bot,
+  Box,
+  Brain,
+  Bug,
+  Cpu,
   ExternalLink,
-  Terminal,
-  Filter,
-  X,
-  Star,
+  FileCode,
   // Tool icons
   FileText,
-  ListTodo,
-  GitBranch,
+  Filter,
   FlaskConical,
-  KeyRound,
-  BarChart3,
-  Minimize2,
-  Brain,
-  ShieldAlert,
-  Sparkles,
-  Mail,
-  LayoutGrid,
-  Activity,
-  Cpu,
-  Repeat,
-  RefreshCw,
-  ShieldCheck,
-  Shield,
-  HardDrive,
-  Bug,
-  Monitor,
-  Image,
-  FileCode,
-  Archive,
-  Package,
-  Save,
+  GitBranch,
   Globe,
+  HardDrive,
+  Image,
+  KeyRound,
+  LayoutGrid,
+  ListTodo,
+  Mail,
+  Minimize2,
+  Monitor,
   Network,
-  Box,
-  Bot,
+  Package,
   Power,
+  RefreshCw,
+  Repeat,
+  Save,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Terminal,
+  X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { EmptyState } from "@/components/ui/empty-state";
+import Link from "next/link";
+import { useCallback, useMemo, useState } from "react";
+import { motion, useReducedMotion } from "@/components/motion";
 import { Button } from "@/components/ui/button";
-import { manifestTools, type ManifestWebTool } from "@/lib/generated/manifest-web-index";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { type ManifestWebTool, manifestTools } from "@/lib/generated/manifest-web-index";
+import { cn } from "@/lib/utils";
 
 // =============================================================================
 // ICON MAP - Maps icon names from manifest to Lucide icons
@@ -151,14 +151,14 @@ function ToolCard({ tool, index }: ToolCardProps) {
           "relative h-full overflow-hidden rounded-xl",
           "border border-border/50 bg-card/50 backdrop-blur-sm",
           "transition duration-300",
-          "hover:border-border hover:bg-card/70 hover:shadow-lg"
+          "hover:border-border hover:bg-card/70 hover:shadow-lg",
         )}
       >
         {/* Top accent bar */}
         <div
           className={cn(
             "absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-60 group-hover:opacity-100 transition-opacity",
-            getCategoryColor(category)
+            getCategoryColor(category),
           )}
         />
 
@@ -169,7 +169,7 @@ function ToolCard({ tool, index }: ToolCardProps) {
             <div
               className={cn(
                 "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br",
-                getCategoryColor(category)
+                getCategoryColor(category),
               )}
             >
               <DynamicIcon name={tool.icon} className="h-5 w-5 text-white" />
@@ -178,9 +178,7 @@ function ToolCard({ tool, index }: ToolCardProps) {
             {/* Title and meta */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="truncate text-base font-bold text-white">
-                  {tool.displayName}
-                </h3>
+                <h3 className="truncate text-base font-bold text-white">{tool.displayName}</h3>
                 {tool.stars && tool.stars > 100 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent">
                     <Star className="h-3 w-3 fill-current" />
@@ -221,9 +219,7 @@ function ToolCard({ tool, index }: ToolCardProps) {
           </div>
 
           {/* Description */}
-          <p className="mt-3 text-sm leading-relaxed text-foreground/80">
-            {tool.tagline}
-          </p>
+          <p className="mt-3 text-sm leading-relaxed text-foreground/80">{tool.tagline}</p>
 
           {/* Features */}
           {tool.features.length > 0 && (
@@ -293,7 +289,7 @@ function CategoryFilter({ categories, selected, onSelect }: CategoryFilterProps)
           "rounded-full px-4 py-2 text-sm font-medium transition",
           selected === null
             ? "bg-primary text-white"
-            : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
+            : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white",
         )}
       >
         All
@@ -306,7 +302,7 @@ function CategoryFilter({ categories, selected, onSelect }: CategoryFilterProps)
             "rounded-full px-4 py-2 text-sm font-medium transition",
             selected === category
               ? "bg-primary text-white"
-              : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
+              : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white",
           )}
         >
           {category}
@@ -340,7 +336,7 @@ function SearchInput({ value, onChange }: SearchInputProps) {
           "border border-border/50 backdrop-blur-sm",
           "placeholder:text-muted-foreground",
           "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
-          "transition duration-200"
+          "transition duration-200",
         )}
       />
       {value && (
@@ -380,8 +376,8 @@ function ToolsHero({ toolCount }: { toolCount: number }) {
             ACFS Tool Status
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground sm:text-lg">
-            All {toolCount} tools installed by the Agentic Coding Flywheel Setup.
-            Search, filter, and explore the complete toolkit.
+            All {toolCount} tools installed by the Agentic Coding Flywheel Setup. Search, filter,
+            and explore the complete toolkit.
           </p>
         </motion.div>
       </div>

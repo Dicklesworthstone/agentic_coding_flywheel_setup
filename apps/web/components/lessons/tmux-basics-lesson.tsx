@@ -1,35 +1,35 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  LayoutGrid,
-  Play,
-  Pause,
-  List,
   ArrowLeftRight,
-  Copy,
-  Scissors,
-  Columns,
-  Rows,
-  Bot,
-  Keyboard,
-  Monitor,
-  Plus,
   ArrowRight,
-  Unplug,
+  Bot,
+  Columns,
+  Copy,
+  Keyboard,
+  LayoutGrid,
+  List,
+  Monitor,
+  Pause,
+  Play,
   PlugZap,
+  Plus,
+  Rows,
+  Scissors,
+  Unplug,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
   InlineCode,
-  BulletList,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function TmuxBasicsLesson() {
@@ -38,14 +38,9 @@ export function TmuxBasicsLesson() {
       <GoalBanner>Never lose work when SSH drops.</GoalBanner>
 
       {/* What Is tmux */}
-      <Section
-        title="What Is tmux?"
-        icon={<LayoutGrid className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is tmux?" icon={<LayoutGrid className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>tmux</Highlight> is a <strong>terminal multiplexer</strong>.
-          It lets you:
+          <Highlight>tmux</Highlight> is a <strong>terminal multiplexer</strong>. It lets you:
         </Paragraph>
         <div className="mt-6">
           <BulletList
@@ -61,15 +56,10 @@ export function TmuxBasicsLesson() {
       <Divider />
 
       {/* Interactive Pane Simulator */}
-      <Section
-        title="Try Splitting Panes"
-        icon={<Monitor className="h-5 w-5" />}
-        delay={0.12}
-      >
+      <Section title="Try Splitting Panes" icon={<Monitor className="h-5 w-5" />} delay={0.12}>
         <Paragraph>
-          Click panes to select them, then use the buttons to split or close.
-          This simulates what <Highlight>Ctrl+a</Highlight> shortcuts do in a
-          real tmux session.
+          Click panes to select them, then use the buttons to split or close. This simulates what{" "}
+          <Highlight>Ctrl+a</Highlight> shortcuts do in a real tmux session.
         </Paragraph>
         <div className="mt-6">
           <InteractiveTmuxSimulator />
@@ -79,11 +69,7 @@ export function TmuxBasicsLesson() {
       <Divider />
 
       {/* Essential Commands */}
-      <Section
-        title="Essential Commands"
-        icon={<Play className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Essential Commands" icon={<Play className="h-5 w-5" />} delay={0.15}>
         {/* Start Session */}
         <div className="space-y-8">
           <CommandSection
@@ -117,26 +103,17 @@ tmux a`}
       <Divider />
 
       {/* The Prefix Key */}
-      <Section
-        title="The Prefix Key"
-        icon={<Keyboard className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="The Prefix Key" icon={<Keyboard className="h-5 w-5" />} delay={0.2}>
         <TipBox variant="info">
-          In ACFS, the prefix key is <InlineCode>Ctrl+a</InlineCode> (not the
-          default <InlineCode>Ctrl+b</InlineCode>). All tmux commands start with
-          the prefix.
+          In ACFS, the prefix key is <InlineCode>Ctrl+a</InlineCode> (not the default{" "}
+          <InlineCode>Ctrl+b</InlineCode>). All tmux commands start with the prefix.
         </TipBox>
       </Section>
 
       <Divider />
 
       {/* Splitting Panes */}
-      <Section
-        title="Splitting Panes"
-        icon={<Columns className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Splitting Panes" icon={<Columns className="h-5 w-5" />} delay={0.25}>
         <KeyboardShortcutGrid
           shortcuts={[
             {
@@ -166,11 +143,7 @@ tmux a`}
       <Divider />
 
       {/* Windows */}
-      <Section
-        title="Windows (Tabs)"
-        icon={<LayoutGrid className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Windows (Tabs)" icon={<LayoutGrid className="h-5 w-5" />} delay={0.3}>
         <KeyboardShortcutGrid
           shortcuts={[
             {
@@ -200,11 +173,7 @@ tmux a`}
       <Divider />
 
       {/* Copy Mode */}
-      <Section
-        title="Copy Mode (Scrolling)"
-        icon={<Copy className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Copy Mode (Scrolling)" icon={<Copy className="h-5 w-5" />} delay={0.35}>
         <KeyboardShortcutGrid
           shortcuts={[
             {
@@ -227,11 +196,7 @@ tmux a`}
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Play className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Try It Now" icon={<Play className="h-5 w-5" />} delay={0.4}>
         <CodeBlock
           code={`# Create a session
 $ tmux new -s practice
@@ -260,11 +225,7 @@ $ tmux attach -t practice`}
       <Divider />
 
       {/* Why This Matters */}
-      <Section
-        title="Why This Matters for Agents"
-        icon={<Bot className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="Why This Matters for Agents" icon={<Bot className="h-5 w-5" />} delay={0.45}>
         <WhyItMattersCard />
       </Section>
     </div>
@@ -292,7 +253,9 @@ function CommandSection({
       whileHover={{ x: 4 }}
       className="group space-y-4 p-4 -mx-4 rounded-xl transition duration-300 hover:bg-white/[0.02]"
     >
-      <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
+      <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
+        {title}
+      </h4>
       {code && <CodeBlock code={code} />}
       {keyCombo && (
         <div className="flex items-center gap-2">
@@ -302,9 +265,7 @@ function CommandSection({
               <kbd className="px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.1] text-sm font-mono text-white">
                 {key}
               </kbd>
-              {i < keyCombo.length - 1 && (
-                <span className="text-white/50">then</span>
-              )}
+              {i < keyCombo.length - 1 && <span className="text-white/50">then</span>}
             </span>
           ))}
         </div>
@@ -335,7 +296,9 @@ function KeyboardShortcutGrid({ shortcuts }: { shortcuts: ShortcutItem[] }) {
           whileHover={{ y: -2, scale: 1.01 }}
           className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
         >
-          <div className="text-primary group-hover:text-primary/80 transition-colors">{shortcut.icon}</div>
+          <div className="text-primary group-hover:text-primary/80 transition-colors">
+            {shortcut.icon}
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {shortcut.keys.map((key, j) => (
@@ -343,9 +306,7 @@ function KeyboardShortcutGrid({ shortcuts }: { shortcuts: ShortcutItem[] }) {
                   <kbd className="px-2 py-1 rounded bg-black/40 border border-white/[0.1] text-xs font-mono text-white">
                     {key}
                   </kbd>
-                  {j < shortcut.keys.length - 1 && (
-                    <span className="text-white/50 text-xs">+</span>
-                  )}
+                  {j < shortcut.keys.length - 1 && <span className="text-white/50 text-xs">+</span>}
                 </span>
               ))}
             </div>
@@ -375,13 +336,10 @@ function WhyItMattersCard() {
           <Bot className="h-7 w-7 text-white" />
         </div>
         <div>
-          <h4 className="text-lg font-bold text-white mb-2">
-            Your Agents Run in tmux
-          </h4>
+          <h4 className="text-lg font-bold text-white mb-2">Your Agents Run in tmux</h4>
           <p className="text-white/60">
-            Your coding agents (Claude, Codex, Antigravity) run in tmux panes. If SSH
-            drops, they keep running. When you reconnect and reattach,
-            they&apos;re still there!
+            Your coding agents (Claude, Codex, Antigravity) run in tmux panes. If SSH drops, they
+            keep running. When you reconnect and reattach, they&apos;re still there!
           </p>
         </div>
       </div>
@@ -512,12 +470,9 @@ function InteractiveTmuxSimulator() {
   const totalPanesInWindow = activeWindow.panes.length;
 
   // derive the output lines for a pane with an added activity line for persistence demo
-  const getPaneOutput = useCallback(
-    (pane: SimPane): string[] => {
-      return PANE_OUTPUTS[pane.outputIndex % PANE_OUTPUTS.length];
-    },
-    [],
-  );
+  const getPaneOutput = useCallback((pane: SimPane): string[] => {
+    return PANE_OUTPUTS[pane.outputIndex % PANE_OUTPUTS.length];
+  }, []);
 
   // --- handlers ---
 
@@ -871,7 +826,8 @@ function TmuxStatusBar({
                       : "text-emerald-400/50 hover:text-emerald-300/80"
                 }`}
               >
-                {i}:{w.name}{isActive ? "*" : "-"}
+                {i}:{w.name}
+                {isActive ? "*" : "-"}
               </motion.button>
             );
           })}
@@ -1006,9 +962,7 @@ function SimPaneContent({
                   <span className="text-green-400/80">ubuntu@vps</span>
                   <span className="text-white/30">:</span>
                   <span className="text-blue-400/70">~</span>
-                  <span className="text-white/40">
-                    {line}
-                  </span>
+                  <span className="text-white/40">{line}</span>
                 </>
               ) : (
                 <span className="text-white/50">{line}</span>

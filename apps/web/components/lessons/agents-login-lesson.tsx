@@ -1,52 +1,45 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence, springs, useInView } from "@/components/motion";
 import {
-  Bot,
-  Key,
-  Zap,
-  Terminal,
-  CheckCircle2,
   AlertTriangle,
+  Bot,
+  CheckCircle2,
   Database,
-  Sparkles,
-  Play,
+  Key,
   Pause,
+  Play,
+  Server,
+  Shield,
   SkipBack,
   SkipForward,
-  Shield,
+  Sparkles,
+  Terminal,
   XCircle,
-  Server,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
   InlineCode,
-  BulletList,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function AgentsLoginLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Login to your coding agents and understand the shortcuts.
-      </GoalBanner>
+      <GoalBanner>Login to your coding agents and understand the shortcuts.</GoalBanner>
 
       {/* The Three Agents */}
-      <Section
-        title="The Three Agents"
-        icon={<Bot className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="The Three Agents" icon={<Bot className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          You have three powerful coding agents installed, each from a different
-          AI company:
+          You have three powerful coding agents installed, each from a different AI company:
         </Paragraph>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -77,11 +70,11 @@ export function AgentsLoginLesson() {
         </div>
 
         <Paragraph>
-          The Antigravity CLI (<Highlight>agy</Highlight>) is pinned to Gemini
-          3.1 Pro (High). It replaced the Gemini CLI (<Highlight>gmi</Highlight>),
-          which retired 2026-06-18 — <Highlight>gmi</Highlight> still works for
-          reading old <Highlight>~/.gemini/tmp</Highlight> history, but use{" "}
-          <Highlight>agy</Highlight> for all new work.
+          The Antigravity CLI (<Highlight>agy</Highlight>) is pinned to Gemini 3.1 Pro (High). It
+          replaced the Gemini CLI (<Highlight>gmi</Highlight>), which retired 2026-06-18 —{" "}
+          <Highlight>gmi</Highlight> still works for reading old{" "}
+          <Highlight>~/.gemini/tmp</Highlight> history, but use <Highlight>agy</Highlight> for all
+          new work.
         </Paragraph>
 
         <div className="mt-8">
@@ -92,14 +85,9 @@ export function AgentsLoginLesson() {
       <Divider />
 
       {/* What The Aliases Do */}
-      <Section
-        title="What The Aliases Do"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="What The Aliases Do" icon={<Zap className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          The aliases are configured for <Highlight>maximum power</Highlight>{" "}
-          (vibe mode):
+          The aliases are configured for <Highlight>maximum power</Highlight> (vibe mode):
         </Paragraph>
 
         <div className="mt-8 space-y-6">
@@ -145,21 +133,17 @@ export function AgentsLoginLesson() {
         </div>
 
         <Paragraph>
-          Legacy: <Highlight>gmi</Highlight> is still defined, but it now launches
-          the same locked Antigravity path as <Highlight>agy</Highlight>. The
-          Gemini CLI retired 2026-06-18, so use <Highlight>agy</Highlight> for
-          new work and treat old Gemini references as history/context only.
+          Legacy: <Highlight>gmi</Highlight> is still defined, but it now launches the same locked
+          Antigravity path as <Highlight>agy</Highlight>. The Gemini CLI retired 2026-06-18, so use{" "}
+          <Highlight>agy</Highlight> for new work and treat old Gemini references as history/context
+          only.
         </Paragraph>
       </Section>
 
       <Divider />
 
       {/* First Login */}
-      <Section
-        title="First Login"
-        icon={<Key className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="First Login" icon={<Key className="h-5 w-5" />} delay={0.2}>
         <Paragraph>Each agent needs to be authenticated once:</Paragraph>
 
         <div className="mt-8 space-y-6">
@@ -204,8 +188,7 @@ export function AgentsLoginLesson() {
         delay={0.25}
       >
         <Paragraph>
-          After logging in, <Highlight>immediately</Highlight> back up your
-          credentials:
+          After logging in, <Highlight>immediately</Highlight> back up your credentials:
         </Paragraph>
 
         <div className="mt-6">
@@ -224,8 +207,8 @@ caam backup agy my-main-account`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            This is incredibly useful when you hit rate limits! Switch to a
-            backup account and keep working.
+            This is incredibly useful when you hit rate limits! Switch to a backup account and keep
+            working.
           </TipBox>
         </div>
       </Section>
@@ -233,11 +216,7 @@ caam backup agy my-main-account`}
       <Divider />
 
       {/* Test Your Agents */}
-      <Section
-        title="Test Your Agents"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Test Your Agents" icon={<Terminal className="h-5 w-5" />} delay={0.3}>
         <Paragraph>Try each one to verify they&apos;re working:</Paragraph>
 
         <div className="mt-6 space-y-4">
@@ -246,23 +225,18 @@ caam backup agy my-main-account`}
           <CodeBlock code={`agy -p "Hello! Please confirm you're working."`} />
         </div>
         <Paragraph>
-          Antigravity takes its prompt through <InlineCode>-p</InlineCode>{" "}
-          (print mode) or <InlineCode>-i</InlineCode> (interactive), where
-          Claude and Codex accept it as a plain argument. The ACFS{" "}
-          <InlineCode>agy</InlineCode> launcher also forwards a bare quoted prompt as{" "}
-          <InlineCode>-p</InlineCode>, but <InlineCode>-p</InlineCode> is the
-          form that works everywhere.
+          Antigravity takes its prompt through <InlineCode>-p</InlineCode> (print mode) or{" "}
+          <InlineCode>-i</InlineCode> (interactive), where Claude and Codex accept it as a plain
+          argument. The ACFS <InlineCode>agy</InlineCode> launcher also forwards a bare quoted
+          prompt as <InlineCode>-p</InlineCode>, but <InlineCode>-p</InlineCode> is the form that
+          works everywhere.
         </Paragraph>
       </Section>
 
       <Divider />
 
       {/* Quick Tips */}
-      <Section
-        title="Quick Tips"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Quick Tips" icon={<Sparkles className="h-5 w-5" />} delay={0.35}>
         <div className="mt-4">
           <BulletList
             items={[
@@ -270,15 +244,13 @@ caam backup agy my-main-account`}
                 <strong>Start simple</strong> - Let agents do small tasks first
               </span>,
               <span key="2">
-                <strong>Be specific</strong> - Clear instructions get better
-                results
+                <strong>Be specific</strong> - Clear instructions get better results
               </span>,
               <span key="3">
                 <strong>Check the output</strong> - Agents can make mistakes
               </span>,
               <span key="4">
-                <strong>Use multiple agents</strong> - Different agents have
-                different strengths
+                <strong>Use multiple agents</strong> - Different agents have different strengths
               </span>,
             ]}
           />
@@ -288,11 +260,7 @@ caam backup agy my-main-account`}
       <Divider />
 
       {/* Practice */}
-      <Section
-        title="Practice This Now"
-        icon={<CheckCircle2 className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Practice This Now" icon={<CheckCircle2 className="h-5 w-5" />} delay={0.4}>
         <Paragraph>Let&apos;s verify your agents are ready:</Paragraph>
 
         <div className="mt-6">
@@ -311,9 +279,8 @@ $ claude auth login`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            If you set up your accounts during the wizard (Step 7: Set Up
-            Accounts), you already have the credentials ready—just run the login
-            commands!
+            If you set up your accounts during the wizard (Step 7: Set Up Accounts), you already
+            have the credentials ready—just run the login commands!
           </TipBox>
         </div>
       </Section>
@@ -407,9 +374,7 @@ function AliasCard({
       </div>
 
       <div className="mb-4 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
-        <pre className="p-4 text-xs font-mono text-white/80 overflow-x-auto">
-          {code}
-        </pre>
+        <pre className="p-4 text-xs font-mono text-white/80 overflow-x-auto">{code}</pre>
       </div>
 
       <ul className="space-y-2">
@@ -445,14 +410,18 @@ function LoginStep({
       whileHover={{ y: -2, scale: 1.01 }}
       className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
-      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">{agent}</h4>
+      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
+        {agent}
+      </h4>
       <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden group-hover:bg-black/40 transition-colors">
         <pre className="p-3 text-sm font-mono text-emerald-400">
           <span className="text-white/50">$ </span>
           {command}
         </pre>
       </div>
-      <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">{description}</p>
+      <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">
+        {description}
+      </p>
     </motion.div>
   );
 }
@@ -473,8 +442,8 @@ function CodexLoginSection() {
       </h4>
 
       <p className="text-sm text-white/60 mb-4">
-        <strong className="text-amber-400">On a headless VPS</strong>, Codex requires special handling because its OAuth callback expects{" "}
-        <InlineCode>localhost:1455</InlineCode>.
+        <strong className="text-amber-400">On a headless VPS</strong>, Codex requires special
+        handling because its OAuth callback expects <InlineCode>localhost:1455</InlineCode>.
       </p>
 
       {/* Option 1: Device Auth */}
@@ -505,18 +474,22 @@ function CodexLoginSection() {
 
       {/* Option 2: SSH Tunnel */}
       <div className="mb-4">
-        <p className="text-xs font-semibold text-emerald-400 mb-2">
-          Option 2: SSH Tunnel
-        </p>
+        <p className="text-xs font-semibold text-emerald-400 mb-2">Option 2: SSH Tunnel</p>
         <ol className="list-decimal list-inside text-xs text-white/60 space-y-1 mb-2 pl-2">
           <li>On your laptop, create a tunnel</li>
-          <li>Then run <InlineCode>codex login</InlineCode> on the VPS through that tunneled SSH session</li>
+          <li>
+            Then run <InlineCode>codex login</InlineCode> on the VPS through that tunneled SSH
+            session
+          </li>
         </ol>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
           <pre className="p-3 text-xs font-mono text-emerald-400 overflow-x-auto">
-            <span className="text-white/50"># On laptop:</span>{"\n"}
-            <span className="text-white/50">$ </span>ssh -L 1455:localhost:1455 ubuntu@YOUR_VPS_IP{"\n"}
-            <span className="text-white/50"># Then on VPS:</span>{"\n"}
+            <span className="text-white/50"># On laptop:</span>
+            {"\n"}
+            <span className="text-white/50">$ </span>ssh -L 1455:localhost:1455 ubuntu@YOUR_VPS_IP
+            {"\n"}
+            <span className="text-white/50"># Then on VPS:</span>
+            {"\n"}
             <span className="text-white/50">$ </span>codex login
           </pre>
         </div>
@@ -607,7 +580,11 @@ const SCENARIOS: Scenario[] = [
           { text: '$ ssh-keygen -t ed25519 -C "user@dev"', type: "command", delay: 900 },
           { text: "Generating public/private ed25519 key pair.", type: "output", delay: 1300 },
           { text: "Your identification has been saved.", type: "output", delay: 1700 },
-          { text: "$ eval $(ssh-agent -s) && ssh-add ~/.ssh/id_ed25519", type: "command", delay: 2100 },
+          {
+            text: "$ eval $(ssh-agent -s) && ssh-add ~/.ssh/id_ed25519",
+            type: "command",
+            delay: 2100,
+          },
           { text: "Identity added: /home/user/.ssh/id_ed25519", type: "success", delay: 2600 },
           { text: "$ gh ssh-key add ~/.ssh/id_ed25519.pub", type: "command", delay: 3000 },
           { text: "SSH key added to GitHub account.", type: "success", delay: 3500 },
@@ -657,7 +634,11 @@ const SCENARIOS: Scenario[] = [
         lines: [
           { text: '$ claude "Set up OpenAI API key"', type: "command", delay: 0 },
           { text: "Checking environment configuration...", type: "info", delay: 400 },
-          { text: "$ echo 'export OPENAI_API_KEY=sk-...' >> ~/.bashrc", type: "command", delay: 800 },
+          {
+            text: "$ echo 'export OPENAI_API_KEY=sk-...' >> ~/.bashrc",
+            type: "command",
+            delay: 800,
+          },
           { text: "$ source ~/.bashrc", type: "command", delay: 1200 },
           { text: "Validating API key with test request...", type: "info", delay: 1600 },
           { text: '$ curl -s api.openai.com/v1/models -H "Auth..."', type: "command", delay: 2000 },
@@ -671,7 +652,11 @@ const SCENARIOS: Scenario[] = [
         lines: [
           { text: '$ codex "Configure my API keys"', type: "command", delay: 0 },
           { text: "$ export OPENAI_API_KEY=sk-...", type: "command", delay: 250 },
-          { text: "$ python -c 'import openai; print(openai.Model.list())'", type: "command", delay: 600 },
+          {
+            text: "$ python -c 'import openai; print(openai.Model.list())'",
+            type: "command",
+            delay: 600,
+          },
           { text: '{"data": [{"id": "gpt-4o"...}]}', type: "output", delay: 1000 },
           { text: "API key is working. Done!", type: "success", delay: 1300 },
         ],
@@ -963,8 +948,7 @@ function InteractiveAgentComparison() {
         id: particleIdRef.current,
         x: AGENT_X_POSITION[agentKey],
         y: 50,
-        angle:
-          (Math.PI * 2 * i) / count + particleUnit(agentKey, i, 1) * 0.5,
+        angle: (Math.PI * 2 * i) / count + particleUnit(agentKey, i, 1) * 0.5,
         speed: 2 + particleUnit(agentKey, i, 2) * 3,
         life: 1,
         color,
@@ -973,9 +957,7 @@ function InteractiveAgentComparison() {
     setParticles((prev) => [...prev, ...newParticles]);
     // Decay particles
     const decayTimer = setTimeout(() => {
-      setParticles((prev) =>
-        prev.filter((p) => !newParticles.some((np) => np.id === p.id))
-      );
+      setParticles((prev) => prev.filter((p) => !newParticles.some((np) => np.id === p.id)));
     }, 1200);
     timersRef.current.push(decayTimer);
   }, []);
@@ -1014,15 +996,13 @@ function InteractiveAgentComparison() {
       }
 
       // Auto-stop playing after longest agent finishes
-      const maxDelay = Math.max(
-        ...agentKeys.map((k) => sc.agents[k].finishDelay)
-      );
+      const maxDelay = Math.max(...agentKeys.map((k) => sc.agents[k].finishDelay));
       const stopTimer = setTimeout(() => {
         setIsPlaying(false);
       }, maxDelay + 800);
       timersRef.current.push(stopTimer);
     },
-    [clearTimers, spawnParticles]
+    [clearTimers, spawnParticles],
   );
 
   const handlePlay = useCallback(() => {
@@ -1061,9 +1041,7 @@ function InteractiveAgentComparison() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20">
             <Terminal className="h-4 w-4 text-primary" />
           </div>
-          <h3 className="text-lg font-bold text-white">
-            Agent Authentication Race
-          </h3>
+          <h3 className="text-lg font-bold text-white">Agent Authentication Race</h3>
         </div>
         <p className="text-sm text-white/50">
           Watch how each agent handles real authentication scenarios
@@ -1107,9 +1085,7 @@ function InteractiveAgentComparison() {
                 exit={{ opacity: 0, x: 10 }}
                 transition={springs.snappy}
               >
-                <h4 className="text-sm font-semibold text-white">
-                  {scenario.title}
-                </h4>
+                <h4 className="text-sm font-semibold text-white">{scenario.title}</h4>
                 <p className="text-xs text-white/40">{scenario.description}</p>
               </motion.div>
             </AnimatePresence>
@@ -1137,11 +1113,7 @@ function InteractiveAgentComparison() {
                   : "border-primary/30 bg-primary/20 text-primary"
               }`}
             >
-              {isPlaying ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4 ml-0.5" />
-              )}
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
             </motion.button>
             <motion.button
               onClick={handleNext}
@@ -1158,11 +1130,7 @@ function InteractiveAgentComparison() {
 
       {/* SVG connection visualization */}
       <div className="relative px-6 pb-2">
-        <svg
-          viewBox="0 0 600 80"
-          className="w-full h-auto"
-          preserveAspectRatio="xMidYMid meet"
-        >
+        <svg viewBox="0 0 600 80" className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
           {/* Central auth server */}
           <rect
             x="262"
@@ -1173,20 +1141,10 @@ function InteractiveAgentComparison() {
             className="fill-white/[0.04] stroke-white/[0.12]"
             strokeWidth="1"
           />
-          <text
-            x="300"
-            y="22"
-            textAnchor="middle"
-            className="fill-white/60 text-[8px] font-bold"
-          >
+          <text x="300" y="22" textAnchor="middle" className="fill-white/60 text-[8px] font-bold">
             AUTH
           </text>
-          <text
-            x="300"
-            y="33"
-            textAnchor="middle"
-            className="fill-white/40 text-[7px]"
-          >
+          <text x="300" y="33" textAnchor="middle" className="fill-white/40 text-[7px]">
             SERVER
           </text>
 
@@ -1194,10 +1152,8 @@ function InteractiveAgentComparison() {
           {AGENT_KEYS.map((agentKey) => {
             const startX = AGENT_START_X[agentKey];
             const isDone = agentDone[agentKey];
-            const isSuccess =
-              isDone && scenario.agents[agentKey].result === "success";
-            const isFail =
-              isDone && scenario.agents[agentKey].result === "fail";
+            const isSuccess = isDone && scenario.agents[agentKey].result === "success";
+            const isFail = isDone && scenario.agents[agentKey].result === "fail";
             let color = "rgba(255,255,255,0.08)";
             if (isSuccess) {
               color = AGENT_COLORS[agentKey].hex;
@@ -1249,12 +1205,7 @@ function InteractiveAgentComparison() {
                     fill={isSuccess ? "#22c55e" : "#ef4444"}
                     opacity="0.8"
                   >
-                    <animate
-                      attributeName="r"
-                      values="5;7;5"
-                      dur="1.5s"
-                      repeatCount="indefinite"
-                    />
+                    <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite" />
                   </circle>
                 )}
 
@@ -1301,20 +1252,8 @@ function InteractiveAgentComparison() {
                 dur="1s"
                 fill="freeze"
               />
-              <animate
-                attributeName="opacity"
-                from="0.8"
-                to="0"
-                dur="1s"
-                fill="freeze"
-              />
-              <animate
-                attributeName="r"
-                from="3"
-                to="0"
-                dur="1s"
-                fill="freeze"
-              />
+              <animate attributeName="opacity" from="0.8" to="0" dur="1s" fill="freeze" />
+              <animate attributeName="r" from="3" to="0" dur="1s" fill="freeze" />
             </circle>
           ))}
         </svg>
@@ -1346,9 +1285,7 @@ function InteractiveAgentComparison() {
             whileHover={{ scale: 1.3 }}
             transition={springs.snappy}
             className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
-              i === scenarioIndex
-                ? "w-6 bg-primary"
-                : "w-2 bg-white/20 hover:bg-white/40"
+              i === scenarioIndex ? "w-6 bg-primary" : "w-2 bg-white/20 hover:bg-white/40"
             }`}
           />
         ))}
@@ -1393,9 +1330,7 @@ function AgentTerminalPanel({
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
           <div className={`h-2.5 w-2.5 rounded-full ${colors.bg}`} />
-          <span className={`text-xs font-semibold ${colors.text}`}>
-            {agentLabel}
-          </span>
+          <span className={`text-xs font-semibold ${colors.text}`}>{agentLabel}</span>
         </div>
         <div className="flex items-center gap-1.5">
           {isDone ? (
@@ -1407,9 +1342,7 @@ function AgentTerminalPanel({
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30"
               >
                 <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                <span className="text-[10px] font-medium text-emerald-400">
-                  PASS
-                </span>
+                <span className="text-[10px] font-medium text-emerald-400">PASS</span>
               </motion.div>
             ) : (
               <motion.div
@@ -1419,9 +1352,7 @@ function AgentTerminalPanel({
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/30"
               >
                 <XCircle className="h-3 w-3 text-red-400" />
-                <span className="text-[10px] font-medium text-red-400">
-                  FAIL
-                </span>
+                <span className="text-[10px] font-medium text-red-400">FAIL</span>
               </motion.div>
             )
           ) : isPlaying ? (
@@ -1540,23 +1471,20 @@ function OpenAIAccountWarning() {
       <div className="relative">
         <div className="flex items-center gap-3 mb-4">
           <AlertTriangle className="h-5 w-5 text-amber-400" />
-          <span className="font-bold text-amber-400">
-            OpenAI Has TWO Account Types
-          </span>
+          <span className="font-bold text-amber-400">OpenAI Has TWO Account Types</span>
         </div>
 
         {/* Account type comparison */}
         <div className="grid gap-4 md:grid-cols-2 mb-4">
           <div className="p-4 rounded-xl bg-black/20 border border-white/[0.06]">
-            <h5 className="font-bold text-white mb-2">
-              ChatGPT (Pro/Plus/Team)
-            </h5>
+            <h5 className="font-bold text-white mb-2">ChatGPT (Pro/Plus/Team)</h5>
             <ul className="space-y-1 text-xs text-white/60">
               <li>• For Codex CLI, ChatGPT web</li>
-              <li>• Auth via ChatGPT login ({`\`codex login --device-auth\``} is recommended on a VPS)</li>
               <li>
-                • Get at{" "}
-                <span className="text-primary">chat.openai.com</span>
+                • Auth via ChatGPT login ({`\`codex login --device-auth\``} is recommended on a VPS)
+              </li>
+              <li>
+                • Get at <span className="text-primary">chat.openai.com</span>
               </li>
             </ul>
           </div>
@@ -1566,22 +1494,20 @@ function OpenAIAccountWarning() {
               <li>• For OpenAI API, libraries</li>
               <li>• Uses OPENAI_API_KEY env var</li>
               <li>
-                • Get at{" "}
-                <span className="text-primary">platform.openai.com</span>
+                • Get at <span className="text-primary">platform.openai.com</span>
               </li>
             </ul>
           </div>
         </div>
 
         <p className="text-sm text-white/70">
-          Codex CLI uses <strong>ChatGPT OAuth</strong>, not API keys. If you
-          have an <InlineCode>OPENAI_API_KEY</InlineCode>, that&apos;s for the
-          API—different system!
+          Codex CLI uses <strong>ChatGPT OAuth</strong>, not API keys. If you have an{" "}
+          <InlineCode>OPENAI_API_KEY</InlineCode>, that&apos;s for the API—different system!
         </p>
 
         <p className="mt-3 text-sm text-amber-400/80">
-          <strong>If login fails:</strong> Check ChatGPT Settings → Security →
-          &quot;API/Device access&quot;
+          <strong>If login fails:</strong> Check ChatGPT Settings → Security → &quot;API/Device
+          access&quot;
         </p>
       </div>
     </motion.div>

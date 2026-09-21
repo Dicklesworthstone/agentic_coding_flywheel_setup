@@ -8,7 +8,7 @@ import {
   getManifestTldr,
   manifestCommands,
   manifestTldrTools,
-} from './manifest-adapter';
+} from "./manifest-adapter";
 
 export type TldrToolCategory = "core" | "supporting";
 
@@ -133,7 +133,8 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       },
       {
         toolId: "ntm",
-        description: "NTM uses --robot-plan for dependency analysis during multi-agent orchestration",
+        description:
+          "NTM uses --robot-plan for dependency analysis during multi-agent orchestration",
       },
     ],
     techStack: ["Go", "Bubble Tea", "Lip Gloss", "Graph algorithms"],
@@ -458,8 +459,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "cass",
-        description:
-          "Primary dependency - provides episodic memory via session search",
+        description: "Primary dependency - provides episodic memory via session search",
       },
       {
         toolId: "mail",
@@ -821,7 +821,8 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "mail",
-        description: "Research sessions coordinate via Agent Mail threads with acknowledgment tracking",
+        description:
+          "Research sessions coordinate via Agent Mail threads with acknowledgment tracking",
       },
       {
         toolId: "ntm",
@@ -1112,7 +1113,8 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "ms",
-        description: "JFP downloads remote prompts, MS manages local skills - they complement each other",
+        description:
+          "JFP downloads remote prompts, MS manages local skills - they complement each other",
       },
       {
         toolId: "apr",
@@ -1345,11 +1347,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "JavaScript rendering support",
       "Clean output formatting",
     ],
-    useCases: [
-      "Feeding web content to AI agents",
-      "Research automation",
-      "Documentation scraping",
-    ],
+    useCases: ["Feeding web content to AI agents", "Research automation", "Documentation scraping"],
   },
   {
     id: "aadc",
@@ -1445,27 +1443,23 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
 // hrefs, stars, techStack, keyFeatures, useCases). Rich UI data (whatItDoes,
 // whyItsUseful, implementationHighlights, synergies, category, color, icon)
 // stays hand-maintained.
-const _mergedHandMaintainedTools: TldrFlywheelTool[] = _tldrFlywheelTools.map(
-  (tool) => {
-    const gen = getManifestTldr(tool.id);
-    const cmd = getManifestCommand(tool.id);
-    const cli = cmd
-      ? { cliName: cmd.cliName, commandExample: cmd.commandExample }
-      : {};
-    if (!gen) return { ...tool, ...cli };
-    return {
-      ...tool,
-      ...cli,
-      name: gen.displayName,
-      shortName: gen.shortName,
-      href: gen.href ?? tool.href,
-      stars: gen.stars ?? tool.stars,
-      techStack: gen.techStack.length > 0 ? gen.techStack : tool.techStack,
-      keyFeatures: gen.features.length > 0 ? gen.features : tool.keyFeatures,
-      useCases: gen.useCases.length > 0 ? gen.useCases : tool.useCases,
-    };
-  },
-);
+const _mergedHandMaintainedTools: TldrFlywheelTool[] = _tldrFlywheelTools.map((tool) => {
+  const gen = getManifestTldr(tool.id);
+  const cmd = getManifestCommand(tool.id);
+  const cli = cmd ? { cliName: cmd.cliName, commandExample: cmd.commandExample } : {};
+  if (!gen) return { ...tool, ...cli };
+  return {
+    ...tool,
+    ...cli,
+    name: gen.displayName,
+    shortName: gen.shortName,
+    href: gen.href ?? tool.href,
+    stars: gen.stars ?? tool.stars,
+    techStack: gen.techStack.length > 0 ? gen.techStack : tool.techStack,
+    keyFeatures: gen.features.length > 0 ? gen.features : tool.keyFeatures,
+    useCases: gen.useCases.length > 0 ? gen.useCases : tool.useCases,
+  };
+});
 
 // The manifest uses kebab-case lucide names ("file-text"); the TL;DR card's
 // icon map is keyed by PascalCase component names ("FileText").

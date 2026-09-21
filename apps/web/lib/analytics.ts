@@ -4,35 +4,33 @@
  * Build timestamp: 2025-12-25T17:40:00Z
  */
 
+import { containsIPAddress, looksLikeOpaqueCredential } from "./inputValidation";
 import {
-  queryContainsSensitiveState,
   isPrivateWizardPath,
+  queryContainsSensitiveState,
   safeGetItem,
-  safeSetItem,
   safeGetJSON,
+  safeSetItem,
   safeSetJSON,
   stripSensitiveQueryState,
   urlContainsSensitiveState,
-} from './utils';
-import {
-  containsIPAddress,
-  looksLikeOpaqueCredential,
-} from './inputValidation';
+} from "./utils";
+
 const TOTAL_STEPS = 13;
 
 // Types for GA4 events
 declare global {
   interface Window {
     gtag?: (
-      command: 'js' | 'config' | 'event' | 'set' | 'consent',
+      command: "js" | "config" | "event" | "set" | "consent",
       targetId: string | Date,
-      config?: Record<string, unknown>
+      config?: Record<string, unknown>,
     ) => void;
   }
 }
 
 function sanitizeGaMeasurementId(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
+  if (typeof value !== "string") return undefined;
 
   let cleaned = value.trim();
   if (!cleaned) return undefined;
@@ -47,7 +45,7 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
 
   // Remove common trailing garbage (escaped newlines, whitespace sequences)
   // that can appear from misconfigured env vars or Vercel CLI pulls.
-  cleaned = cleaned.replace(/\\n$/, '').replace(/\s+$/, '');
+  cleaned = cleaned.replace(/\\n$/, "").replace(/\s+$/, "");
 
   // Extract valid GA4 measurement ID (G-XXXXXXXXXX).
   // Use extraction rather than strict matching to handle any remaining edge cases.
@@ -70,7 +68,7 @@ type AnalyticsPrivacyWindow = {
 
 /** Permanently disable analytics for the lifetime of the current document. */
 export function disableAnalyticsForDocument(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   // TS rejects a direct Window -> AnalyticsPrivacyWindow assertion because of
   // the template-literal index signature; route through unknown as it suggests.
   const analyticsWindow = window as unknown as AnalyticsPrivacyWindow;
@@ -92,20 +90,22 @@ export function analyticsContextContainsSensitiveState(
 
 // Check if analytics is available
 export const isAnalyticsPrivacyAllowed = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  const privacyNavigator = typeof navigator === 'undefined'
-    ? undefined
-    : navigator as Navigator & { globalPrivacyControl?: boolean };
+  if (typeof window === "undefined") return false;
+  const privacyNavigator =
+    typeof navigator === "undefined"
+      ? undefined
+      : (navigator as Navigator & { globalPrivacyControl?: boolean });
   if (
-    privacyNavigator?.globalPrivacyControl === true
-    || privacyNavigator?.doNotTrack === '1'
-    || (window as Window & { doNotTrack?: string }).doNotTrack === '1'
-  ) return false;
+    privacyNavigator?.globalPrivacyControl === true ||
+    privacyNavigator?.doNotTrack === "1" ||
+    (window as Window & { doNotTrack?: string }).doNotTrack === "1"
+  )
+    return false;
   if ((window as unknown as AnalyticsPrivacyWindow).__acfsAnalyticsDocumentTainted) return false;
-  if (isPrivateWizardPath(window.location?.pathname ?? '')) return false;
-  const referrer = typeof document === 'undefined' ? '' : document.referrer;
+  if (isPrivateWizardPath(window.location?.pathname ?? "")) return false;
+  const referrer = typeof document === "undefined" ? "" : document.referrer;
   return !analyticsContextContainsSensitiveState(
-    window.location?.search ?? '',
+    window.location?.search ?? "",
     referrer,
     window.location?.href,
   );
@@ -119,46 +119,46 @@ export function sanitizeAnalyticsReferrer(value: string): {
   referrer: string;
   domain: string;
 } {
-  if (!value) return { referrer: '', domain: '' };
+  if (!value) return { referrer: "", domain: "" };
   try {
     const parsed = new URL(value);
     if (urlContainsSensitiveState(parsed)) {
-      return { referrer: '', domain: '' };
+      return { referrer: "", domain: "" };
     }
     return { referrer: parsed.origin, domain: parsed.hostname };
   } catch {
-    return { referrer: '', domain: '' };
+    return { referrer: "", domain: "" };
   }
 }
 
 const SENSITIVE_ANALYTICS_KEYS = new Set([
-  'accesstoken',
-  'apikey',
-  'credential',
-  'host',
-  'hostname',
-  'ip',
-  'password',
-  'privatekey',
-  'refreshtoken',
-  'secret',
-  'token',
-  'vpsip',
+  "accesstoken",
+  "apikey",
+  "credential",
+  "host",
+  "hostname",
+  "ip",
+  "password",
+  "privatekey",
+  "refreshtoken",
+  "secret",
+  "token",
+  "vpsip",
 ]);
 
 function normalizedAnalyticsKey(key: string): string {
-  return key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return key.replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
 function isSafeGeneratedAnalyticsIdentifier(key: string, value: string): boolean {
   const normalizedKey = normalizedAnalyticsKey(key);
-  if (normalizedKey === 'userid') {
+  if (normalizedKey === "userid") {
     return /^user_\d{10,16}_[a-z0-9]{6,16}$/.test(value);
   }
-  if (normalizedKey === 'funnelid' || normalizedKey === 'sessionid') {
+  if (normalizedKey === "funnelid" || normalizedKey === "sessionid") {
     return /^(?:lesson_)?funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(value);
   }
-  if (normalizedKey === 'metricid') {
+  if (normalizedKey === "metricid") {
     return /^v\d+-[A-Za-z0-9-]{8,100}$/.test(value);
   }
   return false;
@@ -172,9 +172,8 @@ function analyticsStringIsPrivacySafe(key: string, value: string): boolean {
   if (isSafeGeneratedAnalyticsIdentifier(key, value)) return true;
   if (looksLikeOpaqueCredential(value)) return false;
   if (/^(?:https?:\/\/|[/?#])/.test(value)) {
-    const base = typeof window === 'undefined'
-      ? 'https://analytics.invalid/'
-      : window.location.href;
+    const base =
+      typeof window === "undefined" ? "https://analytics.invalid/" : window.location.href;
     if (urlContainsSensitiveState(value, base)) return false;
   }
   return true;
@@ -186,17 +185,16 @@ export function analyticsPayloadIsPrivacySafe(value: unknown): boolean {
 
   const visit = (candidate: unknown, key: string, depth: number): boolean => {
     if (depth > 5) return false;
-    if (candidate === null || typeof candidate === 'undefined') return true;
-    if (typeof candidate === 'string') return analyticsStringIsPrivacySafe(key, candidate);
-    if (typeof candidate === 'number') return Number.isFinite(candidate);
-    if (typeof candidate === 'boolean') return true;
-    if (typeof candidate !== 'object') return false;
+    if (candidate === null || typeof candidate === "undefined") return true;
+    if (typeof candidate === "string") return analyticsStringIsPrivacySafe(key, candidate);
+    if (typeof candidate === "number") return Number.isFinite(candidate);
+    if (typeof candidate === "boolean") return true;
+    if (typeof candidate !== "object") return false;
     if (seen.has(candidate)) return false;
     seen.add(candidate);
 
     if (Array.isArray(candidate)) {
-      return candidate.length <= 100
-        && candidate.every((entry) => visit(entry, key, depth + 1));
+      return candidate.length <= 100 && candidate.every((entry) => visit(entry, key, depth + 1));
     }
     const prototype = Object.getPrototypeOf(candidate);
     if (prototype !== Object.prototype && prototype !== null) return false;
@@ -210,13 +208,13 @@ export function analyticsPayloadIsPrivacySafe(value: unknown): boolean {
   };
 
   try {
-    return visit(value, '', 0);
+    return visit(value, "", 0);
   } catch {
     return false;
   }
 }
 
-const GA_CLIENT_ID_STORAGE_KEY = 'ga_client_id';
+const GA_CLIENT_ID_STORAGE_KEY = "ga_client_id";
 const MAX_GA_CLIENT_ID_LENGTH = 100;
 
 function isNumericGaClientId(value: string): boolean {
@@ -237,12 +235,12 @@ function randomDigits10(): string {
   const digits = 10;
 
   try {
-    if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+    if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
       const values = new Uint32Array(2);
       crypto.getRandomValues(values);
       // Combine into a 53-bit safe integer (avoid BigInt; TS target < ES2020).
       const combined = (values[0] & 0x001fffff) * 0x100000000 + values[1];
-      return (combined % 10_000_000_000).toString().padStart(digits, '0');
+      return (combined % 10_000_000_000).toString().padStart(digits, "0");
     }
   } catch {
     // Fall back to Math.random for older/locked-down environments.
@@ -250,7 +248,7 @@ function randomDigits10(): string {
 
   return Math.floor(Math.random() * 10 ** digits)
     .toString()
-    .padStart(digits, '0');
+    .padStart(digits, "0");
 }
 
 function generateNumericClientId(): string {
@@ -270,7 +268,7 @@ function normalizeClientId(raw: string): string {
     if (Number.isSafeInteger(legacyTimestamp) && legacyTimestamp > 0) {
       const timestampSeconds =
         legacyMatch[1].length > 10 ? Math.floor(legacyTimestamp / 1000) : legacyTimestamp;
-      const randomPart = (fnv1a32(legacySuffix) % 10 ** 10).toString().padStart(10, '0');
+      const randomPart = (fnv1a32(legacySuffix) % 10 ** 10).toString().padStart(10, "0");
       const migrated = `${randomPart}.${timestampSeconds}`;
       if (isNumericGaClientId(migrated)) return migrated;
     }
@@ -281,7 +279,7 @@ function normalizeClientId(raw: string): string {
 
 // Get or create a persistent client ID for server-side tracking
 const getClientId = (): string => {
-  if (typeof window === 'undefined') return '';
+  if (typeof window === "undefined") return "";
   const existing = safeGetItem(GA_CLIENT_ID_STORAGE_KEY);
   const normalized = existing ? normalizeClientId(existing) : generateNumericClientId();
   if (!existing || normalized !== existing) {
@@ -295,12 +293,12 @@ const getClientId = (): string => {
  * Bypasses ad blockers for reliable tracking
  */
 export const SERVER_ANALYTICS_EVENT_NAMES = [
-  'conversion',
-  'lesson_complete',
-  'lesson_funnel_complete',
+  "conversion",
+  "lesson_complete",
+  "lesson_funnel_complete",
 ] as const;
 
-export type ServerAnalyticsEventName = typeof SERVER_ANALYTICS_EVENT_NAMES[number];
+export type ServerAnalyticsEventName = (typeof SERVER_ANALYTICS_EVENT_NAMES)[number];
 
 export const SERVER_CONVERSION_VALUES = {
   wizard_start: 0,
@@ -331,7 +329,7 @@ export type ServerAnalyticsEventParams = {
 
 export const sendServerEvent = async <TName extends ServerAnalyticsEventName>(
   eventName: TName,
-  params: ServerAnalyticsEventParams[TName]
+  params: ServerAnalyticsEventParams[TName],
 ): Promise<void> => {
   if (!isAnalyticsPrivacyAllowed()) return;
   if (!GA_MEASUREMENT_ID) return;
@@ -339,9 +337,9 @@ export const sendServerEvent = async <TName extends ServerAnalyticsEventName>(
   if (!analyticsPayloadIsPrivacySafe(params ?? {})) return;
 
   try {
-    await fetch('/api/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    await fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_id: getClientId(),
         events: [{ name: eventName, params }],
@@ -359,15 +357,12 @@ export const sendServerEvent = async <TName extends ServerAnalyticsEventName>(
 /**
  * Send a custom event to GA4
  */
-export const sendEvent = (
-  eventName: string,
-  parameters: Record<string, unknown> = {}
-): void => {
+export const sendEvent = (eventName: string, parameters: Record<string, unknown> = {}): void => {
   if (!isAnalyticsEnabled()) return;
   if (!/^[a-z][a-z0-9_]{0,39}$/.test(eventName)) return;
   if (!analyticsPayloadIsPrivacySafe(parameters)) return;
 
-  window.gtag?.('event', eventName, {
+  window.gtag?.("event", eventName, {
     ...parameters,
     timestamp: new Date().toISOString(),
   });
@@ -382,7 +377,7 @@ export const setUserProperties = (properties: Record<string, string | number | b
   if (!analyticsPayloadIsPrivacySafe(properties)) return;
 
   if (window.gtag) {
-    window.gtag('set', 'user_properties', properties);
+    window.gtag("set", "user_properties", properties);
   }
 };
 
@@ -391,20 +386,20 @@ export const setUserProperties = (properties: Record<string, string | number | b
 // ============================================================
 
 export type WizardStep =
-  | 'os_selection'
-  | 'rent_vps'
-  | 'create_vps'
-  | 'install_terminal'
-  | 'generate_ssh_key'
-  | 'ssh_connect'
-  | 'accounts'
-  | 'preflight_check'
-  | 'verify_key_connection'
-  | 'reconnect_ubuntu'
-  | 'run_installer'
-  | 'status_check'
-  | 'launch_onboarding'
-  | 'windows_terminal_setup';
+  | "os_selection"
+  | "rent_vps"
+  | "create_vps"
+  | "install_terminal"
+  | "generate_ssh_key"
+  | "ssh_connect"
+  | "accounts"
+  | "preflight_check"
+  | "verify_key_connection"
+  | "reconnect_ubuntu"
+  | "run_installer"
+  | "status_check"
+  | "launch_onboarding"
+  | "windows_terminal_setup";
 
 /**
  * Track wizard step views
@@ -412,9 +407,9 @@ export type WizardStep =
 export const trackWizardStep = (
   step: WizardStep,
   stepNumber: number,
-  additionalParams?: Record<string, unknown>
+  additionalParams?: Record<string, unknown>,
 ): void => {
-  sendEvent('wizard_step_view', {
+  sendEvent("wizard_step_view", {
     step_name: step,
     step_number: stepNumber,
     ...additionalParams,
@@ -427,9 +422,9 @@ export const trackWizardStep = (
 export const trackWizardStepComplete = (
   step: WizardStep,
   stepNumber: number,
-  timeSpentSeconds?: number
+  timeSpentSeconds?: number,
 ): void => {
-  sendEvent('wizard_step_complete', {
+  sendEvent("wizard_step_complete", {
     step_name: step,
     step_number: stepNumber,
     time_spent_seconds: timeSpentSeconds,
@@ -442,9 +437,9 @@ export const trackWizardStepComplete = (
 export const trackWizardAbandonment = (
   lastStep: WizardStep,
   lastStepNumber: number,
-  reason?: string
+  reason?: string,
 ): void => {
-  sendEvent('wizard_abandoned', {
+  sendEvent("wizard_abandoned", {
     last_step: lastStep,
     last_step_number: lastStepNumber,
     abandonment_reason: reason,
@@ -454,11 +449,8 @@ export const trackWizardAbandonment = (
 /**
  * Track wizard completion
  */
-export const trackWizardComplete = (
-  totalTimeSeconds: number,
-  stepsCompleted: number
-): void => {
-  sendEvent('wizard_complete', {
+export const trackWizardComplete = (totalTimeSeconds: number, stepsCompleted: number): void => {
+  sendEvent("wizard_complete", {
     total_time_seconds: totalTimeSeconds,
     steps_completed: stepsCompleted,
   });
@@ -471,11 +463,8 @@ export const trackWizardComplete = (
 /**
  * Track scroll depth milestones
  */
-export const trackScrollDepth = (
-  depth: 25 | 50 | 75 | 90 | 100,
-  pagePath: string
-): void => {
-  sendEvent('scroll_depth', {
+export const trackScrollDepth = (depth: 25 | 50 | 75 | 90 | 100, pagePath: string): void => {
+  sendEvent("scroll_depth", {
     depth_percentage: depth,
     page_path: pagePath,
   });
@@ -484,11 +473,8 @@ export const trackScrollDepth = (
 /**
  * Track time on page milestones
  */
-export const trackTimeOnPage = (
-  seconds: number,
-  pagePath: string
-): void => {
-  sendEvent('time_on_page', {
+export const trackTimeOnPage = (seconds: number, pagePath: string): void => {
+  sendEvent("time_on_page", {
     seconds_elapsed: seconds,
     page_path: pagePath,
   });
@@ -498,12 +484,12 @@ export const trackTimeOnPage = (
  * Track user interactions
  */
 export const trackInteraction = (
-  interactionType: 'click' | 'hover' | 'focus' | 'copy' | 'paste',
+  interactionType: "click" | "hover" | "focus" | "copy" | "paste",
   elementId: string,
   elementType: string,
-  additionalParams?: Record<string, unknown>
+  additionalParams?: Record<string, unknown>,
 ): void => {
-  sendEvent('user_interaction', {
+  sendEvent("user_interaction", {
     interaction_type: interactionType,
     element_id: elementId,
     element_type: elementType,
@@ -519,7 +505,7 @@ export const trackInteraction = (
  * Track OS selection
  */
 export const trackOSSelection = (os: string): void => {
-  sendEvent('os_selected', {
+  sendEvent("os_selected", {
     os_name: os,
   });
   setUserProperties({ selected_os: os });
@@ -529,7 +515,7 @@ export const trackOSSelection = (os: string): void => {
  * Track VPS provider selection
  */
 export const trackVPSProviderSelection = (provider: string): void => {
-  sendEvent('vps_provider_selected', {
+  sendEvent("vps_provider_selected", {
     provider_name: provider,
   });
   setUserProperties({ vps_provider: provider });
@@ -539,7 +525,7 @@ export const trackVPSProviderSelection = (provider: string): void => {
  * Track terminal selection
  */
 export const trackTerminalSelection = (terminal: string): void => {
-  sendEvent('terminal_selected', {
+  sendEvent("terminal_selected", {
     terminal_name: terminal,
   });
   setUserProperties({ terminal_app: terminal });
@@ -548,11 +534,8 @@ export const trackTerminalSelection = (terminal: string): void => {
 /**
  * Track SSH key generation
  */
-export const trackSSHKeyGeneration = (
-  keyType: 'ed25519' | 'rsa',
-  success: boolean
-): void => {
-  sendEvent('ssh_key_generated', {
+export const trackSSHKeyGeneration = (keyType: "ed25519" | "rsa", success: boolean): void => {
+  sendEvent("ssh_key_generated", {
     key_type: keyType,
     success,
   });
@@ -561,11 +544,8 @@ export const trackSSHKeyGeneration = (
 /**
  * Track SSH connection attempt
  */
-export const trackSSHConnection = (
-  success: boolean,
-  errorType?: string
-): void => {
-  sendEvent('ssh_connection_attempt', {
+export const trackSSHConnection = (success: boolean, errorType?: string): void => {
+  sendEvent("ssh_connection_attempt", {
     success,
     error_type: errorType,
   });
@@ -581,7 +561,7 @@ export function commandCopyAnalyticsProperties(command: string): {
 }
 
 export const trackInstallerCopy = (command: string): void => {
-  sendEvent('installer_command_copied', {
+  sendEvent("installer_command_copied", {
     ...commandCopyAnalyticsProperties(command),
   });
 };
@@ -590,7 +570,7 @@ export const trackInstallerCopy = (command: string): void => {
  * Track installation start
  */
 export const trackInstallationStart = (): void => {
-  sendEvent('installation_started', {
+  sendEvent("installation_started", {
     start_time: new Date().toISOString(),
   });
 };
@@ -598,11 +578,8 @@ export const trackInstallationStart = (): void => {
 /**
  * Track installation completion
  */
-export const trackInstallationComplete = (
-  durationMinutes: number,
-  success: boolean
-): void => {
-  sendEvent('installation_complete', {
+export const trackInstallationComplete = (durationMinutes: number, success: boolean): void => {
+  sendEvent("installation_complete", {
     duration_minutes: durationMinutes,
     success,
   });
@@ -619,9 +596,9 @@ export const trackError = (
   errorType: string,
   errorMessage: string,
   errorStack?: string,
-  context?: Record<string, unknown>
+  context?: Record<string, unknown>,
 ): void => {
-  sendEvent('error_occurred', {
+  sendEvent("error_occurred", {
     error_type: errorType,
     error_message: errorMessage,
     error_stack: errorStack?.slice(0, 500),
@@ -632,12 +609,8 @@ export const trackError = (
 /**
  * Track API errors
  */
-export const trackAPIError = (
-  endpoint: string,
-  statusCode: number,
-  errorMessage: string
-): void => {
-  sendEvent('api_error', {
+export const trackAPIError = (endpoint: string, statusCode: number, errorMessage: string): void => {
+  sendEvent("api_error", {
     endpoint,
     status_code: statusCode,
     error_message: errorMessage,
@@ -652,9 +625,9 @@ export const trackAPIError = (
  * Track page load performance
  */
 export const trackPagePerformance = (): void => {
-  if (typeof window === 'undefined' || !window.performance) return;
+  if (typeof window === "undefined" || !window.performance) return;
 
-  const timing = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+  const timing = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
 
   if (!timing) return;
 
@@ -663,7 +636,7 @@ export const trackPagePerformance = (): void => {
     return Math.round(value);
   };
 
-  sendEvent('page_performance', {
+  sendEvent("page_performance", {
     dns_lookup_ms: safeTimingMetric(timing.domainLookupEnd - timing.domainLookupStart),
     tcp_connect_ms: safeTimingMetric(timing.connectEnd - timing.connectStart),
     ttfb_ms: safeTimingMetric(timing.responseStart - timing.requestStart),
@@ -676,12 +649,8 @@ export const trackPagePerformance = (): void => {
 /**
  * Track Core Web Vitals
  */
-export const trackWebVitals = (metric: {
-  name: string;
-  value: number;
-  id: string;
-}): void => {
-  sendEvent('web_vitals', {
+export const trackWebVitals = (metric: { name: string; value: number; id: string }): void => {
+  sendEvent("web_vitals", {
     metric_name: metric.name,
     metric_value: Math.round(metric.value),
     metric_id: metric.id,
@@ -695,18 +664,15 @@ export const trackWebVitals = (metric: {
 /**
  * Track outbound link clicks
  */
-export const trackOutboundLink = (
-  url: string,
-  linkText: string
-): void => {
-  let linkDomain = 'unknown';
+export const trackOutboundLink = (url: string, linkText: string): void => {
+  let linkDomain = "unknown";
   try {
     linkDomain = new URL(url).hostname;
   } catch {
     // Invalid URL, use fallback
   }
 
-  sendEvent('outbound_link_click', {
+  sendEvent("outbound_link_click", {
     link_url: url,
     link_text: linkText,
     link_domain: linkDomain,
@@ -730,74 +696,81 @@ function getAcquisitionData(): {
   referrer_domain: string;
   landing_page: string;
 } {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return {
-      utm_source: 'direct',
-      utm_medium: 'none',
-      utm_campaign: '',
-      utm_term: '',
-      utm_content: '',
-      referrer: '',
-      referrer_domain: '',
-      landing_page: '',
+      utm_source: "direct",
+      utm_medium: "none",
+      utm_campaign: "",
+      utm_term: "",
+      utm_content: "",
+      referrer: "",
+      referrer_domain: "",
+      landing_page: "",
     };
   }
 
   const params = new URLSearchParams(stripSensitiveQueryState(window.location.search));
-  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
+  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || "");
   const referrer = sanitizedReferrer.referrer;
   const referrerDomain = sanitizedReferrer.domain;
 
   // Determine source from UTM or referrer
-  let source = params.get('utm_source') || '';
-  let medium = params.get('utm_medium') || '';
+  let source = params.get("utm_source") || "";
+  let medium = params.get("utm_medium") || "";
 
   if (!source && referrer) {
     // Infer source from referrer
-    if (referrerDomain.includes('google')) {
-      source = 'google';
-      medium = medium || 'organic';
-    } else if (referrerDomain.includes('bing')) {
-      source = 'bing';
-      medium = medium || 'organic';
-    } else if (referrerDomain.includes('twitter') || referrerDomain.includes('x.com') || referrerDomain.includes('t.co')) {
-      source = 'twitter';
-      medium = medium || 'social';
-    } else if (referrerDomain.includes('linkedin')) {
-      source = 'linkedin';
-      medium = medium || 'social';
-    } else if (referrerDomain.includes('facebook')) {
-      source = 'facebook';
-      medium = medium || 'social';
-    } else if (referrerDomain.includes('reddit')) {
-      source = 'reddit';
-      medium = medium || 'social';
-    } else if (referrerDomain.includes('github')) {
-      source = 'github';
-      medium = medium || 'referral';
-    } else if (referrerDomain.includes('news.ycombinator') || referrerDomain.includes('hn.algolia')) {
-      source = 'hackernews';
-      medium = medium || 'social';
+    if (referrerDomain.includes("google")) {
+      source = "google";
+      medium = medium || "organic";
+    } else if (referrerDomain.includes("bing")) {
+      source = "bing";
+      medium = medium || "organic";
+    } else if (
+      referrerDomain.includes("twitter") ||
+      referrerDomain.includes("x.com") ||
+      referrerDomain.includes("t.co")
+    ) {
+      source = "twitter";
+      medium = medium || "social";
+    } else if (referrerDomain.includes("linkedin")) {
+      source = "linkedin";
+      medium = medium || "social";
+    } else if (referrerDomain.includes("facebook")) {
+      source = "facebook";
+      medium = medium || "social";
+    } else if (referrerDomain.includes("reddit")) {
+      source = "reddit";
+      medium = medium || "social";
+    } else if (referrerDomain.includes("github")) {
+      source = "github";
+      medium = medium || "referral";
+    } else if (
+      referrerDomain.includes("news.ycombinator") ||
+      referrerDomain.includes("hn.algolia")
+    ) {
+      source = "hackernews";
+      medium = medium || "social";
     } else if (referrerDomain) {
       source = referrerDomain;
-      medium = medium || 'referral';
+      medium = medium || "referral";
     }
   }
 
   return {
-    utm_source: source || 'direct',
-    utm_medium: medium || 'none',
-    utm_campaign: params.get('utm_campaign') || '',
-    utm_term: params.get('utm_term') || '',
-    utm_content: params.get('utm_content') || '',
+    utm_source: source || "direct",
+    utm_medium: medium || "none",
+    utm_campaign: params.get("utm_campaign") || "",
+    utm_term: params.get("utm_term") || "",
+    utm_content: params.get("utm_content") || "",
     referrer,
     referrer_domain: referrerDomain,
     landing_page: window.location.pathname,
   };
 }
 
-const FIRST_VISIT_KEY = 'acfs_first_visit';
-const FIRST_SOURCE_KEY = 'acfs_first_source';
+const FIRST_VISIT_KEY = "acfs_first_visit";
+const FIRST_SOURCE_KEY = "acfs_first_source";
 
 interface FirstSourceData {
   source: string;
@@ -808,28 +781,31 @@ interface FirstSourceData {
 }
 
 function isIsoTimestamp(value: unknown): value is string {
-  return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
-    && Number.isFinite(Date.parse(value));
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
 }
 
 function readFirstSource(): FirstSourceData | null {
   const candidate = safeGetJSON<unknown>(FIRST_SOURCE_KEY);
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const record = candidate as Record<string, unknown>;
   if (
-    typeof record.source !== 'string'
-    || typeof record.medium !== 'string'
-    || typeof record.campaign !== 'string'
-    || typeof record.landing_page !== 'string'
-    || (typeof record.referrer !== 'undefined' && typeof record.referrer !== 'string')
-  ) return null;
+    typeof record.source !== "string" ||
+    typeof record.medium !== "string" ||
+    typeof record.campaign !== "string" ||
+    typeof record.landing_page !== "string" ||
+    (typeof record.referrer !== "undefined" && typeof record.referrer !== "string")
+  )
+    return null;
   const normalized: FirstSourceData = {
     source: record.source,
     medium: record.medium,
     campaign: record.campaign,
     landing_page: record.landing_page,
-    ...(typeof record.referrer === 'string' ? { referrer: record.referrer } : {}),
+    ...(typeof record.referrer === "string" ? { referrer: record.referrer } : {}),
   };
   return analyticsPayloadIsPrivacySafe(normalized) ? normalized : null;
 }
@@ -838,15 +814,15 @@ function readFirstSource(): FirstSourceData | null {
  * Detect platform from user agent
  */
 function detectPlatform(): string {
-  if (typeof navigator === 'undefined') return 'unknown';
+  if (typeof navigator === "undefined") return "unknown";
 
   const ua = navigator.userAgent;
-  if (ua.includes('Mac')) return 'macOS';
-  if (ua.includes('Win')) return 'Windows';
-  if (ua.includes('Linux') && !ua.includes('Android')) return 'Linux';
-  if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
-  if (ua.includes('Android')) return 'Android';
-  return 'unknown';
+  if (ua.includes("Mac")) return "macOS";
+  if (ua.includes("Win")) return "Windows";
+  if (ua.includes("Linux") && !ua.includes("Android")) return "Linux";
+  if (ua.includes("iPhone") || ua.includes("iPad")) return "iOS";
+  if (ua.includes("Android")) return "Android";
+  return "unknown";
 }
 
 // Per-page-load guard: a document gets exactly one session_start_enhanced,
@@ -857,14 +833,14 @@ let sessionStartTracked = false;
  * Track session start with device info, UTM parameters, and referrer
  */
 export const trackSessionStart = (): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   if (sessionStartTracked) return;
   sessionStartTracked = true;
 
   const screenWidth = window.screen.width;
   const screenHeight = window.screen.height;
   const devicePixelRatio = window.devicePixelRatio || 1;
-  const isTouchDevice = 'ontouchstart' in window;
+  const isTouchDevice = "ontouchstart" in window;
   const acquisition = getAcquisitionData();
 
   // Check for first visit
@@ -899,7 +875,7 @@ export const trackSessionStart = (): void => {
     });
   }
 
-  sendEvent('session_start_enhanced', {
+  sendEvent("session_start_enhanced", {
     // Device info
     screen_width: screenWidth,
     screen_height: screenHeight,
@@ -921,13 +897,12 @@ export const trackSessionStart = (): void => {
   });
 
   // Check for returning user (use || 0 to handle NaN from corrupted storage)
-  const storedVisitCount = Number.parseInt(safeGetItem('acfs_visit_count') || '0', 10);
-  const visitCount = Number.isSafeInteger(storedVisitCount)
-    && storedVisitCount >= 0
-    && storedVisitCount < 1_000_000
-    ? storedVisitCount + 1
-    : 1;
-  safeSetItem('acfs_visit_count', String(visitCount));
+  const storedVisitCount = Number.parseInt(safeGetItem("acfs_visit_count") || "0", 10);
+  const visitCount =
+    Number.isSafeInteger(storedVisitCount) && storedVisitCount >= 0 && storedVisitCount < 1_000_000
+      ? storedVisitCount + 1
+      : 1;
+  safeSetItem("acfs_visit_count", String(visitCount));
 
   // Set comprehensive user properties
   setUserProperties({
@@ -955,16 +930,16 @@ export const trackSessionStart = (): void => {
  * Get or create a persistent user ID for cross-session tracking
  */
 export const getOrCreateUserId = (): string => {
-  if (typeof window === 'undefined') return '';
+  if (typeof window === "undefined") return "";
 
-  const storageKey = 'acfs_user_id';
+  const storageKey = "acfs_user_id";
   let userId = safeGetItem(storageKey);
 
   if (!userId || !/^user_\d{10,16}_[a-z0-9]{6,16}$/.test(userId)) {
     userId = `user_${Date.now()}_${randomDigits10()}`;
     safeSetItem(storageKey, userId);
 
-    sendEvent('new_user_created', {
+    sendEvent("new_user_created", {
       user_id: userId,
     });
   }
@@ -979,19 +954,17 @@ export const getOrCreateUserId = (): string => {
 /**
  * Track key conversions (dual client + server-side for reliability)
  */
-export const trackConversion = (
-  conversionType: ServerConversionType,
-): void => {
+export const trackConversion = (conversionType: ServerConversionType): void => {
   const params = {
     conversion_type: conversionType,
     conversion_value: SERVER_CONVERSION_VALUES[conversionType],
   };
 
   // Client-side tracking (fast, may be blocked)
-  sendEvent('conversion', params);
+  sendEvent("conversion", params);
 
   // Server-side tracking (reliable, bypasses ad blockers)
-  sendServerEvent('conversion', params);
+  sendServerEvent("conversion", params);
 };
 
 // ============================================================
@@ -1001,11 +974,8 @@ export const trackConversion = (
 /**
  * Track A/B test variant assignment
  */
-export const trackExperimentVariant = (
-  experimentId: string,
-  variantId: string
-): void => {
-  sendEvent('experiment_variant', {
+export const trackExperimentVariant = (experimentId: string, variantId: string): void => {
+  sendEvent("experiment_variant", {
     experiment_id: experimentId,
     variant_id: variantId,
   });
@@ -1019,7 +989,7 @@ export const trackExperimentVariant = (
 // Funnel Tracking
 // ============================================================
 
-const FUNNEL_STORAGE_KEY = 'acfs_funnel_data';
+const FUNNEL_STORAGE_KEY = "acfs_funnel_data";
 
 interface FunnelData {
   sessionId: string;
@@ -1045,84 +1015,89 @@ function getElapsedSecondsSince(timestampIso: string | undefined): number | unde
  * Get or initialize funnel tracking data
  */
 export const getFunnelData = (): FunnelData | null => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   const candidate = safeGetJSON<unknown>(FUNNEL_STORAGE_KEY);
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const record = candidate as Record<string, unknown>;
   const expectedFields = new Set([
-    'sessionId',
-    'startedAt',
-    'currentStep',
-    'maxStepReached',
-    'stepTimestamps',
-    'completedSteps',
-    'source',
-    'medium',
-    'campaign',
+    "sessionId",
+    "startedAt",
+    "currentStep",
+    "maxStepReached",
+    "stepTimestamps",
+    "completedSteps",
+    "source",
+    "medium",
+    "campaign",
   ]);
   if (
-    Object.keys(record).length !== expectedFields.size
-    || !Object.keys(record).every((field) => expectedFields.has(field))
-    || typeof record.sessionId !== 'string'
-    || !/^funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(record.sessionId)
-    || !isIsoTimestamp(record.startedAt)
-    || !Number.isInteger(record.currentStep)
-    || !Number.isInteger(record.maxStepReached)
-    || (record.currentStep as number) < 0
-    || (record.currentStep as number) > TOTAL_STEPS
-    || (record.maxStepReached as number) < 0
-    || (record.maxStepReached as number) > TOTAL_STEPS
-    || (record.currentStep as number) > (record.maxStepReached as number)
-    || !Array.isArray(record.completedSteps)
-    || record.completedSteps.length > TOTAL_STEPS
-    || !record.stepTimestamps
-    || typeof record.stepTimestamps !== 'object'
-    || Array.isArray(record.stepTimestamps)
-    || typeof record.source !== 'string'
-    || typeof record.medium !== 'string'
-    || typeof record.campaign !== 'string'
-  ) return null;
+    Object.keys(record).length !== expectedFields.size ||
+    !Object.keys(record).every((field) => expectedFields.has(field)) ||
+    typeof record.sessionId !== "string" ||
+    !/^funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(record.sessionId) ||
+    !isIsoTimestamp(record.startedAt) ||
+    !Number.isInteger(record.currentStep) ||
+    !Number.isInteger(record.maxStepReached) ||
+    (record.currentStep as number) < 0 ||
+    (record.currentStep as number) > TOTAL_STEPS ||
+    (record.maxStepReached as number) < 0 ||
+    (record.maxStepReached as number) > TOTAL_STEPS ||
+    (record.currentStep as number) > (record.maxStepReached as number) ||
+    !Array.isArray(record.completedSteps) ||
+    record.completedSteps.length > TOTAL_STEPS ||
+    !record.stepTimestamps ||
+    typeof record.stepTimestamps !== "object" ||
+    Array.isArray(record.stepTimestamps) ||
+    typeof record.source !== "string" ||
+    typeof record.medium !== "string" ||
+    typeof record.campaign !== "string"
+  )
+    return null;
 
   const completedSteps = record.completedSteps as unknown[];
   if (
-    !completedSteps.every((step) =>
-      Number.isInteger(step)
-      && (step as number) >= 1
-      && (step as number) <= TOTAL_STEPS
-      && (step as number) <= (record.maxStepReached as number)
-    )
-    || new Set(completedSteps).size !== completedSteps.length
-  ) return null;
+    !completedSteps.every(
+      (step) =>
+        Number.isInteger(step) &&
+        (step as number) >= 1 &&
+        (step as number) <= TOTAL_STEPS &&
+        (step as number) <= (record.maxStepReached as number),
+    ) ||
+    new Set(completedSteps).size !== completedSteps.length
+  )
+    return null;
 
-  const timestampEntries = Object.entries(
-    record.stepTimestamps as Record<string, unknown>
-  );
+  const timestampEntries = Object.entries(record.stepTimestamps as Record<string, unknown>);
   if (timestampEntries.length > TOTAL_STEPS) return null;
-  const stepTimestamps: FunnelData['stepTimestamps'] = {};
+  const stepTimestamps: FunnelData["stepTimestamps"] = {};
   for (const [stepId, timestamps] of timestampEntries) {
     if (!/^\d{1,2}$/.test(stepId)) return null;
     const stepNumber = Number(stepId);
     if (stepNumber < 1 || stepNumber > TOTAL_STEPS) return null;
-    if (!timestamps || typeof timestamps !== 'object' || Array.isArray(timestamps)) return null;
+    if (!timestamps || typeof timestamps !== "object" || Array.isArray(timestamps)) return null;
     const values = timestamps as Record<string, unknown>;
     if (
-      Object.keys(values).some((field) => field !== 'entered' && field !== 'completed')
-      || !isIsoTimestamp(values.entered)
-      || (typeof values.completed !== 'undefined' && !isIsoTimestamp(values.completed))
-    ) return null;
+      Object.keys(values).some((field) => field !== "entered" && field !== "completed") ||
+      !isIsoTimestamp(values.entered) ||
+      (typeof values.completed !== "undefined" && !isIsoTimestamp(values.completed))
+    )
+      return null;
     stepTimestamps[stepNumber] = {
       entered: values.entered,
-      ...(typeof values.completed === 'string' ? { completed: values.completed } : {}),
+      ...(typeof values.completed === "string" ? { completed: values.completed } : {}),
     };
   }
 
   if (completedSteps.some((step) => !stepTimestamps[step as number]?.completed)) return null;
-  if (!analyticsPayloadIsPrivacySafe({
-    funnel_id: record.sessionId,
-    source: record.source,
-    medium: record.medium,
-    campaign: record.campaign,
-  })) return null;
+  if (
+    !analyticsPayloadIsPrivacySafe({
+      funnel_id: record.sessionId,
+      source: record.source,
+      medium: record.medium,
+      campaign: record.campaign,
+    })
+  )
+    return null;
 
   return {
     sessionId: record.sessionId,
@@ -1141,23 +1116,23 @@ export const getFunnelData = (): FunnelData | null => {
  * Initialize a new funnel session
  */
 export const initFunnel = (): FunnelData => {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return {
-      sessionId: '',
+      sessionId: "",
       startedAt: new Date().toISOString(),
       currentStep: 0,
       maxStepReached: 0,
       stepTimestamps: {},
       completedSteps: [],
-      source: '',
-      medium: '',
-      campaign: '',
+      source: "",
+      medium: "",
+      campaign: "",
     };
   }
 
   // Parse UTM parameters
   const params = new URLSearchParams(stripSensitiveQueryState(window.location.search));
-  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
+  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || "");
 
   const funnelData: FunnelData = {
     sessionId: `funnel_${Date.now()}_${randomDigits10()}`,
@@ -1166,15 +1141,15 @@ export const initFunnel = (): FunnelData => {
     maxStepReached: 0,
     stepTimestamps: {},
     completedSteps: [],
-    source: params.get('utm_source') || sanitizedReferrer.referrer || 'direct',
-    medium: params.get('utm_medium') || 'none',
-    campaign: params.get('utm_campaign') || 'none',
+    source: params.get("utm_source") || sanitizedReferrer.referrer || "direct",
+    medium: params.get("utm_medium") || "none",
+    campaign: params.get("utm_campaign") || "none",
   };
 
   safeSetJSON(FUNNEL_STORAGE_KEY, funnelData);
 
   // Track funnel initiation
-  sendEvent('funnel_initiated', {
+  sendEvent("funnel_initiated", {
     funnel_id: funnelData.sessionId,
     source: funnelData.source,
     medium: funnelData.medium,
@@ -1197,9 +1172,9 @@ export const initFunnel = (): FunnelData => {
 export const trackFunnelStepEnter = (
   stepNumber: number,
   stepName: string,
-  stepTitle: string
+  stepTitle: string,
 ): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   if (!Number.isInteger(stepNumber) || stepNumber < 1 || stepNumber > TOTAL_STEPS) return;
 
   let funnelData = getFunnelData();
@@ -1224,13 +1199,11 @@ export const trackFunnelStepEnter = (
   // Calculate time from previous step
   let timeFromPreviousStep: number | undefined;
   if (previousStep > 0) {
-    timeFromPreviousStep = getElapsedSecondsSince(
-      funnelData.stepTimestamps[previousStep]?.entered
-    );
+    timeFromPreviousStep = getElapsedSecondsSince(funnelData.stepTimestamps[previousStep]?.entered);
   }
 
   // Track the funnel step entry
-  sendEvent('funnel_step_enter', {
+  sendEvent("funnel_step_enter", {
     funnel_id: funnelData.sessionId,
     step_number: stepNumber,
     step_name: stepName,
@@ -1246,23 +1219,23 @@ export const trackFunnelStepEnter = (
 
   // Track as conversion milestone for key steps
   if (stepNumber === 1) {
-    sendEvent('funnel_milestone', {
-      milestone: 'wizard_started',
+    sendEvent("funnel_milestone", {
+      milestone: "wizard_started",
       funnel_id: funnelData.sessionId,
     });
   } else if (stepNumber === 4) {
-    sendEvent('funnel_milestone', {
-      milestone: 'vps_selection',
+    sendEvent("funnel_milestone", {
+      milestone: "vps_selection",
       funnel_id: funnelData.sessionId,
     });
   } else if (stepNumber === 9) {
-    sendEvent('funnel_milestone', {
-      milestone: 'installer_step',
+    sendEvent("funnel_milestone", {
+      milestone: "installer_step",
       funnel_id: funnelData.sessionId,
     });
   } else if (stepNumber === TOTAL_STEPS) {
-    sendEvent('funnel_milestone', {
-      milestone: 'final_step',
+    sendEvent("funnel_milestone", {
+      milestone: "final_step",
       funnel_id: funnelData.sessionId,
     });
   }
@@ -1274,9 +1247,9 @@ export const trackFunnelStepEnter = (
 export const trackFunnelStepComplete = (
   stepNumber: number,
   stepName: string,
-  additionalData?: Record<string, unknown>
+  additionalData?: Record<string, unknown>,
 ): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   if (!Number.isInteger(stepNumber) || stepNumber < 1 || stepNumber > TOTAL_STEPS) return;
 
   const funnelData = getFunnelData();
@@ -1301,7 +1274,7 @@ export const trackFunnelStepComplete = (
   safeSetJSON(FUNNEL_STORAGE_KEY, funnelData);
 
   // Track the completion
-  sendEvent('funnel_step_complete', {
+  sendEvent("funnel_step_complete", {
     funnel_id: funnelData.sessionId,
     step_number: stepNumber,
     step_name: stepName,
@@ -1315,9 +1288,9 @@ export const trackFunnelStepComplete = (
 
   // Track step-specific conversions (note: wizard_start is tracked on step 1 entry in useWizardAnalytics)
   if (stepNumber === 5) {
-    trackConversion('vps_created');
+    trackConversion("vps_created");
   } else if (stepNumber === 9) {
-    trackConversion('installer_run');
+    trackConversion("installer_run");
   } else if (stepNumber === TOTAL_STEPS) {
     trackFunnelComplete();
   }
@@ -1327,7 +1300,7 @@ export const trackFunnelStepComplete = (
  * Track funnel completion
  */
 export const trackFunnelComplete = (): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   const funnelData = getFunnelData();
   if (!funnelData) return;
@@ -1335,7 +1308,7 @@ export const trackFunnelComplete = (): void => {
   const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
   const totalTimeMinutes = Math.round(totalTimeSeconds / 60);
 
-  sendEvent('funnel_complete', {
+  sendEvent("funnel_complete", {
     funnel_id: funnelData.sessionId,
     total_time_seconds: totalTimeSeconds,
     total_time_minutes: totalTimeMinutes,
@@ -1346,7 +1319,7 @@ export const trackFunnelComplete = (): void => {
     campaign: funnelData.campaign,
   });
 
-  trackConversion('wizard_complete');
+  trackConversion("wizard_complete");
 
   // Set user property for completed users
   setUserProperties({
@@ -1360,7 +1333,7 @@ export const trackFunnelComplete = (): void => {
  * Track funnel drop-off (called on page exit or navigation away)
  */
 export const trackFunnelDropoff = (reason?: string): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   const funnelData = getFunnelData();
   if (!funnelData || funnelData.completedSteps.includes(TOTAL_STEPS)) return;
@@ -1369,17 +1342,17 @@ export const trackFunnelDropoff = (reason?: string): void => {
 
   // Calculate time on current step
   const timeOnCurrentStep = getElapsedSecondsSince(
-    funnelData.stepTimestamps[funnelData.currentStep]?.entered
+    funnelData.stepTimestamps[funnelData.currentStep]?.entered,
   );
 
-  sendEvent('funnel_dropoff', {
+  sendEvent("funnel_dropoff", {
     funnel_id: funnelData.sessionId,
     dropped_at_step: funnelData.currentStep,
     max_step_reached: funnelData.maxStepReached,
     completed_steps_count: funnelData.completedSteps.length,
     total_time_seconds: totalTimeSeconds,
     time_on_current_step_seconds: timeOnCurrentStep,
-    dropoff_reason: reason || 'unknown',
+    dropoff_reason: reason || "unknown",
     source: funnelData.source,
     medium: funnelData.medium,
   });
@@ -1389,20 +1362,21 @@ export const trackFunnelDropoff = (reason?: string): void => {
  * Track CTA clicks on landing page
  */
 export const trackLandingCTA = (
-  ctaType: 'hero_start' | 'feature_start' | 'footer_start' | 'nav_start',
-  ctaText: string
+  ctaType: "hero_start" | "feature_start" | "footer_start" | "nav_start",
+  ctaText: string,
 ): void => {
-  sendEvent('landing_cta_click', {
+  sendEvent("landing_cta_click", {
     cta_type: ctaType,
     cta_text: ctaText,
-    page_scroll_depth: typeof window !== 'undefined'
-      ? (() => {
-          const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
-          if (scrollableHeight <= 0) return 0;
-          const depth = Math.round((window.scrollY / scrollableHeight) * 100);
-          return Math.max(0, Math.min(100, depth));
-        })()
-      : 0,
+    page_scroll_depth:
+      typeof window !== "undefined"
+        ? (() => {
+            const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
+            if (scrollableHeight <= 0) return 0;
+            const depth = Math.round((window.scrollY / scrollableHeight) * 100);
+            return Math.max(0, Math.min(100, depth));
+          })()
+        : 0,
   });
 
   // Initialize funnel on CTA click
@@ -1413,10 +1387,10 @@ export const trackLandingCTA = (
  * Track landing page engagement
  */
 export const trackLandingEngagement = (
-  engagementType: 'feature_view' | 'step_preview' | 'faq_expand' | 'video_play',
-  details?: Record<string, unknown>
+  engagementType: "feature_view" | "step_preview" | "faq_expand" | "video_play",
+  details?: Record<string, unknown>,
 ): void => {
-  sendEvent('landing_engagement', {
+  sendEvent("landing_engagement", {
     engagement_type: engagementType,
     ...details,
   });
@@ -1426,7 +1400,7 @@ export const trackLandingEngagement = (
 // Learning Hub Funnel Tracking
 // ============================================================
 
-const LESSON_FUNNEL_STORAGE_KEY = 'acfs_lesson_funnel_data';
+const LESSON_FUNNEL_STORAGE_KEY = "acfs_lesson_funnel_data";
 
 interface LessonFunnelData {
   sessionId: string;
@@ -1444,49 +1418,55 @@ interface LessonFunnelData {
  * Get current lesson funnel data from storage
  */
 export const getLessonFunnelData = (): LessonFunnelData | null => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   const candidate = safeGetJSON<unknown>(LESSON_FUNNEL_STORAGE_KEY);
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const record = candidate as Record<string, unknown>;
   if (
-    typeof record.sessionId !== 'string'
-    || !/^(?:lesson_)?funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(record.sessionId)
-    || !isIsoTimestamp(record.startedAt)
-    || !Number.isInteger(record.currentLesson)
-    || !Number.isInteger(record.maxLessonReached)
-    || (record.currentLesson as number) < 0
-    || (record.maxLessonReached as number) < 0
-    || (record.currentLesson as number) > 10_000
-    || (record.maxLessonReached as number) > 10_000
-    || !Array.isArray(record.completedLessons)
-    || record.completedLessons.length > 10_000
-    || !record.completedLessons.every((entry) =>
-      Number.isInteger(entry) && (entry as number) >= 0 && (entry as number) <= 10_000
-    )
-    || typeof record.source !== 'string'
-    || typeof record.medium !== 'string'
-    || typeof record.campaign !== 'string'
-    || !record.lessonTimestamps
-    || typeof record.lessonTimestamps !== 'object'
-    || Array.isArray(record.lessonTimestamps)
-  ) return null;
+    typeof record.sessionId !== "string" ||
+    !/^(?:lesson_)?funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(record.sessionId) ||
+    !isIsoTimestamp(record.startedAt) ||
+    !Number.isInteger(record.currentLesson) ||
+    !Number.isInteger(record.maxLessonReached) ||
+    (record.currentLesson as number) < 0 ||
+    (record.maxLessonReached as number) < 0 ||
+    (record.currentLesson as number) > 10_000 ||
+    (record.maxLessonReached as number) > 10_000 ||
+    !Array.isArray(record.completedLessons) ||
+    record.completedLessons.length > 10_000 ||
+    !record.completedLessons.every(
+      (entry) => Number.isInteger(entry) && (entry as number) >= 0 && (entry as number) <= 10_000,
+    ) ||
+    typeof record.source !== "string" ||
+    typeof record.medium !== "string" ||
+    typeof record.campaign !== "string" ||
+    !record.lessonTimestamps ||
+    typeof record.lessonTimestamps !== "object" ||
+    Array.isArray(record.lessonTimestamps)
+  )
+    return null;
 
   const timestampsAreValid = Object.entries(
-    record.lessonTimestamps as Record<string, unknown>
+    record.lessonTimestamps as Record<string, unknown>,
   ).every(([lessonId, timestamps]) => {
     if (!/^\d{1,5}$/.test(lessonId)) return false;
-    if (!timestamps || typeof timestamps !== 'object' || Array.isArray(timestamps)) return false;
+    if (!timestamps || typeof timestamps !== "object" || Array.isArray(timestamps)) return false;
     const values = timestamps as Record<string, unknown>;
-    return (typeof values.entered === 'undefined' || isIsoTimestamp(values.entered))
-      && (typeof values.completed === 'undefined' || isIsoTimestamp(values.completed));
+    return (
+      (typeof values.entered === "undefined" || isIsoTimestamp(values.entered)) &&
+      (typeof values.completed === "undefined" || isIsoTimestamp(values.completed))
+    );
   });
   if (!timestampsAreValid) return null;
-  if (!analyticsPayloadIsPrivacySafe({
-    funnel_id: record.sessionId,
-    source: record.source,
-    medium: record.medium,
-    campaign: record.campaign,
-  })) return null;
+  if (
+    !analyticsPayloadIsPrivacySafe({
+      funnel_id: record.sessionId,
+      source: record.source,
+      medium: record.medium,
+      campaign: record.campaign,
+    })
+  )
+    return null;
 
   return record as unknown as LessonFunnelData;
 };
@@ -1495,23 +1475,23 @@ export const getLessonFunnelData = (): LessonFunnelData | null => {
  * Initialize a new lesson funnel session
  */
 export const initLessonFunnel = (totalLessons: number): LessonFunnelData => {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return {
-      sessionId: '',
+      sessionId: "",
       startedAt: new Date().toISOString(),
       currentLesson: 0,
       maxLessonReached: 0,
       lessonTimestamps: {},
       completedLessons: [],
-      source: '',
-      medium: '',
-      campaign: '',
+      source: "",
+      medium: "",
+      campaign: "",
     };
   }
 
   // Parse UTM parameters
   const params = new URLSearchParams(stripSensitiveQueryState(window.location.search));
-  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
+  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || "");
 
   const funnelData: LessonFunnelData = {
     sessionId: `lesson_funnel_${Date.now()}_${randomDigits10()}`,
@@ -1520,15 +1500,15 @@ export const initLessonFunnel = (totalLessons: number): LessonFunnelData => {
     maxLessonReached: 0,
     lessonTimestamps: {},
     completedLessons: [],
-    source: params.get('utm_source') || sanitizedReferrer.referrer || 'direct',
-    medium: params.get('utm_medium') || 'none',
-    campaign: params.get('utm_campaign') || 'none',
+    source: params.get("utm_source") || sanitizedReferrer.referrer || "direct",
+    medium: params.get("utm_medium") || "none",
+    campaign: params.get("utm_campaign") || "none",
   };
 
   safeSetJSON(LESSON_FUNNEL_STORAGE_KEY, funnelData);
 
   // Track lesson funnel initiation
-  sendEvent('lesson_funnel_initiated', {
+  sendEvent("lesson_funnel_initiated", {
     funnel_id: funnelData.sessionId,
     source: funnelData.source,
     medium: funnelData.medium,
@@ -1538,7 +1518,7 @@ export const initLessonFunnel = (totalLessons: number): LessonFunnelData => {
   });
 
   // Track as conversion
-  trackConversion('learning_hub_started');
+  trackConversion("learning_hub_started");
 
   setUserProperties({
     lesson_funnel_source: funnelData.source,
@@ -1555,9 +1535,9 @@ export const trackLessonEnter = (
   lessonId: number,
   lessonSlug: string,
   lessonTitle: string,
-  totalLessons: number
+  totalLessons: number,
 ): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   let funnelData = getLessonFunnelData();
   if (!funnelData) {
@@ -1581,11 +1561,13 @@ export const trackLessonEnter = (
   // Calculate time from previous lesson (only if visiting a different lesson)
   let timeFromPreviousLesson: number | undefined;
   if (previousLesson >= 0 && previousLesson !== lessonId) {
-    timeFromPreviousLesson = getElapsedSecondsSince(funnelData.lessonTimestamps[previousLesson]?.entered);
+    timeFromPreviousLesson = getElapsedSecondsSince(
+      funnelData.lessonTimestamps[previousLesson]?.entered,
+    );
   }
 
   // Track the lesson entry
-  sendEvent('lesson_view', {
+  sendEvent("lesson_view", {
     funnel_id: funnelData.sessionId,
     lesson_id: lessonId,
     lesson_slug: lessonSlug,
@@ -1604,18 +1586,18 @@ export const trackLessonEnter = (
 
   // Track milestones
   if (lessonId === 0) {
-    sendEvent('lesson_milestone', {
-      milestone: 'learning_started',
+    sendEvent("lesson_milestone", {
+      milestone: "learning_started",
       funnel_id: funnelData.sessionId,
     });
   } else if (lessonId === Math.floor(totalLessons / 2)) {
-    sendEvent('lesson_milestone', {
-      milestone: 'halfway_point',
+    sendEvent("lesson_milestone", {
+      milestone: "halfway_point",
       funnel_id: funnelData.sessionId,
     });
   } else if (lessonId === totalLessons - 1) {
-    sendEvent('lesson_milestone', {
-      milestone: 'final_lesson',
+    sendEvent("lesson_milestone", {
+      milestone: "final_lesson",
       funnel_id: funnelData.sessionId,
     });
   }
@@ -1629,9 +1611,9 @@ export const trackLessonComplete = (
   lessonSlug: string,
   lessonTitle: string,
   totalLessons: number,
-  additionalData?: Record<string, unknown>
+  additionalData?: Record<string, unknown>,
 ): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   const funnelData = getLessonFunnelData();
   if (!funnelData) return;
@@ -1654,7 +1636,7 @@ export const trackLessonComplete = (
   safeSetJSON(LESSON_FUNNEL_STORAGE_KEY, funnelData);
 
   // Track the completion
-  sendEvent('lesson_complete', {
+  sendEvent("lesson_complete", {
     funnel_id: funnelData.sessionId,
     lesson_id: lessonId,
     lesson_slug: lessonSlug,
@@ -1669,7 +1651,7 @@ export const trackLessonComplete = (
   });
 
   // Also send server-side for reliability
-  sendServerEvent('lesson_complete', {
+  sendServerEvent("lesson_complete", {
     lesson_id: lessonId,
     lesson_slug: lessonSlug,
     completion_percentage: Math.round((funnelData.completedLessons.length / totalLessons) * 100),
@@ -1685,14 +1667,14 @@ export const trackLessonComplete = (
  * Track full lesson funnel completion
  */
 export const trackLessonFunnelComplete = (totalLessons: number): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   const funnelData = getLessonFunnelData();
   if (!funnelData) return;
 
   const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
 
-  sendEvent('lesson_funnel_complete', {
+  sendEvent("lesson_funnel_complete", {
     funnel_id: funnelData.sessionId,
     total_time_seconds: totalTimeSeconds,
     total_time_minutes: Math.round(totalTimeSeconds / 60),
@@ -1703,10 +1685,10 @@ export const trackLessonFunnelComplete = (totalLessons: number): void => {
   });
 
   // Track as major conversion with value
-  trackConversion('lesson_funnel_complete');
+  trackConversion("lesson_funnel_complete");
 
   // Also send server-side for reliability
-  sendServerEvent('lesson_funnel_complete', {
+  sendServerEvent("lesson_funnel_complete", {
     total_time_minutes: Math.round(totalTimeSeconds / 60),
     total_lessons: totalLessons,
   });
@@ -1716,20 +1698,20 @@ export const trackLessonFunnelComplete = (totalLessons: number): void => {
  * Track lesson funnel dropoff
  */
 export const trackLessonDropoff = (reason?: string): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
   const funnelData = getLessonFunnelData();
   if (!funnelData) return;
 
   const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
 
-  sendEvent('lesson_funnel_dropoff', {
+  sendEvent("lesson_funnel_dropoff", {
     funnel_id: funnelData.sessionId,
     dropped_at_lesson: funnelData.currentLesson,
     max_lesson_reached: funnelData.maxLessonReached,
     completed_lessons: funnelData.completedLessons.length,
     time_in_funnel_seconds: totalTimeSeconds,
-    dropoff_reason: reason || 'unknown',
+    dropoff_reason: reason || "unknown",
     source: funnelData.source,
     medium: funnelData.medium,
   });
@@ -1764,16 +1746,16 @@ export const getLessonFunnelSummary = (totalLessons: number): Record<string, unk
  * Enable debug mode for development
  */
 export const enableDebugMode = (): void => {
-  if (typeof window === 'undefined' || !GA_MEASUREMENT_ID) return;
+  if (typeof window === "undefined" || !GA_MEASUREMENT_ID) return;
 
   // GA4 debug mode
   if (window.gtag) {
-    window.gtag('config', GA_MEASUREMENT_ID, {
+    window.gtag("config", GA_MEASUREMENT_ID, {
       debug_mode: true,
     });
   }
 
-  console.log('[Analytics] Debug mode enabled');
+  console.log("[Analytics] Debug mode enabled");
 };
 
 /**

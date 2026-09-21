@@ -1,65 +1,58 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  ShieldAlert,
-  ShieldCheck,
-  Shield,
-  CheckCircle,
-  XCircle,
-  Terminal,
-  AlertTriangle,
-  Layers,
-  KeyRound,
-  Zap,
-  RotateCcw,
-  Eye,
-  Lock,
-  Unlock,
   Activity,
+  AlertTriangle,
+  CheckCircle,
   ChevronRight,
+  Eye,
   Gauge,
   History,
+  KeyRound,
+  Layers,
+  Lock,
+  RotateCcw,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Stethoscope,
+  Terminal,
   ToggleLeft,
   ToggleRight,
-  Stethoscope,
+  Unlock,
+  XCircle,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-  BulletList,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function DcgLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Use DCG to block destructive commands before they do damage.
-      </GoalBanner>
+      <GoalBanner>Use DCG to block destructive commands before they do damage.</GoalBanner>
 
-      <Section
-        title="What Is DCG?"
-        icon={<ShieldAlert className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is DCG?" icon={<ShieldAlert className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>DCG (Destructive Command Guard)</Highlight> is a Claude
-          Code hook that blocks dangerous commands before they execute. It
-          protects your repos from hard resets, recursive deletes, destructive
-          database commands, and more.
+          <Highlight>DCG (Destructive Command Guard)</Highlight> is a Claude Code hook that blocks
+          dangerous commands before they execute. It protects your repos from hard resets, recursive
+          deletes, destructive database commands, and more.
         </Paragraph>
         <Paragraph>
-          Think of it as a safety interlock: if a command looks destructive,
-          DCG stops it and suggests a safer alternative.
+          Think of it as a safety interlock: if a command looks destructive, DCG stops it and
+          suggests a safer alternative.
         </Paragraph>
 
         <div className="mt-8">
@@ -100,8 +93,8 @@ export function DcgLesson() {
         delay={0.15}
       >
         <Paragraph>
-          DCG runs as a <Highlight>PreToolUse hook</Highlight> inside Claude
-          Code. Every command is checked against a set of rules before it runs.
+          DCG runs as a <Highlight>PreToolUse hook</Highlight> inside Claude Code. Every command is
+          checked against a set of rules before it runs.
         </Paragraph>
 
         <div className="mt-6">
@@ -120,18 +113,14 @@ $ dcg test "git reset --hard" --explain
         </div>
 
         <TipBox variant="warning">
-          If DCG blocks a command, slow down and read the explanation. It is
-          showing you the dangerous part and a safer path.
+          If DCG blocks a command, slow down and read the explanation. It is showing you the
+          dangerous part and a safer path.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Essential Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
             {
@@ -168,15 +157,10 @@ $ dcg test "git reset --hard" --explain
 
       <Divider />
 
-      <Section
-        title="Uninstalling DCG"
-        icon={<ShieldAlert className="h-5 w-5" />}
-        delay={0.23}
-      >
+      <Section title="Uninstalling DCG" icon={<ShieldAlert className="h-5 w-5" />} delay={0.23}>
         <Paragraph>
-          If you need to remove DCG, you can uninstall the hook and optionally
-          purge the binary and config. You can always re-enable it later with{" "}
-          <Highlight>dcg install</Highlight>.
+          If you need to remove DCG, you can uninstall the hook and optionally purge the binary and
+          config. You can always re-enable it later with <Highlight>dcg install</Highlight>.
         </Paragraph>
 
         <div className="mt-6">
@@ -195,21 +179,17 @@ $ claude /hooks`}
         </div>
 
         <TipBox variant="info">
-          If you still want command safety but fewer blocks, prefer adjusting
-          packs instead of uninstalling.
+          If you still want command safety but fewer blocks, prefer adjusting packs instead of
+          uninstalling.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Protection Packs"
-        icon={<Layers className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Protection Packs" icon={<Layers className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          Packs let you enable or disable rules based on your workflow. Keep the
-          ones you need to avoid false positives.
+          Packs let you enable or disable rules based on your workflow. Keep the ones you need to
+          avoid false positives.
         </Paragraph>
 
         <div className="mt-6">
@@ -223,9 +203,8 @@ enabled = ["git", "filesystem", "database.postgresql", "containers.docker"]`}
         </div>
 
         <TipBox variant="info">
-          Start with <Highlight>git</Highlight> and{" "}
-          <Highlight>filesystem</Highlight> packs. Add database or cloud packs
-          only when you use those tools.
+          Start with <Highlight>git</Highlight> and <Highlight>filesystem</Highlight> packs. Add
+          database or cloud packs only when you use those tools.
         </TipBox>
       </Section>
 
@@ -236,9 +215,7 @@ enabled = ["git", "filesystem", "database.postgresql", "containers.docker"]`}
         icon={<AlertTriangle className="h-5 w-5" />}
         delay={0.3}
       >
-        <Paragraph>
-          A block is a warning, not a dead end. Use it as a checkpoint:
-        </Paragraph>
+        <Paragraph>A block is a warning, not a dead end. Use it as a checkpoint:</Paragraph>
         <BulletList
           items={[
             "Read the explanation carefully.",
@@ -251,20 +228,15 @@ enabled = ["git", "filesystem", "database.postgresql", "containers.docker"]`}
 
       <Divider />
 
-      <Section
-        title="DCG + SLB"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="DCG + SLB" icon={<Zap className="h-5 w-5" />} delay={0.35}>
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6"
         >
           <Paragraph>
-            DCG blocks obvious destructive commands instantly. SLB handles
-            contextual risk that needs human approval. Together, they form a
-            layered safety system.
+            DCG blocks obvious destructive commands instantly. SLB handles contextual risk that
+            needs human approval. Together, they form a layered safety system.
           </Paragraph>
         </motion.div>
       </Section>
@@ -301,7 +273,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "critical",
     explanation: "Recursive force delete of root filesystem. Catastrophic data loss.",
     safer: "rm -r ./build  (scoped, no -f)",
-    detail: "Pattern match: rm with -r and -f flags targeting / or broad paths. This is the most dangerous filesystem command possible.",
+    detail:
+      "Pattern match: rm with -r and -f flags targeting / or broad paths. This is the most dangerous filesystem command possible.",
     allowOnceCode: null,
   },
   {
@@ -313,7 +286,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "high",
     explanation: "Hard reset discards 5 commits of uncommitted work permanently.",
     safer: "git stash && git reset --soft HEAD~5",
-    detail: "Pattern match: git reset with --hard flag. Destroys working tree changes and staged files with no recovery path.",
+    detail:
+      "Pattern match: git reset with --hard flag. Destroys working tree changes and staged files with no recovery path.",
     allowOnceCode: "DCG-A1X7",
   },
   {
@@ -325,7 +299,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "safe",
     explanation: "Read-only git command chained with build. No destructive effects.",
     safer: null,
-    detail: "No destructive patterns detected. git status is read-only, cargo build creates artifacts in target/ directory.",
+    detail:
+      "No destructive patterns detected. git status is read-only, cargo build creates artifacts in target/ directory.",
     allowOnceCode: null,
   },
   {
@@ -337,7 +312,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "high",
     explanation: "Force push overwrites remote history. Others may lose work.",
     safer: "git push --force-with-lease origin main",
-    detail: "Pattern match: git push with --force flag. Bypass available if you have confirmed no one else has pushed.",
+    detail:
+      "Pattern match: git push with --force flag. Bypass available if you have confirmed no one else has pushed.",
     allowOnceCode: "DCG-F3K9",
   },
   {
@@ -349,7 +325,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "critical",
     explanation: "Destroys table and all dependent objects. Unrecoverable without backup.",
     safer: "pg_dump -t users > backup.sql  (backup first)",
-    detail: "Pattern match: DROP TABLE with CASCADE. Removes the table, indexes, constraints, and anything referencing it.",
+    detail:
+      "Pattern match: DROP TABLE with CASCADE. Removes the table, indexes, constraints, and anything referencing it.",
     allowOnceCode: null,
   },
   {
@@ -361,7 +338,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "medium",
     explanation: "Removes all unused images, containers, networks, and volumes.",
     safer: "docker image prune  (just dangling images)",
-    detail: "Pattern match: docker system prune with -a and --volumes. Will delete named volumes with data.",
+    detail:
+      "Pattern match: docker system prune with -a and --volumes. Will delete named volumes with data.",
     allowOnceCode: "DCG-P2M4",
   },
   {
@@ -373,7 +351,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "info",
     explanation: "Health check of DCG installation. Reports hook status and pack config.",
     safer: null,
-    detail: "DCG internal command. Checks: hook registered, config valid, packs loaded, binary version.",
+    detail:
+      "DCG internal command. Checks: hook registered, config valid, packs loaded, binary version.",
     allowOnceCode: null,
   },
   {
@@ -385,7 +364,8 @@ const DCG_SCENARIOS: DcgScenario[] = [
     threatLevel: "critical",
     explanation: "Makes /etc world-writable. Massive security vulnerability.",
     safer: "chmod 755 ./my-script.sh  (specific file, sane perms)",
-    detail: "Pattern match: chmod with 777 on system directory. Opens every config file to modification by any user.",
+    detail:
+      "Pattern match: chmod with 777 on system directory. Opens every config file to modification by any user.",
     allowOnceCode: null,
   },
 ];
@@ -405,45 +385,69 @@ const PACKS_DATA = [
 
 function threatColor(level: ThreatLevel): string {
   switch (level) {
-    case "critical": return "text-red-400";
-    case "high": return "text-orange-400";
-    case "medium": return "text-amber-400";
-    case "low": return "text-yellow-300";
-    case "safe": return "text-emerald-400";
-    case "info": return "text-sky-400";
+    case "critical":
+      return "text-red-400";
+    case "high":
+      return "text-orange-400";
+    case "medium":
+      return "text-amber-400";
+    case "low":
+      return "text-yellow-300";
+    case "safe":
+      return "text-emerald-400";
+    case "info":
+      return "text-sky-400";
   }
 }
 
 function threatBg(level: ThreatLevel): string {
   switch (level) {
-    case "critical": return "bg-red-500";
-    case "high": return "bg-orange-500";
-    case "medium": return "bg-amber-500";
-    case "low": return "bg-yellow-400";
-    case "safe": return "bg-emerald-500";
-    case "info": return "bg-sky-500";
+    case "critical":
+      return "bg-red-500";
+    case "high":
+      return "bg-orange-500";
+    case "medium":
+      return "bg-amber-500";
+    case "low":
+      return "bg-yellow-400";
+    case "safe":
+      return "bg-emerald-500";
+    case "info":
+      return "bg-sky-500";
   }
 }
 
 function threatBorder(level: ThreatLevel): string {
   switch (level) {
-    case "critical": return "border-red-500/40";
-    case "high": return "border-orange-500/40";
-    case "medium": return "border-amber-500/40";
-    case "low": return "border-yellow-400/40";
-    case "safe": return "border-emerald-500/40";
-    case "info": return "border-sky-500/40";
+    case "critical":
+      return "border-red-500/40";
+    case "high":
+      return "border-orange-500/40";
+    case "medium":
+      return "border-amber-500/40";
+    case "low":
+      return "border-yellow-400/40";
+    case "safe":
+      return "border-emerald-500/40";
+    case "info":
+      return "border-sky-500/40";
   }
 }
 
 function threatGlow(level: ThreatLevel): string {
   switch (level) {
-    case "critical": return "bg-red-500/20";
-    case "high": return "bg-orange-500/20";
-    case "medium": return "bg-amber-500/20";
-    case "low": return "bg-yellow-400/20";
-    case "safe": return "bg-emerald-500/20";
-    case "info": return "bg-sky-500/20";
+    case "critical":
+      return "bg-red-500/20";
+    case "high":
+      return "bg-orange-500/20";
+    case "medium":
+      return "bg-amber-500/20";
+    case "low":
+      return "bg-yellow-400/20";
+    case "safe":
+      return "bg-emerald-500/20";
+    case "info":
+      return "bg-sky-500/20";
   }
 }
 
@@ -525,17 +529,19 @@ function InteractiveDcgDemo() {
             phaseTimerRef.current = setTimeout(() => {
               setPhase("verdict");
               const s = DCG_SCENARIOS[idx];
-              setBlockLog((prev) => [
-                {
-                  scenarioId: s.id,
-                  command: s.command,
-                  rule: s.rule,
-                  blocked: s.blocked,
-                  threatLevel: s.threatLevel,
-                  timestamp: formatTimestamp(prev.length),
-                },
-                ...prev,
-              ].slice(0, 20));
+              setBlockLog((prev) =>
+                [
+                  {
+                    scenarioId: s.id,
+                    command: s.command,
+                    rule: s.rule,
+                    blocked: s.blocked,
+                    threatLevel: s.threatLevel,
+                    timestamp: formatTimestamp(prev.length),
+                  },
+                  ...prev,
+                ].slice(0, 20),
+              );
             }, 600);
           }, 500);
         }, 300);
@@ -605,11 +611,15 @@ function InteractiveDcgDemo() {
 
         {/* Tab bar */}
         <div className="flex gap-1 rounded-xl bg-black/30 p-1">
-          {([
-            { key: "pipeline" as const, label: "Pipeline", icon: <Activity className="h-3.5 w-3.5" /> },
+          {[
+            {
+              key: "pipeline" as const,
+              label: "Pipeline",
+              icon: <Activity className="h-3.5 w-3.5" />,
+            },
             { key: "packs" as const, label: "Packs", icon: <Layers className="h-3.5 w-3.5" /> },
             { key: "log" as const, label: "History", icon: <History className="h-3.5 w-3.5" /> },
-          ]).map((tab) => (
+          ].map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -628,7 +638,9 @@ function InteractiveDcgDemo() {
 
         {/* Scenario selector */}
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-semibold">Select Command to Analyze</p>
+          <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-semibold">
+            Select Command to Analyze
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {DCG_SCENARIOS.map((s, i) => (
               <motion.button
@@ -646,9 +658,14 @@ function InteractiveDcgDemo() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className={`flex-shrink-0 h-1.5 w-1.5 rounded-full ${threatBg(s.threatLevel)}`} />
-                    <span className={`truncate ${selectedIdx === i ? threatColor(s.threatLevel) : "text-white/70"}`}>
-                      <span className="text-white/30">$ </span>{s.command}
+                    <span
+                      className={`flex-shrink-0 h-1.5 w-1.5 rounded-full ${threatBg(s.threatLevel)}`}
+                    />
+                    <span
+                      className={`truncate ${selectedIdx === i ? threatColor(s.threatLevel) : "text-white/70"}`}
+                    >
+                      <span className="text-white/30">$ </span>
+                      {s.command}
                     </span>
                   </div>
                   {s.blocked ? (
@@ -735,7 +752,9 @@ function StatusPill({
     sky: "bg-sky-500/10 border-sky-500/20 text-sky-400",
   };
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium ${classes[color]}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium ${classes[color]}`}
+    >
       {icon}
       {label}
     </span>
@@ -786,9 +805,7 @@ function PipelineView({
 
   if (!scenario) return null;
 
-  const cmdDisplay = phase === "typing"
-    ? scenario.command.slice(0, typedChars)
-    : scenario.command;
+  const cmdDisplay = phase === "typing" ? scenario.command.slice(0, typedChars) : scenario.command;
 
   const phaseSteps: { label: string; icon: React.ReactNode; done: boolean; active: boolean }[] = [
     {
@@ -811,7 +828,11 @@ function PipelineView({
     },
     {
       label: scenario.blocked ? "BLOCKED" : "ALLOWED",
-      icon: scenario.blocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />,
+      icon: scenario.blocked ? (
+        <Lock className="h-3.5 w-3.5" />
+      ) : (
+        <Unlock className="h-3.5 w-3.5" />
+      ),
       done: false,
       active: phase === "verdict",
     },
@@ -826,12 +847,16 @@ function PipelineView({
             <motion.div
               animate={{
                 backgroundColor: step.active
-                  ? (scenario.blocked && i === 3 ? "rgba(239,68,68,0.3)" : "rgba(99,102,241,0.3)")
+                  ? scenario.blocked && i === 3
+                    ? "rgba(239,68,68,0.3)"
+                    : "rgba(99,102,241,0.3)"
                   : step.done
                     ? "rgba(16,185,129,0.2)"
                     : "rgba(255,255,255,0.03)",
                 borderColor: step.active
-                  ? (scenario.blocked && i === 3 ? "rgba(239,68,68,0.5)" : "rgba(99,102,241,0.5)")
+                  ? scenario.blocked && i === 3
+                    ? "rgba(239,68,68,0.5)"
+                    : "rgba(99,102,241,0.5)"
                   : step.done
                     ? "rgba(16,185,129,0.3)"
                     : "rgba(255,255,255,0.06)",
@@ -839,12 +864,30 @@ function PipelineView({
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="flex items-center gap-1.5 rounded-lg border px-2 py-1.5 flex-1 min-w-0"
             >
-              <span className={step.active ? (scenario.blocked && i === 3 ? "text-red-400" : "text-primary") : step.done ? "text-emerald-400" : "text-white/30"}>
+              <span
+                className={
+                  step.active
+                    ? scenario.blocked && i === 3
+                      ? "text-red-400"
+                      : "text-primary"
+                    : step.done
+                      ? "text-emerald-400"
+                      : "text-white/30"
+                }
+              >
                 {step.done ? <CheckCircle className="h-3.5 w-3.5" /> : step.icon}
               </span>
-              <span className={`text-[10px] font-medium truncate ${
-                step.active ? (scenario.blocked && i === 3 ? "text-red-400" : "text-white/80") : step.done ? "text-emerald-400/80" : "text-white/30"
-              }`}>
+              <span
+                className={`text-[10px] font-medium truncate ${
+                  step.active
+                    ? scenario.blocked && i === 3
+                      ? "text-red-400"
+                      : "text-white/80"
+                    : step.done
+                      ? "text-emerald-400/80"
+                      : "text-white/30"
+                }`}
+              >
                 {step.label}
               </span>
             </motion.div>
@@ -857,15 +900,13 @@ function PipelineView({
 
       {/* Terminal display */}
       <motion.div
-        animate={
-          phase === "verdict" && scenario.blocked
-            ? { x: [0, -4, 4, -3, 3, -1, 1, 0] }
-            : {}
-        }
+        animate={phase === "verdict" && scenario.blocked ? { x: [0, -4, 4, -3, 3, -1, 1, 0] } : {}}
         transition={{ type: "spring", stiffness: 500, damping: 30 }}
         className={`rounded-xl border bg-black/40 overflow-hidden transition-colors duration-300 ${
           phase === "verdict"
-            ? scenario.blocked ? "border-red-500/30" : "border-emerald-500/30"
+            ? scenario.blocked
+              ? "border-red-500/30"
+              : "border-emerald-500/30"
             : "border-white/[0.08]"
         }`}
       >
@@ -894,13 +935,25 @@ function PipelineView({
           <div className="flex items-start gap-1">
             <span className="text-emerald-400">$</span>
             <span className="text-white/50">dcg test &quot;</span>
-            <span className={phase === "verdict" ? (scenario.blocked ? "text-red-400" : "text-emerald-400") : "text-white/80"}>
+            <span
+              className={
+                phase === "verdict"
+                  ? scenario.blocked
+                    ? "text-red-400"
+                    : "text-emerald-400"
+                  : "text-white/80"
+              }
+            >
               {cmdDisplay}
             </span>
             {phase === "typing" && (
               <motion.span
                 animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-                transition={inView ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+                transition={
+                  inView
+                    ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" }
+                    : { duration: 0.2 }
+                }
                 className="text-white/60"
               >
                 |
@@ -970,14 +1023,17 @@ function PipelineView({
                     </div>
                     {scenario.safer && (
                       <div className="text-xs">
-                        <span className="text-emerald-400">  Safer:</span>
+                        <span className="text-emerald-400"> Safer:</span>
                         <span className="text-emerald-300/80"> {scenario.safer}</span>
                       </div>
                     )}
                     {scenario.allowOnceCode && (
                       <div className="text-xs">
-                        <span className="text-amber-400">  Bypass:</span>
-                        <span className="text-white/40"> dcg allow-once {scenario.allowOnceCode}</span>
+                        <span className="text-amber-400"> Bypass:</span>
+                        <span className="text-white/40">
+                          {" "}
+                          dcg allow-once {scenario.allowOnceCode}
+                        </span>
                       </div>
                     )}
                   </>
@@ -1006,13 +1062,17 @@ function PipelineView({
             className="space-y-3"
           >
             {/* Threat level bar */}
-            <div className={`rounded-xl border ${threatBorder(scenario.threatLevel)} ${threatGlow(scenario.threatLevel)} p-3`}>
+            <div
+              className={`rounded-xl border ${threatBorder(scenario.threatLevel)} ${threatGlow(scenario.threatLevel)} p-3`}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Gauge className={`h-4 w-4 ${threatColor(scenario.threatLevel)}`} />
                   <span className="text-xs font-semibold text-white/70">Threat Level</span>
                 </div>
-                <span className={`text-xs font-bold uppercase ${threatColor(scenario.threatLevel)}`}>
+                <span
+                  className={`text-xs font-bold uppercase ${threatColor(scenario.threatLevel)}`}
+                >
                   {scenario.threatLevel}
                 </span>
               </div>
@@ -1022,11 +1082,16 @@ function PipelineView({
                   initial={{ width: "0%" }}
                   animate={{
                     width:
-                      scenario.threatLevel === "critical" ? "100%"
-                        : scenario.threatLevel === "high" ? "75%"
-                          : scenario.threatLevel === "medium" ? "50%"
-                            : scenario.threatLevel === "low" ? "25%"
-                              : scenario.threatLevel === "safe" ? "10%"
+                      scenario.threatLevel === "critical"
+                        ? "100%"
+                        : scenario.threatLevel === "high"
+                          ? "75%"
+                          : scenario.threatLevel === "medium"
+                            ? "50%"
+                            : scenario.threatLevel === "low"
+                              ? "25%"
+                              : scenario.threatLevel === "safe"
+                                ? "10%"
                                 : "5%",
                   }}
                   transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -1037,7 +1102,9 @@ function PipelineView({
 
             {/* Detail card */}
             <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3 text-xs text-white/50 leading-relaxed">
-              <p className="text-white/30 font-semibold uppercase tracking-wider text-[10px] mb-1">Analysis Detail</p>
+              <p className="text-white/30 font-semibold uppercase tracking-wider text-[10px] mb-1">
+                Analysis Detail
+              </p>
               <p>{scenario.detail}</p>
             </div>
 
@@ -1204,11 +1271,15 @@ function PacksBrowser({
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                  p.enabled ? "bg-emerald-500" : "bg-white/20"
-                }`} />
+                <div
+                  className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                    p.enabled ? "bg-emerald-500" : "bg-white/20"
+                  }`}
+                />
                 <div className="min-w-0">
-                  <p className={`text-xs font-semibold ${p.enabled ? "text-white/80" : "text-white/40"}`}>
+                  <p
+                    className={`text-xs font-semibold ${p.enabled ? "text-white/80" : "text-white/40"}`}
+                  >
                     {p.name}
                   </p>
                   <p className="text-[10px] text-white/30 truncate">{p.desc}</p>
@@ -1216,7 +1287,11 @@ function PacksBrowser({
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <span className="text-[10px] text-white/30">{p.rules} rules</span>
-                <button type="button" onClick={() => onToggle(i)} className="text-white/50 hover:text-white/80 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => onToggle(i)}
+                  className="text-white/50 hover:text-white/80 transition-colors"
+                >
                   {p.enabled ? (
                     <ToggleRight className="h-5 w-5 text-emerald-400" />
                   ) : (
@@ -1252,9 +1327,7 @@ function PacksBrowser({
               ) : (
                 <span className="text-white/25">[--] </span>
               )}
-              <span className={p.enabled ? "text-white/60" : "text-white/30"}>
-                {p.name}
-              </span>
+              <span className={p.enabled ? "text-white/60" : "text-white/30"}>{p.name}</span>
               <span className="text-white/20"> ({p.rules} rules)</span>
             </p>
           ))}
@@ -1274,7 +1347,9 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
       <div className="rounded-xl border border-white/[0.06] bg-black/20 p-8 text-center">
         <History className="h-8 w-8 text-white/15 mx-auto mb-2" />
         <p className="text-xs text-white/30">No commands analyzed yet</p>
-        <p className="text-xs text-white/20 mt-1">Run commands from the Pipeline tab to see history</p>
+        <p className="text-xs text-white/20 mt-1">
+          Run commands from the Pipeline tab to see history
+        </p>
       </div>
     );
   }
@@ -1304,7 +1379,9 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
               <span className="text-[10px] text-white/25 font-mono w-10 flex-shrink-0">
                 {entry.timestamp}
               </span>
-              <span className={`flex-shrink-0 h-1.5 w-1.5 rounded-full ${threatBg(entry.threatLevel)}`} />
+              <span
+                className={`flex-shrink-0 h-1.5 w-1.5 rounded-full ${threatBg(entry.threatLevel)}`}
+              />
               {entry.blocked ? (
                 <XCircle className="h-3 w-3 text-red-400 flex-shrink-0" />
               ) : (
@@ -1330,11 +1407,15 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
           <p className="text-[10px] text-white/30 uppercase tracking-wider">Total</p>
         </div>
         <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] p-2 text-center">
-          <p className="text-lg font-bold text-red-400">{entries.filter((e) => e.blocked).length}</p>
+          <p className="text-lg font-bold text-red-400">
+            {entries.filter((e) => e.blocked).length}
+          </p>
           <p className="text-[10px] text-red-400/50 uppercase tracking-wider">Blocked</p>
         </div>
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-2 text-center">
-          <p className="text-lg font-bold text-emerald-400">{entries.filter((e) => !e.blocked).length}</p>
+          <p className="text-lg font-bold text-emerald-400">
+            {entries.filter((e) => !e.blocked).length}
+          </p>
           <p className="text-[10px] text-emerald-400/50 uppercase tracking-wider">Allowed</p>
         </div>
       </div>

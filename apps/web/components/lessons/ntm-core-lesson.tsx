@@ -1,56 +1,48 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Cpu,
-  Terminal,
-  Play,
-  Layers,
-  Send,
-  List,
-  Link2,
-  Zap,
-  LayoutGrid,
   Bot,
-  Sparkles,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Pause,
   Circle,
-  CheckCircle2,
+  Cpu,
+  Layers,
+  LayoutGrid,
+  Link2,
+  List,
   Loader2,
+  Pause,
+  Play,
+  Send,
+  Sparkles,
+  Terminal,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function NtmCoreLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Master NTM (Named Tmux Manager) for orchestrating agents.
-      </GoalBanner>
+      <GoalBanner>Master NTM (Named Tmux Manager) for orchestrating agents.</GoalBanner>
 
       {/* What Is NTM */}
-      <Section
-        title="What Is NTM?"
-        icon={<Cpu className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is NTM?" icon={<Cpu className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          NTM is your <Highlight>command center</Highlight> for managing
-          multiple coding agents.
+          NTM is your <Highlight>command center</Highlight> for managing multiple coding agents.
         </Paragraph>
         <Paragraph>
-          It creates organized tmux sessions with dedicated panes for each
-          agent.
+          It creates organized tmux sessions with dedicated panes for each agent.
         </Paragraph>
 
         <div className="mt-8">
@@ -61,30 +53,18 @@ export function NtmCoreLesson() {
       <Divider />
 
       {/* The NTM Tutorial */}
-      <Section
-        title="The NTM Tutorial"
-        icon={<Play className="h-5 w-5" />}
-        delay={0.15}
-      >
-        <Paragraph>
-          NTM has a built-in tutorial. Start it now:
-        </Paragraph>
+      <Section title="The NTM Tutorial" icon={<Play className="h-5 w-5" />} delay={0.15}>
+        <Paragraph>NTM has a built-in tutorial. Start it now:</Paragraph>
         <div className="mt-6">
           <CodeBlock code="ntm tutorial" />
         </div>
-        <Paragraph>
-          This will walk you through the basics interactively.
-        </Paragraph>
+        <Paragraph>This will walk you through the basics interactively.</Paragraph>
       </Section>
 
       <Divider />
 
       {/* Essential NTM Commands */}
-      <Section
-        title="Essential NTM Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Essential NTM Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <div className="space-y-8">
           <CommandSection
             title="Check Dependencies"
@@ -100,18 +80,9 @@ export function NtmCoreLesson() {
             description="Creates a tmux session with multiple agent panes."
           >
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <SessionComponent
-                label="2 Claude Code panes"
-                color="from-orange-500 to-amber-500"
-              />
-              <SessionComponent
-                label="1 Codex pane"
-                color="from-emerald-500 to-teal-500"
-              />
-              <SessionComponent
-                label="1 Antigravity pane"
-                color="from-blue-500 to-purple-500"
-              />
+              <SessionComponent label="2 Claude Code panes" color="from-orange-500 to-amber-500" />
+              <SessionComponent label="1 Codex pane" color="from-emerald-500 to-teal-500" />
+              <SessionComponent label="1 Antigravity pane" color="from-blue-500 to-purple-500" />
               <SessionComponent
                 label='Session: "myproject"'
                 color="from-violet-500 to-purple-500"
@@ -141,8 +112,8 @@ export function NtmCoreLesson() {
           />
 
           <TipBox variant="warning">
-            If <Highlight>ntm send</Highlight> fails with a CASS error (for example:
-            “unrecognized subcommand &apos;robot&apos;”), bypass duplicate-checking:
+            If <Highlight>ntm send</Highlight> fails with a CASS error (for example: “unrecognized
+            subcommand &apos;robot&apos;”), bypass duplicate-checking:
             <div className="mt-4 space-y-3">
               <CodeBlock code='ntm send myproject --no-cass-check "Analyze this codebase and summarize what it does"' />
               <CodeBlock code='ntm --robot-send myproject --msg "Analyze this codebase and summarize what it does" --all' />
@@ -162,11 +133,7 @@ ntm send myproject --cod "Focus on the frontend"`}
       <Divider />
 
       {/* The Power of NTM */}
-      <Section
-        title="The Power of NTM"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="The Power of NTM" icon={<Zap className="h-5 w-5" />} delay={0.25}>
         <Paragraph>Imagine this workflow:</Paragraph>
 
         <div className="mt-6">
@@ -175,8 +142,8 @@ ntm send myproject --cod "Focus on the frontend"`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            That&apos;s the power of multi-agent development—different
-            perspectives working in parallel!
+            That&apos;s the power of multi-agent development—different perspectives working in
+            parallel!
           </TipBox>
         </div>
       </Section>
@@ -184,11 +151,7 @@ ntm send myproject --cod "Focus on the frontend"`}
       <Divider />
 
       {/* Quick Session Template */}
-      <Section
-        title="Quick Session Template"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Quick Session Template" icon={<Sparkles className="h-5 w-5" />} delay={0.3}>
         <Paragraph>For a typical project:</Paragraph>
 
         <div className="mt-6">
@@ -203,11 +166,7 @@ ntm send myproject --cod "Focus on the frontend"`}
       <Divider />
 
       {/* Session Navigation */}
-      <Section
-        title="Session Navigation"
-        icon={<LayoutGrid className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Session Navigation" icon={<LayoutGrid className="h-5 w-5" />} delay={0.35}>
         <Paragraph>Once inside an NTM session:</Paragraph>
 
         <div className="mt-6">
@@ -225,11 +184,7 @@ ntm send myproject --cod "Focus on the frontend"`}
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Play className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Try It Now" icon={<Play className="h-5 w-5" />} delay={0.4}>
         <CodeBlock
           code={`# Create a test session
 $ ntm spawn test-session --cc=1
@@ -408,10 +363,7 @@ function InteractiveNtmOrchestrator() {
   const [progressValues, setProgressValues] = useState<Record<string, number>>({});
 
   // Derive visible panes from step
-  const visiblePanes = useMemo(
-    () => AGENTS.filter((a) => step >= a.spawnStep),
-    [step],
-  );
+  const visiblePanes = useMemo(() => AGENTS.filter((a) => step >= a.spawnStep), [step]);
 
   const showBroadcast = step >= 5;
   const showWorking = step >= 6;
@@ -552,7 +504,10 @@ function InteractiveNtmOrchestrator() {
   }, []);
 
   return (
-    <div ref={ref} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={ref}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="pointer-events-none absolute -top-20 left-1/4 w-64 h-64 bg-violet-500/8 rounded-full blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 right-1/4 w-48 h-48 bg-orange-500/6 rounded-full blur-3xl" />
@@ -588,7 +543,13 @@ function InteractiveNtmOrchestrator() {
       </div>
 
       {/* SVG Cockpit Visualization */}
-      <div ref={cockpitScrollRef} className="relative overflow-x-auto px-2 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:px-4" tabIndex={0} role="region" aria-label="NTM cockpit diagram (scrolls sideways on small screens)">
+      <div
+        ref={cockpitScrollRef}
+        className="relative overflow-x-auto px-2 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:px-4"
+        tabIndex={0}
+        role="region"
+        aria-label="NTM cockpit diagram (scrolls sideways on small screens)"
+      >
         <svg
           viewBox="0 0 700 440"
           className="w-full min-w-[700px] sm:min-w-0"
@@ -650,12 +611,7 @@ function InteractiveNtmOrchestrator() {
           </g>
 
           {/* Hub glow circle */}
-          <circle
-            cx={HUB_CX}
-            cy={HUB_CY}
-            r={50}
-            fill="url(#v2-hub-glow)"
-          />
+          <circle cx={HUB_CX} cy={HUB_CY} r={50} fill="url(#v2-hub-glow)" />
 
           {/* Connection lines from hub to panes */}
           <AnimatePresence>
@@ -723,14 +679,10 @@ function InteractiveNtmOrchestrator() {
               strokeWidth={2}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={
-                inView
-                  ? { scale: [1, 1.8, 2.2], opacity: [0.6, 0.2, 0] }
-                  : { scale: 1, opacity: 0 }
+                inView ? { scale: [1, 1.8, 2.2], opacity: [0.6, 0.2, 0] } : { scale: 1, opacity: 0 }
               }
               transition={
-                inView
-                  ? { duration: 2, repeat: Infinity, ease: "easeOut" }
-                  : { duration: 0.2 }
+                inView ? { duration: 2, repeat: Infinity, ease: "easeOut" } : { duration: 0.2 }
               }
             />
           )}
@@ -873,21 +825,8 @@ function InteractiveNtmOrchestrator() {
                   />
 
                   {/* Title bar */}
-                  <rect
-                    x={px}
-                    y={py}
-                    width={PANE_W}
-                    height={22}
-                    rx={10}
-                    fill={agent.colorDim}
-                  />
-                  <rect
-                    x={px}
-                    y={py + 10}
-                    width={PANE_W}
-                    height={12}
-                    fill={agent.colorDim}
-                  />
+                  <rect x={px} y={py} width={PANE_W} height={22} rx={10} fill={agent.colorDim} />
+                  <rect x={px} y={py + 10} width={PANE_W} height={12} fill={agent.colorDim} />
 
                   {/* Traffic light dots */}
                   <circle cx={px + 12} cy={py + 11} r={3} fill="rgba(255,255,255,0.15)" />
@@ -992,9 +931,7 @@ function InteractiveNtmOrchestrator() {
                         fillOpacity={0.7}
                         initial={{ width: 0 }}
                         animate={{
-                          width:
-                            ((status === "done" ? 100 : progress) / 100) *
-                            (PANE_W - 28),
+                          width: ((status === "done" ? 100 : progress) / 100) * (PANE_W - 28),
                         }}
                         transition={{
                           type: "spring",
@@ -1010,9 +947,7 @@ function InteractiveNtmOrchestrator() {
                         fontFamily="monospace"
                         textAnchor="end"
                       >
-                        {status === "done"
-                          ? "100%"
-                          : `${Math.round(progress)}%`}
+                        {status === "done" ? "100%" : `${Math.round(progress)}%`}
                       </text>
                     </g>
                   )}
@@ -1058,13 +993,7 @@ function InteractiveNtmOrchestrator() {
               stroke="rgba(255,255,255,0.08)"
               strokeWidth={1}
             />
-            <text
-              x={8}
-              y={14}
-              fill="rgba(255,255,255,0.3)"
-              fontSize="7"
-              fontFamily="system-ui"
-            >
+            <text x={8} y={14} fill="rgba(255,255,255,0.3)" fontSize="7" fontFamily="system-ui">
               tmux layout
             </text>
             {/* Minimap panes */}
@@ -1084,9 +1013,7 @@ function InteractiveNtmOrchestrator() {
                   rx={2}
                   fill={visible ? agent.color : "rgba(255,255,255,0.05)"}
                   fillOpacity={visible ? 0.6 : 1}
-                  stroke={
-                    visible ? agent.color : "rgba(255,255,255,0.08)"
-                  }
+                  stroke={visible ? agent.color : "rgba(255,255,255,0.08)"}
                   strokeOpacity={visible ? 0.4 : 1}
                   strokeWidth={0.5}
                 />
@@ -1115,15 +1042,9 @@ function InteractiveNtmOrchestrator() {
               className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.02] border border-white/[0.06] text-xs"
             >
               {visible && status === "done" ? (
-                <CheckCircle2
-                  className="h-3 w-3"
-                  style={{ color: agent.color }}
-                />
+                <CheckCircle2 className="h-3 w-3" style={{ color: agent.color }} />
               ) : visible && status === "working" ? (
-                <Loader2
-                  className="h-3 w-3 animate-spin"
-                  style={{ color: agent.color }}
-                />
+                <Loader2 className="h-3 w-3 animate-spin" style={{ color: agent.color }} />
               ) : (
                 <Circle
                   className="h-3 w-3"
@@ -1135,9 +1056,7 @@ function InteractiveNtmOrchestrator() {
               <span
                 className="font-mono"
                 style={{
-                  color: visible
-                    ? agent.colorLight
-                    : "rgba(255,255,255,0.2)",
+                  color: visible ? agent.colorLight : "rgba(255,255,255,0.2)",
                 }}
               >
                 {agent.name}
@@ -1165,11 +1084,7 @@ function InteractiveNtmOrchestrator() {
           className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           aria-label={playing ? "Pause" : "Play"}
         >
-          {playing ? (
-            <Pause className="h-4 w-4" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
+          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </button>
 
         <button
@@ -1191,11 +1106,7 @@ function InteractiveNtmOrchestrator() {
             type="button"
             onClick={() => goToStep(i)}
             className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
-              i === step
-                ? "w-6 bg-primary"
-                : i < step
-                  ? "w-2 bg-white/30"
-                  : "w-2 bg-white/10"
+              i === step ? "w-6 bg-primary" : i < step ? "w-2 bg-white/30" : "w-2 bg-white/10"
             }`}
             aria-label={`Go to step ${i + 1}: ${STEP_COMMANDS[i]}`}
           />
@@ -1223,14 +1134,7 @@ function NtmHubIconV2({ cx, cy }: { cx: number; cy: number }) {
         stroke="rgba(139,92,246,0.9)"
         strokeWidth={1.5}
       />
-      <rect
-        x={cx - 5}
-        y={cy - 5}
-        width={10}
-        height={10}
-        rx={2}
-        fill="rgba(139,92,246,0.6)"
-      />
+      <rect x={cx - 5} y={cy - 5} width={10} height={10} rx={2} fill="rgba(139,92,246,0.6)" />
       {/* Signal lines radiating out */}
       {[0, 90, 180, 270].map((angle) => {
         const rad = (angle * Math.PI) / 180;
@@ -1311,14 +1215,7 @@ function OrchestratorStatusDot({
       />
     );
   }
-  return (
-    <circle
-      cx={x}
-      cy={y}
-      r={3}
-      fill="rgba(255,255,255,0.15)"
-    />
-  );
+  return <circle cx={x} cy={y} r={3} fill="rgba(255,255,255,0.15)" />;
 }
 
 function OrchestratorTypingCursor({
@@ -1337,15 +1234,7 @@ function OrchestratorTypingCursor({
       animate={active ? { opacity: [1, 0.2, 1] } : { opacity: 1 }}
       transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
     >
-      <rect
-        x={x}
-        y={y - 3}
-        width={4}
-        height={6}
-        rx={1}
-        fill={color}
-        fillOpacity={0.6}
-      />
+      <rect x={x} y={y - 3} width={4} height={6} rx={1} fill={color} fillOpacity={0.6} />
     </motion.g>
   );
 }
@@ -1377,7 +1266,9 @@ function CommandSection({
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition">
           {icon}
         </div>
-        <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
+        <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
+          {title}
+        </h4>
       </div>
       <CodeBlock code={code} />
       <p className="text-white/60">{description}</p>
@@ -1389,13 +1280,7 @@ function CommandSection({
 // =============================================================================
 // SESSION COMPONENT - Display session info
 // =============================================================================
-function SessionComponent({
-  label,
-  color,
-}: {
-  label: string;
-  color: string;
-}) {
+function SessionComponent({ label, color }: { label: string; color: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -1403,8 +1288,12 @@ function SessionComponent({
       whileHover={{ scale: 1.02, x: 2 }}
       className={`group flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br ${color} bg-opacity-10 border border-white/[0.08] backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
-      <div className={`h-2 w-2 rounded-full bg-gradient-to-br ${color} group-hover:scale-125 transition-transform`} />
-      <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">{label}</span>
+      <div
+        className={`h-2 w-2 rounded-full bg-gradient-to-br ${color} group-hover:scale-125 transition-transform`}
+      />
+      <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">
+        {label}
+      </span>
     </motion.div>
   );
 }
@@ -1504,7 +1393,9 @@ function RatioItem({
         {count}
       </div>
       <div>
-        <span className="font-medium text-white group-hover:text-primary transition-colors">{name}</span>
+        <span className="font-medium text-white group-hover:text-primary transition-colors">
+          {name}
+        </span>
         <span className="text-white/50"> - {reason}</span>
       </div>
     </motion.div>
@@ -1514,20 +1405,12 @@ function RatioItem({
 // =============================================================================
 // KEYBOARD SHORTCUT TABLE
 // =============================================================================
-function KeyboardShortcutTable({
-  shortcuts,
-}: {
-  shortcuts: { keys: string[]; action: string }[];
-}) {
+function KeyboardShortcutTable({ shortcuts }: { shortcuts: { keys: string[]; action: string }[] }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
       <div className="grid grid-cols-[1fr_1fr] divide-x divide-white/[0.06]">
-        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">
-          Keys
-        </div>
-        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">
-          Action
-        </div>
+        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">Keys</div>
+        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">Action</div>
       </div>
       {shortcuts.map((shortcut, i) => (
         <div

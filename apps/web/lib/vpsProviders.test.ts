@@ -2,20 +2,20 @@ import { describe, expect, test } from "bun:test";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
   ACFS_RECOMMENDED_UBUNTU,
-  PRICING_LAST_UPDATED,
-  VPS_PROVIDERS,
-  VPS_TOP_PICK,
-  VPS_UBUNTU_IMAGE_OPTIONS,
   calculateRequiredSpecs,
   describePlan,
   getWorkloadProfile,
   isBelowRamRecommendation,
-  validateUbuntuImage,
-  validateVPSReadiness,
+  PRICING_LAST_UPDATED,
+  VPS_PROVIDERS,
+  VPS_TOP_PICK,
+  VPS_UBUNTU_IMAGE_OPTIONS,
   type VPSReadinessCheckId,
   type VPSReadinessInput,
   type VPSReadinessResult,
   type VPSReadinessStatus,
+  validateUbuntuImage,
+  validateVPSReadiness,
 } from "./vpsProviders";
 
 function checkStatus(result: VPSReadinessResult, id: string) {
@@ -54,8 +54,10 @@ describe("VPS provider table", () => {
   });
 
   test("flags every listed plan below the RAM recommendation with a note", () => {
-    const flagged = VPS_PROVIDERS.flatMap((provider) => [provider.recommended, provider.budget])
-      .filter(isBelowRamRecommendation);
+    const flagged = VPS_PROVIDERS.flatMap((provider) => [
+      provider.recommended,
+      provider.budget,
+    ]).filter(isBelowRamRecommendation);
 
     expect(flagged.map((plan) => plan.name)).toEqual(["VPS-4", "VPS-3"]);
     for (const plan of flagged) {
@@ -65,7 +67,7 @@ describe("VPS provider table", () => {
 
   test("describes plans for guide prose from the data table", () => {
     expect(describePlan(VPS_TOP_PICK.recommended)).toBe(
-      "Cloud VPS 16 (64GB RAM, 16 vCPU): ~$43/month"
+      "Cloud VPS 16 (64GB RAM, 16 vCPU): ~$43/month",
     );
   });
 });
@@ -199,7 +201,7 @@ describe("validateVPSReadiness", () => {
     expect(checkStatus(result, "plan")).toBe("borderline");
     expect(result.status).toBe("borderline");
     expect(result.checks.find((check) => check.id === "plan")?.message).toContain(
-      `below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS recommendation`
+      `below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS recommendation`,
     );
   });
 
@@ -282,7 +284,7 @@ describe("validateVPSReadiness", () => {
   });
 });
 
- describe("Ubuntu image lifecycle safety (bd-5ytb5)", () => {
+describe("Ubuntu image lifecycle safety (bd-5ytb5)", () => {
   for (const image of ["26.04", "26.04.1", "Ubuntu 26.04 LTS", " ubuntu 26.04.1 lts "]) {
     test(`accepts the supported LTS image label ${JSON.stringify(image)}`, () => {
       expect(validateUbuntuImage(image).status).toBe("supported");
@@ -316,7 +318,18 @@ describe("validateVPSReadiness", () => {
     });
   }
 
-  for (const image of ["", "Debian 26.04", "Ubuntu 26.04 trailing text", "x26.04", "26.04x", "26.10", "28.04", "99.99", "26.13", "260.04"]) {
+  for (const image of [
+    "",
+    "Debian 26.04",
+    "Ubuntu 26.04 trailing text",
+    "x26.04",
+    "26.04x",
+    "26.10",
+    "28.04",
+    "99.99",
+    "26.13",
+    "260.04",
+  ]) {
     test(`never approves an ambiguous or unreviewed image ${JSON.stringify(image)}`, () => {
       expect(validateUbuntuImage(image).status).toBe("unknown");
     });

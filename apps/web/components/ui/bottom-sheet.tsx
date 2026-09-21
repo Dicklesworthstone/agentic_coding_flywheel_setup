@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useCallback, useSyncExternalStore, useRef } from "react";
-import { createPortal } from "react-dom";
-import { motion as m, AnimatePresence } from "@/components/motion";
-import { useDragControls, type PanInfo } from "framer-motion";
+import { type PanInfo, useDragControls } from "framer-motion";
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion as m } from "@/components/motion";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 // Subscribe function for useSyncExternalStore (no-op since we don't need updates)
 const emptySubscribe = () => () => {};
@@ -83,11 +83,7 @@ export function BottomSheet({
   const previousActiveElement = useRef<HTMLElement | null>(null);
 
   // Client-side only mounting for portal (avoids setState in effect)
-  const isClient = useSyncExternalStore(
-    emptySubscribe,
-    getClientSnapshot,
-    getServerSnapshot
-  );
+  const isClient = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 
   // Focus management: move focus to sheet when open, restore when closed
   useEffect(() => {
@@ -144,7 +140,7 @@ export function BottomSheet({
         onClose();
       }
     },
-    [onClose]
+    [onClose],
   );
 
   // Contain Tab focus inside the dialog while it is open. The backdrop is
@@ -155,9 +151,9 @@ export function BottomSheet({
     const sheet = sheetRef.current;
     if (!sheet) return;
 
-    const focusable = Array.from(
-      sheet.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-    ).filter((el) => el.getAttribute("aria-hidden") !== "true");
+    const focusable = Array.from(sheet.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+      (el) => el.getAttribute("aria-hidden") !== "true",
+    );
 
     if (focusable.length === 0) {
       // Nothing to move to: keep focus on the sheet itself
@@ -228,7 +224,7 @@ export function BottomSheet({
               // 80dvh where the unit is supported. An explicit `maxHeight`
               // prop (inline style) overrides both.
               !maxHeight && "max-h-[80vh] supports-[height:80dvh]:max-h-[80dvh]",
-              className
+              className,
             )}
             style={maxHeight ? { maxHeight } : undefined}
           >
@@ -241,7 +237,7 @@ export function BottomSheet({
                   "flex min-h-14 shrink-0 justify-center pt-3",
                   swipeable && !prefersReducedMotion
                     ? "cursor-grab touch-none active:cursor-grabbing"
-                    : "cursor-default"
+                    : "cursor-default",
                 )}
                 onPointerDown={(e) => {
                   if (swipeable && !prefersReducedMotion) {
@@ -262,7 +258,7 @@ export function BottomSheet({
                 "flex h-11 w-11 items-center justify-center",
                 "rounded-full bg-muted text-muted-foreground",
                 "transition-colors hover:bg-muted/80 hover:text-foreground",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
               aria-label="Close"
             >
@@ -280,6 +276,6 @@ export function BottomSheet({
         </>
       )}
     </AnimatePresence>,
-    document.body
+    document.body,
   );
 }

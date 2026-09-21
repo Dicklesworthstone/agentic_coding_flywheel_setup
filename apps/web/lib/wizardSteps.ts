@@ -7,13 +7,9 @@
  * Uses TanStack Query for React state management with localStorage persistence.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import {
-  safeGetJSON,
-  safeSetJSON,
-  stripSensitiveQueryState,
-} from "./utils";
+import { isRenderedCheckpointComplete } from "./installerCheckpoint";
 import {
   detectOS,
   getCreateVPSChecklist,
@@ -22,7 +18,7 @@ import {
   isCreateVPSChecklistComplete,
   setUserOS,
 } from "./userPreferences";
-import { isRenderedCheckpointComplete } from "./installerCheckpoint";
+import { safeGetJSON, safeSetJSON, stripSensitiveQueryState } from "./utils";
 
 export interface ValidationResult {
   valid: boolean;
@@ -205,8 +201,7 @@ export function getStepById(id: number): WizardStep | undefined {
 export function getStepBySlug(slug: string): WizardStep | undefined {
   // Some pages under `/wizard/*` are optional "bonus" routes that should still
   // highlight a canonical step in the sidebar.
-  const canonicalSlug =
-    slug === "windows-terminal-setup" ? "verify-key-connection" : slug;
+  const canonicalSlug = slug === "windows-terminal-setup" ? "verify-key-connection" : slug;
   return WIZARD_STEPS.find((step) => step.slug === canonicalSlug);
 }
 
@@ -223,8 +218,7 @@ export function validateStep(stepId: number): ValidationResult {
 export const COMPLETED_STEPS_KEY = "agent-flywheel-wizard-completed-steps";
 const COMPLETED_STEPS_QUERY_KEY = "steps";
 
-export const COMPLETED_STEPS_CHANGED_EVENT =
-  "acfs:wizard:completed-steps-changed";
+export const COMPLETED_STEPS_CHANGED_EVENT = "acfs:wizard:completed-steps-changed";
 
 // Query keys for TanStack Query
 export const wizardStepsKeys = {
@@ -237,11 +231,7 @@ type CompletedStepsChangedDetail = {
 
 function normalizeCompletedSteps(steps: unknown[]): number[] {
   const validSteps = steps.filter(
-    (n): n is number =>
-      typeof n === "number" &&
-      Number.isInteger(n) &&
-      n >= 1 &&
-      n <= TOTAL_STEPS
+    (n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= TOTAL_STEPS,
   );
   return Array.from(new Set(validSteps)).sort((a, b) => a - b);
 }
@@ -249,9 +239,7 @@ function normalizeCompletedSteps(steps: unknown[]): number[] {
 function getCompletedStepsFromQuery(): number[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = new URLSearchParams(window.location.search).get(
-      COMPLETED_STEPS_QUERY_KEY
-    );
+    const raw = new URLSearchParams(window.location.search).get(COMPLETED_STEPS_QUERY_KEY);
     if (!raw) return [];
     if (!/^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(raw)) return [];
     return normalizeCompletedSteps(raw.split(",").map(Number));
@@ -310,7 +298,7 @@ function emitCompletedStepsChanged(steps: number[]): void {
   window.dispatchEvent(
     new CustomEvent<CompletedStepsChangedDetail>(COMPLETED_STEPS_CHANGED_EVENT, {
       detail: { steps },
-    })
+    }),
   );
 }
 
@@ -377,14 +365,14 @@ export function useCompletedSteps(): [number[], (stepId: number) => void] {
 
     window.addEventListener(
       COMPLETED_STEPS_CHANGED_EVENT,
-      handleCompletedStepsChanged as EventListener
+      handleCompletedStepsChanged as EventListener,
     );
     window.addEventListener("storage", handleStorage);
 
     return () => {
       window.removeEventListener(
         COMPLETED_STEPS_CHANGED_EVENT,
-        handleCompletedStepsChanged as EventListener
+        handleCompletedStepsChanged as EventListener,
       );
       window.removeEventListener("storage", handleStorage);
     };
@@ -426,9 +414,7 @@ export function useCompletedSteps(): [number[], (stepId: number) => void] {
       });
 
       // Snapshot previous value for rollback
-      const cachedSteps = queryClient.getQueryData<number[]>(
-        wizardStepsKeys.completedSteps
-      );
+      const cachedSteps = queryClient.getQueryData<number[]>(wizardStepsKeys.completedSteps);
 
       // Optimistically update cache immediately (synchronous) so subsequent
       // rapid mutations see the updated value
@@ -443,10 +429,7 @@ export function useCompletedSteps(): [number[], (stepId: number) => void] {
     onError: (_err, _stepId, context) => {
       // Rollback to previous value on error
       if (context?.previousSteps !== undefined) {
-        queryClient.setQueryData(
-          wizardStepsKeys.completedSteps,
-          context.previousSteps
-        );
+        queryClient.setQueryData(wizardStepsKeys.completedSteps, context.previousSteps);
       } else {
         queryClient.invalidateQueries({
           queryKey: wizardStepsKeys.completedSteps,
@@ -466,7 +449,7 @@ export function useCompletedSteps(): [number[], (stepId: number) => void] {
     (stepId: number) => {
       mutate(stepId);
     },
-    [mutate]
+    [mutate],
   );
 
   return [steps ?? [], markComplete];
@@ -529,8 +512,7 @@ export interface WizardForwardNavRegistry {
   register: (action: WizardForwardAction | null) => void;
 }
 
-export const WizardForwardNavContext =
-  createContext<WizardForwardNavRegistry | null>(null);
+export const WizardForwardNavContext = createContext<WizardForwardNavRegistry | null>(null);
 
 /**
  * Register this step's forward action with the wizard layout. Call it once
@@ -538,7 +520,7 @@ export const WizardForwardNavContext =
  * hook order stays stable across loading states.
  */
 export function useWizardForwardNav(
-  action: WizardForwardNavInput
+  action: WizardForwardNavInput,
 ): (element: HTMLElement | null) => void {
   const registry = useContext(WizardForwardNavContext);
   const { onContinue, disabled = false, loading = false, label } = action;

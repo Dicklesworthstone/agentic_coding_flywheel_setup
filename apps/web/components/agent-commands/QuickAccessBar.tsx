@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { Check, Terminal } from "lucide-react";
-import { motion, AnimatePresence, springs } from "@/components/motion";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, springs } from "@/components/motion";
 import { cn, copyTextToClipboard } from "@/lib/utils";
 import type { AgentType } from "./AgentHeroCard";
 
@@ -15,11 +15,31 @@ interface QuickCommand {
 }
 
 export const quickCommands: QuickCommand[] = [
-  { alias: "cc", agentType: "claude", label: "Claude", iconGradient: "from-orange-400 to-amber-500" },
-  { alias: "cod", agentType: "codex", label: "Codex", iconGradient: "from-emerald-400 to-teal-500" },
-  { alias: "agy", agentType: "antigravity", label: "Antigravity", iconGradient: "from-blue-400 to-purple-500" },
+  {
+    alias: "cc",
+    agentType: "claude",
+    label: "Claude",
+    iconGradient: "from-orange-400 to-amber-500",
+  },
+  {
+    alias: "cod",
+    agentType: "codex",
+    label: "Codex",
+    iconGradient: "from-emerald-400 to-teal-500",
+  },
+  {
+    alias: "agy",
+    agentType: "antigravity",
+    label: "Antigravity",
+    iconGradient: "from-blue-400 to-purple-500",
+  },
   // Legacy shortcut: Gemini CLI retired 2026-06-18; ACFS maps gmi to locked agy.
-  { alias: "gmi", agentType: "gemini", label: "Gemini (legacy)", iconGradient: "from-blue-400 to-indigo-500" },
+  {
+    alias: "gmi",
+    agentType: "gemini",
+    label: "Gemini (legacy)",
+    iconGradient: "from-blue-400 to-indigo-500",
+  },
 ];
 
 export function QuickAccessBar() {
@@ -63,7 +83,7 @@ export function QuickAccessBar() {
       className={cn(
         "fixed inset-x-0 bottom-0 z-50",
         "border-t border-white/[0.08] bg-black/80 backdrop-blur-xl",
-        "pb-safe px-4 pt-3"
+        "pb-safe px-4 pt-3",
       )}
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
@@ -83,7 +103,7 @@ export function QuickAccessBar() {
                 "min-h-[64px] transition duration-300",
                 isCopied
                   ? "bg-emerald-500/20 border border-emerald-500/30"
-                  : "bg-white/[0.02] border border-white/[0.06] active:bg-white/[0.05]"
+                  : "bg-white/[0.02] border border-white/[0.06] active:bg-white/[0.05]",
               )}
               whileTap={{ scale: 0.95 }}
             >
@@ -104,7 +124,7 @@ export function QuickAccessBar() {
               <div
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br",
-                  command.iconGradient
+                  command.iconGradient,
                 )}
               >
                 <AnimatePresence mode="wait">
@@ -133,9 +153,7 @@ export function QuickAccessBar() {
               </div>
 
               {/* Command alias */}
-              <code className="font-mono text-xs font-medium text-white/80">
-                {command.alias}
-              </code>
+              <code className="font-mono text-xs font-medium text-white/80">{command.alias}</code>
 
               {/* Copied indicator */}
               <AnimatePresence>
@@ -157,9 +175,7 @@ export function QuickAccessBar() {
       </div>
 
       {/* Hint text */}
-      <p className="mt-2 text-center text-xs text-white/60">
-        Tap to copy command
-      </p>
+      <p className="mt-2 text-center text-xs text-white/60">Tap to copy command</p>
     </motion.div>
   );
 }

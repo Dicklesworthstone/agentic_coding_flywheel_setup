@@ -1,8 +1,8 @@
 "use client";
 
-import * as React from "react";
-import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { AlertTriangle, Home, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import * as React from "react";
 import { Button } from "./button";
 
 interface ErrorBoundaryState {
@@ -39,10 +39,7 @@ interface ErrorBoundaryProps {
  * </ErrorBoundary>
  * ```
  */
-export class ErrorBoundary extends React.Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -88,14 +85,11 @@ export class ErrorBoundary extends React.Component<
               </div>
 
               {/* Title */}
-              <h2 className="mb-3 text-2xl font-bold text-white">
-                Something went wrong
-              </h2>
+              <h2 className="mb-3 text-2xl font-bold text-white">Something went wrong</h2>
 
               {/* Description */}
               <p className="mb-6 text-white/60">
-                We encountered an error while loading this content. This might
-                be a temporary issue.
+                We encountered an error while loading this content. This might be a temporary issue.
               </p>
 
               {/* Error details (development only) */}
@@ -120,10 +114,7 @@ export class ErrorBoundary extends React.Component<
                   <RefreshCw className="h-4 w-4" />
                   Try Again
                 </Button>
-                <Button
-                  asChild
-                  className="gap-2 bg-gradient-to-r from-primary to-violet-500"
-                >
+                <Button asChild className="gap-2 bg-gradient-to-r from-primary to-violet-500">
                   <Link href={backLink}>
                     <Home className="h-4 w-4" />
                     Go to {backLinkLabel}

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { forwardRef, type ComponentProps } from 'react';
-import { Button } from '@/components/ui/button';
-import { trackInteraction, sendEvent } from '@/lib/analytics';
+import { type ComponentProps, forwardRef } from "react";
+import { Button } from "@/components/ui/button";
+import { sendEvent, trackInteraction } from "@/lib/analytics";
 
 type ButtonProps = ComponentProps<typeof Button>;
 
@@ -20,26 +20,26 @@ export const TrackedButton = forwardRef<HTMLButtonElement, TrackedButtonProps>(
   (
     {
       trackingId,
-      trackingCategory = 'button',
+      trackingCategory = "button",
       trackingLabel,
       trackingValue,
       onClick,
       children,
       ...props
     },
-    ref
+    ref,
   ) => {
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       // Track the click
-      trackInteraction('click', trackingId, trackingCategory, {
-        label: trackingLabel || (typeof children === 'string' ? children : trackingId),
+      trackInteraction("click", trackingId, trackingCategory, {
+        label: trackingLabel || (typeof children === "string" ? children : trackingId),
         value: trackingValue,
       });
 
       // Also send as a named event for easier filtering
       sendEvent(`${trackingCategory}_click`, {
         button_id: trackingId,
-        button_label: trackingLabel || (typeof children === 'string' ? children : trackingId),
+        button_label: trackingLabel || (typeof children === "string" ? children : trackingId),
       });
 
       // Call original onClick if provided
@@ -51,9 +51,9 @@ export const TrackedButton = forwardRef<HTMLButtonElement, TrackedButtonProps>(
         {children}
       </Button>
     );
-  }
+  },
 );
 
-TrackedButton.displayName = 'TrackedButton';
+TrackedButton.displayName = "TrackedButton";
 
 export default TrackedButton;

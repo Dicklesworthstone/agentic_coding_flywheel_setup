@@ -1,23 +1,23 @@
 "use client";
 
+import { Lightbulb } from "lucide-react";
+import Link from "next/link";
 import {
-  useState,
+  type CSSProperties,
+  type ReactNode,
   useCallback,
-  useRef,
   useEffect,
   useId,
   useLayoutEffect,
-  type CSSProperties,
-  type ReactNode,
+  useRef,
+  useState,
 } from "react";
-import Link from "next/link";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence, springs } from "@/components/motion";
-import { Lightbulb } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getJargon, type JargonTerm } from "@/lib/jargon";
-import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { AnimatePresence, motion, springs } from "@/components/motion";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { getJargon, type JargonTerm } from "@/lib/jargon";
+import { cn } from "@/lib/utils";
 
 interface JargonProps {
   /** The term key to look up in the dictionary */
@@ -91,17 +91,15 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
     // Calculate left position (centered on trigger, clamped to viewport)
     const left = Math.min(
       Math.max(16, rect.left - 140 + offsetWidth / 2),
-      Math.max(16, window.innerWidth - 336)
+      Math.max(16, window.innerWidth - 336),
     );
 
     // Calculate vertical position
-    const verticalStyle = position === "top"
-      ? { bottom: window.innerHeight - rect.top + 8 }
-      : { top: rect.bottom + 8 };
+    const verticalStyle =
+      position === "top" ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 };
 
     setTooltipLayout({ position, style: { left, ...verticalStyle } });
   }, [isOpen, isMobile]);
-
 
   const handleMouseEnter = useCallback(() => {
     if (isMobile) return;
@@ -126,22 +124,25 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
     setIsOpen(true);
   }, [isMobile]);
 
-  const handleBlur = useCallback((e: React.FocusEvent) => {
-    if (isMobile) return;
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current);
-    }
-    // Check if focus is moving to an element inside the tooltip
-    // If so, don't close immediately - let the user interact with tooltip links
-    const relatedTarget = e.relatedTarget as Node | null;
-    if (relatedTarget && tooltipRef.current?.contains(relatedTarget)) {
-      return;
-    }
-    // Use a small delay to allow focus to settle (same as mouse leave)
-    closeTimeoutRef.current = setTimeout(() => {
-      setIsOpen(false);
-    }, 150);
-  }, [isMobile]);
+  const handleBlur = useCallback(
+    (e: React.FocusEvent) => {
+      if (isMobile) return;
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+      // Check if focus is moving to an element inside the tooltip
+      // If so, don't close immediately - let the user interact with tooltip links
+      const relatedTarget = e.relatedTarget as Node | null;
+      if (relatedTarget && tooltipRef.current?.contains(relatedTarget)) {
+        return;
+      }
+      // Use a small delay to allow focus to settle (same as mouse leave)
+      closeTimeoutRef.current = setTimeout(() => {
+        setIsOpen(false);
+      }, 150);
+    },
+    [isMobile],
+  );
 
   const handleClick = useCallback(() => {
     // Always open on click - supports both mobile tap and desktop keyboard activation
@@ -151,7 +152,6 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
   const handleClose = useCallback(() => {
     setIsOpen(false);
   }, []);
-
 
   if (!jargonData) {
     // If term not found, just render children without styling
@@ -188,8 +188,9 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
           // Focus state for accessibility
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
           // Gradient heading mode: applies gradient text styling to match surrounding h1/h2
-          gradientHeading && "bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent",
-          className
+          gradientHeading &&
+            "bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent",
+          className,
         )}
         // The visible term is the accessible name (so an <h1> containing a
         // Jargon still reads "Rent a VPS", not "Rent a Learn about VPS");
@@ -207,53 +208,56 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
       </span>
 
       {/* Desktop Tooltip - rendered via portal to escape stacking contexts */}
-      {canUsePortal && createPortal(
-        <AnimatePresence>
-          {isOpen && !isMobile && (
-            <motion.div
-              ref={tooltipRef}
-              initial={
-                prefersReducedMotion
-                  ? { opacity: 0 }
-                  : { opacity: 0, y: tooltipLayout.position === "top" ? 8 : -8, scale: 0.95 }
-              }
-              animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
-              exit={
-                prefersReducedMotion
-                  ? { opacity: 0 }
-                  : { opacity: 0, y: tooltipLayout.position === "top" ? 8 : -8, scale: 0.95 }
-              }
-              transition={prefersReducedMotion ? { duration: 0.12 } : springs.snappy}
-              className={cn(
-                "fixed z-50 w-80 max-w-[calc(100vw-2rem)]",
-                "rounded-xl border border-border/50 bg-card/95 p-4 shadow-2xl backdrop-blur-xl",
-                // Gradient accent line at top
-                "before:absolute before:inset-x-0 before:h-1 before:rounded-t-xl before:bg-gradient-to-r before:from-primary/50 before:via-[oklch(0.7_0.2_330/0.5)] before:to-primary/50",
-                tooltipLayout.position === "top" ? "before:top-0" : "before:bottom-0 before:rounded-t-none before:rounded-b-xl"
-              )}
-              style={tooltipLayout.style}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-              onBlur={(e: React.FocusEvent) => {
-                // Close tooltip when focus leaves it entirely (not moving to trigger)
-                const relatedTarget = e.relatedTarget as Node | null;
-                if (relatedTarget && triggerRef.current?.contains(relatedTarget)) {
-                  return;
+      {canUsePortal &&
+        createPortal(
+          <AnimatePresence>
+            {isOpen && !isMobile && (
+              <motion.div
+                ref={tooltipRef}
+                initial={
+                  prefersReducedMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0, y: tooltipLayout.position === "top" ? 8 : -8, scale: 0.95 }
                 }
-                if (relatedTarget && tooltipRef.current?.contains(relatedTarget)) {
-                  return;
+                animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+                exit={
+                  prefersReducedMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0, y: tooltipLayout.position === "top" ? 8 : -8, scale: 0.95 }
                 }
-                closeTimeoutRef.current = setTimeout(() => {
-                  setIsOpen(false);
-                }, 150);
-              }}
-            >
-              <TooltipContent term={jargonData} termKey={termKey} />
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+                transition={prefersReducedMotion ? { duration: 0.12 } : springs.snappy}
+                className={cn(
+                  "fixed z-50 w-80 max-w-[calc(100vw-2rem)]",
+                  "rounded-xl border border-border/50 bg-card/95 p-4 shadow-2xl backdrop-blur-xl",
+                  // Gradient accent line at top
+                  "before:absolute before:inset-x-0 before:h-1 before:rounded-t-xl before:bg-gradient-to-r before:from-primary/50 before:via-[oklch(0.7_0.2_330/0.5)] before:to-primary/50",
+                  tooltipLayout.position === "top"
+                    ? "before:top-0"
+                    : "before:bottom-0 before:rounded-t-none before:rounded-b-xl",
+                )}
+                style={tooltipLayout.style}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                onBlur={(e: React.FocusEvent) => {
+                  // Close tooltip when focus leaves it entirely (not moving to trigger)
+                  const relatedTarget = e.relatedTarget as Node | null;
+                  if (relatedTarget && triggerRef.current?.contains(relatedTarget)) {
+                    return;
+                  }
+                  if (relatedTarget && tooltipRef.current?.contains(relatedTarget)) {
+                    return;
+                  }
+                  closeTimeoutRef.current = setTimeout(() => {
+                    setIsOpen(false);
+                  }, 150);
+                }}
+              >
+                <TooltipContent term={jargonData} termKey={termKey} />
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
 
       {/* Mobile Bottom Sheet */}
       {canUsePortal && (
@@ -289,28 +293,23 @@ function TooltipContent({ term, termKey }: { term: JargonTerm; termKey: string }
       </div>
 
       {/* Short definition */}
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        {term.short}
-      </p>
+      <p className="text-sm leading-relaxed text-muted-foreground">{term.short}</p>
 
       {/* Analogy if available */}
       {term.analogy && (
         <div className="rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-          <span className="font-medium text-primary">Think of it like:</span>{" "}
-          {term.analogy}
+          <span className="font-medium text-primary">Think of it like:</span> {term.analogy}
         </div>
       )}
 
       {/* Tap for more hint */}
-      <p className="text-xs text-muted-foreground/60">
-        Hover or focus to learn more
-      </p>
+      <p className="text-xs text-muted-foreground/60">Hover or focus to learn more</p>
 
       <Link
         href={glossaryHref}
         className={cn(
           "inline-block text-xs font-medium text-primary underline-offset-4 hover:underline",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
         )}
       >
         Open in glossary →
@@ -333,10 +332,10 @@ function SheetContent({ term, termKey }: { term: JargonTerm; termKey: string }) 
           <Lightbulb className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h3 id={`jargon-sheet-title-${termKey}`} className="text-xl font-bold text-foreground">{term.term}</h3>
-          <p className="text-sm text-muted-foreground line-clamp-2">
-            {term.short}
-          </p>
+          <h3 id={`jargon-sheet-title-${termKey}`} className="text-xl font-bold text-foreground">
+            {term.term}
+          </h3>
+          <p className="text-sm text-muted-foreground line-clamp-2">{term.short}</p>
         </div>
       </div>
 
@@ -346,9 +345,7 @@ function SheetContent({ term, termKey }: { term: JargonTerm; termKey: string }) 
           <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
             What is it?
           </h4>
-          <p className="text-sm leading-relaxed text-foreground">
-            {term.long}
-          </p>
+          <p className="text-sm leading-relaxed text-foreground">{term.long}</p>
         </div>
 
         {/* Why we use it */}
@@ -357,9 +354,7 @@ function SheetContent({ term, termKey }: { term: JargonTerm; termKey: string }) 
             <p className="mb-1 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
               Why we use it
             </p>
-            <p className="text-sm leading-relaxed text-foreground">
-              {term.why}
-            </p>
+            <p className="text-sm leading-relaxed text-foreground">{term.why}</p>
           </div>
         )}
 
@@ -369,9 +364,7 @@ function SheetContent({ term, termKey }: { term: JargonTerm; termKey: string }) 
             <p className="mb-1 text-xs font-bold uppercase tracking-wider text-primary">
               Think of it like...
             </p>
-            <p className="text-sm leading-relaxed text-foreground">
-              {term.analogy}
-            </p>
+            <p className="text-sm leading-relaxed text-foreground">{term.analogy}</p>
           </div>
         )}
 
@@ -399,7 +392,7 @@ function SheetContent({ term, termKey }: { term: JargonTerm; termKey: string }) 
             href={glossaryHref}
             className={cn(
               "inline-block text-sm font-medium text-primary underline-offset-4 hover:underline",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
             )}
           >
             View in glossary →

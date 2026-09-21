@@ -1,53 +1,45 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  RefreshCw,
-  Zap,
-  Clock,
-  Terminal,
-  FileText,
   AlertTriangle,
-  CheckCircle2,
-  Sparkles,
   Bot,
-  Package,
-  Settings,
-  PartyPopper,
+  CheckCircle2,
+  Clock,
+  FileText,
   Loader2,
-  Play,
-  RotateCcw,
-  Wrench,
   Minus,
+  Package,
+  PartyPopper,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Settings,
+  Sparkles,
+  Terminal,
+  Wrench,
   XCircle,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  TipBox,
   Divider,
   GoalBanner,
-  BulletList,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function KeepingUpdatedLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Learn how to keep your ACFS tools current.
-      </GoalBanner>
+      <GoalBanner>Learn how to keep your ACFS tools current.</GoalBanner>
 
       {/* Why Updates Matter */}
-      <Section
-        title="Why Updates Matter"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.1}
-      >
-        <Paragraph>
-          Your VPS has 30+ tools installed. Each one gets improvements:
-        </Paragraph>
+      <Section title="Why Updates Matter" icon={<Zap className="h-5 w-5" />} delay={0.1}>
+        <Paragraph>Your VPS has 30+ tools installed. Each one gets improvements:</Paragraph>
 
         <div className="mt-6">
           <BulletList
@@ -67,14 +59,8 @@ export function KeepingUpdatedLesson() {
       <Divider />
 
       {/* The Update Command */}
-      <Section
-        title="The Update Command"
-        icon={<RefreshCw className="h-5 w-5" />}
-        delay={0.15}
-      >
-        <Paragraph>
-          ACFS provides a single command to update everything:
-        </Paragraph>
+      <Section title="The Update Command" icon={<RefreshCw className="h-5 w-5" />} delay={0.15}>
+        <Paragraph>ACFS provides a single command to update everything:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock code="acfs-update" />
@@ -113,11 +99,7 @@ export function KeepingUpdatedLesson() {
       <Divider />
 
       {/* Common Update Patterns */}
-      <Section
-        title="Common Update Patterns"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Common Update Patterns" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <div className="space-y-6">
           <UpdatePattern
             title="Quick Agent Update"
@@ -148,11 +130,7 @@ export function KeepingUpdatedLesson() {
       <Divider />
 
       {/* Automated Updates */}
-      <Section
-        title="Automated Updates"
-        icon={<Clock className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Automated Updates" icon={<Clock className="h-5 w-5" />} delay={0.25}>
         <Paragraph>For hands-off maintenance, use quiet mode:</Paragraph>
 
         <div className="mt-6">
@@ -160,27 +138,23 @@ export function KeepingUpdatedLesson() {
         </div>
 
         <Paragraph>
-          This runs without prompts, only shows errors, and leaves the ACFS
-          tree itself alone. The shipped nightly timer runs exactly this.
+          This runs without prompts, only shows errors, and leaves the ACFS tree itself alone. The
+          shipped nightly timer runs exactly this.
         </Paragraph>
 
         <div className="mt-6">
           <TipBox variant="info">
-            The control-plane boundary: with --no-self-update, automated runs
-            update your stack tools but never ACFS itself -- not the git
-            checkout, and not the deployed runtime copies under ~/.acfs
-            (acfs, acfs-update, the update libraries). Refresh the control
-            plane separately every so often: run acfs-update without
-            --no-self-update, or git pull the checkout and then run
-            acfs-update --shell-only to redeploy the runtime copies. acfs
+            The control-plane boundary: with --no-self-update, automated runs update your stack
+            tools but never ACFS itself -- not the git checkout, and not the deployed runtime copies
+            under ~/.acfs (acfs, acfs-update, the update libraries). Refresh the control plane
+            separately every so often: run acfs-update without --no-self-update, or git pull the
+            checkout and then run acfs-update --shell-only to redeploy the runtime copies. acfs
             doctor warns when the checkout and the deployed runtime disagree.
           </TipBox>
         </div>
 
         <div className="mt-6">
-          <TipBox variant="tip">
-            You can add this to a cron job for weekly updates!
-          </TipBox>
+          <TipBox variant="tip">You can add this to a cron job for weekly updates!</TipBox>
         </div>
 
         <div className="mt-6">
@@ -197,11 +171,7 @@ crontab -e
       <Divider />
 
       {/* Checking Update Logs */}
-      <Section
-        title="Checking Update Logs"
-        icon={<FileText className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Checking Update Logs" icon={<FileText className="h-5 w-5" />} delay={0.3}>
         <Paragraph>Every update is logged:</Paragraph>
 
         <div className="mt-6">
@@ -222,11 +192,7 @@ tail -f ~/.acfs/logs/updates/$(ls -1t ~/.acfs/logs/updates | head -1)`}
       <Divider />
 
       {/* Troubleshooting */}
-      <Section
-        title="Troubleshooting"
-        icon={<AlertTriangle className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Troubleshooting" icon={<AlertTriangle className="h-5 w-5" />} delay={0.35}>
         <div className="space-y-6">
           <TroubleshootingCard
             title="apt is locked"
@@ -262,48 +228,30 @@ agy update`}
       <Divider />
 
       {/* Quick Reference */}
-      <Section
-        title="Quick Reference"
-        icon={<Sparkles className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Quick Reference" icon={<Sparkles className="h-5 w-5" />} delay={0.4}>
         <QuickReferenceTable />
       </Section>
 
       <Divider />
 
       {/* How Often to Update */}
-      <Section
-        title="How Often to Update?"
-        icon={<Clock className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="How Often to Update?" icon={<Clock className="h-5 w-5" />} delay={0.45}>
         <Paragraph>Recommendations:</Paragraph>
 
         <div className="mt-6 space-y-3">
-          <FrequencyItem
-            frequency="Weekly"
-            recommendation="Full update including stack"
-          />
+          <FrequencyItem frequency="Weekly" recommendation="Full update including stack" />
           <FrequencyItem
             frequency="After issues"
             recommendation="If something breaks, update first"
           />
-          <FrequencyItem
-            frequency="Before major work"
-            recommendation="Get latest agent versions"
-          />
+          <FrequencyItem frequency="Before major work" recommendation="Get latest agent versions" />
         </div>
       </Section>
 
       <Divider />
 
       {/* Congratulations */}
-      <Section
-        title="Congratulations!"
-        icon={<PartyPopper className="h-5 w-5" />}
-        delay={0.5}
-      >
+      <Section title="Congratulations!" icon={<PartyPopper className="h-5 w-5" />} delay={0.5}>
         <CongratulationsCard />
       </Section>
     </div>
@@ -339,7 +287,9 @@ function BenefitRow({ icon, text }: { icon: React.ReactNode; text: string }) {
       whileHover={{ x: 4 }}
       className="group flex items-center gap-3 p-2 -mx-2 rounded-lg transition duration-300 hover:bg-white/[0.02]"
     >
-      <div className="text-emerald-400 h-5 w-5 group-hover:scale-110 transition-transform">{icon}</div>
+      <div className="text-emerald-400 h-5 w-5 group-hover:scale-110 transition-transform">
+        {icon}
+      </div>
       <span className="text-white/70 group-hover:text-white/90 transition-colors">{text}</span>
     </motion.div>
   );
@@ -366,7 +316,9 @@ function UpdateItem({
     >
       <div className="text-primary group-hover:scale-110 transition-transform">{icon}</div>
       <div>
-        <span className="text-sm font-medium text-white group-hover:text-primary transition-colors">{label}</span>
+        <span className="text-sm font-medium text-white group-hover:text-primary transition-colors">
+          {label}
+        </span>
         <span className="text-xs text-white/50 block">{description}</span>
       </div>
     </motion.div>
@@ -439,19 +391,18 @@ function QuickReferenceTable() {
     { command: "acfs-update --agents-only", description: "Just update agents" },
     { command: "acfs-update --no-apt", description: "Skip apt (faster)" },
     { command: "acfs-update --dry-run", description: "Preview changes" },
-    { command: "acfs-update --yes --quiet --no-self-update", description: "Automated mode (leaves ACFS itself alone)" },
+    {
+      command: "acfs-update --yes --quiet --no-self-update",
+      description: "Automated mode (leaves ACFS itself alone)",
+    },
     { command: "acfs-update --help", description: "Full help" },
   ];
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
       <div className="grid grid-cols-[1fr_1fr] divide-x divide-white/[0.06]">
-        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">
-          Command
-        </div>
-        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">
-          What it does
-        </div>
+        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">Command</div>
+        <div className="p-3 bg-white/[0.02] text-sm font-medium text-white/60">What it does</div>
       </div>
       {commands.map((cmd, i) => (
         <div
@@ -489,7 +440,9 @@ function FrequencyItem({
         <Clock className="h-5 w-5" />
       </div>
       <div>
-        <span className="font-bold text-white group-hover:text-primary transition-colors">{frequency}</span>
+        <span className="font-bold text-white group-hover:text-primary transition-colors">
+          {frequency}
+        </span>
         <span className="text-white/50"> - {recommendation}</span>
       </div>
     </motion.div>
@@ -575,18 +528,114 @@ interface RepoNode {
 }
 
 const REPOS: RepoNode[] = [
-  { id: "apt", name: "System Packages", shortName: "apt", versionFrom: "24.04.1", versionTo: "24.04.2", category: "system", dependsOn: [] },
-  { id: "omz", name: "Oh My Zsh", shortName: "OMZ", versionFrom: "abc1234", versionTo: "def5678", category: "shell", dependsOn: ["apt"] },
-  { id: "p10k", name: "Powerlevel10k", shortName: "P10K", versionFrom: "1.19.0", versionTo: "1.20.0", category: "shell", dependsOn: ["omz"] },
-  { id: "plugins", name: "ZSH Plugins", shortName: "Plugins", versionFrom: "v0.8.1", versionTo: "v0.9.0", category: "shell", dependsOn: ["omz"] },
-  { id: "claude", name: "Claude Code", shortName: "Claude", versionFrom: "1.0.47", versionTo: "1.0.48", category: "agent", dependsOn: ["apt"] },
-  { id: "codex", name: "OpenAI Codex", shortName: "Codex", versionFrom: "0.1.24", versionTo: "0.1.25", category: "agent", dependsOn: ["apt"] },
-  { id: "agy", name: "Antigravity CLI", shortName: "agy", versionFrom: "1.0.11", versionTo: "1.0.12", category: "agent", dependsOn: ["apt"] },
-  { id: "wrangler", name: "Wrangler", shortName: "Wrnglr", versionFrom: "3.91.0", versionTo: "3.92.0", category: "cloud", dependsOn: ["apt"] },
-  { id: "supabase", name: "Supabase CLI", shortName: "Supa", versionFrom: "1.200.3", versionTo: "1.201.0", category: "cloud", dependsOn: ["apt"] },
-  { id: "vercel", name: "Vercel CLI", shortName: "Vercel", versionFrom: "37.8.0", versionTo: "37.9.0", category: "cloud", dependsOn: ["apt"] },
-  { id: "ntm", name: "NTM Stack", shortName: "NTM", versionFrom: "0.9.3", versionTo: "0.9.4", category: "stack", dependsOn: ["apt", "supabase"] },
-  { id: "dcg", name: "DCG Tools", shortName: "DCG", versionFrom: "0.4.1", versionTo: "0.4.2", category: "stack", dependsOn: ["apt", "wrangler"] },
+  {
+    id: "apt",
+    name: "System Packages",
+    shortName: "apt",
+    versionFrom: "24.04.1",
+    versionTo: "24.04.2",
+    category: "system",
+    dependsOn: [],
+  },
+  {
+    id: "omz",
+    name: "Oh My Zsh",
+    shortName: "OMZ",
+    versionFrom: "abc1234",
+    versionTo: "def5678",
+    category: "shell",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "p10k",
+    name: "Powerlevel10k",
+    shortName: "P10K",
+    versionFrom: "1.19.0",
+    versionTo: "1.20.0",
+    category: "shell",
+    dependsOn: ["omz"],
+  },
+  {
+    id: "plugins",
+    name: "ZSH Plugins",
+    shortName: "Plugins",
+    versionFrom: "v0.8.1",
+    versionTo: "v0.9.0",
+    category: "shell",
+    dependsOn: ["omz"],
+  },
+  {
+    id: "claude",
+    name: "Claude Code",
+    shortName: "Claude",
+    versionFrom: "1.0.47",
+    versionTo: "1.0.48",
+    category: "agent",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "codex",
+    name: "OpenAI Codex",
+    shortName: "Codex",
+    versionFrom: "0.1.24",
+    versionTo: "0.1.25",
+    category: "agent",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "agy",
+    name: "Antigravity CLI",
+    shortName: "agy",
+    versionFrom: "1.0.11",
+    versionTo: "1.0.12",
+    category: "agent",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "wrangler",
+    name: "Wrangler",
+    shortName: "Wrnglr",
+    versionFrom: "3.91.0",
+    versionTo: "3.92.0",
+    category: "cloud",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "supabase",
+    name: "Supabase CLI",
+    shortName: "Supa",
+    versionFrom: "1.200.3",
+    versionTo: "1.201.0",
+    category: "cloud",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "vercel",
+    name: "Vercel CLI",
+    shortName: "Vercel",
+    versionFrom: "37.8.0",
+    versionTo: "37.9.0",
+    category: "cloud",
+    dependsOn: ["apt"],
+  },
+  {
+    id: "ntm",
+    name: "NTM Stack",
+    shortName: "NTM",
+    versionFrom: "0.9.3",
+    versionTo: "0.9.4",
+    category: "stack",
+    dependsOn: ["apt", "supabase"],
+  },
+  {
+    id: "dcg",
+    name: "DCG Tools",
+    shortName: "DCG",
+    versionFrom: "0.4.1",
+    versionTo: "0.4.2",
+    category: "stack",
+    dependsOn: ["apt", "wrangler"],
+  },
 ];
 
 interface Scenario {
@@ -639,7 +688,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: "breaking",
     label: "Breaking Change",
-    description: "A major version bump in Wrangler introduces breaking API changes. The updater detects this and pauses.",
+    description:
+      "A major version bump in Wrangler introduces breaking API changes. The updater detects this and pauses.",
     command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
@@ -649,7 +699,12 @@ const SCENARIOS: Scenario[] = [
       { repoId: "claude", finalStatus: "updated", delay: 500 },
       { repoId: "codex", finalStatus: "updated", delay: 600 },
       { repoId: "agy", finalStatus: "updated", delay: 700 },
-      { repoId: "wrangler", finalStatus: "error", delay: 900, errorMsg: "BREAKING: v4.0.0 requires Node 22+" },
+      {
+        repoId: "wrangler",
+        finalStatus: "error",
+        delay: 900,
+        errorMsg: "BREAKING: v4.0.0 requires Node 22+",
+      },
       { repoId: "supabase", finalStatus: "updated", delay: 1000 },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
       { repoId: "ntm", finalStatus: "updated", delay: 1300 },
@@ -673,7 +728,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: "conflict",
     label: "Version Conflict",
-    description: "NTM and Supabase CLI have conflicting dependency requirements. The resolver detects and handles it.",
+    description:
+      "NTM and Supabase CLI have conflicting dependency requirements. The resolver detects and handles it.",
     command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
@@ -684,7 +740,12 @@ const SCENARIOS: Scenario[] = [
       { repoId: "codex", finalStatus: "updated", delay: 600 },
       { repoId: "agy", finalStatus: "updated", delay: 700 },
       { repoId: "wrangler", finalStatus: "updated", delay: 900 },
-      { repoId: "supabase", finalStatus: "conflict", delay: 1000, errorMsg: "Needs @supabase/auth@2.x" },
+      {
+        repoId: "supabase",
+        finalStatus: "conflict",
+        delay: 1000,
+        errorMsg: "Needs @supabase/auth@2.x",
+      },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
       { repoId: "ntm", finalStatus: "conflict", delay: 1300, errorMsg: "Needs @supabase/auth@1.x" },
       { repoId: "dcg", finalStatus: "updated", delay: 1400 },
@@ -707,7 +768,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: "automerge",
     label: "Auto-Merge",
-    description: "Git-based tools (OMZ, plugins) have local modifications. The updater auto-merges cleanly via stash/pop.",
+    description:
+      "Git-based tools (OMZ, plugins) have local modifications. The updater auto-merges cleanly via stash/pop.",
     command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
@@ -741,11 +803,17 @@ const SCENARIOS: Scenario[] = [
   {
     id: "manual",
     label: "Manual Intervention",
-    description: "A merge conflict in OMZ custom config cannot be auto-resolved. The updater flags it for manual fix.",
+    description:
+      "A merge conflict in OMZ custom config cannot be auto-resolved. The updater flags it for manual fix.",
     command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
-      { repoId: "omz", finalStatus: "manual", delay: 600, errorMsg: "Merge conflict in custom/themes" },
+      {
+        repoId: "omz",
+        finalStatus: "manual",
+        delay: 600,
+        errorMsg: "Merge conflict in custom/themes",
+      },
       { repoId: "p10k", finalStatus: "updated", delay: 800 },
       { repoId: "plugins", finalStatus: "updated", delay: 900 },
       { repoId: "claude", finalStatus: "updated", delay: 500 },
@@ -775,7 +843,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: "fleet",
     label: "Unattended Run",
-    description: "Simulates the non-interactive mode used by cron and nightly timers: no prompts, minimal output, every category in order.",
+    description:
+      "Simulates the non-interactive mode used by cron and nightly timers: no prompts, minimal output, every category in order.",
     command: "acfs-update --yes --quiet",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
@@ -809,21 +878,80 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
-const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; fill: string }> = {
-  system: { bg: "bg-blue-500/10", border: "border-blue-500/30", text: "text-blue-400", fill: "rgba(96,165,250,0.8)" },
-  shell: { bg: "bg-violet-500/10", border: "border-violet-500/30", text: "text-violet-400", fill: "rgba(167,139,250,0.8)" },
-  agent: { bg: "bg-orange-500/10", border: "border-orange-500/30", text: "text-orange-400", fill: "rgba(251,146,60,0.8)" },
-  cloud: { bg: "bg-emerald-500/10", border: "border-emerald-500/30", text: "text-emerald-400", fill: "rgba(52,211,153,0.8)" },
-  stack: { bg: "bg-amber-500/10", border: "border-amber-500/30", text: "text-amber-400", fill: "rgba(251,191,36,0.8)" },
-};
+const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; fill: string }> =
+  {
+    system: {
+      bg: "bg-blue-500/10",
+      border: "border-blue-500/30",
+      text: "text-blue-400",
+      fill: "rgba(96,165,250,0.8)",
+    },
+    shell: {
+      bg: "bg-violet-500/10",
+      border: "border-violet-500/30",
+      text: "text-violet-400",
+      fill: "rgba(167,139,250,0.8)",
+    },
+    agent: {
+      bg: "bg-orange-500/10",
+      border: "border-orange-500/30",
+      text: "text-orange-400",
+      fill: "rgba(251,146,60,0.8)",
+    },
+    cloud: {
+      bg: "bg-emerald-500/10",
+      border: "border-emerald-500/30",
+      text: "text-emerald-400",
+      fill: "rgba(52,211,153,0.8)",
+    },
+    stack: {
+      bg: "bg-amber-500/10",
+      border: "border-amber-500/30",
+      text: "text-amber-400",
+      fill: "rgba(251,191,36,0.8)",
+    },
+  };
 
-const STATUS_COLORS: Record<RepoSyncStatus, { bg: string; border: string; text: string; icon: string }> = {
-  idle: { bg: "bg-white/[0.02]", border: "border-white/[0.06]", text: "text-white/30", icon: "text-white/20" },
-  syncing: { bg: "bg-amber-500/[0.04]", border: "border-amber-500/40", text: "text-amber-300", icon: "text-amber-400" },
-  updated: { bg: "bg-emerald-500/[0.04]", border: "border-emerald-500/30", text: "text-emerald-300", icon: "text-emerald-400" },
-  conflict: { bg: "bg-yellow-500/[0.04]", border: "border-yellow-500/30", text: "text-yellow-300", icon: "text-yellow-400" },
-  error: { bg: "bg-red-500/[0.04]", border: "border-red-500/30", text: "text-red-300", icon: "text-red-400" },
-  manual: { bg: "bg-purple-500/[0.04]", border: "border-purple-500/30", text: "text-purple-300", icon: "text-purple-400" },
+const STATUS_COLORS: Record<
+  RepoSyncStatus,
+  { bg: string; border: string; text: string; icon: string }
+> = {
+  idle: {
+    bg: "bg-white/[0.02]",
+    border: "border-white/[0.06]",
+    text: "text-white/30",
+    icon: "text-white/20",
+  },
+  syncing: {
+    bg: "bg-amber-500/[0.04]",
+    border: "border-amber-500/40",
+    text: "text-amber-300",
+    icon: "text-amber-400",
+  },
+  updated: {
+    bg: "bg-emerald-500/[0.04]",
+    border: "border-emerald-500/30",
+    text: "text-emerald-300",
+    icon: "text-emerald-400",
+  },
+  conflict: {
+    bg: "bg-yellow-500/[0.04]",
+    border: "border-yellow-500/30",
+    text: "text-yellow-300",
+    icon: "text-yellow-400",
+  },
+  error: {
+    bg: "bg-red-500/[0.04]",
+    border: "border-red-500/30",
+    text: "text-red-300",
+    icon: "text-red-400",
+  },
+  manual: {
+    bg: "bg-purple-500/[0.04]",
+    border: "border-purple-500/30",
+    text: "text-purple-300",
+    icon: "text-purple-400",
+  },
 };
 
 const STAGE_STEP_DURATION = 800;
@@ -832,8 +960,8 @@ function InteractiveUpdatePipeline() {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { amount: 0.15 });
   const [activeScenario, setActiveScenario] = useState(0);
-  const [repoStatuses, setRepoStatuses] = useState<Record<string, RepoSyncStatus>>(
-    () => Object.fromEntries(REPOS.map((r) => [r.id, "idle" as RepoSyncStatus]))
+  const [repoStatuses, setRepoStatuses] = useState<Record<string, RepoSyncStatus>>(() =>
+    Object.fromEntries(REPOS.map((r) => [r.id, "idle" as RepoSyncStatus])),
   );
   const [repoErrors, setRepoErrors] = useState<Record<string, string>>({});
   const [isRunning, setIsRunning] = useState(false);
@@ -885,9 +1013,12 @@ function InteractiveUpdatePipeline() {
     const lineDelay = (seq[seq.length - 1].delay + STAGE_STEP_DURATION) / (lines.length - 1);
     for (let i = 1; i < lines.length; i++) {
       const lineIndex = i;
-      scheduleTimer(() => {
-        setTerminalOutput((prev) => [...prev, lines[lineIndex]]);
-      }, lineIndex * lineDelay + 100);
+      scheduleTimer(
+        () => {
+          setTerminalOutput((prev) => [...prev, lines[lineIndex]]);
+        },
+        lineIndex * lineDelay + 100,
+      );
     }
 
     // Schedule repo status transitions
@@ -939,10 +1070,13 @@ function InteractiveUpdatePipeline() {
 
   // Derived stats
   const updatedCount = Object.values(repoStatuses).filter((s) => s === "updated").length;
-  const errorCount = Object.values(repoStatuses).filter((s) => s === "error" || s === "conflict" || s === "manual").length;
+  const errorCount = Object.values(repoStatuses).filter(
+    (s) => s === "error" || s === "conflict" || s === "manual",
+  ).length;
   const syncingCount = Object.values(repoStatuses).filter((s) => s === "syncing").length;
   const totalProgress = ((updatedCount + errorCount) / REPOS.length) * 100;
-  const allDone = !isRunning && updatedCount + errorCount === REPOS.length && updatedCount + errorCount > 0;
+  const allDone =
+    !isRunning && updatedCount + errorCount === REPOS.length && updatedCount + errorCount > 0;
 
   return (
     <motion.div
@@ -963,7 +1097,9 @@ function InteractiveUpdatePipeline() {
           <span className="text-emerald-400">$</span> {scenario.command}
         </code>
         <div className="flex items-center gap-1.5">
-          <div className={`h-2 w-2 rounded-full ${isRunning ? "bg-amber-400 animate-pulse" : allDone ? "bg-emerald-400" : "bg-white/20"}`} />
+          <div
+            className={`h-2 w-2 rounded-full ${isRunning ? "bg-amber-400 animate-pulse" : allDone ? "bg-emerald-400" : "bg-white/20"}`}
+          />
           <span className="text-xs text-white/40 font-mono">
             {isRunning ? "RUNNING" : allDone ? "DONE" : "READY"}
           </span>
@@ -974,7 +1110,9 @@ function InteractiveUpdatePipeline() {
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center gap-2 mb-3">
           <Settings className="h-4 w-4 text-white/40" />
-          <span className="text-xs font-medium text-white/50 uppercase tracking-wider">Scenario</span>
+          <span className="text-xs font-medium text-white/50 uppercase tracking-wider">
+            Scenario
+          </span>
         </div>
         <div className="flex flex-wrap gap-2">
           {SCENARIOS.map((s, i) => (
@@ -1017,7 +1155,9 @@ function InteractiveUpdatePipeline() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-white/40" />
-            <span className="text-xs font-medium text-white/50 uppercase tracking-wider">Health Dashboard</span>
+            <span className="text-xs font-medium text-white/50 uppercase tracking-wider">
+              Health Dashboard
+            </span>
           </div>
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -1085,7 +1225,9 @@ function InteractiveUpdatePipeline() {
       <div className="px-4 py-3 border-t border-white/[0.04]">
         <div className="flex items-center gap-2 mb-2">
           <Terminal className="h-4 w-4 text-white/40" />
-          <span className="text-xs font-medium text-white/50 uppercase tracking-wider">Live Output</span>
+          <span className="text-xs font-medium text-white/50 uppercase tracking-wider">
+            Live Output
+          </span>
         </div>
         <div
           ref={terminalRef}
@@ -1111,11 +1253,13 @@ function InteractiveUpdatePipeline() {
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
             className="overflow-hidden"
           >
-            <div className={`mx-4 mb-3 rounded-xl border p-3 ${
-              errorCount > 0
-                ? "border-yellow-500/30 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"
-                : "border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 to-teal-500/15"
-            }`}>
+            <div
+              className={`mx-4 mb-3 rounded-xl border p-3 ${
+                errorCount > 0
+                  ? "border-yellow-500/30 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"
+                  : "border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 to-teal-500/15"
+              }`}
+            >
               <div className="flex items-center justify-center gap-3">
                 {errorCount > 0 ? (
                   <>
@@ -1158,13 +1302,9 @@ function InteractiveUpdatePipeline() {
                 </span>
               )}
               {errorCount > 0 && (
-                <span className="text-xs text-red-400/70">
-                  {errorCount} issues
-                </span>
+                <span className="text-xs text-red-400/70">{errorCount} issues</span>
               )}
-              <span className="text-xs text-white/40">
-                {Math.round(totalProgress)}%
-              </span>
+              <span className="text-xs text-white/40">{Math.round(totalProgress)}%</span>
             </div>
           </div>
           <div ref={progressRef} className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1258,7 +1398,11 @@ function RepoGrid({
               <motion.div
                 className="absolute inset-0 rounded-xl border border-amber-500/20"
                 animate={active ? { opacity: [0.2, 0.5, 0.2] } : { opacity: 0.2 }}
-                transition={active ? { duration: 1.2, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+                transition={
+                  active
+                    ? { duration: 1.2, repeat: Infinity, repeatType: "reverse" }
+                    : { duration: 0.2 }
+                }
                 style={{ boxShadow: "0 0 16px rgba(245, 158, 11, 0.1)" }}
               />
             )}
@@ -1274,7 +1418,9 @@ function RepoGrid({
             </span>
 
             {/* Category badge */}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${catColor.bg} ${catColor.text} border ${catColor.border}`}>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full ${catColor.bg} ${catColor.text} border ${catColor.border}`}
+            >
               {repo.category}
             </span>
 
@@ -1379,7 +1525,13 @@ function RepoStatusIcon({ status, active }: { status: RepoSyncStatus; active: bo
 // SVG DEPENDENCY GRAPH — Shows repo relationships
 // =============================================================================
 
-function DependencyGraph({ repoStatuses, active }: { repoStatuses: Record<string, RepoSyncStatus>; active: boolean }) {
+function DependencyGraph({
+  repoStatuses,
+  active,
+}: {
+  repoStatuses: Record<string, RepoSyncStatus>;
+  active: boolean;
+}) {
   // Layout: position repos in a tree-like graph
   const positions: Record<string, { x: number; y: number }> = {
     apt: { x: 250, y: 25 },
@@ -1398,29 +1550,45 @@ function DependencyGraph({ repoStatuses, active }: { repoStatuses: Record<string
 
   const statusFill = (status: RepoSyncStatus) => {
     switch (status) {
-      case "syncing": return "rgba(245,158,11,0.7)";
-      case "updated": return "rgba(52,211,153,0.7)";
-      case "conflict": return "rgba(234,179,8,0.7)";
-      case "error": return "rgba(239,68,68,0.7)";
-      case "manual": return "rgba(168,85,247,0.7)";
-      default: return "rgba(255,255,255,0.15)";
+      case "syncing":
+        return "rgba(245,158,11,0.7)";
+      case "updated":
+        return "rgba(52,211,153,0.7)";
+      case "conflict":
+        return "rgba(234,179,8,0.7)";
+      case "error":
+        return "rgba(239,68,68,0.7)";
+      case "manual":
+        return "rgba(168,85,247,0.7)";
+      default:
+        return "rgba(255,255,255,0.15)";
     }
   };
 
   const statusStroke = (status: RepoSyncStatus) => {
     switch (status) {
-      case "syncing": return "rgba(245,158,11,0.5)";
-      case "updated": return "rgba(52,211,153,0.4)";
-      case "conflict": return "rgba(234,179,8,0.4)";
-      case "error": return "rgba(239,68,68,0.4)";
-      case "manual": return "rgba(168,85,247,0.4)";
-      default: return "rgba(255,255,255,0.08)";
+      case "syncing":
+        return "rgba(245,158,11,0.5)";
+      case "updated":
+        return "rgba(52,211,153,0.4)";
+      case "conflict":
+        return "rgba(234,179,8,0.4)";
+      case "error":
+        return "rgba(239,68,68,0.4)";
+      case "manual":
+        return "rgba(168,85,247,0.4)";
+      default:
+        return "rgba(255,255,255,0.08)";
     }
   };
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-black/30 p-2 overflow-hidden">
-      <svg viewBox="0 0 500 210" className="w-full h-auto" aria-label="Dependency graph of update components">
+      <svg
+        viewBox="0 0 500 210"
+        className="w-full h-auto"
+        aria-label="Dependency graph of update components"
+      >
         {/* Draw dependency edges */}
         {REPOS.map((repo) =>
           repo.dependsOn.map((depId) => {
@@ -1441,7 +1609,7 @@ function DependencyGraph({ repoStatuses, active }: { repoStatuses: Record<string
                 strokeDasharray={isActive ? "none" : "3 3"}
               />
             );
-          })
+          }),
         )}
 
         {/* Draw repo nodes */}
@@ -1462,8 +1630,14 @@ function DependencyGraph({ repoStatuses, active }: { repoStatuses: Record<string
                   fill="none"
                   stroke="rgba(245,158,11,0.3)"
                   strokeWidth={1}
-                  animate={active ? { r: [18, 24, 18], opacity: [0.3, 0.6, 0.3] } : { r: 18, opacity: 0.3 }}
-                  transition={active ? { duration: 1.2, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+                  animate={
+                    active ? { r: [18, 24, 18], opacity: [0.3, 0.6, 0.3] } : { r: 18, opacity: 0.3 }
+                  }
+                  transition={
+                    active
+                      ? { duration: 1.2, repeat: Infinity, repeatType: "reverse" }
+                      : { duration: 0.2 }
+                  }
                 />
               )}
 
@@ -1531,10 +1705,17 @@ function VersionComparisonPanel({
   const statusColor = STATUS_COLORS[status];
 
   const changelogs: Record<string, string[]> = {
-    apt: ["Security patches for openssl", "Updated ca-certificates bundle", "Performance fix for dpkg"],
+    apt: [
+      "Security patches for openssl",
+      "Updated ca-certificates bundle",
+      "Performance fix for dpkg",
+    ],
     omz: ["New git aliases added", "Faster startup time", "Fixed autocompletion for bun"],
     p10k: ["Nerd Font v3 icon support", "Improved segment rendering"],
-    plugins: ["zsh-autosuggestions: better history matching", "zsh-syntax-highlighting: new themes"],
+    plugins: [
+      "zsh-autosuggestions: better history matching",
+      "zsh-syntax-highlighting: new themes",
+    ],
     claude: ["Improved tool use reliability", "Faster streaming responses", "New /compact command"],
     codex: ["Multi-file editing support", "Better error recovery", "Sandbox improvements"],
     agy: ["Pinned Gemini 3.8 Flash model", "DCG hook integration", "Terminal settings refreshed"],
@@ -1552,7 +1733,9 @@ function VersionComparisonPanel({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className={`text-sm font-bold ${catColor.text}`}>{repo.name}</span>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${statusColor.bg} ${statusColor.border} border ${statusColor.text}`}>
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded-full ${statusColor.bg} ${statusColor.border} border ${statusColor.text}`}
+          >
             {status}
           </span>
         </div>
@@ -1573,7 +1756,9 @@ function VersionComparisonPanel({
           <code className="text-xs font-mono text-red-400/80">{repo.versionFrom}</code>
         </div>
         <div className="flex items-center">
-          <RefreshCw className={`h-4 w-4 ${status === "syncing" ? "text-amber-400 animate-spin" : "text-white/20"}`} />
+          <RefreshCw
+            className={`h-4 w-4 ${status === "syncing" ? "text-amber-400 animate-spin" : "text-white/20"}`}
+          />
         </div>
         <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
           <span className="text-[10px] text-white/30 block mb-0.5">Target</span>
@@ -1590,7 +1775,9 @@ function VersionComparisonPanel({
 
       {/* Changelog */}
       <div className="space-y-1">
-        <span className="text-[10px] text-white/30 uppercase tracking-wider">Changelog highlights</span>
+        <span className="text-[10px] text-white/30 uppercase tracking-wider">
+          Changelog highlights
+        </span>
         {changes.map((change, i) => (
           <motion.div
             key={`${repoId}-change-${i}`}
@@ -1637,10 +1824,23 @@ function TerminalLine({ line, index }: { line: string; index: number }) {
     if (text.startsWith("$")) return "text-emerald-400";
     if (text.startsWith("WARNING") || text.startsWith("CONFLICT")) return "text-yellow-400";
     if (text.includes("error") || text.includes("BREAKING")) return "text-red-400";
-    if (text.includes("updated") || text.includes("done") || text.includes("success") || text.includes("Complete") || text.includes("complete")) return "text-emerald-400/80";
+    if (
+      text.includes("updated") ||
+      text.includes("done") ||
+      text.includes("success") ||
+      text.includes("Complete") ||
+      text.includes("complete")
+    )
+      return "text-emerald-400/80";
     if (text.startsWith("[fleet]")) return "text-cyan-400/70";
     if (text.startsWith("  ")) return "text-white/40";
-    if (text.includes("Recommendation") || text.includes("Fix:") || text.includes("Or:") || text.includes("Resolution")) return "text-violet-400/70";
+    if (
+      text.includes("Recommendation") ||
+      text.includes("Fix:") ||
+      text.includes("Or:") ||
+      text.includes("Resolution")
+    )
+      return "text-violet-400/70";
     return "text-white/50";
   };
 

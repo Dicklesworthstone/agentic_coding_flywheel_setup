@@ -1,61 +1,55 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Shield,
   Activity,
-  Gauge,
-  Terminal,
-  Settings,
-  Zap,
-  Monitor,
-  Cpu,
-  HardDrive,
-  ShieldCheck,
-  ShieldAlert,
   AlertTriangle,
   ArrowDown,
   ArrowUp,
-  Wifi,
-  Play,
   ChevronRight,
+  Cpu,
+  Gauge,
+  HardDrive,
+  Monitor,
+  Play,
+  Settings,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Terminal,
+  Wifi,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-  BulletList,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function SrpsLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Keep your workstation responsive under heavy AI agent load.
-      </GoalBanner>
+      <GoalBanner>Keep your workstation responsive under heavy AI agent load.</GoalBanner>
 
-      <Section
-        title="What Is SRPS?"
-        icon={<Shield className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is SRPS?" icon={<Shield className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>SRPS (System Resource Protection Script)</Highlight> installs
-          ananicy-cpp with 1700+ rules to automatically deprioritize background
-          processes, plus sysmoni TUI for real-time monitoring. When AI agents
-          run heavy builds, SRPS keeps your terminal responsive.
+          <Highlight>SRPS (System Resource Protection Script)</Highlight> installs ananicy-cpp with
+          1700+ rules to automatically deprioritize background processes, plus sysmoni TUI for
+          real-time monitoring. When AI agents run heavy builds, SRPS keeps your terminal
+          responsive.
         </Paragraph>
         <Paragraph>
-          Think of it as automatic resource management: compilers, bundlers, and
-          test runners get deprioritized so your interactive sessions stay snappy.
+          Think of it as automatic resource management: compilers, bundlers, and test runners get
+          deprioritized so your interactive sessions stay snappy.
         </Paragraph>
 
         <div className="mt-8">
@@ -94,14 +88,9 @@ export function SrpsLesson() {
 
       <Divider />
 
-      <Section
-        title="Installation"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Installation" icon={<Terminal className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          SRPS installs the ananicy-cpp daemon and sysmoni monitoring tool in
-          one command.
+          SRPS installs the ananicy-cpp daemon and sysmoni monitoring tool in one command.
         </Paragraph>
 
         <div className="mt-6">
@@ -117,8 +106,8 @@ $ systemctl status ananicy-cpp
         </div>
 
         <TipBox variant="info">
-          Installation requires sudo for systemd service setup and sysctl changes.
-          The script will prompt for confirmation before making system changes.
+          Installation requires sudo for systemd service setup and sysctl changes. The script will
+          prompt for confirmation before making system changes.
         </TipBox>
       </Section>
 
@@ -130,8 +119,8 @@ $ systemctl status ananicy-cpp
         delay={0.2}
       >
         <Paragraph>
-          The <Highlight>sysmoni</Highlight> TUI shows real-time CPU and memory
-          usage per process, along with the ananicy rule being applied to each.
+          The <Highlight>sysmoni</Highlight> TUI shows real-time CPU and memory usage per process,
+          along with the ananicy rule being applied to each.
         </Paragraph>
 
         <div className="mt-6">
@@ -157,11 +146,7 @@ $ sysmoni
 
       <Divider />
 
-      <Section
-        title="Essential Commands"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.25}>
         <CommandList
           commands={[
             {
@@ -190,14 +175,10 @@ $ sysmoni
 
       <Divider />
 
-      <Section
-        title="What Gets Managed"
-        icon={<Gauge className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="What Gets Managed" icon={<Gauge className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          SRPS automatically deprioritizes resource-intensive processes while
-          keeping interactive sessions responsive:
+          SRPS automatically deprioritizes resource-intensive processes while keeping interactive
+          sessions responsive:
         </Paragraph>
 
         <BulletList
@@ -221,22 +202,15 @@ $ sysmoni
         />
 
         <TipBox variant="tip">
-          Your terminal emulator, tmux sessions, and input handling stay at
-          normal priority. Heavy builds run in the background without freezing
-          your interactive work.
+          Your terminal emulator, tmux sessions, and input handling stay at normal priority. Heavy
+          builds run in the background without freezing your interactive work.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Adding Custom Rules"
-        icon={<Settings className="h-5 w-5" />}
-        delay={0.35}
-      >
-        <Paragraph>
-          You can add rules for any process that SRPS does not know about.
-        </Paragraph>
+      <Section title="Adding Custom Rules" icon={<Settings className="h-5 w-5" />} delay={0.35}>
+        <Paragraph>You can add rules for any process that SRPS does not know about.</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -251,19 +225,14 @@ $ sudo systemctl restart ananicy-cpp`}
         </div>
 
         <TipBox variant="warning">
-          Be careful with nice values below 0 (higher priority). Only root can
-          set negative nice values, and overusing them can make your system less
-          responsive, not more.
+          Be careful with nice values below 0 (higher priority). Only root can set negative nice
+          values, and overusing them can make your system less responsive, not more.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Synergies with Other Tools"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Synergies with Other Tools" icon={<Zap className="h-5 w-5" />} delay={0.4}>
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -272,38 +241,32 @@ $ sudo systemctl restart ananicy-cpp`}
           <BulletList
             items={[
               <>
-                <Highlight>ntm:</Highlight> Keeps tmux sessions responsive when
-                agents spawn heavy builds
+                <Highlight>ntm:</Highlight> Keeps tmux sessions responsive when agents spawn heavy
+                builds
               </>,
               <>
-                <Highlight>slb:</Highlight> Prevents multiple agents from
-                starving each other for CPU/memory
+                <Highlight>slb:</Highlight> Prevents multiple agents from starving each other for
+                CPU/memory
               </>,
               <>
-                <Highlight>dcg:</Highlight> Combined safety - DCG prevents
-                destructive commands, SRPS prevents resource exhaustion
+                <Highlight>dcg:</Highlight> Combined safety - DCG prevents destructive commands,
+                SRPS prevents resource exhaustion
               </>,
             ]}
           />
         </motion.div>
 
         <TipBox variant="info">
-          When running multi-agent sessions with SLB, SRPS is especially valuable.
-          Each agent may spawn compilers, test runners, and other heavy processes.
-          SRPS ensures they do not overwhelm your system.
+          When running multi-agent sessions with SLB, SRPS is especially valuable. Each agent may
+          spawn compilers, test runners, and other heavy processes. SRPS ensures they do not
+          overwhelm your system.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Troubleshooting"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.45}
-      >
-        <Paragraph>
-          If SRPS is not working as expected, check these common issues:
-        </Paragraph>
+      <Section title="Troubleshooting" icon={<Terminal className="h-5 w-5" />} delay={0.45}>
+        <Paragraph>If SRPS is not working as expected, check these common issues:</Paragraph>
 
         <div className="mt-6 space-y-4">
           <CodeBlock
@@ -465,12 +428,7 @@ const AGENT_COLORS = [
   "text-amber-400",
 ] as const;
 
-const AGENT_BG_COLORS = [
-  "bg-orange-400",
-  "bg-sky-400",
-  "bg-violet-400",
-  "bg-amber-400",
-] as const;
+const AGENT_BG_COLORS = ["bg-orange-400", "bg-sky-400", "bg-violet-400", "bg-amber-400"] as const;
 
 const TERMINAL_LINES = [
   { cmd: "$ sysmoni", delay: 0 },
@@ -516,7 +474,7 @@ function InteractiveResourceMonitor() {
 
   // Use useState initializer to avoid Math.random in render/useMemo
   const [initialSeeds] = useState<number[]>(() =>
-    Array.from({ length: 16 }, () => Math.random() * 1000)
+    Array.from({ length: 16 }, () => Math.random() * 1000),
   );
 
   // CPU cores (8)
@@ -532,7 +490,7 @@ function InteractiveResourceMonitor() {
   const [netDown, setNetDown] = useState(15);
   // Network history for chart
   const [netHistory, setNetHistory] = useState<Array<{ up: number; down: number }>>(() =>
-    Array.from({ length: 30 }, () => ({ up: 8, down: 15 }))
+    Array.from({ length: 30 }, () => ({ up: 8, down: 15 })),
   );
   // Terminal output
   const [terminalVisibleLines, setTerminalVisibleLines] = useState(0);
@@ -544,22 +502,10 @@ function InteractiveResourceMonitor() {
   const [sortColumn, setSortColumn] = useState<"cpu" | "mem">("cpu");
 
   // Derived values
-  const totalCpu = useMemo(
-    () => coreLoads.reduce((a, b) => a + b, 0) / 8,
-    [coreLoads]
-  );
-  const totalMem = useMemo(
-    () => memValues.reduce((a, b) => a + b, 0),
-    [memValues]
-  );
-  const totalDiskRead = useMemo(
-    () => diskReads.reduce((a, b) => a + b, 0) / 4,
-    [diskReads]
-  );
-  const totalDiskWrite = useMemo(
-    () => diskWrites.reduce((a, b) => a + b, 0) / 4,
-    [diskWrites]
-  );
+  const totalCpu = useMemo(() => coreLoads.reduce((a, b) => a + b, 0) / 8, [coreLoads]);
+  const totalMem = useMemo(() => memValues.reduce((a, b) => a + b, 0), [memValues]);
+  const totalDiskRead = useMemo(() => diskReads.reduce((a, b) => a + b, 0) / 4, [diskReads]);
+  const totalDiskWrite = useMemo(() => diskWrites.reduce((a, b) => a + b, 0) / 4, [diskWrites]);
 
   const systemOverloaded = !srpsActive && totalCpu > 80;
   const oomWarning = !srpsActive && scenario.oomRisk && totalMem > 150;
@@ -582,9 +528,7 @@ function InteractiveResourceMonitor() {
       rule: srpsActive ? rules[i] : "none",
     }));
 
-    return entries.sort((a, b) =>
-      sortColumn === "cpu" ? b.cpu - a.cpu : b.mem - a.mem
-    );
+    return entries.sort((a, b) => (sortColumn === "cpu" ? b.cpu - a.cpu : b.mem - a.mem));
   }, [coreLoads, memValues, srpsActive, sortColumn]);
 
   const simulate = useCallback(
@@ -595,9 +539,7 @@ function InteractiveResourceMonitor() {
         prev.map((val, i) => {
           const target = scenario.cpuProfile[i];
           const seed = initialSeeds[i];
-          const noise =
-            Math.sin(now / (400 + seed)) * 5 +
-            Math.cos(now / (600 + seed * 0.7)) * 3;
+          const noise = Math.sin(now / (400 + seed)) * 5 + Math.cos(now / (600 + seed * 0.7)) * 3;
 
           if (srpsActive) {
             const throttled = target * 0.3 + noise * 0.3;
@@ -605,16 +547,14 @@ function InteractiveResourceMonitor() {
           }
           const full = target + noise * 1.5;
           return clamp(val + (full - val) * dt * 2.5, 5, 99);
-        })
+        }),
       );
 
       setMemValues((prev) =>
         prev.map((val, i) => {
           const target = scenario.memProfile[i];
           const seed = initialSeeds[i + 8];
-          const noise =
-            Math.cos(now / (500 + seed)) * 3 +
-            Math.sin(now / (700 + seed * 0.5)) * 2;
+          const noise = Math.cos(now / (500 + seed)) * 3 + Math.sin(now / (700 + seed * 0.5)) * 2;
 
           if (srpsActive) {
             const throttled = target * 0.45 + noise * 0.2;
@@ -622,7 +562,7 @@ function InteractiveResourceMonitor() {
           }
           const full = target + noise;
           return clamp(val + (full - val) * dt * 1.8, 5, 80);
-        })
+        }),
       );
 
       setSwapUsage((prev) => {
@@ -645,7 +585,7 @@ function InteractiveResourceMonitor() {
             return clamp(val + (throttled - val) * dt * 3, 1, 30);
           }
           return clamp(val + (target + noise - val) * dt * 2, 2, 98);
-        })
+        }),
       );
 
       setDiskWrites((prev) =>
@@ -658,7 +598,7 @@ function InteractiveResourceMonitor() {
             return clamp(val + (throttled - val) * dt * 3, 1, 25);
           }
           return clamp(val + (target + noise - val) * dt * 2, 1, 98);
-        })
+        }),
       );
 
       setNetUp((prev) => {
@@ -692,14 +632,14 @@ function InteractiveResourceMonitor() {
                 ? scenario.netUpload * 0.35 + Math.sin(now / 600) * 3
                 : scenario.netUpload + Math.sin(now / 600) * 5,
               1,
-              98
+              98,
             ),
             down: clamp(
               srpsActive
                 ? scenario.netDownload * 0.3 + Math.cos(now / 550) * 4
                 : scenario.netDownload + Math.cos(now / 550) * 6,
               1,
-              98
+              98,
             ),
           };
           const next = [...prev.slice(-29), newEntry];
@@ -711,7 +651,7 @@ function InteractiveResourceMonitor() {
       // Terminal line progression
       termTimerRef.current += dt;
     },
-    [srpsActive, scenario, initialSeeds]
+    [srpsActive, scenario, initialSeeds],
   );
 
   // Terminal line advancement via setTimeout in useEffect
@@ -741,7 +681,10 @@ function InteractiveResourceMonitor() {
   }, [inView]);
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/[0.04] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-emerald-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -750,21 +693,14 @@ function InteractiveResourceMonitor() {
       <div className="relative p-4 sm:p-6 lg:p-8 space-y-5">
         {/* Header */}
         <div className="text-center space-y-1">
-          <p className="text-sm font-semibold text-white/80">
-            System Resource Monitoring Center
-          </p>
+          <p className="text-sm font-semibold text-white/80">System Resource Monitoring Center</p>
           <p className="text-xs text-white/50">
-            Select a scenario and toggle SRPS to see real-time resource
-            protection in action
+            Select a scenario and toggle SRPS to see real-time resource protection in action
           </p>
         </div>
 
         {/* Scenario selector */}
-        <ScenarioSelector
-          scenarios={SCENARIOS}
-          activeIdx={scenarioIdx}
-          onSelect={setScenarioIdx}
-        />
+        <ScenarioSelector scenarios={SCENARIOS} activeIdx={scenarioIdx} onSelect={setScenarioIdx} />
 
         {/* Mode toggle */}
         <div className="flex justify-center">
@@ -858,11 +794,7 @@ function InteractiveResourceMonitor() {
             />
 
             {/* Network */}
-            <NetworkPanel
-              netUp={netUp}
-              netDown={netDown}
-              netHistory={netHistory}
-            />
+            <NetworkPanel netUp={netUp} netDown={netDown} netHistory={netHistory} />
           </div>
         </div>
 
@@ -919,9 +851,7 @@ function ScenarioSelector({
         >
           {s.icon}
           <span className="hidden sm:inline">{s.label}</span>
-          <span className="sm:hidden">
-            {s.label.length > 10 ? s.label.slice(0, 10) : s.label}
-          </span>
+          <span className="sm:hidden">{s.label.length > 10 ? s.label.slice(0, 10) : s.label}</span>
         </motion.button>
       ))}
     </div>
@@ -1018,14 +948,9 @@ function SystemStatusBanner({
 // CPU Core Panel -- 8 animated cores
 // ---------------------------------------------------------------------------
 
-function CpuCorePanel({
-  coreLoads,
-  srpsActive,
-}: {
-  coreLoads: number[];
-  srpsActive: boolean;
-}) {
-  const avgLoad = coreLoads.length > 0 ? coreLoads.reduce((a, b) => a + b, 0) / coreLoads.length : 0;
+function CpuCorePanel({ coreLoads, srpsActive }: { coreLoads: number[]; srpsActive: boolean }) {
+  const avgLoad =
+    coreLoads.length > 0 ? coreLoads.reduce((a, b) => a + b, 0) / coreLoads.length : 0;
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
@@ -1038,11 +963,7 @@ function CpuCorePanel({
         </div>
         <span
           className={`font-mono text-xs ${
-            avgLoad > 80
-              ? "text-red-400"
-              : avgLoad > 50
-                ? "text-amber-400"
-                : "text-emerald-400"
+            avgLoad > 80 ? "text-red-400" : avgLoad > 50 ? "text-amber-400" : "text-emerald-400"
           }`}
         >
           Avg {Math.round(avgLoad)}%
@@ -1088,16 +1009,10 @@ function CoreBar({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-white/40 font-mono">
-          C{coreIndex}
-        </span>
+        <span className="text-[10px] text-white/40 font-mono">C{coreIndex}</span>
         <span
           className={`text-[10px] font-mono ${
-            load > 80
-              ? "text-red-400"
-              : load > 50
-                ? "text-amber-400"
-                : "text-white/50"
+            load > 80 ? "text-red-400" : load > 50 ? "text-amber-400" : "text-white/50"
           }`}
         >
           {Math.round(load)}%
@@ -1160,9 +1075,7 @@ function MemoryPanel({
               OOM RISK
             </motion.span>
           )}
-          <span className="font-mono text-xs text-white/50">
-            {Math.round(totalMem)}% used
-          </span>
+          <span className="font-mono text-xs text-white/50">{Math.round(totalMem)}% used</span>
         </div>
       </div>
 
@@ -1174,9 +1087,7 @@ function MemoryPanel({
           {agentNames.map((name, i) => (
             <div key={name} className="space-y-0.5">
               <div className="flex items-center justify-between">
-                <span className={`text-[10px] font-mono ${AGENT_COLORS[i]}`}>
-                  {name}
-                </span>
+                <span className={`text-[10px] font-mono ${AGENT_COLORS[i]}`}>{name}</span>
                 <span className="text-[10px] font-mono text-white/40">
                   {Math.round(memValues[i])}%
                 </span>
@@ -1320,12 +1231,8 @@ function DiskIoPanel({
           </span>
         </div>
         <div className="flex items-center gap-3 text-[10px] font-mono">
-          <span className="text-sky-400">
-            R {Math.round(totalRead)} MB/s
-          </span>
-          <span className="text-orange-400">
-            W {Math.round(totalWrite)} MB/s
-          </span>
+          <span className="text-sky-400">R {Math.round(totalRead)} MB/s</span>
+          <span className="text-orange-400">W {Math.round(totalWrite)} MB/s</span>
         </div>
       </div>
 
@@ -1334,9 +1241,7 @@ function DiskIoPanel({
         {agentNames.map((name, i) => (
           <div key={name} className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className={`text-[10px] font-mono ${AGENT_COLORS[i]}`}>
-                {name}
-              </span>
+              <span className={`text-[10px] font-mono ${AGENT_COLORS[i]}`}>{name}</span>
               <span className="text-[10px] font-mono text-white/30">
                 R:{Math.round(diskReads[i])} W:{Math.round(diskWrites[i])}
               </span>
@@ -1435,9 +1340,7 @@ function NetworkPanel({
               <ArrowUp className="h-2.5 w-2.5 text-emerald-400" />
               Upload
             </span>
-            <span className="font-mono text-emerald-400">
-              {Math.round(netUp)}%
-            </span>
+            <span className="font-mono text-emerald-400">{Math.round(netUp)}%</span>
           </div>
           <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
             <motion.div
@@ -1453,9 +1356,7 @@ function NetworkPanel({
               <ArrowDown className="h-2.5 w-2.5 text-sky-400" />
               Download
             </span>
-            <span className="font-mono text-sky-400">
-              {Math.round(netDown)}%
-            </span>
+            <span className="font-mono text-sky-400">{Math.round(netDown)}%</span>
           </div>
           <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
             <motion.div
@@ -1470,11 +1371,7 @@ function NetworkPanel({
   );
 }
 
-function NetworkChart({
-  history,
-}: {
-  history: Array<{ up: number; down: number }>;
-}) {
+function NetworkChart({ history }: { history: Array<{ up: number; down: number }> }) {
   const width = 280;
   const height = 50;
   const points = history.length;
@@ -1506,11 +1403,7 @@ function NetworkChart({
 
   return (
     <div className="rounded-lg bg-white/[0.02] border border-white/[0.05] p-2 overflow-hidden">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-12"
-        preserveAspectRatio="none"
-      >
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-12" preserveAspectRatio="none">
         {/* Grid lines */}
         {[0.25, 0.5, 0.75].map((pct) => (
           <line
@@ -1526,21 +1419,11 @@ function NetworkChart({
 
         {/* Download area + line */}
         <path d={buildArea("down")} fill="rgba(56,189,248,0.08)" />
-        <path
-          d={buildPath("down")}
-          fill="none"
-          stroke="rgba(56,189,248,0.5)"
-          strokeWidth="1.5"
-        />
+        <path d={buildPath("down")} fill="none" stroke="rgba(56,189,248,0.5)" strokeWidth="1.5" />
 
         {/* Upload area + line */}
         <path d={buildArea("up")} fill="rgba(52,211,153,0.08)" />
-        <path
-          d={buildPath("up")}
-          fill="none"
-          stroke="rgba(52,211,153,0.5)"
-          strokeWidth="1.5"
-        />
+        <path d={buildPath("up")} fill="none" stroke="rgba(52,211,153,0.5)" strokeWidth="1.5" />
       </svg>
     </div>
   );
@@ -1608,9 +1491,7 @@ function ProcessTable({
             layout
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
             className={`grid grid-cols-12 gap-1 text-[10px] font-mono py-1.5 px-1 rounded-lg ${
-              idx === 0
-                ? "bg-white/[0.04] border border-white/[0.06]"
-                : "hover:bg-white/[0.02]"
+              idx === 0 ? "bg-white/[0.04] border border-white/[0.06]" : "hover:bg-white/[0.02]"
             }`}
           >
             <span className="col-span-1 text-white/40">{proc.pid}</span>
@@ -1697,25 +1578,19 @@ function GovernorPanel({
       <div className="flex items-center gap-3">
         <motion.div
           animate={
-            active
-              ? { rotate: [0, -5, 5, -3, 3, 0], scale: [1, 1.05, 1] }
-              : { rotate: 0, scale: 1 }
+            active ? { rotate: [0, -5, 5, -3, 3, 0], scale: [1, 1.05, 1] } : { rotate: 0, scale: 1 }
           }
           transition={
-            active
-              ? { duration: 2, repeat: Infinity, repeatType: "reverse" }
-              : { duration: 0.2 }
+            active ? { duration: 2, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }
           }
         >
           <Shield className="h-8 w-8 text-emerald-400" />
         </motion.div>
         <div>
-          <p className="text-sm font-semibold text-emerald-400">
-            SRPS Governor Throttling
-          </p>
+          <p className="text-sm font-semibold text-emerald-400">SRPS Governor Throttling</p>
           <p className="text-xs text-white/50 mt-0.5">
-            Scenario: {scenario.label} &mdash; CPU reduced from{" "}
-            {Math.round(totalCpu * 2.8)}% to {Math.round(totalCpu)}%
+            Scenario: {scenario.label} &mdash; CPU reduced from {Math.round(totalCpu * 2.8)}% to{" "}
+            {Math.round(totalCpu)}%
           </p>
         </div>
       </div>
@@ -1731,13 +1606,9 @@ function GovernorPanel({
             className="flex items-center gap-2 text-[10px]"
           >
             <ChevronRight className="h-3 w-3 text-emerald-500/50" />
-            <span className="font-mono text-emerald-300 w-16">
-              {action.process}
-            </span>
+            <span className="font-mono text-emerald-300 w-16">{action.process}</span>
             <span className="text-white/40">{action.action}</span>
-            <span className="ml-auto text-emerald-400/70 font-mono">
-              {action.savings}
-            </span>
+            <span className="ml-auto text-emerald-400/70 font-mono">{action.savings}</span>
           </motion.div>
         ))}
       </div>
@@ -1749,13 +1620,9 @@ function GovernorPanel({
           <span className="text-white/50">Governor: active</span>
         </div>
         <span className="text-white/30">|</span>
-        <span className="text-white/50">
-          Rules matched: {scenario.governorKicks ? 4 : 0}
-        </span>
+        <span className="text-white/50">Rules matched: {scenario.governorKicks ? 4 : 0}</span>
         <span className="text-white/30">|</span>
-        <span className="text-emerald-400/60">
-          System responsiveness: optimal
-        </span>
+        <span className="text-emerald-400/60">System responsiveness: optimal</span>
       </div>
     </motion.div>
   );
@@ -1774,9 +1641,7 @@ function MiniTerminal({ visibleLines, active }: { visibleLines: number; active: 
           <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
           <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-[10px] text-white/40 font-mono">
-          srps-terminal
-        </span>
+        <span className="text-[10px] text-white/40 font-mono">srps-terminal</span>
         <Play className="h-3 w-3 text-white/20 ml-auto" />
       </div>
 

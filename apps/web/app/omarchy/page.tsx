@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   ArrowRight,
   ArrowRightLeft,
@@ -20,15 +19,16 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { motion, fadeUp, springs, staggerContainer } from "@/components/motion";
-import StormCanvas from "@/components/omarchy/storm-canvas";
-import { staggerDelay } from "@/lib/hooks/useScrollReveal";
+import Link from "next/link";
+import { fadeUp, motion, springs, staggerContainer } from "@/components/motion";
 import CopyCommand from "@/components/omarchy/copy-command";
+import StormCanvas from "@/components/omarchy/storm-canvas";
 import { TldrSynergyDiagram } from "@/components/tldr/tldr-synergy-diagram";
-import { tldrFlywheelTools } from "@/lib/tldr-content";
-import { manifestTools } from "@/lib/generated/manifest-tools";
+import { Button } from "@/components/ui/button";
 import { manifestModules } from "@/lib/generated/manifest-modules";
+import { manifestTools } from "@/lib/generated/manifest-tools";
+import { staggerDelay } from "@/lib/hooks/useScrollReveal";
+import { tldrFlywheelTools } from "@/lib/tldr-content";
 
 // Same command the home page shows; /install 302s to the raw install.sh.
 // Without --yes the installer asks one "Proceed?" question on the TTY, which
@@ -136,7 +136,11 @@ const ARCH_CHANGES = [
 // Mock of what `acfs doctor` prints on Omarchy — the SKIP lines are the point.
 const DOCTOR_LINES: ReadonlyArray<{ status: "ok" | "skip"; label: string; note?: string }> = [
   { status: "ok", label: "zsh installed" },
-  { status: "skip", label: "Oh My Zsh", note: "not used on Arch-family; existing prompt preserved" },
+  {
+    status: "skip",
+    label: "Oh My Zsh",
+    note: "not used on Arch-family; existing prompt preserved",
+  },
   { status: "skip", label: "Powerlevel10k", note: "not used on Arch-family" },
   { status: "skip", label: "zsh-autosuggestions", note: "not used on Arch-family" },
   { status: "skip", label: "zsh-syntax-highlighting", note: "not used on Arch-family" },
@@ -203,7 +207,8 @@ const TIERS: Record<ToolTier, { label: string; blurb: string; color: string }> =
   },
   thirdParty: {
     label: "Third-party",
-    blurb: "Agents, runtimes, and CLIs installed around the stack. On Arch, most come from pacman; optional modules are marked.",
+    blurb:
+      "Agents, runtimes, and CLIs installed around the stack. On Arch, most come from pacman; optional modules are marked.",
     color: TN.amber,
   },
 };
@@ -214,51 +219,196 @@ const TIER_ORDER: ToolTier[] = ["cornerstone", "flywheel", "thirdParty"];
 // lib/generated/manifest-tools.ts (cliName) — keep them in sync.
 const TOOLS: ToolEntry[] = [
   // Cornerstones: the ten tools a working session runs through, in workflow order.
-  { name: "ntm", description: "Named Tmux Manager: spawn and monitor agent sessions", tier: "cornerstone" },
-  { name: "am", description: "MCP Agent Mail (Rust rewrite): messaging and file reservations between agents", tier: "cornerstone" },
-  { name: "br", description: "beads_rust: local-first issue tracking for agents", tier: "cornerstone" },
-  { name: "bv", description: "Beads Viewer: dependency-graph triage for tasks", tier: "cornerstone" },
-  { name: "cass", description: "Coding Agent Session Search (CASS): every past agent session, searchable", tier: "cornerstone" },
-  { name: "cm", description: "CASS Memory System: procedural memory for agents", tier: "cornerstone" },
-  { name: "ubs", description: "Ultimate Bug Scanner: static checks before every commit", tier: "cornerstone" },
-  { name: "dcg", description: "Destructive Command Guard: blocks rm -rf and git reset --hard in agents", tier: "cornerstone" },
-  { name: "ru", description: "Repo Updater: multi-repo sync and AI-driven commits", tier: "cornerstone" },
-  { name: "rch", description: "Remote Compilation Helper: offload cargo builds to a worker fleet", tier: "cornerstone" },
+  {
+    name: "ntm",
+    description: "Named Tmux Manager: spawn and monitor agent sessions",
+    tier: "cornerstone",
+  },
+  {
+    name: "am",
+    description: "MCP Agent Mail (Rust rewrite): messaging and file reservations between agents",
+    tier: "cornerstone",
+  },
+  {
+    name: "br",
+    description: "beads_rust: local-first issue tracking for agents",
+    tier: "cornerstone",
+  },
+  {
+    name: "bv",
+    description: "Beads Viewer: dependency-graph triage for tasks",
+    tier: "cornerstone",
+  },
+  {
+    name: "cass",
+    description: "Coding Agent Session Search (CASS): every past agent session, searchable",
+    tier: "cornerstone",
+  },
+  {
+    name: "cm",
+    description: "CASS Memory System: procedural memory for agents",
+    tier: "cornerstone",
+  },
+  {
+    name: "ubs",
+    description: "Ultimate Bug Scanner: static checks before every commit",
+    tier: "cornerstone",
+  },
+  {
+    name: "dcg",
+    description: "Destructive Command Guard: blocks rm -rf and git reset --hard in agents",
+    tier: "cornerstone",
+  },
+  {
+    name: "ru",
+    description: "Repo Updater: multi-repo sync and AI-driven commits",
+    tier: "cornerstone",
+  },
+  {
+    name: "rch",
+    description: "Remote Compilation Helper: offload cargo builds to a worker fleet",
+    tier: "cornerstone",
+  },
   // Flywheel: the rest of the Agent Flywheel stack.
-  { name: "slb", description: "Simultaneous Launch Button: two-person rule for dangerous commands", tier: "flywheel" },
-  { name: "caam", description: "Coding Agent Account Manager: switch agent accounts in under 100ms", tier: "flywheel" },
-  { name: "fsfs", description: "FrankenSearch: hybrid lexical and semantic code search", tier: "flywheel" },
+  {
+    name: "slb",
+    description: "Simultaneous Launch Button: two-person rule for dangerous commands",
+    tier: "flywheel",
+  },
+  {
+    name: "caam",
+    description: "Coding Agent Account Manager: switch agent accounts in under 100ms",
+    tier: "flywheel",
+  },
+  {
+    name: "fsfs",
+    description: "FrankenSearch: hybrid lexical and semantic code search",
+    tier: "flywheel",
+  },
   { name: "ee", description: "Eidetic Engine: durable local memory for agents", tier: "flywheel" },
   { name: "pt", description: "Process Triage: find and kill runaway processes", tier: "flywheel" },
-  { name: "ms", description: "Meta Skill: skill management with MCP integration", tier: "flywheel" },
-  { name: "casr", description: "Cross-Agent Session Resumer: resume a Claude session in Codex, or vice versa", tier: "flywheel" },
-  { name: "dsr", description: "Doodlestein Self-Releaser: local cross-platform release builds", tier: "flywheel" },
-  { name: "asb", description: "Agent Settings Backup: git-versioned agent configs", tier: "flywheel" },
-  { name: "pcr", description: "Post-Compact Reminder: re-inject instructions after context compaction", tier: "flywheel" },
-  { name: "pfr", description: "Power Failure Resumer: restart agent sessions after a reboot", tier: "flywheel" },
-  { name: "sbh", description: "Storage Ballast Helper: reserve disk to survive full-disk events", tier: "flywheel" },
-  { name: "sysmoni", description: "System Resource Protection: deprioritizes background processes so the workstation stays responsive", tier: "flywheel" },
-  { name: "fmd", description: "Franken Markdown: one binary turns Markdown into HTML and PDF", tier: "flywheel" },
-  { name: "pi", description: "Pi Agent: single-binary coding agent with local model support", tier: "flywheel" },
-  { name: "giil", description: "Get Image from Internet Link: pull iCloud and Dropbox shares into the terminal", tier: "flywheel" },
-  { name: "csctf", description: "Chat Shared Conversation to File: archive AI chat share links as Markdown", tier: "flywheel" },
-  { name: "xf", description: "X Archive Search: fast search over X/Twitter data archives", tier: "flywheel" },
-  { name: "toon", description: "Token-Optimized Notation: compress source code for LLM context", tier: "flywheel" },
-  { name: "rano", description: "Network Observer: monitor AI CLI network traffic", tier: "flywheel" },
-  { name: "mdwb", description: "Markdown Web Browser: fetch pages as Markdown for agents", tier: "flywheel" },
-  { name: "s2p", description: "Source to Prompt TUI: pack a repo into one prompt", tier: "flywheel" },
-  { name: "apr", description: "Automated Plan Reviser Pro: multi-pass plan refinement", tier: "flywheel" },
+  {
+    name: "ms",
+    description: "Meta Skill: skill management with MCP integration",
+    tier: "flywheel",
+  },
+  {
+    name: "casr",
+    description: "Cross-Agent Session Resumer: resume a Claude session in Codex, or vice versa",
+    tier: "flywheel",
+  },
+  {
+    name: "dsr",
+    description: "Doodlestein Self-Releaser: local cross-platform release builds",
+    tier: "flywheel",
+  },
+  {
+    name: "asb",
+    description: "Agent Settings Backup: git-versioned agent configs",
+    tier: "flywheel",
+  },
+  {
+    name: "pcr",
+    description: "Post-Compact Reminder: re-inject instructions after context compaction",
+    tier: "flywheel",
+  },
+  {
+    name: "pfr",
+    description: "Power Failure Resumer: restart agent sessions after a reboot",
+    tier: "flywheel",
+  },
+  {
+    name: "sbh",
+    description: "Storage Ballast Helper: reserve disk to survive full-disk events",
+    tier: "flywheel",
+  },
+  {
+    name: "sysmoni",
+    description:
+      "System Resource Protection: deprioritizes background processes so the workstation stays responsive",
+    tier: "flywheel",
+  },
+  {
+    name: "fmd",
+    description: "Franken Markdown: one binary turns Markdown into HTML and PDF",
+    tier: "flywheel",
+  },
+  {
+    name: "pi",
+    description: "Pi Agent: single-binary coding agent with local model support",
+    tier: "flywheel",
+  },
+  {
+    name: "giil",
+    description: "Get Image from Internet Link: pull iCloud and Dropbox shares into the terminal",
+    tier: "flywheel",
+  },
+  {
+    name: "csctf",
+    description: "Chat Shared Conversation to File: archive AI chat share links as Markdown",
+    tier: "flywheel",
+  },
+  {
+    name: "xf",
+    description: "X Archive Search: fast search over X/Twitter data archives",
+    tier: "flywheel",
+  },
+  {
+    name: "toon",
+    description: "Token-Optimized Notation: compress source code for LLM context",
+    tier: "flywheel",
+  },
+  {
+    name: "rano",
+    description: "Network Observer: monitor AI CLI network traffic",
+    tier: "flywheel",
+  },
+  {
+    name: "mdwb",
+    description: "Markdown Web Browser: fetch pages as Markdown for agents",
+    tier: "flywheel",
+  },
+  {
+    name: "s2p",
+    description: "Source to Prompt TUI: pack a repo into one prompt",
+    tier: "flywheel",
+  },
+  {
+    name: "apr",
+    description: "Automated Plan Reviser Pro: multi-pass plan refinement",
+    tier: "flywheel",
+  },
   { name: "jfp", description: "JeffreysPrompts CLI: curated prompt library", tier: "flywheel" },
-  { name: "brenner", description: "Brenner Bot: hypothesis-driven research sessions", tier: "flywheel" },
-  { name: "aadc", description: "ASCII Art Diagram Corrector: fix malformed ASCII diagrams from AI output", tier: "flywheel" },
-  { name: "caut", description: "Coding Agent Usage Tracker: LLM provider usage and costs across agents", tier: "flywheel" },
-  { name: "rust_proxy", description: "Rust Proxy: transparent proxy routing for network debugging", tier: "flywheel" },
+  {
+    name: "brenner",
+    description: "Brenner Bot: hypothesis-driven research sessions",
+    tier: "flywheel",
+  },
+  {
+    name: "aadc",
+    description: "ASCII Art Diagram Corrector: fix malformed ASCII diagrams from AI output",
+    tier: "flywheel",
+  },
+  {
+    name: "caut",
+    description: "Coding Agent Usage Tracker: LLM provider usage and costs across agents",
+    tier: "flywheel",
+  },
+  {
+    name: "rust_proxy",
+    description: "Rust Proxy: transparent proxy routing for network debugging",
+    tier: "flywheel",
+  },
   // Third-party: agents, runtimes, and CLIs the stack depends on.
   { name: "claude", description: "Claude Code (Anthropic)", tier: "thirdParty" },
   { name: "codex", description: "Codex CLI (OpenAI)", tier: "thirdParty" },
   { name: "agy", description: "Antigravity CLI (Google)", tier: "thirdParty" },
   { name: "opencode", description: "OpenCode agent CLI (optional module)", tier: "thirdParty" },
-  { name: "omp", description: "oh-my-pi: a coding agent with the IDE wired in (optional module)", tier: "thirdParty" },
+  {
+    name: "omp",
+    description: "oh-my-pi: a coding agent with the IDE wired in (optional module)",
+    tier: "thirdParty",
+  },
   { name: "grok", description: "Grok CLI (xAI, optional module)", tier: "thirdParty" },
   { name: "bun", description: "JavaScript runtime and package manager", tier: "thirdParty" },
   { name: "uv", description: "Python package manager", tier: "thirdParty" },
@@ -290,7 +440,9 @@ const STATS = [
 function ToolTile({ tool, featured }: { tool: ToolEntry; featured: boolean }) {
   const { color, label } = TIERS[tool.tier];
   const href = tool.href ?? toolHref(tool.name);
-  const layout = featured ? "flex flex-col gap-2 p-4 pr-9" : "flex items-baseline gap-3 py-3 pl-4 pr-9";
+  const layout = featured
+    ? "flex flex-col gap-2 p-4 pr-9"
+    : "flex items-baseline gap-3 py-3 pl-4 pr-9";
   const body = (
     <>
       {/* Accent bar + glow, tier-coloured, revealed on hover/focus */}
@@ -327,7 +479,12 @@ function ToolTile({ tool, featured }: { tool: ToolEntry; featured: boolean }) {
   const shell =
     "group relative block h-full overflow-hidden rounded-xl border border-border/40 bg-card/40 transition-[border-color,background-color,box-shadow] duration-300 hover:bg-card focus-visible:bg-card focus-visible:outline-none";
   return (
-    <motion.li variants={fadeUp} whileHover={{ y: -3 }} transition={springs.snappy} className="h-full">
+    <motion.li
+      variants={fadeUp}
+      whileHover={{ y: -3 }}
+      transition={springs.snappy}
+      className="h-full"
+    >
       {href ? (
         <a
           href={href}
@@ -339,7 +496,10 @@ function ToolTile({ tool, featured }: { tool: ToolEntry; featured: boolean }) {
           {body}
         </a>
       ) : (
-        <div className={`${shell} ${layout}`} aria-label={`${tool.name}: ${tool.description} (${label})`}>
+        <div
+          className={`${shell} ${layout}`}
+          aria-label={`${tool.name}: ${tool.description} (${label})`}
+        >
           {body}
         </div>
       )}
@@ -354,7 +514,11 @@ function TierBadge({ tier }: { tier: ToolTier }) {
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider"
       style={{ backgroundColor: `${color}1a`, color, boxShadow: `inset 0 0 0 1px ${color}40` }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: color }}
+        aria-hidden="true"
+      />
       {label}
     </span>
   );
@@ -420,7 +584,10 @@ export default function OmarchyPage() {
 
           {/* Navigation — same items as the home page, overlaid on the storm */}
           <nav className="relative z-20 mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-6">
-            <Link href="/" className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dcfff]/60">
+            <Link
+              href="/"
+              className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dcfff]/60"
+            >
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#7dcfff]/15">
                 <Terminal className="h-5 w-5 text-[#7dcfff]" />
               </div>
@@ -586,15 +753,22 @@ export default function OmarchyPage() {
                 >
                   {feature.icon}
                 </div>
-                <h3 className="mb-2 font-mono text-lg font-semibold tracking-tight">{feature.title}</h3>
-                <p className="text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
+                <h3 className="mb-2 font-mono text-lg font-semibold tracking-tight">
+                  {feature.title}
+                </h3>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {feature.description}
+                </p>
               </motion.div>
             ))}
           </motion.div>
         </section>
 
         {/* ===================== WHAT CHANGES ON ARCH ======================= */}
-        <section id="what-changes" className="scroll-mt-8 border-y border-border/30 bg-card/20 py-20">
+        <section
+          id="what-changes"
+          className="scroll-mt-8 border-y border-border/30 bg-card/20 py-20"
+        >
           <div className="mx-auto max-w-7xl px-6">
             <SectionHeading eyebrow="the details" title="What changes on Arch" />
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -611,7 +785,9 @@ export default function OmarchyPage() {
                     {change.icon}
                   </div>
                   <h3 className="mb-1 font-mono text-sm font-semibold">{change.title}</h3>
-                  <p className="text-xs leading-relaxed text-muted-foreground">{change.description}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {change.description}
+                  </p>
                 </motion.div>
               ))}
             </div>
@@ -634,7 +810,12 @@ export default function OmarchyPage() {
                     acfs doctor
                   </span>
                 </div>
-                <div tabIndex={0} role="region" aria-label="acfs doctor output" className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#c0caf5] sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <div
+                  tabIndex={0}
+                  role="region"
+                  aria-label="acfs doctor output"
+                  className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#c0caf5] sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   <p className="mb-2 text-[#a9b1d6]/70">
                     <span className="select-none text-[#9ece6a]">$ </span>acfs doctor
                   </p>
@@ -646,7 +827,9 @@ export default function OmarchyPage() {
                         ) : (
                           <span className="shrink-0 font-bold text-[#a9b1d6]/70">○ SKIP</span>
                         )}
-                        <span className={line.status === "skip" ? "text-[#a9b1d6]/70" : ""}>{line.label}</span>
+                        <span className={line.status === "skip" ? "text-[#a9b1d6]/70" : ""}>
+                          {line.label}
+                        </span>
                         {line.note ? (
                           <span className="basis-full pl-[4.5rem] text-xs italic text-[#a9b1d6]/75">
                             Note: {line.note}
@@ -690,7 +873,10 @@ export default function OmarchyPage() {
 
         {/* ===================== HOW THE TOOLS CONNECT ====================== */}
         <section className="mx-auto max-w-7xl px-6 py-24">
-          <SectionHeading eyebrow="one system, not a pile of binaries" title="How the tools feed each other" />
+          <SectionHeading
+            eyebrow="one system, not a pile of binaries"
+            title="How the tools feed each other"
+          />
           <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
             <motion.div
               className="space-y-4 text-muted-foreground"
@@ -702,20 +888,22 @@ export default function OmarchyPage() {
               <p>
                 The inner ring is the loop a working session runs through:{" "}
                 <code className="font-mono text-[#9ece6a]">ntm</code> spawns the agents,{" "}
-                <code className="font-mono text-[#9ece6a]">am</code> lets them message each other and
-                reserve files, <code className="font-mono text-[#9ece6a]">bv</code> picks the next
-                task from the Beads graph, <code className="font-mono text-[#9ece6a]">ubs</code> scans
-                the diff before commit, and <code className="font-mono text-[#9ece6a]">cass</code> and{" "}
-                <code className="font-mono text-[#9ece6a]">cm</code> turn every finished session into
-                searchable history and procedural memory for the next one.
+                <code className="font-mono text-[#9ece6a]">am</code> lets them message each other
+                and reserve files, <code className="font-mono text-[#9ece6a]">bv</code> picks the
+                next task from the Beads graph,{" "}
+                <code className="font-mono text-[#9ece6a]">ubs</code> scans the diff before commit,
+                and <code className="font-mono text-[#9ece6a]">cass</code> and{" "}
+                <code className="font-mono text-[#9ece6a]">cm</code> turn every finished session
+                into searchable history and procedural memory for the next one.
               </p>
               <p>
                 The outer ring is the support crew: guards (<code className="font-mono">dcg</code>,{" "}
-                <code className="font-mono">slb</code>), repo sync (<code className="font-mono">ru</code>),
-                account switching (<code className="font-mono">caam</code>), and the rest. Builds go through{" "}
-                <code className="font-mono text-[#9ece6a]">rch</code>, which ships cargo work to remote
-                workers so twenty agents compiling at once do not flatten the box. Each tool exists because
-                running many agents at once exposed a specific problem.
+                <code className="font-mono">slb</code>), repo sync (
+                <code className="font-mono">ru</code>), account switching (
+                <code className="font-mono">caam</code>), and the rest. Builds go through{" "}
+                <code className="font-mono text-[#9ece6a]">rch</code>, which ships cargo work to
+                remote workers so twenty agents compiling at once do not flatten the box. Each tool
+                exists because running many agents at once exposed a specific problem.
               </p>
               <p className="text-sm">
                 Every line in the diagram is a real integration: shared IDs, MCP calls, or files one
@@ -746,8 +934,8 @@ export default function OmarchyPage() {
               transition={springs.smooth}
             >
               Every name in the storm above is a binary on your PATH after install. ACFS leaves your
-              desktop, shell, and prompt alone; the first two tiers are the flywheel stack it installs,
-              and the third is the agents, runtimes, and CLIs it sets up around them.
+              desktop, shell, and prompt alone; the first two tiers are the flywheel stack it
+              installs, and the third is the agents, runtimes, and CLIs it sets up around them.
             </motion.p>
 
             {/* Legend */}
@@ -762,7 +950,9 @@ export default function OmarchyPage() {
               {TIER_ORDER.map((tier) => (
                 <li key={tier} className="flex items-start gap-3 sm:max-w-xs">
                   <TierBadge tier={tier} />
-                  <span className="text-xs leading-relaxed text-muted-foreground">{TIERS[tier].blurb}</span>
+                  <span className="text-xs leading-relaxed text-muted-foreground">
+                    {TIERS[tier].blurb}
+                  </span>
                 </li>
               ))}
             </motion.ul>
@@ -780,11 +970,20 @@ export default function OmarchyPage() {
                       viewport={{ once: true }}
                       transition={springs.smooth}
                     >
-                      <h3 className="font-mono text-lg font-semibold tracking-tight" style={{ color }}>
+                      <h3
+                        className="font-mono text-lg font-semibold tracking-tight"
+                        style={{ color }}
+                      >
                         {label}
                       </h3>
-                      <span className="font-mono text-xs text-muted-foreground">{tools.length} tools</span>
-                      <span className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${color}66, transparent)` }} aria-hidden="true" />
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {tools.length} tools
+                      </span>
+                      <span
+                        className="h-px flex-1"
+                        style={{ background: `linear-gradient(90deg, ${color}66, transparent)` }}
+                        aria-hidden="true"
+                      />
                     </motion.div>
                     <motion.ul
                       className={
@@ -814,7 +1013,10 @@ export default function OmarchyPage() {
               transition={springs.smooth}
             >
               Want the long version of each one?{" "}
-              <Link href="/tldr" className="inline-flex min-h-6 items-center gap-1 text-primary underline underline-offset-4 decoration-primary/50 hover:decoration-primary">
+              <Link
+                href="/tldr"
+                className="inline-flex min-h-6 items-center gap-1 text-primary underline underline-offset-4 decoration-primary/50 hover:decoration-primary"
+              >
                 Read the TL;DR
                 <ArrowRight className="h-3 w-3" />
               </Link>
@@ -841,14 +1043,19 @@ export default function OmarchyPage() {
                 Get on the Flywheel!
               </h2>
               <p className="mb-8 max-w-xl text-muted-foreground">
-                One command sets up your Arch or Omarchy machine for agentic coding. Re-run it
-                any time; it skips whatever is already installed.
+                One command sets up your Arch or Omarchy machine for agentic coding. Re-run it any
+                time; it skips whatever is already installed.
               </p>
               <div className="mb-8 w-full max-w-xl">
                 <CopyCommand command={INSTALL_COMMAND} />
               </div>
               <div className="flex flex-col items-center gap-3 sm:flex-row">
-                <Button asChild size="lg" variant="outline" className="border-border/50 hover:bg-muted/50">
+                <Button
+                  asChild
+                  size="lg"
+                  variant="outline"
+                  className="border-border/50 hover:bg-muted/50"
+                >
                   <Link href="/learn">
                     <BookOpen className="mr-2 h-4 w-4" />
                     Learn the workflow
@@ -883,7 +1090,12 @@ export default function OmarchyPage() {
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className={footerLink}>
+                <a
+                  href={GITHUB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={footerLink}
+                >
                   GitHub
                 </a>
                 <Link href="/learn" className={footerLink}>
@@ -898,7 +1110,12 @@ export default function OmarchyPage() {
                 <Link href="/" className={footerLink}>
                   Home
                 </Link>
-                <a href={ARCH_NOTES_URL} target="_blank" rel="noopener noreferrer" className={footerLink}>
+                <a
+                  href={ARCH_NOTES_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={footerLink}
+                >
                   Arch notes
                 </a>
               </div>

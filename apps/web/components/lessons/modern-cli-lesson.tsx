@@ -1,46 +1,33 @@
 "use client";
 
+import { Clock, Eye, GitBranch, Navigation, Search, Terminal } from "lucide-react";
 import {
-  Terminal,
-  GitBranch,
-  Clock,
-  Navigation,
-  Search,
-  Eye,
-} from "lucide-react";
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
   InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function ModernCliLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Level up your terminal with lazygit, atuin, zoxide, fzf, bat, and lsd
-        &mdash; the modern CLI tools that make every command faster and every
-        workflow smoother.
+        Level up your terminal with lazygit, atuin, zoxide, fzf, bat, and lsd &mdash; the modern CLI
+        tools that make every command faster and every workflow smoother.
       </GoalBanner>
 
       {/* Section 1: Your Upgraded Terminal */}
-      <Section
-        title="Your Upgraded Terminal"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Your Upgraded Terminal" icon={<Terminal className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          ACFS installs a curated set of modern CLI replacements. These tools are
-          drop-in replacements that feel familiar but do more &mdash; better
-          output, smarter defaults, and features you didn&apos;t know you were
-          missing.
+          ACFS installs a curated set of modern CLI replacements. These tools are drop-in
+          replacements that feel familiar but do more &mdash; better output, smarter defaults, and
+          features you didn&apos;t know you were missing.
         </Paragraph>
 
         <div className="mt-8">
@@ -82,8 +69,8 @@ export function ModernCliLesson() {
         delay={0.15}
       >
         <Paragraph>
-          A full-featured Git TUI for staging, committing, branching, and
-          rebasing &mdash; all without leaving the terminal.
+          A full-featured Git TUI for staging, committing, branching, and rebasing &mdash; all
+          without leaving the terminal.
         </Paragraph>
 
         <div className="mt-6">
@@ -113,10 +100,9 @@ lazygit --use-config-dir ~/.config/lazygit`}
 
         <div className="mt-8">
           <TipBox variant="tip">
-            lazygit shows diffs inline as you navigate files. Press{" "}
-            <Highlight>Enter</Highlight> on a file to see its diff, then{" "}
-            <Highlight>Space</Highlight> to stage individual hunks &mdash; far
-            more precise than <InlineCode>git add -p</InlineCode>.
+            lazygit shows diffs inline as you navigate files. Press <Highlight>Enter</Highlight> on
+            a file to see its diff, then <Highlight>Space</Highlight> to stage individual hunks
+            &mdash; far more precise than <InlineCode>git add -p</InlineCode>.
           </TipBox>
         </div>
       </Section>
@@ -124,14 +110,10 @@ lazygit --use-config-dir ~/.config/lazygit`}
       <Divider />
 
       {/* Section 3: atuin */}
-      <Section
-        title="atuin: Never Lose a Command"
-        icon={<Clock className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="atuin: Never Lose a Command" icon={<Clock className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          Shell history search that syncs across machines with a SQLite backend.
-          It replaces Ctrl-R with a fuzzy, context-aware search.
+          Shell history search that syncs across machines with a SQLite backend. It replaces Ctrl-R
+          with a fuzzy, context-aware search.
         </Paragraph>
 
         <div className="mt-6">
@@ -162,9 +144,9 @@ atuin import auto`}
 
         <div className="mt-8">
           <TipBox variant="tip">
-            atuin stores full command context: working directory, exit code,
-            duration, and timestamp. Search for &ldquo;that docker command I ran
-            last week in the api project&rdquo; and actually find it.
+            atuin stores full command context: working directory, exit code, duration, and
+            timestamp. Search for &ldquo;that docker command I ran last week in the api
+            project&rdquo; and actually find it.
           </TipBox>
         </div>
       </Section>
@@ -178,9 +160,8 @@ atuin import auto`}
         delay={0.25}
       >
         <Paragraph>
-          A smart directory jumper that ranks destinations by frequency and
-          recency. After a few days of use, you&apos;ll never type a full path
-          again.
+          A smart directory jumper that ranks destinations by frequency and recency. After a few
+          days of use, you&apos;ll never type a full path again.
         </Paragraph>
 
         <div className="mt-6">
@@ -212,9 +193,8 @@ zoxide remove /path/that/no/longer/exists
 
         <div className="mt-8">
           <TipBox variant="tip">
-            zoxide uses &ldquo;frecency&rdquo; (frequency x recency). A
-            directory you visit 10 times daily scores higher than one you visited
-            once last month. After a week of normal use,{" "}
+            zoxide uses &ldquo;frecency&rdquo; (frequency x recency). A directory you visit 10 times
+            daily scores higher than one you visited once last month. After a week of normal use,{" "}
             <InlineCode>z</InlineCode> becomes muscle memory.
           </TipBox>
         </div>
@@ -223,14 +203,10 @@ zoxide remove /path/that/no/longer/exists
       <Divider />
 
       {/* Section 5: fzf */}
-      <Section
-        title="fzf: Fuzzy Find Everything"
-        icon={<Search className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="fzf: Fuzzy Find Everything" icon={<Search className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          A universal fuzzy finder that integrates with everything. Pipe any list
-          of strings into it and get instant, interactive filtering.
+          A universal fuzzy finder that integrates with everything. Pipe any list of strings into it
+          and get instant, interactive filtering.
         </Paragraph>
 
         <div className="mt-6">
@@ -265,11 +241,10 @@ env | fzf
 
         <div className="mt-8">
           <TipBox variant="tip">
-            fzf&apos;s real power is piping. Any list of strings can be
-            fuzzy-searched: <InlineCode>docker images | fzf</InlineCode>,{" "}
+            fzf&apos;s real power is piping. Any list of strings can be fuzzy-searched:{" "}
+            <InlineCode>docker images | fzf</InlineCode>,{" "}
             <InlineCode>kubectl get pods | fzf</InlineCode>,{" "}
-            <InlineCode>brew list | fzf</InlineCode>. If it outputs lines, fzf
-            can filter it.
+            <InlineCode>brew list | fzf</InlineCode>. If it outputs lines, fzf can filter it.
           </TipBox>
         </div>
       </Section>
@@ -277,16 +252,11 @@ env | fzf
       <Divider />
 
       {/* Section 6: bat & lsd */}
-      <Section
-        title="bat & lsd: See More"
-        icon={<Eye className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="bat & lsd: See More" icon={<Eye className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
-          <InlineCode>bat</InlineCode> is <InlineCode>cat</InlineCode> with
-          syntax highlighting and line numbers.{" "}
-          <InlineCode>lsd</InlineCode> is <InlineCode>ls</InlineCode> with
-          colors and icons. Both are drop-in replacements.
+          <InlineCode>bat</InlineCode> is <InlineCode>cat</InlineCode> with syntax highlighting and
+          line numbers. <InlineCode>lsd</InlineCode> is <InlineCode>ls</InlineCode> with colors and
+          icons. Both are drop-in replacements.
         </Paragraph>
 
         <div className="mt-6">
@@ -314,9 +284,8 @@ lsd --tree --depth 2          # Tree with depth limit
 
         <div className="mt-8">
           <TipBox variant="info">
-            These six tools replace the defaults you&apos;ve been using for
-            decades. After a week, you&apos;ll wonder how you ever navigated
-            without zoxide or read files without bat.
+            These six tools replace the defaults you&apos;ve been using for decades. After a week,
+            you&apos;ll wonder how you ever navigated without zoxide or read files without bat.
           </TipBox>
         </div>
       </Section>

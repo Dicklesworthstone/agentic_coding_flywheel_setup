@@ -1,29 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { RefreshCw, Check, UserCheck, BookOpen } from "lucide-react";
+import { BookOpen, Check, RefreshCw, UserCheck } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { CommandCard } from "@/components/command-card";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
+import { CommandCard } from "@/components/command-card";
+import { Jargon } from "@/components/jargon";
 import {
-  SSH_KEY_PATH_WINDOWS_POWERSHELL,
-  buildKeyRepairCommands,
-  buildSshKeyLoginCommands,
-} from "@/lib/commandBuilder";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
-import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
-import { withCurrentSearch } from "@/lib/utils";
-import {
-  SimplerGuide,
+  GuideExplain,
   GuideSection,
   GuideStep,
-  GuideExplain,
   GuideTip,
+  SimplerGuide,
 } from "@/components/simpler-guide";
+import { Button } from "@/components/ui/button";
+import {
+  buildKeyRepairCommands,
+  buildSshKeyLoginCommands,
+  SSH_KEY_PATH_WINDOWS_POWERSHELL,
+} from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { Jargon } from "@/components/jargon";
+import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
+import { withCurrentSearch } from "@/lib/utils";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 export default function ReconnectUbuntuPage() {
   const router = useRouter();
@@ -83,8 +83,10 @@ export default function ReconnectUbuntuPage() {
   // Both shell dialects come from the command builder: the Windows form is
   // the PowerShell spelling ($HOME), never the %USERPROFILE% form that only
   // works inside a Windows Terminal profile.
-  const { command: sshCommand, windowsCommand: sshCommandWindows } =
-    buildSshKeyLoginCommands(effectiveUsername, vpsIP);
+  const { command: sshCommand, windowsCommand: sshCommandWindows } = buildSshKeyLoginCommands(
+    effectiveUsername,
+    vpsIP,
+  );
   const keyRepair = buildKeyRepairCommands(effectiveUsername, vpsIP);
 
   return (
@@ -99,14 +101,16 @@ export default function ReconnectUbuntuPage() {
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               Reconnect with your SSH user
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~1 min
-            </p>
+            <p className="text-sm text-muted-foreground">~1 min</p>
           </div>
         </div>
         <p className="text-muted-foreground">
-          If you ran the installer as <Jargon term="root-user">root</Jargon>, reconnect as your normal SSH user (
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{effectiveUsername}</code>) to get the full shell experience.
+          If you ran the installer as <Jargon term="root-user">root</Jargon>, reconnect as your
+          normal SSH user (
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+            {effectiveUsername}
+          </code>
+          ) to get the full shell experience.
         </p>
       </div>
 
@@ -117,7 +121,9 @@ export default function ReconnectUbuntuPage() {
           <div>
             <p className="font-medium text-foreground">Already connected as {effectiveUsername}?</p>
             <p className="text-sm text-muted-foreground">
-              If your prompt shows <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{userPrompt}</code>, you can skip this step.
+              If your prompt shows{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{userPrompt}</code>
+              , you can skip this step.
             </p>
             <Button
               variant="outline"
@@ -138,16 +144,13 @@ export default function ReconnectUbuntuPage() {
 
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            1. Type <code className="rounded bg-muted px-1">exit</code> to close
-            the current session
+            1. Type <code className="rounded bg-muted px-1">exit</code> to close the current session
           </p>
           <CommandCard command="exit" description="Close root session" runLocation="vps" />
         </div>
 
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            2. Reconnect as {effectiveUsername}:
-          </p>
+          <p className="text-sm text-muted-foreground">2. Reconnect as {effectiveUsername}:</p>
 
           <div className="space-y-3">
             <h3 className="font-semibold">Notice something different?</h3>
@@ -183,20 +186,28 @@ export default function ReconnectUbuntuPage() {
               <p>This means one of two things:</p>
               <ol className="list-decimal list-inside space-y-1 mt-2">
                 <li>
-                  <strong className="text-foreground">SSH key wasn&apos;t set up correctly</strong> —
-                  the installer needs to complete successfully for this to work
+                  <strong className="text-foreground">SSH key wasn&apos;t set up correctly</strong>{" "}
+                  — the installer needs to complete successfully for this to work
                 </li>
                 <li>
-                  <strong className="text-foreground">You&apos;re using the wrong credentials</strong> —
-                  your configured SSH user (<code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveUsername}</code>) uses your <em>SSH key</em>, NOT the root password
+                  <strong className="text-foreground">
+                    You&apos;re using the wrong credentials
+                  </strong>{" "}
+                  — your configured SSH user (
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    {effectiveUsername}
+                  </code>
+                  ) uses your <em>SSH key</em>, NOT the root password
                 </li>
               </ol>
               <p className="mt-3 font-medium text-foreground">
-                If you can still sign in as {effectiveUsername}, copy your key into that account first:
+                If you can still sign in as {effectiveUsername}, copy your key into that account
+                first:
               </p>
               <CommandCard {...keyRepair.user} className="mt-2" />
               <p className="mt-2 text-xs text-muted-foreground">
-                This uses the {effectiveUsername} account and does not ask for the VPS root password.
+                This uses the {effectiveUsername} account and does not ask for the VPS root
+                password.
               </p>
               <p className="mt-3 font-medium text-foreground">
                 If that cannot connect, use the root fallback:
@@ -214,7 +225,8 @@ export default function ReconnectUbuntuPage() {
       <OutputPreview title="You'll know it worked when:">
         <ul className="space-y-1 text-sm">
           <li className="text-green">
-            • Your prompt shows <code className="text-muted-foreground">{userPrompt}</code> (not <code className="text-muted-foreground">root@</code>)
+            • Your prompt shows <code className="text-muted-foreground">{userPrompt}</code> (not{" "}
+            <code className="text-muted-foreground">root@</code>)
           </li>
           <li className="text-green">• You see the colorful powerlevel10k prompt</li>
           <li className="text-green">• The shell feels more responsive</li>
@@ -228,17 +240,14 @@ export default function ReconnectUbuntuPage() {
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>
-            Press{" "}
-            <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">q</kbd>{" "}
-            to quit and use defaults (recommended for now)
+            Press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">q</kbd> to quit
+            and use defaults (recommended for now)
           </li>
           <li>Or go through it if you want to customize how your prompt looks</li>
         </ul>
         <p className="mt-2 text-xs text-muted-foreground">
           You can always run{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            p10k configure
-          </code>{" "}
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">p10k configure</code>{" "}
           later to customize.
         </p>
       </AlertCard>
@@ -249,12 +258,14 @@ export default function ReconnectUbuntuPage() {
           <GuideExplain term="Why reconnect with your SSH user?">
             During installation, you may have connected as &quot;root&quot;, the super-admin
             account. Now we want you to use your normal SSH user instead because:
-            <br /><br />
-            <strong>1. Safety:</strong> Day-to-day ACFS work should happen from a non-root login whenever possible.
-            That keeps routine commands away from the most dangerous account.
-            <br /><br />
-            <strong>2. Better experience:</strong> The installer set up special features
-            (like the colorful prompt) for your configured SSH user.
+            <br />
+            <br />
+            <strong>1. Safety:</strong> Day-to-day ACFS work should happen from a non-root login
+            whenever possible. That keeps routine commands away from the most dangerous account.
+            <br />
+            <br />
+            <strong>2. Better experience:</strong> The installer set up special features (like the
+            colorful prompt) for your configured SSH user.
           </GuideExplain>
 
           <GuideSection title="How do I know which user I am?">
@@ -265,8 +276,11 @@ export default function ReconnectUbuntuPage() {
                 means you&apos;re logged in as root (note the <strong>#</strong> symbol)
               </li>
               <li>
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{userPrompt}vps:~$</code>
-                means you&apos;re logged in as {effectiveUsername} (note the <strong>$</strong> symbol)
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                  {userPrompt}vps:~$
+                </code>
+                means you&apos;re logged in as {effectiveUsername} (note the <strong>$</strong>{" "}
+                symbol)
               </li>
             </ul>
           </GuideSection>
@@ -280,13 +294,14 @@ export default function ReconnectUbuntuPage() {
 
               <GuideStep number={2} title={`Connect as ${effectiveUsername}`}>
                 Copy and paste the SSH command shown above (the one with{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{userPrompt}</code>)
-                and press Enter.
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{userPrompt}</code>
+                ) and press Enter.
               </GuideStep>
 
               <GuideStep number={3} title="Verify you&apos;re using the right user">
-                Your prompt should now show <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{userPrompt}</code> at the beginning.
-                You might also see a fancy colorful prompt!
+                Your prompt should now show{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{userPrompt}</code>{" "}
+                at the beginning. You might also see a fancy colorful prompt!
               </GuideStep>
             </div>
           </GuideSection>
@@ -312,7 +327,14 @@ export default function ReconnectUbuntuPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          onClick={handleContinue}
+          disabled={isNavigating}
+          size="lg"
+          disableMotion
+        >
           {isNavigating ? "Loading..." : forwardLabel}
         </Button>
       </div>

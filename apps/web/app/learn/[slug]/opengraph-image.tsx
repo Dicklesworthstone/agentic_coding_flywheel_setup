@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { createSocialImage } from "@/lib/social-image";
 import { getLessonBySlug } from "@/lib/lessons";
+import { createSocialImage } from "@/lib/social-image";
 
 export const runtime = "edge";
 
@@ -28,6 +28,6 @@ export default async function Image({ params }: { params: Promise<{ slug: string
       theme: "learn",
       tags: [lesson.duration, "Learning Hub", "ACFS"],
     },
-    "opengraph"
+    "opengraph",
   );
 }

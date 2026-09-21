@@ -1,15 +1,15 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+import { manifestSelectionProfiles } from "./generated/manifest-modules";
 import {
   containsIPAddress,
   looksLikeOpaqueCredential,
   normalizeGitRef,
   normalizeSSHUsername,
-} from "./inputValidation"
-import { manifestSelectionProfiles } from "./generated/manifest-modules"
+} from "./inputValidation";
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 /**
@@ -91,17 +91,16 @@ function queryValueContainsHost(value: string): boolean {
   return containsIPAddress(value);
 }
 
-function queryValueContainsCredential(
-  value: string,
-  allowGitObjectId = false,
-): boolean {
+function queryValueContainsCredential(value: string, allowGitObjectId = false): boolean {
   if (/-----begin [a-z ]*private key-----/i.test(value)) return true;
   if (/\bbearer\s+\S+/i.test(value)) return true;
   if (looksLikeOpaqueCredential(value, allowGitObjectId)) return true;
   try {
     const parsed = new URL(value);
-    if ((parsed.protocol === "http:" || parsed.protocol === "https:")
-      && (parsed.username.length > 0 || parsed.password.length > 0)) {
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      (parsed.username.length > 0 || parsed.password.length > 0)
+    ) {
       return true;
     }
   } catch {
@@ -129,20 +128,17 @@ function urlPayloadContainsSensitiveState(value: string): boolean {
   if (/-----begin [a-z ]*private key-----/i.test(decoded)) return true;
   if (/\bbearer\s+\S+/i.test(decoded)) return true;
 
-  const segments = decoded
-    .split(/[\/#?&;]/)
-    .filter(Boolean);
+  const segments = decoded.split(/[/#?&;]/).filter(Boolean);
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];
     const assignmentIndex = segment.indexOf("=");
     if (
-      assignmentIndex > 0
-      && SENSITIVE_QUERY_KEYS.has(normalizedQueryKey(segment.slice(0, assignmentIndex)))
-    ) return true;
-    if (
-      SENSITIVE_PATH_VALUE_KEYS.has(normalizedQueryKey(segment))
-      && index + 1 < segments.length
-    ) return true;
+      assignmentIndex > 0 &&
+      SENSITIVE_QUERY_KEYS.has(normalizedQueryKey(segment.slice(0, assignmentIndex)))
+    )
+      return true;
+    if (SENSITIVE_PATH_VALUE_KEYS.has(normalizedQueryKey(segment)) && index + 1 < segments.length)
+      return true;
     if (looksLikeOpaqueCredential(segment)) return true;
   }
   return false;
@@ -150,10 +146,8 @@ function urlPayloadContainsSensitiveState(value: string): boolean {
 
 function isSafeQueryEntry(key: string, value: string): boolean {
   if (SENSITIVE_QUERY_KEYS.has(normalizedQueryKey(key))) return false;
-  if (
-    queryValueContainsHost(value)
-    || queryValueContainsCredential(value, key === "ref")
-  ) return false;
+  if (queryValueContainsHost(value) || queryValueContainsCredential(value, key === "ref"))
+    return false;
 
   switch (key) {
     case "os":
@@ -171,9 +165,9 @@ function isSafeQueryEntry(key: string, value: string): boolean {
     case "from":
       return value === "verify-key-connection" || value === "launch-onboarding";
     default:
-      return CAMPAIGN_QUERY_KEYS.has(key)
-        && value.length <= 120
-        && /^[A-Za-z0-9 ._~/-]*$/.test(value);
+      return (
+        CAMPAIGN_QUERY_KEYS.has(key) && value.length <= 120 && /^[A-Za-z0-9 ._~/-]*$/.test(value)
+      );
   }
 }
 
@@ -196,20 +190,18 @@ export function stripSensitiveQueryState(search: string): string {
 }
 
 /** Detect sensitive material anywhere a browser or vendor can observe it. */
-export function urlContainsSensitiveState(
-  value: string | URL,
-  base?: string | URL,
-): boolean {
+export function urlContainsSensitiveState(value: string | URL, base?: string | URL): boolean {
   try {
-    const parsed = typeof base === "undefined"
-      ? new URL(value.toString())
-      : new URL(value.toString(), base);
+    const parsed =
+      typeof base === "undefined" ? new URL(value.toString()) : new URL(value.toString(), base);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return true;
     if (parsed.username || parsed.password) return true;
-    return containsIPAddress(parsed.hostname)
-      || queryContainsSensitiveState(parsed.search)
-      || urlPayloadContainsSensitiveState(parsed.pathname)
-      || urlPayloadContainsSensitiveState(parsed.hash);
+    return (
+      containsIPAddress(parsed.hostname) ||
+      queryContainsSensitiveState(parsed.search) ||
+      urlPayloadContainsSensitiveState(parsed.pathname) ||
+      urlPayloadContainsSensitiveState(parsed.hash)
+    );
   } catch {
     return true;
   }
@@ -250,9 +242,7 @@ export function inspectSensitiveNavigationUrl(
   if (typeof runtimeValue === "symbol") {
     throw new TypeError("History URL cannot be a Symbol");
   }
-  const serialized = typeof runtimeValue === "string"
-    ? runtimeValue
-    : String(runtimeValue);
+  const serialized = typeof runtimeValue === "string" ? runtimeValue : String(runtimeValue);
   try {
     const current = new URL(currentHref);
     const candidate = new URL(serialized, current);
@@ -277,10 +267,8 @@ export function inspectSensitiveNavigationUrl(
       candidate.password = "";
     }
 
-    const sensitiveStateRemoved = sensitiveQuery
-      || sensitivePath
-      || sensitiveHash
-      || sensitiveCredentials;
+    const sensitiveStateRemoved =
+      sensitiveQuery || sensitivePath || sensitiveHash || sensitiveCredentials;
     return {
       value: sensitiveStateRemoved ? candidate.toString() : serialized,
       sensitiveStateDetected: sensitiveHost || sensitiveStateRemoved,
@@ -314,11 +302,13 @@ export function vendorEventIsPrivacySafe(eventUrl: string, liveHref: string): bo
   try {
     const live = new URL(liveHref);
     const event = new URL(eventUrl, live);
-    return event.origin === live.origin
-      && !urlContainsSensitiveState(event)
-      && !urlContainsSensitiveState(live)
-      && !isPrivateWizardPath(event.pathname)
-      && !isPrivateWizardPath(live.pathname);
+    return (
+      event.origin === live.origin &&
+      !urlContainsSensitiveState(event) &&
+      !urlContainsSensitiveState(live) &&
+      !isPrivateWizardPath(event.pathname) &&
+      !isPrivateWizardPath(live.pathname)
+    );
   } catch {
     return false;
   }
@@ -397,35 +387,35 @@ export function safeSetJSON(key: string, value: unknown): boolean {
 export async function copyTextToClipboard(text: string): Promise<boolean> {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(text)
-      return true
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {
       // Fall through to the DOM-based fallback below.
     }
   }
 
   if (typeof document === "undefined") {
-    return false
+    return false;
   }
 
-  const textarea = document.createElement("textarea")
-  textarea.value = text
-  textarea.setAttribute("readonly", "")
-  textarea.style.position = "fixed"
-  textarea.style.top = "0"
-  textarea.style.left = "-9999px"
-  textarea.style.opacity = "0"
-  document.body.appendChild(textarea)
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
 
   try {
-    textarea.focus()
-    textarea.select()
-    textarea.setSelectionRange(0, textarea.value.length)
-    return document.execCommand("copy")
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    return document.execCommand("copy");
   } catch {
-    return false
+    return false;
   } finally {
-    document.body.removeChild(textarea)
+    document.body.removeChild(textarea);
   }
 }
 
@@ -452,7 +442,9 @@ export function isInteractiveKeyboardTarget(target: EventTarget | null): boolean
     return true;
   }
 
-  return target.closest(
-    'button, a, input, textarea, select, summary, [role="button"], [role="link"], [role="menuitem"], [contenteditable="true"]'
-  ) !== null;
+  return (
+    target.closest(
+      'button, a, input, textarea, select, summary, [role="button"], [role="link"], [role="menuitem"], [contenteditable="true"]',
+    ) !== null
+  );
 }

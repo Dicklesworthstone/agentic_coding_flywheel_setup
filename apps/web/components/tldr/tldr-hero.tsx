@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import { motion, useReducedMotion, useInView, AnimatePresence } from "@/components/motion";
-import { Cog, Zap, GitBranch, ArrowDown, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ArrowDown, Cog, GitBranch, Sparkles, Zap } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { tldrPageData } from "@/lib/tldr-content";
+import { cn } from "@/lib/utils";
 
 // =============================================================================
 // TYPES
@@ -106,7 +106,7 @@ function FloatingIcon({
       className={cn(
         "absolute flex items-center justify-center rounded-2xl bg-gradient-to-br p-3 shadow-2xl",
         "ring-1 ring-white/10",
-        className
+        className,
       )}
       style={{
         boxShadow: "0 20px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.1)",
@@ -169,9 +169,7 @@ function ScrollIndicator({ reducedMotion }: { reducedMotion: boolean }) {
           window.scrollTo({ top: window.innerHeight * 0.8, behavior: "smooth" });
         }}
       >
-        <span className="text-xs font-medium uppercase tracking-wider">
-          Scroll to explore
-        </span>
+        <span className="text-xs font-medium uppercase tracking-wider">Scroll to explore</span>
         {/* Animated arrow container */}
         <div className="relative flex h-10 w-6 items-center justify-center rounded-full border border-white/20 bg-white/5 backdrop-blur-sm transition-colors group-hover:border-white/40 group-hover:bg-white/10">
           <motion.div
@@ -309,9 +307,7 @@ export function TldrHero({ className, id }: TldrHeroProps) {
             className="mt-6 text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-6xl"
           >
             {hero.title}
-            <ShimmerText className="block">
-              {hero.subtitle}
-            </ShimmerText>
+            <ShimmerText className="block">{hero.subtitle}</ShimmerText>
           </motion.h1>
 
           {/* Description - enhanced readability */}
@@ -345,9 +341,7 @@ export function TldrHero({ className, id }: TldrHeroProps) {
 
           {/* Scroll indicator - enhanced design */}
           <AnimatePresence>
-            {!hasScrolled && (
-              <ScrollIndicator reducedMotion={reducedMotion} />
-            )}
+            {!hasScrolled && <ScrollIndicator reducedMotion={reducedMotion} />}
           </AnimatePresence>
         </div>
       </div>

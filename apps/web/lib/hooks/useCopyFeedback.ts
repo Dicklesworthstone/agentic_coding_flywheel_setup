@@ -33,8 +33,7 @@ export const COPY_FEEDBACK_RESET_MS = 2000;
 export const COPY_FEEDBACK_FAILURE_RESET_MS = 8000;
 
 export const COPY_SUCCESS_MESSAGE = "Copied to clipboard";
-export const COPY_FAILURE_MESSAGE =
-  "Copy failed — select the command and copy it manually";
+export const COPY_FAILURE_MESSAGE = "Copy failed — select the command and copy it manually";
 
 export interface CopyFeedbackOptions {
   /** Reset delay after a successful copy (default 2000ms). */
@@ -85,10 +84,8 @@ export function selectElementText(element: HTMLElement | null | undefined): bool
 }
 
 export function useCopyFeedback(options: CopyFeedbackOptions = {}): CopyFeedback {
-  const {
-    resetMs = COPY_FEEDBACK_RESET_MS,
-    failureResetMs = COPY_FEEDBACK_FAILURE_RESET_MS,
-  } = options;
+  const { resetMs = COPY_FEEDBACK_RESET_MS, failureResetMs = COPY_FEEDBACK_FAILURE_RESET_MS } =
+    options;
 
   const [state, setState] = useState<CopyFeedbackState>("idle");
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

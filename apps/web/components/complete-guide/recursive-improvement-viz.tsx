@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence, useReducedMotion, useInView } from "@/components/motion";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 // =============================================================================
 // DATA
@@ -25,48 +25,60 @@ const LAYERS: Layer[] = [
     id: 1,
     title: "Agent Feedback Forms",
     tagline: "Start here. No infrastructure needed.",
-    description: "After an agent finishes using a tool in a real project, ask it to fill out a structured feedback survey. Feed that feedback to another agent working on the tool itself.",
+    description:
+      "After an agent finishes using a tool in a real project, ask it to fill out a structured feedback survey. Feed that feedback to another agent working on the tool itself.",
     input: "One agent's opinion after using a tool",
     output: "Immediate, targeted fixes to the tool",
-    mechanism: "Agent A uses tool, rates it 0-100 on multiple dimensions, suggests changes. Agent B working on the tool implements the fixes.",
+    mechanism:
+      "Agent A uses tool, rates it 0-100 on multiple dimensions, suggests changes. Agent B working on the tool implements the fixes.",
     skillQuality: 35,
-    exampleInsight: "\"The --format flag is confusing. 8 out of 10 agents passed json when they meant jsonl.\"",
+    exampleInsight:
+      '"The --format flag is confusing. 8 out of 10 agents passed json when they meant jsonl."',
     color: "#3b82f6",
   },
   {
     id: 2,
     title: "CASS-Powered Refinement",
     tagline: "Requires session logging.",
-    description: "Instead of relying on one agent's opinion, mine session logs to find systematic patterns across many agents. 15 agents struggling with the same flag proves the flag is the problem, not the agents.",
+    description:
+      "Instead of relying on one agent's opinion, mine session logs to find systematic patterns across many agents. 15 agents struggling with the same flag proves the flag is the problem, not the agents.",
     input: "10+ real sessions of tool usage via CASS",
     output: "Skill rewrite that fixes every discovered failure pattern",
-    mechanism: "Search CASS for clarifying questions, repeated mistakes, creative workarounds, and outright failures. Feed findings to a fresh agent that rewrites the skill.",
+    mechanism:
+      "Search CASS for clarifying questions, repeated mistakes, creative workarounds, and outright failures. Feed findings to a fresh agent that rewrites the skill.",
     skillQuality: 62,
-    exampleInsight: "\"Agents asked 'do you mean X or Y?' 23 times across 47 sessions. The skill's Step 3 is ambiguous.\"",
+    exampleInsight:
+      "\"Agents asked 'do you mean X or Y?' 23 times across 47 sessions. The skill's Step 3 is ambiguous.\"",
     color: "#f59e0b",
   },
   {
     id: 3,
     title: "Skills That Generate Work",
     tagline: "The system proposes its own improvements.",
-    description: "The idea-wizard skill examines a project and generates improvement ideas. The optimization skill finds bottlenecks. These skills create new beads, which agents implement, which improve the tools, which make the skills more effective.",
+    description:
+      "The idea-wizard skill examines a project and generates improvement ideas. The optimization skill finds bottlenecks. These skills create new beads, which agents implement, which improve the tools, which make the skills more effective.",
     input: "Current project state + existing bead graph",
     output: "New beads for the highest-leverage improvements",
-    mechanism: "The human curates which generated ideas are worth pursuing. The system decides what to work on next.",
+    mechanism:
+      "The human curates which generated ideas are worth pursuing. The system decides what to work on next.",
     skillQuality: 84,
-    exampleInsight: "\"Idea-wizard generated 30 improvement ideas, winnowed to 5. The top pick (cache-oblivious indexing) improved throughput 4.2x.\"",
+    exampleInsight:
+      '"Idea-wizard generated 30 improvement ideas, winnowed to 5. The top pick (cache-oblivious indexing) improved throughput 4.2x."',
     color: "#10b981",
   },
   {
     id: 4,
     title: "Skills Bundled With Installers",
     tagline: "The skill improves before the user ever sees it.",
-    description: "Every tool you ship includes a pre-optimized skill baked into its installer. The skill was refined through multiple CASS cycles before shipping. New users immediately benefit from all previous refinement.",
+    description:
+      "Every tool you ship includes a pre-optimized skill baked into its installer. The skill was refined through multiple CASS cycles before shipping. New users immediately benefit from all previous refinement.",
     input: "Accumulated CASS data from all previous users",
     output: "A skill so refined that agents use the tool correctly on first contact",
-    mechanism: "The installer adds the skill automatically. The agent reads it and never hits the failure modes that plagued early adopters.",
+    mechanism:
+      "The installer adds the skill automatically. The agent reads it and never hits the failure modes that plagued early adopters.",
     skillQuality: 96,
-    exampleInsight: "\"Zero clarifying questions in 50 new-user sessions. Every agent used --format correctly because the skill now has an explicit example.\"",
+    exampleInsight:
+      '"Zero clarifying questions in 50 new-user sessions. Every agent used --format correctly because the skill now has an explicit example."',
     color: "#8b5cf6",
   },
 ];
@@ -87,29 +99,41 @@ export function RecursiveImprovementViz() {
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!ref.current?.contains(document.activeElement) && document.activeElement !== ref.current) return;
-      if (e.key === "ArrowRight") setActiveLayer(prev => Math.min(prev + 1, LAYERS.length - 1));
-      if (e.key === "ArrowLeft") setActiveLayer(prev => Math.max(prev - 1, 0));
+      if (!ref.current?.contains(document.activeElement) && document.activeElement !== ref.current)
+        return;
+      if (e.key === "ArrowRight") setActiveLayer((prev) => Math.min(prev + 1, LAYERS.length - 1));
+      if (e.key === "ArrowLeft") setActiveLayer((prev) => Math.max(prev - 1, 0));
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const goNext = useCallback(() => setActiveLayer(prev => Math.min(prev + 1, LAYERS.length - 1)), []);
-  const goPrev = useCallback(() => setActiveLayer(prev => Math.max(prev - 1, 0)), []);
+  const goNext = useCallback(
+    () => setActiveLayer((prev) => Math.min(prev + 1, LAYERS.length - 1)),
+    [],
+  );
+  const goPrev = useCallback(() => setActiveLayer((prev) => Math.max(prev - 1, 0)), []);
 
   const springTransition = rm
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 300, damping: 30 };
 
   return (
-    <div ref={ref} tabIndex={0} className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/40">
+    <div
+      ref={ref}
+      tabIndex={0}
+      className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/40"
+    >
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] px-5 py-5 sm:px-8">
-        <h4 className="text-lg font-bold text-white tracking-tight">The Four Layers of Recursive Improvement</h4>
-        <p className="mt-1 text-sm text-zinc-400">Each layer amplifies the next. Start at Layer 1, not Layer 4.</p>
+        <h4 className="text-lg font-bold text-white tracking-tight">
+          The Four Layers of Recursive Improvement
+        </h4>
+        <p className="mt-1 text-sm text-zinc-400">
+          Each layer amplifies the next. Start at Layer 1, not Layer 4.
+        </p>
       </div>
 
       {/* Desktop tabs */}
@@ -167,7 +191,9 @@ export function RecursiveImprovementViz() {
             &larr;
           </button>
           <div className="flex-1 text-center">
-            <div className="text-xs font-bold" style={{ color: layer.color }}>Layer {activeLayer + 1} of {LAYERS.length}</div>
+            <div className="text-xs font-bold" style={{ color: layer.color }}>
+              Layer {activeLayer + 1} of {LAYERS.length}
+            </div>
             <div className="text-[11px] text-zinc-400 truncate mt-0.5">{layer.title}</div>
           </div>
           <button
@@ -226,9 +252,13 @@ export function RecursiveImprovementViz() {
                   >
                     {activeLayer + 1}
                   </div>
-                  <h5 className="text-lg sm:text-xl font-bold text-white tracking-tight">{layer.title}</h5>
+                  <h5 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                    {layer.title}
+                  </h5>
                 </div>
-                <p className="text-sm font-medium" style={{ color: layer.color }}>{layer.tagline}</p>
+                <p className="text-sm font-medium" style={{ color: layer.color }}>
+                  {layer.tagline}
+                </p>
               </div>
 
               {/* Description */}
@@ -256,8 +286,12 @@ export function RecursiveImprovementViz() {
                     {/* Desktop arrows between cards */}
                     {ci === 1 && (
                       <>
-                        <div className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-[10px]">&rarr;</div>
-                        <div className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-[10px]">&rarr;</div>
+                        <div className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-[10px]">
+                          &rarr;
+                        </div>
+                        <div className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-[10px]">
+                          &rarr;
+                        </div>
                       </>
                     )}
                   </div>
@@ -267,7 +301,9 @@ export function RecursiveImprovementViz() {
               {/* Quality meter */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-zinc-400">Skill Quality After This Layer</span>
+                  <span className="text-xs font-semibold text-zinc-400">
+                    Skill Quality After This Layer
+                  </span>
                   <motion.span
                     className="text-sm font-black tabular-nums"
                     style={{ color: layer.color }}
@@ -288,7 +324,11 @@ export function RecursiveImprovementViz() {
                     }}
                     initial={rm ? { width: `${layer.skillQuality}%` } : { width: 0 }}
                     animate={{ width: `${layer.skillQuality}%` }}
-                    transition={rm ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 18, delay: 0.15 }}
+                    transition={
+                      rm
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 80, damping: 18, delay: 0.15 }
+                    }
                   />
                 </div>
                 <div className="flex justify-between mt-1.5 text-[10px] text-zinc-600">
@@ -302,8 +342,12 @@ export function RecursiveImprovementViz() {
                 className="rounded-xl border border-white/[0.06] p-4 backdrop-blur-sm"
                 style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
               >
-                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.15em] mb-2">Example Finding</div>
-                <p className="text-xs text-zinc-300 italic leading-relaxed">{layer.exampleInsight}</p>
+                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.15em] mb-2">
+                  Example Finding
+                </div>
+                <p className="text-xs text-zinc-300 italic leading-relaxed">
+                  {layer.exampleInsight}
+                </p>
               </div>
             </motion.div>
           </AnimatePresence>
@@ -316,11 +360,10 @@ export function RecursiveImprovementViz() {
           {activeLayer === 0
             ? "Layer 1 requires zero infrastructure. You can do this today, right now, with any tool and two agent sessions."
             : activeLayer === 1
-            ? "Layer 2 reveals patterns no single agent would notice from its own experience alone. 15 agents struggling with the same flag proves the flag is the problem."
-            : activeLayer === 2
-            ? "At Layer 3, the system is not just refining how it works but actively deciding what to work on next. The human curates rather than directs."
-            : "At Layer 4, new users never hit the failure modes that plagued early adopters. The improvement is invisible, baked into the installer."
-          }
+              ? "Layer 2 reveals patterns no single agent would notice from its own experience alone. 15 agents struggling with the same flag proves the flag is the problem."
+              : activeLayer === 2
+                ? "At Layer 3, the system is not just refining how it works but actively deciding what to work on next. The human curates rather than directs."
+                : "At Layer 4, new users never hit the failure modes that plagued early adopters. The improvement is invisible, baked into the installer."}
         </p>
       </div>
     </div>

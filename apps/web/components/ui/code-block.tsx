@@ -1,15 +1,15 @@
 "use client";
 
-import { useRef, type ReactNode, type RefObject } from "react";
-import { Copy, Check, Terminal } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Check, Copy, Terminal } from "lucide-react";
+import { type ReactNode, type RefObject, useRef } from "react";
 import {
   COPY_FAILURE_MESSAGE,
   COPY_SUCCESS_MESSAGE,
-  useCopyFeedback,
   type CopyFeedbackState,
   type CopyOptions,
+  useCopyFeedback,
 } from "@/lib/hooks/useCopyFeedback";
+import { cn } from "@/lib/utils";
 
 // =============================================================================
 // COPY-TO-CLIPBOARD HOOK (compat wrapper over lib/hooks/useCopyFeedback)
@@ -34,22 +34,14 @@ function useCopyToClipboard(resetMs = 2000) {
  * "Copied to clipboard", and sighted visitors SEE the failure instruction
  * (the button alone cannot tell them the clipboard was refused).
  */
-function CopyStatus({
-  state,
-  className,
-}: {
-  state: CopyFeedbackState;
-  className?: string;
-}) {
+function CopyStatus({ state, className }: { state: CopyFeedbackState; className?: string }) {
   const failed = state === "failed";
   return (
     <span
       role="status"
       aria-live="polite"
       className={cn(
-        failed
-          ? cn("block text-xs font-medium text-destructive", className)
-          : "sr-only",
+        failed ? cn("block text-xs font-medium text-destructive", className) : "sr-only",
       )}
     >
       {state === "copied" ? COPY_SUCCESS_MESSAGE : failed ? COPY_FAILURE_MESSAGE : ""}
@@ -117,12 +109,7 @@ function CopyButton({
     >
       {copied ? (
         <>
-          <Check
-            className={cn(
-              "h-4 w-4",
-              compact ? "text-green" : "text-emerald-400",
-            )}
-          />
+          <Check className={cn("h-4 w-4", compact ? "text-green" : "text-emerald-400")} />
           {!compact && <span className="text-emerald-400">Copied!</span>}
         </>
       ) : (
@@ -267,7 +254,7 @@ export function CodeBlock({
               className={cn(
                 "flex -mx-5 px-5 transition-colors duration-150",
                 // Line highlight on hover for better readability
-                "hover:bg-white/[0.03]"
+                "hover:bg-white/[0.03]",
               )}
             >
               {showLineNumbers && (

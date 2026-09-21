@@ -1,28 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Terminal, ChevronDown, BookOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { CommandCard } from "@/components/command-card";
-import { AlertCard, OutputPreview } from "@/components/alert-card";
-import { TwoComputersExplainer } from "@/components/connection-check";
-import { formatSshHost, formatSshTarget } from "@/lib/commandBuilder";
-import { cn } from "@/lib/utils";
+import { BookOpen, ChevronDown, Terminal } from "lucide-react";
 import Link from "next/link";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
-import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useVPSIP, useUserOS } from "@/lib/userPreferences";
-import { withCurrentSearch } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCard, OutputPreview } from "@/components/alert-card";
+import { CommandCard } from "@/components/command-card";
+import { TwoComputersExplainer } from "@/components/connection-check";
+import { Jargon } from "@/components/jargon";
 import {
-  SimplerGuide,
+  GuideCaution,
+  GuideExplain,
   GuideSection,
   GuideStep,
-  GuideExplain,
   GuideTip,
-  GuideCaution,
+  SimplerGuide,
 } from "@/components/simpler-guide";
-import { Jargon } from "@/components/jargon";
+import { Button } from "@/components/ui/button";
+import { formatSshHost, formatSshTarget } from "@/lib/commandBuilder";
+import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { useUserOS, useVPSIP } from "@/lib/userPreferences";
+import { cn, withCurrentSearch } from "@/lib/utils";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 interface TroubleshootingItem {
   error: string;
@@ -46,11 +45,7 @@ const TROUBLESHOOTING: TroubleshootingItem[] = [
   },
   {
     error: "Connection timed out",
-    causes: [
-      "Wrong IP address",
-      "VPS is offline",
-      "Network issue between you and the VPS",
-    ],
+    causes: ["Wrong IP address", "VPS is offline", "Network issue between you and the VPS"],
     solutions: [
       "Double-check the IP address in your provider's control panel",
       "Try pinging the IP: ping YOUR_IP",
@@ -76,10 +71,7 @@ const TROUBLESHOOTING: TroubleshootingItem[] = [
       "You've connected to this IP before with a different VPS",
       "The server was reinstalled",
     ],
-    solutions: [
-      "Remove the old key: ssh-keygen -R YOUR_IP",
-      "Then try connecting again",
-    ],
+    solutions: ["Remove the old key: ssh-keygen -R YOUR_IP", "Then try connecting again"],
   },
 ];
 
@@ -104,7 +96,7 @@ function TroubleshootingSection({
         <ChevronDown
           className={cn(
             "h-4 w-4 text-muted-foreground transition-transform",
-            isExpanded && "rotate-180"
+            isExpanded && "rotate-180",
           )}
         />
       </button>
@@ -201,11 +193,15 @@ export default function SSHConnectPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              <Jargon term="ssh" gradientHeading>SSH</Jargon> into your <Jargon term="vps" gradientHeading>VPS</Jargon>
+              <Jargon term="ssh" gradientHeading>
+                SSH
+              </Jargon>{" "}
+              into your{" "}
+              <Jargon term="vps" gradientHeading>
+                VPS
+              </Jargon>
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~1 min
-            </p>
+            <p className="text-sm text-muted-foreground">~1 min</p>
           </div>
         </div>
         <p className="text-muted-foreground">
@@ -219,29 +215,33 @@ export default function SSHConnectPage() {
       {/* IP confirmation */}
       <AlertCard variant="info" icon={Terminal}>
         Connecting to:{" "}
-        <code className="ml-1 rounded bg-primary/15 px-2 py-0.5 font-mono font-bold text-primary">{vpsIP}</code>
+        <code className="ml-1 rounded bg-primary/15 px-2 py-0.5 font-mono font-bold text-primary">
+          {vpsIP}
+        </code>
       </AlertCard>
 
       {/* CRITICAL: Password distinction warning */}
       <AlertCard variant="warning" title="Which password to use">
         <div className="space-y-2">
           <p>
-            You&apos;ll need the <strong className="text-foreground">VPS root password</strong> — this is{" "}
-            <strong className="text-foreground">NOT</strong> the same as your VPS provider account password!
+            You&apos;ll need the <strong className="text-foreground">VPS root password</strong> —
+            this is <strong className="text-foreground">NOT</strong> the same as your VPS provider
+            account password!
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
             <li>
-              <span className="text-green">✓ Correct:</span>{" "}
-              <strong>VPS root password</strong> — the password you set when creating this specific VPS,
-              or the one your provider emailed you
+              <span className="text-green">✓ Correct:</span> <strong>VPS root password</strong> —
+              the password you set when creating this specific VPS, or the one your provider emailed
+              you
             </li>
             <li>
-              <span className="text-destructive">✗ Wrong:</span>{" "}
-              Your OVH/Contabo <em>account</em> login password
+              <span className="text-destructive">✗ Wrong:</span> Your OVH/Contabo <em>account</em>{" "}
+              login password
             </li>
           </ul>
           <p className="text-xs text-muted-foreground mt-2">
-            If you can&apos;t find it, check your email or your VPS provider&apos;s control panel for the VPS-specific password.
+            If you can&apos;t find it, check your email or your VPS provider&apos;s control panel
+            for the VPS-specific password.
           </p>
         </div>
       </AlertCard>
@@ -264,21 +264,32 @@ export default function SSHConnectPage() {
         <h2 className="text-xl font-semibold">What you&apos;ll see first</h2>
         <p className="text-sm text-muted-foreground">
           The first time you connect, you&apos;ll see a scary-looking security message.
-          <strong className="text-foreground"> This is completely normal!</strong> It just means SSH hasn&apos;t seen this server before.
+          <strong className="text-foreground"> This is completely normal!</strong> It just means SSH
+          hasn&apos;t seen this server before.
         </p>
         <OutputPreview title="You'll see something like:">
           <div className="space-y-1">
-            <p className="text-amber">The authenticity of host &apos;{sshHost} ({vpsIP})&apos; can&apos;t be established.</p>
-            <p className="text-muted-foreground">ED25519 key fingerprint is SHA256:xYz123abc456def...</p>
-            <p className="text-amber">Are you sure you want to continue connecting (yes/no/[fingerprint])?</p>
+            <p className="text-amber">
+              The authenticity of host &apos;{sshHost} ({vpsIP})&apos; can&apos;t be established.
+            </p>
+            <p className="text-muted-foreground">
+              ED25519 key fingerprint is SHA256:xYz123abc456def...
+            </p>
+            <p className="text-amber">
+              Are you sure you want to continue connecting (yes/no/[fingerprint])?
+            </p>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            This looks alarming, but it&apos;s just SSH confirming you want to trust this new server.
+            This looks alarming, but it&apos;s just SSH confirming you want to trust this new
+            server.
           </p>
         </OutputPreview>
         <AlertCard variant="success" title="Type 'yes' and press Enter">
           This is safe! You&apos;re telling SSH to remember this server. Type the full word{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">yes</code> (not just &quot;y&quot;), then press Enter.
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+            yes
+          </code>{" "}
+          (not just &quot;y&quot;), then press Enter.
         </AlertCard>
       </div>
 
@@ -289,12 +300,15 @@ export default function SSHConnectPage() {
           After typing &quot;yes&quot;, you&apos;ll be asked for your password:
         </p>
         <OutputPreview title="You'll see:">
-          <p className="text-muted-foreground">{rootTarget}&apos;s password: <span className="animate-pulse">_</span></p>
+          <p className="text-muted-foreground">
+            {rootTarget}&apos;s password: <span className="animate-pulse">_</span>
+          </p>
         </OutputPreview>
         <AlertCard variant="info" title="The password won't appear as you type">
           <p>
-            When you type your password, <strong>nothing will show on screen</strong> — no dots, no asterisks, nothing.
-            This is a security feature, not a bug! Just type your password and press Enter.
+            When you type your password, <strong>nothing will show on screen</strong> — no dots, no
+            asterisks, nothing. This is a security feature, not a bug! Just type your password and
+            press Enter.
           </p>
         </AlertCard>
       </div>
@@ -305,12 +319,12 @@ export default function SSHConnectPage() {
           If &quot;root&quot; is disabled, try ubuntu and become root:
         </h3>
         <p className="text-sm text-muted-foreground">
-          Some providers disable root login. If you get &quot;Permission denied&quot; with
-          root, try the ubuntu account, then open a root shell before continuing.
-          If <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">sudo -i</code>{" "}
-          asks for a password, enter the ubuntu Linux account password, not your provider
-          website password or a different root password. If the provider only gave you a
-          root password, use the provider console or root SSH path instead.
+          Some providers disable root login. If you get &quot;Permission denied&quot; with root, try
+          the ubuntu account, then open a root shell before continuing. If{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">sudo -i</code> asks for a
+          password, enter the ubuntu Linux account password, not your provider website password or a
+          different root password. If the provider only gave you a root password, use the provider
+          console or root SSH path instead.
         </p>
         <CommandCard
           command={sshCommandUbuntu}
@@ -331,10 +345,11 @@ export default function SSHConnectPage() {
           root@vps:~# <span className="animate-pulse">_</span>
         </p>
         <p className="mt-2 text-muted-foreground">
-          You should see a prompt with your username and &quot;vps&quot; or
-          the server hostname. The &quot;#&quot; means you&apos;re logged in as root.
-          If you used the ubuntu fallback, run{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{becomeRootCommand}</code>{" "}
+          You should see a prompt with your username and &quot;vps&quot; or the server hostname. The
+          &quot;#&quot; means you&apos;re logged in as root. If you used the ubuntu fallback, run{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+            {becomeRootCommand}
+          </code>{" "}
           first; continue only after your prompt ends with &quot;#&quot;.
         </p>
       </OutputPreview>
@@ -345,21 +360,20 @@ export default function SSHConnectPage() {
         <p className="text-muted-foreground">
           Try this command to confirm you&apos;re controlling the VPS, not your laptop:
         </p>
-        <CommandCard
-          command="hostname"
-          description="Show this computer's name"
-          runLocation="vps"
-        />
+        <CommandCard command="hostname" description="Show this computer's name" runLocation="vps" />
         <OutputPreview title="You should see something like:">
           <p className="text-green">vps-12345</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            (Your VPS hostname — not your laptop&apos;s name like &quot;MacBook-Pro&quot; or &quot;DESKTOP-ABC123&quot;)
+            (Your VPS hostname — not your laptop&apos;s name like &quot;MacBook-Pro&quot; or
+            &quot;DESKTOP-ABC123&quot;)
           </p>
         </OutputPreview>
         <AlertCard variant="info">
-          <strong>You&apos;re now remote-controlling the VPS!</strong> Everything you type happens on the VPS.
-          If you type <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ls</code>, you see VPS files.
-          If you install something, it installs on the VPS. Your laptop is just the remote control.
+          <strong>You&apos;re now remote-controlling the VPS!</strong> Everything you type happens
+          on the VPS. If you type{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ls</code>, you see VPS
+          files. If you install something, it installs on the VPS. Your laptop is just the remote
+          control.
         </AlertCard>
       </div>
 
@@ -372,11 +386,7 @@ export default function SSHConnectPage() {
               key={item.error}
               item={item}
               isExpanded={expandedError === item.error}
-              onToggle={() =>
-                setExpandedError((prev) =>
-                  prev === item.error ? null : item.error
-                )
-              }
+              onToggle={() => setExpandedError((prev) => (prev === item.error ? null : item.error))}
             />
           ))}
         </div>
@@ -386,10 +396,11 @@ export default function SSHConnectPage() {
       <SimplerGuide>
         <div className="space-y-6">
           <GuideExplain term="SSH (Secure Shell)">
-            SSH is a way to securely connect to another computer over the internet.
-            It&apos;s like making a phone call to your VPS. Once connected, everything
-            you type appears on the VPS, not your local computer.
-            <br /><br />
+            SSH is a way to securely connect to another computer over the internet. It&apos;s like
+            making a phone call to your VPS. Once connected, everything you type appears on the VPS,
+            not your local computer.
+            <br />
+            <br />
             When you &quot;SSH into&quot; a computer, you&apos;re essentially remote-controlling it
             through text commands.
           </GuideExplain>
@@ -397,7 +408,8 @@ export default function SSHConnectPage() {
           <GuideSection title="Step-by-Step Connection Guide">
             <div className="space-y-4">
               <GuideStep number={1} title="Open your terminal">
-                Open your terminal app (Ghostty, WezTerm, Windows Terminal, or your Linux terminal emulator).
+                Open your terminal app (Ghostty, WezTerm, Windows Terminal, or your Linux terminal
+                emulator).
               </GuideStep>
 
               <GuideStep number={2} title="Copy the SSH command">
@@ -408,30 +420,48 @@ export default function SSHConnectPage() {
               <GuideStep number={3} title="Paste the command">
                 Click inside your terminal window, then paste:
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li><strong>Mac:</strong> <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">⌘</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">V</kbd></li>
-                  <li><strong>Linux:</strong> <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Shift</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">V</kbd></li>
-                  <li><strong>Windows:</strong> Right-click inside the terminal, or <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">V</kbd></li>
+                  <li>
+                    <strong>Mac:</strong>{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">⌘</kbd> +{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">V</kbd>
+                  </li>
+                  <li>
+                    <strong>Linux:</strong>{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd> +{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Shift</kbd> +{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">V</kbd>
+                  </li>
+                  <li>
+                    <strong>Windows:</strong> Right-click inside the terminal, or{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd> +{" "}
+                    <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">V</kbd>
+                  </li>
                 </ul>
               </GuideStep>
 
               <GuideStep number={4} title="Press Enter">
-                Press the <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd> key to run the command.
+                Press the{" "}
+                <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd> key to
+                run the command.
               </GuideStep>
 
               <GuideStep number={5} title="Say 'yes' to the security question">
-                You&apos;ll see a scary-looking message about &quot;authenticity of host&quot;
-                and a &quot;fingerprint&quot;. This is normal for first-time connections!
-                <br /><br />
-                Type <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">yes</kbd> (spelled out, not just &quot;y&quot;)
-                and press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd>.
+                You&apos;ll see a scary-looking message about &quot;authenticity of host&quot; and a
+                &quot;fingerprint&quot;. This is normal for first-time connections!
+                <br />
+                <br />
+                Type <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">yes</kbd>{" "}
+                (spelled out, not just &quot;y&quot;) and press{" "}
+                <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd>.
               </GuideStep>
 
               <GuideStep number={6} title="Enter your password">
-                Now it will ask for your password. Type the password you set during VPS
-                creation (or the one your provider emailed you).
-                <br /><br />
-                <strong>Important:</strong> The password won&apos;t show as you type—no dots
-                or asterisks. Just type it and press Enter. This is normal security behavior!
+                Now it will ask for your password. Type the password you set during VPS creation (or
+                the one your provider emailed you).
+                <br />
+                <br />
+                <strong>Important:</strong> The password won&apos;t show as you type—no dots or
+                asterisks. Just type it and press Enter. This is normal security behavior!
               </GuideStep>
 
               <GuideStep number={7} title="You're connected!">
@@ -439,11 +469,13 @@ export default function SSHConnectPage() {
                 <code className="mt-2 block overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-sm">
                   root@vps:~#
                 </code>
-                The &quot;root@vps&quot; part means you&apos;re now controlling the VPS!
-                If you connected as ubuntu instead, run{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{becomeRootCommand}</code>{" "}
-                so your prompt changes to root before you continue.
-                Everything you type from now on runs on the VPS, not your laptop.
+                The &quot;root@vps&quot; part means you&apos;re now controlling the VPS! If you
+                connected as ubuntu instead, run{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                  {becomeRootCommand}
+                </code>{" "}
+                so your prompt changes to root before you continue. Everything you type from now on
+                runs on the VPS, not your laptop.
               </GuideStep>
             </div>
           </GuideSection>
@@ -468,7 +500,9 @@ export default function SSHConnectPage() {
               </li>
               <li>
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">#</code>
-                means you&apos;re logged in as root (vs <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">$</code> for regular users)
+                means you&apos;re logged in as root (vs{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">$</code> for
+                regular users)
               </li>
             </ul>
           </GuideSection>
@@ -480,10 +514,13 @@ export default function SSHConnectPage() {
           </GuideTip>
 
           <GuideCaution>
-            <strong>&quot;Permission denied&quot; error?</strong> Double-check your password.
-            Some providers email the password instead of letting you set it—check your inbox.
-            If root login is disabled, use the ubuntu fallback command above and then run{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{becomeRootCommand}</code>.
+            <strong>&quot;Permission denied&quot; error?</strong> Double-check your password. Some
+            providers email the password instead of letting you set it—check your inbox. If root
+            login is disabled, use the ubuntu fallback command above and then run{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              {becomeRootCommand}
+            </code>
+            .
           </GuideCaution>
 
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
@@ -502,7 +539,14 @@ export default function SSHConnectPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          onClick={handleContinue}
+          disabled={isNavigating}
+          size="lg"
+          disableMotion
+        >
           {isNavigating ? "Loading..." : "I'm connected, continue"}
         </Button>
       </div>

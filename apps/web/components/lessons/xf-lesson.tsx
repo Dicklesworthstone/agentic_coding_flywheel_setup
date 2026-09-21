@@ -1,50 +1,48 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Terminal,
-  Zap,
-  Database,
-  Clock,
-  FileText,
-  Play,
   Archive,
-  Search,
-  Heart,
-  Repeat2,
-  Loader2,
-  Eye,
-  Hash,
-  MessageSquare,
-  BarChart3,
-  Filter,
   ArrowRight,
-  CheckCircle2,
-  TrendingUp,
+  BarChart3,
   Bot,
-  Download,
+  CheckCircle2,
   ChevronRight,
-} from 'lucide-react';
+  Clock,
+  Database,
+  Download,
+  Eye,
+  FileText,
+  Filter,
+  Hash,
+  Heart,
+  Loader2,
+  MessageSquare,
+  Play,
+  Repeat2,
+  Search,
+  Terminal,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function XfLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Search your X/Twitter archive with sub-millisecond queries using xf.
-      </GoalBanner>
+      <GoalBanner>Search your X/Twitter archive with sub-millisecond queries using xf.</GoalBanner>
 
       {/* Section 1: What Is XF */}
       <Section title="What Is XF?" icon={<Archive className="h-5 w-5" />} delay={0.1}>
@@ -54,8 +52,8 @@ export function XfLesson() {
           delivers sub-millisecond queries with hybrid BM25 and semantic search.
         </Paragraph>
         <Paragraph>
-          All indexing happens locally on your machine. No data leaves your system. Index once
-          at ~10,000 docs/second, then search instantly across years of content.
+          All indexing happens locally on your machine. No data leaves your system. Index once at
+          ~10,000 docs/second, then search instantly across years of content.
         </Paragraph>
 
         <div className="mt-8">
@@ -94,10 +92,13 @@ export function XfLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'xf index <archive-path>', description: 'Index your Twitter archive' },
-            { command: 'xf search <query>', description: 'Search your tweets' },
-            { command: 'xf search <query> --since 2023-01-01', description: 'Search with a date filter (--since/--until)' },
-            { command: 'xf --help', description: 'Show all options' },
+            { command: "xf index <archive-path>", description: "Index your Twitter archive" },
+            { command: "xf search <query>", description: "Search your tweets" },
+            {
+              command: "xf search <query> --since 2023-01-01",
+              description: "Search with a date filter (--since/--until)",
+            },
+            { command: "xf --help", description: "Show all options" },
           ]}
         />
 
@@ -122,7 +123,8 @@ export function XfLesson() {
 
       {/* Section 3: Example Searches */}
       <Section title="Example Searches" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# Index your archive (one-time)
+        <CodeBlock
+          code={`# Index your archive (one-time)
 xf index ~/Downloads/twitter-archive
 
 # Search for a topic
@@ -132,7 +134,8 @@ xf search "machine learning"
 xf search "rust" --since 2024-01-01 --until 2024-06-30
 
 # Export results to JSON
-xf search "AI" --format json > results.json`} />
+xf search "AI" --format json > results.json`}
+        />
       </Section>
     </div>
   );
@@ -150,9 +153,9 @@ interface TweetResult {
   retweets: number;
   views: number;
   relevance: number;
-  sentiment: 'positive' | 'neutral' | 'negative';
+  sentiment: "positive" | "neutral" | "negative";
   hashtags: string[];
-  type: 'tweet' | 'dm' | 'grok' | 'like' | 'thread';
+  type: "tweet" | "dm" | "grok" | "like" | "thread";
 }
 
 interface Scenario {
@@ -178,332 +181,356 @@ interface Scenario {
 
 const SCENARIOS: Scenario[] = [
   {
-    id: 'keyword',
-    label: 'Keyword Search',
+    id: "keyword",
+    label: "Keyword Search",
     icon: <Search className="h-3.5 w-3.5" />,
-    description: 'Full-text BM25 search across all tweets',
+    description: "Full-text BM25 search across all tweets",
     command: 'xf search "machine learning"',
     totalResults: 847,
     searchTimeMs: 0.42,
     indexStats: {
       totalDocs: 23847,
-      dateRange: '2019-03-14 to 2024-12-28',
-      topHashtags: ['#ML', '#AI', '#DeepLearning', '#NLP', '#Transformers'],
+      dateRange: "2019-03-14 to 2024-12-28",
+      topHashtags: ["#ML", "#AI", "#DeepLearning", "#NLP", "#Transformers"],
     },
-    pipelineSteps: ['Parse query', 'BM25 index scan', 'Relevance rank', 'Top-K extract'],
+    pipelineSteps: ["Parse query", "BM25 index scan", "Relevance rank", "Top-K extract"],
     results: [
       {
-        id: 'kw-1',
-        date: '2024-11-15',
-        content: 'Just finished a deep dive into transformer architectures. The attention mechanism is pure elegance -- machine learning keeps surprising me with how far we have come from simple perceptrons.',
+        id: "kw-1",
+        date: "2024-11-15",
+        content:
+          "Just finished a deep dive into transformer architectures. The attention mechanism is pure elegance -- machine learning keeps surprising me with how far we have come from simple perceptrons.",
         likes: 234,
         retweets: 67,
         views: 18200,
         relevance: 0.97,
-        sentiment: 'positive',
-        hashtags: ['#ML', '#Transformers'],
-        type: 'tweet',
+        sentiment: "positive",
+        hashtags: ["#ML", "#Transformers"],
+        type: "tweet",
       },
       {
-        id: 'kw-2',
-        date: '2024-09-03',
-        content: 'Hot take: most machine learning papers would benefit from 50% less math notation and 50% more intuitive diagrams. Communication matters.',
+        id: "kw-2",
+        date: "2024-09-03",
+        content:
+          "Hot take: most machine learning papers would benefit from 50% less math notation and 50% more intuitive diagrams. Communication matters.",
         likes: 1823,
         retweets: 412,
         views: 89400,
         relevance: 0.91,
-        sentiment: 'neutral',
-        hashtags: ['#ML', '#Academia'],
-        type: 'tweet',
+        sentiment: "neutral",
+        hashtags: ["#ML", "#Academia"],
+        type: "tweet",
       },
       {
-        id: 'kw-3',
-        date: '2024-06-22',
-        content: 'Shipped a new feature using gradient boosted trees instead of a neural net. Sometimes classical machine learning is all you need. 10x faster inference too.',
+        id: "kw-3",
+        date: "2024-06-22",
+        content:
+          "Shipped a new feature using gradient boosted trees instead of a neural net. Sometimes classical machine learning is all you need. 10x faster inference too.",
         likes: 89,
         retweets: 23,
         views: 4200,
         relevance: 0.85,
-        sentiment: 'positive',
-        hashtags: ['#ML', '#Engineering'],
-        type: 'tweet',
+        sentiment: "positive",
+        hashtags: ["#ML", "#Engineering"],
+        type: "tweet",
       },
       {
-        id: 'kw-4',
-        date: '2024-03-10',
-        content: 'The machine learning community needs to talk more about failure cases. We learn more from what does not work than from another SOTA benchmark.',
+        id: "kw-4",
+        date: "2024-03-10",
+        content:
+          "The machine learning community needs to talk more about failure cases. We learn more from what does not work than from another SOTA benchmark.",
         likes: 567,
         retweets: 145,
         views: 31200,
         relevance: 0.78,
-        sentiment: 'neutral',
-        hashtags: ['#ML', '#Research'],
-        type: 'tweet',
+        sentiment: "neutral",
+        hashtags: ["#ML", "#Research"],
+        type: "tweet",
       },
     ],
   },
   {
-    id: 'dm-archive',
-    label: 'DM Archive',
+    id: "dm-archive",
+    label: "DM Archive",
     icon: <MessageSquare className="h-3.5 w-3.5" />,
-    description: 'Search your private direct messages',
+    description: "Search your private direct messages",
     command: 'xf search --type dm "project deadline"',
     totalResults: 156,
     searchTimeMs: 0.28,
     indexStats: {
       totalDocs: 8432,
-      dateRange: '2020-01-05 to 2024-12-15',
+      dateRange: "2020-01-05 to 2024-12-15",
       topHashtags: [],
     },
-    pipelineSteps: ['Parse query', 'DM filter', 'Phrase match', 'Chronological sort'],
+    pipelineSteps: ["Parse query", "DM filter", "Phrase match", "Chronological sort"],
     results: [
       {
-        id: 'dm-1',
-        date: '2024-12-02',
-        content: 'Hey, the project deadline got moved to Friday. Can you push the API changes by Thursday EOD? The staging env is ready.',
+        id: "dm-1",
+        date: "2024-12-02",
+        content:
+          "Hey, the project deadline got moved to Friday. Can you push the API changes by Thursday EOD? The staging env is ready.",
         likes: 0,
         retweets: 0,
         views: 0,
         relevance: 0.94,
-        sentiment: 'neutral',
+        sentiment: "neutral",
         hashtags: [],
-        type: 'dm',
+        type: "dm",
       },
       {
-        id: 'dm-2',
-        date: '2024-10-19',
-        content: 'Project deadline extended by 2 weeks! The client loved the demo but wants us to add the analytics dashboard before launch.',
+        id: "dm-2",
+        date: "2024-10-19",
+        content:
+          "Project deadline extended by 2 weeks! The client loved the demo but wants us to add the analytics dashboard before launch.",
         likes: 0,
         retweets: 0,
         views: 0,
         relevance: 0.89,
-        sentiment: 'positive',
+        sentiment: "positive",
         hashtags: [],
-        type: 'dm',
+        type: "dm",
       },
       {
-        id: 'dm-3',
-        date: '2024-08-05',
-        content: 'Missed the project deadline by one day, but the extra polish was worth it. Ship quality over speed every time.',
+        id: "dm-3",
+        date: "2024-08-05",
+        content:
+          "Missed the project deadline by one day, but the extra polish was worth it. Ship quality over speed every time.",
         likes: 0,
         retweets: 0,
         views: 0,
         relevance: 0.82,
-        sentiment: 'neutral',
+        sentiment: "neutral",
         hashtags: [],
-        type: 'dm',
+        type: "dm",
       },
     ],
   },
   {
-    id: 'grok-chat',
-    label: 'Grok Chats',
+    id: "grok-chat",
+    label: "Grok Chats",
     icon: <Bot className="h-3.5 w-3.5" />,
-    description: 'Extract and search Grok conversation history',
+    description: "Extract and search Grok conversation history",
     command: 'xf search --type grok "explain recursion"',
     totalResults: 42,
     searchTimeMs: 0.19,
     indexStats: {
       totalDocs: 1247,
-      dateRange: '2024-02-10 to 2024-12-20',
+      dateRange: "2024-02-10 to 2024-12-20",
       topHashtags: [],
     },
-    pipelineSteps: ['Parse query', 'Grok filter', 'Semantic match', 'Context extract'],
+    pipelineSteps: ["Parse query", "Grok filter", "Semantic match", "Context extract"],
     results: [
       {
-        id: 'grok-1',
-        date: '2024-11-30',
-        content: '[Grok] Recursion in programming is when a function calls itself to solve smaller subproblems. Think of it like Russian nesting dolls -- each doll contains a smaller version of itself.',
+        id: "grok-1",
+        date: "2024-11-30",
+        content:
+          "[Grok] Recursion in programming is when a function calls itself to solve smaller subproblems. Think of it like Russian nesting dolls -- each doll contains a smaller version of itself.",
         likes: 0,
         retweets: 0,
         views: 0,
         relevance: 0.96,
-        sentiment: 'neutral',
+        sentiment: "neutral",
         hashtags: [],
-        type: 'grok',
+        type: "grok",
       },
       {
-        id: 'grok-2',
-        date: '2024-09-12',
-        content: '[You] Can you explain recursion with a Rust example? I keep getting stack overflows. [Grok] Sure! You need a base case. Here is a factorial function: fn factorial(n: u64) -> u64 { if n <= 1 { 1 } else { n * factorial(n-1) } }',
+        id: "grok-2",
+        date: "2024-09-12",
+        content:
+          "[You] Can you explain recursion with a Rust example? I keep getting stack overflows. [Grok] Sure! You need a base case. Here is a factorial function: fn factorial(n: u64) -> u64 { if n <= 1 { 1 } else { n * factorial(n-1) } }",
         likes: 0,
         retweets: 0,
         views: 0,
         relevance: 0.91,
-        sentiment: 'neutral',
+        sentiment: "neutral",
         hashtags: [],
-        type: 'grok',
+        type: "grok",
       },
     ],
   },
   {
-    id: 'likes-export',
-    label: 'Likes Export',
+    id: "likes-export",
+    label: "Likes Export",
     icon: <Heart className="h-3.5 w-3.5" />,
-    description: 'Search through your liked tweets archive',
+    description: "Search through your liked tweets archive",
     command: 'xf search --type likes "startup advice"',
     totalResults: 1289,
     searchTimeMs: 0.55,
     indexStats: {
       totalDocs: 34521,
-      dateRange: '2019-06-01 to 2024-12-28',
-      topHashtags: ['#Startup', '#Founder', '#SaaS', '#Growth', '#VC'],
+      dateRange: "2019-06-01 to 2024-12-28",
+      topHashtags: ["#Startup", "#Founder", "#SaaS", "#Growth", "#VC"],
     },
-    pipelineSteps: ['Parse query', 'Likes filter', 'BM25 rank', 'Engagement sort'],
+    pipelineSteps: ["Parse query", "Likes filter", "BM25 rank", "Engagement sort"],
     results: [
       {
-        id: 'like-1',
-        date: '2024-12-10',
-        content: 'The best startup advice I ever got: charge more. Seriously. If customers are not pushing back on price at all, you are leaving money on the table.',
+        id: "like-1",
+        date: "2024-12-10",
+        content:
+          "The best startup advice I ever got: charge more. Seriously. If customers are not pushing back on price at all, you are leaving money on the table.",
         likes: 12400,
         retweets: 3200,
         views: 2100000,
         relevance: 0.93,
-        sentiment: 'positive',
-        hashtags: ['#Startup'],
-        type: 'like',
+        sentiment: "positive",
+        hashtags: ["#Startup"],
+        type: "like",
       },
       {
-        id: 'like-2',
-        date: '2024-08-22',
-        content: 'Startup advice thread: 1. Ship weekly. 2. Talk to users daily. 3. Measure everything. 4. Fire yourself from tasks. 5. Hire slow. 6. Never run out of cash.',
+        id: "like-2",
+        date: "2024-08-22",
+        content:
+          "Startup advice thread: 1. Ship weekly. 2. Talk to users daily. 3. Measure everything. 4. Fire yourself from tasks. 5. Hire slow. 6. Never run out of cash.",
         likes: 8900,
         retweets: 2100,
         views: 1400000,
         relevance: 0.88,
-        sentiment: 'positive',
-        hashtags: ['#Startup', '#Founder'],
-        type: 'like',
+        sentiment: "positive",
+        hashtags: ["#Startup", "#Founder"],
+        type: "like",
       },
       {
-        id: 'like-3',
-        date: '2024-05-14',
-        content: 'Contrarian startup advice: do not optimize for growth. Optimize for learning speed. Growth follows understanding, not the other way around.',
+        id: "like-3",
+        date: "2024-05-14",
+        content:
+          "Contrarian startup advice: do not optimize for growth. Optimize for learning speed. Growth follows understanding, not the other way around.",
         likes: 4500,
         retweets: 890,
         views: 560000,
         relevance: 0.81,
-        sentiment: 'neutral',
-        hashtags: ['#Startup', '#Growth'],
-        type: 'like',
+        sentiment: "neutral",
+        hashtags: ["#Startup", "#Growth"],
+        type: "like",
       },
     ],
   },
   {
-    id: 'thread-recon',
-    label: 'Thread Rebuild',
+    id: "thread-recon",
+    label: "Thread Rebuild",
     icon: <FileText className="h-3.5 w-3.5" />,
-    description: 'Rebuild the reply chain of one of your own threads from the archive',
-    command: 'xf tweet 1842391045738271744 --thread',
+    description: "Rebuild the reply chain of one of your own threads from the archive",
+    command: "xf tweet 1842391045738271744 --thread",
     totalResults: 23,
     searchTimeMs: 0.67,
     indexStats: {
       totalDocs: 23847,
-      dateRange: '2019-03-14 to 2024-12-28',
-      topHashtags: ['#Rust', '#ErrorHandling', '#Programming'],
+      dateRange: "2019-03-14 to 2024-12-28",
+      topHashtags: ["#Rust", "#ErrorHandling", "#Programming"],
     },
-    pipelineSteps: ['Look up tweet', 'Walk in_reply_to up', 'Collect your replies', 'Order by date'],
+    pipelineSteps: [
+      "Look up tweet",
+      "Walk in_reply_to up",
+      "Collect your replies",
+      "Order by date",
+    ],
     results: [
       {
-        id: 'thread-1',
-        date: '2024-10-05',
-        content: '[1/4] Thread on Rust error handling patterns. After 3 years of production Rust, here is what actually works vs. what the tutorials tell you...',
+        id: "thread-1",
+        date: "2024-10-05",
+        content:
+          "[1/4] Thread on Rust error handling patterns. After 3 years of production Rust, here is what actually works vs. what the tutorials tell you...",
         likes: 2340,
         retweets: 678,
         views: 145000,
         relevance: 0.95,
-        sentiment: 'positive',
-        hashtags: ['#Rust'],
-        type: 'thread',
+        sentiment: "positive",
+        hashtags: ["#Rust"],
+        type: "thread",
       },
       {
-        id: 'thread-2',
-        date: '2024-10-05',
-        content: '[2/4] Pattern 1: Use thiserror for library crates, anyhow for applications. Do NOT mix them. Your callers will thank you when they can match on specific errors.',
+        id: "thread-2",
+        date: "2024-10-05",
+        content:
+          "[2/4] Pattern 1: Use thiserror for library crates, anyhow for applications. Do NOT mix them. Your callers will thank you when they can match on specific errors.",
         likes: 1890,
         retweets: 534,
         views: 98000,
         relevance: 0.93,
-        sentiment: 'neutral',
-        hashtags: ['#Rust', '#ErrorHandling'],
-        type: 'thread',
+        sentiment: "neutral",
+        hashtags: ["#Rust", "#ErrorHandling"],
+        type: "thread",
       },
       {
-        id: 'thread-3',
-        date: '2024-10-05',
-        content: '[3/4] Pattern 2: The ? operator is beautiful but do not let it propagate errors you should handle locally. Context matters -- use .context() from anyhow liberally.',
+        id: "thread-3",
+        date: "2024-10-05",
+        content:
+          "[3/4] Pattern 2: The ? operator is beautiful but do not let it propagate errors you should handle locally. Context matters -- use .context() from anyhow liberally.",
         likes: 1560,
         retweets: 412,
         views: 82000,
-        relevance: 0.90,
-        sentiment: 'neutral',
-        hashtags: ['#Rust', '#ErrorHandling'],
-        type: 'thread',
+        relevance: 0.9,
+        sentiment: "neutral",
+        hashtags: ["#Rust", "#ErrorHandling"],
+        type: "thread",
       },
     ],
   },
   {
-    id: 'sentiment',
-    label: 'Engagement Ranking',
+    id: "sentiment",
+    label: "Engagement Ranking",
     icon: <TrendingUp className="h-3.5 w-3.5" />,
-    description: 'Rank matching tweets by likes and retweets instead of relevance',
+    description: "Rank matching tweets by likes and retweets instead of relevance",
     command: 'xf search "AI" --sort engagement',
     totalResults: 523,
     searchTimeMs: 1.24,
     indexStats: {
       totalDocs: 23847,
-      dateRange: '2019-03-14 to 2024-12-28',
-      topHashtags: ['#AI', '#AGI', '#LLM', '#Safety', '#OpenAI'],
+      dateRange: "2019-03-14 to 2024-12-28",
+      topHashtags: ["#AI", "#AGI", "#LLM", "#Safety", "#OpenAI"],
     },
-    pipelineSteps: ['Parse query', 'Hybrid search', 'Sort by engagement', 'Render results'],
+    pipelineSteps: ["Parse query", "Hybrid search", "Sort by engagement", "Render results"],
     results: [
       {
-        id: 'sent-1',
-        date: '2024-11-28',
-        content: 'AI safety is not just about alignment. It is about building systems where humans maintain meaningful oversight at every layer. Defense in depth.',
+        id: "sent-1",
+        date: "2024-11-28",
+        content:
+          "AI safety is not just about alignment. It is about building systems where humans maintain meaningful oversight at every layer. Defense in depth.",
         likes: 1567,
         retweets: 389,
         views: 87000,
         relevance: 0.96,
-        sentiment: 'positive',
-        hashtags: ['#AI', '#Safety'],
-        type: 'tweet',
+        sentiment: "positive",
+        hashtags: ["#AI", "#Safety"],
+        type: "tweet",
       },
       {
-        id: 'sent-2',
-        date: '2024-08-19',
-        content: 'Read three AI safety papers today. The interpretability research coming out of Anthropic is genuinely exciting -- we are starting to see inside the black box.',
+        id: "sent-2",
+        date: "2024-08-19",
+        content:
+          "Read three AI safety papers today. The interpretability research coming out of Anthropic is genuinely exciting -- we are starting to see inside the black box.",
         likes: 423,
         retweets: 112,
         views: 24500,
         relevance: 0.88,
-        sentiment: 'positive',
-        hashtags: ['#AI', '#Interpretability'],
-        type: 'tweet',
+        sentiment: "positive",
+        hashtags: ["#AI", "#Interpretability"],
+        type: "tweet",
       },
       {
-        id: 'sent-3',
-        date: '2024-05-30',
-        content: 'Unpopular opinion: the best AI safety work right now is happening in engineering, not philosophy. Concrete evals beat abstract debates.',
+        id: "sent-3",
+        date: "2024-05-30",
+        content:
+          "Unpopular opinion: the best AI safety work right now is happening in engineering, not philosophy. Concrete evals beat abstract debates.",
         likes: 892,
         retweets: 234,
         views: 45000,
         relevance: 0.81,
-        sentiment: 'neutral',
-        hashtags: ['#AI', '#Safety'],
-        type: 'tweet',
+        sentiment: "neutral",
+        hashtags: ["#AI", "#Safety"],
+        type: "tweet",
       },
       {
-        id: 'sent-4',
-        date: '2024-02-12',
-        content: 'Frustrated with how many AI tools ship without basic guardrails. If you are building with LLMs and not thinking about safety, you are building tech debt that compounds.',
+        id: "sent-4",
+        date: "2024-02-12",
+        content:
+          "Frustrated with how many AI tools ship without basic guardrails. If you are building with LLMs and not thinking about safety, you are building tech debt that compounds.",
         likes: 678,
         retweets: 178,
         views: 38000,
         relevance: 0.73,
-        sentiment: 'negative',
-        hashtags: ['#AI', '#LLM'],
-        type: 'tweet',
+        sentiment: "negative",
+        hashtags: ["#AI", "#LLM"],
+        type: "tweet",
       },
     ],
   },
@@ -522,40 +549,40 @@ const RESULT_REVEAL_DELAY = 200;
 
 function formatNumber(n: number): string {
   if (n >= 1000000) {
-    return (n / 1000000).toFixed(1) + 'M';
+    return (n / 1000000).toFixed(1) + "M";
   }
   if (n >= 1000) {
-    return (n / 1000).toFixed(1) + 'k';
+    return (n / 1000).toFixed(1) + "k";
   }
   return String(n);
 }
 
 function getSentimentColor(s: string): string {
-  if (s === 'positive') return 'text-emerald-400';
-  if (s === 'negative') return 'text-rose-400';
-  return 'text-white/40';
+  if (s === "positive") return "text-emerald-400";
+  if (s === "negative") return "text-rose-400";
+  return "text-white/40";
 }
 
 function getSentimentBg(s: string): string {
-  if (s === 'positive') return 'bg-emerald-500/20 border-emerald-500/30';
-  if (s === 'negative') return 'bg-rose-500/20 border-rose-500/30';
-  return 'bg-white/[0.04] border-white/[0.08]';
+  if (s === "positive") return "bg-emerald-500/20 border-emerald-500/30";
+  if (s === "negative") return "bg-rose-500/20 border-rose-500/30";
+  return "bg-white/[0.04] border-white/[0.08]";
 }
 
 function getTypeIcon(type: string): React.ReactNode {
-  if (type === 'dm') return <MessageSquare className="h-3.5 w-3.5 text-blue-400" />;
-  if (type === 'grok') return <Bot className="h-3.5 w-3.5 text-purple-400" />;
-  if (type === 'like') return <Heart className="h-3.5 w-3.5 text-rose-400" />;
-  if (type === 'thread') return <FileText className="h-3.5 w-3.5 text-amber-400" />;
+  if (type === "dm") return <MessageSquare className="h-3.5 w-3.5 text-blue-400" />;
+  if (type === "grok") return <Bot className="h-3.5 w-3.5 text-purple-400" />;
+  if (type === "like") return <Heart className="h-3.5 w-3.5 text-rose-400" />;
+  if (type === "thread") return <FileText className="h-3.5 w-3.5 text-amber-400" />;
   return <Archive className="h-3.5 w-3.5 text-sky-400" />;
 }
 
 function getTypeBadgeColor(type: string): string {
-  if (type === 'dm') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-  if (type === 'grok') return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-  if (type === 'like') return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
-  if (type === 'thread') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-  return 'bg-sky-500/20 text-sky-400 border-sky-500/30';
+  if (type === "dm") return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+  if (type === "grok") return "bg-purple-500/20 text-purple-400 border-purple-500/30";
+  if (type === "like") return "bg-rose-500/20 text-rose-400 border-rose-500/30";
+  if (type === "thread") return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+  return "bg-sky-500/20 text-sky-400 border-sky-500/30";
 }
 
 // =============================================================================
@@ -573,9 +600,7 @@ function InteractiveArchiveSearch() {
   const rootRef = useRef<HTMLDivElement>(null);
   const inView = useInView(rootRef, { amount: 0.15 });
 
-  const scenario = activeScenario
-    ? SCENARIOS.find((s) => s.id === activeScenario) ?? null
-    : null;
+  const scenario = activeScenario ? (SCENARIOS.find((s) => s.id === activeScenario) ?? null) : null;
 
   const clearTimers = useCallback(() => {
     if (timerRef.current) {
@@ -627,7 +652,7 @@ function InteractiveArchiveSearch() {
           setTerminalLines((prev) => [
             ...prev,
             `  Found ${scTotalResults.toLocaleString()} results in ${String(scSearchTimeMs)}ms`,
-            '',
+            "",
           ]);
           timerRef.current = setTimeout(() => {
             setShowResults(true);
@@ -646,9 +671,9 @@ function InteractiveArchiveSearch() {
   // Sentiment distribution for the sentiment scenario
   const sentimentCounts = scenario
     ? {
-        positive: scenario.results.filter((r) => r.sentiment === 'positive').length,
-        neutral: scenario.results.filter((r) => r.sentiment === 'neutral').length,
-        negative: scenario.results.filter((r) => r.sentiment === 'negative').length,
+        positive: scenario.results.filter((r) => r.sentiment === "positive").length,
+        neutral: scenario.results.filter((r) => r.sentiment === "neutral").length,
+        negative: scenario.results.filter((r) => r.sentiment === "negative").length,
       }
     : { positive: 0, neutral: 0, negative: 0 };
 
@@ -656,7 +681,10 @@ function InteractiveArchiveSearch() {
     sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative;
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-48 h-48 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -673,9 +701,7 @@ function InteractiveArchiveSearch() {
               <div className="text-sm font-semibold text-white/90">
                 X/Twitter Archive Mining Lab
               </div>
-              <div className="text-xs text-white/40">
-                23,847 documents indexed
-              </div>
+              <div className="text-xs text-white/40">23,847 documents indexed</div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-400/70">
@@ -692,19 +718,19 @@ function InteractiveArchiveSearch() {
               onClick={() => runScenario(sc.id)}
               className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition text-left ${
                 activeScenario === sc.id
-                  ? 'bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/5'
-                  : 'bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.15] hover:bg-white/[0.04]'
+                  ? "bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/5"
+                  : "bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.15] hover:bg-white/[0.04]"
               }`}
             >
               <span
-                className={`shrink-0 ${activeScenario === sc.id ? 'text-primary' : 'text-white/30 group-hover:text-white/50'}`}
+                className={`shrink-0 ${activeScenario === sc.id ? "text-primary" : "text-white/30 group-hover:text-white/50"}`}
               >
                 {sc.icon}
               </span>
               <div className="min-w-0">
                 <div className="truncate">{sc.label}</div>
                 <div
-                  className={`text-[10px] truncate ${activeScenario === sc.id ? 'text-primary/60' : 'text-white/20'}`}
+                  className={`text-[10px] truncate ${activeScenario === sc.id ? "text-primary/60" : "text-white/20"}`}
                 >
                   {sc.description}
                 </div>
@@ -721,9 +747,7 @@ function InteractiveArchiveSearch() {
               <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
               <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
             </div>
-            <span className="ml-2 text-[10px] text-white/30 font-mono">
-              xf archive search
-            </span>
+            <span className="ml-2 text-[10px] text-white/30 font-mono">xf archive search</span>
           </div>
           <div className="p-4 font-mono text-xs space-y-0.5 max-h-40 overflow-y-auto">
             {terminalLines.length === 0 ? (
@@ -734,7 +758,7 @@ function InteractiveArchiveSearch() {
                   animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
                   transition={
                     inView
-                      ? { duration: 0.8, repeat: Infinity, repeatType: 'reverse' }
+                      ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" }
                       : { duration: 0.2 }
                   }
                   className="inline-block w-1.5 h-3.5 bg-primary/60"
@@ -748,22 +772,20 @@ function InteractiveArchiveSearch() {
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{
-                      type: 'spring',
+                      type: "spring",
                       stiffness: 200,
                       damping: 25,
                     }}
                     className={
                       i === 0
-                        ? 'text-white/70'
-                        : line.includes('Found')
-                          ? 'text-emerald-400/80'
-                          : 'text-white/40'
+                        ? "text-white/70"
+                        : line.includes("Found")
+                          ? "text-emerald-400/80"
+                          : "text-white/40"
                     }
                   >
-                    {i === 0 && (
-                      <span className="text-emerald-400 mr-2">$</span>
-                    )}
-                    {i === 0 ? line.replace('$ ', '') : line}
+                    {i === 0 && <span className="text-emerald-400 mr-2">$</span>}
+                    {i === 0 ? line.replace("$ ", "") : line}
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -779,14 +801,12 @@ function InteractiveArchiveSearch() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
             >
               <div className="flex items-center gap-2 mb-3">
                 <Filter className="h-3.5 w-3.5 text-sky-400" />
-                <span className="text-xs font-semibold text-white/70">
-                  Search Pipeline
-                </span>
+                <span className="text-xs font-semibold text-white/70">Search Pipeline</span>
               </div>
               <div className="flex items-center gap-1 flex-wrap">
                 {scenario.pipelineSteps.map((step, i) => (
@@ -798,16 +818,16 @@ function InteractiveArchiveSearch() {
                         opacity: i <= pipelineStep ? 1 : 0.3,
                       }}
                       transition={{
-                        type: 'spring',
+                        type: "spring",
                         stiffness: 200,
                         damping: 25,
                       }}
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono border ${
                         i < pipelineStep
-                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                          ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
                           : i === pipelineStep
-                            ? 'bg-sky-500/15 border-sky-500/30 text-sky-400'
-                            : 'bg-white/[0.02] border-white/[0.06] text-white/30'
+                            ? "bg-sky-500/15 border-sky-500/30 text-sky-400"
+                            : "bg-white/[0.02] border-white/[0.06] text-white/30"
                       }`}
                     >
                       {i < pipelineStep ? (
@@ -817,7 +837,7 @@ function InteractiveArchiveSearch() {
                           animate={inView ? { rotate: 360 } : { rotate: 0 }}
                           transition={
                             inView
-                              ? { duration: 1, repeat: Infinity, ease: 'linear' }
+                              ? { duration: 1, repeat: Infinity, ease: "linear" }
                               : { duration: 0.2 }
                           }
                         >
@@ -830,7 +850,7 @@ function InteractiveArchiveSearch() {
                     </motion.div>
                     {i < scenario.pipelineSteps.length - 1 && (
                       <ArrowRight
-                        className={`h-3 w-3 shrink-0 ${i < pipelineStep ? 'text-emerald-400/50' : 'text-white/15'}`}
+                        className={`h-3 w-3 shrink-0 ${i < pipelineStep ? "text-emerald-400/50" : "text-white/15"}`}
                       />
                     )}
                   </div>
@@ -845,7 +865,7 @@ function InteractiveArchiveSearch() {
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25 }}
             className="flex flex-col items-center justify-center py-12 gap-3 text-white/25"
           >
             <Search className="h-12 w-12" />
@@ -866,7 +886,7 @@ function InteractiveArchiveSearch() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="space-y-4"
             >
               {/* Stats dashboard row */}
@@ -875,7 +895,7 @@ function InteractiveArchiveSearch() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     stiffness: 200,
                     damping: 25,
                   }}
@@ -899,7 +919,7 @@ function InteractiveArchiveSearch() {
                   <StatCard
                     icon={<Clock className="h-3.5 w-3.5 text-purple-400" />}
                     label="Date Range"
-                    value={scenario.indexStats.dateRange.split(' to ')[0].slice(0, 7)}
+                    value={scenario.indexStats.dateRange.split(" to ")[0].slice(0, 7)}
                   />
                 </motion.div>
               )}
@@ -910,7 +930,7 @@ function InteractiveArchiveSearch() {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     stiffness: 200,
                     damping: 25,
                     delay: 0.1,
@@ -930,12 +950,12 @@ function InteractiveArchiveSearch() {
               )}
 
               {/* Sentiment breakdown bar (only for sentiment scenario) */}
-              {showStats && activeScenario === 'sentiment' && sentimentTotal > 0 && (
+              {showStats && activeScenario === "sentiment" && sentimentTotal > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     stiffness: 200,
                     damping: 25,
                     delay: 0.15,
@@ -955,7 +975,7 @@ function InteractiveArchiveSearch() {
                         width: `${String((sentimentCounts.positive / sentimentTotal) * 100)}%`,
                       }}
                       transition={{
-                        type: 'spring',
+                        type: "spring",
                         stiffness: 100,
                         damping: 20,
                         delay: 0.2,
@@ -968,7 +988,7 @@ function InteractiveArchiveSearch() {
                         width: `${String((sentimentCounts.neutral / sentimentTotal) * 100)}%`,
                       }}
                       transition={{
-                        type: 'spring',
+                        type: "spring",
                         stiffness: 100,
                         damping: 20,
                         delay: 0.3,
@@ -981,7 +1001,7 @@ function InteractiveArchiveSearch() {
                         width: `${String((sentimentCounts.negative / sentimentTotal) * 100)}%`,
                       }}
                       transition={{
-                        type: 'spring',
+                        type: "spring",
                         stiffness: 100,
                         damping: 20,
                         delay: 0.4,
@@ -990,15 +1010,9 @@ function InteractiveArchiveSearch() {
                     />
                   </div>
                   <div className="flex items-center justify-between mt-1.5 text-[10px] font-mono">
-                    <span className="text-emerald-400">
-                      Positive {sentimentCounts.positive}
-                    </span>
-                    <span className="text-white/40">
-                      Neutral {sentimentCounts.neutral}
-                    </span>
-                    <span className="text-rose-400">
-                      Negative {sentimentCounts.negative}
-                    </span>
+                    <span className="text-emerald-400">Positive {sentimentCounts.positive}</span>
+                    <span className="text-white/40">Neutral {sentimentCounts.neutral}</span>
+                    <span className="text-rose-400">Negative {sentimentCounts.negative}</span>
                   </div>
                 </motion.div>
               )}
@@ -1006,8 +1020,8 @@ function InteractiveArchiveSearch() {
               {/* Results summary */}
               <div className="flex items-center justify-between text-xs font-mono px-1">
                 <span className="text-white/40">
-                  Showing {scenario.results.length} of{' '}
-                  {scenario.totalResults.toLocaleString()} results
+                  Showing {scenario.results.length} of {scenario.totalResults.toLocaleString()}{" "}
+                  results
                 </span>
                 <span className="text-emerald-400/70 flex items-center gap-1">
                   <Zap className="h-3 w-3" />
@@ -1022,10 +1036,10 @@ function InteractiveArchiveSearch() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    type: 'spring',
+                    type: "spring",
                     stiffness: 200,
                     damping: 25,
-                    delay: i * RESULT_REVEAL_DELAY / 1000,
+                    delay: (i * RESULT_REVEAL_DELAY) / 1000,
                   }}
                   className="rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden hover:border-white/[0.15] transition duration-300 group"
                 >
@@ -1036,9 +1050,7 @@ function InteractiveArchiveSearch() {
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.04] border border-white/[0.08]">
                           {getTypeIcon(result.type)}
                         </div>
-                        <span className="text-xs text-white/40 font-mono">
-                          {result.date}
-                        </span>
+                        <span className="text-xs text-white/40 font-mono">{result.date}</span>
                         <span
                           className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${getTypeBadgeColor(result.type)}`}
                         >
@@ -1068,9 +1080,7 @@ function InteractiveArchiveSearch() {
                     </div>
 
                     {/* Tweet content */}
-                    <p className="text-sm text-white/70 leading-relaxed">
-                      {result.content}
-                    </p>
+                    <p className="text-sm text-white/70 leading-relaxed">{result.content}</p>
 
                     {/* Bottom row: hashtags + sentiment + relevance */}
                     <div className="flex items-center gap-3 flex-wrap">
@@ -1110,11 +1120,10 @@ function InteractiveArchiveSearch() {
                               width: `${String(result.relevance * 100)}%`,
                             }}
                             transition={{
-                              type: 'spring',
+                              type: "spring",
                               stiffness: 100,
                               damping: 20,
-                              delay:
-                                i * RESULT_REVEAL_DELAY / 1000 + 0.3,
+                              delay: (i * RESULT_REVEAL_DELAY) / 1000 + 0.3,
                             }}
                             className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500"
                           />
@@ -1134,7 +1143,8 @@ function InteractiveArchiveSearch() {
                   className="flex items-center justify-center gap-2 py-2 text-[10px] text-white/20 font-mono"
                 >
                   <Download className="h-3 w-3" />
-                  xf search &quot;{scenario.id === 'keyword' ? 'machine learning' : '...'}&quot; --format json &gt; results.json
+                  xf search &quot;{scenario.id === "keyword" ? "machine learning" : "..."}&quot;
+                  --format json &gt; results.json
                 </motion.div>
               )}
             </motion.div>
@@ -1149,27 +1159,15 @@ function InteractiveArchiveSearch() {
 // STAT CARD SUB-COMPONENT
 // =============================================================================
 
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 flex items-center gap-2">
       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.04] shrink-0">
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-[10px] text-white/30 uppercase tracking-wide">
-          {label}
-        </div>
-        <div className="text-xs font-semibold text-white/80 font-mono truncate">
-          {value}
-        </div>
+        <div className="text-[10px] text-white/30 uppercase tracking-wide">{label}</div>
+        <div className="text-xs font-semibold text-white/80 font-mono truncate">{value}</div>
       </div>
     </div>
   );

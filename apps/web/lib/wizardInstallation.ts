@@ -11,7 +11,11 @@ import type {
 export interface WizardInstallationSession {
   status: "loading" | "saved" | "active" | "review_required" | "unavailable";
   installation: ApprovedTeamProfileInstallation | null;
-  activate: (review: TeamProfileFileReview, context: TeamProfileReviewContext, confirmed: boolean) => void;
+  activate: (
+    review: TeamProfileFileReview,
+    context: TeamProfileReviewContext,
+    confirmed: boolean,
+  ) => void;
   discard: () => void;
   blockEdit: () => void;
 }
@@ -33,14 +37,20 @@ export function useInstallationPreference<T, S>(
 ): [T, (value: S) => void, boolean] {
   const session = useWizardInstallation();
   const [value, setValue, loaded] = saved;
-  const guardedSetter = useCallback((next: S) => {
-    if (session && session.status !== "saved") {
-      session.blockEdit();
-      return;
-    }
-    setValue(next);
-  }, [session, setValue]);
+  const guardedSetter = useCallback(
+    (next: S) => {
+      if (session && session.status !== "saved") {
+        session.blockEdit();
+        return;
+      }
+      setValue(next);
+    },
+    [session, setValue],
+  );
   const active = session?.status === "active" ? session.installation : null;
-  return [active ? select(active) : value, guardedSetter,
-    loaded && (!session || session.status === "saved" || session.status === "active")];
+  return [
+    active ? select(active) : value,
+    guardedSetter,
+    loaded && (!session || session.status === "saved" || session.status === "active"),
+  ];
 }

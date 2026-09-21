@@ -5,6 +5,6 @@
  * the Learning Hub pages, following patterns from the landing page.
  */
 
+export { FeatureCard, GradientCard, IconCard } from "./gradient-card";
 export { SectionContainer } from "./section-container";
 export { SectionHeader } from "./section-header";
-export { GradientCard, FeatureCard, IconCard } from "./gradient-card";

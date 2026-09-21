@@ -1,47 +1,38 @@
-'use client';
+"use client";
 
+import { Cpu, Database, HardDrive, Play, Shield, Terminal, Zap } from "lucide-react";
 import {
-  Terminal,
-  Cpu,
-  Play,
-  Zap,
-  Database,
-  Shield,
-  HardDrive,
-} from 'lucide-react';
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 export function PiLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Run Pi Agent: a native single-binary coding agent that works with or without an
-        API key.
+        Run Pi Agent: a native single-binary coding agent that works with or without an API key.
       </GoalBanner>
 
       {/* Section 1: What Is Pi */}
       <Section title="What Is Pi Agent?" icon={<Cpu className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>pi (Pi Agent)</Highlight> is a from-scratch Rust port of Mario
-          Zechner&apos;s Pi Agent: a native, single-binary coding agent. It streams
-          responses with inline extended thinking, ships a full built-in toolset, and supports
-          Markdown-defined subagents for custom workflows.
+          <Highlight>pi (Pi Agent)</Highlight> is a from-scratch Rust port of Mario Zechner&apos;s
+          Pi Agent: a native, single-binary coding agent. It streams responses with inline extended
+          thinking, ships a full built-in toolset, and supports Markdown-defined subagents for
+          custom workflows.
         </Paragraph>
         <Paragraph>
-          It is multi-provider, including <Highlight>zero-config local models</Highlight>{' '}
-          via ollama, llama.cpp, and LM Studio, so you can run a full coding agent with
-          no API key at all.
+          It is multi-provider, including <Highlight>zero-config local models</Highlight> via
+          ollama, llama.cpp, and LM Studio, so you can run a full coding agent with no API key at
+          all.
         </Paragraph>
 
         <div className="mt-8">
@@ -80,10 +71,19 @@ export function PiLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'pi "refactor this function"', description: 'Run an interactive agent task' },
-            { command: 'pi -p "summarize" < error.log', description: 'Pipe input for one-shot print mode' },
-            { command: 'pi --continue', description: 'Resume the most recent session' },
-            { command: 'cat ~/.pi/agent/models.json', description: 'Inspect the local-model config (ollama, llama.cpp, LM Studio)' },
+            {
+              command: 'pi "refactor this function"',
+              description: "Run an interactive agent task",
+            },
+            {
+              command: 'pi -p "summarize" < error.log',
+              description: "Pipe input for one-shot print mode",
+            },
+            { command: "pi --continue", description: "Resume the most recent session" },
+            {
+              command: "cat ~/.pi/agent/models.json",
+              description: "Inspect the local-model config (ollama, llama.cpp, LM Studio)",
+            },
           ]}
         />
       </Section>
@@ -93,23 +93,25 @@ export function PiLesson() {
       {/* Section 3: Local Models */}
       <Section title="Running Without an API Key" icon={<Play className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          Point <Highlight>pi</Highlight> at a local model server and it works with no
-          cloud account. Local models are auto-detected for common servers, and custom
-          endpoints go in <Highlight>~/.pi/agent/models.json</Highlight>.
+          Point <Highlight>pi</Highlight> at a local model server and it works with no cloud
+          account. Local models are auto-detected for common servers, and custom endpoints go in{" "}
+          <Highlight>~/.pi/agent/models.json</Highlight>.
         </Paragraph>
-        <CodeBlock code={`# Start a local model server (any of these)
+        <CodeBlock
+          code={`# Start a local model server (any of these)
 ollama serve
 # ...or llama.cpp / LM Studio
 
 # Then run pi; local model servers are discovered automatically
 pi "write unit tests for src/parser.rs"
 
-# Custom endpoints live in ~/.pi/agent/models.json`} />
+# Custom endpoints live in ~/.pi/agent/models.json`}
+        />
 
         <TipBox variant="warning">
-          The existing TypeScript pi is preserved as <Highlight>legacy-pi</Highlight>,
-          and an <Highlight>rpi</Highlight> launcher is added alongside. If a script or
-          alias expects the old behavior, point it at legacy-pi.
+          The existing TypeScript pi is preserved as <Highlight>legacy-pi</Highlight>, and an{" "}
+          <Highlight>rpi</Highlight> launcher is added alongside. If a script or alias expects the
+          old behavior, point it at legacy-pi.
         </TipBox>
       </Section>
     </div>

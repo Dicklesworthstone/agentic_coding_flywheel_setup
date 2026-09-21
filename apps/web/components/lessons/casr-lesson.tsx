@@ -1,39 +1,40 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Terminal,
-  Repeat,
-  FileText,
-  ArrowRightLeft,
-  Play,
-  Lightbulb,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  Database,
-  Zap,
-  Layers,
   Archive,
-  ChevronRight,
+  ArrowRight,
+  ArrowRightLeft,
+  CheckCircle2,
   ChevronLeft,
-  Sparkles,
-  Shield,
+  ChevronRight,
+  Clock,
   Cpu,
-} from 'lucide-react';
+  Database,
+  FileText,
+  Layers,
+  Lightbulb,
+  Play,
+  Repeat,
+  Shield,
+  Sparkles,
+  Terminal,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
+
 const InteractiveSessionHandoff = InteractiveSessionHandoffImpl;
 
 export function CasrLesson() {
@@ -46,14 +47,14 @@ export function CasrLesson() {
       {/* Section 1: What Is CASR */}
       <Section title="What Is CASR?" icon={<Repeat className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CASR (Cross-Agent Session Resumer)</Highlight> converts and resumes
-          AI coding sessions across different providers. Start a session in Claude Code,
-          continue it in Codex CLI, and pick it back up in Antigravity CLI without losing context.
+          <Highlight>CASR (Cross-Agent Session Resumer)</Highlight> converts and resumes AI coding
+          sessions across different providers. Start a session in Claude Code, continue it in Codex
+          CLI, and pick it back up in Antigravity CLI without losing context.
         </Paragraph>
         <Paragraph>
-          CASR extracts conversation context, code changes, and decisions into a
-          portable format that any agent can ingest. This enables provider-hopping
-          when you hit rate limits or want a second opinion.
+          CASR extracts conversation context, code changes, and decisions into a portable format
+          that any agent can ingest. This enables provider-hopping when you hit rate limits or want
+          a second opinion.
         </Paragraph>
 
         <div className="mt-8">
@@ -92,17 +93,26 @@ export function CasrLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'casr list', description: 'List sessions found for this project (--all for every workspace)' },
-            { command: 'casr info <session-id> --peek', description: 'Inspect a session and its last few turns' },
-            { command: 'casr resume cod <session-id>', description: 'Convert a session and resume it in Codex CLI' },
-            { command: 'casr providers', description: 'Show detected providers' },
-            { command: 'casr --help', description: 'Show all options' },
+            {
+              command: "casr list",
+              description: "List sessions found for this project (--all for every workspace)",
+            },
+            {
+              command: "casr info <session-id> --peek",
+              description: "Inspect a session and its last few turns",
+            },
+            {
+              command: "casr resume cod <session-id>",
+              description: "Convert a session and resume it in Codex CLI",
+            },
+            { command: "casr providers", description: "Show detected providers" },
+            { command: "casr --help", description: "Show all options" },
           ]}
         />
 
         <TipBox>
-          Use CASR when you hit a rate limit on one provider and want to seamlessly
-          continue your work on another without losing context.
+          Use CASR when you hit a rate limit on one provider and want to seamlessly continue your
+          work on another without losing context.
         </TipBox>
       </Section>
 
@@ -110,7 +120,8 @@ export function CasrLesson() {
 
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# Find the Claude Code session you were working in
+        <CodeBlock
+          code={`# Find the Claude Code session you were working in
 casr list --provider claude-code
 
 # Preview the conversion without writing anything
@@ -119,13 +130,18 @@ casr resume cod <session-id> --dry-run
 # Convert it and resume in Codex CLI
 casr resume cod <session-id>
 
-# Target aliases: cc, cod, gmi, agy, cur, cln, aid, amp, opc, gpt`} />
+# Target aliases: cc, cod, gmi, agy, cur, cln, aid, amp, opc, gpt`}
+        />
       </Section>
 
       <Divider />
 
       {/* Section 4: Interactive Session Handoff */}
-      <Section title="Try a Session Handoff" icon={<ArrowRightLeft className="h-5 w-5" />} delay={0.35}>
+      <Section
+        title="Try a Session Handoff"
+        icon={<ArrowRightLeft className="h-5 w-5" />}
+        delay={0.35}
+      >
         <Paragraph>
           Step through the full session handoff pipeline. Watch an agent session get captured,
           distilled, and injected into a new agent with animated token compression and context flow.
@@ -156,103 +172,109 @@ interface ScenarioStep {
 
 const SCENARIO_STEPS: ScenarioStep[] = [
   {
-    id: 'capture',
-    label: 'Session Discovery',
-    shortLabel: 'Discover',
+    id: "capture",
+    label: "Session Discovery",
+    shortLabel: "Discover",
     icon: <Database className="h-4 w-4" />,
-    description: 'CASR discovers the current agent\'s session on disk: every conversation turn, tool call, file edit, and reasoning trace the provider recorded.',
+    description:
+      "CASR discovers the current agent's session on disk: every conversation turn, tool call, file edit, and reasoning trace the provider recorded.",
     terminalLines: [
-      '$ casr list --provider claude-code',
-      'Scanning session history...',
-      'Found 47 conversation turns',
-      'Found 12 tool invocations',
-      'Found 8 file modifications',
-      'Session: 3f9a1c2e (claude-code, ~/projects/auth)',
+      "$ casr list --provider claude-code",
+      "Scanning session history...",
+      "Found 47 conversation turns",
+      "Found 12 tool invocations",
+      "Found 8 file modifications",
+      "Session: 3f9a1c2e (claude-code, ~/projects/auth)",
     ],
     tokensBefore: 128000,
     tokensAfter: 128000,
   },
   {
-    id: 'extract',
-    label: 'Context Inspection',
-    shortLabel: 'Inspect',
+    id: "extract",
+    label: "Context Inspection",
+    shortLabel: "Inspect",
     icon: <Layers className="h-4 w-4" />,
-    description: 'Key context is inspected before the handoff: task description, code changes, architectural decisions, and unresolved questions are read from the raw session.',
+    description:
+      "Key context is inspected before the handoff: task description, code changes, architectural decisions, and unresolved questions are read from the raw session.",
     terminalLines: [
-      '$ casr info 3f9a1c2e --peek',
-      'Parsing conversation graph...',
-      'Extracting task context... done',
-      'Extracting code diffs... 8 files',
-      'Extracting decisions... 5 items',
-      'Extraction complete: 42KB context',
+      "$ casr info 3f9a1c2e --peek",
+      "Parsing conversation graph...",
+      "Extracting task context... done",
+      "Extracting code diffs... 8 files",
+      "Extracting decisions... 5 items",
+      "Extraction complete: 42KB context",
     ],
     tokensBefore: 128000,
     tokensAfter: 48200,
   },
   {
-    id: 'distill',
-    label: 'History Trimming',
-    shortLabel: 'Trim',
+    id: "distill",
+    label: "History Trimming",
+    shortLabel: "Trim",
     icon: <Sparkles className="h-4 w-4" />,
-    description: 'The transferred history is trimmed to fit the target window: tool output is truncated, the oldest turns are dropped first, and the original task plus the most recent history are pinned.',
+    description:
+      "The transferred history is trimmed to fit the target window: tool output is truncated, the oldest turns are dropped first, and the original task plus the most recent history are pinned.",
     terminalLines: [
-      '$ casr resume cod 3f9a1c2e --dry-run --max-context-tokens 8000 --max-tool-output 2000',
-      'Truncating tool output to 2000 chars...',
-      'Dropping oldest turns first...',
-      'Pinning original task + recent history',
-      'Dropping source reasoning traces...',
-      'Would write: 128K -> 8.2K tokens (93.6%)',
+      "$ casr resume cod 3f9a1c2e --dry-run --max-context-tokens 8000 --max-tool-output 2000",
+      "Truncating tool output to 2000 chars...",
+      "Dropping oldest turns first...",
+      "Pinning original task + recent history",
+      "Dropping source reasoning traces...",
+      "Would write: 128K -> 8.2K tokens (93.6%)",
     ],
     tokensBefore: 48200,
     tokensAfter: 8200,
   },
   {
-    id: 'bootstrap',
-    label: 'New Agent Bootstrap',
-    shortLabel: 'Bootstrap',
+    id: "bootstrap",
+    label: "New Agent Bootstrap",
+    shortLabel: "Bootstrap",
     icon: <Cpu className="h-4 w-4" />,
-    description: 'The target provider is checked and the session file is planned. Nothing is written yet; the dry run shows exactly where the converted session will land.',
+    description:
+      "The target provider is checked and the session file is planned. Nothing is written yet; the dry run shows exactly where the converted session will land.",
     terminalLines: [
-      '$ casr resume cod 3f9a1c2e --dry-run',
-      'Target: Codex CLI (installed)',
-      'Planning session file...',
-      'Workspace: ~/projects/auth',
-      'Would write ~/.codex/sessions/2026/03/12/rollout-3f9a1c2e.jsonl',
-      'Dry run complete, nothing written.',
+      "$ casr resume cod 3f9a1c2e --dry-run",
+      "Target: Codex CLI (installed)",
+      "Planning session file...",
+      "Workspace: ~/projects/auth",
+      "Would write ~/.codex/sessions/2026/03/12/rollout-3f9a1c2e.jsonl",
+      "Dry run complete, nothing written.",
     ],
     tokensBefore: 0,
     tokensAfter: 2100,
   },
   {
-    id: 'inject',
-    label: 'Context Injection',
-    shortLabel: 'Inject',
+    id: "inject",
+    label: "Context Injection",
+    shortLabel: "Inject",
     icon: <Zap className="h-4 w-4" />,
-    description: 'The converted session is written into the target provider\'s own session store and the agent is launched on it. The agent now has full awareness of the prior session\'s work.',
+    description:
+      "The converted session is written into the target provider's own session store and the agent is launched on it. The agent now has full awareness of the prior session's work.",
     terminalLines: [
-      '$ casr resume cod 3f9a1c2e --enrich',
-      'Writing converted session...',
-      'Loading task: auth middleware refactor',
-      'Loading 8 file contexts...',
-      'Loading 5 key decisions...',
-      'Context injection complete: 10.3K tokens',
+      "$ casr resume cod 3f9a1c2e --enrich",
+      "Writing converted session...",
+      "Loading task: auth middleware refactor",
+      "Loading 8 file contexts...",
+      "Loading 5 key decisions...",
+      "Context injection complete: 10.3K tokens",
     ],
     tokensBefore: 2100,
     tokensAfter: 10300,
   },
   {
-    id: 'verify',
-    label: 'Verification',
-    shortLabel: 'Verify',
+    id: "verify",
+    label: "Verification",
+    shortLabel: "Verify",
     icon: <Shield className="h-4 w-4" />,
-    description: 'The new agent verifies it understands the handoff by summarizing the task, confirming key decisions, and identifying the next action to take. Ask it, or peek at the converted session.',
+    description:
+      "The new agent verifies it understands the handoff by summarizing the task, confirming key decisions, and identifying the next action to take. Ask it, or peek at the converted session.",
     terminalLines: [
-      '$ casr info 3f9a1c2e --source cod --peek',
-      'Agent confirms task understanding...',
-      'Verified: 5/5 decisions acknowledged',
-      'Verified: 8/8 files in workspace',
-      'Next action: implement PKCE verifier',
-      'Handoff verified. Session ready.',
+      "$ casr info 3f9a1c2e --source cod --peek",
+      "Agent confirms task understanding...",
+      "Verified: 5/5 decisions acknowledged",
+      "Verified: 8/8 files in workspace",
+      "Next action: implement PKCE verifier",
+      "Handoff verified. Session ready.",
     ],
     tokensBefore: 10300,
     tokensAfter: 10300,
@@ -260,9 +282,30 @@ const SCENARIO_STEPS: ScenarioStep[] = [
 ];
 
 const AGENTS_DATA = [
-  { id: 'claude', name: 'Claude', color: '#f97316', textClass: 'text-orange-400', bgClass: 'bg-orange-500/15', borderClass: 'border-orange-500/30' },
-  { id: 'codex', name: 'Codex', color: '#10b981', textClass: 'text-emerald-400', bgClass: 'bg-emerald-500/15', borderClass: 'border-emerald-500/30' },
-  { id: 'gemini', name: 'Gemini', color: '#3b82f6', textClass: 'text-blue-400', bgClass: 'bg-blue-500/15', borderClass: 'border-blue-500/30' },
+  {
+    id: "claude",
+    name: "Claude",
+    color: "#f97316",
+    textClass: "text-orange-400",
+    bgClass: "bg-orange-500/15",
+    borderClass: "border-orange-500/30",
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    color: "#10b981",
+    textClass: "text-emerald-400",
+    bgClass: "bg-emerald-500/15",
+    borderClass: "border-emerald-500/30",
+  },
+  {
+    id: "gemini",
+    name: "Gemini",
+    color: "#3b82f6",
+    textClass: "text-blue-400",
+    bgClass: "bg-blue-500/15",
+    borderClass: "border-blue-500/30",
+  },
 ];
 
 const CONTEXT_WINDOW_MAX = 128000;
@@ -293,9 +336,12 @@ function InteractiveSessionHandoffImpl() {
     const totalLines = SCENARIO_STEPS[currentStep].terminalLines.length;
     const timers: ReturnType<typeof setTimeout>[] = [];
     for (let i = 0; i < totalLines; i++) {
-      const timer = setTimeout(() => {
-        setTerminalVisibleLines(i + 1);
-      }, 200 + i * 280);
+      const timer = setTimeout(
+        () => {
+          setTerminalVisibleLines(i + 1);
+        },
+        200 + i * 280,
+      );
       timers.push(timer);
     }
     return () => {
@@ -324,10 +370,12 @@ function InteractiveSessionHandoffImpl() {
       if (!running) return;
       const elapsed = now - t0;
       const progress = Math.min(elapsed / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
+      const ease = 1 - (1 - progress) ** 3;
 
       setAnimatedTokens(Math.round(startTokens + (targetTokens - startTokens) * ease));
-      setAnimatedCompressed(Math.round(startCompressed + (targetCompressed - startCompressed) * ease));
+      setAnimatedCompressed(
+        Math.round(startCompressed + (targetCompressed - startCompressed) * ease),
+      );
 
       if (progress < 1) {
         animFrameRef.current = requestAnimationFrame(tick);
@@ -354,7 +402,7 @@ function InteractiveSessionHandoffImpl() {
       if (!running) return;
       const elapsed = now - t0;
       const progress = Math.min(elapsed / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
+      const ease = 1 - (1 - progress) ** 3;
       setPipelineProgress(startProgress + (targetProgress - startProgress) * ease);
       if (progress < 1) {
         pipelineFrameRef.current = requestAnimationFrame(tick);
@@ -382,18 +430,26 @@ function InteractiveSessionHandoffImpl() {
   }, []);
 
   // Compression ratio for current step
-  const compressionRatio = animatedTokens > 0
-    ? Math.round((1 - animatedCompressed / animatedTokens) * 100)
-    : 0;
+  const compressionRatio =
+    animatedTokens > 0 ? Math.round((1 - animatedCompressed / animatedTokens) * 100) : 0;
 
   // Context window fill percentage
   const contextFillPct = Math.min((animatedCompressed / CONTEXT_WINDOW_MAX) * 100, 100);
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
+    >
       {/* Decorative glows */}
-      <div className="absolute top-0 left-1/4 w-64 h-64 rounded-full blur-3xl pointer-events-none" style={{ background: `${source.color}08` }} />
-      <div className="absolute bottom-0 right-1/4 w-48 h-48 rounded-full blur-3xl pointer-events-none" style={{ background: `${target.color}08` }} />
+      <div
+        className="absolute top-0 left-1/4 w-64 h-64 rounded-full blur-3xl pointer-events-none"
+        style={{ background: `${source.color}08` }}
+      />
+      <div
+        className="absolute bottom-0 right-1/4 w-48 h-48 rounded-full blur-3xl pointer-events-none"
+        style={{ background: `${target.color}08` }}
+      />
 
       <div className="relative p-5 sm:p-6 space-y-5">
         {/* Header */}
@@ -414,11 +470,7 @@ function InteractiveSessionHandoffImpl() {
               const isActive = i === currentStep;
               const isCompleted = i < currentStep;
               return (
-                <button
-                  key={s.id}
-                  onClick={() => goToStep(i)}
-                  className="flex-1 group relative"
-                >
+                <button key={s.id} onClick={() => goToStep(i)} className="flex-1 group relative">
                   <div className="flex flex-col items-center gap-1.5">
                     <motion.div
                       animate={{
@@ -428,17 +480,13 @@ function InteractiveSessionHandoffImpl() {
                       transition={springTransition}
                       className={`relative flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
                         isActive
-                          ? 'border-violet-500/50 bg-violet-500/20 text-violet-300'
+                          ? "border-violet-500/50 bg-violet-500/20 text-violet-300"
                           : isCompleted
-                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                            : 'border-white/[0.08] bg-white/[0.03] text-white/30'
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                            : "border-white/[0.08] bg-white/[0.03] text-white/30"
                       }`}
                     >
-                      {isCompleted ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : (
-                        s.icon
-                      )}
+                      {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : s.icon}
                       {isActive && (
                         <motion.div
                           layoutId="step-glow"
@@ -447,9 +495,11 @@ function InteractiveSessionHandoffImpl() {
                         />
                       )}
                     </motion.div>
-                    <span className={`text-[10px] font-medium leading-tight text-center hidden sm:block ${
-                      isActive ? 'text-white/70' : isCompleted ? 'text-white/50' : 'text-white/25'
-                    }`}>
+                    <span
+                      className={`text-[10px] font-medium leading-tight text-center hidden sm:block ${
+                        isActive ? "text-white/70" : isCompleted ? "text-white/50" : "text-white/25"
+                      }`}
+                    >
                       {s.shortLabel}
                     </span>
                   </div>
@@ -499,14 +549,16 @@ function InteractiveSessionHandoffImpl() {
                   {currentStep + 1}/{SCENARIO_STEPS.length}
                 </span>
               </div>
-              <p className="text-xs text-white/50 leading-relaxed pl-8">
-                {step.description}
-              </p>
+              <p className="text-xs text-white/50 leading-relaxed pl-8">{step.description}</p>
             </div>
 
             {/* ========== SVG Pipeline Diagram ========== */}
             <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 overflow-hidden">
-              <svg viewBox="0 0 600 120" className="w-full h-auto" aria-label="Session handoff pipeline diagram">
+              <svg
+                viewBox="0 0 600 120"
+                className="w-full h-auto"
+                aria-label="Session handoff pipeline diagram"
+              >
                 <defs>
                   <filter id="casr-glow" x="-50%" y="-50%" width="200%" height="200%">
                     <feGaussianBlur stdDeviation="3" result="blur" />
@@ -527,7 +579,17 @@ function InteractiveSessionHandoffImpl() {
                 </defs>
 
                 {/* Pipeline background track */}
-                <rect x="80" y="52" width="440" height="16" rx="8" fill="url(#pipe-bg)" stroke="white" strokeOpacity="0.06" strokeWidth="1" />
+                <rect
+                  x="80"
+                  y="52"
+                  width="440"
+                  height="16"
+                  rx="8"
+                  fill="url(#pipe-bg)"
+                  stroke="white"
+                  strokeOpacity="0.06"
+                  strokeWidth="1"
+                />
 
                 {/* Animated flow fill */}
                 <motion.rect
@@ -545,7 +607,11 @@ function InteractiveSessionHandoffImpl() {
                 {/* Source agent node */}
                 <g>
                   <motion.rect
-                    x="8" y="30" width="64" height="60" rx="12"
+                    x="8"
+                    y="30"
+                    width="64"
+                    height="60"
+                    rx="12"
                     fill={source.color}
                     fillOpacity={currentStep <= 2 ? 0.15 : 0.06}
                     stroke={source.color}
@@ -554,11 +620,31 @@ function InteractiveSessionHandoffImpl() {
                     animate={{ fillOpacity: currentStep <= 2 ? 0.15 : 0.06 }}
                     transition={springTransition}
                   />
-                  <text x="40" y="55" textAnchor="middle" fill={source.color} fontSize="10" fontWeight="600">{source.name}</text>
-                  <text x="40" y="72" textAnchor="middle" fill="white" fillOpacity="0.35" fontSize="8">Source</text>
+                  <text
+                    x="40"
+                    y="55"
+                    textAnchor="middle"
+                    fill={source.color}
+                    fontSize="10"
+                    fontWeight="600"
+                  >
+                    {source.name}
+                  </text>
+                  <text
+                    x="40"
+                    y="72"
+                    textAnchor="middle"
+                    fill="white"
+                    fillOpacity="0.35"
+                    fontSize="8"
+                  >
+                    Source
+                  </text>
                   {currentStep <= 2 && (
                     <motion.circle
-                      cx="40" cy="40" r="3"
+                      cx="40"
+                      cy="40"
+                      r="3"
                       fill={source.color}
                       animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
                       transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
@@ -569,7 +655,11 @@ function InteractiveSessionHandoffImpl() {
                 {/* Archive/distill node in center */}
                 <g>
                   <motion.rect
-                    x="248" y="24" width="104" height="72" rx="12"
+                    x="248"
+                    y="24"
+                    width="104"
+                    height="72"
+                    rx="12"
                     fill="#8b5cf6"
                     fillOpacity={currentStep >= 1 && currentStep <= 3 ? 0.15 : 0.04}
                     stroke="#8b5cf6"
@@ -581,12 +671,35 @@ function InteractiveSessionHandoffImpl() {
                     }}
                     transition={springTransition}
                   />
-                  <text x="300" y="52" textAnchor="middle" fill="#a78bfa" fontSize="9" fontWeight="600">CASR Archive</text>
-                  <text x="300" y="66" textAnchor="middle" fill="white" fillOpacity="0.35" fontSize="8">Extract + Distill</text>
+                  <text
+                    x="300"
+                    y="52"
+                    textAnchor="middle"
+                    fill="#a78bfa"
+                    fontSize="9"
+                    fontWeight="600"
+                  >
+                    CASR Archive
+                  </text>
+                  <text
+                    x="300"
+                    y="66"
+                    textAnchor="middle"
+                    fill="white"
+                    fillOpacity="0.35"
+                    fontSize="8"
+                  >
+                    Extract + Distill
+                  </text>
                   {/* Compression indicator */}
                   {currentStep >= 2 && (
                     <motion.text
-                      x="300" y="82" textAnchor="middle" fill="#a78bfa" fontSize="8" fontWeight="500"
+                      x="300"
+                      y="82"
+                      textAnchor="middle"
+                      fill="#a78bfa"
+                      fontSize="8"
+                      fontWeight="500"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 0.7 }}
                       transition={springTransition}
@@ -599,7 +712,11 @@ function InteractiveSessionHandoffImpl() {
                 {/* Target agent node */}
                 <g>
                   <motion.rect
-                    x="528" y="30" width="64" height="60" rx="12"
+                    x="528"
+                    y="30"
+                    width="64"
+                    height="60"
+                    rx="12"
                     fill={target.color}
                     fillOpacity={currentStep >= 3 ? 0.15 : 0.04}
                     stroke={target.color}
@@ -611,11 +728,31 @@ function InteractiveSessionHandoffImpl() {
                     }}
                     transition={springTransition}
                   />
-                  <text x="560" y="55" textAnchor="middle" fill={target.color} fontSize="10" fontWeight="600">{target.name}</text>
-                  <text x="560" y="72" textAnchor="middle" fill="white" fillOpacity="0.35" fontSize="8">Target</text>
+                  <text
+                    x="560"
+                    y="55"
+                    textAnchor="middle"
+                    fill={target.color}
+                    fontSize="10"
+                    fontWeight="600"
+                  >
+                    {target.name}
+                  </text>
+                  <text
+                    x="560"
+                    y="72"
+                    textAnchor="middle"
+                    fill="white"
+                    fillOpacity="0.35"
+                    fontSize="8"
+                  >
+                    Target
+                  </text>
                   {currentStep >= 4 && (
                     <motion.circle
-                      cx="560" cy="40" r="3"
+                      cx="560"
+                      cy="40"
+                      r="3"
                       fill={target.color}
                       animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
                       transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
@@ -689,11 +826,27 @@ function InteractiveSessionHandoffImpl() {
                   />
                 )}
                 {currentStep === 5 && (
-                  <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={springTransition}>
-                    <circle cx="560" cy="40" r="8" fill="none" stroke="#22c55e" strokeWidth="1.5" strokeOpacity="0.6" />
+                  <motion.g
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={springTransition}
+                  >
+                    <circle
+                      cx="560"
+                      cy="40"
+                      r="8"
+                      fill="none"
+                      stroke="#22c55e"
+                      strokeWidth="1.5"
+                      strokeOpacity="0.6"
+                    />
                     <motion.circle
-                      cx="560" cy="40" r="8"
-                      fill="none" stroke="#22c55e" strokeWidth="1"
+                      cx="560"
+                      cy="40"
+                      r="8"
+                      fill="none"
+                      stroke="#22c55e"
+                      strokeWidth="1"
                       animate={inView ? { r: [8, 16], opacity: [0.5, 0] } : { r: 8, opacity: 0 }}
                       transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                     />
@@ -711,7 +864,15 @@ function InteractiveSessionHandoffImpl() {
                   }}
                   transition={springTransition}
                 />
-                <rect x="80" y="108" width="440" height="4" rx="2" fill="white" fillOpacity="0.04" />
+                <rect
+                  x="80"
+                  y="108"
+                  width="440"
+                  height="4"
+                  rx="2"
+                  fill="white"
+                  fillOpacity="0.04"
+                />
               </svg>
             </div>
 
@@ -721,7 +882,9 @@ function InteractiveSessionHandoffImpl() {
               <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Archive className="h-3.5 w-3.5 text-violet-400/70" />
-                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">Token Compression</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+                    Token Compression
+                  </span>
                 </div>
 
                 <div className="space-y-2">
@@ -734,7 +897,9 @@ function InteractiveSessionHandoffImpl() {
                   </div>
                   <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
                     <motion.div
-                      animate={{ width: `${Math.min((animatedTokens / CONTEXT_WINDOW_MAX) * 100, 100)}%` }}
+                      animate={{
+                        width: `${Math.min((animatedTokens / CONTEXT_WINDOW_MAX) * 100, 100)}%`,
+                      }}
                       transition={springTransition}
                       className="h-full rounded-full bg-gradient-to-r from-orange-500/60 to-orange-400/40"
                     />
@@ -749,7 +914,9 @@ function InteractiveSessionHandoffImpl() {
                   </div>
                   <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
                     <motion.div
-                      animate={{ width: `${Math.min((animatedCompressed / CONTEXT_WINDOW_MAX) * 100, 100)}%` }}
+                      animate={{
+                        width: `${Math.min((animatedCompressed / CONTEXT_WINDOW_MAX) * 100, 100)}%`,
+                      }}
                       transition={springTransition}
                       className="h-full rounded-full bg-gradient-to-r from-emerald-500/60 to-cyan-400/40"
                     />
@@ -763,10 +930,14 @@ function InteractiveSessionHandoffImpl() {
                       initial={{ opacity: 0.5, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className={`text-sm font-mono font-semibold tabular-nums ${
-                        compressionRatio > 80 ? 'text-emerald-400' : compressionRatio > 0 ? 'text-amber-400' : 'text-white/40'
+                        compressionRatio > 80
+                          ? "text-emerald-400"
+                          : compressionRatio > 0
+                            ? "text-amber-400"
+                            : "text-white/40"
                       }`}
                     >
-                      {compressionRatio > 0 ? `${compressionRatio}%` : '--'}
+                      {compressionRatio > 0 ? `${compressionRatio}%` : "--"}
                     </motion.span>
                   </div>
                 </div>
@@ -776,14 +947,20 @@ function InteractiveSessionHandoffImpl() {
               <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5 text-cyan-400/70" />
-                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">Target Context Window</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+                    Target Context Window
+                  </span>
                 </div>
 
                 {/* Visual context window blocks */}
                 <div className="relative h-24 rounded-lg border border-white/[0.06] bg-black/40 overflow-hidden">
                   {/* Grid lines for scale */}
                   {[25, 50, 75].map((pct) => (
-                    <div key={pct} className="absolute top-0 bottom-0 border-l border-white/[0.03]" style={{ left: `${pct}%` }} />
+                    <div
+                      key={pct}
+                      className="absolute top-0 bottom-0 border-l border-white/[0.03]"
+                      style={{ left: `${pct}%` }}
+                    />
                   ))}
 
                   {/* Context fill */}
@@ -795,25 +972,41 @@ function InteractiveSessionHandoffImpl() {
                     {/* Inner segments showing different context types */}
                     {currentStep >= 4 && (
                       <div className="absolute inset-0 flex">
-                        <div className="h-full bg-orange-500/10 border-r border-orange-500/20" style={{ width: '20%' }}>
-                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-orange-300/50">sys</span>
+                        <div
+                          className="h-full bg-orange-500/10 border-r border-orange-500/20"
+                          style={{ width: "20%" }}
+                        >
+                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-orange-300/50">
+                            sys
+                          </span>
                         </div>
-                        <div className="h-full bg-violet-500/10 border-r border-violet-500/20" style={{ width: '50%' }}>
-                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-violet-300/50">task+diffs</span>
+                        <div
+                          className="h-full bg-violet-500/10 border-r border-violet-500/20"
+                          style={{ width: "50%" }}
+                        >
+                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-violet-300/50">
+                            task+diffs
+                          </span>
                         </div>
-                        <div className="h-full bg-emerald-500/10" style={{ width: '30%' }}>
-                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-emerald-300/50">decisions</span>
+                        <div className="h-full bg-emerald-500/10" style={{ width: "30%" }}>
+                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-emerald-300/50">
+                            decisions
+                          </span>
                         </div>
                       </div>
                     )}
                   </motion.div>
 
                   {/* Labels */}
-                  <div className="absolute top-1.5 left-2 text-[10px] font-mono text-white/30">0K</div>
-                  <div className="absolute top-1.5 right-2 text-[10px] font-mono text-white/30">128K</div>
+                  <div className="absolute top-1.5 left-2 text-[10px] font-mono text-white/30">
+                    0K
+                  </div>
+                  <div className="absolute top-1.5 right-2 text-[10px] font-mono text-white/30">
+                    128K
+                  </div>
                   <div className="absolute bottom-1.5 left-2 flex items-center gap-1">
                     <span className="text-[10px] font-mono text-cyan-400/60">
-                      {contextFillPct > 0 ? `${contextFillPct.toFixed(1)}% used` : 'empty'}
+                      {contextFillPct > 0 ? `${contextFillPct.toFixed(1)}% used` : "empty"}
                     </span>
                   </div>
                 </div>
@@ -822,7 +1015,8 @@ function InteractiveSessionHandoffImpl() {
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-white/30">Handoff uses</span>
                   <span className="font-mono text-cyan-400/70">
-                    {animatedCompressed.toLocaleString()} / {CONTEXT_WINDOW_MAX.toLocaleString()} tokens
+                    {animatedCompressed.toLocaleString()} / {CONTEXT_WINDOW_MAX.toLocaleString()}{" "}
+                    tokens
                   </span>
                 </div>
               </div>
@@ -837,7 +1031,9 @@ function InteractiveSessionHandoffImpl() {
                   <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/40" />
                   <div className="h-2.5 w-2.5 rounded-full bg-green-500/40" />
                 </div>
-                <span className="text-[10px] font-mono text-white/30 ml-2">casr resume cod &lt;session-id&gt;</span>
+                <span className="text-[10px] font-mono text-white/30 ml-2">
+                  casr resume cod &lt;session-id&gt;
+                </span>
                 <div className="flex-1" />
                 <Terminal className="h-3 w-3 text-white/20" />
               </div>
@@ -849,8 +1045,13 @@ function InteractiveSessionHandoffImpl() {
               >
                 <AnimatePresence mode="popLayout">
                   {step.terminalLines.slice(0, terminalVisibleLines).map((line, i) => {
-                    const isCommand = line.startsWith('$');
-                    const isResult = line.includes('complete') || line.includes('done') || line.includes('ready') || line.includes('verified') || line.includes('Verified');
+                    const isCommand = line.startsWith("$");
+                    const isResult =
+                      line.includes("complete") ||
+                      line.includes("done") ||
+                      line.includes("ready") ||
+                      line.includes("verified") ||
+                      line.includes("Verified");
                     return (
                       <motion.div
                         key={`${step.id}-${i}`}
@@ -859,10 +1060,10 @@ function InteractiveSessionHandoffImpl() {
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         className={`leading-relaxed ${
                           isCommand
-                            ? 'text-emerald-400/80'
+                            ? "text-emerald-400/80"
                             : isResult
-                              ? 'text-cyan-400/70'
-                              : 'text-white/40'
+                              ? "text-cyan-400/70"
+                              : "text-white/40"
                         }`}
                       >
                         {isCommand && <span className="text-violet-400/60">~/project </span>}
@@ -876,7 +1077,11 @@ function InteractiveSessionHandoffImpl() {
                 {terminalVisibleLines < step.terminalLines.length && (
                   <motion.span
                     animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
-                    transition={inView ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+                    transition={
+                      inView
+                        ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" }
+                        : { duration: 0.2 }
+                    }
                     className="inline-block w-2 h-3.5 bg-white/50 ml-0.5"
                   />
                 )}
@@ -897,12 +1102,16 @@ function InteractiveSessionHandoffImpl() {
             <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <FileText className="h-3.5 w-3.5 text-white/40" />
-                <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">Handoff Payload</span>
+                <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">
+                  Handoff Payload
+                </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Task */}
                 <div className="space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">Task</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">
+                    Task
+                  </span>
                   <motion.p
                     animate={{
                       opacity: currentStep >= 1 ? 1 : 0.3,
@@ -916,21 +1125,24 @@ function InteractiveSessionHandoffImpl() {
 
                 {/* Files */}
                 <div className="space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">Files ({currentStep >= 1 ? 8 : 0})</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">
+                    Files ({currentStep >= 1 ? 8 : 0})
+                  </span>
                   <div className="flex flex-wrap gap-1">
                     <AnimatePresence>
-                      {currentStep >= 1 && ['middleware.ts', 'pkce.ts', 'login.ts'].map((file, i) => (
-                        <motion.span
-                          key={file}
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.8 }}
-                          transition={{ ...springTransition, delay: i * 0.05 }}
-                          className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-[10px] text-white/40 font-mono"
-                        >
-                          {file}
-                        </motion.span>
-                      ))}
+                      {currentStep >= 1 &&
+                        ["middleware.ts", "pkce.ts", "login.ts"].map((file, i) => (
+                          <motion.span
+                            key={file}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{ ...springTransition, delay: i * 0.05 }}
+                            className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-[10px] text-white/40 font-mono"
+                          >
+                            {file}
+                          </motion.span>
+                        ))}
                     </AnimatePresence>
                     {currentStep >= 1 && (
                       <motion.span
@@ -946,7 +1158,9 @@ function InteractiveSessionHandoffImpl() {
 
                 {/* Decisions */}
                 <div className="space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">Decisions ({currentStep >= 2 ? 5 : 0})</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">
+                    Decisions ({currentStep >= 2 ? 5 : 0})
+                  </span>
                   <AnimatePresence>
                     {currentStep >= 2 && (
                       <motion.ul
@@ -955,7 +1169,7 @@ function InteractiveSessionHandoffImpl() {
                         exit={{ opacity: 0 }}
                         className="space-y-0.5"
                       >
-                        {['httpOnly cookie storage', 'Token rotation on use'].map((d, i) => (
+                        {["httpOnly cookie storage", "Token rotation on use"].map((d, i) => (
                           <motion.li
                             key={d}
                             initial={{ opacity: 0, x: -4 }}
@@ -992,8 +1206,8 @@ function InteractiveSessionHandoffImpl() {
             whileTap={currentStep > 0 ? { scale: 0.95 } : {}}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
               currentStep === 0
-                ? 'border-white/[0.04] text-white/20 cursor-not-allowed'
-                : 'border-white/[0.12] text-white/60 hover:text-white/80 hover:border-white/[0.2] bg-white/[0.02]'
+                ? "border-white/[0.04] text-white/20 cursor-not-allowed"
+                : "border-white/[0.12] text-white/60 hover:text-white/80 hover:border-white/[0.2] bg-white/[0.02]"
             }`}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -1007,10 +1221,10 @@ function InteractiveSessionHandoffImpl() {
                 onClick={() => goToStep(i)}
                 className={`h-1.5 rounded-full transition-[width,background-color] duration-300 ${
                   i === currentStep
-                    ? 'w-6 bg-violet-400'
+                    ? "w-6 bg-violet-400"
                     : i < currentStep
-                      ? 'w-1.5 bg-emerald-400/40'
-                      : 'w-1.5 bg-white/10'
+                      ? "w-1.5 bg-emerald-400/40"
+                      : "w-1.5 bg-white/10"
                 }`}
               />
             ))}
@@ -1023,11 +1237,11 @@ function InteractiveSessionHandoffImpl() {
             whileTap={currentStep < SCENARIO_STEPS.length - 1 ? { scale: 0.95 } : {}}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
               currentStep === SCENARIO_STEPS.length - 1
-                ? 'border-white/[0.04] text-white/20 cursor-not-allowed'
-                : 'border-violet-500/30 text-violet-300 hover:text-violet-200 hover:border-violet-500/50 bg-violet-500/10'
+                ? "border-white/[0.04] text-white/20 cursor-not-allowed"
+                : "border-violet-500/30 text-violet-300 hover:text-violet-200 hover:border-violet-500/50 bg-violet-500/10"
             }`}
           >
-            {currentStep === SCENARIO_STEPS.length - 1 ? 'Complete' : 'Next'}
+            {currentStep === SCENARIO_STEPS.length - 1 ? "Complete" : "Next"}
             <ChevronRight className="h-3.5 w-3.5" />
           </motion.button>
         </div>
@@ -1036,7 +1250,9 @@ function InteractiveSessionHandoffImpl() {
         <div className="rounded-xl border border-white/[0.08] bg-black/20 p-4 space-y-2">
           <div className="flex items-center gap-2">
             <Clock className="h-3.5 w-3.5 text-white/30" />
-            <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">Pipeline Timeline</span>
+            <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">
+              Pipeline Timeline
+            </span>
           </div>
           <div className="flex items-center gap-1 overflow-x-auto py-1">
             {SCENARIO_STEPS.map((s, i) => {
@@ -1046,8 +1262,16 @@ function InteractiveSessionHandoffImpl() {
                 <div key={s.id} className="flex items-center shrink-0">
                   <motion.div
                     animate={{
-                      backgroundColor: isActive ? 'rgba(139, 92, 246, 0.2)' : isCompleted ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255,255,255,0.02)',
-                      borderColor: isActive ? 'rgba(139, 92, 246, 0.4)' : isCompleted ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.06)',
+                      backgroundColor: isActive
+                        ? "rgba(139, 92, 246, 0.2)"
+                        : isCompleted
+                          ? "rgba(34, 197, 94, 0.1)"
+                          : "rgba(255,255,255,0.02)",
+                      borderColor: isActive
+                        ? "rgba(139, 92, 246, 0.4)"
+                        : isCompleted
+                          ? "rgba(34, 197, 94, 0.2)"
+                          : "rgba(255,255,255,0.06)",
                     }}
                     transition={springTransition}
                     className="flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-mono"
@@ -1055,14 +1279,26 @@ function InteractiveSessionHandoffImpl() {
                     {isCompleted ? (
                       <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400/60" />
                     ) : (
-                      <span className={isActive ? 'text-violet-400' : 'text-white/20'}>{s.icon}</span>
+                      <span className={isActive ? "text-violet-400" : "text-white/20"}>
+                        {s.icon}
+                      </span>
                     )}
-                    <span className={isActive ? 'text-violet-300' : isCompleted ? 'text-emerald-400/60' : 'text-white/25'}>
+                    <span
+                      className={
+                        isActive
+                          ? "text-violet-300"
+                          : isCompleted
+                            ? "text-emerald-400/60"
+                            : "text-white/25"
+                      }
+                    >
                       {s.shortLabel}
                     </span>
                   </motion.div>
                   {i < SCENARIO_STEPS.length - 1 && (
-                    <ArrowRight className={`h-2.5 w-2.5 mx-0.5 shrink-0 ${isCompleted ? 'text-emerald-400/30' : 'text-white/10'}`} />
+                    <ArrowRight
+                      className={`h-2.5 w-2.5 mx-0.5 shrink-0 ${isCompleted ? "text-emerald-400/30" : "text-white/10"}`}
+                    />
                   )}
                 </div>
               );

@@ -1,61 +1,53 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Key,
-  Lock,
-  Wifi,
-  WifiOff,
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
-  RefreshCw,
-  Terminal,
-  CheckCircle2,
-  HelpCircle,
-  Monitor,
-  Server,
-  Cloud,
+  AlertTriangle,
   ArrowRight,
+  CheckCircle2,
+  Cloud,
   Eye,
   EyeOff,
+  HelpCircle,
+  Key,
+  Lock,
+  Monitor,
+  RefreshCw,
+  Server,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Terminal,
+  Wifi,
+  WifiOff,
   Zap,
-  AlertTriangle,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
-  InlineCode,
-  FeatureGrid,
   FeatureCard,
+  FeatureGrid,
+  GoalBanner,
+  Highlight,
+  InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function SSHBasicsLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Understand how to stay connected to your VPS.
-      </GoalBanner>
+      <GoalBanner>Understand how to stay connected to your VPS.</GoalBanner>
 
       {/* What Is SSH */}
-      <Section
-        title="What Is SSH?"
-        icon={<Lock className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is SSH?" icon={<Lock className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>SSH (Secure Shell)</Highlight> is how you&apos;re connected to
-          this VPS right now.
+          <Highlight>SSH (Secure Shell)</Highlight> is how you&apos;re connected to this VPS right
+          now.
         </Paragraph>
-        <Paragraph>
-          It&apos;s an encrypted tunnel between your laptop and this server.
-        </Paragraph>
+        <Paragraph>It&apos;s an encrypted tunnel between your laptop and this server.</Paragraph>
 
         {/* Visual Connection Diagram */}
         <div className="mt-8">
@@ -66,14 +58,8 @@ export function SSHBasicsLesson() {
       <Divider />
 
       {/* How You Got Here */}
-      <Section
-        title="How You Got Here"
-        icon={<Key className="h-5 w-5" />}
-        delay={0.15}
-      >
-        <Paragraph>
-          Your VPS connection happened in two stages:
-        </Paragraph>
+      <Section title="How You Got Here" icon={<Key className="h-5 w-5" />} delay={0.15}>
+        <Paragraph>Your VPS connection happened in two stages:</Paragraph>
 
         {/* Stage Cards */}
         <div className="mt-8 grid gap-6 md:grid-cols-2">
@@ -97,23 +83,12 @@ export function SSHBasicsLesson() {
 
         {/* Command Breakdown */}
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4">
-            Breaking down the command:
-          </h4>
+          <h4 className="text-lg font-semibold text-white mb-4">Breaking down the command:</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <CommandPart label="ssh" description="The command" />
-            <CommandPart
-              label="-i ~/.ssh/acfs_ed25519"
-              description="Your private key"
-            />
-            <CommandPart
-              label="ubuntu"
-              description="Your regular user (safer than root)"
-            />
-            <CommandPart
-              label="@YOUR_SERVER_IP"
-              description="The server address"
-            />
+            <CommandPart label="-i ~/.ssh/acfs_ed25519" description="Your private key" />
+            <CommandPart label="ubuntu" description="Your regular user (safer than root)" />
+            <CommandPart label="@YOUR_SERVER_IP" description="The server address" />
           </div>
         </div>
       </Section>
@@ -127,19 +102,15 @@ export function SSHBasicsLesson() {
         delay={0.2}
       >
         <TipBox variant="info">
-          No worries! SSH connections drop sometimes. Just reconnect—your work
-          is safe in tmux (next lesson).
+          No worries! SSH connections drop sometimes. Just reconnect—your work is safe in tmux (next
+          lesson).
         </TipBox>
       </Section>
 
       <Divider />
 
       {/* SSH Keys vs Passwords */}
-      <Section
-        title="SSH Keys vs Passwords"
-        icon={<Shield className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="SSH Keys vs Passwords" icon={<Shield className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
           You&apos;re now using <Highlight>key-based authentication</Highlight>:
         </Paragraph>
@@ -163,8 +134,7 @@ export function SSHBasicsLesson() {
 
         <div className="mt-6">
           <Paragraph>
-            This is more secure than passwords and lets you connect without
-            typing anything.
+            This is more secure than passwords and lets you connect without typing anything.
           </Paragraph>
         </div>
       </Section>
@@ -172,11 +142,7 @@ export function SSHBasicsLesson() {
       <Divider />
 
       {/* Keeping Connections Alive */}
-      <Section
-        title="Keeping Connections Alive"
-        icon={<Wifi className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Keeping Connections Alive" icon={<Wifi className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
           Add this to your laptop&apos;s <InlineCode>~/.ssh/config</InlineCode>:
         </Paragraph>
@@ -197,11 +163,7 @@ export function SSHBasicsLesson() {
       <Divider />
 
       {/* Quick Connect Alias */}
-      <Section
-        title="Quick Connect Alias"
-        icon={<Terminal className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Quick Connect Alias" icon={<Terminal className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
           On your laptop, add to <InlineCode>~/.zshrc</InlineCode> or{" "}
           <InlineCode>~/.bashrc</InlineCode>:
@@ -233,14 +195,8 @@ export function SSHBasicsLesson() {
       <Divider />
 
       {/* Practice Commands */}
-      <Section
-        title="Practice This Now"
-        icon={<CheckCircle2 className="h-5 w-5" />}
-        delay={0.45}
-      >
-        <Paragraph>
-          Try these commands to confirm your SSH setup is working:
-        </Paragraph>
+      <Section title="Practice This Now" icon={<CheckCircle2 className="h-5 w-5" />} delay={0.45}>
+        <Paragraph>Try these commands to confirm your SSH setup is working:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -258,8 +214,8 @@ $ cat ~/.ssh/authorized_keys`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            When you see your public key (starts with{" "}
-            <InlineCode>ssh-ed25519</InlineCode>), you know the setup worked!
+            When you see your public key (starts with <InlineCode>ssh-ed25519</InlineCode>), you
+            know the setup worked!
           </TipBox>
         </div>
       </Section>
@@ -281,11 +237,30 @@ interface TunnelPacket {
   color: string;
 }
 
-const SCENARIO_META: Record<TunnelScenario, { label: string; icon: React.ReactNode; description: string }> = {
-  connect: { label: "SSH Connect", icon: <Zap className="h-3.5 w-3.5" />, description: "Watch the handshake: key exchange, authentication, and tunnel establishment" },
-  keyauth: { label: "Key Auth", icon: <Key className="h-3.5 w-3.5" />, description: "See how public/private key pairs authenticate without passwords" },
-  portforward: { label: "Port Forward", icon: <ArrowRight className="h-3.5 w-3.5" />, description: "Local port maps through the tunnel to a remote service" },
-  reconnect: { label: "Reconnect", icon: <RefreshCw className="h-3.5 w-3.5" />, description: "Connection drops happen -- mosh and tmux keep your session alive" },
+const SCENARIO_META: Record<
+  TunnelScenario,
+  { label: string; icon: React.ReactNode; description: string }
+> = {
+  connect: {
+    label: "SSH Connect",
+    icon: <Zap className="h-3.5 w-3.5" />,
+    description: "Watch the handshake: key exchange, authentication, and tunnel establishment",
+  },
+  keyauth: {
+    label: "Key Auth",
+    icon: <Key className="h-3.5 w-3.5" />,
+    description: "See how public/private key pairs authenticate without passwords",
+  },
+  portforward: {
+    label: "Port Forward",
+    icon: <ArrowRight className="h-3.5 w-3.5" />,
+    description: "Local port maps through the tunnel to a remote service",
+  },
+  reconnect: {
+    label: "Reconnect",
+    icon: <RefreshCw className="h-3.5 w-3.5" />,
+    description: "Connection drops happen -- mosh and tmux keep your session alive",
+  },
 };
 
 const SPRING_SMOOTH = { type: "spring" as const, stiffness: 200, damping: 25 };
@@ -337,12 +312,34 @@ function LaptopIcon({ x, y, active }: { x: number; y: number; active: boolean })
       transition={{ delay: 0.1, ...SPRING_SMOOTH }}
     >
       {/* Laptop body */}
-      <rect x={x} y={y} width="80" height="55" rx="8" fill="none" stroke="#60a5fa" strokeWidth="1.5" opacity="0.7" />
+      <rect
+        x={x}
+        y={y}
+        width="80"
+        height="55"
+        rx="8"
+        fill="none"
+        stroke="#60a5fa"
+        strokeWidth="1.5"
+        opacity="0.7"
+      />
       <rect x={x + 8} y={y + 7} width="64" height="35" rx="3" fill="#3b82f6" opacity="0.12" />
       {/* Laptop base */}
-      <rect x={x - 8} y={y + 55} width="96" height="8" rx="4" fill="none" stroke="#60a5fa" strokeWidth="1.5" opacity="0.7" />
+      <rect
+        x={x - 8}
+        y={y + 55}
+        width="96"
+        height="8"
+        rx="4"
+        fill="none"
+        stroke="#60a5fa"
+        strokeWidth="1.5"
+        opacity="0.7"
+      />
       {/* Terminal prompt */}
-      <text x={x + 14} y={y + 22} fill="#60a5fa" fontSize="7" fontFamily="monospace" opacity="0.8">$ ssh</text>
+      <text x={x + 14} y={y + 22} fill="#60a5fa" fontSize="7" fontFamily="monospace" opacity="0.8">
+        $ ssh
+      </text>
       {/* Blinking cursor */}
       <motion.rect
         x={x + 42}
@@ -378,13 +375,32 @@ function CloudIcon({ x, y }: { x: number; y: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2, ...SPRING_SMOOTH }}
     >
-      <Cloud x={x - 16} y={y - 8} className="text-white/20" width={32} height={24} strokeWidth={1} />
-      <text x={x} y={y + 24} textAnchor="middle" fill="white" fontSize="9" opacity="0.4">Internet</text>
+      <Cloud
+        x={x - 16}
+        y={y - 8}
+        className="text-white/20"
+        width={32}
+        height={24}
+        strokeWidth={1}
+      />
+      <text x={x} y={y + 24} textAnchor="middle" fill="white" fontSize="9" opacity="0.4">
+        Internet
+      </text>
     </motion.g>
   );
 }
 
-function ServerIcon({ x, y, blinking, active }: { x: number; y: number; blinking?: boolean; active: boolean }) {
+function ServerIcon({
+  x,
+  y,
+  blinking,
+  active,
+}: {
+  x: number;
+  y: number;
+  blinking?: boolean;
+  active: boolean;
+}) {
   return (
     <motion.g
       initial={{ opacity: 0, x: 20 }}
@@ -392,24 +408,51 @@ function ServerIcon({ x, y, blinking, active }: { x: number; y: number; blinking
       transition={{ delay: 0.15, ...SPRING_SMOOTH }}
     >
       {/* Server rack */}
-      <rect x={x} y={y} width="80" height="70" rx="8" fill="none" stroke="#22d3ee" strokeWidth="1.5" opacity="0.7" />
+      <rect
+        x={x}
+        y={y}
+        width="80"
+        height="70"
+        rx="8"
+        fill="none"
+        stroke="#22d3ee"
+        strokeWidth="1.5"
+        opacity="0.7"
+      />
       {[0, 1, 2].map((i) => (
         <g key={i}>
-          <rect x={x + 10} y={y + 10 + i * 20} width="60" height="12" rx="2" fill="#06b6d4" opacity="0.1" />
+          <rect
+            x={x + 10}
+            y={y + 10 + i * 20}
+            width="60"
+            height="12"
+            rx="2"
+            fill="#06b6d4"
+            opacity="0.1"
+          />
           <motion.circle
             cx={x + 62}
             cy={y + 16 + i * 20}
             r="3"
             fill={blinking === false ? "#ef4444" : "#22d3ee"}
             animate={{ opacity: blinking === false ? 0.3 : active ? [0.4, 1, 0.4] : 0.4 }}
-            transition={active ? { duration: 1.5, repeat: Infinity, delay: i * 0.3 } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 1.5, repeat: Infinity, delay: i * 0.3 } : { duration: 0.2 }
+            }
           />
         </g>
       ))}
       <text x={x + 40} y={y + 90} textAnchor="middle" fill="white" fontSize="12" fontWeight="500">
         Your VPS
       </text>
-      <Server x={x + 28} y={y + 73} className="text-cyan-400/50" width={24} height={14} strokeWidth={1.2} />
+      <Server
+        x={x + 28}
+        y={y + 73}
+        className="text-cyan-400/50"
+        width={24}
+        height={14}
+        strokeWidth={1.2}
+      />
     </motion.g>
   );
 }
@@ -458,7 +501,9 @@ function EncryptedTunnel({
                 ? 0.15
                 : [0.25, 0.55, 0.25],
         }}
-        transition={active ? { duration: establishing ? 0.6 : 2, repeat: Infinity } : { duration: 0.2 }}
+        transition={
+          active ? { duration: establishing ? 0.6 : 2, repeat: Infinity } : { duration: 0.2 }
+        }
         filter={encrypted && !broken ? "url(#sshGlow)" : undefined}
       />
       {/* Inner data path */}
@@ -472,7 +517,9 @@ function EncryptedTunnel({
         strokeDasharray="6 4"
         strokeOpacity={broken ? 0.1 : 0.3}
         animate={{ strokeDashoffset: broken || !active ? 0 : [0, -20] }}
-        transition={active ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+        transition={
+          active ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+        }
       />
       {/* Center lock icon */}
       {encrypted && !broken && (
@@ -481,8 +528,22 @@ function EncryptedTunnel({
           transition={active ? { duration: 2.5, repeat: Infinity } : { duration: 0.2 }}
           filter="url(#sshStrongGlow)"
         >
-          <rect x="289" y="120" width="22" height="16" rx="3" fill="none" stroke="#22c55e" strokeWidth="1.2" />
-          <path d="M293 120 V116 A7 7 0 0 1 307 116 V120" fill="none" stroke="#22c55e" strokeWidth="1.2" />
+          <rect
+            x="289"
+            y="120"
+            width="22"
+            height="16"
+            rx="3"
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth="1.2"
+          />
+          <path
+            d="M293 120 V116 A7 7 0 0 1 307 116 V120"
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth="1.2"
+          />
           <circle cx="300" cy="129" r="2" fill="#22c55e" opacity="0.8" />
         </motion.g>
       )}
@@ -491,8 +552,24 @@ function EncryptedTunnel({
           animate={active ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 0.8 }}
           transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
         >
-          <rect x="289" y="120" width="22" height="16" rx="3" fill="none" stroke="#ef4444" strokeWidth="1.2" opacity="0.6" />
-          <path d="M293 120 V116 A7 7 0 0 1 307 116 V124" fill="none" stroke="#ef4444" strokeWidth="1.2" opacity="0.6" />
+          <rect
+            x="289"
+            y="120"
+            width="22"
+            height="16"
+            rx="3"
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="1.2"
+            opacity="0.6"
+          />
+          <path
+            d="M293 120 V116 A7 7 0 0 1 307 116 V124"
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="1.2"
+            opacity="0.6"
+          />
         </motion.g>
       )}
       {broken && (
@@ -500,8 +577,24 @@ function EncryptedTunnel({
           animate={active ? { opacity: [0.3, 0.7, 0.3] } : { opacity: 0.7 }}
           transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
         >
-          <line x1="290" y1="118" x2="310" y2="142" stroke="#ef4444" strokeWidth="2" opacity="0.7" />
-          <line x1="310" y1="118" x2="290" y2="142" stroke="#ef4444" strokeWidth="2" opacity="0.7" />
+          <line
+            x1="290"
+            y1="118"
+            x2="310"
+            y2="142"
+            stroke="#ef4444"
+            strokeWidth="2"
+            opacity="0.7"
+          />
+          <line
+            x1="310"
+            y1="118"
+            x2="290"
+            y2="142"
+            stroke="#ef4444"
+            strokeWidth="2"
+            opacity="0.7"
+          />
         </motion.g>
       )}
     </motion.g>
@@ -541,14 +634,47 @@ function DataPackets({
             exit={{ opacity: 0, scale: 0.4 }}
           >
             {/* Packet glow */}
-            <motion.circle cx={x} cy={y} r="14" fill={fillColor} opacity={0.08}
-              animate={active ? { r: [14, 18, 14], opacity: [0.06, 0.12, 0.06] } : { r: 14, opacity: 0.08 }}
+            <motion.circle
+              cx={x}
+              cy={y}
+              r="14"
+              fill={fillColor}
+              opacity={0.08}
+              animate={
+                active ? { r: [14, 18, 14], opacity: [0.06, 0.12, 0.06] } : { r: 14, opacity: 0.08 }
+              }
               transition={active ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
             />
             {/* Packet body */}
-            <rect x={x - 22} y={y - 9} width="44" height="18" rx="4" fill={fillColor} opacity={0.15} />
-            <rect x={x - 22} y={y - 9} width="44" height="18" rx="4" fill="none" stroke={fillColor} strokeWidth="0.8" opacity={0.5} />
-            <text x={x} y={y + 3.5} textAnchor="middle" fill={fillColor} fontSize="7" fontFamily="monospace" fontWeight="600">
+            <rect
+              x={x - 22}
+              y={y - 9}
+              width="44"
+              height="18"
+              rx="4"
+              fill={fillColor}
+              opacity={0.15}
+            />
+            <rect
+              x={x - 22}
+              y={y - 9}
+              width="44"
+              height="18"
+              rx="4"
+              fill="none"
+              stroke={fillColor}
+              strokeWidth="0.8"
+              opacity={0.5}
+            />
+            <text
+              x={x}
+              y={y + 3.5}
+              textAnchor="middle"
+              fill={fillColor}
+              fontSize="7"
+              fontFamily="monospace"
+              fontWeight="600"
+            >
               {displayText}
             </text>
             {showEncrypted && (
@@ -556,8 +682,22 @@ function DataPackets({
                 animate={active ? { opacity: [0.4, 0.9, 0.4] } : { opacity: 0.9 }}
                 transition={active ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
               >
-                <rect x={x + 16} y={y - 7} width="8" height="7" rx="1.5" fill="none" stroke="#eab308" strokeWidth="0.7" />
-                <path d={`M${x + 18} ${y - 7} V${y - 9.5} A2.5 2.5 0 0 1 ${x + 22.5} ${y - 9.5} V${y - 7}`} fill="none" stroke="#eab308" strokeWidth="0.7" />
+                <rect
+                  x={x + 16}
+                  y={y - 7}
+                  width="8"
+                  height="7"
+                  rx="1.5"
+                  fill="none"
+                  stroke="#eab308"
+                  strokeWidth="0.7"
+                />
+                <path
+                  d={`M${x + 18} ${y - 7} V${y - 9.5} A2.5 2.5 0 0 1 ${x + 22.5} ${y - 9.5} V${y - 7}`}
+                  fill="none"
+                  stroke="#eab308"
+                  strokeWidth="0.7"
+                />
               </motion.g>
             )}
             {!encrypted && inTunnel && (
@@ -565,7 +705,14 @@ function DataPackets({
                 animate={active ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
                 transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
               >
-                <AlertTriangle x={x + 14} y={y - 10} width={10} height={10} className="text-red-500" strokeWidth={2} />
+                <AlertTriangle
+                  x={x + 14}
+                  y={y - 10}
+                  width={10}
+                  height={10}
+                  className="text-red-500"
+                  strokeWidth={2}
+                />
               </motion.g>
             )}
           </motion.g>
@@ -575,11 +722,39 @@ function DataPackets({
   );
 }
 
-function StatusBadge({ connected, latencyMs, encrypted, active }: { connected: boolean; latencyMs: number; encrypted: boolean; active: boolean }) {
+function StatusBadge({
+  connected,
+  latencyMs,
+  encrypted,
+  active,
+}: {
+  connected: boolean;
+  latencyMs: number;
+  encrypted: boolean;
+  active: boolean;
+}) {
   return (
     <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-      <rect x="232" y="218" width="136" height="24" rx="12" fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"} opacity="0.1" />
-      <rect x="232" y="218" width="136" height="24" rx="12" fill="none" stroke={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"} strokeWidth="0.7" opacity="0.4" />
+      <rect
+        x="232"
+        y="218"
+        width="136"
+        height="24"
+        rx="12"
+        fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
+        opacity="0.1"
+      />
+      <rect
+        x="232"
+        y="218"
+        width="136"
+        height="24"
+        rx="12"
+        fill="none"
+        stroke={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
+        strokeWidth="0.7"
+        opacity="0.4"
+      />
       <motion.circle
         cx="248"
         cy="230"
@@ -588,8 +763,19 @@ function StatusBadge({ connected, latencyMs, encrypted, active }: { connected: b
         animate={{ opacity: !connected ? 0.3 : active ? [0.5, 1, 0.5] : 1 }}
         transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
       />
-      <text x="300" y="234" textAnchor="middle" fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"} fontSize="9" fontWeight="600">
-        {connected ? (encrypted ? `SECURED  ${latencyMs}ms` : `UNENCRYPTED  ${latencyMs}ms`) : "DISCONNECTED"}
+      <text
+        x="300"
+        y="234"
+        textAnchor="middle"
+        fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
+        fontSize="9"
+        fontWeight="600"
+      >
+        {connected
+          ? encrypted
+            ? `SECURED  ${latencyMs}ms`
+            : `UNENCRYPTED  ${latencyMs}ms`
+          : "DISCONNECTED"}
       </text>
     </motion.g>
   );
@@ -606,9 +792,18 @@ function ScenarioConnect({ active }: { active: boolean }) {
 
   const schedulePhases = useCallback(() => {
     timersRef.current.forEach(clearTimeout);
-    const t1 = setTimeout(() => { setPhase(1); phaseRef.current = 1; }, 400);
-    const t2 = setTimeout(() => { setPhase(2); phaseRef.current = 2; }, 2000);
-    const t3 = setTimeout(() => { setPhase(3); phaseRef.current = 3; }, 3600);
+    const t1 = setTimeout(() => {
+      setPhase(1);
+      phaseRef.current = 1;
+    }, 400);
+    const t2 = setTimeout(() => {
+      setPhase(2);
+      phaseRef.current = 2;
+    }, 2000);
+    const t3 = setTimeout(() => {
+      setPhase(3);
+      phaseRef.current = 3;
+    }, 3600);
     timersRef.current = [t1, t2, t3];
   }, []);
 
@@ -622,7 +817,9 @@ function ScenarioConnect({ active }: { active: boolean }) {
 
   useEffect(() => {
     schedulePhases();
-    return () => { timersRef.current.forEach(clearTimeout); };
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+    };
   }, [schedulePhases]);
 
   // Packet animation when established
@@ -630,7 +827,7 @@ function ScenarioConnect({ active }: { active: boolean }) {
     if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
-        prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1)
+        prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1),
       );
     }, 32);
 
@@ -644,11 +841,21 @@ function ScenarioConnect({ active }: { active: boolean }) {
       const idx = id % cmds.length;
       setPackets((prev) => [
         ...prev,
-        { id, progress: 0, direction: isOut ? "outgoing" : "incoming", label: cmds[idx], encryptedLabel: encs[idx], color: isOut ? "#22c55e" : "#06b6d4" },
+        {
+          id,
+          progress: 0,
+          direction: isOut ? "outgoing" : "incoming",
+          label: cmds[idx],
+          encryptedLabel: encs[idx],
+          color: isOut ? "#22c55e" : "#06b6d4",
+        },
       ]);
     }, 1800);
 
-    return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
+    return () => {
+      clearInterval(moveInterval);
+      clearInterval(spawnInterval);
+    };
   }, [active]);
 
   const phaseLabels = [
@@ -681,7 +888,16 @@ function ScenarioConnect({ active }: { active: boolean }) {
               filter="url(#sshStrongGlow)"
             >
               <circle cx="0" cy="130" r="10" fill="none" stroke="#3b82f6" strokeWidth="1.5" />
-              <text x="0" y="134" textAnchor="middle" fill="#3b82f6" fontSize="10" fontWeight="bold">K</text>
+              <text
+                x="0"
+                y="134"
+                textAnchor="middle"
+                fill="#3b82f6"
+                fontSize="10"
+                fontWeight="bold"
+              >
+                K
+              </text>
             </motion.g>
             <motion.g
               initial={{ x: 440 }}
@@ -690,7 +906,16 @@ function ScenarioConnect({ active }: { active: boolean }) {
               filter="url(#sshStrongGlow)"
             >
               <circle cx="0" cy="130" r="10" fill="none" stroke="#06b6d4" strokeWidth="1.5" />
-              <text x="0" y="134" textAnchor="middle" fill="#06b6d4" fontSize="10" fontWeight="bold">K</text>
+              <text
+                x="0"
+                y="134"
+                textAnchor="middle"
+                fill="#06b6d4"
+                fontSize="10"
+                fontWeight="bold"
+              >
+                K
+              </text>
             </motion.g>
           </>
         )}
@@ -703,12 +928,24 @@ function ScenarioConnect({ active }: { active: boolean }) {
             transition={{ duration: 1.4, times: [0, 0.3, 0.6, 1] }}
             filter="url(#sshStrongGlow)"
           >
-            <ShieldCheck x={288} y={116} className="text-emerald-400" width={24} height={24} strokeWidth={1.5} />
+            <ShieldCheck
+              x={288}
+              y={116}
+              className="text-emerald-400"
+              width={24}
+              height={24}
+              strokeWidth={1.5}
+            />
           </motion.g>
         )}
 
         {phase >= 3 && <DataPackets packets={packets} encrypted={true} active={active} />}
-        <StatusBadge connected={phase >= 3} latencyMs={phase >= 3 ? 42 : 0} encrypted={true} active={active} />
+        <StatusBadge
+          connected={phase >= 3}
+          latencyMs={phase >= 3 ? 42 : 0}
+          encrypted={true}
+          active={active}
+        />
       </svg>
 
       {/* Phase stepper */}
@@ -763,7 +1000,9 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
 
   useEffect(() => {
     scheduleMatch();
-    return () => { timersRef.current.forEach(clearTimeout); };
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+    };
   }, [scheduleMatch]);
 
   return (
@@ -780,11 +1019,34 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
           transition={{ delay: 0.3, ...SPRING_SMOOTH }}
         >
           <rect x="10" y="195" width="100" height="50" rx="8" fill="#8b5cf6" opacity="0.08" />
-          <rect x="10" y="195" width="100" height="50" rx="8" fill="none" stroke="#8b5cf6" strokeWidth="0.8" opacity="0.4" />
-          <Key x={20} y={203} className="text-violet-400" width={14} height={14} strokeWidth={1.5} />
-          <text x="38" y="213" fill="#a78bfa" fontSize="8" fontWeight="600">PRIVATE KEY</text>
-          <text x="18" y="228" fill="white" fontSize="6.5" fontFamily="monospace" opacity="0.5">~/.ssh/acfs_ed25519</text>
-          <text x="18" y="238" fill="#a78bfa" fontSize="6" fontFamily="monospace" opacity="0.4">SHA256:xR3...9kQ</text>
+          <rect
+            x="10"
+            y="195"
+            width="100"
+            height="50"
+            rx="8"
+            fill="none"
+            stroke="#8b5cf6"
+            strokeWidth="0.8"
+            opacity="0.4"
+          />
+          <Key
+            x={20}
+            y={203}
+            className="text-violet-400"
+            width={14}
+            height={14}
+            strokeWidth={1.5}
+          />
+          <text x="38" y="213" fill="#a78bfa" fontSize="8" fontWeight="600">
+            PRIVATE KEY
+          </text>
+          <text x="18" y="228" fill="white" fontSize="6.5" fontFamily="monospace" opacity="0.5">
+            ~/.ssh/acfs_ed25519
+          </text>
+          <text x="18" y="238" fill="#a78bfa" fontSize="6" fontFamily="monospace" opacity="0.4">
+            SHA256:xR3...9kQ
+          </text>
         </motion.g>
 
         {/* Public key on server side */}
@@ -794,11 +1056,27 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
           transition={{ delay: 0.4, ...SPRING_SMOOTH }}
         >
           <rect x="490" y="195" width="100" height="50" rx="8" fill="#0ea5e9" opacity="0.08" />
-          <rect x="490" y="195" width="100" height="50" rx="8" fill="none" stroke="#0ea5e9" strokeWidth="0.8" opacity="0.4" />
+          <rect
+            x="490"
+            y="195"
+            width="100"
+            height="50"
+            rx="8"
+            fill="none"
+            stroke="#0ea5e9"
+            strokeWidth="0.8"
+            opacity="0.4"
+          />
           <Lock x={500} y={203} className="text-sky-400" width={14} height={14} strokeWidth={1.5} />
-          <text x="518" y="213" fill="#38bdf8" fontSize="8" fontWeight="600">PUBLIC KEY</text>
-          <text x="498" y="228" fill="white" fontSize="6.5" fontFamily="monospace" opacity="0.5">~/.ssh/authorized_keys</text>
-          <text x="498" y="238" fill="#38bdf8" fontSize="6" fontFamily="monospace" opacity="0.4">SHA256:xR3...9kQ</text>
+          <text x="518" y="213" fill="#38bdf8" fontSize="8" fontWeight="600">
+            PUBLIC KEY
+          </text>
+          <text x="498" y="228" fill="white" fontSize="6.5" fontFamily="monospace" opacity="0.5">
+            ~/.ssh/authorized_keys
+          </text>
+          <text x="498" y="238" fill="#38bdf8" fontSize="6" fontFamily="monospace" opacity="0.4">
+            SHA256:xR3...9kQ
+          </text>
         </motion.g>
 
         {/* Matching animation: keys flying to center */}
@@ -812,7 +1090,14 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
             >
               <circle cx="0" cy="0" r="12" fill="#8b5cf6" opacity="0.2" />
               <circle cx="0" cy="0" r="12" fill="none" stroke="#8b5cf6" strokeWidth="1.2" />
-              <Key x={-6} y={-6} className="text-violet-400" width={12} height={12} strokeWidth={2} />
+              <Key
+                x={-6}
+                y={-6}
+                className="text-violet-400"
+                width={12}
+                height={12}
+                strokeWidth={2}
+              />
             </motion.g>
             <motion.g
               initial={{ x: 540, y: 210, opacity: 0.8 }}
@@ -835,12 +1120,28 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
             transition={SPRING_SMOOTH}
             filter="url(#sshStrongGlow)"
           >
-            <motion.circle cx="300" cy="130" r="24" fill="#22c55e" opacity={0.15}
-              animate={active ? { r: [24, 35, 24], opacity: [0.15, 0.05, 0.15] } : { r: 24, opacity: 0.15 }}
+            <motion.circle
+              cx="300"
+              cy="130"
+              r="24"
+              fill="#22c55e"
+              opacity={0.15}
+              animate={
+                active ? { r: [24, 35, 24], opacity: [0.15, 0.05, 0.15] } : { r: 24, opacity: 0.15 }
+              }
               transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             />
-            <ShieldCheck x={288} y={118} className="text-emerald-400" width={24} height={24} strokeWidth={1.5} />
-            <text x="300" y="168" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="600">KEYS MATCHED</text>
+            <ShieldCheck
+              x={288}
+              y={118}
+              className="text-emerald-400"
+              width={24}
+              height={24}
+              strokeWidth={1.5}
+            />
+            <text x="300" y="168" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="600">
+              KEYS MATCHED
+            </text>
           </motion.g>
         )}
 
@@ -886,7 +1187,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
     if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
-        prev.map((p) => ({ ...p, progress: p.progress + 0.015 })).filter((p) => p.progress <= 1)
+        prev.map((p) => ({ ...p, progress: p.progress + 0.015 })).filter((p) => p.progress <= 1),
       );
     }, 32);
 
@@ -899,11 +1200,21 @@ function ScenarioPortForward({ active }: { active: boolean }) {
       const idx = id % labels.length;
       setPackets((prev) => [
         ...prev,
-        { id, progress: 0, direction: isOut ? "outgoing" : "incoming", label: labels[idx], encryptedLabel: encs[idx], color: isOut ? "#f59e0b" : "#8b5cf6" },
+        {
+          id,
+          progress: 0,
+          direction: isOut ? "outgoing" : "incoming",
+          label: labels[idx],
+          encryptedLabel: encs[idx],
+          color: isOut ? "#f59e0b" : "#8b5cf6",
+        },
       ]);
     }, 1600);
 
-    return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
+    return () => {
+      clearInterval(moveInterval);
+      clearInterval(spawnInterval);
+    };
   }, [active]);
 
   return (
@@ -923,16 +1234,47 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           transition={{ delay: 0.5, ...SPRING_SMOOTH }}
         >
           <rect x="8" y="170" width="104" height="36" rx="6" fill="#f59e0b" opacity="0.06" />
-          <rect x="8" y="170" width="104" height="36" rx="6" fill="none" stroke="#f59e0b" strokeWidth="0.7" opacity="0.3" />
-          <text x="60" y="184" textAnchor="middle" fill="#f59e0b" fontSize="8" fontWeight="600">LOCAL PORT</text>
-          <text x="60" y="198" textAnchor="middle" fill="#fbbf24" fontSize="10" fontFamily="monospace" fontWeight="bold">localhost:5432</text>
+          <rect
+            x="8"
+            y="170"
+            width="104"
+            height="36"
+            rx="6"
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth="0.7"
+            opacity="0.3"
+          />
+          <text x="60" y="184" textAnchor="middle" fill="#f59e0b" fontSize="8" fontWeight="600">
+            LOCAL PORT
+          </text>
+          <text
+            x="60"
+            y="198"
+            textAnchor="middle"
+            fill="#fbbf24"
+            fontSize="10"
+            fontFamily="monospace"
+            fontWeight="bold"
+          >
+            localhost:5432
+          </text>
         </motion.g>
 
         {/* Arrow from local port into tunnel */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} transition={{ delay: 0.7 }}>
-          <motion.line x1="112" y1="188" x2="148" y2="135" stroke="#f59e0b" strokeWidth="1" strokeDasharray="4 3"
+          <motion.line
+            x1="112"
+            y1="188"
+            x2="148"
+            y2="135"
+            stroke="#f59e0b"
+            strokeWidth="1"
+            strokeDasharray="4 3"
             animate={active ? { strokeDashoffset: [0, -14] } : { strokeDashoffset: 0 }}
-            transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
           />
           <polygon points="146,131 152,136 146,140" fill="#f59e0b" opacity="0.6" />
         </motion.g>
@@ -944,16 +1286,47 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           transition={{ delay: 0.6, ...SPRING_SMOOTH }}
         >
           <rect x="488" y="170" width="104" height="36" rx="6" fill="#8b5cf6" opacity="0.06" />
-          <rect x="488" y="170" width="104" height="36" rx="6" fill="none" stroke="#8b5cf6" strokeWidth="0.7" opacity="0.3" />
-          <text x="540" y="184" textAnchor="middle" fill="#8b5cf6" fontSize="8" fontWeight="600">REMOTE PORT</text>
-          <text x="540" y="198" textAnchor="middle" fill="#a78bfa" fontSize="10" fontFamily="monospace" fontWeight="bold">postgres:5432</text>
+          <rect
+            x="488"
+            y="170"
+            width="104"
+            height="36"
+            rx="6"
+            fill="none"
+            stroke="#8b5cf6"
+            strokeWidth="0.7"
+            opacity="0.3"
+          />
+          <text x="540" y="184" textAnchor="middle" fill="#8b5cf6" fontSize="8" fontWeight="600">
+            REMOTE PORT
+          </text>
+          <text
+            x="540"
+            y="198"
+            textAnchor="middle"
+            fill="#a78bfa"
+            fontSize="10"
+            fontFamily="monospace"
+            fontWeight="bold"
+          >
+            postgres:5432
+          </text>
         </motion.g>
 
         {/* Arrow from tunnel to remote port */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} transition={{ delay: 0.8 }}>
-          <motion.line x1="452" y1="135" x2="488" y2="188" stroke="#8b5cf6" strokeWidth="1" strokeDasharray="4 3"
+          <motion.line
+            x1="452"
+            y1="135"
+            x2="488"
+            y2="188"
+            stroke="#8b5cf6"
+            strokeWidth="1"
+            strokeDasharray="4 3"
             animate={active ? { strokeDashoffset: [0, -14] } : { strokeDashoffset: 0 }}
-            transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
           />
           <polygon points="486,184 492,189 486,193" fill="#8b5cf6" opacity="0.6" />
         </motion.g>
@@ -965,9 +1338,22 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           transition={{ delay: 0.9, ...SPRING_SMOOTH }}
         >
           <rect x="155" y="225" width="290" height="30" rx="6" fill="rgba(0,0,0,0.4)" />
-          <rect x="155" y="225" width="290" height="30" rx="6" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-          <text x="168" y="244" fill="#22c55e" fontSize="8" fontFamily="monospace" opacity="0.6">$</text>
-          <text x="178" y="244" fill="white" fontSize="8" fontFamily="monospace" opacity="0.7">ssh -L 5432:localhost:5432 ubuntu@vps</text>
+          <rect
+            x="155"
+            y="225"
+            width="290"
+            height="30"
+            rx="6"
+            fill="none"
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth="1"
+          />
+          <text x="168" y="244" fill="#22c55e" fontSize="8" fontFamily="monospace" opacity="0.6">
+            $
+          </text>
+          <text x="178" y="244" fill="white" fontSize="8" fontFamily="monospace" opacity="0.7">
+            ssh -L 5432:localhost:5432 ubuntu@vps
+          </text>
         </motion.g>
 
         <StatusBadge connected={true} latencyMs={38} encrypted={true} active={active} />
@@ -996,10 +1382,23 @@ function ScenarioReconnect({ active }: { active: boolean }) {
 
   const schedulePhases = useCallback(() => {
     timersRef.current.forEach(clearTimeout);
-    const t1 = setTimeout(() => { setPhase(1); phaseRef.current = 1; }, 2000);
-    const t2 = setTimeout(() => { setPhase(2); phaseRef.current = 2; setPackets([]); }, 3000);
-    const t3 = setTimeout(() => { setPhase(3); phaseRef.current = 3; }, 5000);
-    const t4 = setTimeout(() => { setPhase(4); phaseRef.current = 4; }, 6500);
+    const t1 = setTimeout(() => {
+      setPhase(1);
+      phaseRef.current = 1;
+    }, 2000);
+    const t2 = setTimeout(() => {
+      setPhase(2);
+      phaseRef.current = 2;
+      setPackets([]);
+    }, 3000);
+    const t3 = setTimeout(() => {
+      setPhase(3);
+      phaseRef.current = 3;
+    }, 5000);
+    const t4 = setTimeout(() => {
+      setPhase(4);
+      phaseRef.current = 4;
+    }, 6500);
     timersRef.current = [t1, t2, t3, t4];
   }, []);
 
@@ -1013,14 +1412,16 @@ function ScenarioReconnect({ active }: { active: boolean }) {
 
   useEffect(() => {
     schedulePhases();
-    return () => { timersRef.current.forEach(clearTimeout); };
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+    };
   }, [schedulePhases]);
 
   useEffect(() => {
     if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
-        prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1)
+        prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1),
       );
     }, 32);
 
@@ -1035,11 +1436,21 @@ function ScenarioReconnect({ active }: { active: boolean }) {
       const idx = id % cmds.length;
       setPackets((prev) => [
         ...prev,
-        { id, progress: 0, direction: isOut ? "outgoing" : "incoming", label: cmds[idx], encryptedLabel: encs[idx], color: isOut ? "#22c55e" : "#06b6d4" },
+        {
+          id,
+          progress: 0,
+          direction: isOut ? "outgoing" : "incoming",
+          label: cmds[idx],
+          encryptedLabel: encs[idx],
+          color: isOut ? "#22c55e" : "#06b6d4",
+        },
       ]);
     }, 1800);
 
-    return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
+    return () => {
+      clearInterval(moveInterval);
+      clearInterval(spawnInterval);
+    };
   }, [active]);
 
   const connected = phase === 0 || phase === 4;
@@ -1078,7 +1489,14 @@ function ScenarioReconnect({ active }: { active: boolean }) {
             animate={{ opacity: [0, 1, 0] }}
             transition={{ duration: 0.5, repeat: 3 }}
           >
-            <WifiOff x={288} y={118} className="text-red-500" width={24} height={24} strokeWidth={1.5} />
+            <WifiOff
+              x={288}
+              y={118}
+              className="text-red-500"
+              width={24}
+              height={24}
+              strokeWidth={1.5}
+            />
           </motion.g>
         )}
 
@@ -1086,10 +1504,19 @@ function ScenarioReconnect({ active }: { active: boolean }) {
         {phase === 3 && (
           <motion.g
             animate={active ? { rotate: [0, 360] } : { rotate: 0 }}
-            transition={active ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
             style={{ originX: "300px", originY: "130px" }}
           >
-            <RefreshCw x={288} y={118} className="text-amber-400" width={24} height={24} strokeWidth={1.5} />
+            <RefreshCw
+              x={288}
+              y={118}
+              className="text-amber-400"
+              width={24}
+              height={24}
+              strokeWidth={1.5}
+            />
           </motion.g>
         )}
 
@@ -1101,8 +1528,25 @@ function ScenarioReconnect({ active }: { active: boolean }) {
             transition={SPRING_SMOOTH}
           >
             <rect x="195" y="172" width="210" height="30" rx="8" fill="#22c55e" opacity="0.06" />
-            <rect x="195" y="172" width="210" height="30" rx="8" fill="none" stroke="#22c55e" strokeWidth="0.7" opacity="0.3" />
-            <ShieldCheck x={205} y={178} className="text-emerald-400" width={16} height={16} strokeWidth={1.5} />
+            <rect
+              x="195"
+              y="172"
+              width="210"
+              height="30"
+              rx="8"
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="0.7"
+              opacity="0.3"
+            />
+            <ShieldCheck
+              x={205}
+              y={178}
+              className="text-emerald-400"
+              width={16}
+              height={16}
+              strokeWidth={1.5}
+            />
             <text x="230" y="192" fill="#22c55e" fontSize="9" fontWeight="600">
               tmux session preserved on VPS
             </text>
@@ -1116,13 +1560,37 @@ function ScenarioReconnect({ active }: { active: boolean }) {
             transition={SPRING_SMOOTH}
           >
             <rect x="220" y="172" width="160" height="26" rx="8" fill="#22c55e" opacity="0.08" />
-            <rect x="220" y="172" width="160" height="26" rx="8" fill="none" stroke="#22c55e" strokeWidth="0.7" opacity="0.4" />
-            <CheckCircle2 x={230} y={178} className="text-emerald-400" width={14} height={14} strokeWidth={1.5} />
-            <text x="250" y="190" fill="#22c55e" fontSize="9" fontWeight="600">Session fully restored</text>
+            <rect
+              x="220"
+              y="172"
+              width="160"
+              height="26"
+              rx="8"
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="0.7"
+              opacity="0.4"
+            />
+            <CheckCircle2
+              x={230}
+              y={178}
+              className="text-emerald-400"
+              width={14}
+              height={14}
+              strokeWidth={1.5}
+            />
+            <text x="250" y="190" fill="#22c55e" fontSize="9" fontWeight="600">
+              Session fully restored
+            </text>
           </motion.g>
         )}
 
-        <StatusBadge connected={connected} latencyMs={connected ? 45 : 0} encrypted={true} active={active} />
+        <StatusBadge
+          connected={connected}
+          latencyMs={connected ? 45 : 0}
+          encrypted={true}
+          active={active}
+        />
       </svg>
 
       {/* Phase indicator */}
@@ -1168,7 +1636,10 @@ function InteractiveSSHTunnel() {
   const meta = SCENARIO_META[scenario];
 
   return (
-    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Scenario Tabs */}
       <div className="flex items-center gap-1 px-3 pt-4 pb-2 overflow-x-auto scrollbar-none">
         {(Object.keys(SCENARIO_META) as TunnelScenario[]).map((key) => {
@@ -1177,7 +1648,10 @@ function InteractiveSSHTunnel() {
           return (
             <button
               key={key}
-              onClick={() => { setScenario(key); setShowUnencrypted(false); }}
+              onClick={() => {
+                setScenario(key);
+                setShowUnencrypted(false);
+              }}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition duration-300 border whitespace-nowrap ${
                 active
                   ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
@@ -1201,7 +1675,9 @@ function InteractiveSSHTunnel() {
             }`}
           >
             {showUnencrypted ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">{showUnencrypted ? "Unencrypted" : "Encrypted"}</span>
+            <span className="hidden sm:inline">
+              {showUnencrypted ? "Unencrypted" : "Encrypted"}
+            </span>
           </button>
         )}
       </div>
@@ -1242,7 +1718,9 @@ function InteractiveSSHTunnel() {
             transition={{ duration: 0.25 }}
           >
             {scenario === "connect" && !showUnencrypted && <ScenarioConnect active={inView} />}
-            {scenario === "connect" && showUnencrypted && <ScenarioConnectUnencrypted active={inView} />}
+            {scenario === "connect" && showUnencrypted && (
+              <ScenarioConnectUnencrypted active={inView} />
+            )}
             {scenario === "keyauth" && <ScenarioKeyAuth active={inView} />}
             {scenario === "portforward" && <ScenarioPortForward active={inView} />}
             {scenario === "reconnect" && <ScenarioReconnect active={inView} />}
@@ -1280,7 +1758,7 @@ function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
     if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
-        prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1)
+        prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1),
       );
     }, 32);
 
@@ -1292,11 +1770,21 @@ function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
       const idx = id % cmds.length;
       setPackets((prev) => [
         ...prev,
-        { id, progress: 0, direction: isOut ? "outgoing" : "incoming", label: cmds[idx], encryptedLabel: cmds[idx], color: "#ef4444" },
+        {
+          id,
+          progress: 0,
+          direction: isOut ? "outgoing" : "incoming",
+          label: cmds[idx],
+          encryptedLabel: cmds[idx],
+          color: "#ef4444",
+        },
       ]);
     }, 1600);
 
-    return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
+    return () => {
+      clearInterval(moveInterval);
+      clearInterval(spawnInterval);
+    };
   }, [active]);
 
   return (
@@ -1320,12 +1808,30 @@ function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
             transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
           >
             <Eye x={288} y={72} className="text-red-400" width={24} height={20} strokeWidth={1.5} />
-            <text x="300" y="100" textAnchor="middle" fill="#ef4444" fontSize="7.5" fontWeight="600">EAVESDROPPER</text>
+            <text
+              x="300"
+              y="100"
+              textAnchor="middle"
+              fill="#ef4444"
+              fontSize="7.5"
+              fontWeight="600"
+            >
+              EAVESDROPPER
+            </text>
           </motion.g>
           {/* Line from eye to tunnel */}
-          <motion.line x1="300" y1="100" x2="300" y2="110" stroke="#ef4444" strokeWidth="0.8" strokeDasharray="3 2"
+          <motion.line
+            x1="300"
+            y1="100"
+            x2="300"
+            y2="110"
+            stroke="#ef4444"
+            strokeWidth="0.8"
+            strokeDasharray="3 2"
             animate={active ? { strokeDashoffset: [0, -10] } : { strokeDashoffset: 0 }}
-            transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+            transition={
+              active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
           />
         </motion.g>
 
@@ -1367,11 +1873,17 @@ function StageCard({
             {number}
           </div>
           <div>
-            <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
-            <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">{subtitle}</span>
+            <h4 className="font-bold text-white group-hover:text-primary transition-colors">
+              {title}
+            </h4>
+            <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">
+              {subtitle}
+            </span>
           </div>
         </div>
-        <p className="text-sm text-white/60 mb-4 group-hover:text-white/70 transition-colors">{description}</p>
+        <p className="text-sm text-white/60 mb-4 group-hover:text-white/70 transition-colors">
+          {description}
+        </p>
         <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.06] text-xs font-mono text-white/80 overflow-x-auto group-hover:border-primary/20 group-hover:bg-black/40 transition duration-300">
           {code}
         </code>
@@ -1383,13 +1895,7 @@ function StageCard({
 // =============================================================================
 // COMMAND PART - Breakdown of command components
 // =============================================================================
-function CommandPart({
-  label,
-  description,
-}: {
-  label: string;
-  description: string;
-}) {
+function CommandPart({ label, description }: { label: string; description: string }) {
   return (
     <motion.div
       whileHover={{ x: 4, scale: 1.02 }}
@@ -1398,7 +1904,9 @@ function CommandPart({
       <code className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary group-hover:bg-primary/20 group-hover:border-primary/40 transition duration-300">
         {label}
       </code>
-      <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">{description}</span>
+      <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+        {description}
+      </span>
     </motion.div>
   );
 }
@@ -1438,8 +1946,12 @@ function QuizCards() {
               {i + 1}
             </div>
             <div className="flex-1">
-              <p className="font-medium text-white group-hover:text-primary transition-colors">{q.question}</p>
-              <p className="mt-2 text-sm text-white/50 group-hover:text-white/70 transition-colors">{q.answer}</p>
+              <p className="font-medium text-white group-hover:text-primary transition-colors">
+                {q.question}
+              </p>
+              <p className="mt-2 text-sm text-white/50 group-hover:text-white/70 transition-colors">
+                {q.answer}
+              </p>
             </div>
           </div>
         </motion.div>

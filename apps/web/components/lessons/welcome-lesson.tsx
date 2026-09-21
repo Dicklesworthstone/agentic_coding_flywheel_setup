@@ -1,48 +1,42 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Terminal,
-  Code2,
+  Activity,
+  BookOpen,
   Bot,
+  ChevronRight,
+  Code2,
+  Globe,
+  HardDrive,
   Layers,
+  Lock,
+  Network,
+  Shield,
+  Terminal,
   Wrench,
   Zap,
-  BookOpen,
-  Shield,
-  ChevronRight,
-  Activity,
-  Globe,
-  Lock,
-  HardDrive,
-  Network,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  Divider,
   FeatureCard,
   FeatureGrid,
-  TipBox,
-  StepList,
-  Highlight,
-  Divider,
   GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  StepList,
+  TipBox,
 } from "./lesson-components";
 
 export function WelcomeLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Understand what you have and what you&apos;re about to learn.
-      </GoalBanner>
+      <GoalBanner>Understand what you have and what you&apos;re about to learn.</GoalBanner>
 
       {/* What You Now Have Section */}
-      <Section
-        title="What You Now Have"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What You Now Have" icon={<Zap className="h-5 w-5" />} delay={0.1}>
         <Paragraph highlight>
           Congratulations! You&apos;ve just set up a fully-armed{" "}
           <Highlight>agentic engineering workstation</Highlight>.
@@ -83,32 +77,16 @@ export function WelcomeLesson() {
 
         {/* Agent Cards */}
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <AgentCard
-            name="Claude Code"
-            shortcut="cc"
-            color="from-orange-500 to-amber-500"
-          />
-          <AgentCard
-            name="Codex CLI"
-            shortcut="cod"
-            color="from-emerald-500 to-teal-500"
-          />
-          <AgentCard
-            name="Antigravity CLI"
-            shortcut="agy"
-            color="from-blue-500 to-purple-500"
-          />
+          <AgentCard name="Claude Code" shortcut="cc" color="from-orange-500 to-amber-500" />
+          <AgentCard name="Codex CLI" shortcut="cod" color="from-emerald-500 to-teal-500" />
+          <AgentCard name="Antigravity CLI" shortcut="agy" color="from-blue-500 to-purple-500" />
         </div>
       </Section>
 
       <Divider />
 
       {/* The Mental Model Section */}
-      <Section
-        title="The Mental Model"
-        icon={<Layers className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="The Mental Model" icon={<Layers className="h-5 w-5" />} delay={0.2}>
         <Paragraph>Think of your setup like this:</Paragraph>
 
         {/* Architecture Diagram */}
@@ -118,13 +96,11 @@ export function WelcomeLesson() {
 
         <div className="mt-8 space-y-4">
           <Paragraph>
-            Your laptop is just the{" "}
-            <Highlight>remote control</Highlight>. The real work happens on the
-            VPS.
+            Your laptop is just the <Highlight>remote control</Highlight>. The real work happens on
+            the VPS.
           </Paragraph>
           <Paragraph>
-            If your SSH connection drops? No problem. Your work continues in
-            tmux.
+            If your SSH connection drops? No problem. Your work continues in tmux.
           </Paragraph>
         </div>
       </Section>
@@ -132,11 +108,7 @@ export function WelcomeLesson() {
       <Divider />
 
       {/* What This Tutorial Will Teach You */}
-      <Section
-        title="What You'll Learn"
-        icon={<BookOpen className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="What You'll Learn" icon={<BookOpen className="h-5 w-5" />} delay={0.3}>
         <StepList
           steps={[
             {
@@ -171,8 +143,8 @@ export function WelcomeLesson() {
 
       {/* Tip */}
       <TipBox variant="tip">
-        If you ever break something, you can delete this VPS and re-run ACFS.
-        That&apos;s the beauty of VPS development!
+        If you ever break something, you can delete this VPS and re-run ACFS. That&apos;s the beauty
+        of VPS development!
       </TipBox>
     </div>
   );
@@ -181,15 +153,7 @@ export function WelcomeLesson() {
 // =============================================================================
 // AGENT CARD - Individual agent display
 // =============================================================================
-function AgentCard({
-  name,
-  shortcut,
-  color,
-}: {
-  name: string;
-  shortcut: string;
-  color: string;
-}) {
+function AgentCard({ name, shortcut, color }: { name: string; shortcut: string; color: string }) {
   return (
     <motion.div
       whileHover={{ y: -4, scale: 1.03 }}
@@ -414,7 +378,11 @@ const archLayers: ArchLayer[] = [
         shortName: "ntm",
         description:
           "The orchestrator. Launches multiple agents in parallel tmux panes so you can run Claude, Codex, and Antigravity simultaneously on different tasks.",
-        commands: ["ntm spawn myproject --cc=2 --cod=2", "ntm status myproject", "ntm kill myproject"],
+        commands: [
+          "ntm spawn myproject --cc=2 --cod=2",
+          "ntm status myproject",
+          "ntm kill myproject",
+        ],
         dependencies: ["tmux", "claude", "codex", "antigravity"],
         status: "active",
       },
@@ -536,9 +504,7 @@ function InteractiveArchitecture() {
 
   // Find the selected component's full data
   const selectedData = selectedComponent
-    ? archLayers
-        .flatMap((l) => l.components)
-        .find((c) => c.id === selectedComponent)
+    ? archLayers.flatMap((l) => l.components).find((c) => c.id === selectedComponent)
     : null;
 
   const selectedLayerData = selectedComponent
@@ -546,7 +512,10 @@ function InteractiveArchitecture() {
     : null;
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glow effects */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -579,12 +548,8 @@ function InteractiveArchitecture() {
               <Layers className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">
-                ACFS Architecture Explorer
-              </h3>
-              <p className="text-xs text-white/40">
-                Click any component to explore
-              </p>
+              <h3 className="text-sm font-semibold text-white">ACFS Architecture Explorer</h3>
+              <p className="text-xs text-white/40">Click any component to explore</p>
             </div>
           </div>
           {revealedLayers < archLayers.length && (
@@ -627,9 +592,7 @@ function InteractiveArchitecture() {
                           {layer.label}
                         </span>
                         <div className="flex-1 h-px bg-white/[0.06]" />
-                        <span className="text-[10px] text-white/30 font-mono">
-                          L{layerIdx + 1}
-                        </span>
+                        <span className="text-[10px] text-white/30 font-mono">L{layerIdx + 1}</span>
                       </div>
 
                       {/* Component nodes */}
@@ -638,15 +601,13 @@ function InteractiveArchitecture() {
                           const isSelected = selectedComponent === comp.id;
                           // Check if this component is a dependency of the selected one
                           const isDepOfSelected =
-                            selectedData?.dependencies.includes(comp.id) ??
-                            false;
+                            selectedData?.dependencies.includes(comp.id) ?? false;
                           // Check if selected is a dependency of this one
                           const selectedIsDep =
                             selectedComponent !== null &&
                             comp.dependencies.includes(selectedComponent);
 
-                          const isHighlighted =
-                            isSelected || isDepOfSelected || selectedIsDep;
+                          const isHighlighted = isSelected || isDepOfSelected || selectedIsDep;
 
                           return (
                             <motion.button
@@ -677,8 +638,7 @@ function InteractiveArchitecture() {
                                   <div
                                     className="absolute inset-0 h-1.5 w-1.5 rounded-full bg-emerald-400"
                                     style={{
-                                      animation:
-                                        "healthPulse 2s ease-in-out infinite",
+                                      animation: "healthPulse 2s ease-in-out infinite",
                                     }}
                                   />
                                 )}
@@ -702,17 +662,13 @@ function InteractiveArchitecture() {
                       </div>
 
                       {/* Connection lines between layers (decorative dashes) */}
-                      {layerIdx < archLayers.length - 1 &&
-                        layerIdx < revealedLayers - 1 && (
-                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                            {[0, 1, 2].map((i) => (
-                              <div
-                                key={i}
-                                className="w-0.5 h-2 rounded-full bg-white/10"
-                              />
-                            ))}
-                          </div>
-                        )}
+                      {layerIdx < archLayers.length - 1 && layerIdx < revealedLayers - 1 && (
+                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                          {[0, 1, 2].map((i) => (
+                            <div key={i} className="w-0.5 h-2 rounded-full bg-white/10" />
+                          ))}
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -729,8 +685,7 @@ function InteractiveArchitecture() {
                 <Activity className="h-3 w-3" />
                 <span>
                   {archLayers.length - revealedLayers} more layer
-                  {archLayers.length - revealedLayers > 1 ? "s" : ""}{" "}
-                  loading...
+                  {archLayers.length - revealedLayers > 1 ? "s" : ""} loading...
                 </span>
               </motion.div>
             )}
@@ -854,8 +809,7 @@ function InteractiveArchitecture() {
                 >
                   <HardDrive className="h-6 w-6 text-white/15 mb-2" />
                   <p className="text-xs text-white/30">
-                    Select a component to see details, commands, and
-                    dependencies
+                    Select a component to see details, commands, and dependencies
                   </p>
                 </motion.div>
               )}
@@ -868,9 +822,7 @@ function InteractiveArchitecture() {
                 <div className="h-2 w-2 rounded-full bg-red-500/60" />
                 <div className="h-2 w-2 rounded-full bg-amber-500/60" />
                 <div className="h-2 w-2 rounded-full bg-emerald-500/60" />
-                <span className="ml-2 text-[10px] text-white/30 font-mono">
-                  terminal
-                </span>
+                <span className="ml-2 text-[10px] text-white/30 font-mono">terminal</span>
               </div>
               {/* Terminal content */}
               <div className="p-3 font-mono text-[11px] space-y-1.5 min-h-[80px]">
@@ -887,9 +839,7 @@ function InteractiveArchitecture() {
                         {terminalCommands[terminalLine].prompt}
                       </span>
                       <span className="text-white/30">$</span>
-                      <span className="text-white/80">
-                        {terminalCommands[terminalLine].cmd}
-                      </span>
+                      <span className="text-white/80">{terminalCommands[terminalLine].cmd}</span>
                       <span
                         className="inline-block w-1.5 h-3.5 bg-primary/60 ml-0.5"
                         style={{
@@ -921,21 +871,15 @@ function InteractiveArchitecture() {
                       }}
                     />
                   </div>
-                  <span className="text-[10px] text-white/40">
-                    Active - running and healthy
-                  </span>
+                  <span className="text-[10px] text-white/40">Active - running and healthy</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-amber-400" />
-                  <span className="text-[10px] text-white/40">
-                    Ready - installed, needs auth
-                  </span>
+                  <span className="text-[10px] text-white/40">Ready - installed, needs auth</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-white/20" />
-                  <span className="text-[10px] text-white/40">
-                    Standby - available if needed
-                  </span>
+                  <span className="text-[10px] text-white/40">Standby - available if needed</span>
                 </div>
               </div>
             </div>
@@ -946,21 +890,9 @@ function InteractiveArchitecture() {
         <div className="mt-4 pt-4 border-t border-white/[0.06]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <DataFlowArrow
-                from="Your Laptop"
-                to="SSH Tunnel"
-                color="text-sky-400"
-              />
-              <DataFlowArrow
-                from="SSH Tunnel"
-                to="tmux"
-                color="text-violet-400"
-              />
-              <DataFlowArrow
-                from="tmux"
-                to="Agents"
-                color="text-amber-400"
-              />
+              <DataFlowArrow from="Your Laptop" to="SSH Tunnel" color="text-sky-400" />
+              <DataFlowArrow from="SSH Tunnel" to="tmux" color="text-violet-400" />
+              <DataFlowArrow from="tmux" to="Agents" color="text-amber-400" />
               <DataFlowArrow from="NTM" to="All Agents" color="text-rose-400" />
             </div>
             <div className="flex items-center gap-1.5 text-[10px] text-white/25">
@@ -975,15 +907,7 @@ function InteractiveArchitecture() {
 }
 
 // Small data flow arrow component used in bottom bar
-function DataFlowArrow({
-  from,
-  to,
-  color,
-}: {
-  from: string;
-  to: string;
-  color: string;
-}) {
+function DataFlowArrow({ from, to, color }: { from: string; to: string; color: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[10px] text-white/40">{from}</span>
@@ -995,4 +919,3 @@ function DataFlowArrow({
     </div>
   );
 }
-

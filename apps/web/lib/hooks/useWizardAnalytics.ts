@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from "react";
 import {
-  WizardStep,
+  trackConversion,
+  trackFunnelDropoff,
+  trackFunnelStepComplete,
+  trackFunnelStepEnter,
+  trackWizardAbandonment,
   trackWizardStep,
   trackWizardStepComplete,
-  trackWizardAbandonment,
-  trackConversion,
-  trackFunnelStepEnter,
-  trackFunnelStepComplete,
-  trackFunnelDropoff,
-} from '@/lib/analytics';
-import { TOTAL_STEPS } from '@/lib/wizardSteps';
+  type WizardStep,
+} from "@/lib/analytics";
+import { TOTAL_STEPS } from "@/lib/wizardSteps";
 
 interface UseWizardAnalyticsOptions {
   step: WizardStep;
@@ -59,7 +59,7 @@ export function useWizardAnalytics({
 
     // Track wizard start conversion on first step
     if (stepNumber === 1) {
-      trackConversion('wizard_start');
+      trackConversion("wizard_start");
     }
   }, [step, stepNumber, stepTitle, totalSteps]);
 
@@ -69,47 +69,53 @@ export function useWizardAnalytics({
   }, []);
 
   // Track step completion
-  const markComplete = useCallback((additionalData?: Record<string, unknown>) => {
-    // Ensure we're marking complete for the currently tracked step
-    if (isCompleted.current || trackedStepNumber.current !== stepNumber) return;
-    isCompleted.current = true;
+  const markComplete = useCallback(
+    (additionalData?: Record<string, unknown>) => {
+      // Ensure we're marking complete for the currently tracked step
+      if (isCompleted.current || trackedStepNumber.current !== stepNumber) return;
+      isCompleted.current = true;
 
-    const timeSpent = getTimeSpent();
+      const timeSpent = getTimeSpent();
 
-    // Track legacy event
-    trackWizardStepComplete(step, stepNumber, timeSpent);
+      // Track legacy event
+      trackWizardStepComplete(step, stepNumber, timeSpent);
 
-    // Track funnel step completion
-    if (stepNumber >= 1 && stepNumber <= totalSteps) {
-      trackFunnelStepComplete(stepNumber, step, {
-        step_title: stepTitle,
-        ...additionalData,
-      });
-    }
-  }, [step, stepNumber, stepTitle, totalSteps, getTimeSpent]);
+      // Track funnel step completion
+      if (stepNumber >= 1 && stepNumber <= totalSteps) {
+        trackFunnelStepComplete(stepNumber, step, {
+          step_title: stepTitle,
+          ...additionalData,
+        });
+      }
+    },
+    [step, stepNumber, stepTitle, totalSteps, getTimeSpent],
+  );
 
   // Track abandonment
-  const markAbandoned = useCallback((reason?: string) => {
-    trackWizardAbandonment(step, stepNumber, reason);
-    if (stepNumber >= 1 && stepNumber <= totalSteps) {
-      trackFunnelDropoff(reason);
-    }
-  }, [step, stepNumber, totalSteps]);
+  const markAbandoned = useCallback(
+    (reason?: string) => {
+      trackWizardAbandonment(step, stepNumber, reason);
+      if (stepNumber >= 1 && stepNumber <= totalSteps) {
+        trackFunnelDropoff(reason);
+      }
+    },
+    [step, stepNumber, totalSteps],
+  );
 
   // Track potential abandonment on unmount
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!isCompleted.current) {
         if (stepNumber >= 1 && stepNumber <= totalSteps) {
-          trackFunnelDropoff('page_exit');
+          trackFunnelDropoff("page_exit");
         }
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [stepNumber, totalSteps]);
 

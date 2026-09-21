@@ -1,8 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Book,
   BookOpen,
@@ -14,25 +11,28 @@ import {
   List,
   Lock,
   Play,
-  Terminal,
   Sparkles,
+  Terminal,
   Zap,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "@/components/motion";
 import { Button } from "@/components/ui/button";
-import {
-  LESSONS,
-  TOTAL_LESSONS,
-  useCompletedLessons,
-  getCompletedLessons,
-  getCompletionPercentage,
-  getNextUncompletedLesson,
-  getLessonStatus,
-  type LessonStatus,
-} from "@/lib/lessonProgress";
+import { getLessonFunnelData, initLessonFunnel, sendEvent } from "@/lib/analytics";
 import { springs } from "@/lib/design-tokens";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
-import { sendEvent, initLessonFunnel, getLessonFunnelData } from "@/lib/analytics";
+import {
+  getCompletedLessons,
+  getCompletionPercentage,
+  getLessonStatus,
+  getNextUncompletedLesson,
+  LESSONS,
+  type LessonStatus,
+  TOTAL_LESSONS,
+  useCompletedLessons,
+} from "@/lib/lessonProgress";
 import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 type QuickReferenceItem = {
@@ -100,7 +100,9 @@ function LessonCard({
     <motion.div
       initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: index * 0.04 }}
+      transition={
+        prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: index * 0.04 }
+      }
       whileHover={isAccessible && !prefersReducedMotion ? { y: -6, scale: 1.02 } : undefined}
       whileTap={isAccessible && !prefersReducedMotion ? { scale: 0.98 } : undefined}
       className="h-full"
@@ -159,13 +161,15 @@ function LessonCard({
         </div>
 
         {/* Lesson number with glow */}
-        <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl font-mono text-sm font-bold transition duration-300 ${
-          status === "completed"
-            ? "bg-[oklch(0.72_0.19_145/0.2)] text-[oklch(0.72_0.19_145)]"
-            : status === "current"
-              ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
-              : "bg-white/[0.04] text-muted-foreground/80"
-        } group-hover:bg-primary/20 group-hover:text-primary`}>
+        <div
+          className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl font-mono text-sm font-bold transition duration-300 ${
+            status === "completed"
+              ? "bg-[oklch(0.72_0.19_145/0.2)] text-[oklch(0.72_0.19_145)]"
+              : status === "current"
+                ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
+                : "bg-white/[0.04] text-muted-foreground/80"
+          } group-hover:bg-primary/20 group-hover:text-primary`}
+        >
           {lesson.id + 1}
         </div>
 
@@ -177,7 +181,9 @@ function LessonCard({
         </h3>
 
         {/* Description */}
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground/80">{lesson.description}</p>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground/80">
+          {lesson.description}
+        </p>
 
         {/* Duration with icon */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
@@ -205,7 +211,11 @@ function LessonCard({
   );
 
   if (isAccessible) {
-    return <Link href={`/learn/${lesson.slug}`} className="block h-full">{cardContent}</Link>;
+    return (
+      <Link href={`/learn/${lesson.slug}`} className="block h-full">
+        {cardContent}
+      </Link>
+    );
   }
 
   // Locked: still in the tab order so keyboard and screen-reader users can
@@ -228,12 +238,8 @@ function LessonCard({
 
 export default function LearnDashboard() {
   const { completedLessons, hasLoaded } = useCompletedLessons();
-  const completionPercentage = hasLoaded
-    ? getCompletionPercentage(completedLessons)
-    : 0;
-  const nextLesson = hasLoaded
-    ? getNextUncompletedLesson(completedLessons)
-    : undefined;
+  const completionPercentage = hasLoaded ? getCompletionPercentage(completedLessons) : 0;
+  const nextLesson = hasLoaded ? getNextUncompletedLesson(completedLessons) : undefined;
   const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
   const hasTrackedPageView = useRef(false);
@@ -244,11 +250,8 @@ export default function LearnDashboard() {
     hasTrackedPageView.current = true;
 
     const hydratedCompletedLessons = getCompletedLessons();
-    const hydratedCompletionPercentage = getCompletionPercentage(
-      hydratedCompletedLessons
-    );
-    const hydratedNextLesson =
-      getNextUncompletedLesson(hydratedCompletedLessons);
+    const hydratedCompletionPercentage = getCompletionPercentage(hydratedCompletedLessons);
+    const hydratedNextLesson = getNextUncompletedLesson(hydratedCompletedLessons);
 
     // Initialize lesson funnel if not already started
     if (!getLessonFunnelData()) {
@@ -256,11 +259,11 @@ export default function LearnDashboard() {
     }
 
     // Track learning hub visit with context
-    sendEvent('learning_hub_visit', {
+    sendEvent("learning_hub_visit", {
       completed_lessons: hydratedCompletedLessons.length,
       total_lessons: TOTAL_LESSONS,
       completion_percentage: hydratedCompletionPercentage,
-      next_lesson: hydratedNextLesson?.slug || 'all_complete',
+      next_lesson: hydratedNextLesson?.slug || "all_complete",
     });
   }, []);
 
@@ -271,14 +274,12 @@ export default function LearnDashboard() {
       return [];
     }
     return LESSONS.filter((lesson) => {
-        const status = getLessonStatus(lesson.id, completedLessons);
-        return status !== "locked";
-      });
+      const status = getLessonStatus(lesson.id, completedLessons);
+      return status !== "locked";
+    });
   }, [completedLessons, hasLoaded]);
   const effectiveSelectedIndex =
-    selectedIndex >= 0 && selectedIndex < accessibleLessons.length
-      ? selectedIndex
-      : -1;
+    selectedIndex >= 0 && selectedIndex < accessibleLessons.length ? selectedIndex : -1;
 
   // Keyboard navigation handler
   const handleKeyDown = useCallback(
@@ -297,9 +298,7 @@ export default function LearnDashboard() {
         case "j":
         case "ArrowDown":
           e.preventDefault();
-          setSelectedIndex((prev) =>
-            prev < accessibleLessons.length - 1 ? prev + 1 : prev
-          );
+          setSelectedIndex((prev) => (prev < accessibleLessons.length - 1 ? prev + 1 : prev));
           break;
         case "k":
         case "ArrowUp":
@@ -317,7 +316,7 @@ export default function LearnDashboard() {
           break;
       }
     },
-    [accessibleLessons, effectiveSelectedIndex, hasLoaded, router]
+    [accessibleLessons, effectiveSelectedIndex, hasLoaded, router],
   );
 
   useEffect(() => {
@@ -358,10 +357,14 @@ export default function LearnDashboard() {
 
           <div className="flex items-center gap-3 sm:gap-4">
             <span className="hidden text-xs text-muted-foreground/80 lg:block">
-              <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">j</kbd>
+              <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">
+                j
+              </kbd>
               /
-              <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">k</kbd>
-              {" "}to navigate
+              <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">
+                k
+              </kbd>{" "}
+              to navigate
             </span>
             <Link
               href="/wizard/os-selection"
@@ -392,7 +395,9 @@ export default function LearnDashboard() {
               <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 backdrop-blur-xl lg:h-20 lg:w-20">
                 <GraduationCap className="h-8 w-8 text-primary lg:h-10 lg:w-10" />
               </div>
-              <Sparkles className={`absolute -right-1 -top-1 h-5 w-5 text-primary ${prefersReducedMotion ? "" : "animate-pulse"}`} />
+              <Sparkles
+                className={`absolute -right-1 -top-1 h-5 w-5 text-primary ${prefersReducedMotion ? "" : "animate-pulse"}`}
+              />
             </div>
           </motion.div>
 
@@ -401,7 +406,10 @@ export default function LearnDashboard() {
           </h1>
           <p className="mx-auto max-w-2xl text-base text-muted-foreground/80 sm:text-lg">
             Master your agentic coding environment with hands-on lessons.
-            <span className="hidden sm:inline"> Start from the basics and progress to advanced workflows.</span>
+            <span className="hidden sm:inline">
+              {" "}
+              Start from the basics and progress to advanced workflows.
+            </span>
           </p>
         </motion.section>
 
@@ -430,10 +438,10 @@ export default function LearnDashboard() {
                   {!hasLoaded
                     ? "Loading your saved progress..."
                     : completedLessons.length === TOTAL_LESSONS
-                    ? "🎉 Congratulations! You've mastered all lessons."
-                    : nextLesson
-                      ? `Up next: ${nextLesson.title}`
-                      : "Begin your learning journey"}
+                      ? "🎉 Congratulations! You've mastered all lessons."
+                      : nextLesson
+                        ? `Up next: ${nextLesson.title}`
+                        : "Begin your learning journey"}
                 </p>
               </div>
 
@@ -443,7 +451,9 @@ export default function LearnDashboard() {
                   className="relative h-18 w-18 sm:h-20 sm:w-20"
                   initial={prefersReducedMotion ? false : { scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  transition={prefersReducedMotion ? { duration: 0 } : { ...springs.bouncy, delay: 0.3 }}
+                  transition={
+                    prefersReducedMotion ? { duration: 0 } : { ...springs.bouncy, delay: 0.3 }
+                  }
                 >
                   {/* Glow behind progress ring */}
                   <div className="absolute inset-0 rounded-full bg-primary/20 blur-lg" />
@@ -460,9 +470,17 @@ export default function LearnDashboard() {
                       className="stroke-primary"
                       strokeWidth="2.5"
                       strokeLinecap="round"
-                      initial={prefersReducedMotion ? { strokeDasharray: `${completionPercentage}, 100` } : { strokeDasharray: "0, 100" }}
+                      initial={
+                        prefersReducedMotion
+                          ? { strokeDasharray: `${completionPercentage}, 100` }
+                          : { strokeDasharray: "0, 100" }
+                      }
                       animate={{ strokeDasharray: `${completionPercentage}, 100` }}
-                      transition={prefersReducedMotion ? { duration: 0 } : { duration: 1, delay: 0.5, ease: "easeOut" }}
+                      transition={
+                        prefersReducedMotion
+                          ? { duration: 0 }
+                          : { duration: 1, delay: 0.5, ease: "easeOut" }
+                      }
                       style={{ filter: "drop-shadow(0 0 6px oklch(0.7 0.2 280 / 0.5))" }}
                     />
                   </svg>
@@ -479,7 +497,9 @@ export default function LearnDashboard() {
                     className="font-mono text-3xl font-bold text-primary sm:text-4xl"
                     initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.4 }}
+                    transition={
+                      prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.4 }
+                    }
                     style={{ textShadow: "0 0 30px oklch(0.7 0.2 280 / 0.3)" }}
                   >
                     {hasLoaded ? `${completedLessons.length}/${TOTAL_LESSONS}` : "--"}
@@ -494,9 +514,15 @@ export default function LearnDashboard() {
               <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
                 <motion.div
                   className="relative h-full bg-gradient-to-r from-primary via-primary to-emerald-400"
-                  initial={prefersReducedMotion ? { width: `${completionPercentage}%` } : { width: 0 }}
+                  initial={
+                    prefersReducedMotion ? { width: `${completionPercentage}%` } : { width: 0 }
+                  }
                   animate={{ width: `${completionPercentage}%` }}
-                  transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.8, delay: 0.5, ease: "easeOut" }}
+                  transition={
+                    prefersReducedMotion
+                      ? { duration: 0 }
+                      : { duration: 0.8, delay: 0.5, ease: "easeOut" }
+                  }
                   style={{ boxShadow: "0 0 20px oklch(0.7 0.2 280 / 0.5)" }}
                 >
                   {/* Shimmer effect */}
@@ -513,7 +539,9 @@ export default function LearnDashboard() {
                 className="mt-5 hidden sm:block lg:mt-6"
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.6 }}
+                transition={
+                  prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.6 }
+                }
               >
                 <Button asChild size="lg" className="group w-full gap-2 sm:w-auto">
                   <Link href={`/learn/${nextLesson.slug}`}>
@@ -539,9 +567,7 @@ export default function LearnDashboard() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-5">
               {LESSONS.map((lesson, index) => {
                 const status = getLessonStatus(lesson.id, completedLessons);
-                const accessibleIndex = accessibleLessons.findIndex(
-                  (l) => l.id === lesson.id
-                );
+                const accessibleIndex = accessibleLessons.findIndex((l) => l.id === lesson.id);
                 return (
                   <LessonCard
                     key={lesson.id}
@@ -592,7 +618,9 @@ export default function LearnDashboard() {
             {/* Subtle gradient */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.03] via-transparent to-transparent" />
 
-            <h2 className="relative mb-5 text-lg font-semibold lg:mb-6 lg:text-xl">Quick Reference</h2>
+            <h2 className="relative mb-5 text-lg font-semibold lg:mb-6 lg:text-xl">
+              Quick Reference
+            </h2>
             <div className="relative grid gap-3 sm:grid-cols-2 sm:gap-4">
               {QUICK_REFERENCE_ITEMS.map((item, index) => {
                 const lesson = item.lessonSlug
@@ -613,7 +641,9 @@ export default function LearnDashboard() {
                       <item.icon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
                     </div>
                     <div className="min-w-0">
-                      <div className="font-medium transition-colors group-hover:text-primary">{item.title}</div>
+                      <div className="font-medium transition-colors group-hover:text-primary">
+                        {item.title}
+                      </div>
                       <div
                         id={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
                         className="truncate text-sm text-muted-foreground/80"
@@ -632,16 +662,18 @@ export default function LearnDashboard() {
                     key={item.href}
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.6 + index * 0.05 }}
-                    whileHover={
+                    transition={
                       prefersReducedMotion
-                        ? undefined
-                        : { y: -3, scale: 1.01 }
+                        ? { duration: 0 }
+                        : { ...springs.smooth, delay: 0.6 + index * 0.05 }
                     }
+                    whileHover={prefersReducedMotion ? undefined : { y: -3, scale: 1.01 }}
                   >
                     <Link
                       href={item.href}
-                      aria-describedby={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
+                      aria-describedby={
+                        isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined
+                      }
                       className={`group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-gradient-to-br ${item.gradient} p-4 backdrop-blur transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] ${
                         isLockedReference ? "opacity-60 hover:opacity-80" : ""
                       }`}
@@ -664,7 +696,10 @@ export default function LearnDashboard() {
         >
           <p>
             Need to set up your VPS first?{" "}
-            <Link href="/wizard/os-selection" className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary">
+            <Link
+              href="/wizard/os-selection"
+              className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary"
+            >
               Start the setup wizard →
             </Link>
           </p>

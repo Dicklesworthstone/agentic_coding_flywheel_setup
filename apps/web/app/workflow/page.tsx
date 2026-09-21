@@ -1,63 +1,62 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { VPS_TOP_PICK } from "@/lib/vpsProviders";
-import { motion, AnimatePresence } from "@/components/motion";
 import {
-  Sparkles,
-  Brain,
-  GitBranch,
-  Zap,
-  Settings,
-  Users,
-  ChevronDown,
-  Check,
   ArrowLeft,
-  Copy,
-  Layers,
-  Terminal,
-  Globe,
-  Database,
+  ArrowRight,
   BarChart3,
-  RefreshCw,
-  Keyboard,
-  ListOrdered,
+  BookOpen,
+  Brain,
+  Bug,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Copy,
+  Cpu,
+  Database,
   Eye,
+  FileCode,
+  GitBranch,
   GitCommit,
+  GitMerge,
+  Globe,
+  Keyboard,
+  Layers,
   Lightbulb,
-  Target,
+  ListOrdered,
+  MessageSquare,
+  Play,
+  RefreshCw,
+  Rocket,
+  Search,
+  Settings,
   Shield,
   ShieldAlert,
-  Search,
-  Clock,
-  ArrowRight,
-  Play,
-  Cpu,
-  MessageSquare,
-  FileCode,
-  Bug,
+  Sparkles,
+  Target,
+  Terminal,
   TestTube,
-  BookOpen,
-  Rocket,
-  ChevronRight,
-  GitMerge,
+  Users,
+  Zap,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { CommandCard } from "@/components/command-card";
-import { cn, copyTextToClipboard } from "@/lib/utils";
+import { AnimatePresence, fadeUp, motion, springs, staggerContainer } from "@/components/motion";
 import {
-  SimplerGuide,
+  GuideCaution,
+  GuideExplain,
   GuideSection,
   GuideStep,
-  GuideExplain,
   GuideTip,
-  GuideCaution,
+  SimplerGuide,
 } from "@/components/simpler-guide";
-import { springs, fadeUp, staggerContainer } from "@/components/motion";
-import { useScrollReveal, staggerDelay } from "@/lib/hooks/useScrollReveal";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { staggerDelay, useScrollReveal } from "@/lib/hooks/useScrollReveal";
+import { cn, copyTextToClipboard } from "@/lib/utils";
+import { VPS_TOP_PICK } from "@/lib/vpsProviders";
 
 // Motion-enhanced collapsible section component
 function CollapsibleSection({
@@ -96,7 +95,7 @@ function CollapsibleSection({
           <motion.div
             className={cn(
               "flex h-12 w-12 items-center justify-center rounded-xl shadow-lg",
-              gradient || "bg-gradient-to-br from-primary/80 to-primary"
+              gradient || "bg-gradient-to-br from-primary/80 to-primary",
             )}
             whileHover={{ scale: 1.05, rotate: 5 }}
             transition={springs.snappy}
@@ -116,10 +115,7 @@ function CollapsibleSection({
             </div>
           </div>
         </div>
-        <motion.div
-          animate={{ rotate: isOpen ? 180 : 0 }}
-          transition={springs.snappy}
-        >
+        <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={springs.snappy}>
           <ChevronDown className="h-5 w-5 text-muted-foreground" />
         </motion.div>
       </button>
@@ -132,9 +128,7 @@ function CollapsibleSection({
             transition={springs.smooth}
             className="overflow-hidden"
           >
-            <div className="border-t border-border/50 p-5 space-y-5">
-              {children}
-            </div>
+            <div className="border-t border-border/50 p-5 space-y-5">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -181,12 +175,18 @@ function CodeBlock({ code, language = "bash" }: { code: string; language?: strin
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
           {copied ? "Copied!" : "Copy"}
         </motion.button>
       </div>
       <pre className="p-4 overflow-x-auto text-sm">
-        <code className="text-[oklch(0.85_0.1_195)] font-mono whitespace-pre-wrap leading-relaxed">{code}</code>
+        <code className="text-[oklch(0.85_0.1_195)] font-mono whitespace-pre-wrap leading-relaxed">
+          {code}
+        </code>
       </pre>
     </div>
   );
@@ -239,7 +239,7 @@ function PromptCard({
         "rounded-xl border transition overflow-hidden",
         isExpanded
           ? "border-primary/40 bg-card/80 shadow-lg shadow-primary/5"
-          : "border-border/50 bg-background/50 hover:border-primary/30 hover:shadow-md"
+          : "border-border/50 bg-background/50 hover:border-primary/30 hover:shadow-md",
       )}
       whileHover={!isExpanded ? { y: -2 } : {}}
       transition={springs.snappy}
@@ -292,7 +292,11 @@ function PromptCard({
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  {copied ? <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
                   {copied ? "Copied!" : "Copy prompt"}
                 </motion.button>
               </div>
@@ -308,22 +312,42 @@ function PromptCard({
 }
 
 // Phase indicator with visual styling
-function PhaseIndicator({ number, title, color }: { number: number; title: string; color: string }) {
+function PhaseIndicator({
+  number,
+  title,
+  color,
+}: {
+  number: number;
+  title: string;
+  color: string;
+}) {
   return (
     <div className="flex items-center gap-3 mb-4">
-      <div className={cn(
-        "flex h-10 w-10 items-center justify-center rounded-xl font-bold text-white shadow-lg",
-        color
-      )}>
+      <div
+        className={cn(
+          "flex h-10 w-10 items-center justify-center rounded-xl font-bold text-white shadow-lg",
+          color,
+        )}
+      >
         {number}
       </div>
-      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{title}</span>
+      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+        {title}
+      </span>
     </div>
   );
 }
 
 // Tool badge component for tech stack display
-function ToolBadge({ name, desc, icon: Icon }: { name: string; desc: string; icon?: React.ElementType }) {
+function ToolBadge({
+  name,
+  desc,
+  icon: Icon,
+}: {
+  name: string;
+  desc: string;
+  icon?: React.ElementType;
+}) {
   return (
     <motion.div
       className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card/50 hover:border-primary/30 transition-colors"
@@ -348,7 +372,7 @@ function WorkflowStep({
   number,
   title,
   children,
-  color = "bg-primary"
+  color = "bg-primary",
 }: {
   number: number;
   title: string;
@@ -358,19 +382,19 @@ function WorkflowStep({
   return (
     <div className="flex gap-4">
       <div className="flex flex-col items-center">
-        <div className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-lg",
-          color
-        )}>
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-lg",
+            color,
+          )}
+        >
           {number}
         </div>
         <div className="w-px flex-1 bg-border/50 mt-2" />
       </div>
       <div className="flex-1 pb-8">
         <h4 className="font-semibold mb-2">{title}</h4>
-        <div className="text-sm text-muted-foreground space-y-3">
-          {children}
-        </div>
+        <div className="text-sm text-muted-foreground space-y-3">{children}</div>
       </div>
     </div>
   );
@@ -397,7 +421,12 @@ const CLOUD_SERVICES = [
 
 const FLYWHEEL_CYCLE = [
   { name: "NTM", desc: "Spawns agents", color: "from-sky-400 to-blue-500", icon: Terminal },
-  { name: "Mail", desc: "Coordinates", color: "from-violet-400 to-purple-500", icon: MessageSquare },
+  {
+    name: "Mail",
+    desc: "Coordinates",
+    color: "from-violet-400 to-purple-500",
+    icon: MessageSquare,
+  },
   { name: "Beads", desc: "Prioritizes", color: "from-emerald-400 to-teal-500", icon: Target },
   { name: "SLB", desc: "Safety", color: "from-amber-400 to-orange-500", icon: Shield },
   { name: "DCG", desc: "Command guard", color: "from-red-400 to-rose-500", icon: ShieldAlert },
@@ -472,48 +501,228 @@ const PROMPT_USE_BV = `Use bv with the robot flags (see AGENTS.md for info on th
 // Organized prompt library
 const PROMPT_LIBRARY = {
   analysis: [
-    { key: "fresh_review", label: "Fresh Review", prompt: PROMPT_FRESH_REVIEW, desc: "Self-review new code for bugs", icon: Eye },
-    { key: "check_other_agents", label: "Check Other Agents", prompt: PROMPT_CHECK_OTHER_AGENTS, desc: "Peer review agent work", icon: Users },
-    { key: "randomly_inspect", label: "Randomly Inspect", prompt: PROMPT_RANDOMLY_INSPECT, desc: "Deep code exploration", icon: Search },
-    { key: "scrutinize_ui", label: "Scrutinize UI/UX", prompt: PROMPT_SCRUTINIZE_UI, desc: "Polish to Stripe-level quality", icon: Sparkles },
-    { key: "check_orm", label: "Check ORM/Schemas", prompt: PROMPT_CHECK_ORM_SCHEMAS, desc: "Review database design", icon: Database },
-    { key: "apply_ubs", label: "Apply UBS", prompt: PROMPT_APPLY_UBS, desc: "Run bug scanner and fix all issues", icon: Bug },
-    { key: "use_dcg", label: "Use DCG", prompt: PROMPT_USE_DCG, desc: "Block destructive commands pre-execution", icon: ShieldAlert },
+    {
+      key: "fresh_review",
+      label: "Fresh Review",
+      prompt: PROMPT_FRESH_REVIEW,
+      desc: "Self-review new code for bugs",
+      icon: Eye,
+    },
+    {
+      key: "check_other_agents",
+      label: "Check Other Agents",
+      prompt: PROMPT_CHECK_OTHER_AGENTS,
+      desc: "Peer review agent work",
+      icon: Users,
+    },
+    {
+      key: "randomly_inspect",
+      label: "Randomly Inspect",
+      prompt: PROMPT_RANDOMLY_INSPECT,
+      desc: "Deep code exploration",
+      icon: Search,
+    },
+    {
+      key: "scrutinize_ui",
+      label: "Scrutinize UI/UX",
+      prompt: PROMPT_SCRUTINIZE_UI,
+      desc: "Polish to Stripe-level quality",
+      icon: Sparkles,
+    },
+    {
+      key: "check_orm",
+      label: "Check ORM/Schemas",
+      prompt: PROMPT_CHECK_ORM_SCHEMAS,
+      desc: "Review database design",
+      icon: Database,
+    },
+    {
+      key: "apply_ubs",
+      label: "Apply UBS",
+      prompt: PROMPT_APPLY_UBS,
+      desc: "Run bug scanner and fix all issues",
+      icon: Bug,
+    },
+    {
+      key: "use_dcg",
+      label: "Use DCG",
+      prompt: PROMPT_USE_DCG,
+      desc: "Block destructive commands pre-execution",
+      icon: ShieldAlert,
+    },
   ],
   coding: [
-    { key: "fix_bug", label: "Fix Bug", prompt: PROMPT_FIX_BUG, desc: "Diagnose and fix root cause", icon: Bug },
-    { key: "create_tests", label: "Create Tests", prompt: PROMPT_CREATE_TESTS, desc: "Comprehensive test coverage", icon: TestTube },
-    { key: "leverage_tanstack", label: "Leverage TanStack", prompt: PROMPT_LEVERAGE_TANSTACK, desc: "Use TanStack libs where beneficial", icon: Layers },
-    { key: "build_ui_ux", label: "Build UI/UX", prompt: PROMPT_BUILD_UI_UX, desc: "World-class component development", icon: Sparkles },
+    {
+      key: "fix_bug",
+      label: "Fix Bug",
+      prompt: PROMPT_FIX_BUG,
+      desc: "Diagnose and fix root cause",
+      icon: Bug,
+    },
+    {
+      key: "create_tests",
+      label: "Create Tests",
+      prompt: PROMPT_CREATE_TESTS,
+      desc: "Comprehensive test coverage",
+      icon: TestTube,
+    },
+    {
+      key: "leverage_tanstack",
+      label: "Leverage TanStack",
+      prompt: PROMPT_LEVERAGE_TANSTACK,
+      desc: "Use TanStack libs where beneficial",
+      icon: Layers,
+    },
+    {
+      key: "build_ui_ux",
+      label: "Build UI/UX",
+      prompt: PROMPT_BUILD_UI_UX,
+      desc: "World-class component development",
+      icon: Sparkles,
+    },
   ],
   planning: [
-    { key: "combine_plans", label: "Combine Plans", prompt: PROMPT_BEST_OF_ALL_WORLDS, desc: "Synthesize best of 3 AI plans", icon: Brain },
-    { key: "100_ideas", label: "Generate Ideas", prompt: PROMPT_100_IDEAS, desc: "Think of 100, show best 10", icon: Lightbulb },
-    { key: "create_beads", label: "Create Beads", prompt: PROMPT_CREATE_BEADS, desc: "Transform plan into tasks", icon: Target },
-    { key: "improve_beads", label: "Improve Beads", prompt: PROMPT_REVIEW_BEADS, desc: "Iterate in 'plan space'", icon: RefreshCw },
-    { key: "work_on_beads", label: "Work on Beads", prompt: PROMPT_WORK_ON_BEADS, desc: "Execute tasks in order", icon: Play },
-    { key: "next_bead", label: "Next Bead", prompt: PROMPT_NEXT_BEAD, desc: "Pick and start next task", icon: ArrowRight },
-    { key: "use_bv", label: "Use BV", prompt: PROMPT_USE_BV, desc: "Find most impactful bead", icon: BarChart3 },
-    { key: "analyze_beads", label: "Analyze & Allocate", prompt: PROMPT_ANALYZE_BEADS, desc: "Distribute work to agents", icon: Users },
-    { key: "do_all", label: "Do All Of It", prompt: PROMPT_DO_ALL_OF_IT, desc: "Execute everything with tracking", icon: Zap },
+    {
+      key: "combine_plans",
+      label: "Combine Plans",
+      prompt: PROMPT_BEST_OF_ALL_WORLDS,
+      desc: "Synthesize best of 3 AI plans",
+      icon: Brain,
+    },
+    {
+      key: "100_ideas",
+      label: "Generate Ideas",
+      prompt: PROMPT_100_IDEAS,
+      desc: "Think of 100, show best 10",
+      icon: Lightbulb,
+    },
+    {
+      key: "create_beads",
+      label: "Create Beads",
+      prompt: PROMPT_CREATE_BEADS,
+      desc: "Transform plan into tasks",
+      icon: Target,
+    },
+    {
+      key: "improve_beads",
+      label: "Improve Beads",
+      prompt: PROMPT_REVIEW_BEADS,
+      desc: "Iterate in 'plan space'",
+      icon: RefreshCw,
+    },
+    {
+      key: "work_on_beads",
+      label: "Work on Beads",
+      prompt: PROMPT_WORK_ON_BEADS,
+      desc: "Execute tasks in order",
+      icon: Play,
+    },
+    {
+      key: "next_bead",
+      label: "Next Bead",
+      prompt: PROMPT_NEXT_BEAD,
+      desc: "Pick and start next task",
+      icon: ArrowRight,
+    },
+    {
+      key: "use_bv",
+      label: "Use BV",
+      prompt: PROMPT_USE_BV,
+      desc: "Find most impactful bead",
+      icon: BarChart3,
+    },
+    {
+      key: "analyze_beads",
+      label: "Analyze & Allocate",
+      prompt: PROMPT_ANALYZE_BEADS,
+      desc: "Distribute work to agents",
+      icon: Users,
+    },
+    {
+      key: "do_all",
+      label: "Do All Of It",
+      prompt: PROMPT_DO_ALL_OF_IT,
+      desc: "Execute everything with tracking",
+      icon: Zap,
+    },
   ],
   agents: [
-    { key: "new_agent", label: "New Agent", prompt: PROMPT_AGENT_SWARM, desc: "Initialize and join swarm", icon: Cpu },
-    { key: "introduce", label: "Introduce", prompt: PROMPT_INTRODUCE_TO_AGENTS, desc: "Register with Agent Mail", icon: MessageSquare },
-    { key: "check_mail", label: "Check Mail", prompt: PROMPT_CHECK_MAIL, desc: "Process agent messages", icon: MessageSquare },
-    { key: "start_with_mail", label: "Start With Mail", prompt: PROMPT_START_WITH_MAIL, desc: "Check mail then work", icon: Play },
+    {
+      key: "new_agent",
+      label: "New Agent",
+      prompt: PROMPT_AGENT_SWARM,
+      desc: "Initialize and join swarm",
+      icon: Cpu,
+    },
+    {
+      key: "introduce",
+      label: "Introduce",
+      prompt: PROMPT_INTRODUCE_TO_AGENTS,
+      desc: "Register with Agent Mail",
+      icon: MessageSquare,
+    },
+    {
+      key: "check_mail",
+      label: "Check Mail",
+      prompt: PROMPT_CHECK_MAIL,
+      desc: "Process agent messages",
+      icon: MessageSquare,
+    },
+    {
+      key: "start_with_mail",
+      label: "Start With Mail",
+      prompt: PROMPT_START_WITH_MAIL,
+      desc: "Check mail then work",
+      icon: Play,
+    },
   ],
   git: [
-    { key: "git_commit", label: "Git Commit", prompt: PROMPT_GIT_COMMIT, desc: "Smart grouped commits + push", icon: GitCommit },
-    { key: "gh_flow", label: "GH Flow", prompt: PROMPT_DO_GH_FLOW, desc: "Full GitHub workflow", icon: GitBranch },
+    {
+      key: "git_commit",
+      label: "Git Commit",
+      prompt: PROMPT_GIT_COMMIT,
+      desc: "Smart grouped commits + push",
+      icon: GitCommit,
+    },
+    {
+      key: "gh_flow",
+      label: "GH Flow",
+      prompt: PROMPT_DO_GH_FLOW,
+      desc: "Full GitHub workflow",
+      icon: GitBranch,
+    },
   ],
   investigation: [
-    { key: "read_investigate", label: "Read & Investigate", prompt: PROMPT_READ_AND_INVESTIGATE, desc: "Deep project understanding", icon: BookOpen },
-    { key: "reread_agents", label: "Reread AGENTS.md", prompt: PROMPT_REREAD_AGENTS, desc: "Refresh context", icon: RefreshCw },
+    {
+      key: "read_investigate",
+      label: "Read & Investigate",
+      prompt: PROMPT_READ_AND_INVESTIGATE,
+      desc: "Deep project understanding",
+      icon: BookOpen,
+    },
+    {
+      key: "reread_agents",
+      label: "Reread AGENTS.md",
+      prompt: PROMPT_REREAD_AGENTS,
+      desc: "Refresh context",
+      icon: RefreshCw,
+    },
   ],
   documentation: [
-    { key: "complete_docs", label: "Complete Docs", prompt: PROMPT_COMPLETE_DOCS, desc: "Expand Docusaurus site", icon: BookOpen },
-    { key: "improve_readme", label: "Improve README", prompt: PROMPT_IMPROVE_README, desc: "Add incremental content", icon: FileCode },
+    {
+      key: "complete_docs",
+      label: "Complete Docs",
+      prompt: PROMPT_COMPLETE_DOCS,
+      desc: "Expand Docusaurus site",
+      icon: BookOpen,
+    },
+    {
+      key: "improve_readme",
+      label: "Improve README",
+      prompt: PROMPT_IMPROVE_README,
+      desc: "Add incremental content",
+      icon: FileCode,
+    },
   ],
 };
 
@@ -522,7 +731,12 @@ export default function WorkflowPage() {
   const prefersReducedMotion = useReducedMotion();
 
   return (
-    <div role="main" id="main-content" tabIndex={-1} className="dark relative min-h-screen bg-background text-foreground overflow-hidden">
+    <div
+      role="main"
+      id="main-content"
+      tabIndex={-1}
+      className="dark relative min-h-screen bg-background text-foreground overflow-hidden"
+    >
       {/* Background effects */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-hero opacity-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-20" />
@@ -559,7 +773,8 @@ export default function WorkflowPage() {
                 Part Two: <span className="text-gradient-cosmic">The Agentic Workflow</span>
               </h1>
               <p className="text-lg text-muted-foreground max-w-2xl">
-                Build production software at unprecedented speed with AI agent swarms orchestrating every phase of development.
+                Build production software at unprecedented speed with AI agent swarms orchestrating
+                every phase of development.
               </p>
             </div>
           </motion.div>
@@ -568,7 +783,6 @@ export default function WorkflowPage() {
 
       {/* Content */}
       <div className="relative z-10 mx-auto max-w-5xl px-4 py-10 space-y-8">
-
         {/* Overview Card */}
         <motion.div
           initial={prefersReducedMotion ? {} : { opacity: 0, y: 20 }}
@@ -582,20 +796,40 @@ export default function WorkflowPage() {
               The Complete Development Lifecycle
             </h2>
             <p className="text-muted-foreground mb-5">
-              A full development lifecycle encompassing
-              ideation, planning, task breakdown, implementation, review, testing, deployment, and
-              ongoing maintenance. The workflows are highly iterative, with agents communicating via
-              an &quot;email-like&quot; system, managing tasks through a dependency-aware graph, and forming
-              a self-reinforcing ecosystem where agents improve each other&apos;s outputs.
+              A full development lifecycle encompassing ideation, planning, task breakdown,
+              implementation, review, testing, deployment, and ongoing maintenance. The workflows
+              are highly iterative, with agents communicating via an &quot;email-like&quot; system,
+              managing tasks through a dependency-aware graph, and forming a self-reinforcing
+              ecosystem where agents improve each other&apos;s outputs.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[
-                { icon: Brain, label: "Best-of-all-worlds planning", color: "text-[oklch(0.7_0.2_330)]" },
-                { icon: Target, label: "Beads task graph (DAG)", color: "text-[oklch(0.72_0.19_145)]" },
+                {
+                  icon: Brain,
+                  label: "Best-of-all-worlds planning",
+                  color: "text-[oklch(0.7_0.2_330)]",
+                },
+                {
+                  icon: Target,
+                  label: "Beads task graph (DAG)",
+                  color: "text-[oklch(0.72_0.19_145)]",
+                },
                 { icon: Users, label: "Multi-agent swarm", color: "text-[oklch(0.75_0.18_195)]" },
-                { icon: MessageSquare, label: "Agent Mail coordination", color: "text-[oklch(0.65_0.18_290)]" },
-                { icon: Shield, label: "SLB safety protocols", color: "text-[oklch(0.78_0.16_75)]" },
-                { icon: ShieldAlert, label: "DCG command guard", color: "text-[oklch(0.65_0.22_25)]" },
+                {
+                  icon: MessageSquare,
+                  label: "Agent Mail coordination",
+                  color: "text-[oklch(0.65_0.18_290)]",
+                },
+                {
+                  icon: Shield,
+                  label: "SLB safety protocols",
+                  color: "text-[oklch(0.78_0.16_75)]",
+                },
+                {
+                  icon: ShieldAlert,
+                  label: "DCG command guard",
+                  color: "text-[oklch(0.65_0.22_25)]",
+                },
                 { icon: RefreshCw, label: "Continuous iteration", color: "text-primary" },
               ].map((item, i) => (
                 <motion.div
@@ -625,8 +859,10 @@ export default function WorkflowPage() {
             <p className="text-sm flex items-start gap-3">
               <Clock className="h-5 w-5 text-[oklch(0.78_0.16_75)] shrink-0 mt-0.5" />
               <span>
-                <strong>Investment:</strong> VPS (~${VPS_TOP_PICK.recommended.priceUSD}/mo for 64GB) + Claude Max ($200/mo × 1-5) + ChatGPT Pro ($200/mo × 1-5) +
-                Google/Antigravity access. Scale your swarm as you see ROI; start with one subscription for each agent family and grow.
+                <strong>Investment:</strong> VPS (~${VPS_TOP_PICK.recommended.priceUSD}/mo for 64GB)
+                + Claude Max ($200/mo × 1-5) + ChatGPT Pro ($200/mo × 1-5) + Google/Antigravity
+                access. Scale your swarm as you see ROI; start with one subscription for each agent
+                family and grow.
               </span>
             </p>
           </Card>
@@ -643,12 +879,17 @@ export default function WorkflowPage() {
             <div className="text-center mb-6">
               <div className="mb-3 flex items-center justify-center gap-2">
                 <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-                <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Ecosystem</span>
+                <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">
+                  Ecosystem
+                </span>
                 <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
               </div>
-              <h3 className="text-xl font-bold tracking-tight mb-2">The Self-Reinforcing Flywheel</h3>
+              <h3 className="text-xl font-bold tracking-tight mb-2">
+                The Self-Reinforcing Flywheel
+              </h3>
               <p className="text-sm text-muted-foreground max-w-lg mx-auto">
-                Each tool enhances the others. Agents spawn → coordinate → prioritize → check safety (DCG + SLB) → scan bugs → remember → search → back to agents.
+                Each tool enhances the others. Agents spawn → coordinate → prioritize → check safety
+                (DCG + SLB) → scan bugs → remember → search → back to agents.
               </p>
             </div>
 
@@ -663,10 +904,12 @@ export default function WorkflowPage() {
                   transition={{ ...springs.smooth, delay: staggerDelay(i, 0.06) }}
                   whileHover={{ scale: 1.1, y: -4 }}
                 >
-                  <div className={cn(
-                    "flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg",
-                    tool.color
-                  )}>
+                  <div
+                    className={cn(
+                      "flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg",
+                      tool.color,
+                    )}
+                  >
                     <tool.icon className="h-6 w-6 text-white" />
                   </div>
                   <div className="text-center">
@@ -687,29 +930,59 @@ export default function WorkflowPage() {
           badge="Start Here"
           gradient="bg-gradient-to-br from-amber-500 to-orange-600"
         >
-          <PhaseIndicator number={1} title="Ideation Phase" color="bg-gradient-to-br from-amber-500 to-orange-600" />
+          <PhaseIndicator
+            number={1}
+            title="Ideation Phase"
+            color="bg-gradient-to-br from-amber-500 to-orange-600"
+          />
 
           <p className="text-muted-foreground mb-6">
-            This phase starts with a human-generated idea and quickly escalates to agent-assisted refinement.
-            The goal is to produce a comprehensive, self-contained plan document before any code is written.
-            As Jeffrey Emanuel says: &quot;It&apos;s a lot easier and faster to operate in &apos;plan space&apos; before we start implementing.&quot;
+            This phase starts with a human-generated idea and quickly escalates to agent-assisted
+            refinement. The goal is to produce a comprehensive, self-contained plan document before
+            any code is written. As Jeffrey Emanuel says: &quot;It&apos;s a lot easier and faster to
+            operate in &apos;plan space&apos; before we start implementing.&quot;
           </p>
 
           <div className="space-y-2">
             <WorkflowStep number={1} title="Start with Your Primary AI" color="bg-amber-500">
               <p>
-                Open <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary hover:underline">ChatGPT 5.2 Pro</a> and
-                describe your project in detail. Be thorough about what you want to build, user experience, and technical requirements.
-                Ask it to create a comprehensive implementation plan.
+                Open{" "}
+                <a
+                  href="https://chatgpt.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-6 items-center text-primary hover:underline"
+                >
+                  ChatGPT 5.2 Pro
+                </a>{" "}
+                and describe your project in detail. Be thorough about what you want to build, user
+                experience, and technical requirements. Ask it to create a comprehensive
+                implementation plan.
               </p>
             </WorkflowStep>
 
             <WorkflowStep number={2} title="Get Competing Plans" color="bg-amber-500">
               <p>
                 Give the same prompt to{" "}
-                <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary hover:underline">Claude Opus 4.5</a> and{" "}
-                <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary hover:underline">Gemini 3 with Deep Think</a>.
-                Each model produces different insights: GPT-5.2 excels at system design, Claude Opus 4.5 at code quality, Gemini 3 at creative features.
+                <a
+                  href="https://claude.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-6 items-center text-primary hover:underline"
+                >
+                  Claude Opus 4.5
+                </a>{" "}
+                and{" "}
+                <a
+                  href="https://aistudio.google.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-6 items-center text-primary hover:underline"
+                >
+                  Gemini 3 with Deep Think
+                </a>
+                . Each model produces different insights: GPT-5.2 excels at system design, Claude
+                Opus 4.5 at code quality, Gemini 3 at creative features.
               </p>
             </WorkflowStep>
 
@@ -719,8 +992,9 @@ export default function WorkflowPage() {
               </p>
               <CodeBlock code={PROMPT_BEST_OF_ALL_WORLDS} language="prompt" />
               <p className="mt-3 text-xs">
-                <strong>Pro tip:</strong> Do multiple passes. &quot;I had it carefully go over everything an additional two passes
-                and it found some small oversights in each pass.&quot;
+                <strong>Pro tip:</strong> Do multiple passes. &quot;I had it carefully go over
+                everything an additional two passes and it found some small oversights in each
+                pass.&quot;
               </p>
             </WorkflowStep>
 
@@ -737,13 +1011,14 @@ export default function WorkflowPage() {
 
           <SimplerGuide>
             <GuideTip>
-              <strong>Why use 3 models?</strong> Each AI has different training data, architectures, and
-              &quot;thinking styles&quot;. The synthesis captures the strengths of all three while compensating
-              for individual weaknesses.
+              <strong>Why use 3 models?</strong> Each AI has different training data, architectures,
+              and &quot;thinking styles&quot;. The synthesis captures the strengths of all three
+              while compensating for individual weaknesses.
             </GuideTip>
             <GuideExplain term="Time investment">
-              This phase takes ~1-2 hours, with agents doing most work autonomously. Output: A revised
-              markdown plan ready for task breakdown (often 5,000+ lines of detailed documentation).
+              This phase takes ~1-2 hours, with agents doing most work autonomously. Output: A
+              revised markdown plan ready for task breakdown (often 5,000+ lines of detailed
+              documentation).
             </GuideExplain>
           </SimplerGuide>
         </CollapsibleSection>
@@ -754,12 +1029,17 @@ export default function WorkflowPage() {
           icon={GitBranch}
           gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
         >
-          <PhaseIndicator number={2} title="Task Breakdown" color="bg-gradient-to-br from-emerald-500 to-teal-600" />
+          <PhaseIndicator
+            number={2}
+            title="Task Breakdown"
+            color="bg-gradient-to-br from-emerald-500 to-teal-600"
+          />
 
           <p className="text-muted-foreground mb-6">
-            Beads are granular tasks/epics with explicit dependencies, stored in JSONL or SQLite. This phase
-            converts the monolithic plan into an actionable DAG (Directed Acyclic Graph) for parallel agent execution.
-            Real examples: CASS project = 347 beads, SLB = 76 beads (14 epics, 62 tasks).
+            Beads are granular tasks/epics with explicit dependencies, stored in JSONL or SQLite.
+            This phase converts the monolithic plan into an actionable DAG (Directed Acyclic Graph)
+            for parallel agent execution. Real examples: CASS project = 347 beads, SLB = 76 beads
+            (14 epics, 62 tasks).
           </p>
 
           <div className="space-y-2">
@@ -786,12 +1066,15 @@ export default function WorkflowPage() {
 
             <WorkflowStep number={4} title="Analyze with Beads Viewer" color="bg-emerald-500">
               <p className="mb-3">
-                Use <code className="bg-muted px-1.5 py-0.5 rounded text-xs">bv</code> (robot mode) to visualize and prioritize:
+                Use <code className="bg-muted px-1.5 py-0.5 rounded text-xs">bv</code> (robot mode)
+                to visualize and prioritize:
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-border/50 p-3 bg-card/50">
                   <code className="text-sm font-mono text-primary">bv --robot-triage</code>
-                  <p className="text-xs text-muted-foreground mt-1">Deterministic triage output (recommended)</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Deterministic triage output (recommended)
+                  </p>
                 </div>
                 <div className="rounded-lg border border-border/50 p-3 bg-card/50">
                   <code className="text-sm font-mono text-primary">br ready</code>
@@ -821,8 +1104,8 @@ export default function WorkflowPage() {
               BV computes metrics like PageRank (importance) and Critical Path (bottlenecks).
             </GuideExplain>
             <GuideTip>
-              Embed markdown snippets in beads for context, but avoid referring back to the full plan
-              once beads are finalized. Each bead should be self-contained.
+              Embed markdown snippets in beads for context, but avoid referring back to the full
+              plan once beads are finalized. Each bead should be self-contained.
             </GuideTip>
           </SimplerGuide>
         </CollapsibleSection>
@@ -833,33 +1116,37 @@ export default function WorkflowPage() {
           icon={Users}
           gradient="bg-gradient-to-br from-violet-500 to-purple-600"
         >
-          <PhaseIndicator number={3} title="Implementation" color="bg-gradient-to-br from-violet-500 to-purple-600" />
+          <PhaseIndicator
+            number={3}
+            title="Implementation"
+            color="bg-gradient-to-br from-violet-500 to-purple-600"
+          />
 
           <p className="text-muted-foreground mb-6">
-            This is where the magic happens. You&apos;ll launch multiple Claude Code, Codex, and Antigravity agents
-            in parallel, each working on different beads while coordinating through MCP Agent Mail.
-            Real example: CASS project produced ~11k LOC in 5 hours, 204 commits, 151 tests passing.
+            This is where the magic happens. You&apos;ll launch multiple Claude Code, Codex, and
+            Antigravity agents in parallel, each working on different beads while coordinating
+            through MCP Agent Mail. Real example: CASS project produced ~11k LOC in 5 hours, 204
+            commits, 151 tests passing.
           </p>
 
           <div className="space-y-2">
             <WorkflowStep number={1} title="Spawn Agent Sessions" color="bg-violet-500">
               <p className="mb-3">
-                Use <code className="bg-muted px-1.5 py-0.5 rounded text-xs">ntm</code> to create multiple
-                terminal panes, each running a coding agent:
+                Use <code className="bg-muted px-1.5 py-0.5 rounded text-xs">ntm</code> to create
+                multiple terminal panes, each running a coding agent:
               </p>
               <CommandCard
                 command="ntm spawn myproject 8"
                 description="Create 8 agent panes in your project session"
               />
               <p className="text-xs mt-2">
-                Run 3+ machines with multiple subscriptions (e.g., 5 ChatGPT Pro, 5 Claude Max, 3 Google/Antigravity accounts).
+                Run 3+ machines with multiple subscriptions (e.g., 5 ChatGPT Pro, 5 Claude Max, 3
+                Google/Antigravity accounts).
               </p>
             </WorkflowStep>
 
             <WorkflowStep number={2} title="Initialize Each Agent" color="bg-violet-500">
-              <p className="mb-3">
-                Copy this initialization prompt to each agent:
-              </p>
+              <p className="mb-3">Copy this initialization prompt to each agent:</p>
               <CodeBlock code={PROMPT_AGENT_SWARM} language="prompt" />
             </WorkflowStep>
 
@@ -867,7 +1154,9 @@ export default function WorkflowPage() {
               <p className="mb-3">Key coordination tools agents use:</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-border/50 p-3 bg-card/50">
-                  <code className="text-sm font-mono text-primary">br update ID --status=in_progress</code>
+                  <code className="text-sm font-mono text-primary">
+                    br update ID --status=in_progress
+                  </code>
                   <p className="text-xs text-muted-foreground mt-1">Claim a bead before working</p>
                 </div>
                 <div className="rounded-lg border border-border/50 p-3 bg-card/50">
@@ -876,7 +1165,9 @@ export default function WorkflowPage() {
                 </div>
                 <div className="rounded-lg border border-border/50 p-3 bg-card/50">
                   <code className="text-sm font-mono text-primary">file_reservation_paths</code>
-                  <p className="text-xs text-muted-foreground mt-1">Reserve files to avoid conflicts</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Reserve files to avoid conflicts
+                  </p>
                 </div>
                 <div className="rounded-lg border border-border/50 p-3 bg-card/50">
                   <code className="text-sm font-mono text-primary">send_message / fetch_inbox</code>
@@ -887,22 +1178,23 @@ export default function WorkflowPage() {
 
             <WorkflowStep number={4} title="Safety with DCG + SLB" color="bg-violet-500">
               <p>
-                DCG blocks destructive commands before they run. SLB handles the
-                &quot;two-person rule&quot; for high-risk operations (e.g., deleting
-                Kubernetes nodes), requiring quorum approvals via Agent Mail.
+                DCG blocks destructive commands before they run. SLB handles the &quot;two-person
+                rule&quot; for high-risk operations (e.g., deleting Kubernetes nodes), requiring
+                quorum approvals via Agent Mail.
               </p>
             </WorkflowStep>
           </div>
 
           <SimplerGuide>
             <GuideCaution>
-              <strong>Avoid &quot;communication purgatory&quot;!</strong> Agents should be proactive about claiming
-              and completing tasks. If an agent gets stuck waiting, it should move to other available beads.
-              The goal is continuous progress, not perfect coordination.
+              <strong>Avoid &quot;communication purgatory&quot;!</strong> Agents should be proactive
+              about claiming and completing tasks. If an agent gets stuck waiting, it should move to
+              other available beads. The goal is continuous progress, not perfect coordination.
             </GuideCaution>
             <GuideTip>
-              <strong>Agent Roles:</strong> Claude for tasteful code quality, Codex for long autonomous runs
-              (queued prompts), Antigravity for reviews. Mix and match based on the task type.
+              <strong>Agent Roles:</strong> Claude for tasteful code quality, Codex for long
+              autonomous runs (queued prompts), Antigravity for reviews. Mix and match based on the
+              task type.
             </GuideTip>
           </SimplerGuide>
         </CollapsibleSection>
@@ -913,11 +1205,16 @@ export default function WorkflowPage() {
           icon={TestTube}
           gradient="bg-gradient-to-br from-cyan-500 to-sky-600"
         >
-          <PhaseIndicator number={4} title="Quality Assurance" color="bg-gradient-to-br from-cyan-500 to-sky-600" />
+          <PhaseIndicator
+            number={4}
+            title="Quality Assurance"
+            color="bg-gradient-to-br from-cyan-500 to-sky-600"
+          />
 
           <p className="text-muted-foreground mb-6">
-            Agents autonomously refine post-implementation. This includes fresh self-reviews, peer reviews
-            of other agents&apos; code, random inspections, UI/UX scrutiny, comprehensive testing, and documentation.
+            Agents autonomously refine post-implementation. This includes fresh self-reviews, peer
+            reviews of other agents&apos; code, random inspections, UI/UX scrutiny, comprehensive
+            testing, and documentation.
           </p>
 
           <div className="space-y-2">
@@ -950,12 +1247,13 @@ export default function WorkflowPage() {
           <SimplerGuide>
             <GuideExplain term="Memory with CM">
               Agents store and retrieve: Procedural playbooks, episodic sessions, semantic facts.
-              Core pipeline: Generate context → Reflect → Curate playbook → Validate.
-              This enables cross-session learning and improvement.
+              Core pipeline: Generate context → Reflect → Curate playbook → Validate. This enables
+              cross-session learning and improvement.
             </GuideExplain>
             <GuideTip>
-              Use <code className="bg-muted px-1 rounded">/effort max</code> for deep reasoning on scrutinize_ui,
-              check_orm, and other high-stakes analysis prompts. These require maximum model capability.
+              Use <code className="bg-muted px-1 rounded">/effort max</code> for deep reasoning on
+              scrutinize_ui, check_orm, and other high-stakes analysis prompts. These require
+              maximum model capability.
             </GuideTip>
           </SimplerGuide>
         </CollapsibleSection>
@@ -966,11 +1264,15 @@ export default function WorkflowPage() {
           icon={Rocket}
           gradient="bg-gradient-to-br from-rose-500 to-red-600"
         >
-          <PhaseIndicator number={5} title="Ship & Iterate" color="bg-gradient-to-br from-rose-500 to-red-600" />
+          <PhaseIndicator
+            number={5}
+            title="Ship & Iterate"
+            color="bg-gradient-to-br from-rose-500 to-red-600"
+          />
 
           <p className="text-muted-foreground mb-6">
-            Finalize and maintain. Use dedicated agents for git commits (to avoid human edits causing conflicts),
-            deployment, and daily maintenance across all your projects.
+            Finalize and maintain. Use dedicated agents for git commits (to avoid human edits
+            causing conflicts), deployment, and daily maintenance across all your projects.
           </p>
 
           <div className="space-y-2">
@@ -987,16 +1289,17 @@ export default function WorkflowPage() {
 
             <WorkflowStep number={3} title="Daily Maintenance Across Projects" color="bg-rose-500">
               <p>
-                Make forward progress on ALL your active projects every day, even when too busy for deep work.
-                Use command palette prompts (single button press) to keep agents productively improving code.
+                Make forward progress on ALL your active projects every day, even when too busy for
+                deep work. Use command palette prompts (single button press) to keep agents
+                productively improving code.
               </p>
             </WorkflowStep>
           </div>
 
           <SimplerGuide>
             <GuideCaution>
-              <strong>Important:</strong> No human edits post-agent work. Let agents handle git to avoid
-              conflicts. Audit via exported mailboxes and bv time-travel features.
+              <strong>Important:</strong> No human edits post-agent work. Let agents handle git to
+              avoid conflicts. Audit via exported mailboxes and bv time-travel features.
             </GuideCaution>
           </SimplerGuide>
         </CollapsibleSection>
@@ -1014,18 +1317,20 @@ export default function WorkflowPage() {
             </h4>
             <div className="space-y-3 text-sm">
               <p className="text-muted-foreground">
-                Make forward progress on <strong className="text-foreground">every active project, every day</strong>,
-                even when you&apos;re too busy to spend real mental bandwidth on all of them.
+                Make forward progress on{" "}
+                <strong className="text-foreground">every active project, every day</strong>, even
+                when you&apos;re too busy to spend real mental bandwidth on all of them.
               </p>
               <p className="text-muted-foreground">
-                The models are good enough now, and with comprehensive unit tests and e2e integration
-                tests, you don&apos;t need to worry about agents &quot;going rogue&quot;. Plus, if one of them
-                makes a mistake, the <em>other agents will probably catch and fix it themselves</em>.
+                The models are good enough now, and with comprehensive unit tests and e2e
+                integration tests, you don&apos;t need to worry about agents &quot;going
+                rogue&quot;. Plus, if one of them makes a mistake, the{" "}
+                <em>other agents will probably catch and fix it themselves</em>.
               </p>
               <p className="text-muted-foreground">
-                <strong className="text-foreground">The reality:</strong> Run these prompts on 8+ projects
-                daily, keeping 3 machines busy constantly. Come back 3+ hours later to see incredible
-                amounts of work done autonomously. The compound effect is incredible!
+                <strong className="text-foreground">The reality:</strong> Run these prompts on 8+
+                projects daily, keeping 3 machines busy constantly. Come back 3+ hours later to see
+                incredible amounts of work done autonomously. The compound effect is incredible!
               </p>
             </div>
           </Card>
@@ -1053,7 +1358,8 @@ export default function WorkflowPage() {
                 UI/UX Polish Pass
               </h4>
               <p className="text-sm text-muted-foreground mb-2">
-                When you&apos;re dissatisfied but lack energy to engage directly (use with Opus 4.5 or GPT 5.2):
+                When you&apos;re dissatisfied but lack energy to engage directly (use with Opus 4.5
+                or GPT 5.2):
               </p>
               <CodeBlock code={PROMPT_SCRUTINIZE_UI} language="prompt" />
             </div>
@@ -1063,38 +1369,39 @@ export default function WorkflowPage() {
             <GuideSection title="The Model Hierarchy">
               <ul className="space-y-2 text-sm">
                 <li>
-                  <strong>Opus 4.5 / GPT-5.2-Codex with extra-high effort:</strong> Use for scrutinize_ui,
-                  check_orm, and high-stakes analysis. These require deep reasoning.
+                  <strong>Opus 4.5 / GPT-5.2-Codex with extra-high effort:</strong> Use for
+                  scrutinize_ui, check_orm, and high-stakes analysis. These require deep reasoning.
                 </li>
                 <li>
-                  <strong>Opus 4.5 / GPT-5.2-Codex with high effort:</strong> Great for fresh_review, fix_bug,
-                  work_on_beads, and routine coding. Fast and reliable.
+                  <strong>Opus 4.5 / GPT-5.2-Codex with high effort:</strong> Great for
+                  fresh_review, fix_bug, work_on_beads, and routine coding. Fast and reliable.
                 </li>
                 <li>
-                  <strong>Any capable model:</strong> check_mail, reread_agents, git_commit
-                  work fine with any model.
+                  <strong>Any capable model:</strong> check_mail, reread_agents, git_commit work
+                  fine with any model.
                 </li>
               </ul>
             </GuideSection>
             <GuideSection title="Quick Daily Routine">
               <div className="space-y-4 mt-3">
                 <GuideStep number={1} title="Start your machines">
-                  Launch your VPS instances and open your agent terminals with NTM.
-                  Run <code className="bg-muted px-1 rounded text-xs">ntm attach myproject</code> to reconnect.
+                  Launch your VPS instances and open your agent terminals with NTM. Run{" "}
+                  <code className="bg-muted px-1 rounded text-xs">ntm attach myproject</code> to
+                  reconnect.
                 </GuideStep>
                 <GuideStep number={2} title="Send autopilot prompts">
-                  Use the command palette to send &quot;randomly_inspect&quot; or &quot;check_other_agents&quot;
-                  prompts to each agent. One button press per agent.
+                  Use the command palette to send &quot;randomly_inspect&quot; or
+                  &quot;check_other_agents&quot; prompts to each agent. One button press per agent.
                 </GuideStep>
                 <GuideStep number={3} title="Let agents work">
-                  Come back in 3+ hours. Agents will have made progress on all your projects
-                  while you focused on other work.
+                  Come back in 3+ hours. Agents will have made progress on all your projects while
+                  you focused on other work.
                 </GuideStep>
               </div>
             </GuideSection>
             <GuideCaution>
-              <strong>Test coverage is your safety net.</strong> This autopilot approach only
-              works safely with comprehensive unit tests and e2e integration tests acting as guardrails.
+              <strong>Test coverage is your safety net.</strong> This autopilot approach only works
+              safely with comprehensive unit tests and e2e integration tests acting as guardrails.
             </GuideCaution>
           </SimplerGuide>
         </CollapsibleSection>
@@ -1106,8 +1413,8 @@ export default function WorkflowPage() {
           gradient="bg-gradient-to-br from-fuchsia-500 to-pink-600"
         >
           <p className="text-muted-foreground mb-6">
-            Each prompt takes under a second to send using NTM&apos;s command palette.
-            Configure once, then trigger with a single button press. Click any prompt to expand and copy.
+            Each prompt takes under a second to send using NTM&apos;s command palette. Configure
+            once, then trigger with a single button press. Click any prompt to expand and copy.
           </p>
 
           {/* Analysis & Review */}
@@ -1118,7 +1425,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.analysis.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1131,7 +1445,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.coding.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1144,7 +1465,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.planning.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1157,7 +1485,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.agents.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1170,7 +1505,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.git.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1183,7 +1525,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.investigation.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1196,7 +1545,14 @@ export default function WorkflowPage() {
             </h4>
             <div className="grid gap-2">
               {PROMPT_LIBRARY.documentation.map((p) => (
-                <PromptCard key={p.key} label={p.label} desc={p.desc} prompt={p.prompt} commandKey={p.key} icon={p.icon} />
+                <PromptCard
+                  key={p.key}
+                  label={p.label}
+                  desc={p.desc}
+                  prompt={p.prompt}
+                  commandKey={p.key}
+                  icon={p.icon}
+                />
               ))}
             </div>
           </div>
@@ -1205,13 +1561,13 @@ export default function WorkflowPage() {
             <GuideExplain term="How to set up the command palette">
               NTM includes a command palette feature. Add prompts to{" "}
               <code className="bg-muted px-1 rounded">~/.config/ntm/prompts.yaml</code> and bind a
-              keyboard shortcut to open the palette. Each prompt triggers in any active agent session
-              with a single keypress.
+              keyboard shortcut to open the palette. Each prompt triggers in any active agent
+              session with a single keypress.
             </GuideExplain>
             <GuideTip>
-              <strong>Hardware tip:</strong> A small programmable keypad (~$60 on Temu) can be configured
-              to send any prompt with a single button. Keep one next to each of your machines for instant
-              agent commands.
+              <strong>Hardware tip:</strong> A small programmable keypad (~$60 on Temu) can be
+              configured to send any prompt with a single button. Keep one next to each of your
+              machines for instant agent commands.
             </GuideTip>
           </SimplerGuide>
         </CollapsibleSection>
@@ -1247,15 +1603,17 @@ export default function WorkflowPage() {
                 { num: 2, title: "Turn suggestions into beads:", code: PROMPT_CREATE_BEADS },
                 { num: 3, title: "Review the beads:", code: PROMPT_REVIEW_BEADS },
                 { num: 4, title: "Execute the beads:", code: PROMPT_WORK_ON_BEADS },
-                { num: 5, title: "A couple \"proceed\" messages...", code: "proceed" },
+                { num: 5, title: 'A couple "proceed" messages...', code: "proceed" },
                 { num: 6, title: "Final fresh review:", code: PROMPT_FRESH_REVIEW },
                 { num: 7, title: "Finally, commit everything:", code: PROMPT_GIT_COMMIT },
               ].map((step) => (
                 <div key={step.num} className="flex gap-3">
-                  <span className={cn(
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white",
-                    step.num === 7 ? "bg-[oklch(0.72_0.19_145)]" : "bg-primary/80"
-                  )}>
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white",
+                      step.num === 7 ? "bg-[oklch(0.72_0.19_145)]" : "bg-primary/80",
+                    )}
+                  >
                     {step.num}
                   </span>
                   <div className="flex-1">
@@ -1317,14 +1675,14 @@ export default function WorkflowPage() {
 
           <SimplerGuide>
             <GuideExplain term="Why a separate setup script?">
-              The main Agent Flywheel installer focuses on development tools. This second script handles
-              cloud service configuration, which requires your specific accounts and API keys.
-              Running them separately keeps initial setup fast.
+              The main Agent Flywheel installer focuses on development tools. This second script
+              handles cloud service configuration, which requires your specific accounts and API
+              keys. Running them separately keeps initial setup fast.
             </GuideExplain>
             <GuideTip>
-              <strong>Supabase IPv4 note:</strong> some Supabase projects expose the direct Postgres host
-              over IPv6-only. If your VPS/network is IPv4-only, use the Supabase pooler connection string
-              instead (or upgrade/configure networking for direct IPv4).
+              <strong>Supabase IPv4 note:</strong> some Supabase projects expose the direct Postgres
+              host over IPv6-only. If your VPS/network is IPv4-only, use the Supabase pooler
+              connection string instead (or upgrade/configure networking for direct IPv4).
             </GuideTip>
           </SimplerGuide>
         </CollapsibleSection>
@@ -1358,12 +1716,12 @@ export default function WorkflowPage() {
           <SimplerGuide>
             <GuideTip>
               <strong>Why this stack?</strong> These tools have excellent TypeScript support, which
-              AI coding agents leverage for better code generation. Type inference means fewer errors
-              and more reliable autonomous development.
+              AI coding agents leverage for better code generation. Type inference means fewer
+              errors and more reliable autonomous development.
             </GuideTip>
             <GuideExplain term="AI-friendly tooling">
-              TanStack and Drizzle ORM both provide strong typing that helps agents understand
-              your data structures. Framer Motion has declarative APIs that agents can reason about
+              TanStack and Drizzle ORM both provide strong typing that helps agents understand your
+              data structures. Framer Motion has declarative APIs that agents can reason about
               easily. Vercel AI SDK provides built-in streaming and tool calling.
             </GuideExplain>
           </SimplerGuide>
@@ -1389,23 +1747,42 @@ export default function WorkflowPage() {
               viewport={{ once: true }}
             >
               {[
-                { color: "from-amber-500 to-orange-600", text: "Plan with 3 AI models: ChatGPT 5.2 Pro, Opus 4.5, Gemini 3 → synthesize best ideas" },
-                { color: "from-amber-500 to-orange-600", text: "Generate feature ideas: Use the \"100 ideas, show me 10\" technique" },
-                { color: "from-emerald-500 to-teal-600", text: "Create beads: Transform plan into granular, self-documenting tasks" },
-                { color: "from-emerald-500 to-teal-600", text: "Review beads: Iterate in \"plan space\" before implementing" },
-                { color: "from-violet-500 to-purple-600", text: "Launch agent swarm: Multiple agents working in parallel via Agent Mail" },
-                { color: "from-cyan-500 to-sky-600", text: "Review & test: Fresh reviews, peer reviews, UBS bug scanning, full tests" },
-                { color: "from-rose-500 to-red-600", text: "Ship: Deploy to Vercel, iterate daily with autopilot prompts!" },
+                {
+                  color: "from-amber-500 to-orange-600",
+                  text: "Plan with 3 AI models: ChatGPT 5.2 Pro, Opus 4.5, Gemini 3 → synthesize best ideas",
+                },
+                {
+                  color: "from-amber-500 to-orange-600",
+                  text: 'Generate feature ideas: Use the "100 ideas, show me 10" technique',
+                },
+                {
+                  color: "from-emerald-500 to-teal-600",
+                  text: "Create beads: Transform plan into granular, self-documenting tasks",
+                },
+                {
+                  color: "from-emerald-500 to-teal-600",
+                  text: 'Review beads: Iterate in "plan space" before implementing',
+                },
+                {
+                  color: "from-violet-500 to-purple-600",
+                  text: "Launch agent swarm: Multiple agents working in parallel via Agent Mail",
+                },
+                {
+                  color: "from-cyan-500 to-sky-600",
+                  text: "Review & test: Fresh reviews, peer reviews, UBS bug scanning, full tests",
+                },
+                {
+                  color: "from-rose-500 to-red-600",
+                  text: "Ship: Deploy to Vercel, iterate daily with autopilot prompts!",
+                },
               ].map((step, i) => (
-                <motion.li
-                  key={i}
-                  className="flex gap-4"
-                  variants={fadeUp}
-                >
-                  <span className={cn(
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white bg-gradient-to-br",
-                    step.color
-                  )}>
+                <motion.li key={i} className="flex gap-4" variants={fadeUp}>
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white bg-gradient-to-br",
+                      step.color,
+                    )}
+                  >
                     {i + 1}
                   </span>
                   <span className="pt-0.5">{step.text}</span>

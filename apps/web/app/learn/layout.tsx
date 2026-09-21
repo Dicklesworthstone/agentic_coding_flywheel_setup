@@ -11,11 +11,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function LearnLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function LearnLayout({ children }: { children: React.ReactNode }) {
   // The Learning Hub is a dark-only surface (hardcoded black + white/NN
   // text). The `dark` wrapper re-applies the dark tokens so a visitor who
   // chose the light theme in the wizard does not get dark headings on black.

@@ -1,48 +1,46 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  Terminal,
-  Link2,
-  Check,
-  Copy,
-  Server,
-  Monitor,
-  Settings2,
-  ChevronDown,
   Boxes,
+  Check,
+  ChevronDown,
+  Copy,
+  Link2,
+  Monitor,
+  Server,
+  Settings2,
+  Terminal,
 } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CopyStatus } from "@/components/ui/code-block";
-import { cn } from "@/lib/utils";
+import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
+import { manifestModules, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
 import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
+import { resolveModuleSelection } from "@/lib/moduleSelection";
+import type { ApprovedTeamProfileInstallation } from "@/lib/teamProfileImport";
 import {
-  useVPSIP,
-  useUserOS,
-  useInstallMode,
-  useSSHUsername,
-  useACFSRef,
-  useModuleProfile,
+  type InstallMode,
   isValidIP,
+  type ModuleSelectionProfileId,
   normalizeGitRef,
   normalizeSSHUsername,
-  type InstallMode,
-  type ModuleSelectionProfileId,
+  useACFSRef,
+  useInstallMode,
+  useModuleProfile,
+  useSSHUsername,
+  useUserOS,
+  useVPSIP,
 } from "@/lib/userPreferences";
-import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
-import { resolveModuleSelection } from "@/lib/moduleSelection";
-import { manifestModules, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
+import { cn } from "@/lib/utils";
 import { useWizardInstallation } from "@/lib/wizardInstallation";
-import type { ApprovedTeamProfileInstallation } from "@/lib/teamProfileImport";
 
 function LocationBadge({ location }: { location: "local" | "vps" }) {
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wider",
-        location === "vps"
-          ? "bg-green/15 text-green"
-          : "bg-primary/15 text-primary",
+        location === "vps" ? "bg-green/15 text-green" : "bg-primary/15 text-primary",
       )}
     >
       {location === "vps" ? (
@@ -183,11 +181,13 @@ function ExclusionPicker({
         className="min-h-11 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
       >
         <option value="">Choose a {kind} to exclude</option>
-        {options.filter((option) => !selected.includes(option.value)).map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.value} ({option.count} modules)
-          </option>
-        ))}
+        {options
+          .filter((option) => !selected.includes(option.value))
+          .map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.value} ({option.count} modules)
+            </option>
+          ))}
       </select>
       <div className="flex flex-wrap gap-2">
         {selected.map((value) => (
@@ -214,35 +214,67 @@ export function CommandBuilderPanel() {
     return <ReviewedCommandBuilderPanel installation={session.installation} />;
   }
   if (session && session.status !== "saved") {
-    return <p role="status">Review or discard the pending installation before generating commands.</p>;
+    return (
+      <p role="status">Review or discard the pending installation before generating commands.</p>
+    );
   }
   return <SavedCommandBuilderPanel />;
 }
 
 /** Active approval is immutable; editable drafts and lossy links are separate. */
-function ReviewedCommandBuilderPanel({ installation }: { installation: ApprovedTeamProfileInstallation }) {
+function ReviewedCommandBuilderPanel({
+  installation,
+}: {
+  installation: ApprovedTeamProfileInstallation;
+}) {
   const [host, , hostLoaded] = useVPSIP();
   const [os, , osLoaded] = useUserOS();
   const commands = useMemo(() => {
     if (!hostLoaded || !osLoaded || !host) return null;
     try {
-      const next = buildCommands({ ip: host, os: os ?? "mac", username: installation.username,
-        mode: installation.mode, ref: installation.ref, moduleSelection: installation.moduleSelection });
-      return next.find((entry) => entry.id === "installer")?.command === installation.command ? next : null;
-    } catch { return null; }
+      const next = buildCommands({
+        ip: host,
+        os: os ?? "mac",
+        username: installation.username,
+        mode: installation.mode,
+        ref: installation.ref,
+        moduleSelection: installation.moduleSelection,
+      });
+      return next.find((entry) => entry.id === "installer")?.command === installation.command
+        ? next
+        : null;
+    } catch {
+      return null;
+    }
   }, [host, os, hostLoaded, osLoaded, installation]);
-  return <section className="space-y-4 rounded-xl border border-primary/30 bg-card/30 p-5">
-    <h2 className="text-sm font-semibold">Your reviewed installation commands</h2>
-    <p className="text-sm text-muted-foreground">
-      These commands retain the exact reviewed selection. Discard the active installation
-      using the banner before editing saved defaults or creating a different command.
-      Sharing an approval through a URL is not supported.
-    </p>
-    {commands ? commands.map((command) => <CommandRow key={command.id}
-      label={command.label} description={command.description} runLocation={command.runLocation}
-      command={os === "windows" && command.windowsCommand ? command.windowsCommand : command.command} />)
-      : <p role="alert">Reviewed commands are unavailable or changed. Review the installation again before continuing.</p>}
-  </section>;
+  return (
+    <section className="space-y-4 rounded-xl border border-primary/30 bg-card/30 p-5">
+      <h2 className="text-sm font-semibold">Your reviewed installation commands</h2>
+      <p className="text-sm text-muted-foreground">
+        These commands retain the exact reviewed selection. Discard the active installation using
+        the banner before editing saved defaults or creating a different command. Sharing an
+        approval through a URL is not supported.
+      </p>
+      {commands ? (
+        commands.map((command) => (
+          <CommandRow
+            key={command.id}
+            label={command.label}
+            description={command.description}
+            runLocation={command.runLocation}
+            command={
+              os === "windows" && command.windowsCommand ? command.windowsCommand : command.command
+            }
+          />
+        ))
+      ) : (
+        <p role="alert">
+          Reviewed commands are unavailable or changed. Review the installation again before
+          continuing.
+        </p>
+      )}
+    </section>
+  );
 }
 
 function SavedCommandBuilderPanel() {
@@ -283,7 +315,8 @@ function SavedCommandBuilderPanel() {
   const usernameError = useMemo(() => {
     const trimmed = usernameDraft.trim();
     if (!trimmed) return "Enter a Linux username such as ubuntu or devuser.";
-    if (trimmed === "root") return "Use ubuntu or another non-root Linux user; root is only for the first SSH login.";
+    if (trimmed === "root")
+      return "Use ubuntu or another non-root Linux user; root is only for the first SSH login.";
     if (normalizeSSHUsername(trimmed)) return null;
     return "Use lowercase letters, numbers, dots, underscores, or hyphens, and start with a lowercase letter or underscore.";
   }, [usernameDraft]);
@@ -305,8 +338,10 @@ function SavedCommandBuilderPanel() {
     return normalizedRefDraft;
   }, [normalizedRefDraft, refDraft]);
 
-  const moduleSelection = useMemo(() => ({ profile, skipTags, skipCategories }),
-    [profile, skipTags, skipCategories]);
+  const moduleSelection = useMemo(
+    () => ({ profile, skipTags, skipCategories }),
+    [profile, skipTags, skipCategories],
+  );
   const hasExclusions = skipTags.length > 0 || skipCategories.length > 0;
   const exclusionOptions = useMemo(() => {
     const categories = new Map<string, number>();
@@ -315,8 +350,8 @@ function SavedCommandBuilderPanel() {
       categories.set(module.category, (categories.get(module.category) ?? 0) + 1);
       for (const tag of new Set(module.tags)) tags.set(tag, (tags.get(tag) ?? 0) + 1);
     }
-    const options = (counts: Map<string, number>) => [...counts.keys()].sort()
-      .map((value) => ({ value, count: counts.get(value)! }));
+    const options = (counts: Map<string, number>) =>
+      [...counts.keys()].sort().map((value) => ({ value, count: counts.get(value)! }));
     return { categories: options(categories), tags: options(tags) };
   }, []);
 
@@ -353,20 +388,27 @@ function SavedCommandBuilderPanel() {
       moduleSelection,
     });
     void copyShareLink(url);
-  }, [copyShareLink, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok, hasExclusions]);
+  }, [
+    copyShareLink,
+    effectiveIP,
+    effectiveOS,
+    effectiveUsername,
+    mode,
+    effectiveRef,
+    moduleSelection,
+    plan.ok,
+    hasExclusions,
+  ]);
 
-  const handleIPChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value.trim();
-      setLocalIP(val);
-      if (val && !isValidIP(val)) {
-        setIpError("Enter a valid IP (e.g., 203.0.113.42)");
-      } else {
-        setIpError(null);
-      }
-    },
-    [],
-  );
+  const handleIPChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.trim();
+    setLocalIP(val);
+    if (val && !isValidIP(val)) {
+      setIpError("Enter a valid IP (e.g., 203.0.113.42)");
+    } else {
+      setIpError(null);
+    }
+  }, []);
 
   // Persist a valid inline IP so the rest of the page (which reads the stored
   // VPS IP) stops saying YOUR_VPS_IP. Committed on blur/Enter rather than per
@@ -378,12 +420,9 @@ function SavedCommandBuilderPanel() {
     }
   }, [localIP, setVPSIP]);
 
-  const handleUsernameChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setUsernameDraft(e.target.value);
-    },
-    [],
-  );
+  const handleUsernameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setUsernameDraft(e.target.value);
+  }, []);
 
   const commitUsernameDraft = useCallback(() => {
     const trimmed = usernameDraft.trim();
@@ -399,12 +438,9 @@ function SavedCommandBuilderPanel() {
     }
   }, [username, usernameDraft, setUsername]);
 
-  const handleRefChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setRefDraft(e.target.value);
-    },
-    [],
-  );
+  const handleRefChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setRefDraft(e.target.value);
+  }, []);
 
   const commitRefDraft = useCallback(() => {
     const trimmed = refDraft.trim();
@@ -427,10 +463,12 @@ function SavedCommandBuilderPanel() {
   }, [normalizedRefDraft, ref, refDraft, setRef]);
 
   const profileOptions = useMemo(() => {
-    return manifestSelectionProfiles.filter((p) => !p.mode).map((p) => ({
-      value: p.id,
-      label: p.label,
-    }));
+    return manifestSelectionProfiles
+      .filter((p) => !p.mode)
+      .map((p) => ({
+        value: p.id,
+        label: p.label,
+      }));
   }, []);
 
   return (
@@ -440,9 +478,7 @@ function SavedCommandBuilderPanel() {
           <Terminal className="h-4 w-4 text-primary" />
           {/* h2: the panel is mounted directly under the page's h1 on
               launch-onboarding, so an h3 here skipped a level. */}
-          <h2 className="text-sm font-semibold text-foreground">
-            Your Commands
-          </h2>
+          <h2 className="text-sm font-semibold text-foreground">Your Commands</h2>
         </div>
         {effectiveIP && (
           <Button
@@ -450,14 +486,14 @@ function SavedCommandBuilderPanel() {
             size="sm"
             onClick={handleShare}
             disabled={!plan.ok || hasExclusions}
-            title={hasExclusions ? "Copy the exact command below; shared links cannot preserve exclusions." : undefined}
+            title={
+              hasExclusions
+                ? "Copy the exact command below; shared links cannot preserve exclusions."
+                : undefined
+            }
             className="gap-1.5 text-xs text-muted-foreground"
           >
-            {shareCopied ? (
-              <Check className="h-3 w-3 text-green" />
-            ) : (
-              <Link2 className="h-3 w-3" />
-            )}
+            {shareCopied ? <Check className="h-3 w-3 text-green" /> : <Link2 className="h-3 w-3" />}
             {shareCopied ? "Copied!" : "Share link"}
           </Button>
         )}
@@ -521,10 +557,7 @@ function SavedCommandBuilderPanel() {
             <Settings2 className="h-3 w-3" />
             Advanced
             <ChevronDown
-              className={cn(
-                "h-3 w-3 transition-transform",
-                showAdvanced && "rotate-180",
-              )}
+              className={cn("h-3 w-3 transition-transform", showAdvanced && "rotate-180")}
             />
           </button>
         </div>
@@ -545,20 +578,36 @@ function SavedCommandBuilderPanel() {
           command generation; nothing is installed from this page.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <ExclusionPicker kind="category" options={exclusionOptions.categories}
-            selected={skipCategories} onChange={setSkipCategories} />
-          <ExclusionPicker kind="tag" options={exclusionOptions.tags}
-            selected={skipTags} onChange={setSkipTags} />
+          <ExclusionPicker
+            kind="category"
+            options={exclusionOptions.categories}
+            selected={skipCategories}
+            onChange={setSkipCategories}
+          />
+          <ExclusionPicker
+            kind="tag"
+            options={exclusionOptions.tags}
+            selected={skipTags}
+            onChange={setSkipTags}
+          />
         </div>
         {hasExclusions && (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground" role="status">
               These exclusions apply only to this panel and stay selected when switching profiles.
-              They are not saved in shared links, saved profiles, or other wizard commands.
-              Copy the exact installer command below for handoff.
+              They are not saved in shared links, saved profiles, or other wizard commands. Copy the
+              exact installer command below for handoff.
             </p>
-            <Button type="button" variant="outline" size="sm" className="min-h-11"
-              onClick={() => { setSkipTags([]); setSkipCategories([]); }}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11"
+              onClick={() => {
+                setSkipTags([]);
+                setSkipCategories([]);
+              }}
+            >
               Clear all exclusions
             </Button>
           </div>
@@ -566,10 +615,18 @@ function SavedCommandBuilderPanel() {
       </fieldset>
 
       {!plan.ok && (
-        <div role="alert" className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+        >
           <p className="font-semibold">Install plan blocked</p>
-          {plan.errors.map((error, index) => <p key={index}>{error}</p>)}
-          <p>Remove the conflicting exclusion or choose another profile. No runnable command is shown.</p>
+          {plan.errors.map((error, index) => (
+            <p key={index}>{error}</p>
+          ))}
+          <p>
+            Remove the conflicting exclusion or choose another profile. No runnable command is
+            shown.
+          </p>
         </div>
       )}
 
@@ -585,17 +642,16 @@ function SavedCommandBuilderPanel() {
           <div className="flex items-center gap-1.5">
             <Boxes className="h-3.5 w-3.5 text-primary" />
             <span>
-              {plan.ok ? `Install Plan: ${plan.selectedCount} of ${plan.availableCount} modules` : "Install Plan: blocked"}
+              {plan.ok
+                ? `Install Plan: ${plan.selectedCount} of ${plan.availableCount} modules`
+                : "Install Plan: blocked"}
               {plan.ok && plan.availableCount > plan.selectedCount
                 ? ` (${plan.availableCount - plan.selectedCount} skipped)`
                 : ""}
             </span>
           </div>
           <ChevronDown
-            className={cn(
-              "h-3.5 w-3.5 transition-transform",
-              showPlan && "rotate-180",
-            )}
+            className={cn("h-3.5 w-3.5 transition-transform", showPlan && "rotate-180")}
           />
         </button>
 
@@ -607,13 +663,9 @@ function SavedCommandBuilderPanel() {
               </span>
               <div className="mt-1.5 max-h-48 space-y-1 overflow-y-auto rounded-md bg-background/50 p-2 font-mono text-xs">
                 {plan.included.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-2 py-0.5"
-                  >
+                  <div key={item.id} className="flex items-center justify-between gap-2 py-0.5">
                     <span className="truncate text-foreground">
-                      <span className="text-muted-foreground">[P{item.phase}]</span>{" "}
-                      {item.id}
+                      <span className="text-muted-foreground">[P{item.phase}]</span> {item.id}
                     </span>
                     <span className="shrink-0 text-xs text-muted-foreground">
                       {item.reason === "default" || item.reason === "explicitly requested"
@@ -649,7 +701,10 @@ function SavedCommandBuilderPanel() {
 
       {/* Advanced settings */}
       {showAdvanced && (
-        <div id={advancedPanelId} className="space-y-3 rounded-lg border border-border/30 bg-muted/20 p-3">
+        <div
+          id={advancedPanelId}
+          className="space-y-3 rounded-lg border border-border/30 bg-muted/20 p-3"
+        >
           <div>
             <label className="text-xs text-muted-foreground" htmlFor="cb-user">
               SSH username
@@ -681,8 +736,7 @@ function SavedCommandBuilderPanel() {
           </div>
           <div>
             <label className="text-xs text-muted-foreground" htmlFor="cb-ref">
-              Pin to git ref{" "}
-              <span className="text-muted-foreground">(optional)</span>
+              Pin to git ref <span className="text-muted-foreground">(optional)</span>
             </label>
             <input
               id="cb-ref"
@@ -721,9 +775,7 @@ function SavedCommandBuilderPanel() {
               label={cmd.label}
               description={cmd.description}
               command={
-                effectiveOS === "windows" && cmd.windowsCommand
-                  ? cmd.windowsCommand
-                  : cmd.command
+                effectiveOS === "windows" && cmd.windowsCommand ? cmd.windowsCommand : cmd.command
               }
               runLocation={cmd.runLocation}
             />

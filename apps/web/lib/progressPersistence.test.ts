@@ -1,30 +1,30 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  analyticsContextContainsSensitiveState,
+  analyticsPayloadIsPrivacySafe,
+  commandCopyAnalyticsProperties,
+  disableAnalyticsForDocument,
+  getFunnelData,
+  getLessonFunnelData,
+  getOrCreateUserId,
+  isAnalyticsPrivacyAllowed,
+  sanitizeAnalyticsReferrer,
+} from "./analytics";
+import {
   addCompletedLesson,
   COMPLETED_LESSONS_CHANGED_EVENT,
   COMPLETED_LESSONS_KEY,
   TOTAL_LESSONS,
 } from "./lessonProgress";
 import {
-  addCompletedStep,
-  canAccessWizardStep,
-  COMPLETED_STEPS_CHANGED_EVENT,
-  COMPLETED_STEPS_KEY,
-  getCompletedSteps,
-  getNextReachableWizardStep,
-  markStepComplete,
-  setCompletedSteps,
-  TOTAL_STEPS,
-} from "./wizardSteps";
-import {
   ACFS_REF_KEY,
   CREATE_VPS_CHECKLIST_KEY,
   getACFSRef,
-  getCreateVPSChecklist,
   getCheckedServices,
+  getCreateVPSChecklist,
   getSSHUsername,
-  getVPSReadinessSelection,
   getVPSIP,
+  getVPSReadinessSelection,
   isCreateVPSChecklistComplete,
   normalizeGitRef,
   normalizeSSHUsername,
@@ -33,8 +33,8 @@ import {
   setCreateVPSChecklist,
   setInstallMode,
   setSSHUsername,
-  setVPSReadinessSelection,
   setVPSIP,
+  setVPSReadinessSelection,
   VPS_READINESS_SELECTION_KEY,
 } from "./userPreferences";
 import {
@@ -47,16 +47,16 @@ import {
   withCurrentSearch,
 } from "./utils";
 import {
-  analyticsPayloadIsPrivacySafe,
-  analyticsContextContainsSensitiveState,
-  commandCopyAnalyticsProperties,
-  disableAnalyticsForDocument,
-  getFunnelData,
-  getLessonFunnelData,
-  getOrCreateUserId,
-  isAnalyticsPrivacyAllowed,
-  sanitizeAnalyticsReferrer,
-} from "./analytics";
+  addCompletedStep,
+  COMPLETED_STEPS_CHANGED_EVENT,
+  COMPLETED_STEPS_KEY,
+  canAccessWizardStep,
+  getCompletedSteps,
+  getNextReachableWizardStep,
+  markStepComplete,
+  setCompletedSteps,
+  TOTAL_STEPS,
+} from "./wizardSteps";
 
 type StorageController = {
   dispatchCalls: Event[];
@@ -194,9 +194,7 @@ describe("progress persistence guards", () => {
     expect(setCompletedSteps([3, 1, 1, 2, 2.5])).toBe(true);
     expect(successBrowser.getStoredValue(COMPLETED_STEPS_KEY)).toBe("[1,2,3]");
     expect(
-      successBrowser.dispatchCalls.some(
-        (event) => event.type === COMPLETED_STEPS_CHANGED_EVENT
-      )
+      successBrowser.dispatchCalls.some((event) => event.type === COMPLETED_STEPS_CHANGED_EVENT),
     ).toBe(true);
 
     const failingBrowser = installMockBrowser({
@@ -205,9 +203,7 @@ describe("progress persistence guards", () => {
     expect(setCompletedSteps([1, 2])).toBe(false);
     expect(failingBrowser.getStoredValue(COMPLETED_STEPS_KEY)).toBeNull();
     expect(
-      failingBrowser.dispatchCalls.some(
-        (event) => event.type === COMPLETED_STEPS_CHANGED_EVENT
-      )
+      failingBrowser.dispatchCalls.some((event) => event.type === COMPLETED_STEPS_CHANGED_EVENT),
     ).toBe(false);
   });
 
@@ -278,8 +274,8 @@ describe("progress persistence guards", () => {
       browser.dispatchCalls.some(
         (event) =>
           event.type === COMPLETED_STEPS_CHANGED_EVENT ||
-          event.type === COMPLETED_LESSONS_CHANGED_EVENT
-      )
+          event.type === COMPLETED_LESSONS_CHANGED_EVENT,
+      ),
     ).toBe(false);
   });
 
@@ -293,7 +289,7 @@ describe("progress persistence guards", () => {
     expect(getCreateVPSChecklist()).toEqual(["region", "ubuntu"]);
     expect(setCreateVPSChecklist(["password", "password", "created"])).toBe(true);
     expect(successBrowser.getStoredValue(CREATE_VPS_CHECKLIST_KEY)).toBe(
-      JSON.stringify(["password", "created"])
+      JSON.stringify(["password", "created"]),
     );
     expect(successBrowser.dispatchCalls).toHaveLength(1);
 
@@ -308,7 +304,9 @@ describe("progress persistence guards", () => {
   test("create-vps checklist completion requires all wizard items", () => {
     expect(isCreateVPSChecklistComplete(["ubuntu", "region", "password"])).toBe(false);
     expect(isCreateVPSChecklistComplete(["region", "ubuntu", "created", "password"])).toBe(true);
-    expect(isCreateVPSChecklistComplete(["region", "ubuntu", "created", "password", "extra"])).toBe(true);
+    expect(isCreateVPSChecklistComplete(["region", "ubuntu", "created", "password", "extra"])).toBe(
+      true,
+    );
   });
 
   test("checked services persistence normalizes values and only emits on success", () => {
@@ -321,7 +319,7 @@ describe("progress persistence guards", () => {
     expect(getCheckedServices()).toEqual(["github", "codex-cli"]);
     expect(setCheckedServices(["antigravity-cli", "antigravity-cli", "tailscale"])).toBe(true);
     expect(successBrowser.getStoredValue(CHECKED_SERVICES_TEST_KEY)).toBe(
-      JSON.stringify(["antigravity-cli", "tailscale"])
+      JSON.stringify(["antigravity-cli", "tailscale"]),
     );
     expect(successBrowser.dispatchCalls).toHaveLength(1);
 
@@ -375,42 +373,57 @@ describe("progress persistence guards", () => {
       workloadId: "heavy",
     };
     expect(browser.getStoredValue(VPS_READINESS_SELECTION_KEY)).toBe(
-      JSON.stringify(expectedSelection)
+      JSON.stringify(expectedSelection),
     );
     expect(getVPSReadinessSelection()).toEqual(expectedSelection);
     expect(browser.dispatchCalls).toHaveLength(1);
 
-    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
-      ...expectedSelection,
-      targetAgents: 999,
-    }));
+    localStorage.setItem(
+      VPS_READINESS_SELECTION_KEY,
+      JSON.stringify({
+        ...expectedSelection,
+        targetAgents: 999,
+      }),
+    );
     expect(getVPSReadinessSelection()?.targetAgents).toBe(50);
 
-    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
-      ...expectedSelection,
-      targetAgents: -7,
-    }));
+    localStorage.setItem(
+      VPS_READINESS_SELECTION_KEY,
+      JSON.stringify({
+        ...expectedSelection,
+        targetAgents: -7,
+      }),
+    );
     expect(getVPSReadinessSelection()?.targetAgents).toBe(5);
 
-    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
-      ...expectedSelection,
-      targetAgents: 13,
-    }));
+    localStorage.setItem(
+      VPS_READINESS_SELECTION_KEY,
+      JSON.stringify({
+        ...expectedSelection,
+        targetAgents: 13,
+      }),
+    );
     expect(getVPSReadinessSelection()?.targetAgents).toBe(15);
 
-    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
-      ...expectedSelection,
-      targetAgents: null,
-    }));
+    localStorage.setItem(
+      VPS_READINESS_SELECTION_KEY,
+      JSON.stringify({
+        ...expectedSelection,
+        targetAgents: null,
+      }),
+    );
     expect(getVPSReadinessSelection()?.targetAgents).toBe(10);
 
-    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
-      ...expectedSelection,
-      providerId: "OVH",
-      planName: "retired plan",
-      ubuntuVersion: "26.04",
-      region: "retired-region",
-    }));
+    localStorage.setItem(
+      VPS_READINESS_SELECTION_KEY,
+      JSON.stringify({
+        ...expectedSelection,
+        providerId: "OVH",
+        planName: "retired plan",
+        ubuntuVersion: "26.04",
+        region: "retired-region",
+      }),
+    );
     expect(getVPSReadinessSelection()).toEqual({
       ...expectedSelection,
       providerId: "ovh",
@@ -434,49 +447,47 @@ describe("progress persistence guards", () => {
   });
 
   test("sensitive query filtering is spelling-insensitive and preserves safe state", () => {
-    const query = "?os=mac&vps_ip=192.0.2.10&API-KEY=secret&note=Bearer%20abc&server=203.0.113.42&mode=safe";
+    const query =
+      "?os=mac&vps_ip=192.0.2.10&API-KEY=secret&note=Bearer%20abc&server=203.0.113.42&mode=safe";
 
     expect(queryContainsSensitiveState(query)).toBe(true);
     expect(stripSensitiveQueryState(query)).toBe("os=mac&mode=safe");
-    expect(queryContainsSensitiveState("?utm_source=docs&mode=vibe&profile=minimal&ref=v0.7.0")).toBe(false);
-    expect(stripSensitiveQueryState("?mode=safe&profile=cloud-only"))
-      .toBe("mode=safe&profile=cloud-only");
+    expect(
+      queryContainsSensitiveState("?utm_source=docs&mode=vibe&profile=minimal&ref=v0.7.0"),
+    ).toBe(false);
+    expect(stripSensitiveQueryState("?mode=safe&profile=cloud-only")).toBe(
+      "mode=safe&profile=cloud-only",
+    );
     expect(queryContainsSensitiveState("?profile=safe")).toBe(true);
     expect(queryContainsSensitiveState("?profile=unknown-profile")).toBe(true);
     expect(queryContainsSensitiveState("?from=verify-key-connection")).toBe(false);
     expect(queryContainsSensitiveState("?from=arbitrary-low-entropy-value")).toBe(true);
-    expect(stripSensitiveQueryState("?utm_source=docs&unknown=value&mode=vibe"))
-      .toBe("utm_source=docs&mode=vibe");
-    expect(queryContainsSensitiveState(
-      "?ref=github_pat_0123456789abcdefghijklmnopqrstuv",
-    )).toBe(true);
-    expect(queryContainsSensitiveState(
-      "?ref=sk-proj-0123456789abcdefghijklmnopqrstuvwxyz",
-    )).toBe(true);
-    expect(queryContainsSensitiveState(
-      "?ref=hvs.0123456789abcdefghijklmnopqrstuvwxyz",
-    )).toBe(true);
-    expect(queryContainsSensitiveState(
-      "?ref=F1a9B2c8D4e7G6h3J5k0L9m8N7p6Q5r4S3t2U1v0",
-    )).toBe(true);
-    expect(queryContainsSensitiveState(
-      "?ref=0123456789abcdef0123456789abcdef01234567",
-    )).toBe(false);
-    expect(queryContainsSensitiveState(
-      "?ref=feature%2F1234-add-support-for-cloudflare-workers",
-    )).toBe(false);
-    expect(normalizeGitRef(
+    expect(stripSensitiveQueryState("?utm_source=docs&unknown=value&mode=vibe")).toBe(
+      "utm_source=docs&mode=vibe",
+    );
+    expect(queryContainsSensitiveState("?ref=github_pat_0123456789abcdefghijklmnopqrstuv")).toBe(
+      true,
+    );
+    expect(queryContainsSensitiveState("?ref=sk-proj-0123456789abcdefghijklmnopqrstuvwxyz")).toBe(
+      true,
+    );
+    expect(queryContainsSensitiveState("?ref=hvs.0123456789abcdefghijklmnopqrstuvwxyz")).toBe(true);
+    expect(queryContainsSensitiveState("?ref=F1a9B2c8D4e7G6h3J5k0L9m8N7p6Q5r4S3t2U1v0")).toBe(true);
+    expect(queryContainsSensitiveState("?ref=0123456789abcdef0123456789abcdef01234567")).toBe(
+      false,
+    );
+    expect(
+      queryContainsSensitiveState("?ref=feature%2F1234-add-support-for-cloudflare-workers"),
+    ).toBe(false);
+    expect(normalizeGitRef("feature/1234-add-support-for-cloudflare-workers")).toBe(
       "feature/1234-add-support-for-cloudflare-workers",
-    )).toBe("feature/1234-add-support-for-cloudflare-workers");
-    const fragmentedToken =
-      "AbCdEfGhIjKlMnOpQrSt/1234567890aBcDeFgHiJ/UVWXYZabcdef01234567";
+    );
+    const fragmentedToken = "AbCdEfGhIjKlMnOpQrSt/1234567890aBcDeFgHiJ/UVWXYZabcdef01234567";
     expect(normalizeGitRef(fragmentedToken)).toBeNull();
-    expect(queryContainsSensitiveState(
-      `?utm_content=${encodeURIComponent(fragmentedToken)}`,
-    )).toBe(true);
-    expect(normalizeGitRef(
-      "feature/QwErTyUiOpAsDfGhJkLzXcVbNmPoIuYtReWq",
-    )).toBeNull();
+    expect(queryContainsSensitiveState(`?utm_content=${encodeURIComponent(fragmentedToken)}`)).toBe(
+      true,
+    );
+    expect(normalizeGitRef("feature/QwErTyUiOpAsDfGhJkLzXcVbNmPoIuYtReWq")).toBeNull();
     expect(normalizeGitRef(`ghp_${"a".repeat(36)}`)).toBeNull();
     expect(normalizeGitRef(`sk-proj-${"a".repeat(32)}`)).toBeNull();
     expect(normalizeGitRef("risk-proj-deployment-hardening-changes")).toBe(
@@ -486,12 +497,11 @@ describe("progress persistence guards", () => {
       "npm_dependency-upgrade-and-cleanup",
     );
     expect(normalizeGitRef(`npm_${"a".repeat(36)}`)).toBeNull();
-    expect(normalizeGitRef("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV"))
-      .toBeNull();
+    expect(normalizeGitRef("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV")).toBeNull();
     expect(normalizeSSHUsername("a".repeat(33))).toBeNull();
-    expect(stripSensitiveQueryState(
-      "?mode=safe&ref=sk-proj-0123456789abcdefghijklmnopqrstuvwxyz",
-    )).toBe("mode=safe");
+    expect(
+      stripSensitiveQueryState("?mode=safe&ref=sk-proj-0123456789abcdefghijklmnopqrstuvwxyz"),
+    ).toBe("mode=safe");
   });
 
   test("the analytics API itself fails closed on sensitive URL state", () => {
@@ -515,28 +525,27 @@ describe("progress persistence guards", () => {
   });
 
   test("analytics admission fails closed on sensitive referrer state", () => {
-    expect(analyticsContextContainsSensitiveState(
-      "?mode=safe",
-      "https://example.test/wizard?ip=203.0.113.42",
-    )).toBe(true);
-    expect(analyticsContextContainsSensitiveState(
-      "?mode=safe",
-      "https://203.0.113.42/wizard",
-    )).toBe(true);
-    expect(analyticsContextContainsSensitiveState(
-      "?mode=safe",
-      "https://docs.example.test/guide?utm_source=search",
-    )).toBe(false);
-    expect(analyticsContextContainsSensitiveState(
-      "?mode=safe",
-      "",
-      "https://203.0.113.42/get-started",
-    )).toBe(true);
-    expect(analyticsContextContainsSensitiveState(
-      "?mode=safe",
-      "",
-      "https://[2001:db8::7]/get-started",
-    )).toBe(true);
+    expect(
+      analyticsContextContainsSensitiveState(
+        "?mode=safe",
+        "https://example.test/wizard?ip=203.0.113.42",
+      ),
+    ).toBe(true);
+    expect(
+      analyticsContextContainsSensitiveState("?mode=safe", "https://203.0.113.42/wizard"),
+    ).toBe(true);
+    expect(
+      analyticsContextContainsSensitiveState(
+        "?mode=safe",
+        "https://docs.example.test/guide?utm_source=search",
+      ),
+    ).toBe(false);
+    expect(
+      analyticsContextContainsSensitiveState("?mode=safe", "", "https://203.0.113.42/get-started"),
+    ).toBe(true);
+    expect(
+      analyticsContextContainsSensitiveState("?mode=safe", "", "https://[2001:db8::7]/get-started"),
+    ).toBe(true);
   });
 
   test("analytics admission honors every supported global privacy signal", () => {
@@ -565,54 +574,63 @@ describe("progress persistence guards", () => {
     expect(urlContainsSensitiveState("https://example.test/learn/203.0.113.7")).toBe(true);
     expect(urlContainsSensitiveState("https://example.test/learn#token=secret")).toBe(true);
     expect(urlContainsSensitiveState("https://example.test/learn#password=hunter2")).toBe(true);
-    expect(urlContainsSensitiveState("https://example.test/learn#foo=bar&token=secret"))
-      .toBe(true);
-    expect(urlContainsSensitiveState("https://example.test/learn#foo?access_token=secret"))
-      .toBe(true);
+    expect(urlContainsSensitiveState("https://example.test/learn#foo=bar&token=secret")).toBe(true);
+    expect(urlContainsSensitiveState("https://example.test/learn#foo?access_token=secret")).toBe(
+      true,
+    );
     expect(urlContainsSensitiveState("https://example.test/token/secret")).toBe(true);
     expect(urlContainsSensitiveState("https://example.test/docs/code/examples")).toBe(false);
-    expect(urlContainsSensitiveState(
-      "https://example.test/callback/0123456789abcdef0123456789abcdef01234567",
-    )).toBe(true);
-    expect(urlContainsSensitiveState(
-      `https://example.test/learn#sk-proj-${"a".repeat(32)}`,
-    )).toBe(true);
-    expect(urlContainsSensitiveState(
-      `https://example.test/learn/sk-proj-${"a".repeat(32)}`,
-    )).toBe(true);
+    expect(
+      urlContainsSensitiveState(
+        "https://example.test/callback/0123456789abcdef0123456789abcdef01234567",
+      ),
+    ).toBe(true);
+    expect(urlContainsSensitiveState(`https://example.test/learn#sk-proj-${"a".repeat(32)}`)).toBe(
+      true,
+    );
+    expect(urlContainsSensitiveState(`https://example.test/learn/sk-proj-${"a".repeat(32)}`)).toBe(
+      true,
+    );
     const encodedToken = `sk-proj-${"%61".repeat(32)}`;
-    expect(urlContainsSensitiveState(
-      `https://example.test/learn/${encodedToken}`,
-    )).toBe(true);
-    expect(urlContainsSensitiveState(
-      `https://example.test/learn/${encodeURIComponent(encodedToken)}`,
-    )).toBe(true);
-    expect(urlContainsSensitiveState("https://example.test/learn/hello%2520world"))
-      .toBe(false);
+    expect(urlContainsSensitiveState(`https://example.test/learn/${encodedToken}`)).toBe(true);
+    expect(
+      urlContainsSensitiveState(`https://example.test/learn/${encodeURIComponent(encodedToken)}`),
+    ).toBe(true);
+    expect(urlContainsSensitiveState("https://example.test/learn/hello%2520world")).toBe(false);
     expect(urlContainsSensitiveState("https://example.test/learn#%E0%A4%A")).toBe(true);
   });
 
   test("history destinations are sanitized before vendor scripts can observe them", () => {
-    expect(sanitizeSensitiveNavigationUrl(
-      "/wizard/run-installer?mode=safe&ip=203.0.113.42#run",
-      "https://example.test/get-started?utm_source=docs",
-    )).toBe("https://example.test/wizard/run-installer?mode=safe#run");
-    expect(sanitizeSensitiveNavigationUrl(
-      "https://other.example/wizard?ip=203.0.113.42",
-      "https://example.test/get-started",
-    )).toBe("https://other.example/wizard?ip=203.0.113.42");
-    expect(sanitizeSensitiveNavigationUrl(
-      "/learn/203.0.113.42?mode=safe#pricing",
-      "https://example.test/get-started",
-    )).toBe("https://example.test/?mode=safe#pricing");
-    expect(sanitizeSensitiveNavigationUrl(
-      `/learn?mode=safe#sk-proj-${"a".repeat(32)}`,
-      "https://example.test/get-started",
-    )).toBe("https://example.test/learn?mode=safe");
-    expect(sanitizeSensitiveNavigationUrl(
-      "https://user:pass@example.test/learn?mode=safe",
-      "https://example.test/get-started",
-    )).toBe("https://example.test/learn?mode=safe");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        "/wizard/run-installer?mode=safe&ip=203.0.113.42#run",
+        "https://example.test/get-started?utm_source=docs",
+      ),
+    ).toBe("https://example.test/wizard/run-installer?mode=safe#run");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        "https://other.example/wizard?ip=203.0.113.42",
+        "https://example.test/get-started",
+      ),
+    ).toBe("https://other.example/wizard?ip=203.0.113.42");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        "/learn/203.0.113.42?mode=safe#pricing",
+        "https://example.test/get-started",
+      ),
+    ).toBe("https://example.test/?mode=safe#pricing");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        `/learn?mode=safe#sk-proj-${"a".repeat(32)}`,
+        "https://example.test/get-started",
+      ),
+    ).toBe("https://example.test/learn?mode=safe");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        "https://user:pass@example.test/learn?mode=safe",
+        "https://example.test/get-started",
+      ),
+    ).toBe("https://example.test/learn?mode=safe");
     let coercions = 0;
     const statefulDestination = {
       toString() {
@@ -622,10 +640,12 @@ describe("progress persistence guards", () => {
           : "/get-started?token=second-coercion-secret";
       },
     };
-    expect(sanitizeSensitiveNavigationUrl(
-      statefulDestination as unknown as URL,
-      "https://example.test/get-started",
-    )).toBe("/get-started?mode=safe");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        statefulDestination as unknown as URL,
+        "https://example.test/get-started",
+      ),
+    ).toBe("/get-started?mode=safe");
     expect(coercions).toBe(1);
     let primitiveCoercions = 0;
     const primitiveDestination = {
@@ -638,48 +658,64 @@ describe("progress persistence guards", () => {
         throw new Error("native string coercion must prefer Symbol.toPrimitive");
       },
     };
-    expect(sanitizeSensitiveNavigationUrl(
-      primitiveDestination as unknown as URL,
-      "https://example.test/get-started",
-    )).toBe("/get-started?mode=vibe");
+    expect(
+      sanitizeSensitiveNavigationUrl(
+        primitiveDestination as unknown as URL,
+        "https://example.test/get-started",
+      ),
+    ).toBe("/get-started?mode=vibe");
     expect(primitiveCoercions).toBe(1);
-    expect(() => sanitizeSensitiveNavigationUrl(
-      { [Symbol.toPrimitive]() { throw new Error("coercion failed"); } } as unknown as URL,
-      "https://example.test/get-started",
-    )).toThrow("coercion failed");
-    expect(() => sanitizeSensitiveNavigationUrl(
-      Symbol("destination") as unknown as URL,
-      "https://example.test/get-started",
-    )).toThrow("History URL cannot be a Symbol");
-    expect(sanitizeSensitiveNavigationUrl(
-      null,
-      "https://example.test/get-started?token=secret",
-    )).toBe("https://example.test/get-started");
-    expect(sanitizeSensitiveNavigationUrl(
-      undefined,
-      "https://example.test/get-started?mode=safe",
-    )).toBeUndefined();
+    expect(() =>
+      sanitizeSensitiveNavigationUrl(
+        {
+          [Symbol.toPrimitive]() {
+            throw new Error("coercion failed");
+          },
+        } as unknown as URL,
+        "https://example.test/get-started",
+      ),
+    ).toThrow("coercion failed");
+    expect(() =>
+      sanitizeSensitiveNavigationUrl(
+        Symbol("destination") as unknown as URL,
+        "https://example.test/get-started",
+      ),
+    ).toThrow("History URL cannot be a Symbol");
+    expect(
+      sanitizeSensitiveNavigationUrl(null, "https://example.test/get-started?token=secret"),
+    ).toBe("https://example.test/get-started");
+    expect(
+      sanitizeSensitiveNavigationUrl(undefined, "https://example.test/get-started?mode=safe"),
+    ).toBeUndefined();
     expect(isPrivateWizardPath("/wizard/run-installer")).toBe(true);
     expect(isPrivateWizardPath("/learn/commands")).toBe(false);
   });
 
   test("vendor events require both queued and live URLs to be public and safe", () => {
-    expect(vendorEventIsPrivacySafe(
-      "https://example.test/get-started?ip=203.0.113.42",
-      "https://example.test/get-started?mode=safe",
-    )).toBe(false);
-    expect(vendorEventIsPrivacySafe(
-      "https://example.test/get-started?mode=safe",
-      "https://example.test/get-started?token=secret",
-    )).toBe(false);
-    expect(vendorEventIsPrivacySafe(
-      "https://example.test/get-started?mode=safe",
-      "https://example.test/get-started?utm_source=docs",
-    )).toBe(true);
-    expect(vendorEventIsPrivacySafe(
-      "https://example.test/wizard/run-installer?mode=safe",
-      "https://example.test/get-started",
-    )).toBe(false);
+    expect(
+      vendorEventIsPrivacySafe(
+        "https://example.test/get-started?ip=203.0.113.42",
+        "https://example.test/get-started?mode=safe",
+      ),
+    ).toBe(false);
+    expect(
+      vendorEventIsPrivacySafe(
+        "https://example.test/get-started?mode=safe",
+        "https://example.test/get-started?token=secret",
+      ),
+    ).toBe(false);
+    expect(
+      vendorEventIsPrivacySafe(
+        "https://example.test/get-started?mode=safe",
+        "https://example.test/get-started?utm_source=docs",
+      ),
+    ).toBe(true);
+    expect(
+      vendorEventIsPrivacySafe(
+        "https://example.test/wizard/run-installer?mode=safe",
+        "https://example.test/get-started",
+      ),
+    ).toBe(false);
   });
 
   test("navigation merging projects both URLs and preserves explicit state and hash", () => {
@@ -687,9 +723,11 @@ describe("progress persistence guards", () => {
       url: "https://example.test/wizard/accounts?mode=vibe&utm_source=docs&ip=203.0.113.7",
     });
 
-    expect(withCurrentSearch(
-      "/wizard/windows-terminal-setup?from=verify-key-connection&mode=safe#pricing",
-    )).toBe(
+    expect(
+      withCurrentSearch(
+        "/wizard/windows-terminal-setup?from=verify-key-connection&mode=safe#pricing",
+      ),
+    ).toBe(
       "/wizard/windows-terminal-setup?utm_source=docs&from=verify-key-connection&mode=safe#pricing",
     );
     expect(withCurrentSearch("/wizard/accounts?ip=203.0.113.7#pricing")).toBe(
@@ -698,20 +736,27 @@ describe("progress persistence guards", () => {
   });
 
   test("analytics referrers retain acquisition origin without query or path state", () => {
-    expect(sanitizeAnalyticsReferrer(
-      "https://example.test/wizard/run-installer?ip=2001%3Adb8%3A%3A7#secret",
-    )).toEqual({
+    expect(
+      sanitizeAnalyticsReferrer(
+        "https://example.test/wizard/run-installer?ip=2001%3Adb8%3A%3A7#secret",
+      ),
+    ).toEqual({
       referrer: "",
       domain: "",
     });
-    expect(sanitizeAnalyticsReferrer("https://docs.example.test/guide?utm_source=search"))
-      .toEqual({ referrer: "https://docs.example.test", domain: "docs.example.test" });
-    expect(sanitizeAnalyticsReferrer("javascript:alert(1)"))
-      .toEqual({ referrer: "", domain: "" });
-    expect(sanitizeAnalyticsReferrer("https://203.0.113.7/private?token=secret"))
-      .toEqual({ referrer: "", domain: "" });
-    expect(sanitizeAnalyticsReferrer("https://[2001:db8::7]/private"))
-      .toEqual({ referrer: "", domain: "" });
+    expect(sanitizeAnalyticsReferrer("https://docs.example.test/guide?utm_source=search")).toEqual({
+      referrer: "https://docs.example.test",
+      domain: "docs.example.test",
+    });
+    expect(sanitizeAnalyticsReferrer("javascript:alert(1)")).toEqual({ referrer: "", domain: "" });
+    expect(sanitizeAnalyticsReferrer("https://203.0.113.7/private?token=secret")).toEqual({
+      referrer: "",
+      domain: "",
+    });
+    expect(sanitizeAnalyticsReferrer("https://[2001:db8::7]/private")).toEqual({
+      referrer: "",
+      domain: "",
+    });
   });
 
   test("command-copy analytics retain measurements but never command bytes", () => {
@@ -728,12 +773,14 @@ describe("progress persistence guards", () => {
     expect(analyticsPayloadIsPrivacySafe({ source: "203.0.113.42" })).toBe(false);
     expect(analyticsPayloadIsPrivacySafe({ nested: { campaign: token } })).toBe(false);
     expect(analyticsPayloadIsPrivacySafe({ token: "even-low-entropy" })).toBe(false);
-    expect(analyticsPayloadIsPrivacySafe({
-      user_id: "user_1787576346000_abc123xyz",
-      funnel_id: "lesson_funnel_1787576346000_abc123xyz",
-      source: "docs",
-      landing_page: "/learn",
-    })).toBe(true);
+    expect(
+      analyticsPayloadIsPrivacySafe({
+        user_id: "user_1787576346000_abc123xyz",
+        funnel_id: "lesson_funnel_1787576346000_abc123xyz",
+        source: "docs",
+        landing_page: "/learn",
+      }),
+    ).toBe(true);
   });
 
   test("poisoned persistent analytics identities are regenerated or rejected", () => {

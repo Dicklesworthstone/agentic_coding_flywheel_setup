@@ -1,53 +1,38 @@
 "use client";
 
+import { Code, FileText, RefreshCw, Search, Shield, Zap } from "lucide-react";
 import {
-  Search,
-  Code,
-  RefreshCw,
-  Zap,
-  Shield,
-  FileText,
-} from "lucide-react";
-import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
-  GoalBanner,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function AstGrepLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Master structural code search with ast-grep — find patterns by AST
-        shape, not string matching, for refactors, policy checks, and code
-        analysis.
+        Master structural code search with ast-grep — find patterns by AST shape, not string
+        matching, for refactors, policy checks, and code analysis.
       </GoalBanner>
 
-      <Section
-        title="Why Structural Search?"
-        icon={<Search className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="Why Structural Search?" icon={<Search className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          Traditional <Highlight>regex-based grep</Highlight> searches treat
-          code as flat text. That means matches inside comments, strings, and
-          unrelated contexts all show up as false positives. Renaming a function
-          with sed can silently break imports, type annotations, and
+          Traditional <Highlight>regex-based grep</Highlight> searches treat code as flat text. That
+          means matches inside comments, strings, and unrelated contexts all show up as false
+          positives. Renaming a function with sed can silently break imports, type annotations, and
           documentation in one pass.
         </Paragraph>
         <Paragraph>
-          <Highlight>ast-grep</Highlight> takes a different approach: it parses
-          your code into an Abstract Syntax Tree (AST) and matches against the
-          structural shape of the code. A pattern like{" "}
-          <Highlight>useState($INIT)</Highlight> only matches actual function
-          calls — never a comment that mentions useState or a string containing
-          the word.
+          <Highlight>ast-grep</Highlight> takes a different approach: it parses your code into an
+          Abstract Syntax Tree (AST) and matches against the structural shape of the code. A pattern
+          like <Highlight>useState($INIT)</Highlight> only matches actual function calls — never a
+          comment that mentions useState or a string containing the word.
         </Paragraph>
 
         <div className="mt-8">
@@ -82,16 +67,11 @@ export function AstGrepLesson() {
 
       <Divider />
 
-      <Section
-        title="Pattern Basics"
-        icon={<Code className="h-5 w-5" />}
-        delay={0.15}
-      >
+      <Section title="Pattern Basics" icon={<Code className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          ast-grep patterns use <Highlight>$NAME</Highlight> to capture a single
-          AST node and <Highlight>$$$ARGS</Highlight> to capture zero or more
-          nodes (variadic). The rest of the pattern is matched literally against
-          the code structure.
+          ast-grep patterns use <Highlight>$NAME</Highlight> to capture a single AST node and{" "}
+          <Highlight>$$$ARGS</Highlight> to capture zero or more nodes (variadic). The rest of the
+          pattern is matched literally against the code structure.
         </Paragraph>
 
         <div className="mt-6">
@@ -112,24 +92,19 @@ ast-grep run -l TypeScript -p 'async function $NAME($$$ARGS) { $$$BODY }'`}
         </div>
 
         <TipBox variant="info">
-          <Highlight>$NAME</Highlight> matches a single AST node (one
-          expression, one identifier). <Highlight>$$$ARGS</Highlight> matches
-          zero or more nodes — think of it like a variadic or rest parameter.
+          <Highlight>$NAME</Highlight> matches a single AST node (one expression, one identifier).{" "}
+          <Highlight>$$$ARGS</Highlight> matches zero or more nodes — think of it like a variadic or
+          rest parameter.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Search & Replace"
-        icon={<RefreshCw className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Search & Replace" icon={<RefreshCw className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          ast-grep can do structural rewrites using the{" "}
-          <Highlight>-r</Highlight> flag. Captured metavariables from the
-          pattern are available in the replacement, so transformations preserve
-          the original structure.
+          ast-grep can do structural rewrites using the <Highlight>-r</Highlight> flag. Captured
+          metavariables from the pattern are available in the replacement, so transformations
+          preserve the original structure.
         </Paragraph>
 
         <div className="mt-6">
@@ -150,23 +125,18 @@ ast-grep run -l TypeScript -p 'oldFn($$$)' -r 'newFn($$$)' --interactive`}
         </div>
 
         <TipBox variant="warning">
-          Always use <Highlight>--interactive</Highlight> or review the diff
-          before applying rewrites to a whole codebase.
+          Always use <Highlight>--interactive</Highlight> or review the diff before applying
+          rewrites to a whole codebase.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Combining with ripgrep"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.25}
-      >
+      <Section title="Combining with ripgrep" icon={<Zap className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          The power combo: use <Highlight>rg</Highlight> for speed to narrow
-          candidate files, then pipe into <Highlight>ast-grep</Highlight> for
-          structural precision. ripgrep scans millions of lines per second;
-          ast-grep ensures only real matches survive.
+          The power combo: use <Highlight>rg</Highlight> for speed to narrow candidate files, then
+          pipe into <Highlight>ast-grep</Highlight> for structural precision. ripgrep scans millions
+          of lines per second; ast-grep ensures only real matches survive.
         </Paragraph>
 
         <div className="mt-6">
@@ -189,17 +159,12 @@ ru list --paths | xargs -I{} ast-grep run -l Rust -p 'unwrap()' {}`}
 
       <Divider />
 
-      <Section
-        title="How DCG & UBS Use It"
-        icon={<Shield className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="How DCG & UBS Use It" icon={<Shield className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          <Highlight>DCG</Highlight> uses ast-grep&apos;s Rust crates internally
-          to parse commands and match destructive patterns at the AST level.{" "}
-          <Highlight>UBS</Highlight> uses AST helpers for cross-language bug
-          detection, including resource lifecycle analysis and type narrowing
-          checks.
+          <Highlight>DCG</Highlight> uses ast-grep&apos;s Rust crates internally to parse commands
+          and match destructive patterns at the AST level. <Highlight>UBS</Highlight> uses AST
+          helpers for cross-language bug detection, including resource lifecycle analysis and type
+          narrowing checks.
         </Paragraph>
 
         <div className="mt-6">
@@ -224,24 +189,18 @@ ubs src/api.ts
         </div>
 
         <TipBox variant="info">
-          ast-grep&apos;s structural matching is why DCG has zero false positives
-          on command detection — it understands the actual shape of commands, not
-          just string patterns.
+          ast-grep&apos;s structural matching is why DCG has zero false positives on command
+          detection — it understands the actual shape of commands, not just string patterns.
         </TipBox>
       </Section>
 
       <Divider />
 
-      <Section
-        title="Rule Files"
-        icon={<FileText className="h-5 w-5" />}
-        delay={0.35}
-      >
+      <Section title="Rule Files" icon={<FileText className="h-5 w-5" />} delay={0.35}>
         <Paragraph>
           For reusable checks, define rules in YAML files and run them with{" "}
-          <Highlight>ast-grep scan</Highlight>. A{" "}
-          <Highlight>sgconfig.yml</Highlight> at your project root tells
-          ast-grep where to find rule definitions.
+          <Highlight>ast-grep scan</Highlight>. A <Highlight>sgconfig.yml</Highlight> at your
+          project root tells ast-grep where to find rule definitions.
         </Paragraph>
 
         <div className="mt-6">

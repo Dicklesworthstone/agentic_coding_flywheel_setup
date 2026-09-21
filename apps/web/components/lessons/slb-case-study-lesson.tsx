@@ -1,54 +1,54 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Lightbulb,
-  FileText,
-  Bot,
-  GitBranch,
-  Shield,
-  MessageSquare,
-  LayoutDashboard,
-  Clock,
-  ArrowRight,
-  CheckCircle2,
-  Terminal,
-  Play,
-  Zap,
-  Key,
-  RefreshCw,
   AlertTriangle,
+  ArrowRight,
+  Bot,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Cloud,
+  Database,
+  FileKey,
+  FileText,
+  Gauge,
+  GitBranch,
+  Key,
+  LayoutDashboard,
+  Lightbulb,
   Lock,
+  MessageSquare,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Shield,
+  Terminal,
+  Trash2,
   Unlock,
   XCircle,
-  Database,
-  Cloud,
-  RotateCcw,
-  Gauge,
-  FileKey,
-  Trash2,
-  ChevronRight,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
+  BulletList,
   CodeBlock,
-  TipBox,
-  Highlight,
   Divider,
   GoalBanner,
+  Highlight,
   InlineCode,
-  BulletList,
+  Paragraph,
+  Section,
   StepList,
+  TipBox,
 } from "./lesson-components";
 
 export function SlbCaseStudyLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        See how a tweet becomes working code in one evening: 76 beads, 268
-        commits, from idea to ~70% complete in hours.
+        See how a tweet becomes working code in one evening: 76 beads, 268 commits, from idea to
+        ~70% complete in hours.
       </GoalBanner>
 
       {/* The Spark */}
@@ -58,9 +58,8 @@ export function SlbCaseStudyLesson() {
         delay={0.1}
       >
         <Paragraph>
-          On December 13, 2025, a conversation on X about AI agents
-          accidentally deleting Kubernetes nodes sparked an idea: what if
-          dangerous commands required{" "}
+          On December 13, 2025, a conversation on X about AI agents accidentally deleting Kubernetes
+          nodes sparked an idea: what if dangerous commands required{" "}
           <Highlight>peer review from another agent</Highlight>?
         </Paragraph>
 
@@ -69,10 +68,9 @@ export function SlbCaseStudyLesson() {
         </div>
 
         <Paragraph>
-          The idea was simple: like the &quot;two-person rule&quot; for nuclear
-          launch codes, agents should need a second opinion before running
-          destructive commands like <InlineCode>rm -rf</InlineCode>,{" "}
-          <InlineCode>kubectl delete</InlineCode>, or{" "}
+          The idea was simple: like the &quot;two-person rule&quot; for nuclear launch codes, agents
+          should need a second opinion before running destructive commands like{" "}
+          <InlineCode>rm -rf</InlineCode>, <InlineCode>kubectl delete</InlineCode>, or{" "}
           <InlineCode>DROP TABLE</InlineCode>.
         </Paragraph>
       </Section>
@@ -96,9 +94,8 @@ export function SlbCaseStudyLesson() {
 
         <div className="mt-6">
           <TipBox variant="tip">
-            The key insight: an initial plan within the first hour, even if
-            rough, is worth more than a perfect plan days later. The agents will
-            help refine it.
+            The key insight: an initial plan within the first hour, even if rough, is worth more
+            than a perfect plan days later. The agents will help refine it.
           </TipBox>
         </div>
       </Section>
@@ -112,8 +109,8 @@ export function SlbCaseStudyLesson() {
         delay={0.2}
       >
         <Paragraph>
-          Once the initial plan existed, it was sent to multiple frontier models
-          for review and improvement:
+          Once the initial plan existed, it was sent to multiple frontier models for review and
+          improvement:
         </Paragraph>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -142,8 +139,7 @@ export function SlbCaseStudyLesson() {
         <div className="mt-6">
           <Paragraph>
             The feedback was then integrated by Claude Code, with{" "}
-            <strong>multiple verification passes</strong> to ensure nothing was
-            missed:
+            <strong>multiple verification passes</strong> to ensure nothing was missed:
           </Paragraph>
         </div>
 
@@ -166,9 +162,8 @@ cc "One more careful review. Any remaining gaps?"
 
         <div className="mt-6">
           <TipBox variant="info">
-            Each verification pass found something. This is why multiple passes
-            are critical - they catch problems in the planning phase when
-            they&apos;re easiest to fix.
+            Each verification pass found something. This is why multiple passes are critical - they
+            catch problems in the planning phase when they&apos;re easiest to fix.
           </TipBox>
         </div>
       </Section>
@@ -182,8 +177,8 @@ cc "One more careful review. Any remaining gaps?"
         delay={0.25}
       >
         <Paragraph>
-          The refined plan was then transformed into structured, trackable
-          beads. The prompt was carefully crafted to ensure thoroughness:
+          The refined plan was then transformed into structured, trackable beads. The prompt was
+          carefully crafted to ensure thoroughness:
         </Paragraph>
 
         <div className="mt-6">
@@ -211,8 +206,7 @@ Use the br tool repeatedly to create the actual beads."`}
 
         <div className="mt-6">
           <Paragraph>
-            Then, just like the plan itself, the beads went through verification
-            passes:
+            Then, just like the plan itself, the beads went through verification passes:
           </Paragraph>
         </div>
 
@@ -234,14 +228,10 @@ to operate in 'plan space' before implementing!"`}
       <Divider />
 
       {/* What SLB Does */}
-      <Section
-        title="What SLB Does"
-        icon={<Shield className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="What SLB Does" icon={<Shield className="h-5 w-5" />} delay={0.3}>
         <Paragraph>
-          The Simultaneous Launch Button implements a{" "}
-          <Highlight>two-person rule</Highlight> for AI coding agents:
+          The Simultaneous Launch Button implements a <Highlight>two-person rule</Highlight> for AI
+          coding agents:
         </Paragraph>
 
         <div className="mt-6">
@@ -252,24 +242,20 @@ to operate in 'plan space' before implementing!"`}
           <BulletList
             items={[
               <span key="1">
-                <strong>Client-side execution:</strong> Commands run in the
-                user&apos;s shell, inheriting all credentials
+                <strong>Client-side execution:</strong> Commands run in the user&apos;s shell,
+                inheriting all credentials
               </span>,
               <span key="2">
-                <strong>Command hash binding:</strong> Approvals tied to exact
-                commands via SHA-256
+                <strong>Command hash binding:</strong> Approvals tied to exact commands via SHA-256
               </span>,
               <span key="3">
-                <strong>Pre-flight validation:</strong> Automatic dry-runs for
-                supported commands
+                <strong>Pre-flight validation:</strong> Automatic dry-runs for supported commands
               </span>,
               <span key="4">
-                <strong>Rollback capture:</strong> System state saved before
-                dangerous operations
+                <strong>Rollback capture:</strong> System state saved before dangerous operations
               </span>,
               <span key="5">
-                <strong>Agent Mail integration:</strong> Reviewers notified
-                automatically
+                <strong>Agent Mail integration:</strong> Reviewers notified automatically
               </span>,
             ]}
           />
@@ -285,8 +271,8 @@ to operate in 'plan space' before implementing!"`}
         delay={0.35}
       >
         <Paragraph>
-          With beads ready, the agent swarm began implementation. The project
-          was smaller than cass-memory, but the workflow was identical:
+          With beads ready, the agent swarm began implementation. The project was smaller than
+          cass-memory, but the workflow was identical:
         </Paragraph>
 
         <div className="mt-6">
@@ -312,9 +298,8 @@ detailed messages. Don't edit code. Push when done."`}
         </div>
 
         <Paragraph>
-          By dinner time, about two-thirds of the project was complete. The
-          agent swarm continued working while the developer ate, pushing commits
-          autonomously.
+          By dinner time, about two-thirds of the project was complete. The agent swarm continued
+          working while the developer ate, pushing commits autonomously.
         </Paragraph>
 
         <div className="mt-8">
@@ -325,14 +310,10 @@ detailed messages. Don't edit code. Push when done."`}
       <Divider />
 
       {/* Key Differences from Large Projects */}
-      <Section
-        title="Small vs Large Projects"
-        icon={<RefreshCw className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Small vs Large Projects" icon={<RefreshCw className="h-5 w-5" />} delay={0.4}>
         <Paragraph>
-          Compared to the 693-bead cass-memory project, SLB&apos;s 76 beads
-          allowed for some workflow optimizations:
+          Compared to the 693-bead cass-memory project, SLB&apos;s 76 beads allowed for some
+          workflow optimizations:
         </Paragraph>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -362,9 +343,8 @@ detailed messages. Don't edit code. Push when done."`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Start with smaller projects to learn the workflow. Once
-            you&apos;re comfortable with 50-100 beads, scale up to larger
-            projects.
+            Start with smaller projects to learn the workflow. Once you&apos;re comfortable with
+            50-100 beads, scale up to larger projects.
           </TipBox>
         </div>
       </Section>
@@ -372,37 +352,28 @@ detailed messages. Don't edit code. Push when done."`}
       <Divider />
 
       {/* Lessons Learned */}
-      <Section
-        title="Lessons Learned"
-        icon={<CheckCircle2 className="h-5 w-5" />}
-        delay={0.45}
-      >
+      <Section title="Lessons Learned" icon={<CheckCircle2 className="h-5 w-5" />} delay={0.45}>
         <StepList
           steps={[
             {
               title: "Act immediately on good ideas",
-              description:
-                "An hour from idea to initial plan keeps momentum high",
+              description: "An hour from idea to initial plan keeps momentum high",
             },
             {
               title: "Multi-model feedback finds blind spots",
-              description:
-                "Each model brings different perspectives and catches different issues",
+              description: "Each model brings different perspectives and catches different issues",
             },
             {
               title: "Multiple verification passes are essential",
-              description:
-                "Each pass found something - never skip this step",
+              description: "Each pass found something - never skip this step",
             },
             {
               title: "Smaller projects are great for learning",
-              description:
-                "76 beads is manageable while still demonstrating the full workflow",
+              description: "76 beads is manageable while still demonstrating the full workflow",
             },
             {
               title: "Document everything",
-              description:
-                "The conversation transcripts become valuable learning resources",
+              description: "The conversation transcripts become valuable learning resources",
             },
           ]}
         />
@@ -417,8 +388,8 @@ detailed messages. Don't edit code. Push when done."`}
         delay={0.5}
       >
         <Paragraph>
-          Pick a small tool idea (something that would take you a day or two
-          manually) and try this workflow:
+          Pick a small tool idea (something that would take you a day or two manually) and try this
+          workflow:
         </Paragraph>
 
         <div className="mt-6">
@@ -451,8 +422,8 @@ cc "Commit all changes with detailed messages."`}
 
         <div className="mt-6">
           <TipBox variant="info">
-            For your first flywheel project, aim for something with 50-100 beads.
-            CLI tools, utilities, and small libraries are perfect candidates.
+            For your first flywheel project, aim for something with 50-100 beads. CLI tools,
+            utilities, and small libraries are perfect candidates.
           </TipBox>
         </div>
       </Section>
@@ -478,10 +449,9 @@ function IdeaCard() {
         <div>
           <h4 className="font-bold text-white mb-2">The WarGames Insight</h4>
           <p className="text-white/70 text-sm italic">
-            &quot;You know how in movies like WarGames they show how the two
-            guys have to turn the keys at the same time to arm the nuclear
-            warheads? I want to make something like that where for potentially
-            damaging commands, the agents have to get one other agent to agree
+            &quot;You know how in movies like WarGames they show how the two guys have to turn the
+            keys at the same time to arm the nuclear warheads? I want to make something like that
+            where for potentially damaging commands, the agents have to get one other agent to agree
             with their reasoning and sign off on the command.&quot;
           </p>
           <div className="mt-3 flex items-center gap-2 text-xs text-white/50">
@@ -532,11 +502,11 @@ function TimelineCard() {
               <step.icon className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 flex items-center gap-3">
-              <span className="text-xs font-mono text-white/50 w-20">
-                {step.time}
-              </span>
+              <span className="text-xs font-mono text-white/50 w-20">{step.time}</span>
               <ArrowRight className="h-3 w-3 text-white/50 group-hover:text-primary/60 transition-colors" />
-              <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">{step.event}</span>
+              <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">
+                {step.event}
+              </span>
             </div>
           </motion.div>
         ))}
@@ -548,15 +518,7 @@ function TimelineCard() {
 // =============================================================================
 // FEEDBACK CARD
 // =============================================================================
-function FeedbackCard({
-  model,
-  focus,
-  color,
-}: {
-  model: string;
-  focus: string;
-  color: string;
-}) {
+function FeedbackCard({ model, focus, color }: { model: string; focus: string; color: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -605,8 +567,8 @@ function BeadsResultCard() {
       </div>
 
       <p className="mt-4 text-sm text-white/60">
-        Smaller than cass-memory&apos;s 693 beads, but still comprehensive
-        enough to capture the full implementation.
+        Smaller than cass-memory&apos;s 693 beads, but still comprehensive enough to capture the
+        full implementation.
       </p>
     </motion.div>
   );
@@ -661,10 +623,17 @@ function RiskTierCard() {
           <div className="flex items-center justify-between mb-2">
             <span className="font-bold text-white text-sm">{tier.name}</span>
             <span className="text-xs px-2 py-1 rounded bg-black/30 text-white/70 group-hover:bg-black/40 transition-colors">
-              {tier.approvals}{/^\d/.test(tier.approvals) ? (tier.approvals === "1" ? " approval" : " approvals") : ""}
+              {tier.approvals}
+              {/^\d/.test(tier.approvals)
+                ? tier.approvals === "1"
+                  ? " approval"
+                  : " approvals"
+                : ""}
             </span>
           </div>
-          <p className="text-xs text-white/60 group-hover:text-white/80 transition-colors">{tier.examples}</p>
+          <p className="text-xs text-white/60 group-hover:text-white/80 transition-colors">
+            {tier.examples}
+          </p>
         </motion.div>
       ))}
     </div>
@@ -724,10 +693,15 @@ function ComparisonCard({
       whileHover={{ y: -4, scale: 1.02 }}
       className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
-      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">{title}</h4>
+      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
+        {title}
+      </h4>
       <ul className="space-y-2">
         {items.map((item, i) => (
-          <li key={i} className="text-sm text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors">
+          <li
+            key={i}
+            className="text-sm text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors"
+          >
             <div className="h-1.5 w-1.5 rounded-full bg-white/40 shrink-0 group-hover:bg-primary/60 transition-colors" />
             {item}
           </li>
@@ -742,7 +716,15 @@ function ComparisonCard({
 // =============================================================================
 
 type RiskLevel = "CRITICAL" | "DANGEROUS" | "CAUTION";
-type ScenarioPhase = "idle" | "initiating" | "reviewing" | "countdown" | "executing" | "complete" | "denied" | "aborted";
+type ScenarioPhase =
+  | "idle"
+  | "initiating"
+  | "reviewing"
+  | "countdown"
+  | "executing"
+  | "complete"
+  | "denied"
+  | "aborted";
 
 interface LaunchScenario {
   id: string;
@@ -760,7 +742,10 @@ interface LaunchScenario {
   denyReason?: string;
 }
 
-const RISK_CONFIG: Record<RiskLevel, { color: string; bgColor: string; borderColor: string; glowColor: string; gaugePercent: number }> = {
+const RISK_CONFIG: Record<
+  RiskLevel,
+  { color: string; bgColor: string; borderColor: string; glowColor: string; gaugePercent: number }
+> = {
   CRITICAL: {
     color: "text-red-500",
     bgColor: "bg-red-500/10",
@@ -793,8 +778,10 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     icon: Database,
     agentA: "claude-cc-1",
     agentB: "claude-cc-2",
-    reasoning: "Legacy auth column is no longer referenced after migration to OAuth2. All 847 references have been updated. Backup verified at snapshot-2025-12-13-1845.",
-    reviewComment: "Confirmed: grep shows 0 references to legacy_auth. Backup snapshot verified. Approve.",
+    reasoning:
+      "Legacy auth column is no longer referenced after migration to OAuth2. All 847 references have been updated. Backup verified at snapshot-2025-12-13-1845.",
+    reviewComment:
+      "Confirmed: grep shows 0 references to legacy_auth. Backup snapshot verified. Approve.",
     outcome: "approved",
     auditEntries: [
       "[18:45:03] Agent claude-cc-1 initiated SLB request",
@@ -827,8 +814,10 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     icon: Cloud,
     agentA: "claude-cc-2",
     agentB: "codex-1",
-    reasoning: "Deploying v2.3.1 with the new rate limiter. All 47 tests pass. Staging verified for 2 hours with no errors. Canary showed 0% error rate.",
-    reviewComment: "Test suite green, staging clean, canary clean. Image sha matches build. Approve deploy.",
+    reasoning:
+      "Deploying v2.3.1 with the new rate limiter. All 47 tests pass. Staging verified for 2 hours with no errors. Canary showed 0% error rate.",
+    reviewComment:
+      "Test suite green, staging clean, canary clean. Image sha matches build. Approve deploy.",
     outcome: "approved",
     auditEntries: [
       "[20:12:01] Agent claude-cc-2 initiated SLB request",
@@ -862,10 +851,13 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     icon: GitBranch,
     agentA: "codex-2",
     agentB: "claude-cc-3",
-    reasoning: "Need to force push to fix corrupted merge commit. Interactive rebase cleaned history. 3 commits affected, all authored by us in last hour.",
-    reviewComment: "DENIED: Force push to main is blocked by policy. Use a revert commit instead. This would destroy CI history.",
+    reasoning:
+      "Need to force push to fix corrupted merge commit. Interactive rebase cleaned history. 3 commits affected, all authored by us in last hour.",
+    reviewComment:
+      "DENIED: Force push to main is blocked by policy. Use a revert commit instead. This would destroy CI history.",
     outcome: "denied",
-    denyReason: "Force push to protected branch 'main' violates repository policy. Reviewer recommends git revert instead.",
+    denyReason:
+      "Force push to protected branch 'main' violates repository policy. Reviewer recommends git revert instead.",
     auditEntries: [
       "[21:30:45] Agent codex-2 initiated SLB request",
       "[21:30:45] Command hash: sha256:e4d2f8...b17a",
@@ -896,8 +888,10 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     icon: Trash2,
     agentA: "claude-cc-1",
     agentB: "claude-cc-3",
-    reasoning: "Staging environment rebuild required after config drift. All staging data has been archived. No active staging users. Rebuild plan in bead SLB-47.",
-    reviewComment: "Verified: no active sessions in staging. Archive confirmed. Rebuild bead exists. Approve teardown.",
+    reasoning:
+      "Staging environment rebuild required after config drift. All staging data has been archived. No active staging users. Rebuild plan in bead SLB-47.",
+    reviewComment:
+      "Verified: no active sessions in staging. Archive confirmed. Rebuild bead exists. Approve teardown.",
     outcome: "approved",
     auditEntries: [
       "[22:05:11] Agent claude-cc-1 initiated SLB request",
@@ -933,8 +927,10 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     icon: FileKey,
     agentA: "claude-cc-3",
     agentB: "claude-cc-1",
-    reasoning: "Scheduled quarterly key rotation. All services use dynamic secrets. Rotation window is 15 minutes. Monitoring alerts suppressed for rotation period.",
-    reviewComment: "Rotation schedule confirmed. Dynamic secret renewal verified. Approve rotation.",
+    reasoning:
+      "Scheduled quarterly key rotation. All services use dynamic secrets. Rotation window is 15 minutes. Monitoring alerts suppressed for rotation period.",
+    reviewComment:
+      "Rotation schedule confirmed. Dynamic secret renewal verified. Approve rotation.",
     outcome: "approved",
     auditEntries: [
       "[23:00:01] Agent claude-cc-3 initiated SLB request",
@@ -968,8 +964,10 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     icon: RotateCcw,
     agentA: "codex-1",
     agentB: "claude-cc-2",
-    reasoning: "Error rate spiked to 12% after v2.3.1 deploy. P95 latency at 4.2s (normal: 200ms). Rolling back to previous stable revision.",
-    reviewComment: "Error rate confirmed at 12%. Previous revision was stable for 48h. Approve immediate rollback.",
+    reasoning:
+      "Error rate spiked to 12% after v2.3.1 deploy. P95 latency at 4.2s (normal: 200ms). Rolling back to previous stable revision.",
+    reviewComment:
+      "Error rate confirmed at 12%. Previous revision was stable for 48h. Approve immediate rollback.",
     outcome: "approved",
     auditEntries: [
       "[20:18:44] Agent codex-1 initiated SLB request",
@@ -1030,9 +1028,7 @@ function InteractiveBuildTimeline() {
     if (auditIndex < scenario.auditEntries.length) {
       auditTimerRef.current = setTimeout(() => {
         setAuditIndex((prev) => prev + 1);
-        setTerminalIndex((prev) =>
-          prev < scenario.terminalOutput.length ? prev + 1 : prev
-        );
+        setTerminalIndex((prev) => (prev < scenario.terminalOutput.length ? prev + 1 : prev));
       }, 400);
     }
     return () => {
@@ -1120,7 +1116,7 @@ function InteractiveBuildTimeline() {
       resetSimulation();
       setSelectedScenario(index);
     },
-    [resetSimulation]
+    [resetSimulation],
   );
 
   const phaseLabel = getPhaseLabel(phase);
@@ -1143,9 +1139,7 @@ function InteractiveBuildTimeline() {
         </div>
         <div className="flex items-center gap-2 ml-2">
           <Shield className="h-4 w-4 text-primary" />
-          <span className="text-sm font-mono font-bold text-white/90">
-            SLB Launch Console
-          </span>
+          <span className="text-sm font-mono font-bold text-white/90">SLB Launch Console</span>
         </div>
         <span className="ml-auto text-[10px] font-mono text-white/30">
           slb v1.0.0 | two-person-rule
@@ -1220,16 +1214,8 @@ function InteractiveBuildTimeline() {
             </div>
             <div className="space-y-2">
               <StatusRow label="Phase" value={phaseLabel} phase={phase} />
-              <StatusRow
-                label="Initiator"
-                value={scenario.agentA}
-                phase={phase}
-              />
-              <StatusRow
-                label="Reviewer"
-                value={scenario.agentB}
-                phase={phase}
-              />
+              <StatusRow label="Initiator" value={scenario.agentA} phase={phase} />
+              <StatusRow label="Reviewer" value={scenario.agentB} phase={phase} />
               <StatusRow
                 label="Outcome"
                 value={
@@ -1281,9 +1267,7 @@ function InteractiveBuildTimeline() {
               phase === "aborted"
             }
             accentColor={
-              phase === "denied" || phase === "aborted"
-                ? "text-red-400"
-                : "text-emerald-400"
+              phase === "denied" || phase === "aborted" ? "text-red-400" : "text-emerald-400"
             }
             borderColor={
               phase === "denied" || phase === "aborted"
@@ -1302,9 +1286,7 @@ function InteractiveBuildTimeline() {
             <AbortDisplay reason={scenario.denyReason} />
           )}
           {phase === "executing" && <ExecutingDisplay active={inView} />}
-          {phase === "complete" && (
-            <CompleteDisplay command={scenario.command} />
-          )}
+          {phase === "complete" && <CompleteDisplay command={scenario.command} />}
         </AnimatePresence>
 
         {/* Bottom panels: Audit Trail + Terminal */}
@@ -1319,31 +1301,27 @@ function InteractiveBuildTimeline() {
             </div>
             <div className="space-y-1 font-mono text-[11px]">
               {phase === "idle" ? (
-                <span className="text-white/30">
-                  Waiting for launch sequence...
-                </span>
+                <span className="text-white/30">Waiting for launch sequence...</span>
               ) : (
-                scenario.auditEntries
-                  .slice(0, auditIndex)
-                  .map((entry, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                      className={`leading-relaxed ${
-                        entry.includes("DENIED") || entry.includes("BLOCKED")
-                          ? "text-red-400/90"
-                          : entry.includes("APPROVED")
-                            ? "text-emerald-400/90"
-                            : entry.includes("WARNING")
-                              ? "text-yellow-400/90"
-                              : "text-white/50"
-                      }`}
-                    >
-                      {entry}
-                    </motion.div>
-                  ))
+                scenario.auditEntries.slice(0, auditIndex).map((entry, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    className={`leading-relaxed ${
+                      entry.includes("DENIED") || entry.includes("BLOCKED")
+                        ? "text-red-400/90"
+                        : entry.includes("APPROVED")
+                          ? "text-emerald-400/90"
+                          : entry.includes("WARNING")
+                            ? "text-yellow-400/90"
+                            : "text-white/50"
+                    }`}
+                  >
+                    {entry}
+                  </motion.div>
+                ))
               )}
             </div>
           </div>
@@ -1362,27 +1340,25 @@ function InteractiveBuildTimeline() {
                   $ <span className="animate-pulse">_</span>
                 </span>
               ) : (
-                scenario.terminalOutput
-                  .slice(0, terminalIndex)
-                  .map((line, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.15 }}
-                      className={`leading-relaxed ${
-                        line.startsWith("$")
-                          ? "text-emerald-400/80"
-                          : line.includes("BLOCKED") || line.includes("DENIED")
-                            ? "text-red-400/80"
-                            : line.includes("SLB:")
-                              ? "text-sky-400/70"
-                              : "text-white/50"
-                      }`}
-                    >
-                      {line}
-                    </motion.div>
-                  ))
+                scenario.terminalOutput.slice(0, terminalIndex).map((line, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className={`leading-relaxed ${
+                      line.startsWith("$")
+                        ? "text-emerald-400/80"
+                        : line.includes("BLOCKED") || line.includes("DENIED")
+                          ? "text-red-400/80"
+                          : line.includes("SLB:")
+                            ? "text-sky-400/70"
+                            : "text-white/50"
+                    }`}
+                  >
+                    {line}
+                  </motion.div>
+                ))
               )}
             </div>
           </div>
@@ -1393,7 +1369,8 @@ function InteractiveBuildTimeline() {
           <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
             <ChevronRight className="h-3 w-3" />
             <span>
-              {scenario.title} | {scenario.risk} | {scenario.outcome === "approved" ? "Will approve" : "Will deny"}
+              {scenario.title} | {scenario.risk} |{" "}
+              {scenario.outcome === "approved" ? "Will approve" : "Will deny"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1611,11 +1588,7 @@ function KeyTurnSVG({
         cy="40"
         r="6"
         fill={
-          bothTurned
-            ? activeColor
-            : isActive
-              ? "rgba(255,255,255,0.2)"
-              : "rgba(255,255,255,0.08)"
+          bothTurned ? activeColor : isActive ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)"
         }
         animate={{
           scale: bothTurned ? [1, 1.3, 1] : 1,
@@ -1663,9 +1636,7 @@ function AgentConsole({
         <span className={`text-xs font-mono font-bold ${isActive ? accentColor : "text-white/30"}`}>
           {agentName}
         </span>
-        <span className="text-[10px] font-mono text-white/20 uppercase ml-auto">
-          {role}
-        </span>
+        <span className="text-[10px] font-mono text-white/20 uppercase ml-auto">{role}</span>
       </div>
 
       <AnimatePresence mode="wait">
@@ -1700,11 +1671,13 @@ function AgentConsole({
             )}
             <div className="rounded-lg bg-black/20 px-3 py-2">
               <span className="text-[10px] font-mono text-white/30 uppercase block mb-1">
-                {role === "INITIATOR" ? "Reasoning" : phase === "denied" || phase === "aborted" ? "Denial Reason" : "Review Comment"}
+                {role === "INITIATOR"
+                  ? "Reasoning"
+                  : phase === "denied" || phase === "aborted"
+                    ? "Denial Reason"
+                    : "Review Comment"}
               </span>
-              <span className="text-xs text-white/50 leading-relaxed block">
-                {reasoning}
-              </span>
+              <span className="text-xs text-white/50 leading-relaxed block">{reasoning}</span>
             </div>
           </motion.div>
         )}
@@ -1716,13 +1689,7 @@ function AgentConsole({
 // =============================================================================
 // COUNTDOWN DISPLAY
 // =============================================================================
-function CountdownDisplay({
-  value,
-  risk,
-}: {
-  value: number;
-  risk: RiskLevel;
-}) {
+function CountdownDisplay({ value, risk }: { value: number; risk: RiskLevel }) {
   const colorMap: Record<RiskLevel, string> = {
     CRITICAL: "text-red-400",
     DANGEROUS: "text-orange-400",
@@ -1826,7 +1793,9 @@ function ExecutingDisplay({ active }: { active: boolean }) {
       <div className="flex items-center justify-center gap-3">
         <motion.div
           animate={active ? { rotate: 360 } : { rotate: 0 }}
-          transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+          transition={
+            active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+          }
         >
           <Zap className="h-5 w-5 text-amber-400" />
         </motion.div>
@@ -1862,9 +1831,7 @@ function CompleteDisplay({ command }: { command: string }) {
           Execution Complete
         </span>
       </motion.div>
-      <p className="text-xs font-mono text-emerald-400/50 break-all max-w-lg mx-auto">
-        {command}
-      </p>
+      <p className="text-xs font-mono text-emerald-400/50 break-all max-w-lg mx-auto">{command}</p>
     </motion.div>
   );
 }
@@ -1892,12 +1859,8 @@ function StatusRow({
 
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[10px] font-mono text-white/30 uppercase">
-        {label}
-      </span>
-      <span className={`text-[11px] font-mono font-bold ${valueColor}`}>
-        {value}
-      </span>
+      <span className="text-[10px] font-mono text-white/30 uppercase">{label}</span>
+      <span className={`text-[11px] font-mono font-bold ${valueColor}`}>{value}</span>
     </div>
   );
 }

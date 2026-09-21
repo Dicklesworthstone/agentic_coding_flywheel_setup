@@ -1,58 +1,60 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  Terminal,
-  HardDrive,
-  Shield,
   Activity,
-  Play,
   AlertTriangle,
-  Gauge,
-  Trash2,
   ChevronLeft,
   ChevronRight,
-  FolderTree,
   Database,
   FileWarning,
-  Sparkles,
+  FolderTree,
+  Gauge,
+  HardDrive,
+  Play,
   RotateCcw,
+  Shield,
+  Sparkles,
+  Terminal,
+  Trash2,
   Zap,
-} from 'lucide-react';
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
+
 const InteractiveDiskPressure = InteractiveDiskPressureImpl;
 
 export function SbhLesson() {
   return (
     <div className="space-y-8">
-      <GoalBanner>
-        Protect your disk from pressure spikes with Storage Ballast Helper.
-      </GoalBanner>
+      <GoalBanner>Protect your disk from pressure spikes with Storage Ballast Helper.</GoalBanner>
 
       {/* Section 1: What Is SBH */}
-      <Section title="What Is Storage Ballast Helper?" icon={<HardDrive className="h-5 w-5" />} delay={0.1}>
+      <Section
+        title="What Is Storage Ballast Helper?"
+        icon={<HardDrive className="h-5 w-5" />}
+        delay={0.1}
+      >
         <Paragraph>
           <Highlight>SBH (Storage Ballast Helper)</Highlight> is a cross-platform disk-pressure
           defense tool designed for AI coding workloads. It pre-allocates a &ldquo;ballast&rdquo;
-          file that can be released when disk space runs critically low, buying time
-          to clean up.
+          file that can be released when disk space runs critically low, buying time to clean up.
         </Paragraph>
         <Paragraph>
-          Agent coding sessions generate enormous amounts of build artifacts, logs, and
-          caches. SBH monitors disk usage and automatically releases ballast when pressure
-          exceeds configurable thresholds.
+          Agent coding sessions generate enormous amounts of build artifacts, logs, and caches. SBH
+          monitors disk usage and automatically releases ballast when pressure exceeds configurable
+          thresholds.
         </Paragraph>
 
         <div className="mt-8">
@@ -95,16 +97,25 @@ export function SbhLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'sbh status', description: 'Show disk usage and ballast state' },
-            { command: 'sbh ballast provision', description: 'Create (or rebuild) the configured ballast files' },
-            { command: 'sbh ballast release 1', description: 'Release one ballast file to free space now' },
-            { command: 'sbh ballast replenish', description: 'Re-create released ballast after cleanup' },
+            { command: "sbh status", description: "Show disk usage and ballast state" },
+            {
+              command: "sbh ballast provision",
+              description: "Create (or rebuild) the configured ballast files",
+            },
+            {
+              command: "sbh ballast release 1",
+              description: "Release one ballast file to free space now",
+            },
+            {
+              command: "sbh ballast replenish",
+              description: "Re-create released ballast after cleanup",
+            },
           ]}
         />
 
         <TipBox>
-          Create ballast files on machines running multi-agent swarms, where parallel
-          cargo builds and npm installs can exhaust disk space unexpectedly.
+          Create ballast files on machines running multi-agent swarms, where parallel cargo builds
+          and npm installs can exhaust disk space unexpectedly.
         </TipBox>
       </Section>
 
@@ -112,7 +123,8 @@ export function SbhLesson() {
 
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# Check current disk pressure
+        <CodeBlock
+          code={`# Check current disk pressure
 sbh status
 
 # Create ballast on a new machine (size comes from the sbh config)
@@ -122,7 +134,8 @@ sbh ballast provision
 sbh ballast release 1
 
 # Zero-write emergency recovery when writes are already failing
-sbh emergency`} />
+sbh emergency`}
+        />
       </Section>
     </div>
   );
@@ -132,7 +145,7 @@ sbh emergency`} />
 // Interactive Disk Pressure Monitoring Dashboard
 // ---------------------------------------------------------------------------
 
-const SPRING = { type: 'spring' as const, stiffness: 200, damping: 25 };
+const SPRING = { type: "spring" as const, stiffness: 200, damping: 25 };
 
 /** SVG arc path helper for donut charts */
 function describeArc(
@@ -155,10 +168,13 @@ function describeArc(
 
 /** Get color for usage percentage */
 function usageColor(pct: number): { stroke: string; text: string; bg: string; label: string } {
-  if (pct >= 97) return { stroke: '#ef4444', text: 'text-red-400', bg: 'bg-red-500', label: 'CRITICAL' };
-  if (pct >= 90) return { stroke: '#f59e0b', text: 'text-amber-400', bg: 'bg-amber-500', label: 'WARNING' };
-  if (pct >= 75) return { stroke: '#eab308', text: 'text-yellow-400', bg: 'bg-yellow-500', label: 'ELEVATED' };
-  return { stroke: '#22c55e', text: 'text-emerald-400', bg: 'bg-emerald-500', label: 'HEALTHY' };
+  if (pct >= 97)
+    return { stroke: "#ef4444", text: "text-red-400", bg: "bg-red-500", label: "CRITICAL" };
+  if (pct >= 90)
+    return { stroke: "#f59e0b", text: "text-amber-400", bg: "bg-amber-500", label: "WARNING" };
+  if (pct >= 75)
+    return { stroke: "#eab308", text: "text-yellow-400", bg: "bg-yellow-500", label: "ELEVATED" };
+  return { stroke: "#22c55e", text: "text-emerald-400", bg: "bg-emerald-500", label: "HEALTHY" };
 }
 
 interface MountPoint {
@@ -176,7 +192,7 @@ interface DiskCategory {
 interface AlertEntry {
   time: string;
   message: string;
-  severity: 'info' | 'warn' | 'critical' | 'success';
+  severity: "info" | "warn" | "critical" | "success";
 }
 
 interface Scenario {
@@ -189,280 +205,288 @@ interface Scenario {
   categories: DiskCategory[];
   alerts: AlertEntry[];
   terminalLines: string[];
-  ballastStatus: 'reserved' | 'releasing' | 'released' | 'reclaiming';
+  ballastStatus: "reserved" | "releasing" | "released" | "reclaiming";
   ballastGb: number;
 }
 
 const SCENARIOS: Scenario[] = [
   {
-    id: 'normal',
-    label: 'Normal',
+    id: "normal",
+    label: "Normal",
     icon: Activity,
-    color: 'emerald',
-    description: 'System running smoothly. All mount points healthy with ballast reserved.',
+    color: "emerald",
+    description: "System running smoothly. All mount points healthy with ballast reserved.",
     mounts: [
-      { path: '/', totalGb: 50, usedGb: 28.4 },
-      { path: '/home', totalGb: 100, usedGb: 42.1 },
-      { path: '/tmp', totalGb: 10, usedGb: 1.8 },
-      { path: '/var/log', totalGb: 20, usedGb: 6.3 },
+      { path: "/", totalGb: 50, usedGb: 28.4 },
+      { path: "/home", totalGb: 100, usedGb: 42.1 },
+      { path: "/tmp", totalGb: 10, usedGb: 1.8 },
+      { path: "/var/log", totalGb: 20, usedGb: 6.3 },
     ],
     categories: [
-      { name: 'Build artifacts', sizeGb: 12.5, color: '#3b82f6' },
-      { name: 'Node modules', sizeGb: 8.2, color: '#8b5cf6' },
-      { name: 'Docker images', sizeGb: 14.3, color: '#06b6d4' },
-      { name: 'Logs', sizeGb: 6.3, color: '#f59e0b' },
-      { name: 'Cargo cache', sizeGb: 5.8, color: '#ef4444' },
-      { name: 'Ballast', sizeGb: 7.0, color: '#22c55e' },
-      { name: 'Other', sizeGb: 24.5, color: '#6b7280' },
+      { name: "Build artifacts", sizeGb: 12.5, color: "#3b82f6" },
+      { name: "Node modules", sizeGb: 8.2, color: "#8b5cf6" },
+      { name: "Docker images", sizeGb: 14.3, color: "#06b6d4" },
+      { name: "Logs", sizeGb: 6.3, color: "#f59e0b" },
+      { name: "Cargo cache", sizeGb: 5.8, color: "#ef4444" },
+      { name: "Ballast", sizeGb: 7.0, color: "#22c55e" },
+      { name: "Other", sizeGb: 24.5, color: "#6b7280" },
     ],
     alerts: [
-      { time: '14:32', message: 'sbh status: all mounts healthy', severity: 'info' },
-      { time: '14:30', message: 'Ballast file verified: 7.0 GB at /var/ballast', severity: 'info' },
-      { time: '14:28', message: 'Disk monitor started, checking every 30s', severity: 'info' },
+      { time: "14:32", message: "sbh status: all mounts healthy", severity: "info" },
+      { time: "14:30", message: "Ballast file verified: 7.0 GB at /var/ballast", severity: "info" },
+      { time: "14:28", message: "Disk monitor started, checking every 30s", severity: "info" },
     ],
     terminalLines: [
-      '$ sbh status',
-      'SBH Storage Ballast Helper v2.1.0',
-      '',
-      'Mount    Used     Total    Pct   Status',
-      '/        28.4 GB  50.0 GB  57%   OK',
-      '/home    42.1 GB  100 GB   42%   OK',
-      '/tmp     1.8 GB   10.0 GB  18%   OK',
-      '/var/log 6.3 GB   20.0 GB  32%   OK',
-      '',
-      'Ballast: 7.0 GB reserved at /var/ballast',
-      'Threshold: auto-release at 95%',
+      "$ sbh status",
+      "SBH Storage Ballast Helper v2.1.0",
+      "",
+      "Mount    Used     Total    Pct   Status",
+      "/        28.4 GB  50.0 GB  57%   OK",
+      "/home    42.1 GB  100 GB   42%   OK",
+      "/tmp     1.8 GB   10.0 GB  18%   OK",
+      "/var/log 6.3 GB   20.0 GB  32%   OK",
+      "",
+      "Ballast: 7.0 GB reserved at /var/ballast",
+      "Threshold: auto-release at 95%",
     ],
-    ballastStatus: 'reserved',
+    ballastStatus: "reserved",
     ballastGb: 7.0,
   },
   {
-    id: 'log-growth',
-    label: 'Log Growth',
+    id: "log-growth",
+    label: "Log Growth",
     icon: FileWarning,
-    color: 'amber',
-    description: 'Agent logs growing rapidly. /var/log approaching warning threshold.',
+    color: "amber",
+    description: "Agent logs growing rapidly. /var/log approaching warning threshold.",
     mounts: [
-      { path: '/', totalGb: 50, usedGb: 34.7 },
-      { path: '/home', totalGb: 100, usedGb: 58.3 },
-      { path: '/tmp', totalGb: 10, usedGb: 4.2 },
-      { path: '/var/log', totalGb: 20, usedGb: 17.6 },
+      { path: "/", totalGb: 50, usedGb: 34.7 },
+      { path: "/home", totalGb: 100, usedGb: 58.3 },
+      { path: "/tmp", totalGb: 10, usedGb: 4.2 },
+      { path: "/var/log", totalGb: 20, usedGb: 17.6 },
     ],
     categories: [
-      { name: 'Build artifacts', sizeGb: 18.2, color: '#3b82f6' },
-      { name: 'Node modules', sizeGb: 12.4, color: '#8b5cf6' },
-      { name: 'Docker images', sizeGb: 19.8, color: '#06b6d4' },
-      { name: 'Logs', sizeGb: 17.6, color: '#f59e0b' },
-      { name: 'Cargo cache', sizeGb: 9.1, color: '#ef4444' },
-      { name: 'Ballast', sizeGb: 7.0, color: '#22c55e' },
-      { name: 'Other', sizeGb: 30.7, color: '#6b7280' },
+      { name: "Build artifacts", sizeGb: 18.2, color: "#3b82f6" },
+      { name: "Node modules", sizeGb: 12.4, color: "#8b5cf6" },
+      { name: "Docker images", sizeGb: 19.8, color: "#06b6d4" },
+      { name: "Logs", sizeGb: 17.6, color: "#f59e0b" },
+      { name: "Cargo cache", sizeGb: 9.1, color: "#ef4444" },
+      { name: "Ballast", sizeGb: 7.0, color: "#22c55e" },
+      { name: "Other", sizeGb: 30.7, color: "#6b7280" },
     ],
     alerts: [
-      { time: '15:47', message: '/var/log at 88% - approaching threshold', severity: 'warn' },
-      { time: '15:44', message: 'Log growth rate: 2.1 GB/hr detected', severity: 'warn' },
-      { time: '15:40', message: 'Agent swarm generating verbose debug logs', severity: 'info' },
+      { time: "15:47", message: "/var/log at 88% - approaching threshold", severity: "warn" },
+      { time: "15:44", message: "Log growth rate: 2.1 GB/hr detected", severity: "warn" },
+      { time: "15:40", message: "Agent swarm generating verbose debug logs", severity: "info" },
     ],
     terminalLines: [
-      '$ sbh status',
-      'SBH Storage Ballast Helper v2.1.0',
-      '',
-      'Mount    Used     Total    Pct   Status',
-      '/        34.7 GB  50.0 GB  69%   OK',
-      '/home    58.3 GB  100 GB   58%   OK',
-      '/tmp     4.2 GB   10.0 GB  42%   OK',
-      '/var/log 17.6 GB  20.0 GB  88%   WARNING',
-      '',
-      'Ballast: 7.0 GB reserved at /var/ballast',
-      '! Log growth rate: 2.1 GB/hr',
+      "$ sbh status",
+      "SBH Storage Ballast Helper v2.1.0",
+      "",
+      "Mount    Used     Total    Pct   Status",
+      "/        34.7 GB  50.0 GB  69%   OK",
+      "/home    58.3 GB  100 GB   58%   OK",
+      "/tmp     4.2 GB   10.0 GB  42%   OK",
+      "/var/log 17.6 GB  20.0 GB  88%   WARNING",
+      "",
+      "Ballast: 7.0 GB reserved at /var/ballast",
+      "! Log growth rate: 2.1 GB/hr",
     ],
-    ballastStatus: 'reserved',
+    ballastStatus: "reserved",
     ballastGb: 7.0,
   },
   {
-    id: 'cleanup',
-    label: 'Cleanup',
+    id: "cleanup",
+    label: "Cleanup",
     icon: Trash2,
-    color: 'blue',
-    description: 'SBH triggered automatic log rotation and old build artifact cleanup.',
+    color: "blue",
+    description: "SBH triggered automatic log rotation and old build artifact cleanup.",
     mounts: [
-      { path: '/', totalGb: 50, usedGb: 31.2 },
-      { path: '/home', totalGb: 100, usedGb: 48.7 },
-      { path: '/tmp', totalGb: 10, usedGb: 2.1 },
-      { path: '/var/log', totalGb: 20, usedGb: 8.4 },
+      { path: "/", totalGb: 50, usedGb: 31.2 },
+      { path: "/home", totalGb: 100, usedGb: 48.7 },
+      { path: "/tmp", totalGb: 10, usedGb: 2.1 },
+      { path: "/var/log", totalGb: 20, usedGb: 8.4 },
     ],
     categories: [
-      { name: 'Build artifacts', sizeGb: 10.1, color: '#3b82f6' },
-      { name: 'Node modules', sizeGb: 12.4, color: '#8b5cf6' },
-      { name: 'Docker images', sizeGb: 19.8, color: '#06b6d4' },
-      { name: 'Logs', sizeGb: 8.4, color: '#f59e0b' },
-      { name: 'Cargo cache', sizeGb: 9.1, color: '#ef4444' },
-      { name: 'Ballast', sizeGb: 7.0, color: '#22c55e' },
-      { name: 'Other', sizeGb: 23.6, color: '#6b7280' },
+      { name: "Build artifacts", sizeGb: 10.1, color: "#3b82f6" },
+      { name: "Node modules", sizeGb: 12.4, color: "#8b5cf6" },
+      { name: "Docker images", sizeGb: 19.8, color: "#06b6d4" },
+      { name: "Logs", sizeGb: 8.4, color: "#f59e0b" },
+      { name: "Cargo cache", sizeGb: 9.1, color: "#ef4444" },
+      { name: "Ballast", sizeGb: 7.0, color: "#22c55e" },
+      { name: "Other", sizeGb: 23.6, color: "#6b7280" },
     ],
     alerts: [
-      { time: '16:02', message: 'Cleanup complete: freed 19.2 GB total', severity: 'success' },
-      { time: '16:01', message: 'Rotated logs: freed 9.2 GB from /var/log', severity: 'success' },
-      { time: '16:00', message: 'Removed stale build artifacts: freed 8.1 GB', severity: 'success' },
-      { time: '15:59', message: 'Cleaned /tmp: freed 2.1 GB', severity: 'info' },
+      { time: "16:02", message: "Cleanup complete: freed 19.2 GB total", severity: "success" },
+      { time: "16:01", message: "Rotated logs: freed 9.2 GB from /var/log", severity: "success" },
+      {
+        time: "16:00",
+        message: "Removed stale build artifacts: freed 8.1 GB",
+        severity: "success",
+      },
+      { time: "15:59", message: "Cleaned /tmp: freed 2.1 GB", severity: "info" },
     ],
     terminalLines: [
-      '$ sbh clean --yes',
-      'Scanning for reclaimable space...',
-      '',
-      'Rotated:  /var/log/*.log.gz   -9.2 GB',
-      'Removed:  build/artifacts/*    -8.1 GB',
-      'Cleaned:  /tmp/agent-*         -2.1 GB',
-      '',
-      'Total freed: 19.2 GB',
-      'All mount points now healthy.',
-      'Ballast: 7.0 GB intact',
+      "$ sbh clean --yes",
+      "Scanning for reclaimable space...",
+      "",
+      "Rotated:  /var/log/*.log.gz   -9.2 GB",
+      "Removed:  build/artifacts/*    -8.1 GB",
+      "Cleaned:  /tmp/agent-*         -2.1 GB",
+      "",
+      "Total freed: 19.2 GB",
+      "All mount points now healthy.",
+      "Ballast: 7.0 GB intact",
     ],
-    ballastStatus: 'reserved',
+    ballastStatus: "reserved",
     ballastGb: 7.0,
   },
   {
-    id: 'docker-prune',
-    label: 'Docker Prune',
+    id: "docker-prune",
+    label: "Docker Prune",
     icon: Database,
-    color: 'cyan',
-    description: 'Docker images consuming massive space. Pruning unused layers and volumes.',
+    color: "cyan",
+    description: "Docker images consuming massive space. Pruning unused layers and volumes.",
     mounts: [
-      { path: '/', totalGb: 50, usedGb: 46.8 },
-      { path: '/home', totalGb: 100, usedGb: 72.4 },
-      { path: '/tmp', totalGb: 10, usedGb: 7.9 },
-      { path: '/var/log', totalGb: 20, usedGb: 12.1 },
+      { path: "/", totalGb: 50, usedGb: 46.8 },
+      { path: "/home", totalGb: 100, usedGb: 72.4 },
+      { path: "/tmp", totalGb: 10, usedGb: 7.9 },
+      { path: "/var/log", totalGb: 20, usedGb: 12.1 },
     ],
     categories: [
-      { name: 'Build artifacts', sizeGb: 15.3, color: '#3b82f6' },
-      { name: 'Node modules', sizeGb: 14.8, color: '#8b5cf6' },
-      { name: 'Docker images', sizeGb: 42.6, color: '#06b6d4' },
-      { name: 'Logs', sizeGb: 12.1, color: '#f59e0b' },
-      { name: 'Cargo cache', sizeGb: 11.2, color: '#ef4444' },
-      { name: 'Ballast', sizeGb: 7.0, color: '#22c55e' },
-      { name: 'Other', sizeGb: 36.2, color: '#6b7280' },
+      { name: "Build artifacts", sizeGb: 15.3, color: "#3b82f6" },
+      { name: "Node modules", sizeGb: 14.8, color: "#8b5cf6" },
+      { name: "Docker images", sizeGb: 42.6, color: "#06b6d4" },
+      { name: "Logs", sizeGb: 12.1, color: "#f59e0b" },
+      { name: "Cargo cache", sizeGb: 11.2, color: "#ef4444" },
+      { name: "Ballast", sizeGb: 7.0, color: "#22c55e" },
+      { name: "Other", sizeGb: 36.2, color: "#6b7280" },
     ],
     alerts: [
-      { time: '17:15', message: '/ at 94% - nearing critical threshold!', severity: 'warn' },
-      { time: '17:14', message: 'Docker using 42.6 GB across 23 images', severity: 'warn' },
-      { time: '17:13', message: 'Recommending: docker system prune', severity: 'info' },
+      { time: "17:15", message: "/ at 94% - nearing critical threshold!", severity: "warn" },
+      { time: "17:14", message: "Docker using 42.6 GB across 23 images", severity: "warn" },
+      { time: "17:13", message: "Recommending: docker system prune", severity: "info" },
     ],
     terminalLines: [
-      '$ sbh status --verbose',
-      'WARNING: / at 94% usage',
-      '',
-      'Largest consumers:',
-      '  Docker images    42.6 GB  (23 images)',
-      '  Node modules     14.8 GB  (6 projects)',
-      '  Build artifacts  15.3 GB',
-      '',
-      '$ docker system prune -af',
-      'Deleted 18 images, 4 volumes',
-      'Reclaimed: 28.3 GB',
+      "$ sbh status --verbose",
+      "WARNING: / at 94% usage",
+      "",
+      "Largest consumers:",
+      "  Docker images    42.6 GB  (23 images)",
+      "  Node modules     14.8 GB  (6 projects)",
+      "  Build artifacts  15.3 GB",
+      "",
+      "$ docker system prune -af",
+      "Deleted 18 images, 4 volumes",
+      "Reclaimed: 28.3 GB",
     ],
-    ballastStatus: 'reserved',
+    ballastStatus: "reserved",
     ballastGb: 7.0,
   },
   {
-    id: 'cache-purge',
-    label: 'Cache Purge',
+    id: "cache-purge",
+    label: "Cache Purge",
     icon: Zap,
-    color: 'violet',
-    description: 'Build caches from parallel agent sessions filling disk. Purging stale entries.',
+    color: "violet",
+    description: "Build caches from parallel agent sessions filling disk. Purging stale entries.",
     mounts: [
-      { path: '/', totalGb: 50, usedGb: 47.2 },
-      { path: '/home', totalGb: 100, usedGb: 91.3 },
-      { path: '/tmp', totalGb: 10, usedGb: 8.6 },
-      { path: '/var/log', totalGb: 20, usedGb: 14.8 },
+      { path: "/", totalGb: 50, usedGb: 47.2 },
+      { path: "/home", totalGb: 100, usedGb: 91.3 },
+      { path: "/tmp", totalGb: 10, usedGb: 8.6 },
+      { path: "/var/log", totalGb: 20, usedGb: 14.8 },
     ],
     categories: [
-      { name: 'Build artifacts', sizeGb: 28.7, color: '#3b82f6' },
-      { name: 'Node modules', sizeGb: 22.1, color: '#8b5cf6' },
-      { name: 'Docker images', sizeGb: 24.5, color: '#06b6d4' },
-      { name: 'Logs', sizeGb: 14.8, color: '#f59e0b' },
-      { name: 'Cargo cache', sizeGb: 31.4, color: '#ef4444' },
-      { name: 'Ballast', sizeGb: 7.0, color: '#22c55e' },
-      { name: 'Other', sizeGb: 33.4, color: '#6b7280' },
+      { name: "Build artifacts", sizeGb: 28.7, color: "#3b82f6" },
+      { name: "Node modules", sizeGb: 22.1, color: "#8b5cf6" },
+      { name: "Docker images", sizeGb: 24.5, color: "#06b6d4" },
+      { name: "Logs", sizeGb: 14.8, color: "#f59e0b" },
+      { name: "Cargo cache", sizeGb: 31.4, color: "#ef4444" },
+      { name: "Ballast", sizeGb: 7.0, color: "#22c55e" },
+      { name: "Other", sizeGb: 33.4, color: "#6b7280" },
     ],
     alerts: [
-      { time: '18:22', message: '/home at 91% - CRITICAL soon', severity: 'critical' },
-      { time: '18:21', message: 'Cargo cache: 31.4 GB from 8 concurrent builds', severity: 'warn' },
-      { time: '18:20', message: 'Running: cargo cache --autoclean-expensive', severity: 'info' },
-      { time: '18:19', message: 'Node cache: 22.1 GB across 12 workspaces', severity: 'warn' },
+      { time: "18:22", message: "/home at 91% - CRITICAL soon", severity: "critical" },
+      { time: "18:21", message: "Cargo cache: 31.4 GB from 8 concurrent builds", severity: "warn" },
+      { time: "18:20", message: "Running: cargo cache --autoclean-expensive", severity: "info" },
+      { time: "18:19", message: "Node cache: 22.1 GB across 12 workspaces", severity: "warn" },
     ],
     terminalLines: [
-      '$ sbh scan /home',
-      'Top consumers in /home:',
-      '  ~/.cargo/registry  31.4 GB',
-      '  node_modules/      22.1 GB',
-      '  target/            28.7 GB',
-      '',
-      '$ sbh clean --target-free 20 --yes',
-      'Purging Cargo registry (keeping latest)...',
-      'Purging node_modules (stale > 7d)...',
-      'Freed: 41.2 GB from cache purge',
+      "$ sbh scan /home",
+      "Top consumers in /home:",
+      "  ~/.cargo/registry  31.4 GB",
+      "  node_modules/      22.1 GB",
+      "  target/            28.7 GB",
+      "",
+      "$ sbh clean --target-free 20 --yes",
+      "Purging Cargo registry (keeping latest)...",
+      "Purging node_modules (stale > 7d)...",
+      "Freed: 41.2 GB from cache purge",
     ],
-    ballastStatus: 'reserved',
+    ballastStatus: "reserved",
     ballastGb: 7.0,
   },
   {
-    id: 'emergency',
-    label: 'Emergency',
+    id: "emergency",
+    label: "Emergency",
     icon: AlertTriangle,
-    color: 'red',
-    description: 'CRITICAL: Disk full! Ballast auto-released. Emergency recovery in progress.',
+    color: "red",
+    description: "CRITICAL: Disk full! Ballast auto-released. Emergency recovery in progress.",
     mounts: [
-      { path: '/', totalGb: 50, usedGb: 42.5 },
-      { path: '/home', totalGb: 100, usedGb: 94.7 },
-      { path: '/tmp', totalGb: 10, usedGb: 9.8 },
-      { path: '/var/log', totalGb: 20, usedGb: 19.4 },
+      { path: "/", totalGb: 50, usedGb: 42.5 },
+      { path: "/home", totalGb: 100, usedGb: 94.7 },
+      { path: "/tmp", totalGb: 10, usedGb: 9.8 },
+      { path: "/var/log", totalGb: 20, usedGb: 19.4 },
     ],
     categories: [
-      { name: 'Build artifacts', sizeGb: 32.1, color: '#3b82f6' },
-      { name: 'Node modules', sizeGb: 24.8, color: '#8b5cf6' },
-      { name: 'Docker images', sizeGb: 38.2, color: '#06b6d4' },
-      { name: 'Logs', sizeGb: 19.4, color: '#f59e0b' },
-      { name: 'Cargo cache', sizeGb: 28.9, color: '#ef4444' },
-      { name: 'Ballast', sizeGb: 0.0, color: '#22c55e' },
-      { name: 'Other', sizeGb: 23.0, color: '#6b7280' },
+      { name: "Build artifacts", sizeGb: 32.1, color: "#3b82f6" },
+      { name: "Node modules", sizeGb: 24.8, color: "#8b5cf6" },
+      { name: "Docker images", sizeGb: 38.2, color: "#06b6d4" },
+      { name: "Logs", sizeGb: 19.4, color: "#f59e0b" },
+      { name: "Cargo cache", sizeGb: 28.9, color: "#ef4444" },
+      { name: "Ballast", sizeGb: 0.0, color: "#22c55e" },
+      { name: "Other", sizeGb: 23.0, color: "#6b7280" },
     ],
     alerts: [
-      { time: '19:01', message: 'EMERGENCY: Ballast released! 7 GB freed on /', severity: 'critical' },
-      { time: '19:00', message: '/ hit 99% - auto-release triggered!', severity: 'critical' },
-      { time: '18:59', message: 'Agent writes failing: ENOSPC errors', severity: 'critical' },
-      { time: '18:58', message: 'All cleanup strategies executing...', severity: 'warn' },
+      {
+        time: "19:01",
+        message: "EMERGENCY: Ballast released! 7 GB freed on /",
+        severity: "critical",
+      },
+      { time: "19:00", message: "/ hit 99% - auto-release triggered!", severity: "critical" },
+      { time: "18:59", message: "Agent writes failing: ENOSPC errors", severity: "critical" },
+      { time: "18:58", message: "All cleanup strategies executing...", severity: "warn" },
     ],
     terminalLines: [
-      '$ sbh emergency',
-      '!!! EMERGENCY BALLAST RELEASE !!!',
-      '',
-      'Released: /var/ballast (7.0 GB)',
-      'Root / now at 85% (was 99%)',
-      '',
-      'Running emergency cleanup...',
-      '  Truncating old logs...    -4.2 GB',
-      '  Clearing /tmp...          -8.1 GB',
-      '',
-      '$ sbh ballast replenish  # after cleanup',
+      "$ sbh emergency",
+      "!!! EMERGENCY BALLAST RELEASE !!!",
+      "",
+      "Released: /var/ballast (7.0 GB)",
+      "Root / now at 85% (was 99%)",
+      "",
+      "Running emergency cleanup...",
+      "  Truncating old logs...    -4.2 GB",
+      "  Clearing /tmp...          -8.1 GB",
+      "",
+      "$ sbh ballast replenish  # after cleanup",
     ],
-    ballastStatus: 'released',
+    ballastStatus: "released",
     ballastGb: 0.0,
   },
 ];
 
 const COLOR_MAP: Record<string, { border: string; bg: string; text: string }> = {
-  emerald: { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-300' },
-  amber: { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-300' },
-  blue: { border: 'border-blue-500/30', bg: 'bg-blue-500/10', text: 'text-blue-300' },
-  cyan: { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-300' },
-  violet: { border: 'border-violet-500/30', bg: 'bg-violet-500/10', text: 'text-violet-300' },
-  red: { border: 'border-red-500/30', bg: 'bg-red-500/10', text: 'text-red-300' },
+  emerald: { border: "border-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-300" },
+  amber: { border: "border-amber-500/30", bg: "bg-amber-500/10", text: "text-amber-300" },
+  blue: { border: "border-blue-500/30", bg: "bg-blue-500/10", text: "text-blue-300" },
+  cyan: { border: "border-cyan-500/30", bg: "bg-cyan-500/10", text: "text-cyan-300" },
+  violet: { border: "border-violet-500/30", bg: "bg-violet-500/10", text: "text-violet-300" },
+  red: { border: "border-red-500/30", bg: "bg-red-500/10", text: "text-red-300" },
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
-  info: 'text-blue-400',
-  warn: 'text-amber-400',
-  critical: 'text-red-400',
-  success: 'text-emerald-400',
+  info: "text-blue-400",
+  warn: "text-amber-400",
+  critical: "text-red-400",
+  success: "text-emerald-400",
 };
 
 // ---------------------------------------------------------------------------
@@ -485,7 +509,7 @@ function MountBar({ mount }: { mount: MountPoint }) {
       </div>
       <div className="h-3 rounded-full bg-white/[0.06] overflow-hidden relative">
         <motion.div
-          className={`h-full rounded-full ${isCritical ? 'animate-pulse' : ''}`}
+          className={`h-full rounded-full ${isCritical ? "animate-pulse" : ""}`}
           animate={{
             width: `${pct}%`,
             backgroundColor: colors.stroke,
@@ -534,7 +558,14 @@ function CategoryDonut({ categories, size = 180 }: { categories: DiskCategory[];
         </filter>
       </defs>
       {/* Background ring */}
-      <circle cx={half} cy={half} r={radius} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth={16} />
+      <circle
+        cx={half}
+        cy={half}
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.04)"
+        strokeWidth={16}
+      />
       {/* Category arcs */}
       {segments.map((seg, i) => (
         <path
@@ -549,10 +580,25 @@ function CategoryDonut({ categories, size = 180 }: { categories: DiskCategory[];
         />
       ))}
       {/* Center text */}
-      <text x={half} y={half - 6} textAnchor="middle" fill="white" fontSize="18" fontWeight="bold" fontFamily="monospace">
+      <text
+        x={half}
+        y={half - 6}
+        textAnchor="middle"
+        fill="white"
+        fontSize="18"
+        fontWeight="bold"
+        fontFamily="monospace"
+      >
         {total.toFixed(0)} GB
       </text>
-      <text x={half} y={half + 12} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="10" fontFamily="monospace">
+      <text
+        x={half}
+        y={half + 12}
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.4)"
+        fontSize="10"
+        fontFamily="monospace"
+      >
         total used
       </text>
     </svg>
@@ -626,7 +672,13 @@ function AlertTicker({ alerts }: { alerts: AlertEntry[] }) {
         >
           <span className="font-mono text-white/30 shrink-0">{alert.time}</span>
           <span className={`${SEVERITY_COLORS[alert.severity]} font-mono`}>
-            {alert.severity === 'critical' ? '!!!' : alert.severity === 'warn' ? '!' : alert.severity === 'success' ? '+' : '-'}
+            {alert.severity === "critical"
+              ? "!!!"
+              : alert.severity === "warn"
+                ? "!"
+                : alert.severity === "success"
+                  ? "+"
+                  : "-"}
           </span>
           <span className="text-white/60">{alert.message}</span>
         </motion.div>
@@ -657,18 +709,23 @@ function MiniTerminal({ lines }: { lines: string[] }) {
             animate={{ opacity: 1 }}
             transition={{ delay: i * 0.04 }}
             className={`text-[11px] font-mono leading-relaxed ${
-              line.startsWith('$')
-                ? 'text-emerald-400'
-                : line.startsWith('!')
-                  ? 'text-red-400'
-                  : line.startsWith('+') || line.includes('freed') || line.includes('Freed') || line.includes('Reclaimed')
-                    ? 'text-emerald-400/80'
-                    : line.includes('WARNING') || line.includes('CRITICAL') || line.includes('EMERGENCY')
-                      ? 'text-amber-400'
-                      : 'text-white/50'
+              line.startsWith("$")
+                ? "text-emerald-400"
+                : line.startsWith("!")
+                  ? "text-red-400"
+                  : line.startsWith("+") ||
+                      line.includes("freed") ||
+                      line.includes("Freed") ||
+                      line.includes("Reclaimed")
+                    ? "text-emerald-400/80"
+                    : line.includes("WARNING") ||
+                        line.includes("CRITICAL") ||
+                        line.includes("EMERGENCY")
+                      ? "text-amber-400"
+                      : "text-white/50"
             }`}
           >
-            {line || '\u00A0'}
+            {line || "\u00A0"}
           </motion.div>
         ))}
       </div>
@@ -678,17 +735,19 @@ function MiniTerminal({ lines }: { lines: string[] }) {
 
 /** Ballast status indicator */
 function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }) {
-  const isReleased = status === 'released';
-  const isReserved = status === 'reserved';
+  const isReleased = status === "released";
+  const isReserved = status === "reserved";
 
   return (
-    <div className={`rounded-xl border p-3 transition-colors duration-300 ${
-      isReleased
-        ? 'border-red-500/30 bg-red-500/[0.06]'
-        : 'border-emerald-500/20 bg-emerald-500/[0.04]'
-    }`}>
+    <div
+      className={`rounded-xl border p-3 transition-colors duration-300 ${
+        isReleased
+          ? "border-red-500/30 bg-red-500/[0.06]"
+          : "border-emerald-500/20 bg-emerald-500/[0.04]"
+      }`}
+    >
       <div className="flex items-center gap-2">
-        <Shield className={`h-4 w-4 ${isReleased ? 'text-red-400' : 'text-emerald-400'}`} />
+        <Shield className={`h-4 w-4 ${isReleased ? "text-red-400" : "text-emerald-400"}`} />
         <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
           Ballast
         </span>
@@ -699,10 +758,10 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
           transition={SPRING}
           className={`ml-auto text-[10px] font-mono px-2 py-0.5 rounded-full font-medium ${
             isReleased
-              ? 'bg-red-500/20 text-red-400'
+              ? "bg-red-500/20 text-red-400"
               : isReserved
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : 'bg-amber-500/20 text-amber-400'
+                ? "bg-emerald-500/20 text-emerald-400"
+                : "bg-amber-500/20 text-amber-400"
           }`}
         >
           {status.toUpperCase()}
@@ -714,18 +773,20 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
             className="h-full rounded-full"
             animate={{
               width: `${(sizeGb / 7) * 100}%`,
-              backgroundColor: isReleased ? '#ef4444' : '#22c55e',
+              backgroundColor: isReleased ? "#ef4444" : "#22c55e",
             }}
             transition={SPRING}
           />
         </div>
-        <span className={`text-[11px] font-mono ${isReleased ? 'text-red-400' : 'text-emerald-400'}`}>
+        <span
+          className={`text-[11px] font-mono ${isReleased ? "text-red-400" : "text-emerald-400"}`}
+        >
           {sizeGb.toFixed(1)} GB
         </span>
       </div>
       <p className="text-xs text-white/40 mt-1.5">
         {isReleased
-          ? 'Ballast released! Run sbh ballast replenish after cleanup.'
+          ? "Ballast released! Run sbh ballast replenish after cleanup."
           : `${sizeGb.toFixed(1)} GB reserved at /var/ballast. Auto-releases at 95%.`}
       </p>
     </div>
@@ -759,7 +820,7 @@ function InteractiveDiskPressureImpl() {
       if (!running) return;
       const elapsed = now - t0;
       const progress = Math.min(elapsed / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
+      const ease = 1 - (1 - progress) ** 3;
 
       const interpolated = targetMounts.map((target, i) => {
         const start = startMounts[i] ?? target;
@@ -805,10 +866,13 @@ function InteractiveDiskPressureImpl() {
   const overallColors = usageColor(overallPct);
   const gaugeAngle = (overallPct / 100) * 360;
 
-  const isEmergency = scenario.id === 'emergency';
+  const isEmergency = scenario.id === "emergency";
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-red-500/[0.02] rounded-full blur-3xl pointer-events-none" />
@@ -832,7 +896,9 @@ function InteractiveDiskPressureImpl() {
         <div className="text-center space-y-1">
           <div className="flex items-center justify-center gap-2">
             <Sparkles className="h-4 w-4 text-blue-400" />
-            <p className="text-sm font-semibold text-white/90">Disk Pressure Monitoring Dashboard</p>
+            <p className="text-sm font-semibold text-white/90">
+              Disk Pressure Monitoring Dashboard
+            </p>
             <Sparkles className="h-4 w-4 text-blue-400" />
           </div>
           <p className="text-xs text-white/50">
@@ -869,7 +935,7 @@ function InteractiveDiskPressureImpl() {
                   className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
                     isActive
                       ? `${sColors.border} ${sColors.bg} ${sColors.text}`
-                      : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60'
+                      : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
                   }`}
                 >
                   <Icon className="h-3 w-3" />
@@ -898,7 +964,12 @@ function InteractiveDiskPressureImpl() {
               key={i}
               animate={{
                 scale: scenarioIdx === i ? 1.3 : 1,
-                backgroundColor: scenarioIdx === i ? (COLOR_MAP[SCENARIOS[i].color]?.text === 'text-red-300' ? '#ef4444' : '#3b82f6') : 'rgba(255,255,255,0.15)',
+                backgroundColor:
+                  scenarioIdx === i
+                    ? COLOR_MAP[SCENARIOS[i].color]?.text === "text-red-300"
+                      ? "#ef4444"
+                      : "#3b82f6"
+                    : "rgba(255,255,255,0.15)",
               }}
               transition={SPRING}
               className="w-1.5 h-1.5 rounded-full"
@@ -922,7 +993,6 @@ function InteractiveDiskPressureImpl() {
 
         {/* Main dashboard grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
           {/* LEFT: Donut gauge + category legend */}
           <div className="space-y-3">
             {/* Overall gauge */}
@@ -938,13 +1008,13 @@ function InteractiveDiskPressureImpl() {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={SPRING}
                   className={`ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                    overallColors.label === 'CRITICAL'
-                      ? 'bg-red-500/20 text-red-400'
-                      : overallColors.label === 'WARNING'
-                        ? 'bg-amber-500/20 text-amber-400'
-                        : overallColors.label === 'ELEVATED'
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-emerald-500/20 text-emerald-400'
+                    overallColors.label === "CRITICAL"
+                      ? "bg-red-500/20 text-red-400"
+                      : overallColors.label === "WARNING"
+                        ? "bg-amber-500/20 text-amber-400"
+                        : overallColors.label === "ELEVATED"
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-emerald-500/20 text-emerald-400"
                   }`}
                 >
                   {overallColors.label}
@@ -961,7 +1031,14 @@ function InteractiveDiskPressureImpl() {
                       </feMerge>
                     </filter>
                   </defs>
-                  <circle cx={90} cy={90} r={70} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={14} />
+                  <circle
+                    cx={90}
+                    cy={90}
+                    r={70}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.05)"
+                    strokeWidth={14}
+                  />
                   <path
                     d={describeArc(90, 90, 70, 0, gaugeAngle)}
                     fill="none"
@@ -969,12 +1046,28 @@ function InteractiveDiskPressureImpl() {
                     strokeWidth={14}
                     strokeLinecap="round"
                     filter="url(#gauge-glow)"
-                    style={{ transition: 'stroke 0.4s ease' }}
+                    style={{ transition: "stroke 0.4s ease" }}
                   />
-                  <text x={90} y={82} textAnchor="middle" fill={overallColors.stroke} fontSize="26" fontWeight="bold" fontFamily="monospace" style={{ transition: 'fill 0.4s ease' }}>
+                  <text
+                    x={90}
+                    y={82}
+                    textAnchor="middle"
+                    fill={overallColors.stroke}
+                    fontSize="26"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    style={{ transition: "fill 0.4s ease" }}
+                  >
                     {overallPct}%
                   </text>
-                  <text x={90} y={100} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="10" fontFamily="monospace">
+                  <text
+                    x={90}
+                    y={100}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.4)"
+                    fontSize="10"
+                    fontFamily="monospace"
+                  >
                     aggregate
                   </text>
                 </svg>

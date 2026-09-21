@@ -1,6 +1,6 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Metadata } from "next";
-import { LESSONS, getLessonBySlug } from "@/lib/lessons";
+import { getLessonBySlug, LESSONS } from "@/lib/lessons";
 import { LessonContent } from "./lesson-content";
 
 interface Props {

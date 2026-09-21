@@ -12,7 +12,7 @@
 // deliver 10x what any single tool can achieve alone.
 // ============================================================
 
-import { getManifestTool } from './manifest-adapter';
+import { getManifestTool } from "./manifest-adapter";
 
 export type FlywheelTool = {
   id: string;
@@ -69,7 +69,8 @@ export const workflowScenarios: WorkflowScenario[] = [
     steps: [
       {
         tool: "ntm",
-        action: "Spawn agents across 3 projects: `ntm spawn proj1 --cc=2 proj2 --cod=1 proj3 --agy=1`",
+        action:
+          "Spawn agents across 3 projects: `ntm spawn proj1 --cc=2 proj2 --cod=1 proj3 --agy=1`",
         result: "6 agents running in parallel across your machines",
       },
       {
@@ -94,7 +95,8 @@ export const workflowScenarios: WorkflowScenario[] = [
   {
     id: "agent-review",
     title: "Agents Reviewing Agents",
-    description: "Have your agents review each other's work to catch bugs, errors, and issues before they become problems.",
+    description:
+      "Have your agents review each other's work to catch bugs, errors, and issues before they become problems.",
     steps: [
       {
         tool: "cass",
@@ -153,7 +155,8 @@ export const workflowScenarios: WorkflowScenario[] = [
   {
     id: "fresh-eyes",
     title: "Fresh Eyes Code Review",
-    description: "Have agents deeply investigate code with fresh perspectives, finding bugs that humans miss.",
+    description:
+      "Have agents deeply investigate code with fresh perspectives, finding bugs that humans miss.",
     steps: [
       {
         tool: "cass",
@@ -182,7 +185,8 @@ export const workflowScenarios: WorkflowScenario[] = [
   {
     id: "multi-repo-morning",
     title: "Multi-Repo Morning Sync",
-    description: "Start your day with all repos synced, agents spawned, and ready to execute tasks across the fleet.",
+    description:
+      "Start your day with all repos synced, agents spawned, and ready to execute tasks across the fleet.",
     steps: [
       {
         tool: "ru",
@@ -211,7 +215,8 @@ export const workflowScenarios: WorkflowScenario[] = [
   {
     id: "commit-sweep-bulk",
     title: "Bulk Commit Automation",
-    description: "Use RU's Commit Sweep to group dirty worktrees across your entire fleet into logical conventional commits.",
+    description:
+      "Use RU's Commit Sweep to group dirty worktrees across your entire fleet into logical conventional commits.",
     steps: [
       {
         tool: "ru",
@@ -225,7 +230,8 @@ export const workflowScenarios: WorkflowScenario[] = [
       },
       {
         tool: "ntm",
-        action: "For AI-assisted review of the result, `ru review` drives agents via ntm robot mode",
+        action:
+          "For AI-assisted review of the result, `ru review` drives agents via ntm robot mode",
         result: "Two-phase workflow: --plan (discover) → --apply (execute)",
       },
       {
@@ -526,7 +532,7 @@ const _flywheelTools: FlywheelTool[] = [
       "mcp-agent-mail doctor check --verbose",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh" | bash -s -- --yes',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh\" | bash -s -- --yes",
     language: "Rust",
   },
   {
@@ -562,7 +568,7 @@ const _flywheelTools: FlywheelTool[] = [
       "ubs --beads-jsonl findings.jsonl .",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh" | bash -s -- --easy-mode',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh\" | bash -s -- --easy-mode",
     language: "Shell",
   },
   {
@@ -604,7 +610,7 @@ const _flywheelTools: FlywheelTool[] = [
       "bv --diff-since HEAD~100",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh" | bash',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh\" | bash",
     language: "Go",
   },
   {
@@ -644,7 +650,7 @@ const _flywheelTools: FlywheelTool[] = [
       "br sync --flush-only",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh" | bash',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh\" | bash",
     language: "Rust",
   },
   {
@@ -762,7 +768,7 @@ const _flywheelTools: FlywheelTool[] = [
       "caam exec codex work -- 'x'   # Isolated session",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh" | bash',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh\" | bash",
     language: "Go",
   },
   {
@@ -1022,7 +1028,7 @@ as a native tool, not string-parsing.`,
       "rch agents                  # Detect running AI agents",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh" | bash',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh\" | bash",
     language: "Rust",
   },
   {
@@ -1143,7 +1149,7 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
       "brenner doctor --json # Verify installation with JSON output",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh" | bash',
+      "curl --proto '=https' --proto-redir '=https' -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh\" | bash",
     language: "TypeScript",
   },
   {
@@ -1177,8 +1183,8 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
     ],
     cliCommands: [
       "jfp i",
-      "jfp suggest \"write unit tests\"",
-      "jfp search \"code review\"",
+      'jfp suggest "write unit tests"',
+      'jfp search "code review"',
       "jfp copy idea-wizard",
       "jfp bundles",
       "jfp serve",
@@ -1225,12 +1231,7 @@ Supports Linux (Debian/Ubuntu) and WSL2. Idempotent installer with --plan dry-ru
       "Helper tools: check-throttled, srps-doctor, cursor-guard",
       "Idempotent installer with --plan dry-run, --uninstall",
     ],
-    cliCommands: [
-      "sysmoni",
-      "check-throttled",
-      "srps-doctor",
-      "sysmoni --json",
-    ],
+    cliCommands: ["sysmoni", "check-throttled", "srps-doctor", "sysmoni --json"],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/system_resource_protection_script/main/install.sh | bash -s -- --install",
     language: "Go + C++ + Bash",
@@ -1607,7 +1608,11 @@ Key capabilities:
       "Recursive crawling",
       "Clean Markdown output",
     ],
-    cliCommands: ["mdwb fetch https://docs.example.com", "mdwb crawl https://docs.example.com", "mdwb --help"],
+    cliCommands: [
+      "mdwb fetch https://docs.example.com",
+      "mdwb crawl https://docs.example.com",
+      "mdwb --help",
+    ],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh | bash",
     language: "Rust",
@@ -1693,8 +1698,7 @@ Key capabilities:
       "TLS support",
     ],
     cliCommands: ["rust_proxy start", "rust_proxy --config proxy.toml", "rust_proxy --help"],
-    installCommand:
-      "cargo install --git https://github.com/Dicklesworthstone/rust_proxy",
+    installCommand: "cargo install --git https://github.com/Dicklesworthstone/rust_proxy",
     language: "Rust",
   },
   {
@@ -2230,10 +2234,7 @@ export const flywheelTools: FlywheelTool[] = _flywheelTools.map((tool) => {
 });
 
 export const flywheelToolCount = flywheelTools.length;
-export const flywheelTotalStars = flywheelTools.reduce(
-  (sum, tool) => sum + (tool.stars ?? 0),
-  0
-);
+export const flywheelTotalStars = flywheelTools.reduce((sum, tool) => sum + (tool.stars ?? 0), 0);
 export const flywheelTotalStarsLabel = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -2256,8 +2257,7 @@ export const flywheelDescription = {
     },
     {
       title: "Agent-First",
-      description:
-        "Every tool has --robot mode. Designed for AI agents to call programmatically.",
+      description: "Every tool has --robot mode. Designed for AI agents to call programmatically.",
     },
     {
       title: "Self-Reinforcing",

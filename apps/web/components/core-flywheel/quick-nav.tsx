@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
 import { ChevronUp, List } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "@/components/motion";
 
 const NAV_ITEMS = [
   { id: "why", label: "Why", number: "01" },
@@ -189,7 +189,9 @@ export function QuickNav() {
                               : "text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.03]"
                           }`}
                         >
-                          <span className="block text-[0.55rem] font-mono mb-0.5">{item.number}</span>
+                          <span className="block text-[0.55rem] font-mono mb-0.5">
+                            {item.number}
+                          </span>
                           {item.label}
                         </button>
                       );
@@ -231,11 +233,12 @@ export function QuickNav() {
                     key={item.id}
                     className="w-1.5 h-1.5 rounded-full transition duration-300"
                     style={{
-                      backgroundColor: i === activeIndex
-                        ? "#FF5500"
-                        : i < activeIndex
-                          ? "rgba(255,85,0,0.3)"
-                          : "rgba(255,255,255,0.1)",
+                      backgroundColor:
+                        i === activeIndex
+                          ? "#FF5500"
+                          : i < activeIndex
+                            ? "rgba(255,85,0,0.3)"
+                            : "rgba(255,255,255,0.1)",
                     }}
                   />
                 ))}

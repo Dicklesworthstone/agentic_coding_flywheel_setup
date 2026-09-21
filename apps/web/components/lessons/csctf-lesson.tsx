@@ -1,48 +1,48 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
-  FileText,
-  Terminal,
-  Zap,
-  Download,
-  Globe,
-  Shield,
-  Settings,
-  Play,
-  Link2,
-  Search,
-  FileCode,
-  CheckCircle2,
   ArrowRight,
-  RotateCcw,
-  MessageSquare,
+  Bot,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
   Code2,
+  Download,
+  ExternalLink,
+  FileCode,
+  FileDown,
+  FileText,
+  Globe,
   Hash,
   Image as ImageIcon,
-  Table,
-  ExternalLink,
-  User,
-  Bot,
-  Sparkles,
-  Clock,
-  FileDown,
   Layers,
-  ChevronRight,
-} from 'lucide-react';
+  Link2,
+  MessageSquare,
+  Play,
+  RotateCcw,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Table,
+  Terminal,
+  User,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
-} from './lesson-components';
+  GoalBanner,
+  Highlight,
+  Paragraph,
+  Section,
+  TipBox,
+} from "./lesson-components";
 
 function InteractiveConversionPipeline() {
   return <InteractiveConversionPipelineImpl />;
@@ -58,14 +58,13 @@ export function CsctfLesson() {
       {/* Section 1: What Is CSCTF */}
       <Section title="What Is CSCTF?" icon={<FileText className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>CSCTF (Chat Shared Conversation to File)</Highlight> downloads
-          conversations from ChatGPT, Claude, Gemini, and Grok share links, converting
-          them into clean Markdown and HTML files you can keep forever.
+          <Highlight>CSCTF (Chat Shared Conversation to File)</Highlight> downloads conversations
+          from ChatGPT, Claude, Gemini, and Grok share links, converting them into clean Markdown
+          and HTML files you can keep forever.
         </Paragraph>
         <Paragraph>
-          AI providers can remove shared conversations at any time. CSCTF preserves
-          your best conversations locally with proper formatting, code blocks, and
-          metadata intact.
+          AI providers can remove shared conversations at any time. CSCTF preserves your best
+          conversations locally with proper formatting, code blocks, and metadata intact.
         </Paragraph>
 
         <div className="mt-8">
@@ -106,9 +105,7 @@ export function CsctfLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>
-          Pass a share link and CSCTF handles the rest.
-        </Paragraph>
+        <Paragraph>Pass a share link and CSCTF handles the rest.</Paragraph>
 
         <CodeBlock
           code={`# Convert a ChatGPT share link
@@ -134,16 +131,16 @@ csctf "https://claude.ai/share/xyz789"
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'csctf "<share-url>"', description: 'Convert a single conversation' },
-            { command: 'csctf -o ~/archive "<url>"', description: 'Save to specific directory' },
-            { command: 'csctf --md-only "<url>"', description: 'Output Markdown only' },
-            { command: 'csctf --html-only "<url>"', description: 'Output HTML only' },
+            { command: 'csctf "<share-url>"', description: "Convert a single conversation" },
+            { command: 'csctf -o ~/archive "<url>"', description: "Save to specific directory" },
+            { command: 'csctf --md-only "<url>"', description: "Output Markdown only" },
+            { command: 'csctf --html-only "<url>"', description: "Output HTML only" },
           ]}
         />
 
         <TipBox variant="info">
-          The generated Markdown works great as input for other tools like S2P or
-          as context for new AI conversations.
+          The generated Markdown works great as input for other tools like S2P or as context for new
+          AI conversations.
         </TipBox>
       </Section>
 
@@ -151,9 +148,7 @@ csctf "https://claude.ai/share/xyz789"
 
       {/* Section 4: Batch Processing */}
       <Section title="Batch Processing" icon={<Zap className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>
-          Archive multiple conversations at once by passing a file of URLs.
-        </Paragraph>
+        <Paragraph>Archive multiple conversations at once by passing a file of URLs.</Paragraph>
 
         <CodeBlock
           code={`# Create a file with one URL per line
@@ -173,22 +168,26 @@ csctf --batch urls.txt -o ~/ai-archive/`}
 
       {/* Section 5: Integration */}
       <Section title="Flywheel Integration" icon={<Settings className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>
-          CSCTF fits naturally into the agent workflow.
-        </Paragraph>
+        <Paragraph>CSCTF fits naturally into the agent workflow.</Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <span className="text-emerald-400 font-semibold">CSCTF + CASS</span>
-            <p className="text-white/80 text-sm mt-1">Archive conversations, then search them with CASS</p>
+            <p className="text-white/80 text-sm mt-1">
+              Archive conversations, then search them with CASS
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
             <span className="text-blue-400 font-semibold">CSCTF + S2P</span>
-            <p className="text-white/80 text-sm mt-1">Convert archived chats into LLM-ready prompts</p>
+            <p className="text-white/80 text-sm mt-1">
+              Convert archived chats into LLM-ready prompts
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">CSCTF + CM</span>
-            <p className="text-white/80 text-sm mt-1">Extract patterns from past conversations into memory</p>
+            <p className="text-white/80 text-sm mt-1">
+              Extract patterns from past conversations into memory
+            </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">CSCTF + Beads</span>
@@ -224,7 +223,7 @@ interface SourceInfo {
 }
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   hasCode?: boolean;
   hasImage?: boolean;
@@ -233,18 +232,18 @@ interface ChatMessage {
 }
 
 interface FormatBadge {
-  type: 'code' | 'image' | 'link' | 'table';
+  type: "code" | "image" | "link" | "table";
   count: number;
 }
 
-type PipelineStage = 'idle' | 'fetch' | 'parse' | 'clean' | 'format' | 'output' | 'done';
+type PipelineStage = "idle" | "fetch" | "parse" | "clean" | "format" | "output" | "done";
 
 const PIPELINE_STAGES: { key: PipelineStage; label: string; icon: typeof Link2 }[] = [
-  { key: 'fetch', label: 'Fetch', icon: Download },
-  { key: 'parse', label: 'Parse', icon: Search },
-  { key: 'clean', label: 'Clean', icon: Sparkles },
-  { key: 'format', label: 'Format', icon: Code2 },
-  { key: 'output', label: 'Output', icon: FileDown },
+  { key: "fetch", label: "Fetch", icon: Download },
+  { key: "parse", label: "Parse", icon: Search },
+  { key: "clean", label: "Clean", icon: Sparkles },
+  { key: "format", label: "Format", icon: Code2 },
+  { key: "output", label: "Output", icon: FileDown },
 ];
 
 const FORMAT_ICONS: Record<string, typeof Code2> = {
@@ -255,174 +254,239 @@ const FORMAT_ICONS: Record<string, typeof Code2> = {
 };
 
 const FORMAT_COLORS: Record<string, string> = {
-  code: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
-  image: 'text-pink-400 border-pink-500/30 bg-pink-500/10',
-  link: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
-  table: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+  code: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+  image: "text-pink-400 border-pink-500/30 bg-pink-500/10",
+  link: "text-blue-400 border-blue-500/30 bg-blue-500/10",
+  table: "text-amber-400 border-amber-500/30 bg-amber-500/10",
 };
 
 const SOURCES: SourceInfo[] = [
   {
-    id: 'chatgpt',
-    name: 'ChatGPT',
-    icon: 'G',
-    color: '#10a37f',
-    textColor: 'text-emerald-400',
-    borderColor: 'border-emerald-500/30',
-    bgColor: 'bg-emerald-500/10',
-    glowColor: 'bg-emerald-500/[0.06]',
-    url: 'chatgpt.com/share/e8f2a1b3',
-    title: 'Building a REST API with Express',
+    id: "chatgpt",
+    name: "ChatGPT",
+    icon: "G",
+    color: "#10a37f",
+    textColor: "text-emerald-400",
+    borderColor: "border-emerald-500/30",
+    bgColor: "bg-emerald-500/10",
+    glowColor: "bg-emerald-500/[0.06]",
+    url: "chatgpt.com/share/e8f2a1b3",
+    title: "Building a REST API with Express",
     messages: [
-      { role: 'user', content: 'How do I set up Express with TypeScript?' },
-      { role: 'assistant', content: 'Here is a complete setup for Express + TypeScript with proper error handling:', hasCode: true },
-      { role: 'user', content: 'Can you add rate limiting middleware?' },
-      { role: 'assistant', content: 'I\'ll add express-rate-limit with a sliding window configuration:', hasCode: true, hasLink: true },
+      { role: "user", content: "How do I set up Express with TypeScript?" },
+      {
+        role: "assistant",
+        content: "Here is a complete setup for Express + TypeScript with proper error handling:",
+        hasCode: true,
+      },
+      { role: "user", content: "Can you add rate limiting middleware?" },
+      {
+        role: "assistant",
+        content: "I'll add express-rate-limit with a sliding window configuration:",
+        hasCode: true,
+        hasLink: true,
+      },
     ],
     detectedFormats: [
-      { type: 'code', count: 6 },
-      { type: 'link', count: 3 },
-      { type: 'table', count: 1 },
+      { type: "code", count: 6 },
+      { type: "link", count: 3 },
+      { type: "table", count: 1 },
     ],
-    fileSize: '24.3 KB',
+    fileSize: "24.3 KB",
     tokens: 4820,
-    outputSize: '18.1 KB',
+    outputSize: "18.1 KB",
     outputTokens: 3640,
   },
   {
-    id: 'claude',
-    name: 'Claude',
-    icon: 'C',
-    color: '#d97706',
-    textColor: 'text-amber-400',
-    borderColor: 'border-amber-500/30',
-    bgColor: 'bg-amber-500/10',
-    glowColor: 'bg-amber-500/[0.06]',
-    url: 'claude.ai/share/conv_9x7kp2m',
-    title: 'Debug Memory Leak in Node Process',
+    id: "claude",
+    name: "Claude",
+    icon: "C",
+    color: "#d97706",
+    textColor: "text-amber-400",
+    borderColor: "border-amber-500/30",
+    bgColor: "bg-amber-500/10",
+    glowColor: "bg-amber-500/[0.06]",
+    url: "claude.ai/share/conv_9x7kp2m",
+    title: "Debug Memory Leak in Node Process",
     messages: [
-      { role: 'user', content: 'My Node.js process keeps growing in memory. Here\'s my heap snapshot:' },
-      { role: 'assistant', content: 'I can see the leak. The event listeners are never being removed. Let me trace the reference chain:', hasCode: true, hasImage: true },
-      { role: 'user', content: 'That fixed it! Can you also optimize the buffer allocation?' },
-      { role: 'assistant', content: 'Yes, switching to a pool allocator will reduce GC pressure significantly:', hasCode: true, hasTable: true },
+      {
+        role: "user",
+        content: "My Node.js process keeps growing in memory. Here's my heap snapshot:",
+      },
+      {
+        role: "assistant",
+        content:
+          "I can see the leak. The event listeners are never being removed. Let me trace the reference chain:",
+        hasCode: true,
+        hasImage: true,
+      },
+      { role: "user", content: "That fixed it! Can you also optimize the buffer allocation?" },
+      {
+        role: "assistant",
+        content: "Yes, switching to a pool allocator will reduce GC pressure significantly:",
+        hasCode: true,
+        hasTable: true,
+      },
     ],
     detectedFormats: [
-      { type: 'code', count: 4 },
-      { type: 'image', count: 2 },
-      { type: 'link', count: 1 },
-      { type: 'table', count: 2 },
+      { type: "code", count: 4 },
+      { type: "image", count: 2 },
+      { type: "link", count: 1 },
+      { type: "table", count: 2 },
     ],
-    fileSize: '31.7 KB',
+    fileSize: "31.7 KB",
     tokens: 6340,
-    outputSize: '22.4 KB',
+    outputSize: "22.4 KB",
     outputTokens: 4510,
   },
   {
-    id: 'gemini',
-    name: 'Gemini',
-    icon: 'G',
-    color: '#4285f4',
-    textColor: 'text-blue-400',
-    borderColor: 'border-blue-500/30',
-    bgColor: 'bg-blue-500/10',
-    glowColor: 'bg-blue-500/[0.06]',
-    url: 'gemini.google.com/share/a3d7f1e2',
-    title: 'ML Pipeline with TensorFlow',
+    id: "gemini",
+    name: "Gemini",
+    icon: "G",
+    color: "#4285f4",
+    textColor: "text-blue-400",
+    borderColor: "border-blue-500/30",
+    bgColor: "bg-blue-500/10",
+    glowColor: "bg-blue-500/[0.06]",
+    url: "gemini.google.com/share/a3d7f1e2",
+    title: "ML Pipeline with TensorFlow",
     messages: [
-      { role: 'user', content: 'Design a data pipeline for training image classifiers.' },
-      { role: 'assistant', content: 'Here is an efficient tf.data pipeline with augmentation and prefetching:', hasCode: true, hasTable: true },
-      { role: 'user', content: 'How should I handle class imbalance in the dataset?' },
-      { role: 'assistant', content: 'Use a combination of weighted loss and oversampling. Here\'s the comparison:', hasCode: true, hasTable: true, hasImage: true },
+      { role: "user", content: "Design a data pipeline for training image classifiers." },
+      {
+        role: "assistant",
+        content: "Here is an efficient tf.data pipeline with augmentation and prefetching:",
+        hasCode: true,
+        hasTable: true,
+      },
+      { role: "user", content: "How should I handle class imbalance in the dataset?" },
+      {
+        role: "assistant",
+        content: "Use a combination of weighted loss and oversampling. Here's the comparison:",
+        hasCode: true,
+        hasTable: true,
+        hasImage: true,
+      },
     ],
     detectedFormats: [
-      { type: 'code', count: 9 },
-      { type: 'image', count: 3 },
-      { type: 'table', count: 4 },
-      { type: 'link', count: 2 },
+      { type: "code", count: 9 },
+      { type: "image", count: 3 },
+      { type: "table", count: 4 },
+      { type: "link", count: 2 },
     ],
-    fileSize: '42.1 KB',
+    fileSize: "42.1 KB",
     tokens: 8420,
-    outputSize: '34.6 KB',
+    outputSize: "34.6 KB",
     outputTokens: 6920,
   },
   {
-    id: 'grok',
-    name: 'Grok',
-    icon: 'X',
-    color: '#a855f7',
-    textColor: 'text-purple-400',
-    borderColor: 'border-purple-500/30',
-    bgColor: 'bg-purple-500/10',
-    glowColor: 'bg-purple-500/[0.06]',
-    url: 'x.com/i/grok/share/r4v8n2q1',
-    title: 'Regex Patterns for Log Parsing',
+    id: "grok",
+    name: "Grok",
+    icon: "X",
+    color: "#a855f7",
+    textColor: "text-purple-400",
+    borderColor: "border-purple-500/30",
+    bgColor: "bg-purple-500/10",
+    glowColor: "bg-purple-500/[0.06]",
+    url: "x.com/i/grok/share/r4v8n2q1",
+    title: "Regex Patterns for Log Parsing",
     messages: [
-      { role: 'user', content: 'I need regex patterns to parse nginx access logs.' },
-      { role: 'assistant', content: 'Here are battle-tested patterns for common nginx log formats:', hasCode: true },
-      { role: 'user', content: 'Now parse error logs with stack traces too.' },
-      { role: 'assistant', content: 'For multi-line stack traces you\'ll need a different approach:', hasCode: true, hasLink: true },
+      { role: "user", content: "I need regex patterns to parse nginx access logs." },
+      {
+        role: "assistant",
+        content: "Here are battle-tested patterns for common nginx log formats:",
+        hasCode: true,
+      },
+      { role: "user", content: "Now parse error logs with stack traces too." },
+      {
+        role: "assistant",
+        content: "For multi-line stack traces you'll need a different approach:",
+        hasCode: true,
+        hasLink: true,
+      },
     ],
     detectedFormats: [
-      { type: 'code', count: 5 },
-      { type: 'link', count: 2 },
+      { type: "code", count: 5 },
+      { type: "link", count: 2 },
     ],
-    fileSize: '16.8 KB',
+    fileSize: "16.8 KB",
     tokens: 3360,
-    outputSize: '12.2 KB',
+    outputSize: "12.2 KB",
     outputTokens: 2450,
   },
   {
-    id: 'discord',
-    name: 'Discord',
-    icon: 'D',
-    color: '#5865F2',
-    textColor: 'text-indigo-400',
-    borderColor: 'border-indigo-500/30',
-    bgColor: 'bg-indigo-500/10',
-    glowColor: 'bg-indigo-500/[0.06]',
-    url: 'discord.com/channels/export/928371',
-    title: 'Team Debug Session - Auth Middleware',
+    id: "discord",
+    name: "Discord",
+    icon: "D",
+    color: "#5865F2",
+    textColor: "text-indigo-400",
+    borderColor: "border-indigo-500/30",
+    bgColor: "bg-indigo-500/10",
+    glowColor: "bg-indigo-500/[0.06]",
+    url: "discord.com/channels/export/928371",
+    title: "Team Debug Session - Auth Middleware",
     messages: [
-      { role: 'user', content: 'Anyone know why JWT refresh tokens are expiring early?' },
-      { role: 'assistant', content: 'Check your clock skew tolerance. Most JWT libs default to 0s which is too strict:', hasCode: true },
-      { role: 'user', content: 'That was it! Changed to 30s leeway and it\'s working.' },
-      { role: 'assistant', content: 'Good catch. Also consider rotating refresh tokens on each use for better security:', hasCode: true, hasLink: true },
+      { role: "user", content: "Anyone know why JWT refresh tokens are expiring early?" },
+      {
+        role: "assistant",
+        content:
+          "Check your clock skew tolerance. Most JWT libs default to 0s which is too strict:",
+        hasCode: true,
+      },
+      { role: "user", content: "That was it! Changed to 30s leeway and it's working." },
+      {
+        role: "assistant",
+        content:
+          "Good catch. Also consider rotating refresh tokens on each use for better security:",
+        hasCode: true,
+        hasLink: true,
+      },
     ],
     detectedFormats: [
-      { type: 'code', count: 3 },
-      { type: 'link', count: 4 },
-      { type: 'image', count: 1 },
+      { type: "code", count: 3 },
+      { type: "link", count: 4 },
+      { type: "image", count: 1 },
     ],
-    fileSize: '19.5 KB',
+    fileSize: "19.5 KB",
     tokens: 3900,
-    outputSize: '14.8 KB',
+    outputSize: "14.8 KB",
     outputTokens: 2960,
   },
   {
-    id: 'slack',
-    name: 'Slack',
-    icon: 'S',
-    color: '#E01E5A',
-    textColor: 'text-rose-400',
-    borderColor: 'border-rose-500/30',
-    bgColor: 'bg-rose-500/10',
-    glowColor: 'bg-rose-500/[0.06]',
-    url: 'slack.com/archives/C04NQKP/thread',
-    title: 'Deploy Pipeline Troubleshooting',
+    id: "slack",
+    name: "Slack",
+    icon: "S",
+    color: "#E01E5A",
+    textColor: "text-rose-400",
+    borderColor: "border-rose-500/30",
+    bgColor: "bg-rose-500/10",
+    glowColor: "bg-rose-500/[0.06]",
+    url: "slack.com/archives/C04NQKP/thread",
+    title: "Deploy Pipeline Troubleshooting",
     messages: [
-      { role: 'user', content: 'CI pipeline is failing on the Docker build step. Here\'s the log:' },
-      { role: 'assistant', content: 'The multi-stage build is referencing a deleted base image tag. Pin it to a digest:', hasCode: true, hasTable: true },
-      { role: 'user', content: 'Fixed! But now the health check is timing out in k8s.' },
-      { role: 'assistant', content: 'Increase initialDelaySeconds and add a proper readiness probe separate from liveness:', hasCode: true },
+      { role: "user", content: "CI pipeline is failing on the Docker build step. Here's the log:" },
+      {
+        role: "assistant",
+        content:
+          "The multi-stage build is referencing a deleted base image tag. Pin it to a digest:",
+        hasCode: true,
+        hasTable: true,
+      },
+      { role: "user", content: "Fixed! But now the health check is timing out in k8s." },
+      {
+        role: "assistant",
+        content:
+          "Increase initialDelaySeconds and add a proper readiness probe separate from liveness:",
+        hasCode: true,
+      },
     ],
     detectedFormats: [
-      { type: 'code', count: 4 },
-      { type: 'table', count: 1 },
-      { type: 'link', count: 2 },
+      { type: "code", count: 4 },
+      { type: "table", count: 1 },
+      { type: "link", count: 2 },
     ],
-    fileSize: '21.2 KB',
+    fileSize: "21.2 KB",
     tokens: 4240,
-    outputSize: '16.1 KB',
+    outputSize: "16.1 KB",
     outputTokens: 3220,
   },
 ];
@@ -444,7 +508,7 @@ function ChatBubble({
   isDecomposing: boolean;
   providerColor: string;
 }) {
-  const isUser = message.role === 'user';
+  const isUser = message.role === "user";
 
   return (
     <motion.div
@@ -455,38 +519,32 @@ function ChatBubble({
         scale: isDecomposing ? 0.95 : isHighlighted ? 1.01 : 1,
       }}
       transition={{
-        type: 'spring',
+        type: "spring",
         stiffness: 200,
         damping: 25,
         delay: index * 0.08,
       }}
-      className={`flex gap-2 ${isUser ? '' : 'flex-row-reverse'}`}
+      className={`flex gap-2 ${isUser ? "" : "flex-row-reverse"}`}
     >
       <div
         className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-          isUser
-            ? 'bg-white/10 text-white/60'
-            : 'text-white'
+          isUser ? "bg-white/10 text-white/60" : "text-white"
         }`}
-        style={isUser ? undefined : { backgroundColor: providerColor + '33' }}
+        style={isUser ? undefined : { backgroundColor: providerColor + "33" }}
       >
         {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
       </div>
       <div
         className={`relative rounded-xl px-3 py-2 max-w-[85%] text-xs leading-relaxed transition duration-300 ${
           isUser
-            ? 'bg-white/[0.06] border border-white/[0.08] text-white/70'
-            : 'border text-white/80'
-        } ${
-          isHighlighted && !isDecomposing
-            ? 'ring-1 ring-white/20 shadow-lg'
-            : ''
-        }`}
+            ? "bg-white/[0.06] border border-white/[0.08] text-white/70"
+            : "border text-white/80"
+        } ${isHighlighted && !isDecomposing ? "ring-1 ring-white/20 shadow-lg" : ""}`}
         style={
           !isUser
             ? {
-                backgroundColor: providerColor + '0D',
-                borderColor: providerColor + '30',
+                backgroundColor: providerColor + "0D",
+                borderColor: providerColor + "30",
               }
             : undefined
         }
@@ -529,15 +587,15 @@ function MarkdownBlock({
   visible,
 }: {
   index: number;
-  type: 'heading' | 'text' | 'code' | 'metadata';
+  type: "heading" | "text" | "code" | "metadata";
   content: string;
   visible: boolean;
 }) {
   const styles: Record<string, string> = {
-    heading: 'text-white/90 font-bold text-xs',
-    text: 'text-white/60 text-xs',
-    code: 'text-emerald-400 font-mono text-[10px] bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1',
-    metadata: 'text-white/30 font-mono text-[10px] italic',
+    heading: "text-white/90 font-bold text-xs",
+    text: "text-white/60 text-xs",
+    code: "text-emerald-400 font-mono text-[10px] bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1",
+    metadata: "text-white/30 font-mono text-[10px] italic",
   };
 
   return (
@@ -548,7 +606,7 @@ function MarkdownBlock({
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: -10 }}
           transition={{
-            type: 'spring',
+            type: "spring",
             stiffness: 200,
             damping: 25,
             delay: index * 0.12,
@@ -586,13 +644,13 @@ function FormatDetectionBadge({
         scale: isDetected ? 1 : isDetecting ? 0.95 : 0.85,
       }}
       transition={{
-        type: 'spring',
+        type: "spring",
         stiffness: 200,
         damping: 25,
         delay: index * 0.15,
       }}
       className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-medium ${colorClass} ${
-        isDetecting && !isDetected ? 'animate-pulse' : ''
+        isDetecting && !isDetected ? "animate-pulse" : ""
       }`}
     >
       {Icon && <Icon className="h-3 w-3" />}
@@ -601,7 +659,7 @@ function FormatDetectionBadge({
         <motion.span
           initial={{ opacity: 0, scale: 0 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+          transition={{ type: "spring", stiffness: 200, damping: 25 }}
           className="font-mono"
         >
           x{badge.count}
@@ -610,7 +668,9 @@ function FormatDetectionBadge({
       {isDetecting && !isDetected && (
         <motion.div
           animate={active ? { rotate: 360 } : { rotate: 0 }}
-          transition={active ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+          transition={
+            active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+          }
           className="h-2 w-2 border border-current border-t-transparent rounded-full"
         />
       )}
@@ -627,11 +687,8 @@ function PipelineProgressBar({
 }) {
   const stageIdx = PIPELINE_STAGES.findIndex((s) => s.key === stage);
   const totalStages = PIPELINE_STAGES.length;
-  const progressPercent = stage === 'done'
-    ? 100
-    : stage === 'idle'
-      ? 0
-      : ((stageIdx + 0.5) / totalStages) * 100;
+  const progressPercent =
+    stage === "done" ? 100 : stage === "idle" ? 0 : ((stageIdx + 0.5) / totalStages) * 100;
   const rootRef = useRef<HTMLDivElement>(null);
   const inView = useInView(rootRef, { amount: 0.15 });
 
@@ -641,8 +698,8 @@ function PipelineProgressBar({
       <div className="flex justify-between">
         {PIPELINE_STAGES.map((s, i) => {
           const Icon = s.icon;
-          const isPast = stage === 'done' || stageIdx > i;
-          const isCurrent = stageIdx === i && stage !== 'done';
+          const isPast = stage === "done" || stageIdx > i;
+          const isCurrent = stageIdx === i && stage !== "done";
 
           return (
             <div key={s.key} className="flex flex-col items-center gap-1">
@@ -651,7 +708,7 @@ function PipelineProgressBar({
                   scale: isCurrent ? 1.15 : 1,
                   opacity: isPast || isCurrent ? 1 : 0.3,
                 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 className="relative"
               >
                 {isPast ? (
@@ -669,11 +726,7 @@ function PipelineProgressBar({
               </motion.div>
               <span
                 className={`text-[10px] font-medium hidden sm:block ${
-                  isPast
-                    ? 'text-emerald-400'
-                    : isCurrent
-                      ? 'text-white/80'
-                      : 'text-white/30'
+                  isPast ? "text-emerald-400" : isCurrent ? "text-white/80" : "text-white/30"
                 }`}
               >
                 {s.label}
@@ -688,19 +741,21 @@ function PipelineProgressBar({
         <motion.div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{ backgroundColor: providerColor }}
-          initial={{ width: '0%' }}
+          initial={{ width: "0%" }}
           animate={{ width: `${progressPercent}%` }}
-          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+          transition={{ type: "spring", stiffness: 200, damping: 25 }}
         />
         {/* Animated shimmer on the bar */}
-        {stage !== 'idle' && stage !== 'done' && (
+        {stage !== "idle" && stage !== "done" && (
           <motion.div
             className="absolute inset-y-0 w-16 rounded-full"
             style={{
               background: `linear-gradient(90deg, transparent, ${providerColor}44, transparent)`,
             }}
-            animate={inView ? { x: ['-64px', '400px'] } : { x: '-64px' }}
-            transition={inView ? { duration: 1.5, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+            animate={inView ? { x: ["-64px", "400px"] } : { x: "-64px" }}
+            transition={
+              inView ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+            }
           />
         )}
       </div>
@@ -708,16 +763,12 @@ function PipelineProgressBar({
   );
 }
 
-function SizeComparison({
-  source,
-}: {
-  source: SourceInfo;
-}) {
+function SizeComparison({ source }: { source: SourceInfo }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.3 }}
+      transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.3 }}
       className="grid grid-cols-2 gap-3"
     >
       {/* Input stats */}
@@ -735,7 +786,9 @@ function SizeComparison({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-white/50">Tokens</span>
-            <span className="text-[10px] font-mono text-white/70">{source.tokens.toLocaleString()}</span>
+            <span className="text-[10px] font-mono text-white/70">
+              {source.tokens.toLocaleString()}
+            </span>
           </div>
         </div>
       </div>
@@ -755,7 +808,9 @@ function SizeComparison({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-emerald-400/50">Tokens</span>
-            <span className="text-[10px] font-mono text-emerald-400/80">{source.outputTokens.toLocaleString()}</span>
+            <span className="text-[10px] font-mono text-emerald-400/80">
+              {source.outputTokens.toLocaleString()}
+            </span>
           </div>
         </div>
       </div>
@@ -768,8 +823,8 @@ function SizeComparison({
         transition={{ delay: 0.5 }}
       >
         <span className="text-[10px] text-emerald-400/70">
-          {Math.round((1 - source.outputTokens / source.tokens) * 100)}% smaller after cleaning
-          {' '}({(source.tokens - source.outputTokens).toLocaleString()} tokens saved)
+          {Math.round((1 - source.outputTokens / source.tokens) * 100)}% smaller after cleaning (
+          {(source.tokens - source.outputTokens).toLocaleString()} tokens saved)
         </span>
       </motion.div>
     </motion.div>
@@ -779,18 +834,23 @@ function SizeComparison({
 // ---------------------------------------------------------------------------
 // Markdown output lines for each source
 // ---------------------------------------------------------------------------
-function getMarkdownLines(source: SourceInfo): { type: 'heading' | 'text' | 'code' | 'metadata'; content: string }[] {
+function getMarkdownLines(
+  source: SourceInfo,
+): { type: "heading" | "text" | "code" | "metadata"; content: string }[] {
   return [
-    { type: 'metadata', content: `<!-- Converted by CSCTF from ${source.name} -->` },
-    { type: 'heading', content: `# ${source.title}` },
-    { type: 'metadata', content: `*Source: ${source.url} | ${source.messages.length} messages*` },
-    { type: 'text', content: `**User:** ${source.messages[0].content}` },
-    { type: 'text', content: `**${source.name}:** ${source.messages[1].content.slice(0, 60)}...` },
-    { type: 'code', content: '```typescript\n  // extracted code block\n```' },
-    { type: 'text', content: `**User:** ${source.messages[2].content}` },
-    { type: 'text', content: `**${source.name}:** ${source.messages[3].content.slice(0, 60)}...` },
-    { type: 'code', content: '```typescript\n  // extracted code block\n```' },
-    { type: 'metadata', content: `<!-- ${source.detectedFormats.map((f) => `${f.count} ${f.type}(s)`).join(', ')} -->` },
+    { type: "metadata", content: `<!-- Converted by CSCTF from ${source.name} -->` },
+    { type: "heading", content: `# ${source.title}` },
+    { type: "metadata", content: `*Source: ${source.url} | ${source.messages.length} messages*` },
+    { type: "text", content: `**User:** ${source.messages[0].content}` },
+    { type: "text", content: `**${source.name}:** ${source.messages[1].content.slice(0, 60)}...` },
+    { type: "code", content: "```typescript\n  // extracted code block\n```" },
+    { type: "text", content: `**User:** ${source.messages[2].content}` },
+    { type: "text", content: `**${source.name}:** ${source.messages[3].content.slice(0, 60)}...` },
+    { type: "code", content: "```typescript\n  // extracted code block\n```" },
+    {
+      type: "metadata",
+      content: `<!-- ${source.detectedFormats.map((f) => `${f.count} ${f.type}(s)`).join(", ")} -->`,
+    },
   ];
 }
 
@@ -800,7 +860,7 @@ function getMarkdownLines(source: SourceInfo): { type: 'heading' | 'text' | 'cod
 
 function InteractiveConversionPipelineImpl() {
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
-  const [stage, setStage] = useState<PipelineStage>('idle');
+  const [stage, setStage] = useState<PipelineStage>("idle");
   const [highlightedMsg, setHighlightedMsg] = useState(-1);
   const [visibleMdLines, setVisibleMdLines] = useState(0);
   const [formatDetectionIdx, setFormatDetectionIdx] = useState(-1);
@@ -813,10 +873,7 @@ function InteractiveConversionPipelineImpl() {
     [selectedSource],
   );
 
-  const markdownLines = useMemo(
-    () => (source ? getMarkdownLines(source) : []),
-    [source],
-  );
+  const markdownLines = useMemo(() => (source ? getMarkdownLines(source) : []), [source]);
 
   const clearTimers = useCallback(() => {
     timerIdsRef.current.forEach(clearTimeout);
@@ -826,7 +883,7 @@ function InteractiveConversionPipelineImpl() {
   // Cleanup on unmount
   useEffect(() => clearTimers, [clearTimers]);
 
-  const isRunning = stage !== 'idle' && stage !== 'done';
+  const isRunning = stage !== "idle" && stage !== "done";
 
   const handleSelectSource = useCallback(
     (id: string) => {
@@ -834,7 +891,7 @@ function InteractiveConversionPipelineImpl() {
       clearTimers();
 
       setSelectedSource(id);
-      setStage('fetch');
+      setStage("fetch");
       setHighlightedMsg(-1);
       setVisibleMdLines(0);
       setFormatDetectionIdx(-1);
@@ -845,21 +902,21 @@ function InteractiveConversionPipelineImpl() {
       };
 
       // Stage: fetch -> parse (highlight chat messages one by one)
-      t(() => setStage('parse'), 700);
+      t(() => setStage("parse"), 700);
       t(() => setHighlightedMsg(0), 800);
       t(() => setHighlightedMsg(1), 1100);
       t(() => setHighlightedMsg(2), 1400);
       t(() => setHighlightedMsg(3), 1700);
 
       // Stage: clean (detect formats)
-      t(() => setStage('clean'), 2000);
+      t(() => setStage("clean"), 2000);
       t(() => setFormatDetectionIdx(0), 2100);
       t(() => setFormatDetectionIdx(1), 2400);
       t(() => setFormatDetectionIdx(2), 2700);
       t(() => setFormatDetectionIdx(3), 3000);
 
       // Stage: format (generate markdown lines)
-      t(() => setStage('format'), 3200);
+      t(() => setStage("format"), 3200);
       t(() => setVisibleMdLines(1), 3300);
       t(() => setVisibleMdLines(2), 3500);
       t(() => setVisibleMdLines(3), 3700);
@@ -872,9 +929,9 @@ function InteractiveConversionPipelineImpl() {
       t(() => setVisibleMdLines(10), 5100);
 
       // Stage: output -> done
-      t(() => setStage('output'), 5200);
+      t(() => setStage("output"), 5200);
       t(() => {
-        setStage('done');
+        setStage("done");
         timerIdsRef.current = [];
       }, 5800);
     },
@@ -883,7 +940,7 @@ function InteractiveConversionPipelineImpl() {
 
   const handleReset = useCallback(() => {
     clearTimers();
-    setStage('idle');
+    setStage("idle");
     setSelectedSource(null);
     setHighlightedMsg(-1);
     setVisibleMdLines(0);
@@ -891,7 +948,10 @@ function InteractiveConversionPipelineImpl() {
   }, [clearTimers]);
 
   return (
-    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={rootRef}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-violet-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -906,11 +966,10 @@ function InteractiveConversionPipelineImpl() {
               Live Pipeline
             </span>
           </div>
-          <p className="text-sm font-semibold text-white/90">
-            Interactive Conversion Pipeline
-          </p>
+          <p className="text-sm font-semibold text-white/90">Interactive Conversion Pipeline</p>
           <p className="text-xs text-white/40 max-w-md mx-auto">
-            Select a source to watch CSCTF fetch, parse, and convert a conversation into clean Markdown
+            Select a source to watch CSCTF fetch, parse, and convert a conversation into clean
+            Markdown
           </p>
         </div>
 
@@ -926,22 +985,22 @@ function InteractiveConversionPipelineImpl() {
                 disabled={isRunning}
                 whileHover={isRunning ? undefined : { scale: 1.03 }}
                 whileTap={isRunning ? undefined : { scale: 0.97 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 className={`relative rounded-xl border p-2.5 text-left transition-colors ${
                   isActive
                     ? `${s.borderColor} ${s.bgColor}`
-                    : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]'
-                } ${isRunning && !isActive ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
+                    : "border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]"
+                } ${isRunning && !isActive ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <div
                     className="h-5 w-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white"
-                    style={{ backgroundColor: s.color + '33' }}
+                    style={{ backgroundColor: s.color + "33" }}
                   >
                     {s.icon}
                   </div>
                   <span
-                    className={`text-xs font-semibold ${isActive ? s.textColor : 'text-white/70'}`}
+                    className={`text-xs font-semibold ${isActive ? s.textColor : "text-white/70"}`}
                   >
                     {s.name}
                   </span>
@@ -955,13 +1014,13 @@ function InteractiveConversionPipelineImpl() {
 
         {/* Pipeline Content */}
         <AnimatePresence mode="wait">
-          {stage !== 'idle' && source && (
+          {stage !== "idle" && source && (
             <motion.div
               key={`pipeline-${source.id}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="space-y-4"
             >
               {/* URL bar */}
@@ -995,7 +1054,7 @@ function InteractiveConversionPipelineImpl() {
                       className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
                       style={{
                         color: source.color,
-                        backgroundColor: source.color + '1A',
+                        backgroundColor: source.color + "1A",
                       }}
                     >
                       {source.name}
@@ -1010,7 +1069,7 @@ function InteractiveConversionPipelineImpl() {
                         index={i}
                         isHighlighted={highlightedMsg >= i}
                         isDecomposing={
-                          (stage === 'format' || stage === 'output' || stage === 'done') &&
+                          (stage === "format" || stage === "output" || stage === "done") &&
                           highlightedMsg >= i
                         }
                         providerColor={source.color}
@@ -1020,12 +1079,15 @@ function InteractiveConversionPipelineImpl() {
 
                   {/* Format Detection Badges */}
                   <AnimatePresence>
-                    {(stage === 'clean' || stage === 'format' || stage === 'output' || stage === 'done') && (
+                    {(stage === "clean" ||
+                      stage === "format" ||
+                      stage === "output" ||
+                      stage === "done") && (
                       <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         className="pt-2 border-t border-white/[0.06]"
                       >
                         <span className="text-[10px] text-white/30 uppercase tracking-wider font-semibold block mb-1.5">
@@ -1037,8 +1099,16 @@ function InteractiveConversionPipelineImpl() {
                               key={badge.type}
                               badge={badge}
                               index={i}
-                              isDetecting={formatDetectionIdx >= i && formatDetectionIdx < source.detectedFormats.length}
-                              isDetected={formatDetectionIdx > i || stage === 'format' || stage === 'output' || stage === 'done'}
+                              isDetecting={
+                                formatDetectionIdx >= i &&
+                                formatDetectionIdx < source.detectedFormats.length
+                              }
+                              isDetected={
+                                formatDetectionIdx > i ||
+                                stage === "format" ||
+                                stage === "output" ||
+                                stage === "done"
+                              }
                               active={inView}
                             />
                           ))}
@@ -1056,11 +1126,11 @@ function InteractiveConversionPipelineImpl() {
                       Markdown Output
                     </span>
                     <div className="flex-1" />
-                    {stage === 'done' && (
+                    {stage === "done" && (
                       <motion.span
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         className="text-[10px] font-semibold text-emerald-400 px-1.5 py-0.5 rounded-md bg-emerald-500/10"
                       >
                         Complete
@@ -1082,11 +1152,13 @@ function InteractiveConversionPipelineImpl() {
                   </div>
 
                   {/* Center arrow when nothing to show yet */}
-                  {visibleMdLines === 0 && stage !== 'done' && (
+                  {visibleMdLines === 0 && stage !== "done" && (
                     <div className="flex items-center justify-center h-24 text-white/10">
                       <motion.div
                         animate={inView ? { x: [0, 6, 0] } : { x: 0 }}
-                        transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
+                        transition={
+                          inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }
+                        }
                         className="flex items-center gap-2"
                       >
                         <ChevronRight className="h-5 w-5" />
@@ -1098,14 +1170,17 @@ function InteractiveConversionPipelineImpl() {
               </div>
 
               {/* Conversion arrow between panels (visible only on md+) */}
-              <div className="hidden md:flex absolute top-1/2 left-1/2 -translate-x-1/2 pointer-events-none" style={{ marginTop: '80px' }}>
+              <div
+                className="hidden md:flex absolute top-1/2 left-1/2 -translate-x-1/2 pointer-events-none"
+                style={{ marginTop: "80px" }}
+              >
                 <AnimatePresence>
-                  {(stage === 'format' || stage === 'output') && (
+                  {(stage === "format" || stage === "output") && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0 }}
                       animate={{ opacity: 0.5, scale: 1 }}
                       exit={{ opacity: 0, scale: 0 }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     >
                       <ArrowRight className="h-5 w-5 text-white/20" />
                     </motion.div>
@@ -1115,12 +1190,12 @@ function InteractiveConversionPipelineImpl() {
 
               {/* Done: Output files + size comparison */}
               <AnimatePresence>
-                {stage === 'done' && (
+                {stage === "done" && (
                   <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     className="space-y-4"
                   >
                     <div className="flex items-center gap-2">
@@ -1135,7 +1210,7 @@ function InteractiveConversionPipelineImpl() {
                       <motion.div
                         initial={{ opacity: 0, x: -16 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.1 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.1 }}
                         className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3 space-y-2"
                       >
                         <div className="flex items-center gap-2">
@@ -1143,19 +1218,33 @@ function InteractiveConversionPipelineImpl() {
                           <span className="text-xs font-semibold text-blue-400">Markdown</span>
                         </div>
                         <p className="text-[10px] font-mono text-white/50 break-all">
-                          {source.title.toLowerCase().replace(/\s+/g, '_')}.md
+                          {source.title.toLowerCase().replace(/\s+/g, "_")}.md
                         </p>
                         <div className="space-y-1 pt-1">
-                          <OutputMetric icon={MessageSquare} label="Messages" value={source.messages.length * 2} />
-                          <OutputMetric icon={Code2} label="Code blocks" value={source.detectedFormats.find((f) => f.type === 'code')?.count ?? 0} />
-                          <OutputMetric icon={Hash} label="Headings" value={source.messages.length} />
+                          <OutputMetric
+                            icon={MessageSquare}
+                            label="Messages"
+                            value={source.messages.length * 2}
+                          />
+                          <OutputMetric
+                            icon={Code2}
+                            label="Code blocks"
+                            value={
+                              source.detectedFormats.find((f) => f.type === "code")?.count ?? 0
+                            }
+                          />
+                          <OutputMetric
+                            icon={Hash}
+                            label="Headings"
+                            value={source.messages.length}
+                          />
                         </div>
                       </motion.div>
 
                       <motion.div
                         initial={{ opacity: 0, x: 16 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.2 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.2 }}
                         className="rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-3 space-y-2"
                       >
                         <div className="flex items-center gap-2">
@@ -1163,7 +1252,7 @@ function InteractiveConversionPipelineImpl() {
                           <span className="text-xs font-semibold text-violet-400">HTML</span>
                         </div>
                         <p className="text-[10px] font-mono text-white/50 break-all">
-                          {source.title.toLowerCase().replace(/\s+/g, '_')}.html
+                          {source.title.toLowerCase().replace(/\s+/g, "_")}.html
                         </p>
                         <div className="space-y-1 pt-1">
                           <OutputMetric icon={Shield} label="Syntax highlighting" value="Yes" />
@@ -1183,14 +1272,14 @@ function InteractiveConversionPipelineImpl() {
         </AnimatePresence>
 
         {/* Reset Button */}
-        {stage === 'done' && (
+        {stage === "done" && (
           <div className="flex justify-center pt-1">
             <motion.button
               type="button"
               onClick={handleReset}
               initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
               className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-2 text-xs font-medium text-white/50 hover:text-white/70 transition-colors"

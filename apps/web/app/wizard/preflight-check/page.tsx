@@ -1,26 +1,26 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, AlertTriangle } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { AlertCard, DetailsSection, OutputPreview } from "@/components/alert-card";
+import { CommandCard } from "@/components/command-card";
+import { ConnectionCheck } from "@/components/connection-check";
+import { Jargon } from "@/components/jargon";
+import {
+  GuideCaution,
+  GuideExplain,
+  GuideSection,
+  GuideStep,
+  SimplerGuide,
+} from "@/components/simpler-guide";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CommandCard } from "@/components/command-card";
-import { AlertCard, OutputPreview, DetailsSection } from "@/components/alert-card";
-import { ConnectionCheck } from "@/components/connection-check";
 import { formatSshTarget } from "@/lib/commandBuilder";
-import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { normalizeGitRef, useACFSRef, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideStep,
-  GuideExplain,
-  GuideCaution,
-} from "@/components/simpler-guide";
-import { Jargon } from "@/components/jargon";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 const PREFLIGHT_SCRIPT_BASE_URL =
   "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup";
@@ -93,8 +93,7 @@ export default function PreflightCheckPage() {
   const ubuntuTarget = formatSshTarget("ubuntu", displayIP);
   const preflightRef = normalizeGitRef(acfsRef) ?? DEFAULT_PREFLIGHT_REF;
   const preflightCommand = useMemo(
-    () =>
-      `curl -fsSL "${PREFLIGHT_SCRIPT_BASE_URL}/${preflightRef}/scripts/preflight.sh" | bash`,
+    () => `curl -fsSL "${PREFLIGHT_SCRIPT_BASE_URL}/${preflightRef}/scripts/preflight.sh" | bash`,
     [preflightRef],
   );
 
@@ -148,9 +147,7 @@ export default function PreflightCheckPage() {
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               Pre-flight check your VPS
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~1 min
-            </p>
+            <p className="text-sm text-muted-foreground">~1 min</p>
           </div>
         </div>
         <p className="text-muted-foreground">
@@ -169,32 +166,45 @@ export default function PreflightCheckPage() {
 
       {/* Why this matters */}
       <AlertCard variant="info" icon={ShieldCheck} title="Fast safety check">
-        This quick scan validates OS, disk space, network access, and APT locks.
-        Warnings are okay — you can still continue.
+        This quick scan validates OS, disk space, network access, and APT locks. Warnings are okay —
+        you can still continue.
       </AlertCard>
 
       {/* Windows-specific warning - CRITICAL for confused users */}
       <AlertCard variant="error" icon={AlertTriangle} title="Windows users: Common mistake!">
         <div className="space-y-2">
           <p>
-            If you paste this command and see errors like <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">&apos;bash&apos; is not recognized</code> or
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">Get-Date : Cannot bind parameter</code>:
+            If you paste this command and see errors like{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              &apos;bash&apos; is not recognized
+            </code>{" "}
+            or
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              Get-Date : Cannot bind parameter
+            </code>
+            :
           </p>
           <p className="font-semibold">
             You&apos;re running this on your Windows computer, NOT on the VPS!
           </p>
           <p>
-            Go back to your terminal, type <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">ssh {rootTarget}</code>,
-            enter your VPS password, and THEN paste the preflight command.
+            Go back to your terminal, type{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              ssh {rootTarget}
+            </code>
+            , enter your VPS password, and THEN paste the preflight command.
           </p>
           <p className="text-sm text-muted-foreground">
             If your provider disabled root login, use{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">ssh {ubuntuTarget}</code>,
-            then run <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">sudo -i</code>.
-            If sudo asks for a password, use the ubuntu Linux account password,
-            not the VPS root password or provider website password. If you only have the VPS root password,
-            use the provider console or root SSH path instead.
-            Continue only after your prompt ends with <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">#</code>.
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              ssh {ubuntuTarget}
+            </code>
+            , then run{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">sudo -i</code>. If
+            sudo asks for a password, use the ubuntu Linux account password, not the VPS root
+            password or provider website password. If you only have the VPS root password, use the
+            provider console or root SSH path instead. Continue only after your prompt ends with{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">#</code>.
           </p>
         </div>
       </AlertCard>
@@ -237,9 +247,7 @@ export default function PreflightCheckPage() {
                 if (isChecked) setAckFailed(false);
               }}
             />
-            <span className="text-foreground">
-              Pre-flight passed (all green, or only warnings)
-            </span>
+            <span className="text-foreground">Pre-flight passed (all green, or only warnings)</span>
           </label>
           <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
             <Checkbox
@@ -306,7 +314,8 @@ export default function PreflightCheckPage() {
       <SimplerGuide>
         <div className="space-y-6">
           <GuideExplain term="What is a pre-flight check?">
-            A quick diagnostic that confirms your VPS meets the requirements before the full install.
+            A quick diagnostic that confirms your VPS meets the requirements before the full
+            install.
           </GuideExplain>
 
           <GuideSection title="Step-by-Step">
@@ -329,7 +338,6 @@ export default function PreflightCheckPage() {
           </GuideCaution>
         </div>
       </SimplerGuide>
-
     </div>
   );
 }

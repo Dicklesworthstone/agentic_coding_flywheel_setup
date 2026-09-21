@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useRef } from "react";
-import Link from "next/link";
 import { Check, Copy, Terminal } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import Link from "next/link";
+import { useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { CopyStatus } from "@/components/ui/code-block";
-import { cn } from "@/lib/utils";
-import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
 import type { CommandRef } from "@/lib/commands";
+import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
+import { cn } from "@/lib/utils";
 
 interface CommandRefCardProps {
   command: CommandRef;
@@ -44,34 +44,21 @@ export function CommandRefCard({ command, categoryLabel }: CommandRefCardProps) 
             </div>
             <div className="flex items-center gap-2">
               <Terminal className="h-4 w-4 text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">
-                {command.name}
-              </h3>
-              <span className="text-sm text-muted-foreground">
-                {command.fullName}
-              </span>
+              <h3 className="text-lg font-semibold text-foreground">{command.name}</h3>
+              <span className="text-sm text-muted-foreground">{command.fullName}</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {command.description}
-            </p>
+            <p className="text-sm text-muted-foreground">{command.description}</p>
           </div>
 
           <Button
             variant="ghost"
             size="icon"
-            className={cn(
-              "h-9 w-9 shrink-0",
-              copied && "bg-green/10 text-green"
-            )}
+            className={cn("h-9 w-9 shrink-0", copied && "bg-green/10 text-green")}
             onClick={handleCopy}
             aria-label={copied ? "Copied!" : "Copy command"}
             disableMotion
           >
-            {copied ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
 

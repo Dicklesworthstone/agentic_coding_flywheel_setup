@@ -1,31 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Terminal,
-  Settings,
-  Plus,
-  Save,
-  RefreshCw,
+  ArrowLeft,
   Check,
   Copy,
   ExternalLink,
-  ArrowLeft,
+  Plus,
+  RefreshCw,
+  Save,
+  Settings,
+  Terminal,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
+import { GuideExplain, GuideSection, GuideTip, SimplerGuide } from "@/components/simpler-guide";
+import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { formatSshTarget } from "@/lib/commandBuilder";
-import { useVPSIP, useSSHUsername } from "@/lib/userPreferences";
-import { copyTextToClipboard, withCurrentSearch } from "@/lib/utils";
-import {
-  SimplerGuide,
-  GuideSection,
-  GuideExplain,
-  GuideTip,
-} from "@/components/simpler-guide";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
+import { copyTextToClipboard, withCurrentSearch } from "@/lib/utils";
 
 function WindowsTerminalSetupContent() {
   const router = useRouter();
@@ -140,22 +135,19 @@ function WindowsTerminalSetupContent() {
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               Windows Terminal: One-Click VPS Access
             </h1>
-            <p className="text-sm text-muted-foreground">
-              ~3 min (optional but very helpful)
-            </p>
+            <p className="text-sm text-muted-foreground">~3 min (optional but very helpful)</p>
           </div>
         </div>
         <p className="text-muted-foreground">
-          Set up a custom profile in Windows Terminal so you can connect to your VPS with a single click.
+          Set up a custom profile in Windows Terminal so you can connect to your VPS with a single
+          click.
         </p>
       </div>
 
       {/* Why this is helpful */}
       <AlertCard variant="success" icon={Terminal} title="Why set this up?">
         <div className="space-y-2">
-          <p>
-            Instead of opening PowerShell and typing your SSH command every time, you can:
-          </p>
+          <p>Instead of opening PowerShell and typing your SSH command every time, you can:</p>
           <ul className="list-disc list-inside space-y-1 text-sm">
             <li>Click a tab in Windows Terminal to instantly connect to your VPS</li>
             <li>Give it a custom name like &quot;My VPS&quot; or &quot;ACFS Server&quot;</li>
@@ -183,8 +175,8 @@ function WindowsTerminalSetupContent() {
             Open Windows Terminal, then press{" "}
             <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd>
             {" + "}
-            <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">,</kbd>
-            {" "}(comma) to open Settings.
+            <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">,</kbd> (comma) to
+            open Settings.
           </p>
           <p className="text-sm text-muted-foreground pl-11">
             Or click the dropdown arrow (▼) next to the tab bar and select &quot;Settings&quot;.
@@ -223,7 +215,8 @@ function WindowsTerminalSetupContent() {
               <p className="text-sm font-medium mb-2">Name:</p>
               <CodeBlock code="My VPS" variant="compact" />
               <p className="text-xs text-muted-foreground mt-1">
-                (or whatever name you prefer, like &quot;ACFS Server&quot; or &quot;Ubuntu VPS&quot;)
+                (or whatever name you prefer, like &quot;ACFS Server&quot; or &quot;Ubuntu
+                VPS&quot;)
               </p>
             </div>
             <div>
@@ -239,11 +232,7 @@ function WindowsTerminalSetupContent() {
                   onClick={handleCopy}
                   aria-label={copied ? "Copied" : "Copy command line"}
                 >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-green" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
+                  {copied ? <Check className="h-4 w-4 text-green" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -257,7 +246,8 @@ function WindowsTerminalSetupContent() {
             <div>
               <p className="text-sm font-medium mb-2">Icon (optional):</p>
               <p className="text-sm text-muted-foreground">
-                You can pick any icon. The &quot;penguin&quot; emoji (🐧) or a cloud (☁️) work nicely for a Linux server.
+                You can pick any icon. The &quot;penguin&quot; emoji (🐧) or a cloud (☁️) work nicely
+                for a Linux server.
               </p>
             </div>
           </div>
@@ -275,12 +265,12 @@ function WindowsTerminalSetupContent() {
             Click{" "}
             <span className="inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 font-medium text-primary">
               <Save className="h-3 w-3" /> Save
-            </span>
-            {" "}at the bottom of the page.
+            </span>{" "}
+            at the bottom of the page.
           </p>
           <p className="text-sm text-muted-foreground pl-11">
-            Now click the dropdown arrow (▼) next to your tabs — you should see your new &quot;My VPS&quot; profile!
-            Click it to connect.
+            Now click the dropdown arrow (▼) next to your tabs — you should see your new &quot;My
+            VPS&quot; profile! Click it to connect.
           </p>
         </div>
       </div>
@@ -297,9 +287,7 @@ function WindowsTerminalSetupContent() {
       {/* Optional: Make it default */}
       <AlertCard variant="info" icon={Settings} title="Optional: Make it your default profile">
         <div className="space-y-2 text-sm">
-          <p>
-            If you want Windows Terminal to open directly to your VPS:
-          </p>
+          <p>If you want Windows Terminal to open directly to your VPS:</p>
           <ol className="list-decimal list-inside space-y-1">
             <li>Go to Settings → Startup</li>
             <li>Under &quot;Default profile&quot;, select your new &quot;My VPS&quot; profile</li>
@@ -315,9 +303,10 @@ function WindowsTerminalSetupContent() {
       <SimplerGuide>
         <div className="space-y-6">
           <GuideExplain term="What is Windows Terminal?">
-            Windows Terminal is Microsoft&apos;s modern terminal app. It&apos;s better than the
-            old Command Prompt because it supports tabs, colors, and customization.
-            <br /><br />
+            Windows Terminal is Microsoft&apos;s modern terminal app. It&apos;s better than the old
+            Command Prompt because it supports tabs, colors, and customization.
+            <br />
+            <br />
             If you don&apos;t have it installed, you can get it free from the{" "}
             <a
               href="https://apps.microsoft.com/detail/9n0dx20hk701"
@@ -364,8 +353,8 @@ function WindowsTerminalSetupContent() {
           </GuideSection>
 
           <GuideTip>
-            You can create multiple profiles for different servers! Just repeat these steps
-            with different names and IP addresses.
+            You can create multiple profiles for different servers! Just repeat these steps with
+            different names and IP addresses.
           </GuideTip>
         </div>
       </SimplerGuide>

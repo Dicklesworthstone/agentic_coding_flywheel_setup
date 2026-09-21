@@ -1,23 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { useState, useMemo } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   ChevronDown,
+  Clock,
+  HardDrive,
+  Key,
   Lightbulb,
+  RefreshCw,
   Search,
+  ShieldAlert,
   Terminal,
   Wifi,
-  Key,
-  HardDrive,
-  RefreshCw,
-  ShieldAlert,
-  Clock,
 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { CommandCard } from "@/components/command-card";
+import { Card } from "@/components/ui/card";
 import { buildRootKeyRepairCommand, buildUserKeyRepairCommand } from "@/lib/commandBuilder";
 
 type TroubleshootingCategory = "all" | "ssh" | "installation" | "agents" | "network";
@@ -39,10 +39,25 @@ interface TroubleshootingIssue {
   searchable: string;
 }
 
-const CATEGORY_META: Record<Exclude<TroubleshootingCategory, "all">, { label: string; icon: React.ReactNode; color: string }> = {
-  ssh: { label: "SSH & Connection", icon: <Key className="h-4 w-4" />, color: "oklch(0.75 0.18 195)" },
-  installation: { label: "Installation", icon: <HardDrive className="h-4 w-4" />, color: "oklch(0.78 0.16 75)" },
-  agents: { label: "AI Agents", icon: <Terminal className="h-4 w-4" />, color: "oklch(0.7 0.2 330)" },
+const CATEGORY_META: Record<
+  Exclude<TroubleshootingCategory, "all">,
+  { label: string; icon: React.ReactNode; color: string }
+> = {
+  ssh: {
+    label: "SSH & Connection",
+    icon: <Key className="h-4 w-4" />,
+    color: "oklch(0.75 0.18 195)",
+  },
+  installation: {
+    label: "Installation",
+    icon: <HardDrive className="h-4 w-4" />,
+    color: "oklch(0.78 0.16 75)",
+  },
+  agents: {
+    label: "AI Agents",
+    icon: <Terminal className="h-4 w-4" />,
+    color: "oklch(0.7 0.2 330)",
+  },
   network: { label: "Network", icon: <Wifi className="h-4 w-4" />, color: "oklch(0.72 0.19 145)" },
 };
 
@@ -62,10 +77,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     id: "ssh-connection-refused",
     title: "SSH Connection Refused",
     category: "ssh",
-    symptoms: [
-      "Error: Connection refused",
-      "ssh: connect to host ... port 22: Connection refused",
-    ],
+    symptoms: ["Error: Connection refused", "ssh: connect to host ... port 22: Connection refused"],
     causes: [
       "VPS is still starting up (not fully booted)",
       "SSH service not running on the VPS",
@@ -102,11 +114,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     id: "ssh-timeout",
     title: "SSH Connection Times Out",
     category: "ssh",
-    symptoms: [
-      "Connection timed out",
-      "SSH hangs without any response",
-      "Operation timed out",
-    ],
+    symptoms: ["Connection timed out", "SSH hangs without any response", "Operation timed out"],
     causes: [
       "Wrong IP address",
       "Firewall blocking your IP",
@@ -197,22 +205,15 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
         runLocation: "local",
       },
     ],
-    prevention: "Use password authentication for the first root login, then follow the installer summary before switching to key-based SSH.",
+    prevention:
+      "Use password authentication for the first root login, then follow the installer summary before switching to key-based SSH.",
   },
   {
     id: "session-disconnected",
     title: "SSH Session Disconnected",
     category: "ssh",
-    symptoms: [
-      "Connection reset by peer",
-      "Broken pipe",
-      "Session terminates unexpectedly",
-    ],
-    causes: [
-      "Network instability",
-      "Idle timeout (no activity)",
-      "VPS ran out of memory",
-    ],
+    symptoms: ["Connection reset by peer", "Broken pipe", "Session terminates unexpectedly"],
+    causes: ["Network instability", "Idle timeout (no activity)", "VPS ran out of memory"],
     solutions: [
       {
         title: "Use tmux/ntm to persist sessions",
@@ -250,18 +251,12 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     solutions: [
       {
         title: "Check DNS resolution",
-        steps: [
-          "Test if DNS is working",
-          "If it fails, you may need to configure DNS manually",
-        ],
+        steps: ["Test if DNS is working", "If it fails, you may need to configure DNS manually"],
         command: "ping -c 3 github.com",
       },
       {
         title: "Wait and retry",
-        steps: [
-          "GitHub occasionally has brief outages",
-          "Wait a few minutes and try again",
-        ],
+        steps: ["GitHub occasionally has brief outages", "Wait a few minutes and try again"],
       },
     ],
   },
@@ -317,18 +312,12 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     solutions: [
       {
         title: "Check available disk space",
-        steps: [
-          "View disk usage",
-          "You need at least 10GB free for ACFS",
-        ],
+        steps: ["View disk usage", "You need at least 10GB free for ACFS"],
         command: "df -h",
       },
       {
         title: "Clean up if needed",
-        steps: [
-          "Clear apt cache",
-          "Remove old log files",
-        ],
+        steps: ["Clear apt cache", "Remove old log files"],
         command: "sudo apt clean && sudo journalctl --vacuum-time=1d",
       },
     ],
@@ -338,11 +327,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     id: "claude-auth-fail",
     title: "Claude Code Authentication Fails",
     category: "agents",
-    symptoms: [
-      "Authentication failed",
-      "Invalid API key",
-      "Unable to verify subscription",
-    ],
+    symptoms: ["Authentication failed", "Invalid API key", "Unable to verify subscription"],
     causes: [
       "No active Claude subscription",
       "Authentication URL expired",
@@ -373,11 +358,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     id: "agent-rate-limited",
     title: "AI Agent Rate Limited",
     category: "agents",
-    symptoms: [
-      "Rate limit exceeded",
-      "Too many requests",
-      "429 error",
-    ],
+    symptoms: ["Rate limit exceeded", "Too many requests", "429 error"],
     causes: [
       "Too many concurrent requests",
       "Hitting daily/monthly limits",
@@ -393,10 +374,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
       },
       {
         title: "Reduce concurrent usage",
-        steps: [
-          "Don't run multiple AI sessions simultaneously",
-          "Close unused agent sessions",
-        ],
+        steps: ["Don't run multiple AI sessions simultaneously", "Close unused agent sessions"],
       },
     ],
     prevention: "Monitor your API usage in each provider's dashboard.",
@@ -410,9 +388,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
       "Prompts about font configuration",
       "Terminal looks different after installation",
     ],
-    causes: [
-      "Normal behavior - P10k configuration wizard runs once",
-    ],
+    causes: ["Normal behavior - P10k configuration wizard runs once"],
     solutions: [
       {
         title: "Skip or configure",
@@ -459,7 +435,8 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
         command: "notepad $HOME\\.ssh\\known_hosts",
       },
     ],
-    prevention: "This warning is a security feature. Only remove old keys if you know why the key changed (e.g., VPS reinstall).",
+    prevention:
+      "This warning is a security feature. Only remove old keys if you know why the key changed (e.g., VPS reinstall).",
   },
   {
     id: "ssh-too-many-auth",
@@ -592,7 +569,8 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
           "The installer is checkpointed and idempotent",
           "Simply re-run the one-liner command; it will resume from the last completed phase",
         ],
-        command: "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe",
+        command:
+          "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe",
         runLocation: "vps",
       },
       {
@@ -602,7 +580,8 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
           "Transfer the cache directory to your VPS using scp",
           "Run the installer pointing to the local verified installer cache directory",
         ],
-        command: "acfs installer-cache build --output /tmp/acfs-cache && scp -r /tmp/acfs-cache/acfs-installer-cache root@YOUR_VPS_IP:/tmp/acfs-installer-cache",
+        command:
+          "acfs installer-cache build --output /tmp/acfs-cache && scp -r /tmp/acfs-cache/acfs-installer-cache root@YOUR_VPS_IP:/tmp/acfs-installer-cache",
         runLocation: "local",
       },
       {
@@ -611,11 +590,13 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
           "Run install.sh with --verified-installer-cache flag pointing to the transferred directory",
           "Note: VPS still requires basic internet access for APT packages and Cargo crates",
         ],
-        command: "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --verified-installer-cache /tmp/acfs-installer-cache --yes --mode vibe",
+        command:
+          "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --verified-installer-cache /tmp/acfs-installer-cache --yes --mode vibe",
         runLocation: "vps",
       },
     ],
-    prevention: "Pre-building the verified installer cache avoids live entrypoint downloads during VPS installation.",
+    prevention:
+      "Pre-building the verified installer cache avoids live entrypoint downloads during VPS installation.",
   },
 ];
 
@@ -632,14 +613,19 @@ const ISSUES_WITH_SEARCH: TroubleshootingIssue[] = ISSUES.map((issue) => ({
     .toLowerCase(),
 }));
 
-function IssueCard({ issue, isOpen, onToggle }: { issue: TroubleshootingIssue; isOpen: boolean; onToggle: () => void }) {
+function IssueCard({
+  issue,
+  isOpen,
+  onToggle,
+}: {
+  issue: TroubleshootingIssue;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
   const categoryMeta = CATEGORY_META[issue.category];
 
   return (
-    <Card
-      id={issue.id}
-      className="border-border/50 bg-card/60 overflow-hidden scroll-mt-24"
-    >
+    <Card id={issue.id} className="border-border/50 bg-card/60 overflow-hidden scroll-mt-24">
       <button
         type="button"
         onClick={onToggle}
@@ -664,9 +650,7 @@ function IssueCard({ issue, isOpen, onToggle }: { issue: TroubleshootingIssue; i
             </span>
           </div>
           <h2 className="text-lg font-semibold text-foreground">{issue.title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {issue.symptoms[0]}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{issue.symptoms[0]}</p>
         </div>
         <ChevronDown
           className={`mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -778,7 +762,12 @@ export default function TroubleshootingPage() {
   }, [category, normalizedQuery]);
 
   return (
-    <div role="main" id="main-content" tabIndex={-1} className="relative min-h-screen bg-background">
+    <div
+      role="main"
+      id="main-content"
+      tabIndex={-1}
+      className="relative min-h-screen bg-background"
+    >
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
@@ -809,9 +798,7 @@ export default function TroubleshootingPage() {
               <RefreshCw className="h-8 w-8 text-amber-500" />
             </div>
           </div>
-          <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-4xl">
-            Troubleshooting
-          </h1>
+          <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-4xl">Troubleshooting</h1>
           <p className="mx-auto max-w-xl text-lg text-muted-foreground">
             Common issues and their solutions. Search for error messages or browse by category.
           </p>
@@ -843,32 +830,31 @@ export default function TroubleshootingPage() {
           >
             All
           </button>
-          {(Object.keys(CATEGORY_META) as Array<Exclude<TroubleshootingCategory, "all">>).map((cat) => {
-            const meta = CATEGORY_META[cat];
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategory(cat)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors inline-flex items-center gap-1.5 ${
-                  category === cat
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border/50 bg-card/40 text-muted-foreground hover:border-primary/30 hover:bg-primary/5"
-                }`}
-              >
-                {meta.icon}
-                {meta.label}
-              </button>
-            );
-          })}
+          {(Object.keys(CATEGORY_META) as Array<Exclude<TroubleshootingCategory, "all">>).map(
+            (cat) => {
+              const meta = CATEGORY_META[cat];
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategory(cat)}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors inline-flex items-center gap-1.5 ${
+                    category === cat
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border/50 bg-card/40 text-muted-foreground hover:border-primary/30 hover:bg-primary/5"
+                  }`}
+                >
+                  {meta.icon}
+                  {meta.label}
+                </button>
+              );
+            },
+          )}
         </div>
 
         <p className="mb-8 text-sm text-muted-foreground">
-          Showing{" "}
-          <span className="font-mono text-foreground">{filteredIssues.length}</span>{" "}
-          of{" "}
-          <span className="font-mono text-foreground">{ISSUES_WITH_SEARCH.length}</span>{" "}
-          issues.
+          Showing <span className="font-mono text-foreground">{filteredIssues.length}</span> of{" "}
+          <span className="font-mono text-foreground">{ISSUES_WITH_SEARCH.length}</span> issues.
         </p>
 
         {/* Issues */}
@@ -885,14 +871,15 @@ export default function TroubleshootingPage() {
           ) : (
             <div className="py-12 text-center">
               <Search className="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-              <p className="text-muted-foreground mb-4">
-                No issues match your search.
-              </p>
+              <p className="text-muted-foreground mb-4">No issues match your search.</p>
               <p className="text-sm text-muted-foreground">
                 Try different keywords or{" "}
                 <button
                   type="button"
-                  onClick={() => { setSearchQuery(""); setCategory("all"); }}
+                  onClick={() => {
+                    setSearchQuery("");
+                    setCategory("all");
+                  }}
                   className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
                 >
                   clear all filters
@@ -907,15 +894,16 @@ export default function TroubleshootingPage() {
         <Card className="mt-12 border-primary/20 bg-primary/5 p-6">
           <h2 className="text-lg font-semibold mb-3">Still stuck?</h2>
           <div className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              If you can&apos;t find your issue here, try these resources:
-            </p>
+            <p>If you can&apos;t find your issue here, try these resources:</p>
             <ul className="space-y-2 pl-4">
               <li className="flex items-start gap-2">
                 <span className="text-primary">•</span>
                 <span>
                   Check the{" "}
-                  <Link href="/glossary" className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
+                  <Link
+                    href="/glossary"
+                    className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
+                  >
                     Glossary
                   </Link>{" "}
                   for unfamiliar terms
@@ -940,7 +928,10 @@ export default function TroubleshootingPage() {
                 <span className="text-primary">•</span>
                 <span>
                   Review the{" "}
-                  <Link href="/learn" className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
+                  <Link
+                    href="/learn"
+                    className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
+                  >
                     Learning Hub
                   </Link>{" "}
                   for guided tutorials

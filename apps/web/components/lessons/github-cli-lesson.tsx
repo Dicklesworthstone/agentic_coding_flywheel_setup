@@ -1,52 +1,52 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
-  Github,
-  KeyRound,
-  CircleDot,
-  GitPullRequest,
-  Tag,
-  Workflow,
-  Eye,
+  AlertCircle,
+  ArrowRight,
+  Check,
   CheckCircle,
-  Zap,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Play,
-  Pause,
-  GitBranch,
-  Loader2,
-  GitMerge,
-  MessageSquare,
-  FileCode,
-  FilePlus,
-  FileEdit,
-  Shield,
-  Users,
-  Clock,
-  ArrowRight,
-  Terminal,
-  Rocket,
-  XCircle,
-  AlertCircle,
-  Check,
-  ChevronDown,
   ChevronUp,
+  CircleDot,
+  Clock,
+  Eye,
+  FileCode,
+  FileEdit,
+  FilePlus,
+  GitBranch,
+  Github,
+  GitMerge,
+  GitPullRequest,
+  KeyRound,
+  Loader2,
+  MessageSquare,
+  Pause,
+  Play,
+  Rocket,
+  Shield,
+  Tag,
+  Terminal,
+  Users,
+  Workflow,
+  XCircle,
+  Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
-  Section,
-  Paragraph,
   CodeBlock,
-  TipBox,
-  Highlight,
-  Divider,
-  GoalBanner,
   CommandList,
+  Divider,
   FeatureCard,
   FeatureGrid,
+  GoalBanner,
+  Highlight,
   InlineCode,
+  Paragraph,
+  Section,
+  TipBox,
 } from "./lesson-components";
 
 export function GithubCliLesson() {
@@ -57,15 +57,10 @@ export function GithubCliLesson() {
       </GoalBanner>
 
       {/* What Is GitHub CLI */}
-      <Section
-        title="What Is GitHub CLI?"
-        icon={<Github className="h-5 w-5" />}
-        delay={0.1}
-      >
+      <Section title="What Is GitHub CLI?" icon={<Github className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>GitHub CLI (gh)</Highlight> lets you interact with GitHub
-          directly from your terminal. No more switching between your editor and
-          browser for common tasks.
+          <Highlight>GitHub CLI (gh)</Highlight> lets you interact with GitHub directly from your
+          terminal. No more switching between your editor and browser for common tasks.
         </Paragraph>
 
         <div className="mt-8">
@@ -97,13 +92,14 @@ export function GithubCliLesson() {
           </FeatureGrid>
         </div>
 
-        <div className="mt-8"><InteractiveGitHubWorkflow /></div>
+        <div className="mt-8">
+          <InteractiveGitHubWorkflow />
+        </div>
 
         <div className="mt-6">
           <TipBox variant="info">
-            AI agents use <InlineCode>gh</InlineCode> extensively for
-            GitHub operations. Understanding these commands helps you review
-            what agents propose.
+            AI agents use <InlineCode>gh</InlineCode> extensively for GitHub operations.
+            Understanding these commands helps you review what agents propose.
           </TipBox>
         </div>
       </Section>
@@ -111,14 +107,8 @@ export function GithubCliLesson() {
       <Divider />
 
       {/* Authentication */}
-      <Section
-        title="Authentication"
-        icon={<KeyRound className="h-5 w-5" />}
-        delay={0.15}
-      >
-        <Paragraph>
-          First, authenticate with your GitHub account:
-        </Paragraph>
+      <Section title="Authentication" icon={<KeyRound className="h-5 w-5" />} delay={0.15}>
+        <Paragraph>First, authenticate with your GitHub account:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -136,8 +126,8 @@ $ gh api user --jq '.login'`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            The interactive login will guide you through browser-based OAuth.
-            Choose HTTPS for the git protocol unless you have SSH keys set up.
+            The interactive login will guide you through browser-based OAuth. Choose HTTPS for the
+            git protocol unless you have SSH keys set up.
           </TipBox>
         </div>
       </Section>
@@ -145,11 +135,7 @@ $ gh api user --jq '.login'`}
       <Divider />
 
       {/* Issues */}
-      <Section
-        title="Working with Issues"
-        icon={<CircleDot className="h-5 w-5" />}
-        delay={0.2}
-      >
+      <Section title="Working with Issues" icon={<CircleDot className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
             {
@@ -198,14 +184,8 @@ $ gh issue create \\
       <Divider />
 
       {/* Pull Requests */}
-      <Section
-        title="Pull Requests"
-        icon={<GitPullRequest className="h-5 w-5" />}
-        delay={0.25}
-      >
-        <Paragraph>
-          Create and manage pull requests without leaving your terminal:
-        </Paragraph>
+      <Section title="Pull Requests" icon={<GitPullRequest className="h-5 w-5" />} delay={0.25}>
+        <Paragraph>Create and manage pull requests without leaving your terminal:</Paragraph>
 
         <div className="mt-6">
           <CommandList
@@ -264,8 +244,8 @@ $ gh pr checks 456`}
 
         <div className="mt-6">
           <TipBox variant="tip">
-            Agents often create PRs using heredocs for the body. This format
-            is common: <InlineCode>--body &quot;$(cat &lt;&lt;&apos;EOF&apos; ... EOF)&quot;</InlineCode>
+            Agents often create PRs using heredocs for the body. This format is common:{" "}
+            <InlineCode>--body &quot;$(cat &lt;&lt;&apos;EOF&apos; ... EOF)&quot;</InlineCode>
           </TipBox>
         </div>
       </Section>
@@ -273,11 +253,7 @@ $ gh pr checks 456`}
       <Divider />
 
       {/* Releases and Tags */}
-      <Section
-        title="Releases & Tags"
-        icon={<Tag className="h-5 w-5" />}
-        delay={0.3}
-      >
+      <Section title="Releases & Tags" icon={<Tag className="h-5 w-5" />} delay={0.3}>
         <CommandList
           commands={[
             {
@@ -324,14 +300,8 @@ $ gh release delete v1.0.0-test --yes`}
       <Divider />
 
       {/* GitHub Actions */}
-      <Section
-        title="GitHub Actions"
-        icon={<Workflow className="h-5 w-5" />}
-        delay={0.35}
-      >
-        <Paragraph>
-          Monitor and interact with your CI/CD workflows:
-        </Paragraph>
+      <Section title="GitHub Actions" icon={<Workflow className="h-5 w-5" />} delay={0.35}>
+        <Paragraph>Monitor and interact with your CI/CD workflows:</Paragraph>
 
         <div className="mt-6">
           <CommandList
@@ -385,11 +355,7 @@ $ gh run view 123456 --job 789 --log`}
       <Divider />
 
       {/* Repository Info */}
-      <Section
-        title="Repository Operations"
-        icon={<Github className="h-5 w-5" />}
-        delay={0.4}
-      >
+      <Section title="Repository Operations" icon={<Github className="h-5 w-5" />} delay={0.4}>
         <CommandList
           commands={[
             {
@@ -423,14 +389,8 @@ $ gh run view 123456 --job 789 --log`}
       <Divider />
 
       {/* API Access */}
-      <Section
-        title="Direct API Access"
-        icon={<Zap className="h-5 w-5" />}
-        delay={0.45}
-      >
-        <Paragraph>
-          For advanced use cases, access the GitHub API directly:
-        </Paragraph>
+      <Section title="Direct API Access" icon={<Zap className="h-5 w-5" />} delay={0.45}>
+        <Paragraph>For advanced use cases, access the GitHub API directly:</Paragraph>
 
         <div className="mt-6">
           <CodeBlock
@@ -453,9 +413,8 @@ $ gh api repos/owner/repo/issues \\
 
         <div className="mt-6">
           <TipBox variant="info">
-            Agents use <InlineCode>gh api</InlineCode> for operations not
-            covered by the standard commands. Review these carefully as they
-            have full API access.
+            Agents use <InlineCode>gh api</InlineCode> for operations not covered by the standard
+            commands. Review these carefully as they have full API access.
           </TipBox>
         </div>
       </Section>
@@ -463,11 +422,7 @@ $ gh api repos/owner/repo/issues \\
       <Divider />
 
       {/* Best Practices */}
-      <Section
-        title="Best Practices"
-        icon={<CheckCircle className="h-5 w-5" />}
-        delay={0.5}
-      >
+      <Section title="Best Practices" icon={<CheckCircle className="h-5 w-5" />} delay={0.5}>
         <div className="space-y-4">
           <BestPractice
             title="Always review PR details before merging"
@@ -495,11 +450,7 @@ $ gh api repos/owner/repo/issues \\
       <Divider />
 
       {/* Try It Now */}
-      <Section
-        title="Try It Now"
-        icon={<Eye className="h-5 w-5" />}
-        delay={0.55}
-      >
+      <Section title="Try It Now" icon={<Eye className="h-5 w-5" />} delay={0.55}>
         <CodeBlock
           code={`# Check if gh is installed and authenticated
 $ gh auth status
@@ -525,13 +476,7 @@ $ gh run list --limit 5`}
 // =============================================================================
 // BEST PRACTICE
 // =============================================================================
-function BestPractice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function BestPractice({ title, description }: { title: string; description: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -543,7 +488,9 @@ function BestPractice({
         <CheckCircle className="h-5 w-5" />
       </div>
       <div>
-        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">{title}</p>
+        <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+          {title}
+        </p>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>
@@ -690,13 +637,16 @@ function InteractiveGitHubWorkflow() {
       timers.push(
         setTimeout(() => {
           setCiJobStates((prev) => ({ ...prev, [job]: "running" }));
-        }, i * 400)
+        }, i * 400),
       );
       // Finish
       timers.push(
-        setTimeout(() => {
-          setCiJobStates((prev) => ({ ...prev, [job]: "passed" }));
-        }, i * 400 + 800 + i * 200)
+        setTimeout(
+          () => {
+            setCiJobStates((prev) => ({ ...prev, [job]: "passed" }));
+          },
+          i * 400 + 800 + i * 200,
+        ),
       );
     });
 
@@ -769,7 +719,10 @@ function InteractiveGitHubWorkflow() {
   }, []);
 
   return (
-    <div ref={ref} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.03] to-transparent backdrop-blur-xl overflow-hidden">
+    <div
+      ref={ref}
+      className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.03] to-transparent backdrop-blur-xl overflow-hidden"
+    >
       {/* Background decorative elements */}
       <div className="absolute top-0 left-1/4 w-80 h-80 bg-violet-500/[0.06] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-60 h-60 bg-emerald-500/[0.06] rounded-full blur-3xl pointer-events-none" />
@@ -913,11 +866,7 @@ function InteractiveGitHubWorkflow() {
             onClick={togglePlay}
             className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           >
-            {isPlaying ? (
-              <Pause className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4 ml-0.5" />
-            )}
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
           </button>
 
           <button
@@ -1006,7 +955,11 @@ function MiniTerminal({
             <span className="font-mono text-xs text-white/80 truncate">{currentCommand}</span>
             <motion.span
               animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
-              transition={active ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+              transition={
+                active
+                  ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" }
+                  : { duration: 0.2 }
+              }
               className="inline-block w-1.5 h-4 bg-white/60 shrink-0"
             />
           </motion.div>
@@ -1043,13 +996,20 @@ function PRTimeline({
   const getIcon = (iconType: string, isActive: boolean, isCompleted: boolean) => {
     const className = `h-3 w-3 ${isActive ? "text-white" : isCompleted ? "text-white/90" : "text-white/40"}`;
     switch (iconType) {
-      case "branch": return <GitBranch className={className} />;
-      case "code": return <FileCode className={className} />;
-      case "pr": return <GitPullRequest className={className} />;
-      case "review": return <MessageSquare className={className} />;
-      case "ci": return <Shield className={className} />;
-      case "merge": return <GitMerge className={className} />;
-      default: return <CircleDot className={className} />;
+      case "branch":
+        return <GitBranch className={className} />;
+      case "code":
+        return <FileCode className={className} />;
+      case "pr":
+        return <GitPullRequest className={className} />;
+      case "review":
+        return <MessageSquare className={className} />;
+      case "ci":
+        return <Shield className={className} />;
+      case "merge":
+        return <GitMerge className={className} />;
+      default:
+        return <CircleDot className={className} />;
     }
   };
 
@@ -1094,9 +1054,11 @@ function PRTimeline({
                     />
                   )}
                 </motion.div>
-                <span className={`text-[10px] font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
-                  isActive ? "text-white/90" : "text-white/30"
-                }`}>
+                <span
+                  className={`text-[10px] font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
+                    isActive ? "text-white/90" : "text-white/30"
+                  }`}
+                >
                   {stage.label}
                 </span>
               </button>
@@ -1183,9 +1145,7 @@ function CollapsiblePanel({
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4">
-              {children}
-            </div>
+            <div className="px-4 pb-4">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1353,9 +1313,11 @@ function MakeChangesVisual({ active }: { active: boolean }) {
               <FileEdit className="h-3.5 w-3.5 text-amber-400 shrink-0" />
             )}
             <span className="text-xs font-mono text-white/60 truncate">{file.name}</span>
-            <span className={`text-[10px] font-mono ml-auto shrink-0 ${
-              file.type === "added" ? "text-emerald-400/70" : "text-amber-400/70"
-            }`}>
+            <span
+              className={`text-[10px] font-mono ml-auto shrink-0 ${
+                file.type === "added" ? "text-emerald-400/70" : "text-amber-400/70"
+              }`}
+            >
               {file.lines}
             </span>
           </motion.div>
@@ -1377,7 +1339,11 @@ function MakeChangesVisual({ active }: { active: boolean }) {
           <span className="text-white/30">)</span>
           <motion.span
             animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
-            transition={active ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
+            transition={
+              active
+                ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" }
+                : { duration: 0.2 }
+            }
             className="inline-block w-1 h-3 bg-violet-400/80"
           />
         </div>
@@ -1410,7 +1376,9 @@ function CreatePRVisual() {
         </div>
 
         <p className="text-sm font-medium text-white/90 mb-1">Add authentication module</p>
-        <p className="text-xs text-white/40 mb-3">Implements OAuth2 login flow with session management. Closes #42</p>
+        <p className="text-xs text-white/40 mb-3">
+          Implements OAuth2 login flow with session management. Closes #42
+        </p>
 
         {/* Diff stats */}
         <div className="flex items-center gap-3 mb-3">
@@ -1466,9 +1434,7 @@ function CreatePRVisual() {
               key={bg}
               className={`h-5 w-5 rounded-full ${bg} border-2 border-black/50 flex items-center justify-center`}
             >
-              <span className="text-[10px] text-white font-bold">
-                {i === 0 ? "A" : "B"}
-              </span>
+              <span className="text-[10px] text-white font-bold">{i === 0 ? "A" : "B"}</span>
             </div>
           ))}
         </div>
@@ -1527,7 +1493,9 @@ function CodeReviewVisual({ commentIndex }: { commentIndex: number }) {
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1.5">
-                  <div className={`h-5 w-5 rounded-full ${comment.color} flex items-center justify-center`}>
+                  <div
+                    className={`h-5 w-5 rounded-full ${comment.color} flex items-center justify-center`}
+                  >
                     <span className="text-[10px] text-white font-bold">{comment.initial}</span>
                   </div>
                   <span className="text-[10px] font-semibold text-white/60">@{comment.author}</span>
@@ -1572,8 +1540,18 @@ function CIPipelineVisual({
 }) {
   const jobs = [
     { id: "lint", label: "Lint", icon: <AlertCircle className="h-3 w-3" />, duration: "12s" },
-    { id: "typecheck", label: "Type Check", icon: <FileCode className="h-3 w-3" />, duration: "28s" },
-    { id: "tests", label: "Unit Tests (48)", icon: <Shield className="h-3 w-3" />, duration: "1m 14s" },
+    {
+      id: "typecheck",
+      label: "Type Check",
+      icon: <FileCode className="h-3 w-3" />,
+      duration: "28s",
+    },
+    {
+      id: "tests",
+      label: "Unit Tests (48)",
+      icon: <Shield className="h-3 w-3" />,
+      duration: "1m 14s",
+    },
     { id: "build", label: "Build", icon: <Rocket className="h-3 w-3" />, duration: "45s" },
   ];
 
@@ -1618,13 +1596,15 @@ function CIPipelineVisual({
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <CIJobStatusIcon state={state} active={active} />
-                <span className={`text-[10px] font-mono font-semibold ${
-                  state === "passed"
-                    ? "text-emerald-400"
-                    : state === "running"
-                      ? "text-cyan-400"
-                      : "text-white/40"
-                }`}>
+                <span
+                  className={`text-[10px] font-mono font-semibold ${
+                    state === "passed"
+                      ? "text-emerald-400"
+                      : state === "running"
+                        ? "text-cyan-400"
+                        : "text-white/40"
+                  }`}
+                >
                   {job.label}
                 </span>
               </div>
@@ -1667,7 +1647,13 @@ function CIPipelineVisual({
   );
 }
 
-function CIJobStatusIcon({ state, active }: { state: "pending" | "running" | "passed"; active: boolean }) {
+function CIJobStatusIcon({
+  state,
+  active,
+}: {
+  state: "pending" | "running" | "passed";
+  active: boolean;
+}) {
   if (state === "running") {
     return (
       <motion.div
@@ -1705,7 +1691,9 @@ function MergeDeployVisual({ active }: { active: boolean }) {
           className="flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/5 px-3 py-1.5"
         >
           <GitBranch className="h-3 w-3 text-violet-400/50" />
-          <span className="text-[10px] font-mono text-violet-400/50 line-through">feat/add-auth</span>
+          <span className="text-[10px] font-mono text-violet-400/50 line-through">
+            feat/add-auth
+          </span>
         </motion.div>
 
         <motion.div
@@ -1872,18 +1860,22 @@ function BranchFlowVisualization({ activeStage }: { activeStage: number }) {
       {/* Branch status text */}
       <div className="flex items-center justify-between text-[10px]">
         <span className="text-blue-400/60 font-mono">main</span>
-        <span className={`font-mono ${
-          branchState === "merged" ? "text-emerald-400/60 line-through" : "text-violet-400/60"
-        }`}>
+        <span
+          className={`font-mono ${
+            branchState === "merged" ? "text-emerald-400/60 line-through" : "text-violet-400/60"
+          }`}
+        >
           feat/add-auth
         </span>
-        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-          branchState === "merged"
-            ? "bg-emerald-500/10 text-emerald-400"
-            : branchState === "active"
-              ? "bg-violet-500/10 text-violet-400"
-              : "bg-blue-500/10 text-blue-400"
-        }`}>
+        <span
+          className={`px-1.5 py-0.5 rounded text-[10px] ${
+            branchState === "merged"
+              ? "bg-emerald-500/10 text-emerald-400"
+              : branchState === "active"
+                ? "bg-violet-500/10 text-violet-400"
+                : "bg-blue-500/10 text-blue-400"
+          }`}
+        >
           {branchState === "merged" ? "merged" : branchState === "active" ? "active" : "creating"}
         </span>
       </div>
@@ -1924,11 +1916,13 @@ function PRDetailPanel({
       <div className="flex items-center gap-2">
         <GitPullRequest className={`h-4 w-4 ${merged ? "text-purple-400" : "text-emerald-400"}`} />
         <span className="text-xs font-semibold text-white/80">Add authentication module</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-          merged
-            ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-        }`}>
+        <span
+          className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+            merged
+              ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
+              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+          }`}
+        >
           {merged ? "Merged" : "Open"}
         </span>
       </div>
@@ -1960,19 +1954,43 @@ function PRDetailPanel({
         <PRCheckRow
           active={active}
           label="CI / Lint"
-          status={activeStage >= 4 ? (ciJobStates["lint"] === "passed" ? "passed" : ciJobStates["lint"] === "running" ? "running" : "pending") : "pending"}
+          status={
+            activeStage >= 4
+              ? ciJobStates["lint"] === "passed"
+                ? "passed"
+                : ciJobStates["lint"] === "running"
+                  ? "running"
+                  : "pending"
+              : "pending"
+          }
           detail={activeStage >= 4 && ciJobStates["lint"] === "passed" ? "12s" : ""}
         />
         <PRCheckRow
           active={active}
           label="CI / Tests"
-          status={activeStage >= 4 ? (ciJobStates["tests"] === "passed" ? "passed" : ciJobStates["tests"] === "running" ? "running" : "pending") : "pending"}
+          status={
+            activeStage >= 4
+              ? ciJobStates["tests"] === "passed"
+                ? "passed"
+                : ciJobStates["tests"] === "running"
+                  ? "running"
+                  : "pending"
+              : "pending"
+          }
           detail={activeStage >= 4 && ciJobStates["tests"] === "passed" ? "48/48 passed" : ""}
         />
         <PRCheckRow
           active={active}
           label="CI / Build"
-          status={activeStage >= 4 ? (ciJobStates["build"] === "passed" ? "passed" : ciJobStates["build"] === "running" ? "running" : "pending") : "pending"}
+          status={
+            activeStage >= 4
+              ? ciJobStates["build"] === "passed"
+                ? "passed"
+                : ciJobStates["build"] === "running"
+                  ? "running"
+                  : "pending"
+              : "pending"
+          }
           detail={activeStage >= 4 && ciJobStates["build"] === "passed" ? "45s" : ""}
         />
       </div>
@@ -2022,21 +2040,27 @@ function PRCheckRow({
       {status === "running" && (
         <motion.div
           animate={active ? { rotate: 360 } : { rotate: 0 }}
-          transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
+          transition={
+            active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
+          }
         >
           <Loader2 className="h-3 w-3 text-amber-400 shrink-0" />
         </motion.div>
       )}
       {status === "pending" && <CircleDot className="h-3 w-3 text-white/20 shrink-0" />}
       {status === "failed" && <XCircle className="h-3 w-3 text-red-400 shrink-0" />}
-      <span className={`text-[10px] font-mono ${
-        status === "passed" ? "text-emerald-400/80" : status === "running" ? "text-amber-400/80" : "text-white/40"
-      }`}>
+      <span
+        className={`text-[10px] font-mono ${
+          status === "passed"
+            ? "text-emerald-400/80"
+            : status === "running"
+              ? "text-amber-400/80"
+              : "text-white/40"
+        }`}
+      >
         {label}
       </span>
-      {detail && (
-        <span className="text-[10px] text-white/20 ml-auto">{detail}</span>
-      )}
+      {detail && <span className="text-[10px] text-white/20 ml-auto">{detail}</span>}
     </div>
   );
 }
@@ -2111,7 +2135,9 @@ function ActivityFeed({ activeStage }: { activeStage: number }) {
           transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.05 }}
           className="relative flex items-start gap-3 py-1.5"
         >
-          <div className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${event.bgColor} border border-white/[0.06]`}>
+          <div
+            className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${event.bgColor} border border-white/[0.06]`}
+          >
             <span className={event.color}>{event.icon}</span>
           </div>
           <div className="flex-1 min-w-0">

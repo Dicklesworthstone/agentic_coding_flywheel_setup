@@ -1,8 +1,8 @@
 "use client";
 
+import { AlertOctagon, AlertTriangle, Boxes, CheckCircle2, FileText, Zap } from "lucide-react";
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
-import { Boxes, CheckCircle2, FileText, AlertOctagon, AlertTriangle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const EXHIBIT_PANEL_CLASS =
@@ -79,7 +79,8 @@ const PLAN_TO_BEAD_CONCEPTS: {
     id: "search",
     label: "Semantic Indexing",
     planLine: "- Implement semantic search using the PGVector embeddings we just generated.",
-    insight: "Depends on PGVector being fully configured and populated. Cannot be started parallel to auth.",
+    insight:
+      "Depends on PGVector being fully configured and populated. Cannot be started parallel to auth.",
     mapsTo: ["br-101", "br-102"],
     color: "#FF5500",
   },
@@ -118,7 +119,8 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
       },
       {
         label: "Acceptance",
-        value: "Reject malware, cap retries, persist parse status, and record timing for every stage.",
+        value:
+          "Reject malware, cap retries, persist parse status, and record timing for every stage.",
         concepts: ["upload", "tests"],
       },
       {
@@ -135,21 +137,25 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
     dependsOn: ["br-101"],
     coverage: ["search", "admin", "tests"],
     thinSummary: "Implement search",
-    thinRisk: "Query semantics, ranking behavior, and operator-facing debug detail are underspecified.",
+    thinRisk:
+      "Query semantics, ranking behavior, and operator-facing debug detail are underspecified.",
     richDetails: [
       {
         label: "Outcome",
-        value: "Index parsed documents, support ranked retrieval, and explain match reasons in the UI.",
+        value:
+          "Index parsed documents, support ranked retrieval, and explain match reasons in the UI.",
         concepts: ["search"],
       },
       {
         label: "Admin hooks",
-        value: "Expose index freshness, failed document counts, and reindex controls for operators.",
+        value:
+          "Expose index freshness, failed document counts, and reindex controls for operators.",
         concepts: ["admin"],
       },
       {
         label: "Tests",
-        value: "Coverage for typo tolerance, empty result states, filter combinations, and stale index warnings.",
+        value:
+          "Coverage for typo tolerance, empty result states, filter combinations, and stale index warnings.",
         concepts: ["tests"],
       },
     ],
@@ -161,21 +167,25 @@ const TRANSLATED_BEADS: readonly TranslationBead[] = [
     dependsOn: ["br-101"],
     coverage: ["upload", "admin", "tests"],
     thinSummary: "Add admin dashboard",
-    thinRisk: "Without context, a dashboard becomes decoration instead of an operational recovery surface.",
+    thinRisk:
+      "Without context, a dashboard becomes decoration instead of an operational recovery surface.",
     richDetails: [
       {
         label: "Outcome",
-        value: "Surface failed ingestions, stalled jobs, and per-file parse diagnostics in one operational view.",
+        value:
+          "Surface failed ingestions, stalled jobs, and per-file parse diagnostics in one operational view.",
         concepts: ["upload", "admin"],
       },
       {
         label: "Recovery path",
-        value: "Allow safe requeue actions with audit trails and blast-radius summaries before retry.",
+        value:
+          "Allow safe requeue actions with audit trails and blast-radius summaries before retry.",
         concepts: ["admin"],
       },
       {
         label: "Tests",
-        value: "E2E coverage for retry, audit logging, and incorrect operator input during incident handling.",
+        value:
+          "E2E coverage for retry, audit logging, and incorrect operator input during incident handling.",
         concepts: ["tests"],
       },
     ],
@@ -201,10 +211,12 @@ const MODE_COPY: Record<
   },
   rich: {
     label: "Context-rich beads",
-    description: "Each bead carries the why, what, failure modes, and verification plan needed to execute.",
+    description:
+      "Each bead carries the why, what, failure modes, and verification plan needed to execute.",
     readiness: 94,
     guesswork: "Low guesswork",
-    takeaway: "Fresh agents can execute without improvising architecture or silently dropping intent.",
+    takeaway:
+      "Fresh agents can execute without improvising architecture or silently dropping intent.",
   },
 };
 
@@ -226,7 +238,7 @@ export function PlanToBeadsViz() {
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
-      
+
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-[0.65rem] font-bold uppercase tracking-widest text-primary/70 mb-2 flex items-center gap-2">
@@ -237,9 +249,8 @@ export function PlanToBeadsViz() {
             A plan is only useful once it becomes executable memory
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">
-            Pick a concept from the plan, then compare what survives into a thin
-            bead versus a context-rich bead. The gap is the source of most
-            swarm confusion.
+            Pick a concept from the plan, then compare what survives into a thin bead versus a
+            context-rich bead. The gap is the source of most swarm confusion.
           </p>
         </div>
 
@@ -302,7 +313,10 @@ export function PlanToBeadsViz() {
                           className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
                           style={{ color: concept.color }}
                         >
-                          <span className="w-1 h-1 rounded-full" style={{ backgroundColor: concept.color }} />
+                          <span
+                            className="w-1 h-1 rounded-full"
+                            style={{ backgroundColor: concept.color }}
+                          />
                           Concept {index + 1}
                         </div>
                         <div className="mt-1.5 text-base font-bold tracking-tight text-white group-hover/btn:text-primary transition-colors">
@@ -320,7 +334,9 @@ export function PlanToBeadsViz() {
                         {concept.mapsTo.length} bead{concept.mapsTo.length > 1 ? "s" : ""}
                       </div>
                     </div>
-                    <p className="mt-3 text-sm leading-relaxed text-zinc-400 font-light relative z-10">{concept.planLine}</p>
+                    <p className="mt-3 text-sm leading-relaxed text-zinc-400 font-light relative z-10">
+                      {concept.planLine}
+                    </p>
                   </motion.button>
                 );
               })}
@@ -330,15 +346,26 @@ export function PlanToBeadsViz() {
           <motion.div
             initial={reducedMotion ? false : { opacity: 0, y: 16 }}
             animate={isInView ? { opacity: 1, y: 0 } : undefined}
-            transition={{ type: "spring", stiffness: 220, damping: 24, delay: reducedMotion ? 0 : 0.18 }}
+            transition={{
+              type: "spring",
+              stiffness: 220,
+              damping: 24,
+              delay: reducedMotion ? 0 : 0.18,
+            }}
             className="rounded-2xl border p-6 relative overflow-hidden shadow-xl"
             style={{
               borderColor: `${selectedConcept.color}30`,
               backgroundColor: `${selectedConcept.color}0A`,
             }}
           >
-            <div className="absolute top-0 right-0 w-32 h-32 blur-[40px] opacity-20 pointer-events-none" style={{ backgroundColor: selectedConcept.color }} />
-            <div className="relative z-10 text-[0.65rem] font-bold uppercase tracking-widest" style={{ color: selectedConcept.color }}>
+            <div
+              className="absolute top-0 right-0 w-32 h-32 blur-[40px] opacity-20 pointer-events-none"
+              style={{ backgroundColor: selectedConcept.color }}
+            />
+            <div
+              className="relative z-10 text-[0.65rem] font-bold uppercase tracking-widest"
+              style={{ color: selectedConcept.color }}
+            >
               Selected Concept Insight
             </div>
             <div className="relative z-10 mt-3 text-xl font-black tracking-tight text-white">
@@ -347,7 +374,10 @@ export function PlanToBeadsViz() {
             <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-light">
               {selectedConcept.insight}
             </p>
-            <div className="relative z-10 mt-5 inline-flex items-center gap-2 rounded-xl border bg-[#05070A]/80 px-4 py-2.5 text-[0.65rem] font-bold uppercase tracking-widest backdrop-blur-sm shadow-inner" style={{ color: selectedConcept.color, borderColor: `${selectedConcept.color}20` }}>
+            <div
+              className="relative z-10 mt-5 inline-flex items-center gap-2 rounded-xl border bg-[#05070A]/80 px-4 py-2.5 text-[0.65rem] font-bold uppercase tracking-widest backdrop-blur-sm shadow-inner"
+              style={{ color: selectedConcept.color, borderColor: `${selectedConcept.color}20` }}
+            >
               <Boxes className="h-4 w-4" />
               Flows into {selectedConcept.mapsTo.join(" & ")}
             </div>
@@ -366,11 +396,19 @@ export function PlanToBeadsViz() {
                 {MODE_COPY[mode].label}
               </div>
             </div>
-            <div className={cn(
-              "inline-flex items-center gap-2 rounded-xl border bg-black/40 px-4 py-2.5 text-[0.65rem] font-bold uppercase tracking-widest shadow-inner",
-              mode === "rich" ? "border-primary/20 text-primary" : "border-[#FF5F56]/20 text-[#FF5F56]"
-            )}>
-              {mode === "rich" ? <CheckCircle2 className="h-4 w-4" /> : <AlertOctagon className="h-4 w-4" />}
+            <div
+              className={cn(
+                "inline-flex items-center gap-2 rounded-xl border bg-black/40 px-4 py-2.5 text-[0.65rem] font-bold uppercase tracking-widest shadow-inner",
+                mode === "rich"
+                  ? "border-primary/20 text-primary"
+                  : "border-[#FF5F56]/20 text-[#FF5F56]",
+              )}
+            >
+              {mode === "rich" ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <AlertOctagon className="h-4 w-4" />
+              )}
               {MODE_COPY[mode].guesswork}
             </div>
           </div>
@@ -402,7 +440,10 @@ export function PlanToBeadsViz() {
                           className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
                           style={{ color: bead.color }}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: bead.color }} />
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ backgroundColor: bead.color }}
+                          />
                           {bead.id}
                         </div>
                         <div className="mt-1.5 text-lg font-bold tracking-tight text-white">
@@ -465,35 +506,41 @@ export function PlanToBeadsViz() {
                           exit={{ opacity: 0, y: -8 }}
                           className="mt-5 space-y-3"
                         >
-                          {bead.richDetails.map((detail: { label: string; value: string; concepts: ConceptId[] }) => {
-                            const detailHighlighted = detail.concepts.includes(selectedConceptId);
-                            return (
-                              <div
-                                key={`${bead.id}-${detail.label}`}
-                                className={cn(
-                                  "rounded-lg border px-4 py-3 transition-colors duration-300",
-                                  detailHighlighted
-                                    ? "border-primary/30 bg-primary/5"
-                                    : "border-white/[0.04] bg-white/[0.01]",
-                                )}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div
-                                    className="mt-1 h-2 w-2 shrink-0 rounded-full"
-                                    style={{ backgroundColor: detailHighlighted ? bead.color : "rgba(255,255,255,0.2)" }}
-                                  />
-                                  <div>
-                                    <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 mb-1">
-                                      {detail.label}
-                                    </div>
-                                    <div className="text-sm leading-relaxed text-zinc-300 font-light">
-                                      {detail.value}
+                          {bead.richDetails.map(
+                            (detail: { label: string; value: string; concepts: ConceptId[] }) => {
+                              const detailHighlighted = detail.concepts.includes(selectedConceptId);
+                              return (
+                                <div
+                                  key={`${bead.id}-${detail.label}`}
+                                  className={cn(
+                                    "rounded-lg border px-4 py-3 transition-colors duration-300",
+                                    detailHighlighted
+                                      ? "border-primary/30 bg-primary/5"
+                                      : "border-white/[0.04] bg-white/[0.01]",
+                                  )}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div
+                                      className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                                      style={{
+                                        backgroundColor: detailHighlighted
+                                          ? bead.color
+                                          : "rgba(255,255,255,0.2)",
+                                      }}
+                                    />
+                                    <div>
+                                      <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 mb-1">
+                                        {detail.label}
+                                      </div>
+                                      <div className="text-sm leading-relaxed text-zinc-300 font-light">
+                                        {detail.value}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            },
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -516,7 +563,12 @@ export function PlanToBeadsViz() {
           <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
             Execution Readiness
           </div>
-          <div className={cn("mt-3 text-4xl font-black tracking-tighter transition-colors duration-500", mode === "rich" ? "text-[#FFBD2E]" : "text-[#FF5500]")}>
+          <div
+            className={cn(
+              "mt-3 text-4xl font-black tracking-tighter transition-colors duration-500",
+              mode === "rich" ? "text-[#FFBD2E]" : "text-[#FF5500]",
+            )}
+          >
             {readinessScore}%
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-light">
@@ -528,7 +580,12 @@ export function PlanToBeadsViz() {
           <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
             Unanswered Questions
           </div>
-          <div className={cn("mt-3 text-4xl font-black tracking-tighter transition-colors duration-500", mode === "rich" ? "text-white" : "text-[#FF5500]")}>
+          <div
+            className={cn(
+              "mt-3 text-4xl font-black tracking-tighter transition-colors duration-500",
+              mode === "rich" ? "text-white" : "text-[#FF5500]",
+            )}
+          >
             {ambiguityCount}
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-light">
@@ -549,7 +606,8 @@ export function PlanToBeadsViz() {
           </p>
           <div className="relative z-10 mt-4 inline-flex items-center gap-2 rounded-xl border border-[#FFBD2E]/30 bg-[#FFBD2E]/10 px-3 py-2 text-[0.65rem] font-bold uppercase tracking-widest text-[#FFBD2E]">
             <Zap className="h-3.5 w-3.5" />
-            Impacts {selectedConcept.mapsTo.length} bead{selectedConcept.mapsTo.length > 1 ? "s" : ""}
+            Impacts {selectedConcept.mapsTo.length} bead
+            {selectedConcept.mapsTo.length > 1 ? "s" : ""}
           </div>
         </div>
       </div>

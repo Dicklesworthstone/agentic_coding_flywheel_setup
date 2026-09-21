@@ -1,21 +1,7 @@
-import type { ModuleSelectionInput } from "./moduleSelection";
-import {
-  containsIPAddress,
-  normalizeGitRef,
-  normalizeSSHUsername,
-} from "./inputValidation";
-import type { InstallMode } from "./userPreferences";
 import { buildInstallCommand } from "./commandBuilder";
-import {
-  ACFS_RECOMMENDED_UBUNTU,
-  calculateRequiredSpecs,
-  evaluatePlan,
-  getWorkloadProfile,
-  validateUbuntuImage,
-  validateVPSReadiness,
-  VPS_PROVIDERS,
-  PRICING_LAST_UPDATED,
-} from "./vpsProviders";
+import { containsIPAddress, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
+import type { ModuleSelectionInput } from "./moduleSelection";
+import type { InstallMode } from "./userPreferences";
 import type {
   EvaluatedProviderPlan,
   PlanStatus,
@@ -25,6 +11,16 @@ import type {
   VPSReadinessInput,
   VPSReadinessStatus,
   WorkloadId,
+} from "./vpsProviders";
+import {
+  ACFS_RECOMMENDED_UBUNTU,
+  calculateRequiredSpecs,
+  evaluatePlan,
+  getWorkloadProfile,
+  PRICING_LAST_UPDATED,
+  VPS_PROVIDERS,
+  validateUbuntuImage,
+  validateVPSReadiness,
 } from "./vpsProviders";
 
 export const PROVIDER_PROVISIONING_PACKET_SCHEMA = "acfs.provider-provisioning-packet.v1";
@@ -407,7 +403,10 @@ export const PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER: Record<string, string[]> 
 };
 
 export function manualStepsForProvider(providerId: string): string[] {
-  return PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER[providerId] ?? PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER.other;
+  return (
+    PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER[providerId] ??
+    PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER.other
+  );
 }
 
 const PROVIDER_PACKET_PRESETS: Record<string, ProviderPacketPreset> = {
@@ -422,7 +421,10 @@ const PROVIDER_PACKET_PRESETS: Record<string, ProviderPacketPreset> = {
 };
 
 function collapsePacketText(value: string): string {
-  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function hasSensitivePacketMarker(value: string): boolean {
@@ -430,13 +432,25 @@ function hasSensitivePacketMarker(value: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^@\s]+@/i.test(value)) return true;
   if (/\bbearer\s+\S+/i.test(value)) return true;
   if (/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_=-]+\b/i.test(value)) return true;
-  if (/\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/.test(value)) {
+  if (
+    /\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/.test(
+      value,
+    )
+  ) {
     return true;
   }
-  if (/\b(?:AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|sbp_[0-9A-Za-z_-]{16,}|shpat_[0-9A-Za-z_-]{16,}|rk_(?:live|test)_[0-9A-Za-z_-]{16,})\b/.test(value)) {
+  if (
+    /\b(?:AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|sbp_[0-9A-Za-z_-]{16,}|shpat_[0-9A-Za-z_-]{16,}|rk_(?:live|test)_[0-9A-Za-z_-]{16,})\b/.test(
+      value,
+    )
+  ) {
     return true;
   }
-  if (/(?:token|api[_-]?key|secret|password|private[_-]?key|cookie|session|credential|client[_-]?secret|webhook[_-]?secret|vault[_-]?token)/i.test(value)) {
+  if (
+    /(?:token|api[_-]?key|secret|password|private[_-]?key|cookie|session|credential|client[_-]?secret|webhook[_-]?secret|vault[_-]?token)/i.test(
+      value,
+    )
+  ) {
     return true;
   }
   if (containsIPAddress(value)) return true;
@@ -460,7 +474,11 @@ function looksSensitivePacketText(value: string): boolean {
   return compact.length >= 40 && /[A-Za-z]/.test(compact) && /[0-9]/.test(compact);
 }
 
-function safePacketText(value: string | null | undefined, fallback: string, maxLength = 80): string {
+function safePacketText(
+  value: string | null | undefined,
+  fallback: string,
+  maxLength = 80,
+): string {
   const collapsed = collapsePacketText(value ?? "");
   if (!collapsed || looksSensitivePacketText(collapsed)) return fallback;
   return collapsed.slice(0, maxLength);
@@ -510,11 +528,15 @@ function safeSshPublicKeyMaterial(value: string | null | undefined): string | un
 
 function safePacketStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const strings = value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  const strings = value.filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0,
+  );
   return strings.length > 0 ? strings : undefined;
 }
 
-function safePacketModuleSelection(value: ModuleSelectionInput | undefined): ModuleSelectionInput | undefined {
+function safePacketModuleSelection(
+  value: ModuleSelectionInput | undefined,
+): ModuleSelectionInput | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 
   const record = value as Record<string, unknown>;
@@ -563,15 +585,18 @@ function providerPresetFor(providerId: string): ProviderPacketPreset {
     };
   }
 
-  return PROVIDER_PACKET_PRESETS[normalizedProviderId] ?? {
-    id: normalizedProviderId || "other",
-    name: normalizedProviderId === "other" || !normalizedProviderId
-      ? "Other provider"
-      : safePacketText(providerId, "Other provider"),
-    productUrl: "",
-    automationLevel: "manual",
-    cloudInitMode: "none",
-  };
+  return (
+    PROVIDER_PACKET_PRESETS[normalizedProviderId] ?? {
+      id: normalizedProviderId || "other",
+      name:
+        normalizedProviderId === "other" || !normalizedProviderId
+          ? "Other provider"
+          : safePacketText(providerId, "Other provider"),
+      productUrl: "",
+      automationLevel: "manual",
+      cloudInitMode: "none",
+    }
+  );
 }
 
 function stageForPacket(
@@ -613,7 +638,9 @@ function buildCloudInit(
     return {
       mode: "none",
       userDataIncluded: false,
-      notes: ["Resolve the provisioning packet readiness checks before submitting cloud-init user-data or running ACFS."],
+      notes: [
+        "Resolve the provisioning packet readiness checks before submitting cloud-init user-data or running ACFS.",
+      ],
     };
   }
   const userDataIncluded = preset.cloudInitMode !== "none";
@@ -724,7 +751,9 @@ export function buildProviderProvisioningPacket(
       distribution: "ubuntu",
       version: ubuntuVersion,
       minimumVersion: readiness.provider?.readiness.minimumUbuntu ?? "22.04",
-      preferredVersions: readiness.provider?.readiness.preferredUbuntuVersions ?? [ACFS_RECOMMENDED_UBUNTU],
+      preferredVersions: readiness.provider?.readiness.preferredUbuntuVersions ?? [
+        ACFS_RECOMMENDED_UBUNTU,
+      ],
       readinessStatus: osReadiness,
     },
     access: {

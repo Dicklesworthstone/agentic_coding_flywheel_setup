@@ -12,7 +12,7 @@
  * tldr-content.ts) so the forward trio reads cc/cod/agy.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { flywheelTools } from "../../lib/flywheel";
@@ -25,7 +25,7 @@ describe("agents-login-lesson teaches agy, keeps gmi as legacy", () => {
 
   test("teaches the agy launcher on the pinned model", () => {
     expect(src).toContain("agy");
-    expect(src).toContain('Gemini 3.8 Flash (High)');
+    expect(src).toContain("Gemini 3.8 Flash (High)");
   });
 
   test("retains a labeled-legacy gmi note (no over-migration)", () => {
@@ -33,7 +33,7 @@ describe("agents-login-lesson teaches agy, keeps gmi as legacy", () => {
     expect(src.toLowerCase()).toMatch(/legacy|retired/);
   });
 
-  test("no operational gmi command remains (e.g. `$ gmi \"...\"` or --gmi=)", () => {
+  test('no operational gmi command remains (e.g. `$ gmi "..."` or --gmi=)', () => {
     expect(src).not.toMatch(/\$ gmi /);
     expect(src).not.toContain("--gmi=");
   });

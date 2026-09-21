@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type ManifestModuleMetadata,
+  manifestSelectionProfiles,
+} from "./generated/manifest-modules";
+import {
   buildInstallSelectorArgs,
   formatModuleSelectionPlan,
   resolveModuleSelection,
 } from "./moduleSelection";
-import {
-  manifestSelectionProfiles,
-  type ManifestModuleMetadata,
-} from "./generated/manifest-modules";
 
 function includedIds(profile?: Parameters<typeof resolveModuleSelection>[0]) {
   return resolveModuleSelection(profile).included.map((entry) => entry.id);
@@ -23,7 +23,9 @@ describe("resolveModuleSelection", () => {
     expect(includedIds()).toContain("lang.bun");
     expect(includedIds()).not.toContain("db.postgres18");
     expect(includedIds()).not.toContain("tools.vault");
-    expect(plan.excluded.find((entry) => entry.id === "db.postgres18")?.reason).toBe("disabled by default");
+    expect(plan.excluded.find((entry) => entry.id === "db.postgres18")?.reason).toBe(
+      "disabled by default",
+    );
   });
 
   test("cloud-only profile lowers to cloud CLIs, not the broader cloud-db phase", () => {
@@ -222,48 +224,38 @@ describe("buildInstallSelectorArgs", () => {
   test("serializes profile-lowered cloud-only selectors", () => {
     expect(buildInstallSelectorArgs({ profile: "cloud-only" })).toEqual([
       "--profile",
-      "\"cloud-only\"",
+      '"cloud-only"',
     ]);
   });
 
   test("serializes phase profiles and expert dependency mode", () => {
     expect(buildInstallSelectorArgs({ profile: "stack-only", noDeps: true })).toEqual([
       "--profile",
-      "\"stack-only\"",
+      '"stack-only"',
       "--no-deps",
     ]);
   });
 
   test("serializes explicit only modules and phases when no profile specified", () => {
-    expect(
-      buildInstallSelectorArgs({ onlyModules: ["cloud.wrangler", "cloud.supabase"] }),
-    ).toEqual([
-      "--only",
-      "\"cloud.wrangler\"",
-      "--only",
-      "\"cloud.supabase\"",
-    ]);
-    expect(buildInstallSelectorArgs({ onlyPhases: ["agents"] })).toEqual([
-      "--only-phase",
-      "\"7\"",
-    ]);
+    expect(buildInstallSelectorArgs({ onlyModules: ["cloud.wrangler", "cloud.supabase"] })).toEqual(
+      ["--only", '"cloud.wrangler"', "--only", '"cloud.supabase"'],
+    );
+    expect(buildInstallSelectorArgs({ onlyPhases: ["agents"] })).toEqual(["--only-phase", '"7"']);
   });
 
   test("preserves explicit selectors when paired with a mode-only profile", () => {
-    expect(buildInstallSelectorArgs({
-      profile: "safe",
-      onlyModules: ["agents.codex"],
-    })).toEqual([
-      "--only",
-      "\"agents.codex\"",
-    ]);
-    expect(buildInstallSelectorArgs({
-      profile: "full",
-      onlyPhases: ["agents"],
-    })).toEqual([
-      "--only-phase",
-      "\"7\"",
-    ]);
+    expect(
+      buildInstallSelectorArgs({
+        profile: "safe",
+        onlyModules: ["agents.codex"],
+      }),
+    ).toEqual(["--only", '"agents.codex"']);
+    expect(
+      buildInstallSelectorArgs({
+        profile: "full",
+        onlyPhases: ["agents"],
+      }),
+    ).toEqual(["--only-phase", '"7"']);
   });
 
   test("throws instead of serializing invalid selectors", () => {
@@ -274,10 +266,14 @@ describe("buildInstallSelectorArgs", () => {
 
   test("lowers supported group exclusions without dropping dependency checks", () => {
     expect(buildInstallSelectorArgs({ skipTags: ["maintenance"] })).toEqual([
-      "--skip", '"acfs.nightly"',
+      "--skip",
+      '"acfs.nightly"',
     ]);
     expect(buildInstallSelectorArgs({ skipCategories: ["network"] })).toEqual([
-      "--skip", '"network.tailscale"', "--skip", '"network.ssh_keepalive"',
+      "--skip",
+      '"network.tailscale"',
+      "--skip",
+      '"network.ssh_keepalive"',
     ]);
     expect(() => buildInstallSelectorArgs({ skipTags: ["critical"] })).toThrow(
       "depends on skipped",
@@ -287,7 +283,9 @@ describe("buildInstallSelectorArgs", () => {
 
 describe("formatModuleSelectionPlan", () => {
   test("renders stable human-readable plan output", () => {
-    const text = formatModuleSelectionPlan(resolveModuleSelection({ onlyModules: ["agents.codex"] }));
+    const text = formatModuleSelectionPlan(
+      resolveModuleSelection({ onlyModules: ["agents.codex"] }),
+    );
 
     expect(text).toContain("ACFS Module Selection Plan");
     expect(text).toContain("Selected modules:");

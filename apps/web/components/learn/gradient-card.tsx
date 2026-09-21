@@ -1,12 +1,22 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { motion } from "@/components/motion";
-import { springs, fadeUp } from "@/components/motion";
-import { staggerDelay } from "@/lib/hooks/useScrollReveal";
 import type { LucideIcon } from "lucide-react";
+import { fadeUp, motion, springs } from "@/components/motion";
+import { staggerDelay } from "@/lib/hooks/useScrollReveal";
+import { cn } from "@/lib/utils";
 
-type GradientVariant = "cyan" | "pink" | "success" | "warning" | "error" | "purple" | "sky" | "violet" | "rose" | "emerald" | "amber";
+type GradientVariant =
+  | "cyan"
+  | "pink"
+  | "success"
+  | "warning"
+  | "error"
+  | "purple"
+  | "sky"
+  | "violet"
+  | "rose"
+  | "emerald"
+  | "amber";
 
 interface GradientCardProps {
   children: React.ReactNode;
@@ -90,14 +100,15 @@ export function GradientCard({
         "transition-[border-color,background,transform] duration-300 ease-out",
         hoverable && "hover:border-primary/30 hover:bg-card/70 active:scale-[0.98]",
         onClick && "cursor-pointer",
-        className
+        className,
       )}
       variants={fadeUp}
       whileHover={
         hoverable
           ? {
               y: -6,
-              boxShadow: "0 12px 24px -8px oklch(0.75 0.18 195 / 0.2), 0 4px 12px -4px rgba(0,0,0,0.15)"
+              boxShadow:
+                "0 12px 24px -8px oklch(0.75 0.18 195 / 0.2), 0 4px 12px -4px rgba(0,0,0,0.15)",
             }
           : undefined
       }
@@ -108,7 +119,7 @@ export function GradientCard({
       <motion.div
         className={cn(
           "pointer-events-none absolute -right-24 -top-24 h-48 w-48 rounded-full blur-3xl",
-          gradientGlowColors[variant]
+          gradientGlowColors[variant],
         )}
         initial={{ opacity: 0, scale: 0.8 }}
         whileHover={{ opacity: 0.35, scale: 1 }}
@@ -146,9 +157,7 @@ export function FeatureCard({
         {icon}
       </motion.div>
       <h3 className="mb-2 text-lg font-semibold tracking-tight">{title}</h3>
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        {description}
-      </p>
+      <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
     </GradientCard>
   );
 }
@@ -171,7 +180,7 @@ export function IconCard({
     <motion.div
       className={cn(
         "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30",
-        className
+        className,
       )}
       variants={fadeUp}
       transition={{ delay: staggerDelay(index, 0.1) }}
@@ -184,7 +193,7 @@ export function IconCard({
       <motion.div
         className={cn(
           "pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br blur-3xl opacity-0 group-hover:opacity-20 transition-opacity",
-          gradient
+          gradient,
         )}
       />
 
@@ -193,20 +202,16 @@ export function IconCard({
         <div
           className={cn(
             "mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br",
-            gradient
+            gradient,
           )}
         >
           <Icon className="h-6 w-6 text-white" />
         </div>
 
         <h3 className="mb-2 text-lg font-semibold">{title}</h3>
-        <p className="mb-3 text-sm leading-relaxed text-muted-foreground">
-          {description}
-        </p>
+        <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{description}</p>
 
-        {detail && (
-          <p className="text-xs text-muted-foreground/70 italic">{detail}</p>
-        )}
+        {detail && <p className="text-xs text-muted-foreground/70 italic">{detail}</p>}
       </div>
     </motion.div>
   );

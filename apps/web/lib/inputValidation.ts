@@ -18,10 +18,7 @@ function shannonEntropy(value: string): number {
 }
 
 /** Detect known or high-entropy credential material accepted by Git-ref grammar. */
-export function looksLikeOpaqueCredential(
-  value: string,
-  allowGitObjectId = false,
-): boolean {
+export function looksLikeOpaqueCredential(value: string, allowGitObjectId = false): boolean {
   // Public abbreviated/full SHA-1 and full SHA-256 object IDs are legitimate refs.
   if (allowGitObjectId && /^(?:[a-f0-9]{7,40}|[a-f0-9]{64})$/i.test(value)) {
     return false;
@@ -30,7 +27,9 @@ export function looksLikeOpaqueCredential(
   if (/(?:^|[^A-Za-z0-9])(?:hvs|hvb|hvr)\.[A-Za-z0-9_-]{20,}(?:$|[^A-Za-z0-9_-])/i.test(value)) {
     return true;
   }
-  if (/(?:^|[^A-Za-z0-9])(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}(?:$|[^A-Za-z0-9_])/.test(value)) {
+  if (
+    /(?:^|[^A-Za-z0-9])(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}(?:$|[^A-Za-z0-9_])/.test(value)
+  ) {
     return true;
   }
   if (/(?:^|[^A-Za-z0-9])sk-(?:proj-)?[A-Za-z0-9_-]{20,}(?:$|[^A-Za-z0-9_-])/.test(value)) {
@@ -39,7 +38,11 @@ export function looksLikeOpaqueCredential(
   if (/(?:^|[^A-Za-z0-9])npm_[A-Za-z0-9]{36,}(?:$|[^A-Za-z0-9])/i.test(value)) {
     return true;
   }
-  if (/(?:^|[^A-Za-z0-9])(?:glpat-|sbp_|shpat_|xox[baprs]-|sk_(?:live|test)_|rk_(?:live|test)_)[A-Za-z0-9_-]{16,}/i.test(value)) {
+  if (
+    /(?:^|[^A-Za-z0-9])(?:glpat-|sbp_|shpat_|xox[baprs]-|sk_(?:live|test)_|rk_(?:live|test)_)[A-Za-z0-9_-]{16,}/i.test(
+      value,
+    )
+  ) {
     return true;
   }
   if (/\bAKIA[A-Z0-9]{16}\b/.test(value) || /\bAIza[0-9A-Za-z_-]{30,}\b/.test(value)) {
@@ -50,9 +53,8 @@ export function looksLikeOpaqueCredential(
   }
 
   const slashSegments = value.split("/");
-  const credentialCandidates = slashSegments.length > 1
-    ? [...slashSegments, slashSegments.join("")]
-    : slashSegments;
+  const credentialCandidates =
+    slashSegments.length > 1 ? [...slashSegments, slashSegments.join("")] : slashSegments;
   for (const segment of credentialCandidates) {
     if (segment.length < 32 || !/^[A-Za-z0-9+_.=-]+$/.test(segment)) continue;
     const compact = segment.replace(/[+_.=-]/g, "");
@@ -71,11 +73,12 @@ export function looksLikeOpaqueCredential(
     }
     const uniqueCharacters = new Set(compact).size;
     const entropy = shannonEntropy(compact);
-    const separatorFreeAlphabeticToken = separatorCount === 0
-      && /^[A-Za-z]+$/.test(compact)
-      && compact.length >= 40
-      && uniqueCharacters >= 14
-      && entropy >= 4;
+    const separatorFreeAlphabeticToken =
+      separatorCount === 0 &&
+      /^[A-Za-z]+$/.test(compact) &&
+      compact.length >= 40 &&
+      uniqueCharacters >= 14 &&
+      entropy >= 4;
     if (digitCount === 0 && !hasMixedCase && !separatorFreeAlphabeticToken) continue;
     if (uniqueCharacters >= 12 && entropy >= 3.75) {
       return true;
@@ -105,9 +108,7 @@ export function normalizeGitRef(ref: string | null | undefined): string | null {
   return value;
 }
 
-export function normalizeSSHUsername(
-  username: string | null | undefined,
-): string | null {
+export function normalizeSSHUsername(username: string | null | undefined): string | null {
   const value = username?.trim() ?? "";
   if (!value) return null;
   if (value.length > MAX_SSH_USERNAME_LENGTH) return null;
@@ -136,7 +137,8 @@ export function isValidIP(ip: string): boolean {
     return false;
   }
 
-  const ipv6Pattern = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$/;
+  const ipv6Pattern =
+    /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$/;
 
   return ipv6Pattern.test(normalized);
 }

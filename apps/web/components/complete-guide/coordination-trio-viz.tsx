@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { Repeat } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Hl } from "@/components/complete-guide/guide-components";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 const EXHIBIT_PANEL_CLASS =
   "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
@@ -79,9 +79,8 @@ export function CoordinationTrioViz() {
             Beads, Agent Mail, and bv are a single machine
           </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
-            Hover or tap to inspect each piece. Click again to remove it and
-            watch the system lose a capability it cannot replace. 
-            This is the <Hl>Coordination Triangle</Hl>.
+            Hover or tap to inspect each piece. Click again to remove it and watch the system lose a
+            capability it cannot replace. This is the <Hl>Coordination Triangle</Hl>.
           </p>
         </div>
 
@@ -103,7 +102,7 @@ export function CoordinationTrioViz() {
       <div className="mt-16 grid gap-12 xl:grid-cols-[1.2fr_0.8fr] items-center">
         <div className="relative aspect-square sm:aspect-video xl:aspect-square flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(167,139,250,0.05),transparent_70%)]" />
-          
+
           <motion.svg
             viewBox="0 0 600 380"
             className="relative z-10 w-full h-full max-h-[500px]"
@@ -134,7 +133,13 @@ export function CoordinationTrioViz() {
                     // "animate strokeOpacity from undefined" and skips the tween.
                     initial={{ strokeOpacity: 0.1 }}
                     animate={{
-                      strokeOpacity: isDisabled ? 0.1 : hoveredTool ? (isHovered ? 0.8 : 0.05) : 0.1,
+                      strokeOpacity: isDisabled
+                        ? 0.1
+                        : hoveredTool
+                          ? isHovered
+                            ? 0.8
+                            : 0.05
+                          : 0.1,
                     }}
                     transition={{ duration: 0.4 }}
                   />
@@ -171,7 +176,7 @@ export function CoordinationTrioViz() {
                   className="cursor-crosshair outline-none"
                 >
                   <circle cx={tool.x} cy={tool.y} r={60} fill="transparent" />
-                  
+
                   {/* Point core */}
                   <motion.circle
                     cx={tool.x}
@@ -182,7 +187,7 @@ export function CoordinationTrioViz() {
                     animate={{ scale: isHovered ? [1, 1.4, 1] : 1 }}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
-                  
+
                   {/* Outer rings */}
                   <motion.circle
                     cx={tool.x}
@@ -210,15 +215,23 @@ export function CoordinationTrioViz() {
 
         <div className="flex flex-col gap-8">
           <div className="p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03]">
-            <span className="text-[0.6rem] font-black text-white/20 uppercase tracking-[0.4em]">Capability Map</span>
+            <span className="text-[0.6rem] font-black text-white/20 uppercase tracking-[0.4em]">
+              Capability Map
+            </span>
             <div className="mt-8 flex flex-col gap-6">
               {[
-                { l: "Agent Mail", t: "The high-bandwidth negotiation layer.", c: "text-[#FF5500]" },
+                {
+                  l: "Agent Mail",
+                  t: "The high-bandwidth negotiation layer.",
+                  c: "text-[#FF5500]",
+                },
                 { l: "br", t: "The durable, localized issue state.", c: "text-violet-400" },
-                { l: "bv", t: "The graph-theory compass for triage.", c: "text-[#FFBD2E]" }
+                { l: "bv", t: "The graph-theory compass for triage.", c: "text-[#FFBD2E]" },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
-                  <span className={`text-[0.7rem] font-bold tracking-wide ${item.c} `}>{item.l}</span>
+                  <span className={`text-[0.7rem] font-bold tracking-wide ${item.c} `}>
+                    {item.l}
+                  </span>
                   <p className="text-sm text-zinc-400 font-extralight leading-relaxed">{item.t}</p>
                 </div>
               ))}
@@ -235,7 +248,9 @@ export function CoordinationTrioViz() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="p-10 rounded-[2.5rem] bg-[#100505] border border-red-500/10 shadow-inner"
               >
-                <span className="text-[0.6rem] font-black text-red-500/60 uppercase tracking-[0.5em] block mb-6">Failure Mode Analysis</span>
+                <span className="text-[0.6rem] font-black text-red-500/60 uppercase tracking-[0.5em] block mb-6">
+                  Failure Mode Analysis
+                </span>
                 <div className="text-lg font-black text-white mb-2">
                   Missing {TOOL_MAP.get(disabledTool)?.label}
                 </div>
@@ -274,12 +289,13 @@ export function CoordinationTrioViz() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
-                <span className="text-[0.6rem] font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">System Architecture</span>
+                <span className="text-[0.6rem] font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">
+                  System Architecture
+                </span>
                 <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
-                  The trio is not three nice-to-have tools. It is one operating
-                  system split into memory, communication, and leverage
-                  analysis. Remove any side of the triangle and the swarm loses
-                  determinism.
+                  The trio is not three nice-to-have tools. It is one operating system split into
+                  memory, communication, and leverage analysis. Remove any side of the triangle and
+                  the swarm loses determinism.
                 </p>
               </motion.div>
             )}
