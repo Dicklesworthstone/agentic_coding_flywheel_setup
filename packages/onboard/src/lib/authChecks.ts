@@ -1,14 +1,17 @@
-import * as childProcess from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as childProcess from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 export interface AuthStatus {
   authenticated: boolean;
   details?: string;
 }
 
-type ExecSync = (command: string, options?: childProcess.ExecSyncOptions & { encoding?: 'utf-8' }) => string;
+type ExecSync = (
+  command: string,
+  options?: childProcess.ExecSyncOptions & { encoding?: "utf-8" },
+) => string;
 
 interface AuthCheckDeps {
   execSync: ExecSync;
@@ -29,7 +32,7 @@ function isExecutable(filePath: string): boolean {
 }
 
 function defaultCommandExists(env: NodeJS.ProcessEnv, command: string): boolean {
-  const pathValue = env.PATH ?? '';
+  const pathValue = env.PATH ?? "";
   if (!pathValue) {
     return false;
   }
@@ -64,7 +67,7 @@ const defaultDeps: AuthCheckDeps = {
 
 function safeReadJson<T>(readFileSync: typeof fs.readFileSync, filePath: string): T | null {
   try {
-    const raw = readFileSync(filePath, 'utf-8');
+    const raw = readFileSync(filePath, "utf-8");
     return JSON.parse(raw) as T;
   } catch {
     return null;
@@ -72,7 +75,7 @@ function safeReadJson<T>(readFileSync: typeof fs.readFileSync, filePath: string)
 }
 
 function hasNonBlankString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function normalizeConfigValue(value: string): string {
@@ -92,7 +95,7 @@ function stripShellInlineComment(value: string): string {
   for (let i = 0; i < value.length; i += 1) {
     const char = value[i];
     if (quote) {
-      if (char === '\\') {
+      if (char === "\\") {
         i += 1;
         continue;
       }
@@ -105,7 +108,7 @@ function stripShellInlineComment(value: string): string {
       quote = char;
       continue;
     }
-    if (char === '#' && (i === 0 || /\s/.test(value[i - 1] ?? ''))) {
+    if (char === "#" && (i === 0 || /\s/.test(value[i - 1] ?? ""))) {
       return value.slice(0, i).trimEnd();
     }
   }
@@ -117,33 +120,33 @@ function hasUnresolvedShellExpression(value: string): boolean {
   // expansion syntax as unresolved instead of mistaking the expression itself
   // for a credential. Real environment values have already been expanded and
   // are handled separately by getConfiguredSecret.
-  return value.includes('$') || value.includes('`');
+  return value.includes("$") || value.includes("`");
 }
 
 const PLACEHOLDER_SECRETS = new Set([
-  'your-token-here',
-  'your_token_here',
-  'your-token',
-  'your_token',
-  'your_api_key',
-  'your-api-key',
-  'your_github_token',
-  'your_openai_api_key',
-  'your_claude_token',
-  'your_vercel_token',
-  'your_supabase_access_token',
-  'your_cloudflare_api_token',
-  'your_gemini_api_key',
-  'your-gemini-api-key',
-  'your_google_api_key',
-  'your_project_id',
-  'your_project_location',
-  'replace-me',
-  'change-me',
-  'changeme',
-  '<token>',
-  '<api-key>',
-  '<secret>',
+  "your-token-here",
+  "your_token_here",
+  "your-token",
+  "your_token",
+  "your_api_key",
+  "your-api-key",
+  "your_github_token",
+  "your_openai_api_key",
+  "your_claude_token",
+  "your_vercel_token",
+  "your_supabase_access_token",
+  "your_cloudflare_api_token",
+  "your_gemini_api_key",
+  "your-gemini-api-key",
+  "your_google_api_key",
+  "your_project_id",
+  "your_project_location",
+  "replace-me",
+  "change-me",
+  "changeme",
+  "<token>",
+  "<api-key>",
+  "<secret>",
 ]);
 
 function isPlaceholderSecret(value: unknown): boolean {
@@ -158,7 +161,7 @@ function hasUsableSecret(value: unknown): value is string {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function readConfiguredValueFromFile(
@@ -167,7 +170,7 @@ function readConfiguredValueFromFile(
   variableName: string,
 ): string | null {
   try {
-    const contents = readFileSync(filePath, 'utf-8');
+    const contents = readFileSync(filePath, "utf-8");
     const assignmentRegex = new RegExp(
       `^\\s*(?:export\\s+)?${escapeRegex(variableName)}\\s*=\\s*(.*?)\\s*$`,
     );
@@ -179,7 +182,7 @@ function readConfiguredValueFromFile(
         continue;
       }
 
-      const [, rawValue = ''] = match;
+      const [, rawValue = ""] = match;
       const value = stripShellInlineComment(rawValue);
       const normalized = normalizeConfigValue(value);
       configuredValue = normalized && !hasUnresolvedShellExpression(normalized) ? normalized : null;
@@ -192,13 +195,15 @@ function readConfiguredValueFromFile(
 }
 
 function extractYamlTopLevelBlock(contents: string, topLevelKey: string): string | null {
-  const escapedKey = topLevelKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = contents.match(new RegExp(`(?:^|\\n)${escapedKey}:\\s*\\n((?:[ \\t]+.*(?:\\n|$))+)`, 'm'));
+  const escapedKey = topLevelKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = contents.match(
+    new RegExp(`(?:^|\\n)${escapedKey}:\\s*\\n((?:[ \\t]+.*(?:\\n|$))+)`, "m"),
+  );
   return match?.[1] ?? null;
 }
 
 function parseGitHubHostsEntry(contents: string): AuthStatus | null {
-  const block = extractYamlTopLevelBlock(contents, 'github.com');
+  const block = extractYamlTopLevelBlock(contents, "github.com");
   if (!block) {
     return null;
   }
@@ -220,12 +225,13 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   }
   const homedir = deps.homedir();
   const shellConfigPaths = [
-    path.join(homedir, '.zshrc.local'),
-    path.join(homedir, '.zshrc'),
-    path.join(homedir, '.bashrc'),
-    path.join(homedir, '.profile'),
+    path.join(homedir, ".zshrc.local"),
+    path.join(homedir, ".zshrc"),
+    path.join(homedir, ".bashrc"),
+    path.join(homedir, ".profile"),
   ];
-  const antigravityHome = deps.env.ANTIGRAVITY_HOME ?? path.join(homedir, '.gemini', 'antigravity-cli');
+  const antigravityHome =
+    deps.env.ANTIGRAVITY_HOME ?? path.join(homedir, ".gemini", "antigravity-cli");
 
   const runCommand = (
     command: string,
@@ -233,8 +239,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   ): string | null => {
     try {
       const output = deps.execSync(command, {
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'ignore'],
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
         timeout: 5000,
       });
       const trimmed = output.trim();
@@ -245,8 +251,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       // JSON parsing for commands that emit JSON on stdout.
       if (options.allowStderrFallback) {
         const mergedOutput = deps.execSync(`${command} 2>&1`, {
-          encoding: 'utf-8',
-          stdio: ['ignore', 'pipe', 'ignore'],
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "ignore"],
           timeout: 5000,
         });
         const mergedTrimmed = mergedOutput.trim();
@@ -268,7 +274,11 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (!deps.existsSync(filePath)) {
         continue;
       }
-      const configuredValue = readConfiguredValueFromFile(deps.readFileSync, filePath, variableName);
+      const configuredValue = readConfiguredValueFromFile(
+        deps.readFileSync,
+        filePath,
+        variableName,
+      );
       if (hasUsableSecret(configuredValue)) {
         return configuredValue;
       }
@@ -277,17 +287,17 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkTailscale = (): AuthStatus => {
-    if (!deps.commandExists('tailscale')) {
+    if (!deps.commandExists("tailscale")) {
       return { authenticated: false };
     }
     try {
-      const result = runCommand('tailscale status --json');
+      const result = runCommand("tailscale status --json");
       if (!result) {
         return { authenticated: false };
       }
       const status = JSON.parse(result) as { BackendState?: string } | null;
-      if (status?.BackendState === 'Running') {
-        const ip = runCommand('tailscale ip -4');
+      if (status?.BackendState === "Running") {
+        const ip = runCommand("tailscale ip -4");
         return ip ? { authenticated: true, details: `IP: ${ip}` } : { authenticated: true };
       }
       return { authenticated: false };
@@ -297,11 +307,11 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkClaude = (): AuthStatus => {
-    if (!deps.commandExists('claude')) {
+    if (!deps.commandExists("claude")) {
       return { authenticated: false };
     }
 
-    const credentialsPath = path.join(homedir, '.claude', '.credentials.json');
+    const credentialsPath = path.join(homedir, ".claude", ".credentials.json");
     const credentials = safeReadJson<{ claudeAiOauth?: { accessToken?: string } }>(
       deps.readFileSync,
       credentialsPath,
@@ -311,8 +321,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     }
 
     const configPaths = [
-      path.join(homedir, '.claude', 'config.json'),
-      path.join(homedir, '.config', 'claude', 'config.json'),
+      path.join(homedir, ".claude", "config.json"),
+      path.join(homedir, ".config", "claude", "config.json"),
     ];
 
     for (const configPath of configPaths) {
@@ -327,12 +337,12 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkCodex = (): AuthStatus => {
-    if (!deps.commandExists('codex')) {
+    if (!deps.commandExists("codex")) {
       return { authenticated: false };
     }
 
-    const codexHome = deps.env.CODEX_HOME ?? path.join(homedir, '.codex');
-    const authPath = path.join(codexHome, 'auth.json');
+    const codexHome = deps.env.CODEX_HOME ?? path.join(homedir, ".codex");
+    const authPath = path.join(codexHome, "auth.json");
     if (!deps.existsSync(authPath)) {
       return { authenticated: false };
     }
@@ -356,16 +366,16 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkAntigravity = (): AuthStatus => {
-    if (!deps.commandExists('agy')) {
+    if (!deps.commandExists("agy")) {
       return { authenticated: false };
     }
 
-    const tokenPath = path.join(antigravityHome, 'antigravity-oauth-token');
+    const tokenPath = path.join(antigravityHome, "antigravity-oauth-token");
     if (!deps.existsSync(tokenPath)) {
       return { authenticated: false };
     }
     try {
-      const token = deps.readFileSync(tokenPath, 'utf-8');
+      const token = deps.readFileSync(tokenPath, "utf-8");
       if (hasUsableSecret(token)) {
         return { authenticated: true };
       }
@@ -377,18 +387,18 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkGitHub = (): AuthStatus => {
-    if (deps.commandExists('gh')) {
-      const output = runCommand('gh auth status -h github.com', { allowStderrFallback: true });
-      if (output && output.includes('Logged in to')) {
+    if (deps.commandExists("gh")) {
+      const output = runCommand("gh auth status -h github.com", { allowStderrFallback: true });
+      if (output && output.includes("Logged in to")) {
         const match = output.match(/Logged in to .* as ([^\s]+)/i);
         return { authenticated: true, details: match?.[1] };
       }
     }
 
-    const hostsPath = path.join(homedir, '.config', 'gh', 'hosts.yml');
+    const hostsPath = path.join(homedir, ".config", "gh", "hosts.yml");
     if (deps.existsSync(hostsPath)) {
       try {
-        const contents = deps.readFileSync(hostsPath, 'utf-8');
+        const contents = deps.readFileSync(hostsPath, "utf-8");
         return parseGitHubHostsEntry(contents) ?? { authenticated: false };
       } catch {
         return { authenticated: false };
@@ -398,26 +408,29 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkVercel = (): AuthStatus => {
-    if (deps.commandExists('vercel')) {
-      if (getConfiguredSecret('VERCEL_TOKEN', shellConfigPaths)) {
-        return { authenticated: true, details: 'via VERCEL_TOKEN' };
+    if (deps.commandExists("vercel")) {
+      if (getConfiguredSecret("VERCEL_TOKEN", shellConfigPaths)) {
+        return { authenticated: true, details: "via VERCEL_TOKEN" };
       }
 
-      const output = runCommand('vercel whoami');
-      if (output && !output.toLowerCase().includes('not logged')) {
+      const output = runCommand("vercel whoami");
+      if (output && !output.toLowerCase().includes("not logged")) {
         return { authenticated: true, details: output };
       }
     }
 
     const authPaths = [
-      path.join(homedir, '.config', 'vercel', 'auth.json'),
-      path.join(homedir, '.vercel', 'auth.json'),
+      path.join(homedir, ".config", "vercel", "auth.json"),
+      path.join(homedir, ".vercel", "auth.json"),
     ];
     for (const authPath of authPaths) {
       if (!deps.existsSync(authPath)) {
         continue;
       }
-      const auth = safeReadJson<{ token?: string; user?: { email?: string } }>(deps.readFileSync, authPath);
+      const auth = safeReadJson<{ token?: string; user?: { email?: string } }>(
+        deps.readFileSync,
+        authPath,
+      );
       if (hasUsableSecret(auth?.token)) {
         if (hasNonBlankString(auth?.user?.email)) {
           return { authenticated: true, details: auth.user.email.trim() };
@@ -430,27 +443,24 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkSupabase = (): AuthStatus => {
-    if (getConfiguredSecret('SUPABASE_ACCESS_TOKEN', shellConfigPaths)) {
-      return { authenticated: true, details: 'via SUPABASE_ACCESS_TOKEN' };
+    if (getConfiguredSecret("SUPABASE_ACCESS_TOKEN", shellConfigPaths)) {
+      return { authenticated: true, details: "via SUPABASE_ACCESS_TOKEN" };
     }
 
     const tokenPaths = [
-      path.join(homedir, '.supabase', 'access-token'),
-      path.join(homedir, '.config', 'supabase', 'access-token'),
+      path.join(homedir, ".supabase", "access-token"),
+      path.join(homedir, ".config", "supabase", "access-token"),
     ];
     for (const tokenPath of tokenPaths) {
       if (!deps.existsSync(tokenPath)) {
         continue;
       }
       try {
-        const token = deps.readFileSync(tokenPath, 'utf-8').trim();
+        const token = deps.readFileSync(tokenPath, "utf-8").trim();
         if (hasUsableSecret(token)) {
           return { authenticated: true };
         }
-      } catch {
-        // File exists but unreadable - cannot confirm authentication
-        continue;
-      }
+      } catch {}
     }
     // Note: config.toml existence alone doesn't indicate authentication
     // It's created by `supabase init` but contains no credentials
@@ -458,13 +468,13 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkWrangler = (): AuthStatus => {
-    if (getConfiguredSecret('CLOUDFLARE_API_TOKEN', shellConfigPaths)) {
-      return { authenticated: true, details: 'via CLOUDFLARE_API_TOKEN' };
+    if (getConfiguredSecret("CLOUDFLARE_API_TOKEN", shellConfigPaths)) {
+      return { authenticated: true, details: "via CLOUDFLARE_API_TOKEN" };
     }
-    if (deps.commandExists('wrangler')) {
-      const output = runCommand('wrangler whoami');
+    if (deps.commandExists("wrangler")) {
+      const output = runCommand("wrangler whoami");
       if (output) {
-        if (!output.toLowerCase().includes('not authenticated')) {
+        if (!output.toLowerCase().includes("not authenticated")) {
           const match = output.match(/email:\s*([^\s]+)/i);
           return { authenticated: true, details: match?.[1] };
         }
@@ -480,9 +490,9 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
 
   const AUTH_CHECKS: Record<string, () => AuthStatus> = {
     tailscale: checkTailscale,
-    'claude-code': checkClaude,
-    'codex-cli': checkCodex,
-    'antigravity-cli': checkAntigravity,
+    "claude-code": checkClaude,
+    "codex-cli": checkCodex,
+    "antigravity-cli": checkAntigravity,
     github: checkGitHub,
     vercel: checkVercel,
     supabase: checkSupabase,
@@ -529,14 +539,14 @@ const {
 } = createAuthChecks();
 
 export {
-  checkTailscale,
-  checkClaude,
-  checkCodex,
-  checkAntigravity,
-  checkGitHub,
-  checkVercel,
-  checkSupabase,
-  checkWrangler,
   AUTH_CHECKS,
   checkAllServices,
+  checkAntigravity,
+  checkClaude,
+  checkCodex,
+  checkGitHub,
+  checkSupabase,
+  checkTailscale,
+  checkVercel,
+  checkWrangler,
 };
