@@ -1,22 +1,19 @@
-import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import {
-  checkManifestDriftContract,
-  type DriftContractCode,
-} from './drift-contract.js';
+import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { checkManifestDriftContract, type DriftContractCode } from "./drift-contract.js";
 import {
   README_AGENT_ROSTER_BEGIN,
   README_AGENT_ROSTER_END,
   README_AGENT_SUMMARY_BEGIN,
   README_AGENT_SUMMARY_END,
   renderReadmeAgentRoster,
-} from './generate.js';
-import { parseManifestFile } from './parser.js';
+} from "./generate.js";
+import { parseManifestFile } from "./parser.js";
 
-const HASH = 'a'.repeat(64);
-const INSTALLER_URL = 'https://example.com/example/install.sh';
+const HASH = "a".repeat(64);
+const INSTALLER_URL = "https://example.com/example/install.sh";
 
 function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -28,11 +25,11 @@ function writeFixtureFile(root: string, relPath: string, content: string): void 
 }
 
 function cleanFixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'acfs-manifest-drift-contract-'));
+  const root = mkdtempSync(join(tmpdir(), "acfs-manifest-drift-contract-"));
 
   writeFixtureFile(
     root,
-    'acfs.manifest.yaml',
+    "acfs.manifest.yaml",
     `version: 1
 name: Test ACFS
 id: test_acfs
@@ -92,44 +89,44 @@ modules:
       - echo local
     verify:
       - local --version
-`
+`,
   );
 
   writeFixtureFile(
     root,
-    'checksums.yaml',
+    "checksums.yaml",
     `installers:
   example:
     url: ${INSTALLER_URL}
     sha256: ${HASH}
-`
+`,
   );
 
   writeFixtureFile(
     root,
-    'scripts/generated/manifest_index.sh',
+    "scripts/generated/manifest_index.sh",
     `ACFS_MODULES_IN_ORDER=(
     "stack.example"
     "stack.hidden"
     "base.local"
 )
-`
+`,
   );
 
   writeFixtureFile(
     root,
-    'scripts/generated/doctor_checks.sh',
+    "scripts/generated/doctor_checks.sh",
     `declare -a MANIFEST_CHECKS=(
     "stack.example\tExample stack tool\texample --version\trequired\ttarget_user"
     "stack.hidden\tHidden stack tool\thidden --version\toptional\ttarget_user"
     "base.local\tLocal base tool\tlocal --version\trequired\ttarget_user"
 )
-`
+`,
   );
 
   writeFixtureFile(
     root,
-    'apps/web/lib/generated/manifest-modules.ts',
+    "apps/web/lib/generated/manifest-modules.ts",
     `export const manifestModules = [
   {
     id: "stack.example",
@@ -141,46 +138,46 @@ modules:
     id: "base.local",
   },
 ];
-`
+`,
   );
   writeFixtureFile(
     root,
-    'apps/web/lib/generated/manifest-tools.ts',
-    'export const manifestTools = [{ moduleId: "stack.example" }];\n'
+    "apps/web/lib/generated/manifest-tools.ts",
+    'export const manifestTools = [{ moduleId: "stack.example" }];\n',
   );
   writeFixtureFile(
     root,
-    'apps/web/lib/generated/manifest-commands.ts',
-    'export const manifestCommands = [{ moduleId: "stack.example" }];\n'
+    "apps/web/lib/generated/manifest-commands.ts",
+    'export const manifestCommands = [{ moduleId: "stack.example" }];\n',
   );
   writeFixtureFile(
     root,
-    'apps/web/lib/generated/manifest-tldr.ts',
-    'export const manifestTldrTools = [{ moduleId: "stack.example" }];\n'
+    "apps/web/lib/generated/manifest-tldr.ts",
+    'export const manifestTldrTools = [{ moduleId: "stack.example" }];\n',
   );
   writeFixtureFile(
     root,
-    'apps/web/lib/generated/manifest-lessons-index.ts',
+    "apps/web/lib/generated/manifest-lessons-index.ts",
     `export const manifestLessonLinks = [
   { moduleId: "stack.example", lessonSlug: "example" },
 ];
 export const lessonSlugByModuleId = {
   "stack.example": "example",
 };
-`
+`,
   );
-  writeFixtureFile(root, 'acfs/onboard/lessons/01_example.md', '# Example\n');
+  writeFixtureFile(root, "acfs/onboard/lessons/01_example.md", "# Example\n");
   writeFixtureFile(
     root,
-    'README.md',
+    "README.md",
     [
-      'scripts/check-manifest-drift.sh --json',
-      'bun run generate:diff',
-      'scripts/generated/doctor_checks.sh',
-      'apps/web/lib/generated',
-      'acfs/onboard/lessons',
-      'checksums.yaml',
-    ].join('\n')
+      "scripts/check-manifest-drift.sh --json",
+      "bun run generate:diff",
+      "scripts/generated/doctor_checks.sh",
+      "apps/web/lib/generated",
+      "acfs/onboard/lessons",
+      "checksums.yaml",
+    ].join("\n"),
   );
 
   return root;
@@ -214,65 +211,62 @@ const AGENT_MODULE_YAML = `  - id: agents.example
 function agentFixture(): string {
   const root = cleanFixture();
 
-  const manifestPath = join(root, 'acfs.manifest.yaml');
+  const manifestPath = join(root, "acfs.manifest.yaml");
   writeFixtureFile(
     root,
-    'acfs.manifest.yaml',
-    `${readFileSync(manifestPath, 'utf-8')}${AGENT_MODULE_YAML}`
+    "acfs.manifest.yaml",
+    `${readFileSync(manifestPath, "utf-8")}${AGENT_MODULE_YAML}`,
   );
 
-  const indexPath = 'scripts/generated/manifest_index.sh';
+  const indexPath = "scripts/generated/manifest_index.sh";
   writeFixtureFile(
     root,
     indexPath,
-    readFileSync(join(root, indexPath), 'utf-8').replace(
-      '\n)\n',
-      '\n    "agents.example"\n)\n'
-    )
+    readFileSync(join(root, indexPath), "utf-8").replace("\n)\n", '\n    "agents.example"\n)\n'),
   );
 
-  const doctorPath = 'scripts/generated/doctor_checks.sh';
+  const doctorPath = "scripts/generated/doctor_checks.sh";
   writeFixtureFile(
     root,
     doctorPath,
-    readFileSync(join(root, doctorPath), 'utf-8').replace(
-      '\n)\n',
-      '\n    "agents.example\tExample coding agent\texampleagent --version\trequired\ttarget_user"\n)\n'
-    )
+    readFileSync(join(root, doctorPath), "utf-8").replace(
+      "\n)\n",
+      '\n    "agents.example\tExample coding agent\texampleagent --version\trequired\ttarget_user"\n)\n',
+    ),
   );
 
-  const modulesPath = 'apps/web/lib/generated/manifest-modules.ts';
+  const modulesPath = "apps/web/lib/generated/manifest-modules.ts";
   writeFixtureFile(
     root,
     modulesPath,
-    readFileSync(join(root, modulesPath), 'utf-8').replace(
-      '\n];\n',
-      '\n  {\n    id: "agents.example",\n  },\n];\n'
-    )
+    readFileSync(join(root, modulesPath), "utf-8").replace(
+      "\n];\n",
+      '\n  {\n    id: "agents.example",\n  },\n];\n',
+    ),
   );
 
   writeFixtureFile(
     root,
-    'apps/web/lib/generated/manifest-agents.ts',
-    'export const manifestAgents = [{ moduleId: "agents.example" }];\n'
+    "apps/web/lib/generated/manifest-agents.ts",
+    'export const manifestAgents = [{ moduleId: "agents.example" }];\n',
   );
 
-  const readmePath = join(root, 'README.md');
+  const readmePath = join(root, "README.md");
   const readmeWithMarkers = [
-    readFileSync(readmePath, 'utf-8'),
-    '',
+    readFileSync(readmePath, "utf-8"),
+    "",
     README_AGENT_SUMMARY_BEGIN,
     README_AGENT_SUMMARY_END,
-    '',
+    "",
     README_AGENT_ROSTER_BEGIN,
     README_AGENT_ROSTER_END,
-    '',
-  ].join('\n');
-  const parsed = parseManifestFile(join(root, 'acfs.manifest.yaml'));
+    "",
+  ].join("\n");
+  const parsed = parseManifestFile(join(root, "acfs.manifest.yaml"));
   if (!parsed.success || !parsed.data) {
     throw new Error(`agent fixture manifest did not parse: ${parsed.error?.message}`);
   }
-  writeFixtureFile(root, 'README.md', renderReadmeAgentRoster(readmeWithMarkers, parsed.data));
+  writeFixtureFile(root, "README.md", renderReadmeAgentRoster(readmeWithMarkers, parsed.data));
 
   return root;
 }
@@ -281,8 +275,8 @@ function codes(root: string): DriftContractCode[] {
   return checkManifestDriftContract(root).mismatches.map((mismatch) => mismatch.code);
 }
 
-describe('manifest drift contract', () => {
-  test('passes clean fixtures and honors intentional skip cases', () => {
+describe("manifest drift contract", () => {
+  test("passes clean fixtures and honors intentional skip cases", () => {
     const result = checkManifestDriftContract(cleanFixture());
 
     expect(result.ok).toBe(true);
@@ -292,7 +286,7 @@ describe('manifest drift contract', () => {
     expect(result.summary.lessonLinkedModules).toBe(1);
   });
 
-  test('accepts a manifest whose agent roster is in sync everywhere', () => {
+  test("accepts a manifest whose agent roster is in sync everywhere", () => {
     const result = checkManifestDriftContract(agentFixture());
 
     expect(result.mismatches).toEqual([]);
@@ -300,13 +294,13 @@ describe('manifest drift contract', () => {
     expect(result.summary.agentRosterEntries).toBe(1);
   });
 
-  test('flags an agents module with no roster metadata', () => {
+  test("flags an agents module with no roster metadata", () => {
     const root = agentFixture();
-    const manifestPath = join(root, 'acfs.manifest.yaml');
+    const manifestPath = join(root, "acfs.manifest.yaml");
     writeFixtureFile(
       root,
-      'acfs.manifest.yaml',
-      `${readFileSync(manifestPath, 'utf-8')}  - id: agents.undocumented
+      "acfs.manifest.yaml",
+      `${readFileSync(manifestPath, "utf-8")}  - id: agents.undocumented
     description: Undocumented coding agent
     run_as: target_user
     optional: true
@@ -316,110 +310,112 @@ describe('manifest drift contract', () => {
       - echo undocumented
     verify:
       - undocumented --version
-`
+`,
     );
 
     expect(checkManifestDriftContract(root).mismatches).toContainEqual(
       expect.objectContaining({
-        code: 'AGENT_ROSTER_METADATA_MISSING',
-        moduleId: 'agents.undocumented',
-      })
+        code: "AGENT_ROSTER_METADATA_MISSING",
+        moduleId: "agents.undocumented",
+      }),
     );
   });
 
-  test('flags a README whose roster region no longer matches the manifest', () => {
+  test("flags a README whose roster region no longer matches the manifest", () => {
     const root = agentFixture();
-    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
-    writeFixtureFile(root, 'README.md', readme.replace('Example Agent', 'Stale Agent'));
+    const readme = readFileSync(join(root, "README.md"), "utf-8");
+    writeFixtureFile(root, "README.md", readme.replace("Example Agent", "Stale Agent"));
 
-    expect(codes(root)).toContain('README_AGENT_ROSTER_DRIFT');
+    expect(codes(root)).toContain("README_AGENT_ROSTER_DRIFT");
   });
 
-  test('flags a README whose summary region no longer matches the manifest', () => {
+  test("flags a README whose summary region no longer matches the manifest", () => {
     const root = agentFixture();
-    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
-    writeFixtureFile(root, 'README.md', readme.replace('1 module', '9 modules'));
+    const readme = readFileSync(join(root, "README.md"), "utf-8");
+    writeFixtureFile(root, "README.md", readme.replace("1 module", "9 modules"));
 
-    expect(codes(root)).toContain('README_AGENT_ROSTER_DRIFT');
+    expect(codes(root)).toContain("README_AGENT_ROSTER_DRIFT");
   });
 
-  test('flags a README that lost the roster region markers', () => {
+  test("flags a README that lost the roster region markers", () => {
     const root = agentFixture();
-    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
+    const readme = readFileSync(join(root, "README.md"), "utf-8");
     const begin = readme.indexOf(README_AGENT_ROSTER_BEGIN);
-    writeFixtureFile(root, 'README.md', readme.slice(0, begin));
+    writeFixtureFile(root, "README.md", readme.slice(0, begin));
 
-    expect(codes(root)).toContain('README_AGENT_ROSTER_REGION_MISSING');
+    expect(codes(root)).toContain("README_AGENT_ROSTER_REGION_MISSING");
   });
 
-  test('flags a README that lost the summary region markers', () => {
+  test("flags a README that lost the summary region markers", () => {
     const root = agentFixture();
-    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
+    const readme = readFileSync(join(root, "README.md"), "utf-8");
     writeFixtureFile(
       root,
-      'README.md',
-      readme.replace(README_AGENT_SUMMARY_BEGIN, '').replace(README_AGENT_SUMMARY_END, '')
+      "README.md",
+      readme.replace(README_AGENT_SUMMARY_BEGIN, "").replace(README_AGENT_SUMMARY_END, ""),
     );
 
-    expect(codes(root)).toContain('README_AGENT_ROSTER_REGION_MISSING');
+    expect(codes(root)).toContain("README_AGENT_ROSTER_REGION_MISSING");
   });
 
-  test('flags a generated web roster that dropped an agent', () => {
+  test("flags a generated web roster that dropped an agent", () => {
     const root = agentFixture();
     writeFixtureFile(
       root,
-      'apps/web/lib/generated/manifest-agents.ts',
-      'export const manifestAgents = [];\n'
+      "apps/web/lib/generated/manifest-agents.ts",
+      "export const manifestAgents = [];\n",
     );
 
     expect(checkManifestDriftContract(root).mismatches).toContainEqual(
       expect.objectContaining({
-        code: 'WEB_AGENT_MISSING',
-        moduleId: 'agents.example',
-      })
+        code: "WEB_AGENT_MISSING",
+        moduleId: "agents.example",
+      }),
     );
   });
 
-  test('detects stale generated manifest index output', () => {
+  test("detects stale generated manifest index output", () => {
     const root = cleanFixture();
     writeFixtureFile(
       root,
-      'scripts/generated/manifest_index.sh',
+      "scripts/generated/manifest_index.sh",
       `ACFS_MODULES_IN_ORDER=(
     "stack.hidden"
     "base.local"
 )
-`
+`,
     );
 
-    expect(codes(root)).toContain('MANIFEST_INDEX_MODULE_MISSING');
+    expect(codes(root)).toContain("MANIFEST_INDEX_MODULE_MISSING");
   });
 
-  test('rejects structurally valid manifests with semantic errors', () => {
+  test("rejects structurally valid manifests with semantic errors", () => {
     const root = cleanFixture();
-    const path = join(root, 'acfs.manifest.yaml');
-    const manifest = readFileSync(path, 'utf-8');
+    const path = join(root, "acfs.manifest.yaml");
+    const manifest = readFileSync(path, "utf-8");
     writeFixtureFile(
       root,
-      'acfs.manifest.yaml',
+      "acfs.manifest.yaml",
       `${manifest}  - id: stack.example
     description: Duplicate module
     install:
       - echo duplicate
     verify:
       - duplicate --version
-`
+`,
     );
 
     const result = checkManifestDriftContract(root);
     expect(result.ok).toBe(false);
-    expect(result.mismatches).toContainEqual(expect.objectContaining({
-      code: 'MANIFEST_SEMANTIC_INVALID',
-      message: expect.stringContaining('Duplicate module ID'),
-    }));
+    expect(result.mismatches).toContainEqual(
+      expect.objectContaining({
+        code: "MANIFEST_SEMANTIC_INVALID",
+        message: expect.stringContaining("Duplicate module ID"),
+      }),
+    );
   });
 
-  test('rejects generated function-name collisions inside the private namespace', () => {
+  test("rejects generated function-name collisions inside the private namespace", () => {
     const modules = `  - id: tools.foo_bar
     description: First colliding module
     category: tools
@@ -432,57 +428,56 @@ describe('manifest drift contract', () => {
     verify: [second --version]
 `;
     const root = cleanFixture();
-    const path = join(root, 'acfs.manifest.yaml');
-    writeFixtureFile(
-      root,
-      'acfs.manifest.yaml',
-      `${readFileSync(path, 'utf-8')}${modules}`,
-    );
+    const path = join(root, "acfs.manifest.yaml");
+    writeFixtureFile(root, "acfs.manifest.yaml", `${readFileSync(path, "utf-8")}${modules}`);
 
     const semanticErrors = checkManifestDriftContract(root).mismatches.filter(
-      (mismatch) => mismatch.code === 'MANIFEST_SEMANTIC_INVALID'
+      (mismatch) => mismatch.code === "MANIFEST_SEMANTIC_INVALID",
     );
     expect(semanticErrors).not.toHaveLength(0);
-    expect(semanticErrors.some((mismatch) =>
-      mismatch.message.includes('FUNCTION_NAME_COLLISION')
-    )).toBe(true);
+    expect(
+      semanticErrors.some((mismatch) => mismatch.message.includes("FUNCTION_NAME_COLLISION")),
+    ).toBe(true);
   });
 
-  test('detects unexpected IDs on every generated ID surface', () => {
+  test("detects unexpected IDs on every generated ID surface", () => {
     const root = cleanFixture();
-    const orphan = 'stack.orphan';
+    const orphan = "stack.orphan";
     const files = [
-      'scripts/generated/manifest_index.sh',
-      'scripts/generated/doctor_checks.sh',
-      'apps/web/lib/generated/manifest-modules.ts',
-      'apps/web/lib/generated/manifest-tools.ts',
-      'apps/web/lib/generated/manifest-commands.ts',
-      'apps/web/lib/generated/manifest-tldr.ts',
-      'apps/web/lib/generated/manifest-lessons-index.ts',
+      "scripts/generated/manifest_index.sh",
+      "scripts/generated/doctor_checks.sh",
+      "apps/web/lib/generated/manifest-modules.ts",
+      "apps/web/lib/generated/manifest-tools.ts",
+      "apps/web/lib/generated/manifest-commands.ts",
+      "apps/web/lib/generated/manifest-tldr.ts",
+      "apps/web/lib/generated/manifest-lessons-index.ts",
     ];
     for (const file of files) {
       const path = join(root, file);
-      const existing = readFileSync(path, 'utf-8');
-      if (file.endsWith('manifest_index.sh')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n)\n',
-          `\n    "${orphan}"\n)\n`,
-        ));
-      } else if (file.endsWith('doctor_checks.sh')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n)\n',
-          `\n    "${orphan}\tOrphan\torphan --version\toptional\ttarget_user"\n)\n`,
-        ));
-      } else if (file.endsWith('manifest-modules.ts')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n];\n',
-          `\n  {\n    id: "${orphan}",\n  },\n];\n`,
-        ));
-      } else if (file.endsWith('manifest-lessons-index.ts')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n];\n',
-          `\n  { moduleId: "${orphan}", lessonSlug: "orphan" },\n];\n`,
-        ));
+      const existing = readFileSync(path, "utf-8");
+      if (file.endsWith("manifest_index.sh")) {
+        writeFixtureFile(root, file, existing.replace("\n)\n", `\n    "${orphan}"\n)\n`));
+      } else if (file.endsWith("doctor_checks.sh")) {
+        writeFixtureFile(
+          root,
+          file,
+          existing.replace(
+            "\n)\n",
+            `\n    "${orphan}\tOrphan\torphan --version\toptional\ttarget_user"\n)\n`,
+          ),
+        );
+      } else if (file.endsWith("manifest-modules.ts")) {
+        writeFixtureFile(
+          root,
+          file,
+          existing.replace("\n];\n", `\n  {\n    id: "${orphan}",\n  },\n];\n`),
+        );
+      } else if (file.endsWith("manifest-lessons-index.ts")) {
+        writeFixtureFile(
+          root,
+          file,
+          existing.replace("\n];\n", `\n  { moduleId: "${orphan}", lessonSlug: "orphan" },\n];\n`),
+        );
       } else {
         writeFixtureFile(
           root,
@@ -493,58 +488,64 @@ describe('manifest drift contract', () => {
     }
 
     const unexpected = checkManifestDriftContract(root).mismatches.filter(
-      (mismatch) => mismatch.code === 'GENERATED_ID_UNEXPECTED'
+      (mismatch) => mismatch.code === "GENERATED_ID_UNEXPECTED",
     );
     expect(unexpected).toHaveLength(files.length);
     expect(unexpected.every((mismatch) => mismatch.actual === orphan)).toBe(true);
   });
 
-  test('detects missing canonical website module metadata', () => {
+  test("detects missing canonical website module metadata", () => {
     const root = cleanFixture();
     writeFixtureFile(
       root,
-      'apps/web/lib/generated/manifest-modules.ts',
-      'export const manifestModules = [\n];\n',
+      "apps/web/lib/generated/manifest-modules.ts",
+      "export const manifestModules = [\n];\n",
     );
 
-    expect(codes(root)).toContain('WEB_MODULE_MISSING');
+    expect(codes(root)).toContain("WEB_MODULE_MISSING");
   });
 
-  test('detects duplicate IDs on every generated ID surface', () => {
+  test("detects duplicate IDs on every generated ID surface", () => {
     const files = [
-      'scripts/generated/manifest_index.sh',
-      'scripts/generated/doctor_checks.sh',
-      'apps/web/lib/generated/manifest-modules.ts',
-      'apps/web/lib/generated/manifest-tools.ts',
-      'apps/web/lib/generated/manifest-commands.ts',
-      'apps/web/lib/generated/manifest-tldr.ts',
-      'apps/web/lib/generated/manifest-lessons-index.ts',
+      "scripts/generated/manifest_index.sh",
+      "scripts/generated/doctor_checks.sh",
+      "apps/web/lib/generated/manifest-modules.ts",
+      "apps/web/lib/generated/manifest-tools.ts",
+      "apps/web/lib/generated/manifest-commands.ts",
+      "apps/web/lib/generated/manifest-tldr.ts",
+      "apps/web/lib/generated/manifest-lessons-index.ts",
     ];
     for (const file of files) {
       const root = cleanFixture();
-      const existing = readFileSync(join(root, file), 'utf-8');
-      if (file.endsWith('manifest_index.sh')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n)\n',
-          '\n    "stack.example"\n)\n',
-        ));
-      } else if (file.endsWith('doctor_checks.sh')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n)\n',
-          // Real tab characters: extractDoctorCheckIds only matches rows whose
-          // fields are tab-separated, exactly like the generated file.
-          '\n    "stack.example\tDuplicate\texample --version\trequired\ttarget_user"\n)\n',
-        ));
-      } else if (file.endsWith('manifest-modules.ts')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n];\n',
-          '\n  {\n    id: "stack.example",\n  },\n];\n',
-        ));
-      } else if (file.endsWith('manifest-lessons-index.ts')) {
-        writeFixtureFile(root, file, existing.replace(
-          '\n];\n',
-          '\n  { moduleId: "stack.example", lessonSlug: "example" },\n];\n',
-        ));
+      const existing = readFileSync(join(root, file), "utf-8");
+      if (file.endsWith("manifest_index.sh")) {
+        writeFixtureFile(root, file, existing.replace("\n)\n", '\n    "stack.example"\n)\n'));
+      } else if (file.endsWith("doctor_checks.sh")) {
+        writeFixtureFile(
+          root,
+          file,
+          existing.replace(
+            "\n)\n",
+            // Real tab characters: extractDoctorCheckIds only matches rows whose
+            // fields are tab-separated, exactly like the generated file.
+            '\n    "stack.example\tDuplicate\texample --version\trequired\ttarget_user"\n)\n',
+          ),
+        );
+      } else if (file.endsWith("manifest-modules.ts")) {
+        writeFixtureFile(
+          root,
+          file,
+          existing.replace("\n];\n", '\n  {\n    id: "stack.example",\n  },\n];\n'),
+        );
+      } else if (file.endsWith("manifest-lessons-index.ts")) {
+        writeFixtureFile(
+          root,
+          file,
+          existing.replace(
+            "\n];\n",
+            '\n  { moduleId: "stack.example", lessonSlug: "example" },\n];\n',
+          ),
+        );
       } else {
         writeFixtureFile(
           root,
@@ -555,96 +556,113 @@ describe('manifest drift contract', () => {
 
       expect(checkManifestDriftContract(root).mismatches).toContainEqual(
         expect.objectContaining({
-          code: 'GENERATED_ID_DUPLICATE',
+          code: "GENERATED_ID_DUPLICATE",
           file,
-          actual: 'stack.example',
-        })
+          actual: "stack.example",
+        }),
       );
     }
   });
 
-  test('detects duplicate lesson lookup keys and wrong module-to-slug mappings', () => {
+  test("detects duplicate lesson lookup keys and wrong module-to-slug mappings", () => {
     const root = cleanFixture();
-    const file = 'apps/web/lib/generated/manifest-lessons-index.ts';
-    const existing = readFileSync(join(root, file), 'utf-8');
+    const file = "apps/web/lib/generated/manifest-lessons-index.ts";
+    const existing = readFileSync(join(root, file), "utf-8");
     writeFixtureFile(
       root,
       file,
       existing
         .replace('lessonSlug: "example"', 'lessonSlug: "wrong"')
-        .replace(
-          '\n};\n',
-          '\n  "stack.example": "example",\n};\n',
-        ),
+        .replace("\n};\n", '\n  "stack.example": "example",\n};\n'),
     );
 
     const result = checkManifestDriftContract(root);
-    expect(result.mismatches).toContainEqual(expect.objectContaining({
-      code: 'GENERATED_ID_DUPLICATE',
-      actual: 'stack.example',
-      message: expect.stringContaining('lookup map'),
-    }));
-    expect(result.mismatches).toContainEqual(expect.objectContaining({
-      code: 'LESSON_LINK_MISSING',
-      moduleId: 'stack.example',
-      expected: 'example',
-      actual: 'wrong',
-    }));
+    expect(result.mismatches).toContainEqual(
+      expect.objectContaining({
+        code: "GENERATED_ID_DUPLICATE",
+        actual: "stack.example",
+        message: expect.stringContaining("lookup map"),
+      }),
+    );
+    expect(result.mismatches).toContainEqual(
+      expect.objectContaining({
+        code: "LESSON_LINK_MISSING",
+        moduleId: "stack.example",
+        expected: "example",
+        actual: "wrong",
+      }),
+    );
   });
 
-  test('detects missing generated website content', () => {
-    const root = cleanFixture();
-    writeFixtureFile(root, 'apps/web/lib/generated/manifest-tools.ts', 'export const manifestTools = [];\n');
-
-    expect(codes(root)).toContain('WEB_TOOL_MISSING');
-  });
-
-  test('detects stale generated website command tldr and lesson indexes', () => {
-    const root = cleanFixture();
-    writeFixtureFile(root, 'apps/web/lib/generated/manifest-commands.ts', 'export const manifestCommands = [];\n');
-    writeFixtureFile(root, 'apps/web/lib/generated/manifest-tldr.ts', 'export const manifestTldrTools = [];\n');
-    writeFixtureFile(root, 'apps/web/lib/generated/manifest-lessons-index.ts', 'export const manifestLessonLinks = [];\n');
-
-    const mismatchCodes = codes(root);
-    expect(mismatchCodes).toContain('WEB_COMMAND_MISSING');
-    expect(mismatchCodes).toContain('WEB_TLDR_MISSING');
-    expect(mismatchCodes).toContain('LESSON_LINK_MISSING');
-  });
-
-  test('detects missing generated doctor checks', () => {
+  test("detects missing generated website content", () => {
     const root = cleanFixture();
     writeFixtureFile(
       root,
-      'scripts/generated/doctor_checks.sh',
+      "apps/web/lib/generated/manifest-tools.ts",
+      "export const manifestTools = [];\n",
+    );
+
+    expect(codes(root)).toContain("WEB_TOOL_MISSING");
+  });
+
+  test("detects stale generated website command tldr and lesson indexes", () => {
+    const root = cleanFixture();
+    writeFixtureFile(
+      root,
+      "apps/web/lib/generated/manifest-commands.ts",
+      "export const manifestCommands = [];\n",
+    );
+    writeFixtureFile(
+      root,
+      "apps/web/lib/generated/manifest-tldr.ts",
+      "export const manifestTldrTools = [];\n",
+    );
+    writeFixtureFile(
+      root,
+      "apps/web/lib/generated/manifest-lessons-index.ts",
+      "export const manifestLessonLinks = [];\n",
+    );
+
+    const mismatchCodes = codes(root);
+    expect(mismatchCodes).toContain("WEB_COMMAND_MISSING");
+    expect(mismatchCodes).toContain("WEB_TLDR_MISSING");
+    expect(mismatchCodes).toContain("LESSON_LINK_MISSING");
+  });
+
+  test("detects missing generated doctor checks", () => {
+    const root = cleanFixture();
+    writeFixtureFile(
+      root,
+      "scripts/generated/doctor_checks.sh",
       `declare -a MANIFEST_CHECKS=(
     "stack.hidden\tHidden stack tool\thidden --version\toptional\ttarget_user"
     "base.local\tLocal base tool\tlocal --version\trequired\ttarget_user"
 )
-`
+`,
     );
 
-    expect(codes(root)).toContain('DOCTOR_CHECK_MISSING');
+    expect(codes(root)).toContain("DOCTOR_CHECK_MISSING");
   });
 
-  test('detects missing verified installer checksum coverage', () => {
+  test("detects missing verified installer checksum coverage", () => {
     const root = cleanFixture();
-    writeFixtureFile(root, 'checksums.yaml', 'installers: {}\n');
+    writeFixtureFile(root, "checksums.yaml", "installers: {}\n");
 
-    expect(codes(root)).toContain('MISSING_VERIFIED_INSTALLER_CHECKSUM');
+    expect(codes(root)).toContain("MISSING_VERIFIED_INSTALLER_CHECKSUM");
   });
 
-  test('detects missing lesson and README contract snippets', () => {
+  test("detects missing lesson and README contract snippets", () => {
     const root = cleanFixture();
-    writeFixtureFile(root, 'README.md', 'checksums.yaml\n');
+    writeFixtureFile(root, "README.md", "checksums.yaml\n");
 
-    expect(codes(root)).toContain('README_SNIPPET_MISSING');
+    expect(codes(root)).toContain("README_SNIPPET_MISSING");
   });
 
-  test('detects missing onboarding lesson files for lesson-linked modules', () => {
+  test("detects missing onboarding lesson files for lesson-linked modules", () => {
     const root = cleanFixture();
     writeFixtureFile(
       root,
-      'acfs.manifest.yaml',
+      "acfs.manifest.yaml",
       `version: 1
 name: Test ACFS
 id: test_acfs
@@ -704,14 +722,14 @@ modules:
       - echo local
     verify:
       - local --version
-`
+`,
     );
     writeFixtureFile(
       root,
-      'apps/web/lib/generated/manifest-lessons-index.ts',
-      'export const manifestLessonLinks = [{ moduleId: "stack.example", lessonSlug: "missing" }];\n'
+      "apps/web/lib/generated/manifest-lessons-index.ts",
+      'export const manifestLessonLinks = [{ moduleId: "stack.example", lessonSlug: "missing" }];\n',
     );
 
-    expect(codes(root)).toContain('ONBOARDING_LESSON_MISSING');
+    expect(codes(root)).toContain("ONBOARDING_LESSON_MISSING");
   });
 });

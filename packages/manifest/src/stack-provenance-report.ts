@@ -1,21 +1,22 @@
 #!/usr/bin/env bun
+
 /**
  * Cross-tool provenance and upstream release report for ACFS stack tools.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
-import { parse as parseYaml } from 'yaml';
-import { parseManifestFile, validateManifestData } from './parser.js';
-import { validateManifest as validateManifestAdvanced } from './validate.js';
-import { resolveModuleCategory } from './utils.js';
-import type { Manifest, Module } from './types.js';
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
+import { parseManifestFile, validateManifestData } from "./parser.js";
+import type { Manifest, Module } from "./types.js";
+import { resolveModuleCategory } from "./utils.js";
+import { validateManifest as validateManifestAdvanced } from "./validate.js";
 
-export type ReportStatus = 'pass' | 'warn' | 'fail' | 'unknown' | 'skip';
-export type NetworkMode = 'skip' | 'check';
-export type RepositoryResolution = 'github' | 'unsupported_href' | 'missing_href';
+export type ReportStatus = "pass" | "warn" | "fail" | "unknown" | "skip";
+export type NetworkMode = "skip" | "check";
+export type RepositoryResolution = "github" | "unsupported_href" | "missing_href";
 
 export interface InstallerChecksumEntry {
   url: string;
@@ -29,13 +30,13 @@ export interface ChecksumsFile {
 
 export interface ChecksumDiff {
   tool: string;
-  kind: 'added' | 'removed' | 'url_changed' | 'sha256_changed' | 'url_and_sha256_changed';
+  kind: "added" | "removed" | "url_changed" | "sha256_changed" | "url_and_sha256_changed";
   current?: InstallerChecksumEntry;
   candidate?: InstallerChecksumEntry;
 }
 
 export interface GitHubReleaseFixture {
-  status: 'ok' | 'missing' | 'error';
+  status: "ok" | "missing" | "error";
   tagName?: string;
   publishedAt?: string;
   htmlUrl?: string;
@@ -74,7 +75,7 @@ export interface CandidateResult {
 
 export interface ReleaseResult {
   status: ReportStatus;
-  relation: 'skipped' | 'same_or_older' | 'newer_upstream_release' | 'missing_release' | 'unknown';
+  relation: "skipped" | "same_or_older" | "newer_upstream_release" | "missing_release" | "unknown";
   detail: string;
   tagName?: string;
   publishedAt?: string;
@@ -106,7 +107,7 @@ export interface StackProvenanceReport {
   generatedAt: string;
   mode: {
     network: NetworkMode;
-    candidateSource: 'skipped' | 'provided' | 'generated' | 'unavailable';
+    candidateSource: "skipped" | "provided" | "generated" | "unavailable";
   };
   summary: Record<ReportStatus, number>;
   checksums: {
@@ -136,8 +137,8 @@ interface StackToolSource {
 }
 
 const SCRIPT_FILE = fileURLToPath(import.meta.url);
-const DEFAULT_ROOT = resolve(dirname(SCRIPT_FILE), '../../..');
-const GITHUB_OWNER = 'Dicklesworthstone';
+const DEFAULT_ROOT = resolve(dirname(SCRIPT_FILE), "../../..");
+const GITHUB_OWNER = "Dicklesworthstone";
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const STATUS_RANK: Record<ReportStatus, number> = {
   pass: 0,
@@ -148,28 +149,31 @@ const STATUS_RANK: Record<ReportStatus, number> = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+  return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
 
 function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function statusMax(statuses: ReportStatus[]): ReportStatus {
   return statuses.reduce<ReportStatus>(
     (max, status) => (STATUS_RANK[status] > STATUS_RANK[max] ? status : max),
-    'pass'
+    "pass",
   );
 }
 
 function combinedToolStatus(statuses: ReportStatus[]): ReportStatus {
-  const actionable = statuses.filter((status) => status !== 'skip');
-  return actionable.length > 0 ? statusMax(actionable) : 'skip';
+  const actionable = statuses.filter((status) => status !== "skip");
+  return actionable.length > 0 ? statusMax(actionable) : "skip";
 }
 
-function summarizeStatus(tools: StackToolReport[], unrelatedDiffs: ChecksumDiff[]): Record<ReportStatus, number> {
+function summarizeStatus(
+  tools: StackToolReport[],
+  unrelatedDiffs: ChecksumDiff[],
+): Record<ReportStatus, number> {
   const summary: Record<ReportStatus, number> = {
     pass: 0,
     warn: 0,
@@ -216,7 +220,9 @@ export function parseChecksumsYaml(content: string): ChecksumsFile {
   };
 }
 
-function githubRepoFromHref(href: string | undefined): { repo: string; repoName: string } | undefined {
+function githubRepoFromHref(
+  href: string | undefined,
+): { repo: string; repoName: string } | undefined {
   if (!href) return undefined;
 
   const match = href.match(/^https:\/\/github\.com\/([^/]+)\/([^/#?]+)(?:[/?#].*)?$/);
@@ -232,7 +238,11 @@ function githubRepoFromHref(href: string | undefined): { repo: string; repoName:
   };
 }
 
-function inferToolKey(module: Module, repoName: string | undefined, checksums: ChecksumsFile): string | undefined {
+function inferToolKey(
+  module: Module,
+  repoName: string | undefined,
+  checksums: ChecksumsFile,
+): string | undefined {
   if (module.verified_installer?.tool) {
     return module.verified_installer.tool;
   }
@@ -263,15 +273,15 @@ function collectStackTools(manifest: Manifest, checksums: ChecksumsFile): StackT
   const tools: StackToolSource[] = [];
 
   for (const module of manifest.modules) {
-    if (resolveModuleCategory(module) !== 'stack') continue;
+    if (resolveModuleCategory(module) !== "stack") continue;
 
     const sourceHref = module.web?.href;
     const repoInfo = githubRepoFromHref(sourceHref);
     const repositoryResolution: RepositoryResolution = repoInfo
-      ? 'github'
+      ? "github"
       : sourceHref
-        ? 'unsupported_href'
-        : 'missing_href';
+        ? "unsupported_href"
+        : "missing_href";
     const repo = repoInfo?.repo;
     const repoName = repoInfo?.repoName;
     const toolKey = inferToolKey(module, repoName, checksums);
@@ -300,63 +310,63 @@ function evaluateLocalProvenance(tool: StackToolSource): LocalProvenanceResult {
   if (!tool.verifiedInstaller) {
     if (tool.checksumEntry) {
       return {
-        status: 'warn',
-        detail: 'module uses custom install commands even though a checksum entry exists',
+        status: "warn",
+        detail: "module uses custom install commands even though a checksum entry exists",
       };
     }
     return {
-      status: 'warn',
-      detail: 'module uses custom install commands without a verified installer checksum entry',
+      status: "warn",
+      detail: "module uses custom install commands without a verified installer checksum entry",
     };
   }
 
   if (!tool.toolKey) {
     return {
-      status: 'fail',
-      detail: 'verified installer has no tool key',
+      status: "fail",
+      detail: "verified installer has no tool key",
     };
   }
 
   if (!tool.checksumEntry) {
     return {
-      status: 'fail',
+      status: "fail",
       detail: `checksums.yaml is missing installer entry ${tool.toolKey}`,
     };
   }
 
   if (!SHA256_PATTERN.test(tool.checksumEntry.sha256)) {
     return {
-      status: 'fail',
+      status: "fail",
       detail: `checksums.yaml has invalid sha256 for ${tool.toolKey}`,
     };
   }
 
   if (tool.manifestInstallerUrl && tool.manifestInstallerUrl !== tool.checksumEntry.url) {
     return {
-      status: 'fail',
+      status: "fail",
       detail: `manifest URL differs from checksums.yaml for ${tool.toolKey}`,
     };
   }
 
   return {
-    status: 'pass',
+    status: "pass",
     detail: `verified installer ${tool.toolKey} has matching checksum provenance`,
   };
 }
 
 function diffEntryKind(
   current: InstallerChecksumEntry | undefined,
-  candidate: InstallerChecksumEntry | undefined
-): ChecksumDiff['kind'] | undefined {
-  if (!current && candidate) return 'added';
-  if (current && !candidate) return 'removed';
+  candidate: InstallerChecksumEntry | undefined,
+): ChecksumDiff["kind"] | undefined {
+  if (!current && candidate) return "added";
+  if (current && !candidate) return "removed";
   if (!current || !candidate) return undefined;
 
   const urlChanged = current.url !== candidate.url;
   const shaChanged = current.sha256 !== candidate.sha256;
-  if (urlChanged && shaChanged) return 'url_and_sha256_changed';
-  if (urlChanged) return 'url_changed';
-  if (shaChanged) return 'sha256_changed';
+  if (urlChanged && shaChanged) return "url_and_sha256_changed";
+  if (urlChanged) return "url_changed";
+  if (shaChanged) return "sha256_changed";
   return undefined;
 }
 
@@ -385,38 +395,38 @@ function evaluateCandidate(
   tool: StackToolSource,
   diff: ChecksumDiff | undefined,
   network: NetworkMode,
-  candidateAvailable: boolean
+  candidateAvailable: boolean,
 ): CandidateResult {
-  if (network === 'skip') {
+  if (network === "skip") {
     return {
-      status: 'skip',
-      detail: 'network checksum candidate check skipped',
+      status: "skip",
+      detail: "network checksum candidate check skipped",
     };
   }
 
   if (!candidateAvailable) {
     return {
-      status: 'unknown',
-      detail: 'checksum candidate unavailable',
+      status: "unknown",
+      detail: "checksum candidate unavailable",
     };
   }
 
   if (!tool.toolKey) {
     return {
-      status: 'unknown',
-      detail: 'no checksum tool key is available for candidate comparison',
+      status: "unknown",
+      detail: "no checksum tool key is available for candidate comparison",
     };
   }
 
   if (!diff) {
     return {
-      status: 'pass',
-      detail: 'candidate checksum entry matches checked-in provenance',
+      status: "pass",
+      detail: "candidate checksum entry matches checked-in provenance",
     };
   }
 
   return {
-    status: 'fail',
+    status: "fail",
     detail: `candidate checksum differs for ${tool.toolKey} (${diff.kind})`,
     diff,
   };
@@ -431,7 +441,7 @@ function parseDate(value: string | undefined): Date | undefined {
 function fixtureForRepo(
   fixtures: Record<string, GitHubReleaseFixture> | undefined,
   repo: string | undefined,
-  repoName: string | undefined
+  repoName: string | undefined,
 ): GitHubReleaseFixture | undefined {
   if (!fixtures || !repo || !repoName) return undefined;
   return fixtures[repo] ?? fixtures[repoName];
@@ -440,11 +450,11 @@ function fixtureForRepo(
 async function fetchLatestRelease(
   tool: StackToolSource,
   fixture: GitHubReleaseFixture | undefined,
-  fetcher: ReleaseFetcher | undefined
+  fetcher: ReleaseFetcher | undefined,
 ): Promise<GitHubReleaseFixture> {
   if (fixture) return fixture;
   if (!tool.repo) {
-    return { status: 'error', detail: 'repository is unresolved' };
+    return { status: "error", detail: "repository is unresolved" };
   }
 
   const activeFetcher = fetcher ?? defaultReleaseFetcher;
@@ -454,28 +464,28 @@ async function fetchLatestRelease(
     const response = await activeFetcher(url);
     if (response.status === 404) {
       return {
-        status: 'missing',
-        detail: 'GitHub reports no latest release',
+        status: "missing",
+        detail: "GitHub reports no latest release",
       };
     }
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
+      const body = await response.text().catch(() => "");
       return {
-        status: 'error',
-        detail: `GitHub latest release request failed with HTTP ${response.status}${body ? `: ${body.slice(0, 120)}` : ''}`,
+        status: "error",
+        detail: `GitHub latest release request failed with HTTP ${response.status}${body ? `: ${body.slice(0, 120)}` : ""}`,
       };
     }
 
     const body = asRecord(await response.json());
     return {
-      status: 'ok',
+      status: "ok",
       tagName: asString(body.tag_name),
       publishedAt: asString(body.published_at) ?? asString(body.created_at),
       htmlUrl: asString(body.html_url),
     };
   } catch (error) {
     return {
-      status: 'error',
+      status: "error",
       detail: error instanceof Error ? error.message : String(error),
     };
   }
@@ -484,13 +494,13 @@ async function fetchLatestRelease(
 async function defaultReleaseFetcher(url: string): Promise<ReleaseFetchResponse> {
   const fetchFn = globalThis.fetch;
   if (!fetchFn) {
-    throw new Error('fetch is not available in this runtime');
+    throw new Error("fetch is not available in this runtime");
   }
 
   return fetchFn(url, {
     headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'acfs-stack-provenance-report',
+      Accept: "application/vnd.github+json",
+      "User-Agent": "acfs-stack-provenance-report",
     },
   }) as Promise<ReleaseFetchResponse>;
 }
@@ -499,39 +509,40 @@ function evaluateRelease(
   tool: StackToolSource,
   latest: GitHubReleaseFixture,
   checksumsGeneratedAt: string | undefined,
-  network: NetworkMode
+  network: NetworkMode,
 ): ReleaseResult {
-  if (tool.repositoryResolution !== 'github') {
+  if (tool.repositoryResolution !== "github") {
     return {
-      status: 'unknown',
-      relation: 'unknown',
-      detail: tool.repositoryResolution === 'missing_href'
-        ? 'module has no repository href'
-        : `module href is not a supported ${GITHUB_OWNER} GitHub repository: ${tool.sourceHref}`,
+      status: "unknown",
+      relation: "unknown",
+      detail:
+        tool.repositoryResolution === "missing_href"
+          ? "module has no repository href"
+          : `module href is not a supported ${GITHUB_OWNER} GitHub repository: ${tool.sourceHref}`,
     };
   }
 
-  if (network === 'skip') {
+  if (network === "skip") {
     return {
-      status: 'skip',
-      relation: 'skipped',
-      detail: 'GitHub latest release check skipped',
+      status: "skip",
+      relation: "skipped",
+      detail: "GitHub latest release check skipped",
     };
   }
 
-  if (latest.status === 'missing') {
+  if (latest.status === "missing") {
     return {
-      status: 'warn',
-      relation: 'missing_release',
-      detail: latest.detail ?? 'GitHub has no latest release metadata for this repo',
+      status: "warn",
+      relation: "missing_release",
+      detail: latest.detail ?? "GitHub has no latest release metadata for this repo",
     };
   }
 
-  if (latest.status === 'error') {
+  if (latest.status === "error") {
     return {
-      status: 'unknown',
-      relation: 'unknown',
-      detail: latest.detail ?? 'GitHub latest release metadata unavailable',
+      status: "unknown",
+      relation: "unknown",
+      detail: latest.detail ?? "GitHub latest release metadata unavailable",
     };
   }
 
@@ -539,9 +550,9 @@ function evaluateRelease(
   const checksumDate = parseDate(checksumsGeneratedAt);
   if (!latestDate || !checksumDate) {
     return {
-      status: 'unknown',
-      relation: 'unknown',
-      detail: 'release date or checksums snapshot date is unavailable',
+      status: "unknown",
+      relation: "unknown",
+      detail: "release date or checksums snapshot date is unavailable",
       tagName: latest.tagName,
       publishedAt: latest.publishedAt,
       htmlUrl: latest.htmlUrl,
@@ -549,13 +560,13 @@ function evaluateRelease(
   }
 
   if (latestDate.getTime() > checksumDate.getTime()) {
-    const rchSpecial = tool.toolKey === 'rch';
+    const rchSpecial = tool.toolKey === "rch";
     return {
-      status: rchSpecial ? 'fail' : 'warn',
-      relation: 'newer_upstream_release',
+      status: rchSpecial ? "fail" : "warn",
+      relation: "newer_upstream_release",
       detail: rchSpecial
-        ? 'rch release is newer than the checksum snapshot; checksum refresh review is mandatory'
-        : 'latest release is newer than the checksum snapshot',
+        ? "rch release is newer than the checksum snapshot; checksum refresh review is mandatory"
+        : "latest release is newer than the checksum snapshot",
       tagName: latest.tagName,
       publishedAt: latest.publishedAt,
       htmlUrl: latest.htmlUrl,
@@ -563,9 +574,9 @@ function evaluateRelease(
   }
 
   return {
-    status: 'pass',
-    relation: 'same_or_older',
-    detail: 'latest release is not newer than the checksum snapshot',
+    status: "pass",
+    relation: "same_or_older",
+    detail: "latest release is not newer than the checksum snapshot",
     tagName: latest.tagName,
     publishedAt: latest.publishedAt,
     htmlUrl: latest.htmlUrl,
@@ -576,21 +587,21 @@ function buildAdvisories(
   tool: StackToolSource,
   local: LocalProvenanceResult,
   candidate: CandidateResult,
-  release: ReleaseResult
+  release: ReleaseResult,
 ): string[] {
   const advisories: string[] = [];
 
-  if (tool.toolKey === 'rch' && release.relation === 'newer_upstream_release') {
-    advisories.push('rch requires canonical checksum refresh review after release changes');
+  if (tool.toolKey === "rch" && release.relation === "newer_upstream_release") {
+    advisories.push("rch requires canonical checksum refresh review after release changes");
   }
-  if (tool.toolKey === 'rch' && candidate.status === 'fail') {
-    advisories.push('rch installer candidate changed; review checksums.yaml before release');
+  if (tool.toolKey === "rch" && candidate.status === "fail") {
+    advisories.push("rch installer candidate changed; review checksums.yaml before release");
   }
-  if (local.status === 'warn' && !tool.verifiedInstaller) {
-    advisories.push('custom install path is outside verified_installer coverage');
+  if (local.status === "warn" && !tool.verifiedInstaller) {
+    advisories.push("custom install path is outside verified_installer coverage");
   }
-  if (candidate.status === 'fail') {
-    advisories.push('do not replace checksums.yaml until this diff is reviewed');
+  if (candidate.status === "fail") {
+    advisories.push("do not replace checksums.yaml until this diff is reviewed");
   }
 
   return advisories;
@@ -602,7 +613,7 @@ function assertManifestSemanticallyValid(manifest: Manifest): void {
     throw new Error(
       `Manifest semantic validation failed: ${basicValidation.errors
         .map(({ path, message }) => `${path}: ${message}`)
-        .join('; ')}`
+        .join("; ")}`,
     );
   }
   const advancedValidation = validateManifestAdvanced(manifest);
@@ -610,35 +621,52 @@ function assertManifestSemanticallyValid(manifest: Manifest): void {
     throw new Error(
       `Manifest semantic validation failed: ${advancedValidation.errors
         .map(({ code, message }) => `${code}: ${message}`)
-        .join('; ')}`
+        .join("; ")}`,
     );
   }
 }
 
-export async function buildStackProvenanceReport(options: BuildReportOptions): Promise<StackProvenanceReport> {
+export async function buildStackProvenanceReport(
+  options: BuildReportOptions,
+): Promise<StackProvenanceReport> {
   assertManifestSemanticallyValid(options.manifest);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const stackTools = collectStackTools(options.manifest, options.currentChecksums);
   const checksumDiffs = options.candidateChecksums
     ? diffChecksums(options.currentChecksums, options.candidateChecksums)
     : [];
-  const stackToolKeys = new Set(stackTools.map((tool) => tool.toolKey).filter((tool): tool is string => Boolean(tool)));
+  const stackToolKeys = new Set(
+    stackTools.map((tool) => tool.toolKey).filter((tool): tool is string => Boolean(tool)),
+  );
   const stackDiffs = checksumDiffs.filter((diff) => stackToolKeys.has(diff.tool));
   const unrelatedDiffs = checksumDiffs.filter((diff) => !stackToolKeys.has(diff.tool));
   const reports: StackToolReport[] = [];
 
   for (const tool of stackTools) {
     const local = evaluateLocalProvenance(tool);
-    const diff = tool.toolKey ? stackDiffs.find((candidateDiff) => candidateDiff.tool === tool.toolKey) : undefined;
-    const candidate = evaluateCandidate(tool, diff, options.network, Boolean(options.candidateChecksums));
-    const latest = options.network === 'skip' || tool.repositoryResolution !== 'github'
-      ? { status: 'error' as const, detail: 'GitHub latest release check skipped' }
-      : await fetchLatestRelease(
-          tool,
-          fixtureForRepo(options.githubReleases, tool.repo, tool.repoName),
-          options.fetcher
-        );
-    const release = evaluateRelease(tool, latest, options.currentChecksums.generatedAt, options.network);
+    const diff = tool.toolKey
+      ? stackDiffs.find((candidateDiff) => candidateDiff.tool === tool.toolKey)
+      : undefined;
+    const candidate = evaluateCandidate(
+      tool,
+      diff,
+      options.network,
+      Boolean(options.candidateChecksums),
+    );
+    const latest =
+      options.network === "skip" || tool.repositoryResolution !== "github"
+        ? { status: "error" as const, detail: "GitHub latest release check skipped" }
+        : await fetchLatestRelease(
+            tool,
+            fixtureForRepo(options.githubReleases, tool.repo, tool.repoName),
+            options.fetcher,
+          );
+    const release = evaluateRelease(
+      tool,
+      latest,
+      options.currentChecksums.generatedAt,
+      options.network,
+    );
     const advisories = buildAdvisories(tool, local, candidate, release);
     const status = combinedToolStatus([local.status, candidate.status, release.status]);
 
@@ -665,7 +693,9 @@ export async function buildStackProvenanceReport(options: BuildReportOptions): P
 
   const advisories: string[] = [];
   if (unrelatedDiffs.length > 0) {
-    advisories.push('candidate checksum output includes unrelated installer changes; investigate before updating checksums.yaml');
+    advisories.push(
+      "candidate checksum output includes unrelated installer changes; investigate before updating checksums.yaml",
+    );
   }
 
   const summary = summarizeStatus(reports, unrelatedDiffs);
@@ -675,11 +705,12 @@ export async function buildStackProvenanceReport(options: BuildReportOptions): P
     generatedAt,
     mode: {
       network: options.network,
-      candidateSource: options.network === 'skip'
-        ? 'skipped'
-        : options.candidateChecksums
-          ? 'provided'
-          : 'unavailable',
+      candidateSource:
+        options.network === "skip"
+          ? "skipped"
+          : options.candidateChecksums
+            ? "provided"
+            : "unavailable",
     },
     summary,
     checksums: {
@@ -696,20 +727,23 @@ export async function buildStackProvenanceReport(options: BuildReportOptions): P
 }
 
 function readChecksumsFile(path: string): ChecksumsFile {
-  return parseChecksumsYaml(readFileSync(path, 'utf8'));
+  return parseChecksumsYaml(readFileSync(path, "utf8"));
 }
 
 function generateCandidateChecksums(root: string): { checksums?: ChecksumsFile; detail?: string } {
-  const script = join(root, 'scripts/lib/security.sh');
-  const result = spawnSync('bash', [script, '--update-checksums'], {
+  const script = join(root, "scripts/lib/security.sh");
+  const result = spawnSync("bash", [script, "--update-checksums"], {
     cwd: root,
-    encoding: 'utf8',
+    encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   });
 
   if (result.status !== 0) {
     return {
-      detail: result.stderr.trim() || result.stdout.trim() || `checksum updater exited with status ${result.status ?? 'unknown'}`,
+      detail:
+        result.stderr.trim() ||
+        result.stdout.trim() ||
+        `checksum updater exited with status ${result.status ?? "unknown"}`,
     };
   }
 
@@ -732,9 +766,9 @@ interface CliOptions {
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     root: DEFAULT_ROOT,
-    manifestPath: join(DEFAULT_ROOT, 'acfs.manifest.yaml'),
-    checksumsPath: join(DEFAULT_ROOT, 'checksums.yaml'),
-    network: 'skip',
+    manifestPath: join(DEFAULT_ROOT, "acfs.manifest.yaml"),
+    checksumsPath: join(DEFAULT_ROOT, "checksums.yaml"),
+    network: "skip",
     json: false,
     quiet: false,
   };
@@ -742,42 +776,42 @@ function parseArgs(args: string[]): CliOptions {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     switch (arg) {
-      case '--json':
+      case "--json":
         options.json = true;
         break;
-      case '--quiet':
+      case "--quiet":
         options.quiet = true;
         break;
-      case '--network=skip':
-        options.network = 'skip';
+      case "--network=skip":
+        options.network = "skip";
         break;
-      case '--network=check':
-        options.network = 'check';
+      case "--network=check":
+        options.network = "check";
         break;
-      case '--root':
+      case "--root":
         i += 1;
-        options.root = resolve(args[i] ?? '');
-        options.manifestPath = join(options.root, 'acfs.manifest.yaml');
-        options.checksumsPath = join(options.root, 'checksums.yaml');
+        options.root = resolve(args[i] ?? "");
+        options.manifestPath = join(options.root, "acfs.manifest.yaml");
+        options.checksumsPath = join(options.root, "checksums.yaml");
         break;
-      case '--manifest':
+      case "--manifest":
         i += 1;
-        options.manifestPath = resolve(args[i] ?? '');
+        options.manifestPath = resolve(args[i] ?? "");
         break;
-      case '--checksums':
+      case "--checksums":
         i += 1;
-        options.checksumsPath = resolve(args[i] ?? '');
+        options.checksumsPath = resolve(args[i] ?? "");
         break;
-      case '--candidate-checksums':
+      case "--candidate-checksums":
         i += 1;
-        options.candidatePath = resolve(args[i] ?? '');
+        options.candidatePath = resolve(args[i] ?? "");
         break;
-      case '--github-fixture':
+      case "--github-fixture":
         i += 1;
-        options.githubFixturePath = resolve(args[i] ?? '');
+        options.githubFixturePath = resolve(args[i] ?? "");
         break;
-      case '--help':
-      case '-h':
+      case "--help":
+      case "-h":
         printUsage();
         process.exit(0);
         break;
@@ -805,25 +839,33 @@ Options:
 `);
 }
 
-function loadGitHubFixture(path: string | undefined): Record<string, GitHubReleaseFixture> | undefined {
+function loadGitHubFixture(
+  path: string | undefined,
+): Record<string, GitHubReleaseFixture> | undefined {
   if (!path) return undefined;
   try {
-    return asRecord(JSON.parse(readFileSync(path, 'utf8'))) as Record<string, GitHubReleaseFixture>;
+    return asRecord(JSON.parse(readFileSync(path, "utf8"))) as Record<string, GitHubReleaseFixture>;
   } catch (error) {
-    throw new Error(`failed to read GitHub fixture ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `failed to read GitHub fixture ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
 function printHumanReport(report: StackProvenanceReport, quiet: boolean): void {
   if (quiet) return;
 
-  console.log('ACFS stack provenance report');
+  console.log("ACFS stack provenance report");
   console.log(`Mode: network=${report.mode.network} candidate=${report.mode.candidateSource}`);
-  console.log(`Summary: pass=${report.summary.pass} warn=${report.summary.warn} unknown=${report.summary.unknown} skip=${report.summary.skip} fail=${report.summary.fail}`);
-  console.log('');
+  console.log(
+    `Summary: pass=${report.summary.pass} warn=${report.summary.warn} unknown=${report.summary.unknown} skip=${report.summary.skip} fail=${report.summary.fail}`,
+  );
+  console.log("");
 
   for (const tool of report.tools) {
-    console.log(`[${tool.status.toUpperCase()}] ${tool.moduleId} (${tool.toolKey ?? 'no-checksum-key'}) - ${tool.repo ?? tool.sourceHref ?? 'unresolved-repository'}`);
+    console.log(
+      `[${tool.status.toUpperCase()}] ${tool.moduleId} (${tool.toolKey ?? "no-checksum-key"}) - ${tool.repo ?? tool.sourceHref ?? "unresolved-repository"}`,
+    );
     console.log(`  local: [${tool.local.status}] ${tool.local.detail}`);
     console.log(`  candidate: [${tool.candidate.status}] ${tool.candidate.detail}`);
     console.log(`  release: [${tool.release.status}] ${tool.release.detail}`);
@@ -833,8 +875,8 @@ function printHumanReport(report: StackProvenanceReport, quiet: boolean): void {
   }
 
   if (report.checksumDiffs.unrelated.length > 0) {
-    console.log('');
-    console.log('Unrelated checksum diffs:');
+    console.log("");
+    console.log("Unrelated checksum diffs:");
     for (const diff of report.checksumDiffs.unrelated) {
       console.log(`  [FAIL] ${diff.tool}: ${diff.kind}`);
     }
@@ -849,14 +891,16 @@ async function runCli(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const manifestResult = parseManifestFile(options.manifestPath);
   if (!manifestResult.success || !manifestResult.data) {
-    throw new Error(manifestResult.error?.message ?? 'failed to parse manifest');
+    throw new Error(manifestResult.error?.message ?? "failed to parse manifest");
   }
   // Reject invalid execution graphs before checksum generation or network I/O.
   assertManifestSemanticallyValid(manifestResult.data);
 
-  let candidateChecksums = options.candidatePath ? readChecksumsFile(options.candidatePath) : undefined;
+  let candidateChecksums = options.candidatePath
+    ? readChecksumsFile(options.candidatePath)
+    : undefined;
   let candidateGenerationDetail: string | undefined;
-  if (options.network === 'check' && !candidateChecksums) {
+  if (options.network === "check" && !candidateChecksums) {
     const generated = generateCandidateChecksums(options.root);
     candidateChecksums = generated.checksums;
     candidateGenerationDetail = generated.detail;
@@ -870,10 +914,14 @@ async function runCli(): Promise<void> {
     network: options.network,
   });
 
-  if (options.network === 'check' && candidateChecksums && report.mode.candidateSource === 'provided') {
-    report.mode.candidateSource = options.candidatePath ? 'provided' : 'generated';
+  if (
+    options.network === "check" &&
+    candidateChecksums &&
+    report.mode.candidateSource === "provided"
+  ) {
+    report.mode.candidateSource = options.candidatePath ? "provided" : "generated";
   }
-  if (options.network === 'check' && !candidateChecksums && candidateGenerationDetail) {
+  if (options.network === "check" && !candidateChecksums && candidateGenerationDetail) {
     report.advisories.push(`checksum candidate unavailable: ${candidateGenerationDetail}`);
     report.summary.warn += 1;
   }

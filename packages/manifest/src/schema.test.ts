@@ -5,206 +5,210 @@
  * Tests schema validation behavior, error messages, and defaults.
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
-  ManifestSchema,
   ManifestDefaultsSchema,
+  ManifestSchema,
   ModuleAgentMetadataSchema,
   ModuleSchema,
   ModuleWebMetadataSchema,
-} from './schema.js';
+} from "./schema.js";
 
-describe('ManifestDefaultsSchema', () => {
-  test('validates complete defaults', () => {
+describe("ManifestDefaultsSchema", () => {
+  test("validates complete defaults", () => {
     const result = ManifestDefaultsSchema.safeParse({
-      user: 'ubuntu',
-      workspace_root: '/data/projects',
-      mode: 'vibe',
+      user: "ubuntu",
+      workspace_root: "/data/projects",
+      mode: "vibe",
     });
     expect(result.success).toBe(true);
   });
 
-  test('applies default mode when not specified', () => {
+  test("applies default mode when not specified", () => {
     const result = ManifestDefaultsSchema.safeParse({
-      user: 'ubuntu',
-      workspace_root: '/data/projects',
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.mode).toBe('vibe');
-    }
-  });
-
-  test('rejects empty user', () => {
-    const result = ManifestDefaultsSchema.safeParse({
-      user: '',
-      workspace_root: '/data/projects',
-      mode: 'vibe',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  test('rejects empty workspace_root', () => {
-    const result = ManifestDefaultsSchema.safeParse({
-      user: 'ubuntu',
-      workspace_root: '',
-      mode: 'vibe',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  test('accepts safe mode', () => {
-    const result = ManifestDefaultsSchema.safeParse({
-      user: 'ubuntu',
-      workspace_root: '/data',
-      mode: 'safe',
+      user: "ubuntu",
+      workspace_root: "/data/projects",
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.mode).toBe('safe');
+      expect(result.data.mode).toBe("vibe");
     }
   });
 
-  test('rejects invalid mode', () => {
+  test("rejects empty user", () => {
     const result = ManifestDefaultsSchema.safeParse({
-      user: 'ubuntu',
-      workspace_root: '/data',
-      mode: 'invalid',
+      user: "",
+      workspace_root: "/data/projects",
+      mode: "vibe",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects unknown default fields instead of silently discarding typos', () => {
+  test("rejects empty workspace_root", () => {
     const result = ManifestDefaultsSchema.safeParse({
-      user: 'ubuntu',
-      workspace_root: '/data',
-      mode: 'vibe',
-      workspace_rooot: '/wrong/path',
+      user: "ubuntu",
+      workspace_root: "",
+      mode: "vibe",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("accepts safe mode", () => {
+    const result = ManifestDefaultsSchema.safeParse({
+      user: "ubuntu",
+      workspace_root: "/data",
+      mode: "safe",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe("safe");
+    }
+  });
+
+  test("rejects invalid mode", () => {
+    const result = ManifestDefaultsSchema.safeParse({
+      user: "ubuntu",
+      workspace_root: "/data",
+      mode: "invalid",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects unknown default fields instead of silently discarding typos", () => {
+    const result = ManifestDefaultsSchema.safeParse({
+      user: "ubuntu",
+      workspace_root: "/data",
+      mode: "vibe",
+      workspace_rooot: "/wrong/path",
     });
     expect(result.success).toBe(false);
   });
 });
 
-describe('ModuleSchema', () => {
+describe("ModuleSchema", () => {
   const validMinimalModule = {
-    id: 'base.system',
-    description: 'Base system packages',
-    install: ['apt-get update'],
-    verify: ['curl --version'],
+    id: "base.system",
+    description: "Base system packages",
+    install: ["apt-get update"],
+    verify: ["curl --version"],
   };
 
-  test('validates minimal module', () => {
+  test("validates minimal module", () => {
     const result = ModuleSchema.safeParse(validMinimalModule);
     expect(result.success).toBe(true);
   });
 
-  test('applies default values', () => {
+  test("applies default values", () => {
     const result = ModuleSchema.safeParse(validMinimalModule);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.run_as).toBe('target_user');
+      expect(result.data.run_as).toBe("target_user");
       expect(result.data.optional).toBe(false);
       expect(result.data.enabled_by_default).toBe(true);
       expect(result.data.generated).toBe(true);
     }
   });
 
-  test('rejects empty module ID', () => {
+  test("rejects empty module ID", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: '',
+      id: "",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects uppercase module ID', () => {
+  test("rejects uppercase module ID", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: 'Base.System',
+      id: "Base.System",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects module ID starting with number', () => {
+  test("rejects module ID starting with number", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: '1base.system',
+      id: "1base.system",
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts module ID with underscores', () => {
+  test("accepts module ID with underscores", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: 'stack.mcp_agent_mail',
+      id: "stack.mcp_agent_mail",
     });
     expect(result.success).toBe(true);
   });
 
-  test('accepts validated plugin provenance on normalized modules', () => {
+  test("accepts validated plugin provenance on normalized modules", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: 'plugin.example_tools.cli',
-      category: 'tools',
+      id: "plugin.example_tools.cli",
+      category: "tools",
       plugin: {
-        packageId: 'example.tools',
-        version: '1.2.3',
-        pluginSha256: 'a'.repeat(64),
-        sourceRef: 'main',
-        sourceCommit: '0123456789abcdef0123456789abcdef01234567',
+        packageId: "example.tools",
+        version: "1.2.3",
+        pluginSha256: "a".repeat(64),
+        sourceRef: "main",
+        sourceCommit: "0123456789abcdef0123456789abcdef01234567",
       },
     });
     expect(result.success).toBe(true);
   });
 
-  test('rejects malformed or misspelled plugin provenance', () => {
+  test("rejects malformed or misspelled plugin provenance", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: 'plugin.example_tools.cli',
-      category: 'tools',
+      id: "plugin.example_tools.cli",
+      category: "tools",
       plugin: {
-        packageId: 'example.tools',
-        version: '1.2.3',
-        pluginSha256: 'not-a-hash',
-        sourceRef: 'main',
-        sourceCommit: '0123456789abcdef0123456789abcdef01234567',
-        sourceCommmit: 'ffffffffffffffffffffffffffffffffffffffff',
+        packageId: "example.tools",
+        version: "1.2.3",
+        pluginSha256: "not-a-hash",
+        sourceRef: "main",
+        sourceCommit: "0123456789abcdef0123456789abcdef01234567",
+        sourceCommmit: "ffffffffffffffffffffffffffffffffffffffff",
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts multi-segment module ID', () => {
+  test("accepts multi-segment module ID", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      id: 'cloud.aws.s3',
+      id: "cloud.aws.s3",
     });
     expect(result.success).toBe(true);
   });
 
-  test('rejects categories outside the canonical generator set', () => {
-    expect(ModuleSchema.safeParse({
-      ...validMinimalModule,
-      category: 'weird',
-    }).success).toBe(false);
+  test("rejects categories outside the canonical generator set", () => {
+    expect(
+      ModuleSchema.safeParse({
+        ...validMinimalModule,
+        category: "weird",
+      }).success,
+    ).toBe(false);
   });
 
-  test('rejects an unknown ID-derived category when category is omitted', () => {
-    expect(ModuleSchema.safeParse({
-      ...validMinimalModule,
-      id: 'weird.module',
-    }).success).toBe(false);
+  test("rejects an unknown ID-derived category when category is omitted", () => {
+    expect(
+      ModuleSchema.safeParse({
+        ...validMinimalModule,
+        id: "weird.module",
+      }).success,
+    ).toBe(false);
   });
 
-  test('rejects empty description', () => {
+  test("rejects empty description", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      description: '',
+      description: "",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects empty verify array', () => {
+  test("rejects empty verify array", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       verify: [],
@@ -212,61 +216,61 @@ describe('ModuleSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('accepts empty install array when verified_installer is provided', () => {
+  test("accepts empty install array when verified_installer is provided", () => {
     const result = ModuleSchema.safeParse({
-      id: 'lang.bun',
-      description: 'Bun runtime',
+      id: "lang.bun",
+      description: "Bun runtime",
       install: [],
-      verify: ['bun --version'],
+      verify: ["bun --version"],
       verified_installer: {
-        tool: 'bun',
-        runner: 'bash',
+        tool: "bun",
+        runner: "bash",
         args: [],
       },
     });
     expect(result.success).toBe(true);
   });
 
-  test('rejects empty install array without verified_installer when generated is true', () => {
+  test("rejects empty install array without verified_installer when generated is true", () => {
     const result = ModuleSchema.safeParse({
-      id: 'lang.bun',
-      description: 'Bun runtime',
+      id: "lang.bun",
+      description: "Bun runtime",
       install: [],
-      verify: ['bun --version'],
+      verify: ["bun --version"],
       generated: true,
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects whitespace-only install entries instead of generating a successful no-op', () => {
+  test("rejects whitespace-only install entries instead of generating a successful no-op", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      install: ['   '],
+      install: ["   "],
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects blank verify entries instead of generating a vacuous health check', () => {
+  test("rejects blank verify entries instead of generating a vacuous health check", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      verify: [''],
+      verify: [""],
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts empty install array when generated is false', () => {
+  test("accepts empty install array when generated is false", () => {
     const result = ModuleSchema.safeParse({
-      id: 'lang.bun',
-      description: 'Bun runtime',
+      id: "lang.bun",
+      description: "Bun runtime",
       install: [],
-      verify: ['bun --version'],
+      verify: ["bun --version"],
       generated: false,
     });
     expect(result.success).toBe(true);
   });
 
-  test('validates run_as enum', () => {
-    const runAsValues = ['target_user', 'root', 'current'];
+  test("validates run_as enum", () => {
+    const runAsValues = ["target_user", "root", "current"];
     for (const runAs of runAsValues) {
       const result = ModuleSchema.safeParse({
         ...validMinimalModule,
@@ -276,23 +280,23 @@ describe('ModuleSchema', () => {
     }
   });
 
-  test('rejects invalid run_as value', () => {
+  test("rejects invalid run_as value", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      run_as: 'invalid',
+      run_as: "invalid",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects unknown module fields instead of silently dropping dependency typos', () => {
+  test("rejects unknown module fields instead of silently dropping dependency typos", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      dependecies: ['base.prerequisite'],
+      dependecies: ["base.prerequisite"],
     });
     expect(result.success).toBe(false);
   });
 
-  test('validates phase range (1-10)', () => {
+  test("validates phase range (1-10)", () => {
     // Valid phases
     for (const phase of [1, 5, 10]) {
       const result = ModuleSchema.safeParse({
@@ -312,33 +316,33 @@ describe('ModuleSchema', () => {
     }
   });
 
-  test('validates dependencies array', () => {
+  test("validates dependencies array", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      dependencies: ['base.core', 'lang.bun'],
+      dependencies: ["base.core", "lang.bun"],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.dependencies).toEqual(['base.core', 'lang.bun']);
+      expect(result.data.dependencies).toEqual(["base.core", "lang.bun"]);
     }
   });
 
-  test('validates tags array', () => {
+  test("validates tags array", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      tags: ['critical', 'runtime'],
+      tags: ["critical", "runtime"],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.tags).toContain('critical');
-      expect(result.data.tags).toContain('runtime');
+      expect(result.data.tags).toContain("critical");
+      expect(result.data.tags).toContain("runtime");
     }
   });
 
-  test('validates notes array', () => {
+  test("validates notes array", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      notes: ['First note', 'Second note'],
+      notes: ["First note", "Second note"],
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -346,133 +350,133 @@ describe('ModuleSchema', () => {
     }
   });
 
-  test('validates docs_url as valid URL', () => {
+  test("validates docs_url as valid URL", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      docs_url: 'https://docs.example.com/module',
+      docs_url: "https://docs.example.com/module",
     });
     expect(result.success).toBe(true);
   });
 
-  test('rejects invalid docs_url', () => {
+  test("rejects invalid docs_url", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      docs_url: 'not-a-valid-url',
+      docs_url: "not-a-valid-url",
     });
     expect(result.success).toBe(false);
   });
 
-  test('validates verified_installer object', () => {
+  test("validates verified_installer object", () => {
     const result = ModuleSchema.safeParse({
-      id: 'lang.bun',
-      description: 'Bun runtime',
+      id: "lang.bun",
+      description: "Bun runtime",
       install: [],
-      verify: ['bun --version'],
+      verify: ["bun --version"],
       verified_installer: {
-        tool: 'bun',
-        runner: 'bash',
-        args: ['--', '--yes'],
+        tool: "bun",
+        runner: "bash",
+        args: ["--", "--yes"],
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.verified_installer?.tool).toBe('bun');
-      expect(result.data.verified_installer?.runner).toBe('bash');
-      expect(result.data.verified_installer?.args).toEqual(['--', '--yes']);
+      expect(result.data.verified_installer?.tool).toBe("bun");
+      expect(result.data.verified_installer?.runner).toBe("bash");
+      expect(result.data.verified_installer?.args).toEqual(["--", "--yes"]);
     }
   });
 
-  test('rejects unknown verified-installer fields', () => {
+  test("rejects unknown verified-installer fields", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       verified_installer: {
-        tool: 'bun',
-        runner: 'bash',
-        arguements: ['--yes'],
+        tool: "bun",
+        runner: "bash",
+        arguements: ["--yes"],
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('validates verified_installer env assignments', () => {
+  test("validates verified_installer env assignments", () => {
     const result = ModuleSchema.safeParse({
-      id: 'stack.ru',
-      description: 'Repo Updater',
+      id: "stack.ru",
+      description: "Repo Updater",
       install: [],
-      verify: ['ru --version'],
+      verify: ["ru --version"],
       verified_installer: {
-        tool: 'ru',
-        runner: 'bash',
-        env: ['RU_NON_INTERACTIVE=1'],
+        tool: "ru",
+        runner: "bash",
+        env: ["RU_NON_INTERACTIVE=1"],
         args: [],
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.verified_installer?.env).toEqual(['RU_NON_INTERACTIVE=1']);
+      expect(result.data.verified_installer?.env).toEqual(["RU_NON_INTERACTIVE=1"]);
     }
   });
 
-  test('accepts https verified_installer url metadata', () => {
+  test("accepts https verified_installer url metadata", () => {
     const result = ModuleSchema.safeParse({
-      id: 'stack.rch',
-      description: 'Remote Compilation Helper',
+      id: "stack.rch",
+      description: "Remote Compilation Helper",
       install: [],
-      verify: ['rch --version'],
+      verify: ["rch --version"],
       verified_installer: {
-        tool: 'rch',
-        url: 'https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh',
-        runner: 'bash',
+        tool: "rch",
+        url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh",
+        runner: "bash",
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.verified_installer?.url).toBe(
-        'https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh'
+        "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh",
       );
     }
   });
 
-  test('rejects non-https verified_installer url metadata', () => {
+  test("rejects non-https verified_installer url metadata", () => {
     const result = ModuleSchema.safeParse({
-      id: 'stack.rch',
-      description: 'Remote Compilation Helper',
+      id: "stack.rch",
+      description: "Remote Compilation Helper",
       install: [],
-      verify: ['rch --version'],
+      verify: ["rch --version"],
       verified_installer: {
-        tool: 'rch',
-        url: 'http://example.com/install.sh',
-        runner: 'bash',
+        tool: "rch",
+        url: "http://example.com/install.sh",
+        runner: "bash",
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects invalid verified_installer env entries', () => {
+  test("rejects invalid verified_installer env entries", () => {
     const result = ModuleSchema.safeParse({
-      id: 'stack.ru',
-      description: 'Repo Updater',
+      id: "stack.ru",
+      description: "Repo Updater",
       install: [],
-      verify: ['ru --version'],
+      verify: ["ru --version"],
       verified_installer: {
-        tool: 'ru',
-        runner: 'bash',
-        env: ['not-an-assignment'],
+        tool: "ru",
+        runner: "bash",
+        env: ["not-an-assignment"],
         args: [],
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('allows only security-reviewed verified_installer environment contracts', () => {
+  test("allows only security-reviewed verified_installer environment contracts", () => {
     const allowedContracts = [
-      { tool: 'atuin', entry: 'ATUIN_NO_MODIFY_PATH=1' },
-      { tool: 'mcp_agent_mail', entry: 'AM_INSTALL_SKIP_MCP_SETUP=1' },
-      { tool: 'mcp_agent_mail', entry: 'AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1' },
-      { tool: 'ru', entry: 'RU_NON_INTERACTIVE=1' },
-      { tool: 's2p', entry: 'RU_NON_INTERACTIVE=1' },
-      { tool: 'grok', entry: 'GROK_BIN_DIR=$TARGET_HOME/.local/bin' },
-      { tool: 'cass', entry: 'TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXX' },
+      { tool: "atuin", entry: "ATUIN_NO_MODIFY_PATH=1" },
+      { tool: "mcp_agent_mail", entry: "AM_INSTALL_SKIP_MCP_SETUP=1" },
+      { tool: "mcp_agent_mail", entry: "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1" },
+      { tool: "ru", entry: "RU_NON_INTERACTIVE=1" },
+      { tool: "s2p", entry: "RU_NON_INTERACTIVE=1" },
+      { tool: "grok", entry: "GROK_BIN_DIR=$TARGET_HOME/.local/bin" },
+      { tool: "cass", entry: "TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXX" },
     ];
 
     for (const { tool, entry } of allowedContracts) {
@@ -481,7 +485,7 @@ describe('ModuleSchema', () => {
         install: [],
         verified_installer: {
           tool,
-          runner: 'bash',
+          runner: "bash",
           env: [entry],
         },
       });
@@ -489,210 +493,224 @@ describe('ModuleSchema', () => {
     }
   });
 
-  test('rejects startup hooks, unsafe values, duplicate env names, and detached runners', () => {
+  test("rejects startup hooks, unsafe values, duplicate env names, and detached runners", () => {
     const rejectedEnvironments = [
-      ['BASH_ENV=/tmp/attacker.sh'],
-      ['PATH=/tmp/attacker'],
-      ['RU_NON_INTERACTIVE=0'],
-      ['TMPDIR=$TARGET_HOME/../../tmp/cass.XXXXXX'],
-      ['RU_NON_INTERACTIVE=1', 'RU_NON_INTERACTIVE=1'],
+      ["BASH_ENV=/tmp/attacker.sh"],
+      ["PATH=/tmp/attacker"],
+      ["RU_NON_INTERACTIVE=0"],
+      ["TMPDIR=$TARGET_HOME/../../tmp/cass.XXXXXX"],
+      ["RU_NON_INTERACTIVE=1", "RU_NON_INTERACTIVE=1"],
     ];
 
     for (const env of rejectedEnvironments) {
       const result = ModuleSchema.safeParse({
         ...validMinimalModule,
         install: [],
-        verified_installer: { tool: 'ru', runner: 'bash', env },
+        verified_installer: { tool: "ru", runner: "bash", env },
       });
       expect(result.success).toBe(false);
     }
 
-    expect(ModuleSchema.safeParse({
-      ...validMinimalModule,
-      install: [],
-      verified_installer: {
-        tool: 'ru',
-        runner: 'bash',
-        env: ['AM_INSTALL_SKIP_MCP_SETUP=1'],
-      },
-    }).success).toBe(false);
+    expect(
+      ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: {
+          tool: "ru",
+          runner: "bash",
+          env: ["AM_INSTALL_SKIP_MCP_SETUP=1"],
+        },
+      }).success,
+    ).toBe(false);
 
     for (const { tool, env } of [
-      { tool: 'cass', env: ['TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXY'] },
-      { tool: 'cass', env: ['TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/other.XXXXXX'] },
-      { tool: 'cass', env: ['TMPDIR=$TARGET_HOME/.cache/acfs/../installer-tmp/cass.XXXXXX'] },
-      { tool: 'grok', env: ['GROK_BIN_DIR=$TARGET_HOME/.grok/bin'] },
-      { tool: 'grok', env: ['RU_NON_INTERACTIVE=1'] },
-      { tool: 'mcp_agent_mail', env: ['ATUIN_NO_MODIFY_PATH=1'] },
+      { tool: "cass", env: ["TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXY"] },
+      { tool: "cass", env: ["TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/other.XXXXXX"] },
+      { tool: "cass", env: ["TMPDIR=$TARGET_HOME/.cache/acfs/../installer-tmp/cass.XXXXXX"] },
+      { tool: "grok", env: ["GROK_BIN_DIR=$TARGET_HOME/.grok/bin"] },
+      { tool: "grok", env: ["RU_NON_INTERACTIVE=1"] },
+      { tool: "mcp_agent_mail", env: ["ATUIN_NO_MODIFY_PATH=1"] },
     ]) {
-      expect(ModuleSchema.safeParse({
-        ...validMinimalModule,
-        install: [],
-        verified_installer: { tool, runner: 'bash', env },
-      }).success).toBe(false);
+      expect(
+        ModuleSchema.safeParse({
+          ...validMinimalModule,
+          install: [],
+          verified_installer: { tool, runner: "bash", env },
+        }).success,
+      ).toBe(false);
     }
 
-    expect(ModuleSchema.safeParse({
-      ...validMinimalModule,
-      install: [],
-      verified_installer: { tool: 'ru', runner: 'bash', run_in_tmux: true },
-    }).success).toBe(false);
-    expect(ModuleSchema.safeParse({
-      ...validMinimalModule,
-      run_as: 'root',
-      install: [],
-      verified_installer: { tool: 'ru', runner: 'bash' },
-    }).success).toBe(false);
+    expect(
+      ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: { tool: "ru", runner: "bash", run_in_tmux: true },
+      }).success,
+    ).toBe(false);
+    expect(
+      ModuleSchema.safeParse({
+        ...validMinimalModule,
+        run_as: "root",
+        install: [],
+        verified_installer: { tool: "ru", runner: "bash" },
+      }).success,
+    ).toBe(false);
   });
 
-  test('rejects interpreter options before a verified installer file', () => {
+  test("rejects interpreter options before a verified installer file", () => {
     for (const args of [
-      ['-s', '--'],
-      ['-c', 'source /tmp/attacker', '--'],
-      ['--rcfile', '/tmp/attacker', '--'],
-      ['--init-file', '/tmp/attacker', '--'],
-      ['-O', 'extdebug', '--'],
+      ["-s", "--"],
+      ["-c", "source /tmp/attacker", "--"],
+      ["--rcfile", "/tmp/attacker", "--"],
+      ["--init-file", "/tmp/attacker", "--"],
+      ["-O", "extdebug", "--"],
     ]) {
-      expect(ModuleSchema.safeParse({
-        ...validMinimalModule,
-        install: [],
-        verified_installer: { tool: 'ru', runner: 'bash', args },
-      }).success).toBe(false);
+      expect(
+        ModuleSchema.safeParse({
+          ...validMinimalModule,
+          install: [],
+          verified_installer: { tool: "ru", runner: "bash", args },
+        }).success,
+      ).toBe(false);
     }
 
-    expect(ModuleSchema.safeParse({
-      ...validMinimalModule,
-      install: [],
-      verified_installer: {
-        tool: 'ru',
-        runner: 'bash',
-        args: ['--', '--easy-mode'],
-      },
-    }).success).toBe(true);
+    expect(
+      ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: {
+          tool: "ru",
+          runner: "bash",
+          args: ["--", "--easy-mode"],
+        },
+      }).success,
+    ).toBe(true);
   });
 
-  test('rejects verified_installer with python runner (security)', () => {
+  test("rejects verified_installer with python runner (security)", () => {
     const result = ModuleSchema.safeParse({
-      id: 'lang.python',
-      description: 'Python',
+      id: "lang.python",
+      description: "Python",
       install: [],
-      verify: ['python --version'],
+      verify: ["python --version"],
       verified_installer: {
-        tool: 'python',
-        runner: 'python',
+        tool: "python",
+        runner: "python",
         args: [],
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts sh as verified_installer runner', () => {
+  test("accepts sh as verified_installer runner", () => {
     const result = ModuleSchema.safeParse({
-      id: 'tools.test',
-      description: 'Test',
+      id: "tools.test",
+      description: "Test",
       install: [],
-      verify: ['test --version'],
+      verify: ["test --version"],
       verified_installer: {
-        tool: 'test',
-        runner: 'sh',
+        tool: "test",
+        runner: "sh",
         args: [],
       },
     });
     expect(result.success).toBe(true);
   });
 
-  test('validates installed_check object', () => {
+  test("validates installed_check object", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       installed_check: {
-        run_as: 'target_user',
-        command: 'which curl',
+        run_as: "target_user",
+        command: "which curl",
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.installed_check?.command).toBe('which curl');
+      expect(result.data.installed_check?.command).toBe("which curl");
     }
   });
 
-  test('rejects installed_check with empty command', () => {
+  test("rejects installed_check with empty command", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       installed_check: {
-        run_as: 'target_user',
-        command: '',
+        run_as: "target_user",
+        command: "",
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects unknown installed-check fields', () => {
+  test("rejects unknown installed-check fields", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       installed_check: {
-        run_as: 'target_user',
-        command: 'which curl',
-        commmand: 'which wrong-binary',
+        run_as: "target_user",
+        command: "which curl",
+        commmand: "which wrong-binary",
       },
     });
     expect(result.success).toBe(false);
   });
 
-  test('validates pre_install_check object', () => {
+  test("validates pre_install_check object", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       pre_install_check: {
-        run_as: 'target_user',
-        command: 'command -v claude >/dev/null 2>&1',
-        skip_message: 'Skipping PCR - Claude Code not found',
+        run_as: "target_user",
+        command: "command -v claude >/dev/null 2>&1",
+        skip_message: "Skipping PCR - Claude Code not found",
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.pre_install_check?.command).toBe('command -v claude >/dev/null 2>&1');
-      expect(result.data.pre_install_check?.skip_message).toBe('Skipping PCR - Claude Code not found');
+      expect(result.data.pre_install_check?.command).toBe("command -v claude >/dev/null 2>&1");
+      expect(result.data.pre_install_check?.skip_message).toBe(
+        "Skipping PCR - Claude Code not found",
+      );
     }
   });
 
-  test('validates aliases array', () => {
+  test("validates aliases array", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      aliases: ['sys', 'system'],
+      aliases: ["sys", "system"],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.aliases).toContain('sys');
-      expect(result.data.aliases).toContain('system');
+      expect(result.data.aliases).toContain("sys");
+      expect(result.data.aliases).toContain("system");
     }
   });
 });
 
-describe('ManifestSchema', () => {
+describe("ManifestSchema", () => {
   const validMinimalManifest = {
     version: 1,
-    name: 'Test Manifest',
-    id: 'test',
+    name: "Test Manifest",
+    id: "test",
     defaults: {
-      user: 'ubuntu',
-      workspace_root: '/data/projects',
-      mode: 'vibe',
+      user: "ubuntu",
+      workspace_root: "/data/projects",
+      mode: "vibe",
     },
     modules: [
       {
-        id: 'base.system',
-        description: 'Base system',
-        install: ['apt-get update'],
-        verify: ['curl --version'],
+        id: "base.system",
+        description: "Base system",
+        install: ["apt-get update"],
+        verify: ["curl --version"],
       },
     ],
   };
 
-  test('validates complete manifest', () => {
+  test("validates complete manifest", () => {
     const result = ManifestSchema.safeParse(validMinimalManifest);
     expect(result.success).toBe(true);
   });
 
-  test('rejects unknown top-level fields', () => {
+  test("rejects unknown top-level fields", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
       module: validMinimalManifest.modules,
@@ -700,7 +718,7 @@ describe('ManifestSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects negative version', () => {
+  test("rejects negative version", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
       version: -1,
@@ -708,7 +726,7 @@ describe('ManifestSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects zero version', () => {
+  test("rejects zero version", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
       version: 0,
@@ -716,7 +734,7 @@ describe('ManifestSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects non-integer version', () => {
+  test("rejects non-integer version", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
       version: 1.5,
@@ -724,39 +742,39 @@ describe('ManifestSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects empty name', () => {
+  test("rejects empty name", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
-      name: '',
+      name: "",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects empty id', () => {
+  test("rejects empty id", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
-      id: '',
+      id: "",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects uppercase id', () => {
+  test("rejects uppercase id", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
-      id: 'TestManifest',
+      id: "TestManifest",
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts id with underscores', () => {
+  test("accepts id with underscores", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
-      id: 'test_manifest',
+      id: "test_manifest",
     });
     expect(result.success).toBe(true);
   });
 
-  test('rejects empty modules array', () => {
+  test("rejects empty modules array", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
       modules: [],
@@ -764,22 +782,22 @@ describe('ManifestSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('validates multiple modules', () => {
+  test("validates multiple modules", () => {
     const result = ManifestSchema.safeParse({
       ...validMinimalManifest,
       modules: [
         {
-          id: 'base.system',
-          description: 'Base system',
-          install: ['apt-get update'],
-          verify: ['curl --version'],
+          id: "base.system",
+          description: "Base system",
+          install: ["apt-get update"],
+          verify: ["curl --version"],
         },
         {
-          id: 'shell.zsh',
-          description: 'Zsh shell',
-          dependencies: ['base.system'],
-          install: ['apt-get install zsh'],
-          verify: ['zsh --version'],
+          id: "shell.zsh",
+          description: "Zsh shell",
+          dependencies: ["base.system"],
+          install: ["apt-get install zsh"],
+          verify: ["zsh --version"],
         },
       ],
     });
@@ -789,18 +807,18 @@ describe('ManifestSchema', () => {
     }
   });
 
-  test('rejects missing defaults', () => {
+  test("rejects missing defaults", () => {
     const { defaults, ...withoutDefaults } = validMinimalManifest;
     const result = ManifestSchema.safeParse(withoutDefaults);
     expect(result.success).toBe(false);
   });
 
-  test('provides descriptive error messages', () => {
+  test("provides descriptive error messages", () => {
     const result = ManifestSchema.safeParse({
       version: -1,
-      name: '',
-      id: 'UPPERCASE',
-      defaults: { user: '', workspace_root: '', mode: 'invalid' },
+      name: "",
+      id: "UPPERCASE",
+      defaults: { user: "", workspace_root: "", mode: "invalid" },
       modules: [],
     });
     expect(result.success).toBe(false);
@@ -811,37 +829,37 @@ describe('ManifestSchema', () => {
   });
 });
 
-describe('ModuleAgentMetadataSchema', () => {
+describe("ModuleAgentMetadataSchema", () => {
   const validAgent = {
-    display_name: 'Example Agent',
-    vendor: 'Example Co',
-    cli: 'exampleagent',
-    aliases: ['xa'],
-    auth: 'exampleagent login',
-    docs_url: 'https://example.com/agent',
-    summary: 'Example roster entry.',
+    display_name: "Example Agent",
+    vendor: "Example Co",
+    cli: "exampleagent",
+    aliases: ["xa"],
+    auth: "exampleagent login",
+    docs_url: "https://example.com/agent",
+    summary: "Example roster entry.",
   };
 
-  test('validates complete agent metadata', () => {
+  test("validates complete agent metadata", () => {
     expect(ModuleAgentMetadataSchema.safeParse(validAgent).success).toBe(true);
   });
 
-  test('accepts the minimum set of required roster fields', () => {
+  test("accepts the minimum set of required roster fields", () => {
     const result = ModuleAgentMetadataSchema.safeParse({
-      display_name: 'Example Agent',
-      cli: 'exampleagent',
-      auth: 'exampleagent login',
-      docs_url: 'https://example.com/agent',
+      display_name: "Example Agent",
+      cli: "exampleagent",
+      auth: "exampleagent login",
+      docs_url: "https://example.com/agent",
     });
     expect(result.success).toBe(true);
   });
 
   test.each([
-    ['display_name', { display_name: undefined }],
-    ['cli', { cli: undefined }],
-    ['auth', { auth: undefined }],
-    ['docs_url', { docs_url: undefined }],
-  ])('requires %s', (_field, override) => {
+    ["display_name", { display_name: undefined }],
+    ["cli", { cli: undefined }],
+    ["auth", { auth: undefined }],
+    ["docs_url", { docs_url: undefined }],
+  ])("requires %s", (_field, override) => {
     const candidate: Record<string, unknown> = { ...validAgent, ...override };
     for (const [key, value] of Object.entries(candidate)) {
       if (value === undefined) delete candidate[key];
@@ -849,87 +867,101 @@ describe('ModuleAgentMetadataSchema', () => {
     expect(ModuleAgentMetadataSchema.safeParse(candidate).success).toBe(false);
   });
 
-  test('rejects CLI names and aliases that are not shell-safe lowercase tokens', () => {
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, cli: 'Example Agent' }).success).toBe(false);
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, cli: '9agent' }).success).toBe(false);
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, aliases: ['XA'] }).success).toBe(false);
-  });
-
-  test('rejects free text that would break the Markdown table cell', () => {
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, auth: 'a | b' }).success).toBe(false);
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, auth: 'a\nb' }).success).toBe(false);
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, summary: 'a | b' }).success).toBe(false);
-    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, summary: 'a\nb' }).success).toBe(false);
-  });
-
-  test('requires an https docs URL', () => {
+  test("rejects CLI names and aliases that are not shell-safe lowercase tokens", () => {
     expect(
-      ModuleAgentMetadataSchema.safeParse({ ...validAgent, docs_url: 'http://example.com/agent' })
-        .success
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, cli: "Example Agent" }).success,
+    ).toBe(false);
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, cli: "9agent" }).success).toBe(
+      false,
+    );
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, aliases: ["XA"] }).success).toBe(
+      false,
+    );
+  });
+
+  test("rejects free text that would break the Markdown table cell", () => {
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, auth: "a | b" }).success).toBe(
+      false,
+    );
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, auth: "a\nb" }).success).toBe(
+      false,
+    );
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, summary: "a | b" }).success).toBe(
+      false,
+    );
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, summary: "a\nb" }).success).toBe(
+      false,
+    );
+  });
+
+  test("requires an https docs URL", () => {
+    expect(
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, docs_url: "http://example.com/agent" })
+        .success,
     ).toBe(false);
     expect(
-      ModuleAgentMetadataSchema.safeParse({ ...validAgent, docs_url: 'not-a-url' }).success
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, docs_url: "not-a-url" }).success,
     ).toBe(false);
   });
 
-  test('rejects unknown agent metadata fields', () => {
+  test("rejects unknown agent metadata fields", () => {
     expect(
-      ModuleAgentMetadataSchema.safeParse({ ...validAgent, install_status: 'default' }).success
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, install_status: "default" }).success,
     ).toBe(false);
   });
 
-  test('allows the agent block only on modules in the agents category', () => {
+  test("allows the agent block only on modules in the agents category", () => {
     const base = {
-      description: 'Example coding agent',
-      install: ['echo agent'],
-      verify: ['exampleagent --version'],
+      description: "Example coding agent",
+      install: ["echo agent"],
+      verify: ["exampleagent --version"],
       agent: validAgent,
     };
 
-    expect(ModuleSchema.safeParse({ id: 'agents.example', ...base }).success).toBe(true);
+    expect(ModuleSchema.safeParse({ id: "agents.example", ...base }).success).toBe(true);
     expect(
-      ModuleSchema.safeParse({ id: 'tools.example', category: 'agents', ...base }).success
+      ModuleSchema.safeParse({ id: "tools.example", category: "agents", ...base }).success,
     ).toBe(true);
 
-    const wrongCategory = ModuleSchema.safeParse({ id: 'tools.example', ...base });
+    const wrongCategory = ModuleSchema.safeParse({ id: "tools.example", ...base });
     expect(wrongCategory.success).toBe(false);
     if (!wrongCategory.success) {
       expect(
         wrongCategory.error.issues.some(
-          (issue) => issue.path.join('.') === 'agent' && issue.message.includes('agents')
-        )
+          (issue) => issue.path.join(".") === "agent" && issue.message.includes("agents"),
+        ),
       ).toBe(true);
     }
   });
 });
 
-describe('ModuleWebMetadataSchema', () => {
-  test('validates complete web metadata', () => {
+describe("ModuleWebMetadataSchema", () => {
+  test("validates complete web metadata", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      display_name: 'MCP Agent Mail',
-      short_name: 'Agent Mail',
-      tagline: 'Inter-agent coordination via messages',
-      short_desc: 'Provides message routing and file reservation for cooperating agents.',
-      icon: 'mail',
-      color: '#3B82F6',
-      category_label: 'AI Agent',
-      href: '/tools/agent-mail',
-      features: ['Message routing', 'File reservations'],
-      tech_stack: ['Rust', 'SQLite'],
-      use_cases: ['Multi-agent coordination'],
-      language: 'Rust',
+      display_name: "MCP Agent Mail",
+      short_name: "Agent Mail",
+      tagline: "Inter-agent coordination via messages",
+      short_desc: "Provides message routing and file reservation for cooperating agents.",
+      icon: "mail",
+      color: "#3B82F6",
+      category_label: "AI Agent",
+      href: "/tools/agent-mail",
+      features: ["Message routing", "File reservations"],
+      tech_stack: ["Rust", "SQLite"],
+      use_cases: ["Multi-agent coordination"],
+      language: "Rust",
       stars: 150,
-      cli_name: 'mcp-agent-mail',
-      cli_aliases: ['mam'],
-      command_example: 'mcp-agent-mail --help',
-      lesson_slug: 'agent-mail-basics',
-      tldr_snippet: 'Routes messages between AI coding agents.',
+      cli_name: "mcp-agent-mail",
+      cli_aliases: ["mam"],
+      command_example: "mcp-agent-mail --help",
+      lesson_slug: "agent-mail-basics",
+      tldr_snippet: "Routes messages between AI coding agents.",
       visible: true,
     });
     expect(result.success).toBe(true);
   });
 
-  test('accepts empty object (all fields optional except visible default)', () => {
+  test("accepts empty object (all fields optional except visible default)", () => {
     const result = ModuleWebMetadataSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) {
@@ -937,17 +969,17 @@ describe('ModuleWebMetadataSchema', () => {
     }
   });
 
-  test('rejects unknown web metadata fields', () => {
+  test("rejects unknown web metadata fields", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      display_name: 'Test Tool',
-      displayname: 'Misspelled Tool',
+      display_name: "Test Tool",
+      displayname: "Misspelled Tool",
     });
     expect(result.success).toBe(false);
   });
 
-  test('defaults visible to true', () => {
+  test("defaults visible to true", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      display_name: 'Test Tool',
+      display_name: "Test Tool",
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -955,7 +987,7 @@ describe('ModuleWebMetadataSchema', () => {
     }
   });
 
-  test('accepts visible=false', () => {
+  test("accepts visible=false", () => {
     const result = ModuleWebMetadataSchema.safeParse({
       visible: false,
     });
@@ -965,165 +997,165 @@ describe('ModuleWebMetadataSchema', () => {
     }
   });
 
-  test('rejects invalid hex color (no hash)', () => {
+  test("rejects invalid hex color (no hash)", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      color: '3B82F6',
+      color: "3B82F6",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects invalid hex color (3-digit)', () => {
+  test("rejects invalid hex color (3-digit)", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      color: '#F00',
+      color: "#F00",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects invalid hex color (CSS injection attempt)', () => {
+  test("rejects invalid hex color (CSS injection attempt)", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      color: '#000;background:url(evil)',
+      color: "#000;background:url(evil)",
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts valid hex colors', () => {
-    for (const color of ['#000000', '#FFFFFF', '#3B82F6', '#ff5733']) {
+  test("accepts valid hex colors", () => {
+    for (const color of ["#000000", "#FFFFFF", "#3B82F6", "#ff5733"]) {
       const result = ModuleWebMetadataSchema.safeParse({ color });
       expect(result.success).toBe(true);
     }
   });
 
-  test('rejects uppercase icon names', () => {
+  test("rejects uppercase icon names", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      icon: 'Terminal',
+      icon: "Terminal",
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts kebab-case icon names', () => {
-    for (const icon of ['mail', 'terminal-square', 'git-branch']) {
+  test("accepts kebab-case icon names", () => {
+    for (const icon of ["mail", "terminal-square", "git-branch"]) {
       const result = ModuleWebMetadataSchema.safeParse({ icon });
       expect(result.success).toBe(true);
     }
   });
 
-  test('rejects href without leading slash', () => {
+  test("rejects href without leading slash", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      href: 'tools/agent-mail',
+      href: "tools/agent-mail",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects scheme-relative href values', () => {
+  test("rejects scheme-relative href values", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      href: '//attacker',
+      href: "//attacker",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects malformed and credential-bearing external href values', () => {
+  test("rejects malformed and credential-bearing external href values", () => {
     for (const href of [
-      'https://',
-      'https://example.com/path with spaces',
-      'https://alice:swordfish@example.com/tool',
+      "https://",
+      "https://example.com/path with spaces",
+      "https://alice:swordfish@example.com/tool",
     ]) {
       expect(ModuleWebMetadataSchema.safeParse({ href }).success).toBe(false);
     }
   });
 
-  test('accepts valid href paths', () => {
-    for (const href of ['/tools/agent-mail', '/tldr', '/tools/br_cli']) {
+  test("accepts valid href paths", () => {
+    for (const href of ["/tools/agent-mail", "/tldr", "/tools/br_cli"]) {
       const result = ModuleWebMetadataSchema.safeParse({ href });
       expect(result.success).toBe(true);
     }
   });
 
-  test('accepts valid HTTP and HTTPS href URLs', () => {
-    for (const href of ['https://example.com/tool', 'http://localhost.test/tool']) {
+  test("accepts valid HTTP and HTTPS href URLs", () => {
+    for (const href of ["https://example.com/tool", "http://localhost.test/tool"]) {
       expect(ModuleWebMetadataSchema.safeParse({ href }).success).toBe(true);
     }
   });
 
-  test('rejects negative stars', () => {
+  test("rejects negative stars", () => {
     const result = ModuleWebMetadataSchema.safeParse({
       stars: -1,
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects non-integer stars', () => {
+  test("rejects non-integer stars", () => {
     const result = ModuleWebMetadataSchema.safeParse({
       stars: 1.5,
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects empty display_name', () => {
+  test("rejects empty display_name", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      display_name: '',
+      display_name: "",
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects display_name over 100 chars', () => {
+  test("rejects display_name over 100 chars", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      display_name: 'x'.repeat(101),
+      display_name: "x".repeat(101),
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects invalid cli_name (uppercase)', () => {
+  test("rejects invalid cli_name (uppercase)", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      cli_name: 'MyTool',
+      cli_name: "MyTool",
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts valid cli_name', () => {
-    for (const cli_name of ['br', 'mcp-agent-mail', 'bun_run']) {
+  test("accepts valid cli_name", () => {
+    for (const cli_name of ["br", "mcp-agent-mail", "bun_run"]) {
       const result = ModuleWebMetadataSchema.safeParse({ cli_name });
       expect(result.success).toBe(true);
     }
   });
 
-  test('rejects invalid lesson_slug', () => {
+  test("rejects invalid lesson_slug", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      lesson_slug: 'Bad Slug With Spaces',
+      lesson_slug: "Bad Slug With Spaces",
     });
     expect(result.success).toBe(false);
   });
 
-  test('accepts valid lesson_slug', () => {
+  test("accepts valid lesson_slug", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      lesson_slug: 'getting-started',
+      lesson_slug: "getting-started",
     });
     expect(result.success).toBe(true);
   });
 
-  test('limits features array length', () => {
+  test("limits features array length", () => {
     const result = ModuleWebMetadataSchema.safeParse({
       features: Array.from({ length: 21 }, (_, i) => `Feature ${i}`),
     });
     expect(result.success).toBe(false);
   });
 
-  test('rejects empty strings in features array', () => {
+  test("rejects empty strings in features array", () => {
     const result = ModuleWebMetadataSchema.safeParse({
-      features: ['Valid feature', ''],
+      features: ["Valid feature", ""],
     });
     expect(result.success).toBe(false);
   });
 });
 
-describe('ModuleSchema with web metadata', () => {
+describe("ModuleSchema with web metadata", () => {
   const validMinimalModule = {
-    id: 'base.system',
-    description: 'Base system packages',
-    install: ['apt-get update'],
-    verify: ['curl --version'],
+    id: "base.system",
+    description: "Base system packages",
+    install: ["apt-get update"],
+    verify: ["curl --version"],
   };
 
-  test('accepts module without web field', () => {
+  test("accepts module without web field", () => {
     const result = ModuleSchema.safeParse(validMinimalModule);
     expect(result.success).toBe(true);
     if (result.success) {
@@ -1131,25 +1163,25 @@ describe('ModuleSchema with web metadata', () => {
     }
   });
 
-  test('accepts module with web metadata', () => {
+  test("accepts module with web metadata", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       web: {
-        display_name: 'Base System',
-        short_name: 'System',
-        tagline: 'Core system packages',
-        icon: 'server',
-        color: '#6B7280',
+        display_name: "Base System",
+        short_name: "System",
+        tagline: "Core system packages",
+        icon: "server",
+        color: "#6B7280",
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.web?.display_name).toBe('Base System');
+      expect(result.data.web?.display_name).toBe("Base System");
       expect(result.data.web?.visible).toBe(true);
     }
   });
 
-  test('accepts module with web visible=false', () => {
+  test("accepts module with web visible=false", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       web: { visible: false },
@@ -1160,10 +1192,10 @@ describe('ModuleSchema with web metadata', () => {
     }
   });
 
-  test('rejects module with invalid web color', () => {
+  test("rejects module with invalid web color", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
-      web: { color: 'red' },
+      web: { color: "red" },
     });
     expect(result.success).toBe(false);
   });

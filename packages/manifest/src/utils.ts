@@ -3,12 +3,7 @@
  * Helper functions for working with manifest data
  */
 
-import {
-  MODULE_CATEGORIES,
-  type Manifest,
-  type Module,
-  type ModuleCategory,
-} from './types.js';
+import { type Manifest, MODULE_CATEGORIES, type Module, type ModuleCategory } from "./types.js";
 
 /**
  * Valid module categories (must match ModuleCategory type in types.ts)
@@ -29,7 +24,7 @@ export function isValidCategory(category: string): category is ModuleCategory {
  * a different implementation.
  */
 export function toGeneratedFunctionName(moduleId: string): string {
-  return `acfs_generated_install_${moduleId.replace(/\./g, '_')}`;
+  return `acfs_generated_install_${moduleId.replace(/\./g, "_")}`;
 }
 
 /**
@@ -47,11 +42,11 @@ export function toGeneratedFunctionName(moduleId: string): string {
  * ```
  */
 export function getModuleCategory(moduleId: string): ModuleCategory {
-  const [category] = moduleId.split('.');
+  const [category] = moduleId.split(".");
   if (!isValidCategory(category)) {
     throw new Error(
       `Invalid module category '${category}' from module ID '${moduleId}'. ` +
-        `Valid categories: ${[...VALID_CATEGORIES].join(', ')}`
+        `Valid categories: ${[...VALID_CATEGORIES].join(", ")}`,
     );
   }
   return category;
@@ -70,7 +65,7 @@ export function resolveModuleCategory(module: Module): ModuleCategory {
     if (!isValidCategory(module.category)) {
       throw new Error(
         `Invalid category '${module.category}' for module '${module.id}'. ` +
-          `Valid categories: ${[...VALID_CATEGORIES].join(', ')}`
+          `Valid categories: ${[...VALID_CATEGORIES].join(", ")}`,
       );
     }
     return module.category;
@@ -162,9 +157,7 @@ export function getTransitiveDependencies(manifest: Manifest, moduleId: string):
  * @returns Array of modules that depend on this module
  */
 export function getDependents(manifest: Manifest, moduleId: string): Module[] {
-  return manifest.modules.filter(
-    (module) => module.dependencies?.includes(moduleId)
-  );
+  return manifest.modules.filter((module) => module.dependencies?.includes(moduleId));
 }
 
 /**
@@ -198,7 +191,9 @@ export function sortModulesByInstallOrder(manifest: Manifest): Module[] {
     if (visited.has(moduleId)) return;
     if (visiting.has(moduleId)) {
       // Cycle detected, throw error
-      throw new Error(`Dependency cycle detected: ${moduleId} depends on itself (directly or indirectly). Stack: ${[...visiting].join(' -> ')} -> ${moduleId}`);
+      throw new Error(
+        `Dependency cycle detected: ${moduleId} depends on itself (directly or indirectly). Stack: ${[...visiting].join(" -> ")} -> ${moduleId}`,
+      );
     }
 
     visiting.add(moduleId);
@@ -267,7 +262,7 @@ export function searchModules(manifest: Manifest, query: string): Module[] {
   return manifest.modules.filter(
     (module) =>
       module.id.toLowerCase().includes(lowerQuery) ||
-      module.description.toLowerCase().includes(lowerQuery)
+      module.description.toLowerCase().includes(lowerQuery),
   );
 }
 

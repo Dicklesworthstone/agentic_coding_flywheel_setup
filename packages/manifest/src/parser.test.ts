@@ -6,18 +6,23 @@
  * This ensures tests reflect real-world usage.
  */
 
-import { describe, test, expect, beforeAll } from 'bun:test';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parseManifestFile, parseManifestString, validateManifest, validateManifestData } from './parser.js';
-import { validateVerifiedInstallerChecksums } from './validate.js';
-import type { Manifest } from './types.js';
+import { beforeAll, describe, expect, test } from "bun:test";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  parseManifestFile,
+  parseManifestString,
+  validateManifest,
+  validateManifestData,
+} from "./parser.js";
+import type { Manifest } from "./types.js";
+import { validateVerifiedInstallerChecksums } from "./validate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = resolve(__dirname, '../../..');
-const MANIFEST_PATH = resolve(PROJECT_ROOT, 'acfs.manifest.yaml');
+const PROJECT_ROOT = resolve(__dirname, "../../..");
+const MANIFEST_PATH = resolve(PROJECT_ROOT, "acfs.manifest.yaml");
 
-describe('parseManifestFile with real manifest', () => {
+describe("parseManifestFile with real manifest", () => {
   let manifest: Manifest;
 
   beforeAll(() => {
@@ -29,20 +34,20 @@ describe('parseManifestFile with real manifest', () => {
     manifest = result.data;
   });
 
-  test('parses acfs.manifest.yaml successfully', () => {
+  test("parses acfs.manifest.yaml successfully", () => {
     expect(manifest).toBeDefined();
     expect(manifest.version).toBeGreaterThan(0);
     expect(manifest.name).toBeTruthy();
-    expect(manifest.id).toBe('acfs');
+    expect(manifest.id).toBe("acfs");
   });
 
-  test('has expected defaults', () => {
-    expect(manifest.defaults.user).toBe('ubuntu');
-    expect(manifest.defaults.workspace_root).toBe('/data/projects');
-    expect(manifest.defaults.mode).toBe('vibe');
+  test("has expected defaults", () => {
+    expect(manifest.defaults.user).toBe("ubuntu");
+    expect(manifest.defaults.workspace_root).toBe("/data/projects");
+    expect(manifest.defaults.mode).toBe("vibe");
   });
 
-  test('has modules with correct structure', () => {
+  test("has modules with correct structure", () => {
     expect(manifest.modules.length).toBeGreaterThan(0);
 
     for (const module of manifest.modules) {
@@ -54,7 +59,7 @@ describe('parseManifestFile with real manifest', () => {
     }
   });
 
-  test('all module IDs follow naming convention', () => {
+  test("all module IDs follow naming convention", () => {
     const idPattern = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 
     for (const module of manifest.modules) {
@@ -62,31 +67,31 @@ describe('parseManifestFile with real manifest', () => {
     }
   });
 
-  test('validates with no errors', () => {
+  test("validates with no errors", () => {
     const result = validateManifest(manifest);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
 
-  test('includes expected core modules', () => {
+  test("includes expected core modules", () => {
     const moduleIds = new Set(manifest.modules.map((m) => m.id));
 
     // Critical base modules
-    expect(moduleIds.has('base.system')).toBe(true);
-    expect(moduleIds.has('shell.zsh')).toBe(true);
+    expect(moduleIds.has("base.system")).toBe(true);
+    expect(moduleIds.has("shell.zsh")).toBe(true);
 
     // Languages
-    expect(moduleIds.has('lang.bun')).toBe(true);
-    expect(moduleIds.has('lang.uv')).toBe(true);
-    expect(moduleIds.has('lang.rust')).toBe(true);
+    expect(moduleIds.has("lang.bun")).toBe(true);
+    expect(moduleIds.has("lang.uv")).toBe(true);
+    expect(moduleIds.has("lang.rust")).toBe(true);
 
     // Agents
-    expect(moduleIds.has('agents.claude')).toBe(true);
-    expect(moduleIds.has('agents.codex')).toBe(true);
-    expect(moduleIds.has('agents.gemini')).toBe(true);
+    expect(moduleIds.has("agents.claude")).toBe(true);
+    expect(moduleIds.has("agents.codex")).toBe(true);
+    expect(moduleIds.has("agents.gemini")).toBe(true);
   });
 
-  test('dependencies reference existing modules', () => {
+  test("dependencies reference existing modules", () => {
     const moduleIds = new Set(manifest.modules.map((m) => m.id));
 
     for (const module of manifest.modules) {
@@ -98,7 +103,7 @@ describe('parseManifestFile with real manifest', () => {
     }
   });
 
-  test('phases are assigned correctly (1-10 range)', () => {
+  test("phases are assigned correctly (1-10 range)", () => {
     for (const module of manifest.modules) {
       if (module.phase !== undefined) {
         expect(module.phase).toBeGreaterThanOrEqual(1);
@@ -108,16 +113,16 @@ describe('parseManifestFile with real manifest', () => {
   });
 });
 
-describe('parseManifestFile error handling', () => {
-  test('returns error for non-existent file', () => {
-    const result = parseManifestFile('/nonexistent/path/manifest.yaml');
+describe("parseManifestFile error handling", () => {
+  test("returns error for non-existent file", () => {
+    const result = parseManifestFile("/nonexistent/path/manifest.yaml");
     expect(result.success).toBe(false);
-    expect(result.error?.message).toContain('not found');
+    expect(result.error?.message).toContain("not found");
   });
 });
 
-describe('parseManifestString', () => {
-  test('parses valid minimal manifest', () => {
+describe("parseManifestString", () => {
+  test("parses valid minimal manifest", () => {
     const yaml = `
 version: 1
 name: test
@@ -137,10 +142,10 @@ modules:
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
     expect(result.data?.modules.length).toBe(1);
-    expect(result.data?.modules[0].id).toBe('base.core');
+    expect(result.data?.modules[0].id).toBe("base.core");
   });
 
-  test('returns error for invalid YAML syntax', () => {
+  test("returns error for invalid YAML syntax", () => {
     const yaml = `
 version: 1
 name: test
@@ -151,7 +156,7 @@ name: test
     expect(result.error).toBeDefined();
   });
 
-  test('returns error for missing required fields', () => {
+  test("returns error for missing required fields", () => {
     const yaml = `
 version: 1
 name: test
@@ -162,7 +167,7 @@ id: test
     expect(result.success).toBe(false);
   });
 
-  test('returns error for empty modules array', () => {
+  test("returns error for empty modules array", () => {
     const yaml = `
 version: 1
 name: test
@@ -177,7 +182,7 @@ modules: []
     expect(result.success).toBe(false);
   });
 
-  test('returns error for invalid module ID format', () => {
+  test("returns error for invalid module ID format", () => {
     const yaml = `
 version: 1
 name: test
@@ -196,10 +201,10 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(false);
-    expect(result.error?.message).toContain('lowercase');
+    expect(result.error?.message).toContain("lowercase");
   });
 
-  test('parses module with verified_installer', () => {
+  test("parses module with verified_installer", () => {
     const yaml = `
 version: 1
 name: test
@@ -222,14 +227,14 @@ modules:
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
     expect(result.data?.modules[0].verified_installer).toBeDefined();
-    expect(result.data?.modules[0].verified_installer?.tool).toBe('bun');
-    expect(result.data?.modules[0].verified_installer?.url).toBe('https://bun.sh/install');
-    expect(result.data?.modules[0].verified_installer?.runner).toBe('bash');
+    expect(result.data?.modules[0].verified_installer?.tool).toBe("bun");
+    expect(result.data?.modules[0].verified_installer?.url).toBe("https://bun.sh/install");
+    expect(result.data?.modules[0].verified_installer?.runner).toBe("bash");
     // The schema applies .default([]) to env, so an absent key parses as []
     expect(result.data?.modules[0].verified_installer?.env).toEqual([]);
   });
 
-  test('rejects invalid verified_installer runner', () => {
+  test("rejects invalid verified_installer runner", () => {
     const yaml = `
 version: 1
 name: test
@@ -250,10 +255,10 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(false);
-    expect(result.error?.message).toContain('runner');
+    expect(result.error?.message).toContain("runner");
   });
 
-  test('allows sh as valid runner', () => {
+  test("allows sh as valid runner", () => {
     const yaml = `
 version: 1
 name: test
@@ -276,7 +281,7 @@ modules:
     expect(result.success).toBe(true);
   });
 
-  test('parses module with post_install_message', () => {
+  test("parses module with post_install_message", () => {
     const yaml = `
 version: 1
 name: test
@@ -296,10 +301,10 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
-    expect(result.data?.modules[0].post_install_message).toContain('Next step: run test-command');
+    expect(result.data?.modules[0].post_install_message).toContain("Next step: run test-command");
   });
 
-  test('rejects unsupported verified_installer fallback_url', () => {
+  test("rejects unsupported verified_installer fallback_url", () => {
     const yaml = `
 version: 1
 name: test
@@ -320,13 +325,13 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(false);
-    expect(result.error?.message).toContain('fallback_url');
-    expect(result.error?.message).toContain('fail closed');
+    expect(result.error?.message).toContain("fallback_url");
+    expect(result.error?.message).toContain("fail closed");
   });
 });
 
-describe('validateManifest with inline manifests', () => {
-  test('detects duplicate module IDs', () => {
+describe("validateManifest with inline manifests", () => {
+  test("detects duplicate module IDs", () => {
     const yaml = `
 version: 1
 name: test
@@ -351,10 +356,10 @@ modules:
 
     const validationResult = validateManifest(parseResult.data);
     expect(validationResult.valid).toBe(false);
-    expect(validationResult.errors.some((e) => e.message.includes('Duplicate'))).toBe(true);
+    expect(validationResult.errors.some((e) => e.message.includes("Duplicate"))).toBe(true);
   });
 
-  test('detects missing dependencies', () => {
+  test("detects missing dependencies", () => {
     const yaml = `
 version: 1
 name: test
@@ -376,12 +381,12 @@ modules:
 
     const validationResult = validateManifest(parseResult.data);
     expect(validationResult.valid).toBe(false);
-    expect(validationResult.errors.some((e) => e.message.includes('which does not exist'))).toBe(
-      true
+    expect(validationResult.errors.some((e) => e.message.includes("which does not exist"))).toBe(
+      true,
     );
   });
 
-  test('detects dependency cycles', () => {
+  test("detects dependency cycles", () => {
     const yaml = `
 version: 1
 name: test
@@ -408,10 +413,10 @@ modules:
 
     const validationResult = validateManifest(parseResult.data);
     expect(validationResult.valid).toBe(false);
-    expect(validationResult.errors.some((e) => e.message.includes('cycle'))).toBe(true);
+    expect(validationResult.errors.some((e) => e.message.includes("cycle"))).toBe(true);
   });
 
-  test('detects phase ordering violations', () => {
+  test("detects phase ordering violations", () => {
     const yaml = `
 version: 1
 name: test
@@ -442,14 +447,14 @@ modules:
     // Note: This test may fail if phase validation is in parser.ts's validateManifest
     // Check both possible error messages
     const hasPhaseError = validationResult.errors.some(
-      (e) => e.message.includes('phase') || e.message.includes('Phase')
+      (e) => e.message.includes("phase") || e.message.includes("Phase"),
     );
     expect(hasPhaseError).toBe(true);
   });
 });
 
-describe('parseManifestString with run_as field', () => {
-  test('parses target_user run_as', () => {
+describe("parseManifestString with run_as field", () => {
+  test("parses target_user run_as", () => {
     const yaml = `
 version: 1
 name: test
@@ -467,10 +472,10 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
-    expect(result.data?.modules[0].run_as).toBe('target_user');
+    expect(result.data?.modules[0].run_as).toBe("target_user");
   });
 
-  test('parses root run_as', () => {
+  test("parses root run_as", () => {
     const yaml = `
 version: 1
 name: test
@@ -488,10 +493,10 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
-    expect(result.data?.modules[0].run_as).toBe('root');
+    expect(result.data?.modules[0].run_as).toBe("root");
   });
 
-  test('defaults run_as to target_user', () => {
+  test("defaults run_as to target_user", () => {
     const yaml = `
 version: 1
 name: test
@@ -508,12 +513,12 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
-    expect(result.data?.modules[0].run_as).toBe('target_user');
+    expect(result.data?.modules[0].run_as).toBe("target_user");
   });
 });
 
-describe('parseManifestString with tags and aliases', () => {
-  test('parses tags array', () => {
+describe("parseManifestString with tags and aliases", () => {
+  test("parses tags array", () => {
     const yaml = `
 version: 1
 name: test
@@ -533,11 +538,11 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
-    expect(result.data?.modules[0].tags).toContain('recommended');
-    expect(result.data?.modules[0].tags).toContain('agent');
+    expect(result.data?.modules[0].tags).toContain("recommended");
+    expect(result.data?.modules[0].tags).toContain("agent");
   });
 
-  test('parses aliases array', () => {
+  test("parses aliases array", () => {
     const yaml = `
 version: 1
 name: test
@@ -557,53 +562,53 @@ modules:
 `;
     const result = parseManifestString(yaml);
     expect(result.success).toBe(true);
-    expect(result.data?.modules[0].aliases).toContain('cc');
-    expect(result.data?.modules[0].aliases).toContain('claude-code');
+    expect(result.data?.modules[0].aliases).toContain("cc");
+    expect(result.data?.modules[0].aliases).toContain("claude-code");
   });
 });
 
-describe('validateManifestData web metadata warnings', () => {
+describe("validateManifestData web metadata warnings", () => {
   const baseManifest: Manifest = {
     version: 1,
-    name: 'test',
-    id: 'test',
-    defaults: { user: 'ubuntu', workspace_root: '/data/projects', mode: 'vibe' },
+    name: "test",
+    id: "test",
+    defaults: { user: "ubuntu", workspace_root: "/data/projects", mode: "vibe" },
     modules: [],
   };
 
-  test('no warnings for modules without web metadata', () => {
+  test("no warnings for modules without web metadata", () => {
     const manifest: Manifest = {
       ...baseManifest,
       modules: [
         {
-          id: 'base.system',
-          description: 'Base system',
-          run_as: 'target_user',
+          id: "base.system",
+          description: "Base system",
+          run_as: "target_user",
           optional: false,
           enabled_by_default: true,
           generated: true,
-          install: ['apt-get update'],
-          verify: ['curl --version'],
+          install: ["apt-get update"],
+          verify: ["curl --version"],
         },
       ],
     };
     const result = validateManifestData(manifest);
-    expect(result.warnings.filter((w) => w.path.includes('.web.'))).toHaveLength(0);
+    expect(result.warnings.filter((w) => w.path.includes(".web."))).toHaveLength(0);
   });
 
-  test('warns when web-visible module is missing recommended fields', () => {
+  test("warns when web-visible module is missing recommended fields", () => {
     const manifest: Manifest = {
       ...baseManifest,
       modules: [
         {
-          id: 'tools.test',
-          description: 'Test tool',
-          run_as: 'target_user',
+          id: "tools.test",
+          description: "Test tool",
+          run_as: "target_user",
           optional: false,
           enabled_by_default: true,
           generated: true,
-          install: ['echo test'],
-          verify: ['true'],
+          install: ["echo test"],
+          verify: ["true"],
           web: {
             visible: true,
           },
@@ -611,58 +616,58 @@ describe('validateManifestData web metadata warnings', () => {
       ],
     };
     const result = validateManifestData(manifest);
-    const webWarnings = result.warnings.filter((w) => w.path.includes('.web.'));
+    const webWarnings = result.warnings.filter((w) => w.path.includes(".web."));
     // Should warn for display_name, short_name, tagline, icon, color
     expect(webWarnings.length).toBe(5);
-    expect(webWarnings.some((w) => w.path.includes('display_name'))).toBe(true);
-    expect(webWarnings.some((w) => w.path.includes('short_name'))).toBe(true);
-    expect(webWarnings.some((w) => w.path.includes('tagline'))).toBe(true);
-    expect(webWarnings.some((w) => w.path.includes('icon'))).toBe(true);
-    expect(webWarnings.some((w) => w.path.includes('color'))).toBe(true);
+    expect(webWarnings.some((w) => w.path.includes("display_name"))).toBe(true);
+    expect(webWarnings.some((w) => w.path.includes("short_name"))).toBe(true);
+    expect(webWarnings.some((w) => w.path.includes("tagline"))).toBe(true);
+    expect(webWarnings.some((w) => w.path.includes("icon"))).toBe(true);
+    expect(webWarnings.some((w) => w.path.includes("color"))).toBe(true);
   });
 
-  test('no warnings when all recommended web fields are present', () => {
+  test("no warnings when all recommended web fields are present", () => {
     const manifest: Manifest = {
       ...baseManifest,
       modules: [
         {
-          id: 'tools.test',
-          description: 'Test tool',
-          run_as: 'target_user',
+          id: "tools.test",
+          description: "Test tool",
+          run_as: "target_user",
           optional: false,
           enabled_by_default: true,
           generated: true,
-          install: ['echo test'],
-          verify: ['true'],
+          install: ["echo test"],
+          verify: ["true"],
           web: {
-            display_name: 'Test Tool',
-            short_name: 'Test',
-            tagline: 'A test tool',
-            icon: 'wrench',
-            color: '#3B82F6',
+            display_name: "Test Tool",
+            short_name: "Test",
+            tagline: "A test tool",
+            icon: "wrench",
+            color: "#3B82F6",
             visible: true,
           },
         },
       ],
     };
     const result = validateManifestData(manifest);
-    const webWarnings = result.warnings.filter((w) => w.path.includes('.web.'));
+    const webWarnings = result.warnings.filter((w) => w.path.includes(".web."));
     expect(webWarnings).toHaveLength(0);
   });
 
-  test('no warnings when web visible is false', () => {
+  test("no warnings when web visible is false", () => {
     const manifest: Manifest = {
       ...baseManifest,
       modules: [
         {
-          id: 'tools.hidden',
-          description: 'Hidden tool',
-          run_as: 'target_user',
+          id: "tools.hidden",
+          description: "Hidden tool",
+          run_as: "target_user",
           optional: false,
           enabled_by_default: true,
           generated: true,
-          install: ['echo test'],
-          verify: ['true'],
+          install: ["echo test"],
+          verify: ["true"],
           web: {
             visible: false,
           },
@@ -670,35 +675,35 @@ describe('validateManifestData web metadata warnings', () => {
       ],
     };
     const result = validateManifestData(manifest);
-    const webWarnings = result.warnings.filter((w) => w.path.includes('.web.'));
+    const webWarnings = result.warnings.filter((w) => w.path.includes(".web."));
     expect(webWarnings).toHaveLength(0);
   });
 
-  test('does not treat quoted commands as description-only entries', () => {
+  test("does not treat quoted commands as description-only entries", () => {
     const manifest: Manifest = {
       ...baseManifest,
       modules: [
         {
-          id: 'tools.quoted_command',
-          description: 'Quoted command test',
-          run_as: 'target_user',
+          id: "tools.quoted_command",
+          description: "Quoted command test",
+          run_as: "target_user",
           optional: false,
           enabled_by_default: true,
           generated: true,
           install: ['"${HOME}/.local/bin/demo" --install'],
-          verify: ['true'],
+          verify: ["true"],
         },
       ],
     };
     const result = validateManifestData(manifest);
-    expect(result.warnings.some((w) => w.path === 'modules.tools.quoted_command.install')).toBe(
-      false
+    expect(result.warnings.some((w) => w.path === "modules.tools.quoted_command.install")).toBe(
+      false,
     );
   });
 });
 
-describe('validateVerifiedInstallerChecksums', () => {
-  test('reports manifest/checksums URL drift for verified installers', () => {
+describe("validateVerifiedInstallerChecksums", () => {
+  test("reports manifest/checksums URL drift for verified installers", () => {
     const yaml = `
 version: 1
 name: test
@@ -724,16 +729,16 @@ modules:
 
     const validationErrors = validateVerifiedInstallerChecksums(parseResult.data, {
       rch: {
-        url: 'https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh',
-        sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh",
+        sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       },
     });
 
     expect(validationErrors).toHaveLength(1);
-    expect(validationErrors[0]?.code).toBe('VERIFIED_INSTALLER_URL_MISMATCH');
+    expect(validationErrors[0]?.code).toBe("VERIFIED_INSTALLER_URL_MISMATCH");
   });
 
-  test('rejects malformed verified installer checksums', () => {
+  test("rejects malformed verified installer checksums", () => {
     const yaml = `
 version: 1
 name: test
@@ -759,18 +764,18 @@ modules:
 
     const validationErrors = validateVerifiedInstallerChecksums(parseResult.data, {
       rch: {
-        url: 'https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh',
-        sha256: 'not-a-real-sha',
+        url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh",
+        sha256: "not-a-real-sha",
       },
     });
 
     expect(validationErrors).toHaveLength(1);
-    expect(validationErrors[0]?.code).toBe('INVALID_VERIFIED_INSTALLER_CHECKSUM');
+    expect(validationErrors[0]?.code).toBe("INVALID_VERIFIED_INSTALLER_CHECKSUM");
   });
 });
 
-describe('parseManifestString with web metadata', () => {
-  test('parses module with web metadata', () => {
+describe("parseManifestString with web metadata", () => {
+  test("parses module with web metadata", () => {
     const yaml = `
 version: 1
 name: test
@@ -797,14 +802,14 @@ modules:
     expect(result.success).toBe(true);
     if (result.success && result.data) {
       expect(result.data.modules[0].web).toBeDefined();
-      expect(result.data.modules[0].web?.display_name).toBe('Beads Rust');
-      expect(result.data.modules[0].web?.icon).toBe('git-branch');
-      expect(result.data.modules[0].web?.color).toBe('#F97316');
+      expect(result.data.modules[0].web?.display_name).toBe("Beads Rust");
+      expect(result.data.modules[0].web?.icon).toBe("git-branch");
+      expect(result.data.modules[0].web?.color).toBe("#F97316");
       expect(result.data.modules[0].web?.visible).toBe(true);
     }
   });
 
-  test('parses module without web metadata (backwards compatible)', () => {
+  test("parses module without web metadata (backwards compatible)", () => {
     const yaml = `
 version: 1
 name: test
@@ -826,7 +831,7 @@ modules:
     }
   });
 
-  test('rejects module with invalid web color in YAML', () => {
+  test("rejects module with invalid web color in YAML", () => {
     const yaml = `
 version: 1
 name: test

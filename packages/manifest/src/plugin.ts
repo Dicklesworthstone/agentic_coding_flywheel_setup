@@ -1,19 +1,19 @@
-import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
-import { isIP } from 'node:net';
-import { TextDecoder, types as utilTypes } from 'node:util';
-import { z } from 'zod';
-import { ModuleWebMetadataSchema } from './schema.js';
-import type { InstallerChecksumEntry } from './validate.js';
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
+import { isIP } from "node:net";
+import { TextDecoder, types as utilTypes } from "node:util";
+import { z } from "zod";
+import { ModuleWebMetadataSchema } from "./schema.js";
 import {
-  MODULE_CATEGORIES,
   type Manifest,
+  MODULE_CATEGORIES,
   type Module,
   type ModuleCategory,
   type RunAs,
-} from './types.js';
-import { isValidCategory, toGeneratedFunctionName } from './utils.js';
+} from "./types.js";
+import { isValidCategory, toGeneratedFunctionName } from "./utils.js";
+import type { InstallerChecksumEntry } from "./validate.js";
 
-const PLUGIN_SCHEMA = 'acfs.plugin-package.v1';
+const PLUGIN_SCHEMA = "acfs.plugin-package.v1";
 const SUPPORTED_SCHEMA_VERSION = 1;
 export const MAX_PLUGIN_MANIFEST_BYTES = 1_048_576;
 export const MAX_PLUGIN_JSON_NESTING_DEPTH = 64;
@@ -22,65 +22,64 @@ const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
 const VERIFIED_INSTALLER_TOOL_PATTERN = /^[a-z][a-z0-9_]*$/;
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
 const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
-const MODULE_ID_PATTERN =
-  /^plugin\.([a-z][a-z0-9_]*)\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+const MODULE_ID_PATTERN = /^plugin\.([a-z][a-z0-9_]*)\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 const PACKAGE_ID_PATTERN = /^[a-z][a-z0-9_.-]*$/;
-const ALLOWED_RUNNERS = new Set(['bash', 'sh']);
+const ALLOWED_RUNNERS = new Set(["bash", "sh"]);
 const ALLOWED_INSTALL_KINDS = new Set([
-  'verified_installer',
-  'release_artifact',
-  'copy_asset',
-  'manual_step',
+  "verified_installer",
+  "release_artifact",
+  "copy_asset",
+  "manual_step",
 ]);
 // The normalized Module type can currently execute only checksum-bound
 // installers. Keep reserved declarative kinds fail-closed until their archive
 // and copy/manual executors exist; otherwise they normalize to empty installs.
-const IMPLEMENTED_INSTALL_KINDS = new Set(['verified_installer']);
+const IMPLEMENTED_INSTALL_KINDS = new Set(["verified_installer"]);
 // Package authors declare the capabilities they use, but they do not get to
 // downgrade ACFS policy. These capabilities always require an external review
 // record even if a package incorrectly places them in its `allowed` bucket.
 const INTRINSICALLY_REVIEW_REQUIRED_CAPABILITIES = new Set([
-  'root_run_as',
-  'cross_plugin_dependency',
-  'default_enabled_module',
+  "root_run_as",
+  "cross_plugin_dependency",
+  "default_enabled_module",
 ]);
 const ALLOWED_CATEGORIES = new Set<ModuleCategory>(MODULE_CATEGORIES);
 const ALLOWED_TOP_LEVEL_FIELDS = new Set([
-  'schema',
-  'schemaVersion',
-  'packageId',
-  'displayName',
-  'version',
-  'description',
-  'publisher',
-  'license',
-  'docsUrl',
-  'provenance',
-  'targets',
-  'capabilities',
-  'modules',
-  'offline',
-  'extensions',
+  "schema",
+  "schemaVersion",
+  "packageId",
+  "displayName",
+  "version",
+  "description",
+  "publisher",
+  "license",
+  "docsUrl",
+  "provenance",
+  "targets",
+  "capabilities",
+  "modules",
+  "offline",
+  "extensions",
 ]);
 const SECRET_FIELD_NAMES = new Set([
-  'token',
-  'apikey',
-  'secret',
-  'password',
-  'passphrase',
-  'privatekey',
-  'clientsecret',
-  'refreshtoken',
-  'accesstoken',
-  'cookie',
-  'session',
-  'vaultroottoken',
-  'sshprivatekey',
+  "token",
+  "apikey",
+  "secret",
+  "password",
+  "passphrase",
+  "privatekey",
+  "clientsecret",
+  "refreshtoken",
+  "accesstoken",
+  "cookie",
+  "session",
+  "vaultroottoken",
+  "sshprivatekey",
 ]);
 const SECRET_FIELD_WORD_SEQUENCES: readonly (readonly string[])[] = [
-  ['api', 'key'],
-  ['private', 'key'],
-  ['pass', 'phrase'],
+  ["api", "key"],
+  ["private", "key"],
+  ["pass", "phrase"],
 ];
 const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/i,
@@ -94,47 +93,58 @@ const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /Bearer [A-Za-z0-9._~+/-]{12,}/i,
 ];
 const DISALLOWED_INSTALL_FIELDS = new Set([
-  'command',
-  'commands',
-  'shell',
-  'script',
-  'inlineScript',
-  'inline_script',
-  'heredoc',
-  'eval',
+  "command",
+  "commands",
+  "shell",
+  "script",
+  "inlineScript",
+  "inline_script",
+  "heredoc",
+  "eval",
 ]);
 
-const NonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, {
-  message: 'String cannot be only whitespace',
-});
+const NonBlankStringSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value.trim().length > 0, {
+    message: "String cannot be only whitespace",
+  });
 const ControlFreeNonBlankStringSchema = NonBlankStringSchema.refine(
   (value) => !/[\u0000-\u001f\u007f]/u.test(value),
-  { message: 'String cannot contain control characters' }
+  { message: "String cannot contain control characters" },
 );
-const HttpsUrlSchema = z.string().url().refine((value) => {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}, {
-  message: 'URL must use https://',
-});
-const CanonicalUtcTimestampSchema = NonBlankStringSchema.refine((value) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return false;
+const HttpsUrlSchema = z
+  .string()
+  .url()
+  .refine(
+    (value) => {
+      try {
+        return new URL(value).protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    {
+      message: "URL must use https://",
+    },
+  );
+const CanonicalUtcTimestampSchema = NonBlankStringSchema.refine(
+  (value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return false;
 
-  const canonical = parsed.toISOString();
-  return value === canonical || value === canonical.replace('.000Z', 'Z');
-}, {
-  message: 'Timestamp must be a canonical UTC ISO-8601 value',
-});
+    const canonical = parsed.toISOString();
+    return value === canonical || value === canonical.replace(".000Z", "Z");
+  },
+  {
+    message: "Timestamp must be a canonical UTC ISO-8601 value",
+  },
+);
 const PluginVerifyCheckSchema = z.strictObject({
-  kind: z.literal('command_exists'),
-  command: z.string().regex(
-    COMMAND_NAME_PATTERN,
-    'command_exists command must be a bare executable name'
-  ),
+  kind: z.literal("command_exists"),
+  command: z
+    .string()
+    .regex(COMMAND_NAME_PATTERN, "command_exists command must be a bare executable name"),
 });
 
 const PluginInstallSchema = z.object({ kind: NonBlankStringSchema }).passthrough();
@@ -149,20 +159,20 @@ const PluginTargetSchema = z
   .passthrough();
 
 const PluginWebMetadataSchema = ModuleWebMetadataSchema.superRefine((metadata, context) => {
-  if (metadata.href !== undefined && !metadata.href.startsWith('/')) {
+  if (metadata.href !== undefined && !metadata.href.startsWith("/")) {
     try {
-      if (new URL(metadata.href).protocol !== 'https:') {
+      if (new URL(metadata.href).protocol !== "https:") {
         context.addIssue({
-          code: 'custom',
-          path: ['href'],
-          message: 'External plugin web href must use https://',
+          code: "custom",
+          path: ["href"],
+          message: "External plugin web href must use https://",
         });
       }
     } catch {
       context.addIssue({
-        code: 'custom',
-        path: ['href'],
-        message: 'External plugin web href must be a valid HTTPS URL',
+        code: "custom",
+        path: ["href"],
+        message: "External plugin web href must be a valid HTTPS URL",
       });
     }
   }
@@ -172,11 +182,11 @@ const PluginModuleSchema = z
   .object({
     id: NonBlankStringSchema,
     description: NonBlankStringSchema.refine((value) => !/[\r\n\t]/.test(value), {
-      message: 'Description must be single-line with no tabs',
+      message: "Description must be single-line with no tabs",
     }),
     category: NonBlankStringSchema,
     phase: z.number().int().min(1).max(10),
-    run_as: z.enum(['target_user', 'root', 'current']),
+    run_as: z.enum(["target_user", "root", "current"]),
     optional: z.boolean(),
     enabled_by_default: z.boolean(),
     dependencies: z.array(NonBlankStringSchema).optional(),
@@ -223,7 +233,7 @@ const PluginPackageSchema = z
     modules: z.array(PluginModuleSchema).min(1),
     offline: z
       .object({
-        bundlingPolicy: z.enum(['bundled', 'metadata_only', 'live_required', 'prohibited']),
+        bundlingPolicy: z.enum(["bundled", "metadata_only", "live_required", "prohibited"]),
         liveAuthRequired: z.boolean(),
         providerInteractionRequired: z.boolean(),
       })
@@ -233,28 +243,28 @@ const PluginPackageSchema = z
   .passthrough();
 
 export type PluginPackage = z.output<typeof PluginPackageSchema>;
-export type PluginModule = PluginPackage['modules'][number];
+export type PluginModule = PluginPackage["modules"][number];
 
 export type PluginDiagnosticCode =
-  | 'plugin_schema_unsupported'
-  | 'plugin_missing_required_field'
-  | 'plugin_unknown_top_level_field'
-  | 'plugin_archive_layout_invalid'
-  | 'plugin_package_hash_mismatch'
-  | 'plugin_target_unsupported'
-  | 'plugin_module_id_invalid'
-  | 'plugin_module_collision'
-  | 'plugin_generated_function_collision'
-  | 'plugin_dependency_invalid'
-  | 'plugin_capability_undeclared'
-  | 'plugin_review_required'
-  | 'plugin_disallowed_behavior'
-  | 'plugin_verified_installer_checksum_required'
-  | 'plugin_artifact_hash_required'
-  | 'plugin_secret_material_refused'
-  | 'plugin_offline_policy_incompatible';
+  | "plugin_schema_unsupported"
+  | "plugin_missing_required_field"
+  | "plugin_unknown_top_level_field"
+  | "plugin_archive_layout_invalid"
+  | "plugin_package_hash_mismatch"
+  | "plugin_target_unsupported"
+  | "plugin_module_id_invalid"
+  | "plugin_module_collision"
+  | "plugin_generated_function_collision"
+  | "plugin_dependency_invalid"
+  | "plugin_capability_undeclared"
+  | "plugin_review_required"
+  | "plugin_disallowed_behavior"
+  | "plugin_verified_installer_checksum_required"
+  | "plugin_artifact_hash_required"
+  | "plugin_secret_material_refused"
+  | "plugin_offline_policy_incompatible";
 
-export type PluginDiagnosticSeverity = 'error' | 'review_required' | 'warning';
+export type PluginDiagnosticSeverity = "error" | "review_required" | "warning";
 
 export interface PluginDiagnostic {
   code: PluginDiagnosticCode;
@@ -291,21 +301,18 @@ export interface PluginValidationResult {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function addDiagnostic(
-  diagnostics: PluginDiagnostic[],
-  diagnostic: PluginDiagnostic
-): void {
+function addDiagnostic(diagnostics: PluginDiagnostic[], diagnostic: PluginDiagnostic): void {
   const redactString = (value: string): string =>
-    containsSecretLikeValue(value) ? '<redacted>' : value;
+    containsSecretLikeValue(value) ? "<redacted>" : value;
   const redactContextValue = (value: unknown): unknown => {
-    if (typeof value === 'string') return redactString(value);
+    if (typeof value === "string") return redactString(value);
     if (Array.isArray(value)) return value.map(redactContextValue);
     if (isRecord(value)) {
       return Object.fromEntries(
-        Object.entries(value).map(([key, child]) => [redactString(key), redactContextValue(child)])
+        Object.entries(value).map(([key, child]) => [redactString(key), redactContextValue(child)]),
       );
     }
     return value;
@@ -322,12 +329,9 @@ function addDiagnostic(
   });
 }
 
-function inspectPluginInputStructure(
-  input: unknown,
-  diagnostics: PluginDiagnostic[]
-): boolean {
+function inspectPluginInputStructure(input: unknown, diagnostics: PluginDiagnostic[]): boolean {
   const pending: Array<{ value: unknown; path: string; depth: number }> = [
-    { value: input, path: '<root>', depth: 0 },
+    { value: input, path: "<root>", depth: 0 },
   ];
   const seen = new WeakSet<object>();
   let nodes = 0;
@@ -335,10 +339,10 @@ function inspectPluginInputStructure(
 
   const refuse = (message: string, path: string): false => {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message,
       path,
-      severity: 'error',
+      severity: "error",
     });
     return false;
   };
@@ -350,40 +354,43 @@ function inspectPluginInputStructure(
       if (nodes > MAX_PLUGIN_JSON_NODES) {
         return refuse(
           `Plugin manifest exceeds the maximum JSON node count of ${MAX_PLUGIN_JSON_NODES}`,
-          '<root>'
+          "<root>",
         );
       }
       if (candidate.depth > MAX_PLUGIN_JSON_NESTING_DEPTH) {
         return refuse(
           `Plugin manifest exceeds the maximum JSON nesting depth of ${MAX_PLUGIN_JSON_NESTING_DEPTH}`,
-          candidate.path
+          candidate.path,
         );
       }
 
-      if (typeof candidate.value === 'string') {
-        stringBytes += Buffer.byteLength(candidate.value, 'utf8');
+      if (typeof candidate.value === "string") {
+        stringBytes += Buffer.byteLength(candidate.value, "utf8");
         if (stringBytes > MAX_PLUGIN_MANIFEST_BYTES) {
-          return refuse('Plugin manifest string content exceeds the accepted size budget', '<root>');
+          return refuse(
+            "Plugin manifest string content exceeds the accepted size budget",
+            "<root>",
+          );
         }
         continue;
       }
-      if (candidate.value === null || typeof candidate.value === 'boolean') continue;
-      if (typeof candidate.value === 'number') {
+      if (candidate.value === null || typeof candidate.value === "boolean") continue;
+      if (typeof candidate.value === "number") {
         if (!Number.isFinite(candidate.value)) {
-          return refuse('Plugin manifest numbers must be finite JSON values', candidate.path);
+          return refuse("Plugin manifest numbers must be finite JSON values", candidate.path);
         }
         continue;
       }
-      if (typeof candidate.value !== 'object') {
-        return refuse('Plugin manifest must contain only JSON-compatible values', candidate.path);
+      if (typeof candidate.value !== "object") {
+        return refuse("Plugin manifest must contain only JSON-compatible values", candidate.path);
       }
       if (utilTypes.isProxy(candidate.value)) {
-        return refuse('Plugin manifest must not contain Proxy objects', candidate.path);
+        return refuse("Plugin manifest must not contain Proxy objects", candidate.path);
       }
       if (seen.has(candidate.value)) {
         return refuse(
-          'Plugin manifest must not contain repeated or cyclic object references',
-          candidate.path
+          "Plugin manifest must not contain repeated or cyclic object references",
+          candidate.path,
         );
       }
       seen.add(candidate.value);
@@ -392,44 +399,48 @@ function inspectPluginInputStructure(
       if (arrayValue && arrayValue.length > MAX_PLUGIN_JSON_NODES) {
         return refuse(
           `Plugin manifest array exceeds the maximum item count of ${MAX_PLUGIN_JSON_NODES}`,
-          candidate.path
+          candidate.path,
         );
       }
       const prototype = Object.getPrototypeOf(candidate.value);
       if (arrayValue && prototype !== Array.prototype) {
-        return refuse('Plugin manifest must contain only standard JSON arrays', candidate.path);
+        return refuse("Plugin manifest must contain only standard JSON arrays", candidate.path);
       }
       if (!arrayValue && prototype !== Object.prototype && prototype !== null) {
-        return refuse('Plugin manifest must contain only plain JSON objects', candidate.path);
+        return refuse("Plugin manifest must contain only plain JSON objects", candidate.path);
       }
 
       const descriptors = Object.getOwnPropertyDescriptors(candidate.value);
       let arrayItemCount = 0;
       for (const key of Reflect.ownKeys(descriptors)) {
-        if (typeof key !== 'string') {
-          return refuse('Plugin manifest must not contain symbol-keyed properties', candidate.path);
+        if (typeof key !== "string") {
+          return refuse("Plugin manifest must not contain symbol-keyed properties", candidate.path);
         }
-        stringBytes += Buffer.byteLength(key, 'utf8');
+        stringBytes += Buffer.byteLength(key, "utf8");
         if (stringBytes > MAX_PLUGIN_MANIFEST_BYTES) {
-          return refuse('Plugin manifest string content exceeds the accepted size budget', '<root>');
+          return refuse(
+            "Plugin manifest string content exceeds the accepted size budget",
+            "<root>",
+          );
         }
-        if (arrayValue && key === 'length') continue;
+        if (arrayValue && key === "length") continue;
         if (arrayValue && !/^(?:0|[1-9][0-9]*)$/.test(key)) {
-          return refuse('Plugin manifest arrays must not contain named properties', candidate.path);
+          return refuse("Plugin manifest arrays must not contain named properties", candidate.path);
         }
         if (arrayValue) arrayItemCount++;
 
         const descriptor = descriptors[key];
-        const childPath = candidate.path === '<root>'
-          ? key
-          : arrayValue
-            ? `${candidate.path}[${key}]`
-            : `${candidate.path}.${key}`;
+        const childPath =
+          candidate.path === "<root>"
+            ? key
+            : arrayValue
+              ? `${candidate.path}[${key}]`
+              : `${candidate.path}.${key}`;
         if (!descriptor.enumerable) {
-          return refuse('Plugin manifest must not contain hidden properties', childPath);
+          return refuse("Plugin manifest must not contain hidden properties", childPath);
         }
-        if (!('value' in descriptor)) {
-          return refuse('Plugin manifest must not contain accessor properties', childPath);
+        if (!("value" in descriptor)) {
+          return refuse("Plugin manifest must not contain accessor properties", childPath);
         }
         pending.push({
           value: descriptor.value,
@@ -438,23 +449,23 @@ function inspectPluginInputStructure(
         });
       }
       if (arrayValue && arrayItemCount !== arrayValue.length) {
-        return refuse('Plugin manifest must not contain sparse arrays', candidate.path);
+        return refuse("Plugin manifest must not contain sparse arrays", candidate.path);
       }
     }
   } catch {
-    return refuse('Plugin manifest structure could not be inspected safely', '<root>');
+    return refuse("Plugin manifest structure could not be inspected safely", "<root>");
   }
 
   return true;
 }
 
 function normalizeSecretFieldName(name: string): string {
-  return name.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  return name.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
 }
 
 function identifierWords(name: string): string[] {
   return name
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .split(/[^A-Za-z0-9]+/)
     .map((word) => word.toLowerCase())
     .filter(Boolean);
@@ -462,9 +473,10 @@ function identifierWords(name: string): string[] {
 
 function containsWordSequence(words: readonly string[], sequence: readonly string[]): boolean {
   if (sequence.length === 0 || sequence.length > words.length) return false;
-  return words.some((_, index) =>
-    index + sequence.length <= words.length
-    && sequence.every((word, offset) => words[index + offset] === word)
+  return words.some(
+    (_, index) =>
+      index + sequence.length <= words.length &&
+      sequence.every((word, offset) => words[index + offset] === word),
   );
 }
 
@@ -474,42 +486,44 @@ function isSecretFieldName(name: string): boolean {
 
   const words = identifierWords(name);
 
-  return words.some((word) => SECRET_FIELD_NAMES.has(word))
-    || SECRET_FIELD_WORD_SEQUENCES.some((sequence) => containsWordSequence(words, sequence));
+  return (
+    words.some((word) => SECRET_FIELD_NAMES.has(word)) ||
+    SECRET_FIELD_WORD_SEQUENCES.some((sequence) => containsWordSequence(words, sequence))
+  );
 }
 
 function packageSlug(packageId: string): string {
   return packageId
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function diagnosticPath(path: PropertyKey[]): string {
-  if (path.length === 0) return '<root>';
+  if (path.length === 0) return "<root>";
 
   return path
-    .map((part) => (typeof part === 'number' ? `[${part}]` : String(part)))
-    .join('.')
-    .replace(/\.\[/g, '[');
+    .map((part) => (typeof part === "number" ? `[${part}]` : String(part)))
+    .join(".")
+    .replace(/\.\[/g, "[");
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function stringArrayField(record: Record<string, unknown>, key: string): string[] | undefined {
   const value = record[key];
   if (!Array.isArray(value)) return undefined;
-  if (!value.every((entry) => typeof entry === 'string')) return undefined;
+  if (!value.every((entry) => typeof entry === "string")) return undefined;
   return [...value];
 }
 
 function isHttpsUrl(value: string | undefined): value is string {
   if (!value) return false;
   try {
-    return new URL(value).protocol === 'https:';
+    return new URL(value).protocol === "https:";
   } catch {
     return false;
   }
@@ -517,12 +531,12 @@ function isHttpsUrl(value: string | undefined): value is string {
 
 function isSafeRelativePath(value: string | undefined): value is string {
   if (!value) return false;
-  if (value.startsWith('/') || value.includes('\0') || value.includes('\\')) return false;
-  return !value.split('/').some((part) => part === '' || part === '.' || part === '..');
+  if (value.startsWith("/") || value.includes("\0") || value.includes("\\")) return false;
+  return !value.split("/").some((part) => part === "" || part === "." || part === "..");
 }
 
 function containsIpLiteral(value: string): boolean {
-  const trimmed = value.trim().replace(/^\[|\]$/g, '');
+  const trimmed = value.trim().replace(/^\[|\]$/g, "");
   if (isIP(trimmed) !== 0) return true;
 
   const ipv4Candidates = value.match(/(?:\d{1,3}\.){3}\d{1,3}/g) ?? [];
@@ -530,8 +544,8 @@ function containsIpLiteral(value: string): boolean {
 
   return value
     .split(/[^0-9A-Fa-f:.]+/)
-    .map((candidate) => candidate.replace(/^\.+|\.+$/g, ''))
-    .some((candidate) => candidate.includes(':') && isIP(candidate) === 6);
+    .map((candidate) => candidate.replace(/^\.+|\.+$/g, ""))
+    .some((candidate) => candidate.includes(":") && isIP(candidate) === 6);
 }
 
 function containsSecretLikeValue(value: string): boolean {
@@ -540,7 +554,7 @@ function containsSecretLikeValue(value: string): boolean {
   try {
     const parsedUrl = new URL(value);
     if (
-      (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') &&
+      (parsedUrl.protocol === "https:" || parsedUrl.protocol === "http:") &&
       (parsedUrl.username.length > 0 || parsedUrl.password.length > 0)
     ) {
       return true;
@@ -558,7 +572,7 @@ function containsSecretLikeValue(value: string): boolean {
  * This scanner runs only after JSON.parse has proved the syntax, so it needs to
  * identify object-key boundaries rather than duplicate the JSON validator.
  */
-type JsonManifestInspection = 'duplicate_key' | 'nesting_limit' | undefined;
+type JsonManifestInspection = "duplicate_key" | "nesting_limit" | undefined;
 
 function inspectJsonManifestStructure(text: string): JsonManifestInspection {
   let offset = 0;
@@ -566,10 +580,10 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
   const skipWhitespace = (): void => {
     while (
       offset < text.length &&
-      (text[offset] === ' ' ||
-        text[offset] === '\n' ||
-        text[offset] === '\r' ||
-        text[offset] === '\t')
+      (text[offset] === " " ||
+        text[offset] === "\n" ||
+        text[offset] === "\r" ||
+        text[offset] === "\t")
     ) {
       offset++;
     }
@@ -580,26 +594,26 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
     offset++;
     while (offset < text.length) {
       const character = text[offset++];
-      if (character === '\\') {
+      if (character === "\\") {
         offset++;
       } else if (character === '"') {
         return JSON.parse(text.slice(start, offset)) as string;
       }
     }
-    return '';
+    return "";
   };
 
   const skipPrimitive = (): void => {
     while (offset < text.length) {
       const character = text[offset];
       if (
-        character === ',' ||
-        character === ']' ||
-        character === '}' ||
-        character === ' ' ||
-        character === '\n' ||
-        character === '\r' ||
-        character === '\t'
+        character === "," ||
+        character === "]" ||
+        character === "}" ||
+        character === " " ||
+        character === "\n" ||
+        character === "\r" ||
+        character === "\t"
       ) {
         return;
       }
@@ -608,10 +622,10 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
   };
 
   function readValue(depth: number): JsonManifestInspection {
-    if (depth > MAX_PLUGIN_JSON_NESTING_DEPTH) return 'nesting_limit';
+    if (depth > MAX_PLUGIN_JSON_NESTING_DEPTH) return "nesting_limit";
     skipWhitespace();
-    if (text[offset] === '{') return readObject(depth);
-    if (text[offset] === '[') return readArray(depth);
+    if (text[offset] === "{") return readObject(depth);
+    if (text[offset] === "[") return readArray(depth);
     if (text[offset] === '"') {
       readString();
       return undefined;
@@ -623,7 +637,7 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
   function readObject(depth: number): JsonManifestInspection {
     offset++;
     skipWhitespace();
-    if (text[offset] === '}') {
+    if (text[offset] === "}") {
       offset++;
       return undefined;
     }
@@ -631,7 +645,7 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
     const keys = new Set<string>();
     while (offset < text.length) {
       const key = readString();
-      if (keys.has(key)) return 'duplicate_key';
+      if (keys.has(key)) return "duplicate_key";
       keys.add(key);
 
       skipWhitespace();
@@ -639,7 +653,7 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
       const nestedInspection = readValue(depth + 1);
       if (nestedInspection) return nestedInspection;
       skipWhitespace();
-      if (text[offset] === '}') {
+      if (text[offset] === "}") {
         offset++;
         return undefined;
       }
@@ -652,7 +666,7 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
   function readArray(depth: number): JsonManifestInspection {
     offset++;
     skipWhitespace();
-    if (text[offset] === ']') {
+    if (text[offset] === "]") {
       offset++;
       return undefined;
     }
@@ -661,7 +675,7 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
       const nestedInspection = readValue(depth + 1);
       if (nestedInspection) return nestedInspection;
       skipWhitespace();
-      if (text[offset] === ']') {
+      if (text[offset] === "]") {
         offset++;
         return undefined;
       }
@@ -674,11 +688,7 @@ function inspectJsonManifestStructure(text: string): JsonManifestInspection {
   return readValue(0);
 }
 
-function scanSecretMaterial(
-  value: unknown,
-  diagnostics: PluginDiagnostic[],
-  path: string
-): void {
+function scanSecretMaterial(value: unknown, diagnostics: PluginDiagnostic[], path: string): void {
   if (Array.isArray(value)) {
     value.forEach((entry, index) => {
       scanSecretMaterial(entry, diagnostics, `${path}[${index}]`);
@@ -689,16 +699,13 @@ function scanSecretMaterial(
   if (isRecord(value)) {
     for (const [key, child] of Object.entries(value)) {
       const childPath = path ? `${path}.${key}` : key;
-      if (
-        isSecretFieldName(key)
-        || containsSecretLikeValue(key)
-      ) {
+      if (isSecretFieldName(key) || containsSecretLikeValue(key)) {
         addDiagnostic(diagnostics, {
-          code: 'plugin_secret_material_refused',
+          code: "plugin_secret_material_refused",
           message: `Plugin field "${childPath}" is forbidden because plugins are not credential stores`,
           path: childPath,
-          severity: 'error',
-          context: { value: '<redacted>' },
+          severity: "error",
+          context: { value: "<redacted>" },
         });
       }
       scanSecretMaterial(child, diagnostics, childPath);
@@ -706,14 +713,14 @@ function scanSecretMaterial(
     return;
   }
 
-  if (typeof value === 'string' && containsSecretLikeValue(value)) {
-    const valuePath = path || '<root>';
+  if (typeof value === "string" && containsSecretLikeValue(value)) {
+    const valuePath = path || "<root>";
     addDiagnostic(diagnostics, {
-      code: 'plugin_secret_material_refused',
+      code: "plugin_secret_material_refused",
       message: `Plugin value at "${valuePath}" looks like secret or host-specific material`,
       path: valuePath,
-      severity: 'error',
-      context: { value: '<redacted>' },
+      severity: "error",
+      context: { value: "<redacted>" },
     });
   }
 }
@@ -724,25 +731,28 @@ function validateTopLevelFields(input: unknown, diagnostics: PluginDiagnostic[])
   for (const key of Object.keys(input)) {
     if (!ALLOWED_TOP_LEVEL_FIELDS.has(key)) {
       addDiagnostic(diagnostics, {
-        code: 'plugin_unknown_top_level_field',
+        code: "plugin_unknown_top_level_field",
         message: `Unknown top-level plugin field "${key}" must move under extensions`,
         path: key,
-        severity: 'error',
+        severity: "error",
       });
     }
   }
 }
 
-function addSchemaDiagnostics(input: unknown, diagnostics: PluginDiagnostic[]): PluginPackage | undefined {
+function addSchemaDiagnostics(
+  input: unknown,
+  diagnostics: PluginDiagnostic[],
+): PluginPackage | undefined {
   const parsed = PluginPackageSchema.safeParse(input);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       const path = diagnosticPath(issue.path);
       addDiagnostic(diagnostics, {
-        code: 'plugin_missing_required_field',
+        code: "plugin_missing_required_field",
         message: issue.message,
         path,
-        severity: 'error',
+        severity: "error",
       });
     }
     return undefined;
@@ -751,10 +761,10 @@ function addSchemaDiagnostics(input: unknown, diagnostics: PluginDiagnostic[]): 
   const plugin = parsed.data;
   if (plugin.schema !== PLUGIN_SCHEMA || plugin.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_schema_unsupported',
+      code: "plugin_schema_unsupported",
       message: `Unsupported plugin schema ${plugin.schema}@${plugin.schemaVersion}`,
-      path: 'schema',
-      severity: 'error',
+      path: "schema",
+      severity: "error",
       context: {
         supportedSchema: PLUGIN_SCHEMA,
         supportedSchemaVersion: SUPPORTED_SCHEMA_VERSION,
@@ -766,21 +776,21 @@ function addSchemaDiagnostics(input: unknown, diagnostics: PluginDiagnostic[]): 
 }
 
 function hashPrefix(value: string | undefined): string {
-  if (!value) return '<missing>';
-  if (!SHA256_HEX_PATTERN.test(value)) return '<invalid>';
+  if (!value) return "<missing>";
+  if (!SHA256_HEX_PATTERN.test(value)) return "<invalid>";
   return value.slice(0, 12).toLowerCase();
 }
 
 function validatePackageHash(
   options: PluginValidationOptions,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const packageSha256 = options.packageSha256;
   const expectedPackageSha256 = options.expectedPackageSha256;
   const packageHashValid =
-    typeof packageSha256 === 'string' && SHA256_HEX_PATTERN.test(packageSha256);
+    typeof packageSha256 === "string" && SHA256_HEX_PATTERN.test(packageSha256);
   const expectedHashValid =
-    typeof expectedPackageSha256 === 'string' && SHA256_HEX_PATTERN.test(expectedPackageSha256);
+    typeof expectedPackageSha256 === "string" && SHA256_HEX_PATTERN.test(expectedPackageSha256);
 
   if (
     packageHashValid &&
@@ -791,11 +801,11 @@ function validatePackageHash(
   }
 
   addDiagnostic(diagnostics, {
-    code: 'plugin_package_hash_mismatch',
+    code: "plugin_package_hash_mismatch",
     message:
-      'Plugin package SHA-256 is missing, malformed, or does not match the independently trusted digest',
-    path: '<package>',
-    severity: 'error',
+      "Plugin package SHA-256 is missing, malformed, or does not match the independently trusted digest",
+    path: "<package>",
+    severity: "error",
     context: {
       packageSha256Prefix: hashPrefix(packageSha256),
       expectedPackageSha256Prefix: hashPrefix(expectedPackageSha256),
@@ -806,17 +816,17 @@ function validatePackageHash(
 function validateProvenance(
   plugin: PluginPackage,
   manifest: Manifest,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   if (plugin.provenance.acfsManifestVersion === manifest.version) return;
 
   addDiagnostic(diagnostics, {
-    code: 'plugin_schema_unsupported',
+    code: "plugin_schema_unsupported",
     message:
       `Plugin package "${plugin.packageId}" targets ACFS manifest version ` +
       `${plugin.provenance.acfsManifestVersion}, but this manifest is version ${manifest.version}`,
-    path: 'provenance.acfsManifestVersion',
-    severity: 'error',
+    path: "provenance.acfsManifestVersion",
+    severity: "error",
     context: {
       pluginManifestVersion: plugin.provenance.acfsManifestVersion,
       acfsManifestVersion: manifest.version,
@@ -848,15 +858,15 @@ function validateCapabilityUse(
   module: PluginModule,
   capability: string,
   diagnostics: PluginDiagnostic[],
-  path: string
+  path: string,
 ): void {
   const declared = declaredCapabilitySet(plugin);
   if (!declared.has(capability)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_capability_undeclared',
+      code: "plugin_capability_undeclared",
       message: `Plugin module "${module.id}" uses undeclared capability "${capability}"`,
       path,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { capability },
     });
@@ -865,10 +875,10 @@ function validateCapabilityUse(
 
   if (plugin.capabilities.disallowed.includes(capability)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" requested disallowed capability "${capability}"`,
       path,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { capability },
     });
@@ -880,10 +890,10 @@ function validateCapabilityUse(
     plugin.capabilities.reviewRequired.includes(capability)
   ) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_review_required',
+      code: "plugin_review_required",
       message: `Plugin module "${module.id}" requires maintainer review for "${capability}"`,
       path,
-      severity: 'review_required',
+      severity: "review_required",
       moduleId: module.id,
       context: { capability },
     });
@@ -894,7 +904,7 @@ function scanDisallowedInstallFields(
   value: unknown,
   path: string,
   moduleId: string,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const pending: Array<{ value: unknown; path: string }> = [{ value, path }];
   const seen = new WeakSet<object>();
@@ -917,10 +927,10 @@ function scanDisallowedInstallFields(
       const childPath = `${candidate.path}.${key}`;
       if (DISALLOWED_INSTALL_FIELDS.has(key)) {
         addDiagnostic(diagnostics, {
-          code: 'plugin_disallowed_behavior',
+          code: "plugin_disallowed_behavior",
           message: `Plugin module "${moduleId}" uses forbidden executable install field "${key}"`,
           path: childPath,
-          severity: 'error',
+          severity: "error",
           moduleId,
           context: { field: key },
         });
@@ -935,7 +945,7 @@ function validateInstallFields(
   module: PluginModule,
   moduleIndex: number,
   installers: Record<string, InstallerChecksumEntry>,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const install = module.install as Record<string, unknown>;
   const path = `modules[${moduleIndex}].install`;
@@ -945,10 +955,10 @@ function validateInstallFields(
 
   if (!ALLOWED_INSTALL_KINDS.has(kind)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" uses unsupported install kind "${kind}"`,
       path: `${path}.kind`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { kind },
     });
@@ -959,26 +969,26 @@ function validateInstallFields(
 
   if (!IMPLEMENTED_INSTALL_KINDS.has(kind)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" uses install kind "${kind}", whose executor is not implemented`,
       path: `${path}.kind`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { kind },
     });
   }
 
   switch (kind) {
-    case 'verified_installer':
+    case "verified_installer":
       validateVerifiedInstallerInstall(module, moduleIndex, installers, diagnostics);
       return;
-    case 'release_artifact':
+    case "release_artifact":
       validateReleaseArtifactInstall(module, moduleIndex, diagnostics);
       return;
-    case 'copy_asset':
+    case "copy_asset":
       validateCopyAssetInstall(module, moduleIndex, diagnostics);
       return;
-    case 'manual_step':
+    case "manual_step":
       validateManualStepInstall(module, moduleIndex, diagnostics);
       return;
   }
@@ -988,107 +998,107 @@ function validateVerifiedInstallerInstall(
   module: PluginModule,
   moduleIndex: number,
   installers: Record<string, InstallerChecksumEntry>,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const install = module.install as Record<string, unknown>;
   const path = `modules[${moduleIndex}].install`;
-  const tool = stringField(install, 'tool');
-  const url = stringField(install, 'url');
-  const runner = stringField(install, 'runner');
+  const tool = stringField(install, "tool");
+  const url = stringField(install, "url");
+  const runner = stringField(install, "runner");
   const env = install.env;
   const args = install.args;
 
   if (!tool || !VERIFIED_INSTALLER_TOOL_PATTERN.test(tool)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" verified installer tool must be a lowercase checksum key`,
       path: `${path}.tool`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!isHttpsUrl(url)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" verified installer URL must use https://`,
       path: `${path}.url`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
-      context: { url: url ?? '<missing>' },
+      context: { url: url ?? "<missing>" },
     });
   }
 
   if (!runner || !ALLOWED_RUNNERS.has(runner)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" verified installer runner must be bash or sh`,
       path: `${path}.runner`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
-      context: { runner: runner ?? '<missing>', allowedRunners: Array.from(ALLOWED_RUNNERS) },
+      context: { runner: runner ?? "<missing>", allowedRunners: Array.from(ALLOWED_RUNNERS) },
     });
   }
 
   if (
     env !== undefined &&
     (!Array.isArray(env) ||
-      !env.every((entry) => typeof entry === 'string' && ENV_ASSIGNMENT_PATTERN.test(entry)))
+      !env.every((entry) => typeof entry === "string" && ENV_ASSIGNMENT_PATTERN.test(entry)))
   ) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" verified installer env must contain only KEY=value strings`,
       path: `${path}.env`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (Array.isArray(env) && env.length > 0) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" cannot set verified installer environment variables in v1`,
       path: `${path}.env`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
-      context: { reason: 'shell startup environment can bypass the verified installer file' },
+      context: { reason: "shell startup environment can bypass the verified installer file" },
     });
   }
 
   if (
     args !== undefined &&
-    (!Array.isArray(args) || !args.every((entry) => typeof entry === 'string'))
+    (!Array.isArray(args) || !args.every((entry) => typeof entry === "string"))
   ) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" verified installer args must be an array of strings`,
       path: `${path}.args`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (
     Array.isArray(args) &&
-    args.every((entry) => typeof entry === 'string') &&
-    args.includes('--')
+    args.every((entry) => typeof entry === "string") &&
+    args.includes("--")
   ) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" cannot pass runner options to a verified installer`,
       path: `${path}.args`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
-      context: { reason: 'plugin arguments must be passed only after the verified installer file' },
+      context: { reason: "plugin arguments must be passed only after the verified installer file" },
     });
   }
 
   if (install.fallback_url !== undefined) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" cannot use verified_installer.fallback_url`,
       path: `${path}.fallback_url`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
@@ -1098,10 +1108,10 @@ function validateVerifiedInstallerInstall(
   const entry = installers[tool];
   if (!entry?.url || !entry?.sha256) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_verified_installer_checksum_required',
+      code: "plugin_verified_installer_checksum_required",
       message: `checksums.yaml is missing a complete installer entry for "${tool}"`,
       path,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { tool, hasUrl: Boolean(entry?.url), hasSha256: Boolean(entry?.sha256) },
     });
@@ -1110,10 +1120,10 @@ function validateVerifiedInstallerInstall(
 
   if (!SHA256_HEX_PATTERN.test(entry.sha256)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_verified_installer_checksum_required',
+      code: "plugin_verified_installer_checksum_required",
       message: `checksums.yaml has an invalid sha256 for "${tool}"`,
       path,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { tool, sha256: entry.sha256 },
     });
@@ -1122,10 +1132,10 @@ function validateVerifiedInstallerInstall(
 
   if (entry.url !== url) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_verified_installer_checksum_required',
+      code: "plugin_verified_installer_checksum_required",
       message: `Plugin module "${module.id}" verified installer URL does not match checksums.yaml`,
       path: `${path}.url`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { tool, manifestUrl: url, checksumsUrl: entry.url },
     });
@@ -1135,62 +1145,62 @@ function validateVerifiedInstallerInstall(
 function validateReleaseArtifactInstall(
   module: PluginModule,
   moduleIndex: number,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const install = module.install as Record<string, unknown>;
   const path = `modules[${moduleIndex}].install`;
-  const url = stringField(install, 'url');
-  const sha256 = stringField(install, 'sha256');
-  const assetId = stringField(install, 'assetId');
-  const targetPath = stringField(install, 'targetPath');
-  const mode = stringField(install, 'mode');
+  const url = stringField(install, "url");
+  const sha256 = stringField(install, "sha256");
+  const assetId = stringField(install, "assetId");
+  const targetPath = stringField(install, "targetPath");
+  const mode = stringField(install, "mode");
 
   if (!isHttpsUrl(url)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_disallowed_behavior',
+      code: "plugin_disallowed_behavior",
       message: `Plugin module "${module.id}" release artifact URL must use https://`,
       path: `${path}.url`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!sha256 || !SHA256_HEX_PATTERN.test(sha256)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_artifact_hash_required',
+      code: "plugin_artifact_hash_required",
       message: `Plugin module "${module.id}" release artifact requires a valid sha256`,
       path: `${path}.sha256`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!assetId?.trim()) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" release artifact requires assetId`,
       path: `${path}.assetId`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!isSafeRelativePath(targetPath)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_archive_layout_invalid',
+      code: "plugin_archive_layout_invalid",
       message: `Plugin module "${module.id}" release artifact targetPath must stay relative`,
       path: `${path}.targetPath`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!mode?.trim()) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" release artifact requires mode`,
       path: `${path}.mode`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
@@ -1199,51 +1209,51 @@ function validateReleaseArtifactInstall(
 function validateCopyAssetInstall(
   module: PluginModule,
   moduleIndex: number,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const install = module.install as Record<string, unknown>;
   const path = `modules[${moduleIndex}].install`;
-  const assetId = stringField(install, 'assetId');
-  const sourcePath = stringField(install, 'sourcePath');
-  const targetPath = stringField(install, 'targetPath');
-  const mode = stringField(install, 'mode');
+  const assetId = stringField(install, "assetId");
+  const sourcePath = stringField(install, "sourcePath");
+  const targetPath = stringField(install, "targetPath");
+  const mode = stringField(install, "mode");
 
   if (!assetId?.trim()) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" copy_asset requires assetId`,
       path: `${path}.assetId`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!isSafeRelativePath(sourcePath)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_archive_layout_invalid',
+      code: "plugin_archive_layout_invalid",
       message: `Plugin module "${module.id}" copy_asset sourcePath must stay relative`,
       path: `${path}.sourcePath`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!isSafeRelativePath(targetPath)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_archive_layout_invalid',
+      code: "plugin_archive_layout_invalid",
       message: `Plugin module "${module.id}" copy_asset targetPath must stay relative`,
       path: `${path}.targetPath`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!mode?.trim()) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" copy_asset requires mode`,
       path: `${path}.mode`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
@@ -1252,40 +1262,40 @@ function validateCopyAssetInstall(
 function validateManualStepInstall(
   module: PluginModule,
   moduleIndex: number,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const install = module.install as Record<string, unknown>;
   const path = `modules[${moduleIndex}].install`;
-  const summary = stringField(install, 'summary');
-  const docsUrl = stringField(install, 'docs_url');
+  const summary = stringField(install, "summary");
+  const docsUrl = stringField(install, "docs_url");
   const blocking = install.blocking;
 
   if (!summary) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" manual_step requires summary`,
       path: `${path}.summary`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
   if (!isHttpsUrl(docsUrl)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" manual_step requires docs_url`,
       path: `${path}.docs_url`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
 
-  if (typeof blocking !== 'boolean') {
+  if (typeof blocking !== "boolean") {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
+      code: "plugin_missing_required_field",
       message: `Plugin module "${module.id}" manual_step requires boolean blocking`,
       path: `${path}.blocking`,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
     });
   }
@@ -1294,7 +1304,7 @@ function validateManualStepInstall(
 function validateModuleIds(
   plugin: PluginPackage,
   options: PluginValidationOptions,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const slug = packageSlug(plugin.packageId);
   const seen = new Set<string>();
@@ -1306,10 +1316,10 @@ function validateModuleIds(
     const match = MODULE_ID_PATTERN.exec(module.id);
     if (!match || match[1] !== slug) {
       addDiagnostic(diagnostics, {
-        code: 'plugin_module_id_invalid',
+        code: "plugin_module_id_invalid",
         message: `Plugin module "${module.id}" must use the plugin.${slug}. namespace`,
         path,
-        severity: 'error',
+        severity: "error",
         moduleId: module.id,
         context: { expectedPrefix: `plugin.${slug}.` },
       });
@@ -1317,10 +1327,10 @@ function validateModuleIds(
 
     if (seen.has(module.id) || firstPartyIds.has(module.id) || existingPluginIds.has(module.id)) {
       addDiagnostic(diagnostics, {
-        code: 'plugin_module_collision',
+        code: "plugin_module_collision",
         message: `Plugin module "${module.id}" collides with an existing module ID`,
         path,
-        severity: 'error',
+        severity: "error",
         moduleId: module.id,
       });
     }
@@ -1332,10 +1342,10 @@ function validateCategories(plugin: PluginPackage, diagnostics: PluginDiagnostic
   plugin.modules.forEach((module, index) => {
     if (!isValidCategory(module.category)) {
       addDiagnostic(diagnostics, {
-        code: 'plugin_missing_required_field',
+        code: "plugin_missing_required_field",
         message: `Plugin module "${module.id}" category "${module.category}" is not a known ACFS category`,
         path: `modules[${index}].category`,
-        severity: 'error',
+        severity: "error",
         moduleId: module.id,
         context: { allowedCategories: Array.from(ALLOWED_CATEGORIES).sort() },
       });
@@ -1346,9 +1356,11 @@ function validateCategories(plugin: PluginPackage, diagnostics: PluginDiagnostic
 function validateDependencies(
   plugin: PluginPackage,
   options: PluginValidationOptions,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
-  const firstParty = new Map(options.firstPartyManifest.modules.map((module) => [module.id, module]));
+  const firstParty = new Map(
+    options.firstPartyManifest.modules.map((module) => [module.id, module]),
+  );
   const own = new Map(plugin.modules.map((module) => [module.id, module]));
   const existingPluginIds = new Set(options.existingPluginModuleIds ?? []);
 
@@ -1360,16 +1372,16 @@ function validateDependencies(
         continue;
       }
 
-      if (dependencyId.startsWith('plugin.') && existingPluginIds.has(dependencyId)) {
-        validateCapabilityUse(plugin, module, 'cross_plugin_dependency', diagnostics, path);
+      if (dependencyId.startsWith("plugin.") && existingPluginIds.has(dependencyId)) {
+        validateCapabilityUse(plugin, module, "cross_plugin_dependency", diagnostics, path);
         continue;
       }
 
       addDiagnostic(diagnostics, {
-        code: 'plugin_dependency_invalid',
+        code: "plugin_dependency_invalid",
         message: `Plugin module "${module.id}" depends on missing module "${dependencyId}"`,
         path,
-        severity: 'error',
+        severity: "error",
         moduleId: module.id,
         context: { missingDependency: dependencyId },
       });
@@ -1385,16 +1397,16 @@ function validateDependencyPhase(
   firstParty: Map<string, Module>,
   own: Map<string, PluginModule>,
   diagnostics: PluginDiagnostic[],
-  path: string
+  path: string,
 ): void {
   const dependency = firstParty.get(dependencyId) ?? own.get(dependencyId);
   const dependencyPhase = dependency?.phase ?? 1;
   if (dependencyPhase > module.phase) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_dependency_invalid',
+      code: "plugin_dependency_invalid",
       message: `Plugin module "${module.id}" depends on "${dependencyId}" in a later phase`,
       path,
-      severity: 'error',
+      severity: "error",
       moduleId: module.id,
       context: { dependencyId, modulePhase: module.phase, dependencyPhase },
     });
@@ -1403,7 +1415,7 @@ function validateDependencyPhase(
 
 function detectPluginDependencyCycles(
   plugin: PluginPackage,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const own = new Map(plugin.modules.map((module) => [module.id, module]));
   const visiting = new Set<string>();
@@ -1414,14 +1426,14 @@ function detectPluginDependencyCycles(
     if (visiting.has(moduleId)) {
       const cycleStart = path.indexOf(moduleId);
       const cyclePath = [...path.slice(cycleStart), moduleId];
-      const cycleKey = [...new Set(cyclePath)].sort().join(',');
+      const cycleKey = [...new Set(cyclePath)].sort().join(",");
       if (!reported.has(cycleKey)) {
         reported.add(cycleKey);
         addDiagnostic(diagnostics, {
-          code: 'plugin_dependency_invalid',
-          message: `Plugin dependency cycle detected: ${cyclePath.join(' -> ')}`,
-          path: 'modules.dependencies',
-          severity: 'error',
+          code: "plugin_dependency_invalid",
+          message: `Plugin dependency cycle detected: ${cyclePath.join(" -> ")}`,
+          path: "modules.dependencies",
+          severity: "error",
           moduleId,
           context: { cyclePath },
         });
@@ -1452,7 +1464,7 @@ function detectPluginDependencyCycles(
 function validateGeneratedFunctionCollisions(
   plugin: PluginPackage,
   options: PluginValidationOptions,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const functionOwners = new Map<string, string>();
 
@@ -1470,17 +1482,17 @@ function validateGeneratedFunctionCollisions(
   }
 
   plugin.modules.forEach((module, index) => {
-    if (module.install.kind !== 'verified_installer') {
+    if (module.install.kind !== "verified_installer") {
       return;
     }
     const functionName = toGeneratedFunctionName(module.id);
     const existingOwner = functionOwners.get(functionName);
     if (existingOwner) {
       addDiagnostic(diagnostics, {
-        code: 'plugin_generated_function_collision',
+        code: "plugin_generated_function_collision",
         message: `Plugin module "${module.id}" generates function "${functionName}" which collides with "${existingOwner}"`,
         path: `modules[${index}].id`,
-        severity: 'error',
+        severity: "error",
         moduleId: module.id,
         context: { functionName, collidingModule: existingOwner },
       });
@@ -1491,19 +1503,19 @@ function validateGeneratedFunctionCollisions(
 
 function validateReviewRequiredCapabilities(
   plugin: PluginPackage,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   plugin.modules.forEach((module, index) => {
-    if (module.run_as === 'root' || module.run_as === 'current') {
-      validateCapabilityUse(plugin, module, 'root_run_as', diagnostics, `modules[${index}].run_as`);
+    if (module.run_as === "root" || module.run_as === "current") {
+      validateCapabilityUse(plugin, module, "root_run_as", diagnostics, `modules[${index}].run_as`);
     }
     if (module.enabled_by_default) {
       validateCapabilityUse(
         plugin,
         module,
-        'default_enabled_module',
+        "default_enabled_module",
         diagnostics,
-        `modules[${index}].enabled_by_default`
+        `modules[${index}].enabled_by_default`,
       );
     }
   });
@@ -1512,38 +1524,38 @@ function validateReviewRequiredCapabilities(
 function validateTarget(
   plugin: PluginPackage,
   target: PluginValidationTarget | undefined,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   if (!target) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_target_unsupported',
-      message: 'Plugin validation requires an explicit target OS, version, architecture, and libc',
-      path: '<validation-target>',
-      severity: 'error',
+      code: "plugin_target_unsupported",
+      message: "Plugin validation requires an explicit target OS, version, architecture, and libc",
+      path: "<validation-target>",
+      severity: "error",
     });
     return;
   }
   if (targetMatches(plugin, target)) return;
 
   addDiagnostic(diagnostics, {
-    code: 'plugin_target_unsupported',
+    code: "plugin_target_unsupported",
     message: `Plugin package "${plugin.packageId}" does not support ${target.os} ${target.version} ${target.arch} ${target.libc}`,
-    path: 'targets',
-    severity: 'error',
+    path: "targets",
+    severity: "error",
     context: { ...target },
   });
 }
 
 function validateOfflinePolicy(plugin: PluginPackage, diagnostics: PluginDiagnostic[]): void {
-  if (plugin.offline.bundlingPolicy === 'bundled') return;
+  if (plugin.offline.bundlingPolicy === "bundled") return;
 
   for (const module of plugin.modules) {
-    if (!module.optional && plugin.offline.bundlingPolicy === 'prohibited') {
+    if (!module.optional && plugin.offline.bundlingPolicy === "prohibited") {
       addDiagnostic(diagnostics, {
-        code: 'plugin_offline_policy_incompatible',
+        code: "plugin_offline_policy_incompatible",
         message: `Required plugin module "${module.id}" cannot be fully offline when bundling is prohibited`,
-        path: 'offline.bundlingPolicy',
-        severity: 'error',
+        path: "offline.bundlingPolicy",
+        severity: "error",
         moduleId: module.id,
       });
     }
@@ -1553,7 +1565,7 @@ function validateOfflinePolicy(plugin: PluginPackage, diagnostics: PluginDiagnos
 function validateModules(
   plugin: PluginPackage,
   options: PluginValidationOptions,
-  diagnostics: PluginDiagnostic[]
+  diagnostics: PluginDiagnostic[],
 ): void {
   const installers = options.installers ?? {};
 
@@ -1564,9 +1576,9 @@ function validateModules(
   validateReviewRequiredCapabilities(plugin, diagnostics);
 
   plugin.modules.forEach((module, index) => {
-    validateCapabilityUse(plugin, module, 'doctor_check', diagnostics, `modules[${index}].verify`);
+    validateCapabilityUse(plugin, module, "doctor_check", diagnostics, `modules[${index}].verify`);
     if (module.web !== undefined) {
-      validateCapabilityUse(plugin, module, 'web_metadata', diagnostics, `modules[${index}].web`);
+      validateCapabilityUse(plugin, module, "web_metadata", diagnostics, `modules[${index}].web`);
     }
     validateInstallFields(plugin, module, index, installers, diagnostics);
   });
@@ -1575,23 +1587,23 @@ function validateModules(
 function toManifestModule(
   plugin: PluginPackage,
   module: PluginModule,
-  packageSha256: string
+  packageSha256: string,
 ): Module {
   if (!isValidCategory(module.category)) {
     throw new Error(
-      `Plugin module "${module.id}" has invalid category "${module.category}" after validation`
+      `Plugin module "${module.id}" has invalid category "${module.category}" after validation`,
     );
   }
   const install = module.install as Record<string, unknown>;
   const kind = module.install.kind;
   const verifiedInstaller =
-    kind === 'verified_installer'
+    kind === "verified_installer"
       ? {
-          tool: stringField(install, 'tool') ?? '',
-          url: stringField(install, 'url'),
-          runner: (stringField(install, 'runner') ?? 'bash') as 'bash' | 'sh',
-          env: stringArrayField(install, 'env') ?? [],
-          args: stringArrayField(install, 'args') ?? [],
+          tool: stringField(install, "tool") ?? "",
+          url: stringField(install, "url"),
+          runner: (stringField(install, "runner") ?? "bash") as "bash" | "sh",
+          env: stringArrayField(install, "env") ?? [],
+          args: stringArrayField(install, "args") ?? [],
         }
       : undefined;
 
@@ -1603,12 +1615,10 @@ function toManifestModule(
     verified_installer: verifiedInstaller,
     optional: module.optional,
     enabled_by_default: module.enabled_by_default,
-    generated: kind === 'verified_installer',
+    generated: kind === "verified_installer",
     phase: module.phase,
     install: [],
-    verify: module.verify.map(
-      (check) => `command -v -- ${check.command} >/dev/null 2>&1`
-    ),
+    verify: module.verify.map((check) => `command -v -- ${check.command} >/dev/null 2>&1`),
     dependencies: module.dependencies ? [...module.dependencies] : undefined,
     docs_url: module.docs_url,
     web: module.web,
@@ -1624,7 +1634,7 @@ function toManifestModule(
 
 export function validatePluginPackage(
   input: unknown,
-  options: PluginValidationOptions
+  options: PluginValidationOptions,
 ): PluginValidationResult {
   const diagnostics: PluginDiagnostic[] = [];
   const manifestModules: Module[] = [];
@@ -1640,14 +1650,14 @@ export function validatePluginPackage(
   }
 
   validateTopLevelFields(input, diagnostics);
-  scanSecretMaterial(input, diagnostics, '');
+  scanSecretMaterial(input, diagnostics, "");
 
   if (!isRecord(input)) {
     addDiagnostic(diagnostics, {
-      code: 'plugin_missing_required_field',
-      message: 'Plugin package must be a JSON object',
-      path: '<root>',
-      severity: 'error',
+      code: "plugin_missing_required_field",
+      message: "Plugin package must be a JSON object",
+      path: "<root>",
+      severity: "error",
     });
     return { valid: false, diagnostics, manifestModules };
   }
@@ -1663,12 +1673,12 @@ export function validatePluginPackage(
   validateModules(plugin, validationOptions, diagnostics);
   validateOfflinePolicy(plugin, diagnostics);
 
-  const valid = diagnostics.every((diagnostic) => diagnostic.severity === 'warning');
+  const valid = diagnostics.every((diagnostic) => diagnostic.severity === "warning");
   if (valid) {
     manifestModules.push(
       ...plugin.modules.map((module) =>
-        toManifestModule(plugin, module, validationOptions.packageSha256!)
-      )
+        toManifestModule(plugin, module, validationOptions.packageSha256!),
+      ),
     );
   }
 
@@ -1685,19 +1695,17 @@ export function validatePluginPackage(
 
 export function formatPluginDiagnostics(result: PluginValidationResult): string {
   if (result.valid) {
-    return 'Plugin validation passed';
+    return "Plugin validation passed";
   }
 
-  const lines = ['Plugin validation failed:', ''];
+  const lines = ["Plugin validation failed:", ""];
   for (const diagnostic of result.diagnostics) {
-    const moduleLabel = diagnostic.moduleId ? ` ${diagnostic.moduleId}` : '';
-    lines.push(
-      `  [${diagnostic.code}]${moduleLabel} ${diagnostic.path}: ${diagnostic.message}`
-    );
+    const moduleLabel = diagnostic.moduleId ? ` ${diagnostic.moduleId}` : "";
+    lines.push(`  [${diagnostic.code}]${moduleLabel} ${diagnostic.path}: ${diagnostic.message}`);
   }
-  lines.push('');
+  lines.push("");
   lines.push(`Total: ${result.diagnostics.length} diagnostic(s)`);
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
@@ -1707,17 +1715,17 @@ export function formatPluginDiagnostics(result: PluginValidationResult): string 
  */
 export function loadPluginManifestFromFile(
   filePath: string,
-  options: PluginValidationOptions
+  options: PluginValidationOptions,
 ): PluginValidationResult {
-  if (!filePath.endsWith('.json')) {
+  if (!filePath.endsWith(".json")) {
     return {
       valid: false,
       diagnostics: [
         {
-          code: 'plugin_archive_layout_invalid',
-          message: 'Plugin manifests must use the JSON-only .json format',
-          path: '<file>',
-          severity: 'error',
+          code: "plugin_archive_layout_invalid",
+          message: "Plugin manifests must use the JSON-only .json format",
+          path: "<file>",
+          severity: "error",
         },
       ],
       manifestModules: [],
@@ -1734,10 +1742,10 @@ export function loadPluginManifestFromFile(
         valid: false,
         diagnostics: [
           {
-            code: 'plugin_missing_required_field',
-            message: 'Plugin manifest is not a single-link regular file',
-            path: '<file>',
-            severity: 'error',
+            code: "plugin_missing_required_field",
+            message: "Plugin manifest is not a single-link regular file",
+            path: "<file>",
+            severity: "error",
           },
         ],
         manifestModules: [],
@@ -1748,10 +1756,10 @@ export function loadPluginManifestFromFile(
         valid: false,
         diagnostics: [
           {
-            code: 'plugin_disallowed_behavior',
-            message: 'Plugin manifest exceeds the maximum accepted byte size',
-            path: '<file>',
-            severity: 'error',
+            code: "plugin_disallowed_behavior",
+            message: "Plugin manifest exceeds the maximum accepted byte size",
+            path: "<file>",
+            severity: "error",
             context: {
               sizeBytes: stat.size,
               maximumBytes: MAX_PLUGIN_MANIFEST_BYTES,
@@ -1768,13 +1776,7 @@ export function loadPluginManifestFromFile(
     const boundedBuffer = Buffer.alloc(MAX_PLUGIN_MANIFEST_BYTES + 1);
     let bytesRead = 0;
     while (bytesRead < boundedBuffer.length) {
-      const count = readSync(
-        fd,
-        boundedBuffer,
-        bytesRead,
-        boundedBuffer.length - bytesRead,
-        null
-      );
+      const count = readSync(fd, boundedBuffer, bytesRead, boundedBuffer.length - bytesRead, null);
       if (count === 0) break;
       bytesRead += count;
     }
@@ -1783,10 +1785,10 @@ export function loadPluginManifestFromFile(
         valid: false,
         diagnostics: [
           {
-            code: 'plugin_disallowed_behavior',
-            message: 'Plugin manifest exceeds the maximum accepted byte size',
-            path: '<file>',
-            severity: 'error',
+            code: "plugin_disallowed_behavior",
+            message: "Plugin manifest exceeds the maximum accepted byte size",
+            path: "<file>",
+            severity: "error",
             context: {
               sizeBytes: bytesRead,
               maximumBytes: MAX_PLUGIN_MANIFEST_BYTES,
@@ -1802,10 +1804,10 @@ export function loadPluginManifestFromFile(
       valid: false,
       diagnostics: [
         {
-          code: 'plugin_missing_required_field',
-          message: 'Plugin manifest could not be opened safely',
-          path: '<file>',
-          severity: 'error',
+          code: "plugin_missing_required_field",
+          message: "Plugin manifest could not be opened safely",
+          path: "<file>",
+          severity: "error",
         },
       ],
       manifestModules: [],
@@ -1816,16 +1818,16 @@ export function loadPluginManifestFromFile(
 
   let text: string;
   try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
+    text = new TextDecoder("utf-8", { fatal: true }).decode(fileBytes);
   } catch {
     return {
       valid: false,
       diagnostics: [
         {
-          code: 'plugin_disallowed_behavior',
-          message: 'Plugin manifest must contain valid UTF-8 JSON bytes',
-          path: '<root>',
-          severity: 'error',
+          code: "plugin_disallowed_behavior",
+          message: "Plugin manifest must contain valid UTF-8 JSON bytes",
+          path: "<root>",
+          severity: "error",
         },
       ],
       manifestModules: [],
@@ -1839,10 +1841,10 @@ export function loadPluginManifestFromFile(
       valid: false,
       diagnostics: [
         {
-          code: 'plugin_missing_required_field',
-          message: 'Plugin manifest contains invalid JSON syntax',
-          path: '<root>',
-          severity: 'error',
+          code: "plugin_missing_required_field",
+          message: "Plugin manifest contains invalid JSON syntax",
+          path: "<root>",
+          severity: "error",
         },
       ],
       manifestModules: [],
@@ -1855,13 +1857,13 @@ export function loadPluginManifestFromFile(
       valid: false,
       diagnostics: [
         {
-          code: 'plugin_disallowed_behavior',
+          code: "plugin_disallowed_behavior",
           message:
-            structureInspection === 'duplicate_key'
-              ? 'Plugin manifest contains ambiguous duplicate object keys'
+            structureInspection === "duplicate_key"
+              ? "Plugin manifest contains ambiguous duplicate object keys"
               : `Plugin manifest exceeds the maximum JSON nesting depth of ${MAX_PLUGIN_JSON_NESTING_DEPTH}`,
-          path: '<root>',
-          severity: 'error',
+          path: "<root>",
+          severity: "error",
         },
       ],
       manifestModules: [],
@@ -1877,7 +1879,7 @@ export function loadPluginManifestFromFile(
  */
 export function mergeValidatedPlugins(
   firstPartyManifest: Manifest,
-  pluginResults: readonly PluginValidationResult[]
+  pluginResults: readonly PluginValidationResult[],
 ): Manifest {
   const allModules = [...firstPartyManifest.modules];
 

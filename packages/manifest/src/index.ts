@@ -3,94 +3,12 @@
  * TypeScript library for parsing and working with ACFS manifest files
  */
 
-// Export runtime category authority and types
-export { MODULE_CATEGORIES } from './types.js';
-export type {
-  Manifest,
-  ManifestDefaults,
-  Module,
-  ModuleAgentMetadata,
-  ModuleWebMetadata,
-  ModuleCategory,
-  ValidationResult,
-  ValidationError,
-  ValidationWarning,
-  ParseResult,
-  ParseError,
-} from './types.js';
-
-// Export schema types (inferred from Zod)
-export type {
-  ManifestInput,
-  ManifestOutput,
-  ModuleInput,
-  ModuleOutput,
-  ModuleWebMetadataInput,
-  ModuleWebMetadataOutput,
-  ModuleAgentMetadataInput,
-  ModuleAgentMetadataOutput,
-  ManifestDefaultsInput,
-  ManifestDefaultsOutput,
-} from './schema.js';
-
-// Export Zod schemas for advanced usage
-export {
-  ManifestSchema,
-  ModuleSchema,
-  ModuleAgentMetadataSchema,
-  ModuleWebMetadataSchema,
-  ManifestDefaultsSchema,
-} from './schema.js';
-
 // Export parser functions
 export {
   parseManifestFile,
   parseManifestString,
   validateManifest,
-} from './parser.js';
-
-// Export utility functions
-export {
-  isValidCategory,
-  toGeneratedFunctionName,
-  getModuleCategory,
-  resolveModuleCategory,
-  getModulesByCategory,
-  getModuleById,
-  getModuleDependencies,
-  getTransitiveDependencies,
-  getDependents,
-  getCategories,
-  sortModulesByInstallOrder,
-  groupModulesByCategory,
-  searchModules,
-  getManifestStats,
-} from './utils.js';
-
-// Export stats interface
-export type { ManifestStats } from './utils.js';
-
-// Export advanced validation API (bead mjt.3.2)
-export {
-  validateDependencyExistence,
-  detectDependencyCycles,
-  validatePhaseOrdering,
-  validateManifest as validateManifestAdvanced,
-  formatValidationErrors,
-} from './validate.js';
-
-export type {
-  ValidationError as AdvancedValidationError,
-  ValidationResult as AdvancedValidationResult,
-} from './validate.js';
-
-export {
-  validatePluginPackage,
-  formatPluginDiagnostics,
-  loadPluginManifestFromFile,
-  mergeValidatedPlugins,
-} from './plugin.js';
-
+} from "./parser.js";
 export type {
   PluginDiagnostic,
   PluginDiagnosticCode,
@@ -100,37 +18,133 @@ export type {
   PluginValidationOptions,
   PluginValidationResult,
   PluginValidationTarget,
-} from './plugin.js';
-
-export { readVerifiedPluginArchive, PluginArchiveError, PLUGIN_ARCHIVE_LIMITS } from './plugin-archive.js';
-export type { VerifiedPluginArchive, PluginArchiveErrorCode } from './plugin-archive.js';
-export { readReviewedPluginArchive, readPluginReviewRecord, parsePluginTarget, PluginReviewError } from './plugin-review.js';
-export type { ReviewedPluginArchive, PluginArchiveTarget, PluginReviewRecord } from './plugin-review.js';
-export { loadReviewedPluginPackage } from './plugin-verify.js';
-
-export { buildPluginInstallPlan, PluginPlanError } from './plugin-plan.js';
-export type { PluginInstallPlan, PluginInstallAction, PluginPlanInput, PluginPlanTarget } from './plugin-plan.js';
-export { loadPluginInstallPlan } from './plugin-install.js';
-export type { PluginInstallArguments } from './plugin-install.js';
-export { inspectPluginInstallPlan, recoverPluginInstallPlan } from './plugin-runtime.js';
-export type { PluginInstallReceipt, PluginInstallInspection, PluginInstallRecovery } from './plugin-runtime.js';
-
+} from "./plugin.js";
 export {
-  preparePluginInstallerCache,
-  loadPluginInstallerCache,
-  executeCachedPluginInstallPlan,
-  PluginCacheError,
-  PLUGIN_CACHE_LIMITS,
-} from './plugin-cache.js';
+  formatPluginDiagnostics,
+  loadPluginManifestFromFile,
+  mergeValidatedPlugins,
+  validatePluginPackage,
+} from "./plugin.js";
+export type { PluginArchiveErrorCode, VerifiedPluginArchive } from "./plugin-archive.js";
+export {
+  PLUGIN_ARCHIVE_LIMITS,
+  PluginArchiveError,
+  readVerifiedPluginArchive,
+  verifyPluginArchiveBytes,
+} from "./plugin-archive.js";
 export type {
+  LoadedPluginInstallerCache,
   PluginCacheOptions,
   PluginCacheSummary,
   PluginInstallerDownload,
-  LoadedPluginInstallerCache,
-} from './plugin-cache.js';
-
-export { verifyPluginArchiveBytes } from './plugin-archive.js';
-export { buildPluginArchive, pluginArchiveBytes, writePluginArchive, PluginPackError } from './plugin-pack.js';
-export type { PluginArchiveBuild, PluginArchivePublication } from './plugin-pack.js';
-export { validatePluginArchiveForPublication } from './plugin-pack-cli.js';
-export type { PluginPackArguments, PluginPackValidation } from './plugin-pack-cli.js';
+} from "./plugin-cache.js";
+export {
+  executeCachedPluginInstallPlan,
+  loadPluginInstallerCache,
+  PLUGIN_CACHE_LIMITS,
+  PluginCacheError,
+  preparePluginInstallerCache,
+} from "./plugin-cache.js";
+export type { PluginInstallArguments } from "./plugin-install.js";
+export { loadPluginInstallPlan } from "./plugin-install.js";
+export type { PluginArchiveBuild, PluginArchivePublication } from "./plugin-pack.js";
+export {
+  buildPluginArchive,
+  PluginPackError,
+  pluginArchiveBytes,
+  writePluginArchive,
+} from "./plugin-pack.js";
+export type { PluginPackArguments, PluginPackValidation } from "./plugin-pack-cli.js";
+export { validatePluginArchiveForPublication } from "./plugin-pack-cli.js";
+export type {
+  PluginInstallAction,
+  PluginInstallPlan,
+  PluginPlanInput,
+  PluginPlanTarget,
+} from "./plugin-plan.js";
+export { buildPluginInstallPlan, PluginPlanError } from "./plugin-plan.js";
+export type {
+  PluginArchiveTarget,
+  PluginReviewRecord,
+  ReviewedPluginArchive,
+} from "./plugin-review.js";
+export {
+  PluginReviewError,
+  parsePluginTarget,
+  readPluginReviewRecord,
+  readReviewedPluginArchive,
+} from "./plugin-review.js";
+export type {
+  PluginInstallInspection,
+  PluginInstallReceipt,
+  PluginInstallRecovery,
+} from "./plugin-runtime.js";
+export { inspectPluginInstallPlan, recoverPluginInstallPlan } from "./plugin-runtime.js";
+export { loadReviewedPluginPackage } from "./plugin-verify.js";
+// Export schema types (inferred from Zod)
+export type {
+  ManifestDefaultsInput,
+  ManifestDefaultsOutput,
+  ManifestInput,
+  ManifestOutput,
+  ModuleAgentMetadataInput,
+  ModuleAgentMetadataOutput,
+  ModuleInput,
+  ModuleOutput,
+  ModuleWebMetadataInput,
+  ModuleWebMetadataOutput,
+} from "./schema.js";
+// Export Zod schemas for advanced usage
+export {
+  ManifestDefaultsSchema,
+  ManifestSchema,
+  ModuleAgentMetadataSchema,
+  ModuleSchema,
+  ModuleWebMetadataSchema,
+} from "./schema.js";
+export type {
+  Manifest,
+  ManifestDefaults,
+  Module,
+  ModuleAgentMetadata,
+  ModuleCategory,
+  ModuleWebMetadata,
+  ParseError,
+  ParseResult,
+  ValidationError,
+  ValidationResult,
+  ValidationWarning,
+} from "./types.js";
+// Export runtime category authority and types
+export { MODULE_CATEGORIES } from "./types.js";
+// Export stats interface
+export type { ManifestStats } from "./utils.js";
+// Export utility functions
+export {
+  getCategories,
+  getDependents,
+  getManifestStats,
+  getModuleById,
+  getModuleCategory,
+  getModuleDependencies,
+  getModulesByCategory,
+  getTransitiveDependencies,
+  groupModulesByCategory,
+  isValidCategory,
+  resolveModuleCategory,
+  searchModules,
+  sortModulesByInstallOrder,
+  toGeneratedFunctionName,
+} from "./utils.js";
+export type {
+  ValidationError as AdvancedValidationError,
+  ValidationResult as AdvancedValidationResult,
+} from "./validate.js";
+// Export advanced validation API (bead mjt.3.2)
+export {
+  detectDependencyCycles,
+  formatValidationErrors,
+  validateDependencyExistence,
+  validateManifest as validateManifestAdvanced,
+  validatePhaseOrdering,
+} from "./validate.js";

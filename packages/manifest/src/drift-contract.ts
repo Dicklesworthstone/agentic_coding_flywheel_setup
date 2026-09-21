@@ -7,52 +7,52 @@
  * surface is missing coverage.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
-import { parseManifestFile, validateManifestData } from './parser.js';
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 import {
+  buildAgentRoster,
+  generateAgentRosterMarkdown,
+  generateAgentRosterSummaryMarkdown,
   README_AGENT_ROSTER_BEGIN,
   README_AGENT_ROSTER_END,
   README_AGENT_SUMMARY_BEGIN,
   README_AGENT_SUMMARY_END,
-  buildAgentRoster,
-  generateAgentRosterMarkdown,
-  generateAgentRosterSummaryMarkdown,
   readMarkedRegion,
-} from './generate.js';
-import { resolveModuleCategory } from './utils.js';
+} from "./generate.js";
+import { parseManifestFile, validateManifestData } from "./parser.js";
+import type { Manifest, Module } from "./types.js";
+import { resolveModuleCategory } from "./utils.js";
 import {
+  type InstallerChecksumEntry,
   validateManifest as validateManifestAdvanced,
   validateVerifiedInstallerChecksums,
-  type InstallerChecksumEntry,
-} from './validate.js';
-import type { Manifest, Module } from './types.js';
+} from "./validate.js";
 
 export type DriftContractCode =
-  | 'MANIFEST_PARSE_FAILED'
-  | 'MANIFEST_SEMANTIC_INVALID'
-  | 'CHECKSUMS_PARSE_FAILED'
-  | 'MISSING_FILE'
-  | 'MANIFEST_INDEX_MODULE_MISSING'
-  | 'DOCTOR_CHECK_MISSING'
-  | 'WEB_MODULE_MISSING'
-  | 'WEB_TOOL_MISSING'
-  | 'WEB_COMMAND_MISSING'
-  | 'WEB_TLDR_MISSING'
-  | 'LESSON_LINK_MISSING'
-  | 'ONBOARDING_LESSON_MISSING'
-  | 'README_SNIPPET_MISSING'
-  | 'AGENT_ROSTER_METADATA_MISSING'
-  | 'README_AGENT_ROSTER_REGION_MISSING'
-  | 'README_AGENT_ROSTER_DRIFT'
-  | 'WEB_AGENT_MISSING'
-  | 'MISSING_VERIFIED_INSTALLER_CHECKSUM'
-  | 'INVALID_VERIFIED_INSTALLER_CHECKSUM'
-  | 'VERIFIED_INSTALLER_URL_MISMATCH'
-  | 'GENERATED_ID_UNEXPECTED'
-  | 'GENERATED_ID_DUPLICATE';
+  | "MANIFEST_PARSE_FAILED"
+  | "MANIFEST_SEMANTIC_INVALID"
+  | "CHECKSUMS_PARSE_FAILED"
+  | "MISSING_FILE"
+  | "MANIFEST_INDEX_MODULE_MISSING"
+  | "DOCTOR_CHECK_MISSING"
+  | "WEB_MODULE_MISSING"
+  | "WEB_TOOL_MISSING"
+  | "WEB_COMMAND_MISSING"
+  | "WEB_TLDR_MISSING"
+  | "LESSON_LINK_MISSING"
+  | "ONBOARDING_LESSON_MISSING"
+  | "README_SNIPPET_MISSING"
+  | "AGENT_ROSTER_METADATA_MISSING"
+  | "README_AGENT_ROSTER_REGION_MISSING"
+  | "README_AGENT_ROSTER_DRIFT"
+  | "WEB_AGENT_MISSING"
+  | "MISSING_VERIFIED_INSTALLER_CHECKSUM"
+  | "INVALID_VERIFIED_INSTALLER_CHECKSUM"
+  | "VERIFIED_INSTALLER_URL_MISMATCH"
+  | "GENERATED_ID_UNEXPECTED"
+  | "GENERATED_ID_DUPLICATE";
 
 export interface DriftContractMismatch {
   code: DriftContractCode;
@@ -84,54 +84,54 @@ export interface DriftContractResult {
 }
 
 const SCRIPT_FILE = fileURLToPath(import.meta.url);
-const DEFAULT_ROOT = resolve(dirname(SCRIPT_FILE), '../../..');
+const DEFAULT_ROOT = resolve(dirname(SCRIPT_FILE), "../../..");
 
 const REQUIRED_README_SNIPPETS = [
   {
-    snippet: 'scripts/check-manifest-drift.sh --json',
-    reason: 'release drift gate',
+    snippet: "scripts/check-manifest-drift.sh --json",
+    reason: "release drift gate",
   },
   {
-    snippet: 'bun run generate:diff',
-    reason: 'generated artifact byte comparison',
+    snippet: "bun run generate:diff",
+    reason: "generated artifact byte comparison",
   },
   {
-    snippet: 'scripts/generated/doctor_checks.sh',
-    reason: 'manifest-derived doctor checks',
+    snippet: "scripts/generated/doctor_checks.sh",
+    reason: "manifest-derived doctor checks",
   },
   {
-    snippet: 'apps/web/lib/generated',
-    reason: 'manifest-derived website metadata',
+    snippet: "apps/web/lib/generated",
+    reason: "manifest-derived website metadata",
   },
   {
-    snippet: 'acfs/onboard/lessons',
-    reason: 'manifest-linked onboarding lesson content',
+    snippet: "acfs/onboard/lessons",
+    reason: "manifest-linked onboarding lesson content",
   },
   {
-    snippet: 'checksums.yaml',
-    reason: 'verified installer checksum coverage',
+    snippet: "checksums.yaml",
+    reason: "verified installer checksum coverage",
   },
 ];
 
 function rel(root: string, path: string): string {
-  return relative(root, path) || '.';
+  return relative(root, path) || ".";
 }
 
 function readText(
   root: string,
   relPath: string,
-  mismatches: DriftContractMismatch[]
+  mismatches: DriftContractMismatch[],
 ): string | null {
   const absPath = join(root, relPath);
   if (!existsSync(absPath)) {
     mismatches.push({
-      code: 'MISSING_FILE',
+      code: "MISSING_FILE",
       file: relPath,
       message: `Required manifest drift contract file is missing: ${relPath}`,
     });
     return null;
   }
-  return readFileSync(absPath, 'utf-8');
+  return readFileSync(absPath, "utf-8");
 }
 
 interface GeneratedIdInventory {
@@ -160,9 +160,7 @@ function extractModuleIdsFromGeneratedTs(content: string): GeneratedIdInventory 
 }
 
 function extractManifestModuleIds(content: string): GeneratedIdInventory {
-  const arrayMatch = content.match(
-    /export const manifestModules[^=]*=\s*\[([\s\S]*?)\n\];/
-  );
+  const arrayMatch = content.match(/export const manifestModules[^=]*=\s*\[([\s\S]*?)\n\];/);
   if (!arrayMatch) return buildIdInventory([]);
 
   const values: string[] = [];
@@ -186,9 +184,7 @@ function extractLessonIndex(content: string): LessonIndexInventory {
   const lookupValues: string[] = [];
   const linkSlugs = new Map<string, string>();
   const lookupSlugs = new Map<string, string>();
-  const linksMatch = content.match(
-    /export const manifestLessonLinks[^=]*=\s*\[([\s\S]*?)\n\];/
-  );
+  const linksMatch = content.match(/export const manifestLessonLinks[^=]*=\s*\[([\s\S]*?)\n\];/);
   if (linksMatch) {
     const linkRegex = /\{\s*moduleId:\s*"([^"]+)",\s*lessonSlug:\s*"([^"]+)"/g;
     let match: RegExpExecArray | null;
@@ -198,9 +194,7 @@ function extractLessonIndex(content: string): LessonIndexInventory {
     }
   }
 
-  const lookupMatch = content.match(
-    /export const lessonSlugByModuleId[^=]*=\s*\{([\s\S]*?)\n\};/
-  );
+  const lookupMatch = content.match(/export const lessonSlugByModuleId[^=]*=\s*\{([\s\S]*?)\n\};/);
   if (lookupMatch) {
     const lookupRegex = /^\s*"([^"]+)":\s*"([^"]+)",?$/gm;
     let match: RegExpExecArray | null;
@@ -253,7 +247,7 @@ function webCommandModules(manifest: Manifest): Module[] {
 
 function webTldrModules(manifest: Manifest): Module[] {
   return webVisibleModules(manifest).filter((module) =>
-    Boolean(module.web?.tldr_snippet || module.web?.tagline)
+    Boolean(module.web?.tldr_snippet || module.web?.tagline),
   );
 }
 
@@ -265,7 +259,7 @@ function expectedDoctorCheckIds(manifest: Manifest): Array<{ module: Module; id:
   const ids: Array<{ module: Module; id: string }> = [];
   for (const module of manifest.modules) {
     for (let i = 0; i < module.verify.length; i += 1) {
-      const suffix = module.verify.length > 1 ? `.${i + 1}` : '';
+      const suffix = module.verify.length > 1 ? `.${i + 1}` : "";
       ids.push({ module, id: `${module.id}${suffix}` });
     }
   }
@@ -278,7 +272,7 @@ function addMissingModuleIds(
   file: string,
   expectedModules: Module[],
   actualIds: Set<string>,
-  label: string
+  label: string,
 ): void {
   for (const module of expectedModules) {
     if (actualIds.has(module.id)) {
@@ -299,12 +293,12 @@ function addUnexpectedIds(
   file: string,
   expectedIds: ReadonlySet<string>,
   actualIds: ReadonlySet<string>,
-  label: string
+  label: string,
 ): void {
   for (const actualId of Array.from(actualIds).sort()) {
     if (expectedIds.has(actualId)) continue;
     mismatches.push({
-      code: 'GENERATED_ID_UNEXPECTED',
+      code: "GENERATED_ID_UNEXPECTED",
       file,
       moduleId: actualId,
       actual: actualId,
@@ -317,11 +311,11 @@ function addDuplicateIds(
   mismatches: DriftContractMismatch[],
   file: string,
   duplicateIds: ReadonlySet<string>,
-  label: string
+  label: string,
 ): void {
   for (const duplicateId of Array.from(duplicateIds).sort()) {
     mismatches.push({
-      code: 'GENERATED_ID_DUPLICATE',
+      code: "GENERATED_ID_DUPLICATE",
       file,
       moduleId: duplicateId,
       actual: duplicateId,
@@ -337,15 +331,15 @@ function moduleIds(modules: Module[]): Set<string> {
 function checkOnboardingLessons(
   root: string,
   modules: Module[],
-  mismatches: DriftContractMismatch[]
+  mismatches: DriftContractMismatch[],
 ): void {
-  const lessonsDir = join(root, 'acfs/onboard/lessons');
+  const lessonsDir = join(root, "acfs/onboard/lessons");
   let files: string[] = [];
   if (!existsSync(lessonsDir)) {
     mismatches.push({
-      code: 'MISSING_FILE',
+      code: "MISSING_FILE",
       file: rel(root, lessonsDir),
-      message: 'Onboarding lessons directory is missing',
+      message: "Onboarding lessons directory is missing",
     });
     return;
   }
@@ -357,8 +351,8 @@ function checkOnboardingLessons(
     const expectedSuffix = `_${slug}.md`;
     if (!files.some((file) => file.endsWith(expectedSuffix))) {
       mismatches.push({
-        code: 'ONBOARDING_LESSON_MISSING',
-        file: 'acfs/onboard/lessons',
+        code: "ONBOARDING_LESSON_MISSING",
+        file: "acfs/onboard/lessons",
         moduleId: module.id,
         expected: expectedSuffix,
         message: `Onboarding lesson file ending in "${expectedSuffix}" is missing for "${module.id}"`,
@@ -367,10 +361,7 @@ function checkOnboardingLessons(
   }
 }
 
-function checkReadmeSnippets(
-  readme: string | null,
-  mismatches: DriftContractMismatch[]
-): void {
+function checkReadmeSnippets(readme: string | null, mismatches: DriftContractMismatch[]): void {
   if (readme === null) return;
 
   for (const { snippet, reason } of REQUIRED_README_SNIPPETS) {
@@ -378,8 +369,8 @@ function checkReadmeSnippets(
       continue;
     }
     mismatches.push({
-      code: 'README_SNIPPET_MISSING',
-      file: 'README.md',
+      code: "README_SNIPPET_MISSING",
+      file: "README.md",
       expected: snippet,
       message: `README is missing manifest drift snippet "${snippet}" for ${reason}`,
     });
@@ -397,14 +388,14 @@ function checkAgentRoster(
   root: string,
   manifest: Manifest,
   readme: string | null,
-  mismatches: DriftContractMismatch[]
+  mismatches: DriftContractMismatch[],
 ): number {
   for (const module of manifest.modules) {
-    if (resolveModuleCategory(module) !== 'agents') continue;
+    if (resolveModuleCategory(module) !== "agents") continue;
     if (module.agent !== undefined) continue;
     mismatches.push({
-      code: 'AGENT_ROSTER_METADATA_MISSING',
-      file: 'acfs.manifest.yaml',
+      code: "AGENT_ROSTER_METADATA_MISSING",
+      file: "acfs.manifest.yaml",
       moduleId: module.id,
       message: `Agent module "${module.id}" has no "agent:" roster metadata, so it would be missing from the Compatible Agents roster`,
     });
@@ -419,13 +410,13 @@ function checkAgentRoster(
   if (readme !== null) {
     const regions: Array<{ name: string; begin: string; end: string; body: string }> = [
       {
-        name: 'compatible-agents',
+        name: "compatible-agents",
         begin: README_AGENT_ROSTER_BEGIN,
         end: README_AGENT_ROSTER_END,
         body: generateAgentRosterMarkdown(manifest),
       },
       {
-        name: 'compatible-agents-summary',
+        name: "compatible-agents-summary",
         begin: README_AGENT_SUMMARY_BEGIN,
         end: README_AGENT_SUMMARY_END,
         body: generateAgentRosterSummaryMarkdown(manifest),
@@ -436,8 +427,8 @@ function checkAgentRoster(
       const actual = readMarkedRegion(readme, region.begin, region.end);
       if (actual === null) {
         mismatches.push({
-          code: 'README_AGENT_ROSTER_REGION_MISSING',
-          file: 'README.md',
+          code: "README_AGENT_ROSTER_REGION_MISSING",
+          file: "README.md",
           expected: `${region.begin} ... ${region.end}`,
           message: `README is missing a usable "${region.name}" generated region, so the roster cannot be regenerated`,
         });
@@ -445,21 +436,21 @@ function checkAgentRoster(
       }
       if (actual !== `\n${region.body}\n`) {
         mismatches.push({
-          code: 'README_AGENT_ROSTER_DRIFT',
-          file: 'README.md',
+          code: "README_AGENT_ROSTER_DRIFT",
+          file: "README.md",
           message: `README "${region.name}" region does not match acfs.manifest.yaml; run \`bun run --cwd packages/manifest generate\``,
         });
       }
     }
   }
 
-  const webAgents = readText(root, 'apps/web/lib/generated/manifest-agents.ts', mismatches);
+  const webAgents = readText(root, "apps/web/lib/generated/manifest-agents.ts", mismatches);
   if (webAgents !== null) {
     for (const entry of roster) {
       if (!webAgents.includes(`"${entry.moduleId}"`)) {
         mismatches.push({
-          code: 'WEB_AGENT_MISSING',
-          file: 'apps/web/lib/generated/manifest-agents.ts',
+          code: "WEB_AGENT_MISSING",
+          file: "apps/web/lib/generated/manifest-agents.ts",
           moduleId: entry.moduleId,
           message: `Generated web agent roster is missing "${entry.moduleId}"`,
         });
@@ -486,13 +477,13 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
     checked: 0,
   };
 
-  const manifestPath = join(root, 'acfs.manifest.yaml');
+  const manifestPath = join(root, "acfs.manifest.yaml");
   const parseResult = parseManifestFile(manifestPath);
   if (!parseResult.success || !parseResult.data) {
     mismatches.push({
-      code: 'MANIFEST_PARSE_FAILED',
-      file: 'acfs.manifest.yaml',
-      message: parseResult.error?.message ?? 'Failed to parse manifest',
+      code: "MANIFEST_PARSE_FAILED",
+      file: "acfs.manifest.yaml",
+      message: parseResult.error?.message ?? "Failed to parse manifest",
     });
     return { ok: false, root, summary, mismatches };
   }
@@ -502,8 +493,8 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
   if (!manifestValidation.valid) {
     for (const error of manifestValidation.errors) {
       mismatches.push({
-        code: 'MANIFEST_SEMANTIC_INVALID',
-        file: 'acfs.manifest.yaml',
+        code: "MANIFEST_SEMANTIC_INVALID",
+        file: "acfs.manifest.yaml",
         message: `${error.path}: ${error.message}`,
       });
     }
@@ -513,8 +504,8 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
   if (!advancedValidation.valid) {
     for (const error of advancedValidation.errors) {
       mismatches.push({
-        code: 'MANIFEST_SEMANTIC_INVALID',
-        file: 'acfs.manifest.yaml',
+        code: "MANIFEST_SEMANTIC_INVALID",
+        file: "acfs.manifest.yaml",
         moduleId: error.moduleId,
         message: `${error.code}: ${error.message}`,
       });
@@ -536,7 +527,7 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
   summary.lessonLinkedModules = lessonModules.length;
   summary.doctorChecksExpected = doctorIds.length;
 
-  const checksumsText = readText(root, 'checksums.yaml', mismatches);
+  const checksumsText = readText(root, "checksums.yaml", mismatches);
   if (checksumsText !== null) {
     try {
       const checksums = parseYaml(checksumsText) as {
@@ -544,52 +535,52 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
       };
       const checksumErrors = validateVerifiedInstallerChecksums(
         manifest,
-        checksums.installers ?? {}
+        checksums.installers ?? {},
       );
       for (const err of checksumErrors) {
         mismatches.push({
           code: err.code as DriftContractCode,
-          file: 'checksums.yaml',
+          file: "checksums.yaml",
           moduleId: err.moduleId,
           message: err.message,
         });
       }
     } catch (err) {
       mismatches.push({
-        code: 'CHECKSUMS_PARSE_FAILED',
-        file: 'checksums.yaml',
+        code: "CHECKSUMS_PARSE_FAILED",
+        file: "checksums.yaml",
         message: `Failed to parse checksums.yaml: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   }
 
-  const manifestIndex = readText(root, 'scripts/generated/manifest_index.sh', mismatches);
+  const manifestIndex = readText(root, "scripts/generated/manifest_index.sh", mismatches);
   if (manifestIndex !== null) {
     const inventory = extractManifestIndexModuleIds(manifestIndex);
     addMissingModuleIds(
       mismatches,
-      'MANIFEST_INDEX_MODULE_MISSING',
-      'scripts/generated/manifest_index.sh',
+      "MANIFEST_INDEX_MODULE_MISSING",
+      "scripts/generated/manifest_index.sh",
       manifest.modules,
       inventory.ids,
-      'Generated manifest index'
+      "Generated manifest index",
     );
     addUnexpectedIds(
       mismatches,
-      'scripts/generated/manifest_index.sh',
+      "scripts/generated/manifest_index.sh",
       moduleIds(manifest.modules),
       inventory.ids,
-      'Generated manifest index'
+      "Generated manifest index",
     );
     addDuplicateIds(
       mismatches,
-      'scripts/generated/manifest_index.sh',
+      "scripts/generated/manifest_index.sh",
       inventory.duplicates,
-      'Generated manifest index'
+      "Generated manifest index",
     );
   }
 
-  const doctorChecks = readText(root, 'scripts/generated/doctor_checks.sh', mismatches);
+  const doctorChecks = readText(root, "scripts/generated/doctor_checks.sh", mismatches);
   if (doctorChecks !== null) {
     const inventory = extractDoctorCheckIds(doctorChecks);
     for (const { module, id } of doctorIds) {
@@ -597,8 +588,8 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
         continue;
       }
       mismatches.push({
-        code: 'DOCTOR_CHECK_MISSING',
-        file: 'scripts/generated/doctor_checks.sh',
+        code: "DOCTOR_CHECK_MISSING",
+        file: "scripts/generated/doctor_checks.sh",
         moduleId: module.id,
         expected: id,
         message: `Generated doctor checks are missing manifest check "${id}"`,
@@ -606,124 +597,128 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
     }
     addUnexpectedIds(
       mismatches,
-      'scripts/generated/doctor_checks.sh',
+      "scripts/generated/doctor_checks.sh",
       new Set(doctorIds.map(({ id }) => id)),
       inventory.ids,
-      'Generated doctor checks'
+      "Generated doctor checks",
     );
     addDuplicateIds(
       mismatches,
-      'scripts/generated/doctor_checks.sh',
+      "scripts/generated/doctor_checks.sh",
       inventory.duplicates,
-      'Generated doctor checks'
+      "Generated doctor checks",
     );
   }
 
-  const webModules = readText(root, 'apps/web/lib/generated/manifest-modules.ts', mismatches);
+  const webModules = readText(root, "apps/web/lib/generated/manifest-modules.ts", mismatches);
   if (webModules !== null) {
     const inventory = extractManifestModuleIds(webModules);
     addMissingModuleIds(
       mismatches,
-      'WEB_MODULE_MISSING',
-      'apps/web/lib/generated/manifest-modules.ts',
+      "WEB_MODULE_MISSING",
+      "apps/web/lib/generated/manifest-modules.ts",
       manifest.modules,
       inventory.ids,
-      'Generated website module metadata'
+      "Generated website module metadata",
     );
     addUnexpectedIds(
       mismatches,
-      'apps/web/lib/generated/manifest-modules.ts',
+      "apps/web/lib/generated/manifest-modules.ts",
       moduleIds(manifest.modules),
       inventory.ids,
-      'Generated website module metadata'
+      "Generated website module metadata",
     );
     addDuplicateIds(
       mismatches,
-      'apps/web/lib/generated/manifest-modules.ts',
+      "apps/web/lib/generated/manifest-modules.ts",
       inventory.duplicates,
-      'Generated website module metadata'
+      "Generated website module metadata",
     );
   }
 
-  const webTools = readText(root, 'apps/web/lib/generated/manifest-tools.ts', mismatches);
+  const webTools = readText(root, "apps/web/lib/generated/manifest-tools.ts", mismatches);
   if (webTools !== null) {
     const inventory = extractModuleIdsFromGeneratedTs(webTools);
     addMissingModuleIds(
       mismatches,
-      'WEB_TOOL_MISSING',
-      'apps/web/lib/generated/manifest-tools.ts',
+      "WEB_TOOL_MISSING",
+      "apps/web/lib/generated/manifest-tools.ts",
       visibleModules,
       inventory.ids,
-      'Generated website tool metadata'
+      "Generated website tool metadata",
     );
     addUnexpectedIds(
       mismatches,
-      'apps/web/lib/generated/manifest-tools.ts',
+      "apps/web/lib/generated/manifest-tools.ts",
       moduleIds(visibleModules),
       inventory.ids,
-      'Generated website tool metadata'
+      "Generated website tool metadata",
     );
     addDuplicateIds(
       mismatches,
-      'apps/web/lib/generated/manifest-tools.ts',
+      "apps/web/lib/generated/manifest-tools.ts",
       inventory.duplicates,
-      'Generated website tool metadata'
+      "Generated website tool metadata",
     );
   }
 
-  const webCommands = readText(root, 'apps/web/lib/generated/manifest-commands.ts', mismatches);
+  const webCommands = readText(root, "apps/web/lib/generated/manifest-commands.ts", mismatches);
   if (webCommands !== null) {
     const inventory = extractModuleIdsFromGeneratedTs(webCommands);
     addMissingModuleIds(
       mismatches,
-      'WEB_COMMAND_MISSING',
-      'apps/web/lib/generated/manifest-commands.ts',
+      "WEB_COMMAND_MISSING",
+      "apps/web/lib/generated/manifest-commands.ts",
       commandModules,
       inventory.ids,
-      'Generated command reference metadata'
+      "Generated command reference metadata",
     );
     addUnexpectedIds(
       mismatches,
-      'apps/web/lib/generated/manifest-commands.ts',
+      "apps/web/lib/generated/manifest-commands.ts",
       moduleIds(commandModules),
       inventory.ids,
-      'Generated command reference metadata'
+      "Generated command reference metadata",
     );
     addDuplicateIds(
       mismatches,
-      'apps/web/lib/generated/manifest-commands.ts',
+      "apps/web/lib/generated/manifest-commands.ts",
       inventory.duplicates,
-      'Generated command reference metadata'
+      "Generated command reference metadata",
     );
   }
 
-  const webTldr = readText(root, 'apps/web/lib/generated/manifest-tldr.ts', mismatches);
+  const webTldr = readText(root, "apps/web/lib/generated/manifest-tldr.ts", mismatches);
   if (webTldr !== null) {
     const inventory = extractModuleIdsFromGeneratedTs(webTldr);
     addMissingModuleIds(
       mismatches,
-      'WEB_TLDR_MISSING',
-      'apps/web/lib/generated/manifest-tldr.ts',
+      "WEB_TLDR_MISSING",
+      "apps/web/lib/generated/manifest-tldr.ts",
       tldrModules,
       inventory.ids,
-      'Generated TLDR metadata'
+      "Generated TLDR metadata",
     );
     addUnexpectedIds(
       mismatches,
-      'apps/web/lib/generated/manifest-tldr.ts',
+      "apps/web/lib/generated/manifest-tldr.ts",
       moduleIds(tldrModules),
       inventory.ids,
-      'Generated TLDR metadata'
+      "Generated TLDR metadata",
     );
     addDuplicateIds(
       mismatches,
-      'apps/web/lib/generated/manifest-tldr.ts',
+      "apps/web/lib/generated/manifest-tldr.ts",
       inventory.duplicates,
-      'Generated TLDR metadata'
+      "Generated TLDR metadata",
     );
   }
 
-  const lessonIndex = readText(root, 'apps/web/lib/generated/manifest-lessons-index.ts', mismatches);
+  const lessonIndex = readText(
+    root,
+    "apps/web/lib/generated/manifest-lessons-index.ts",
+    mismatches,
+  );
   if (lessonIndex !== null) {
     const lessonInventory = extractLessonIndex(lessonIndex);
     const allLessonIds = new Set([
@@ -732,37 +727,37 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
     ]);
     addMissingModuleIds(
       mismatches,
-      'LESSON_LINK_MISSING',
-      'apps/web/lib/generated/manifest-lessons-index.ts',
+      "LESSON_LINK_MISSING",
+      "apps/web/lib/generated/manifest-lessons-index.ts",
       lessonModules,
       lessonInventory.linkIds.ids,
-      'Generated lesson index'
+      "Generated lesson index",
     );
     addUnexpectedIds(
       mismatches,
-      'apps/web/lib/generated/manifest-lessons-index.ts',
+      "apps/web/lib/generated/manifest-lessons-index.ts",
       moduleIds(lessonModules),
       allLessonIds,
-      'Generated lesson index'
+      "Generated lesson index",
     );
     addDuplicateIds(
       mismatches,
-      'apps/web/lib/generated/manifest-lessons-index.ts',
+      "apps/web/lib/generated/manifest-lessons-index.ts",
       lessonInventory.linkIds.duplicates,
-      'Generated lesson link array'
+      "Generated lesson link array",
     );
     addDuplicateIds(
       mismatches,
-      'apps/web/lib/generated/manifest-lessons-index.ts',
+      "apps/web/lib/generated/manifest-lessons-index.ts",
       lessonInventory.lookupIds.duplicates,
-      'Generated lesson lookup map'
+      "Generated lesson lookup map",
     );
     for (const module of lessonModules) {
       const slug = module.web?.lesson_slug;
       if (slug && lessonInventory.linkSlugs.get(module.id) !== slug) {
         mismatches.push({
-          code: 'LESSON_LINK_MISSING',
-          file: 'apps/web/lib/generated/manifest-lessons-index.ts',
+          code: "LESSON_LINK_MISSING",
+          file: "apps/web/lib/generated/manifest-lessons-index.ts",
           moduleId: module.id,
           expected: slug,
           actual: lessonInventory.linkSlugs.get(module.id),
@@ -771,8 +766,8 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
       }
       if (slug && lessonInventory.lookupSlugs.get(module.id) !== slug) {
         mismatches.push({
-          code: 'LESSON_LINK_MISSING',
-          file: 'apps/web/lib/generated/manifest-lessons-index.ts',
+          code: "LESSON_LINK_MISSING",
+          file: "apps/web/lib/generated/manifest-lessons-index.ts",
           moduleId: module.id,
           expected: slug,
           actual: lessonInventory.lookupSlugs.get(module.id),
@@ -783,7 +778,7 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
   }
 
   checkOnboardingLessons(root, lessonModules, mismatches);
-  const readmeText = readText(root, 'README.md', mismatches);
+  const readmeText = readText(root, "README.md", mismatches);
   checkReadmeSnippets(readmeText, mismatches);
   summary.agentRosterEntries = checkAgentRoster(root, manifest, readmeText, mismatches);
 
@@ -829,21 +824,21 @@ function parseArgs(args: string[]): { root: string; json: boolean; quiet: boolea
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     switch (arg) {
-      case '--root':
+      case "--root":
         i += 1;
         if (!args[i]) {
-          throw new Error('--root requires a directory argument');
+          throw new Error("--root requires a directory argument");
         }
         root = args[i];
         break;
-      case '--json':
+      case "--json":
         json = true;
         break;
-      case '--quiet':
+      case "--quiet":
         quiet = true;
         break;
-      case '--help':
-      case '-h':
+      case "--help":
+      case "-h":
         help = true;
         break;
       default:

@@ -1,14 +1,14 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   buildStackProvenanceReport,
   type ChecksumsFile,
   type GitHubReleaseFixture,
-} from './stack-provenance-report.js';
-import type { Manifest, Module } from './types.js';
+} from "./stack-provenance-report.js";
+import type { Manifest, Module } from "./types.js";
 
-const HASH_A = 'a'.repeat(64);
-const HASH_B = 'b'.repeat(64);
-const SNAPSHOT_TIME = '2026-01-15T00:00:00Z';
+const HASH_A = "a".repeat(64);
+const HASH_B = "b".repeat(64);
+const SNAPSHOT_TIME = "2026-01-15T00:00:00Z";
 
 function installerUrl(repo: string): string {
   return `https://raw.githubusercontent.com/Dicklesworthstone/${repo}/main/install.sh`;
@@ -19,26 +19,26 @@ function stackModule(repo: string, tool: string, id = `stack.${tool}`): Module {
   return {
     id,
     description: `${tool} stack tool`,
-    category: 'stack',
-    run_as: 'target_user',
+    category: "stack",
+    run_as: "target_user",
     verified_installer: {
       tool,
       url,
-      runner: 'bash',
+      runner: "bash",
       args: [],
       env: [],
     },
     optional: false,
     enabled_by_default: true,
     installed_check: {
-      run_as: 'target_user',
+      run_as: "target_user",
       command: `command -v ${tool}`,
     },
     generated: true,
     phase: 9,
     install: [],
     verify: [`${tool} --version || ${tool} --help`],
-    tags: ['recommended'],
+    tags: ["recommended"],
     dependencies: [],
     aliases: [],
     notes: [],
@@ -54,19 +54,19 @@ function stackModule(repo: string, tool: string, id = `stack.${tool}`): Module {
 function manifestFor(modules: Module[]): Manifest {
   return {
     version: 1,
-    name: 'Test ACFS',
-    id: 'test_acfs',
+    name: "Test ACFS",
+    id: "test_acfs",
     defaults: {
-      user: 'ubuntu',
-      workspace_root: '/data/projects',
-      mode: 'vibe',
+      user: "ubuntu",
+      workspace_root: "/data/projects",
+      mode: "vibe",
     },
     modules,
   };
 }
 
 function checksums(entries: Record<string, { repo: string; sha256?: string }>): ChecksumsFile {
-  const installers: ChecksumsFile['installers'] = {};
+  const installers: ChecksumsFile["installers"] = {};
   for (const [tool, entry] of Object.entries(entries)) {
     installers[tool] = {
       url: installerUrl(entry.repo),
@@ -81,141 +81,141 @@ function checksums(entries: Record<string, { repo: string; sha256?: string }>): 
 
 function release(
   repo: string,
-  fixture: GitHubReleaseFixture
+  fixture: GitHubReleaseFixture,
 ): Record<string, GitHubReleaseFixture> {
   return {
     [`Dicklesworthstone/${repo}`]: fixture,
   };
 }
 
-describe('stack provenance report', () => {
-  test('rejects semantically invalid manifests before reporting', async () => {
-    const module = stackModule('ultimate_bug_scanner', 'ubs', 'stack.duplicate');
+describe("stack provenance report", () => {
+  test("rejects semantically invalid manifests before reporting", async () => {
+    const module = stackModule("ultimate_bug_scanner", "ubs", "stack.duplicate");
     const manifest = manifestFor([module, { ...module }]);
-    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+    const current = checksums({ ubs: { repo: "ultimate_bug_scanner" } });
 
-    await expect(buildStackProvenanceReport({
-      manifest,
-      currentChecksums: current,
-      network: 'skip',
-    })).rejects.toThrow('Manifest semantic validation failed');
+    await expect(
+      buildStackProvenanceReport({
+        manifest,
+        currentChecksums: current,
+        network: "skip",
+      }),
+    ).rejects.toThrow("Manifest semantic validation failed");
   });
 
-  test('rejects generator-level function-name collisions before reporting', async () => {
+  test("rejects generator-level function-name collisions before reporting", async () => {
     const manifest = manifestFor([
-      stackModule('one', 'one', 'foo.bar_baz'),
-      stackModule('two', 'two', 'foo_bar.baz'),
+      stackModule("one", "one", "foo.bar_baz"),
+      stackModule("two", "two", "foo_bar.baz"),
     ]);
 
-    await expect(buildStackProvenanceReport({
-      manifest,
-      currentChecksums: checksums({
-        one: { repo: 'one' },
-        two: { repo: 'two' },
+    await expect(
+      buildStackProvenanceReport({
+        manifest,
+        currentChecksums: checksums({
+          one: { repo: "one" },
+          two: { repo: "two" },
+        }),
+        network: "skip",
       }),
-      network: 'skip',
-    })).rejects.toThrow('FUNCTION_NAME_COLLISION');
+    ).rejects.toThrow("FUNCTION_NAME_COLLISION");
   });
 
-  test('reports non-GitHub stack provenance as explicit unknown without fetching', async () => {
-    const module = stackModule('jeffreysprompts', 'jp', 'stack.jeffreysprompts');
-    if (module.web) module.web.href = 'https://jeffreysprompts.com';
+  test("reports non-GitHub stack provenance as explicit unknown without fetching", async () => {
+    const module = stackModule("jeffreysprompts", "jp", "stack.jeffreysprompts");
+    if (module.web) module.web.href = "https://jeffreysprompts.com";
     let fetchCalls = 0;
-    const current = checksums({ jp: { repo: 'jeffreysprompts' } });
+    const current = checksums({ jp: { repo: "jeffreysprompts" } });
 
     const report = await buildStackProvenanceReport({
       manifest: manifestFor([module]),
       currentChecksums: current,
       candidateChecksums: current,
-      network: 'check',
+      network: "check",
       fetcher: async () => {
         fetchCalls += 1;
-        throw new Error('unexpected release fetch');
+        throw new Error("unexpected release fetch");
       },
     });
 
     expect(report.tools).toHaveLength(1);
     expect(report.tools[0]).toMatchObject({
-      moduleId: 'stack.jeffreysprompts',
-      repositoryResolution: 'unsupported_href',
-      sourceHref: 'https://jeffreysprompts.com',
-      release: { status: 'unknown', relation: 'unknown' },
+      moduleId: "stack.jeffreysprompts",
+      repositoryResolution: "unsupported_href",
+      sourceHref: "https://jeffreysprompts.com",
+      release: { status: "unknown", relation: "unknown" },
     });
     expect(report.tools[0].repo).toBeUndefined();
     expect(fetchCalls).toBe(0);
   });
 
-  test('includes stack modules whose category is derived from their ID', async () => {
-    const module = stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner');
+  test("includes stack modules whose category is derived from their ID", async () => {
+    const module = stackModule("ultimate_bug_scanner", "ubs", "stack.ultimate_bug_scanner");
     module.category = undefined;
-    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+    const current = checksums({ ubs: { repo: "ultimate_bug_scanner" } });
 
     const report = await buildStackProvenanceReport({
       manifest: manifestFor([module]),
       currentChecksums: current,
-      network: 'skip',
+      network: "skip",
     });
 
-    expect(report.tools.map((tool) => tool.moduleId)).toEqual([
-      'stack.ultimate_bug_scanner',
-    ]);
+    expect(report.tools.map((tool) => tool.moduleId)).toEqual(["stack.ultimate_bug_scanner"]);
   });
 
-  test('flags newer rch release as mandatory checksum review', async () => {
-    const manifest = manifestFor([
-      stackModule('remote_compilation_helper', 'rch', 'stack.rch'),
-    ]);
-    const current = checksums({ rch: { repo: 'remote_compilation_helper' } });
+  test("flags newer rch release as mandatory checksum review", async () => {
+    const manifest = manifestFor([stackModule("remote_compilation_helper", "rch", "stack.rch")]);
+    const current = checksums({ rch: { repo: "remote_compilation_helper" } });
 
     const report = await buildStackProvenanceReport({
       manifest,
       currentChecksums: current,
       candidateChecksums: current,
-      githubReleases: release('remote_compilation_helper', {
-        status: 'ok',
-        tagName: 'v9.9.9',
-        publishedAt: '2026-02-01T00:00:00Z',
+      githubReleases: release("remote_compilation_helper", {
+        status: "ok",
+        tagName: "v9.9.9",
+        publishedAt: "2026-02-01T00:00:00Z",
       }),
-      network: 'check',
+      network: "check",
     });
 
     const tool = report.tools[0];
     expect(report.ok).toBe(false);
-    expect(tool.release.relation).toBe('newer_upstream_release');
-    expect(tool.release.status).toBe('fail');
-    expect(tool.advisories.join('\n')).toContain('rch requires canonical checksum refresh review');
+    expect(tool.release.relation).toBe("newer_upstream_release");
+    expect(tool.release.status).toBe("fail");
+    expect(tool.advisories.join("\n")).toContain("rch requires canonical checksum refresh review");
   });
 
-  test('passes when latest release is not newer than checksum snapshot', async () => {
+  test("passes when latest release is not newer than checksum snapshot", async () => {
     const manifest = manifestFor([
-      stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner'),
+      stackModule("ultimate_bug_scanner", "ubs", "stack.ultimate_bug_scanner"),
     ]);
-    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+    const current = checksums({ ubs: { repo: "ultimate_bug_scanner" } });
 
     const report = await buildStackProvenanceReport({
       manifest,
       currentChecksums: current,
       candidateChecksums: current,
-      githubReleases: release('ultimate_bug_scanner', {
-        status: 'ok',
-        tagName: 'v1.0.0',
-        publishedAt: '2026-01-01T00:00:00Z',
+      githubReleases: release("ultimate_bug_scanner", {
+        status: "ok",
+        tagName: "v1.0.0",
+        publishedAt: "2026-01-01T00:00:00Z",
       }),
-      network: 'check',
+      network: "check",
     });
 
     expect(report.ok).toBe(true);
-    expect(report.tools[0].release.status).toBe('pass');
-    expect(report.tools[0].release.relation).toBe('same_or_older');
+    expect(report.tools[0].release.status).toBe("pass");
+    expect(report.tools[0].release.relation).toBe("same_or_older");
   });
 
-  test('ignores checksum candidate timestamp-only changes', async () => {
+  test("ignores checksum candidate timestamp-only changes", async () => {
     const manifest = manifestFor([
-      stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner'),
+      stackModule("ultimate_bug_scanner", "ubs", "stack.ultimate_bug_scanner"),
     ]);
-    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+    const current = checksums({ ubs: { repo: "ultimate_bug_scanner" } });
     const candidate: ChecksumsFile = {
-      generatedAt: '2026-01-16T00:00:00Z',
+      generatedAt: "2026-01-16T00:00:00Z",
       installers: current.installers,
     };
 
@@ -223,95 +223,93 @@ describe('stack provenance report', () => {
       manifest,
       currentChecksums: current,
       candidateChecksums: candidate,
-      githubReleases: release('ultimate_bug_scanner', {
-        status: 'ok',
-        tagName: 'v1.0.0',
-        publishedAt: '2026-01-01T00:00:00Z',
+      githubReleases: release("ultimate_bug_scanner", {
+        status: "ok",
+        tagName: "v1.0.0",
+        publishedAt: "2026-01-01T00:00:00Z",
       }),
-      network: 'check',
+      network: "check",
     });
 
     expect(report.ok).toBe(true);
     expect(report.checksumDiffs.stack).toEqual([]);
     expect(report.checksumDiffs.unrelated).toEqual([]);
-    expect(report.tools[0].candidate.status).toBe('pass');
+    expect(report.tools[0].candidate.status).toBe("pass");
   });
 
-  test('warns when a stack repo has no latest release metadata', async () => {
-    const manifest = manifestFor([
-      stackModule('beads_viewer', 'bv', 'stack.beads_viewer'),
-    ]);
-    const current = checksums({ bv: { repo: 'beads_viewer' } });
+  test("warns when a stack repo has no latest release metadata", async () => {
+    const manifest = manifestFor([stackModule("beads_viewer", "bv", "stack.beads_viewer")]);
+    const current = checksums({ bv: { repo: "beads_viewer" } });
 
     const report = await buildStackProvenanceReport({
       manifest,
       currentChecksums: current,
       candidateChecksums: current,
-      githubReleases: release('beads_viewer', {
-        status: 'missing',
+      githubReleases: release("beads_viewer", {
+        status: "missing",
       }),
-      network: 'check',
+      network: "check",
     });
 
     expect(report.ok).toBe(true);
-    expect(report.tools[0].release.status).toBe('warn');
-    expect(report.tools[0].release.relation).toBe('missing_release');
+    expect(report.tools[0].release.status).toBe("warn");
+    expect(report.tools[0].release.relation).toBe("missing_release");
   });
 
-  test('fails when stack installer checksum candidate changes', async () => {
+  test("fails when stack installer checksum candidate changes", async () => {
     const manifest = manifestFor([
-      stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner'),
+      stackModule("ultimate_bug_scanner", "ubs", "stack.ultimate_bug_scanner"),
     ]);
-    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner', sha256: HASH_A } });
-    const candidate = checksums({ ubs: { repo: 'ultimate_bug_scanner', sha256: HASH_B } });
+    const current = checksums({ ubs: { repo: "ultimate_bug_scanner", sha256: HASH_A } });
+    const candidate = checksums({ ubs: { repo: "ultimate_bug_scanner", sha256: HASH_B } });
 
     const report = await buildStackProvenanceReport({
       manifest,
       currentChecksums: current,
       candidateChecksums: candidate,
-      githubReleases: release('ultimate_bug_scanner', {
-        status: 'ok',
-        tagName: 'v1.0.0',
-        publishedAt: '2026-01-01T00:00:00Z',
+      githubReleases: release("ultimate_bug_scanner", {
+        status: "ok",
+        tagName: "v1.0.0",
+        publishedAt: "2026-01-01T00:00:00Z",
       }),
-      network: 'check',
+      network: "check",
     });
 
     expect(report.ok).toBe(false);
     expect(report.checksumDiffs.stack).toHaveLength(1);
-    expect(report.checksumDiffs.stack[0].tool).toBe('ubs');
-    expect(report.tools[0].candidate.status).toBe('fail');
+    expect(report.checksumDiffs.stack[0].tool).toBe("ubs");
+    expect(report.tools[0].candidate.status).toBe("fail");
   });
 
-  test('fails when checksum candidate contains unrelated installer diffs', async () => {
+  test("fails when checksum candidate contains unrelated installer diffs", async () => {
     const manifest = manifestFor([
-      stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner'),
+      stackModule("ultimate_bug_scanner", "ubs", "stack.ultimate_bug_scanner"),
     ]);
     const current = checksums({
-      ubs: { repo: 'ultimate_bug_scanner', sha256: HASH_A },
-      bun: { repo: 'not_a_stack_repo', sha256: HASH_A },
+      ubs: { repo: "ultimate_bug_scanner", sha256: HASH_A },
+      bun: { repo: "not_a_stack_repo", sha256: HASH_A },
     });
     const candidate = checksums({
-      ubs: { repo: 'ultimate_bug_scanner', sha256: HASH_A },
-      bun: { repo: 'not_a_stack_repo', sha256: HASH_B },
+      ubs: { repo: "ultimate_bug_scanner", sha256: HASH_A },
+      bun: { repo: "not_a_stack_repo", sha256: HASH_B },
     });
 
     const report = await buildStackProvenanceReport({
       manifest,
       currentChecksums: current,
       candidateChecksums: candidate,
-      githubReleases: release('ultimate_bug_scanner', {
-        status: 'ok',
-        tagName: 'v1.0.0',
-        publishedAt: '2026-01-01T00:00:00Z',
+      githubReleases: release("ultimate_bug_scanner", {
+        status: "ok",
+        tagName: "v1.0.0",
+        publishedAt: "2026-01-01T00:00:00Z",
       }),
-      network: 'check',
+      network: "check",
     });
 
     expect(report.ok).toBe(false);
     expect(report.checksumDiffs.stack).toHaveLength(0);
     expect(report.checksumDiffs.unrelated).toHaveLength(1);
-    expect(report.checksumDiffs.unrelated[0].tool).toBe('bun');
-    expect(report.advisories.join('\n')).toContain('unrelated installer changes');
+    expect(report.checksumDiffs.unrelated[0].tool).toBe("bun");
+    expect(report.advisories.join("\n")).toContain("unrelated installer changes");
   });
 });

@@ -5,8 +5,8 @@
  * Related: bead mjt.3.2
  */
 
-import type { Manifest, Module } from './types.js';
-import { toGeneratedFunctionName } from './utils.js';
+import type { Manifest, Module } from "./types.js";
+import { toGeneratedFunctionName } from "./utils.js";
 
 // ============================================================
 // Validation Result Types
@@ -15,15 +15,15 @@ import { toGeneratedFunctionName } from './utils.js';
 export interface ValidationError {
   /** Error code for programmatic handling */
   code:
-    | 'MISSING_DEPENDENCY'
-    | 'DEPENDENCY_CYCLE'
-    | 'PHASE_VIOLATION'
-    | 'FUNCTION_NAME_COLLISION'
-    | 'ORCHESTRATION_HANDLER_MISSING'
-    | 'INVALID_VERIFIED_INSTALLER_RUNNER'
-    | 'MISSING_VERIFIED_INSTALLER_CHECKSUM'
-    | 'INVALID_VERIFIED_INSTALLER_CHECKSUM'
-    | 'VERIFIED_INSTALLER_URL_MISMATCH';
+    | "MISSING_DEPENDENCY"
+    | "DEPENDENCY_CYCLE"
+    | "PHASE_VIOLATION"
+    | "FUNCTION_NAME_COLLISION"
+    | "ORCHESTRATION_HANDLER_MISSING"
+    | "INVALID_VERIFIED_INSTALLER_RUNNER"
+    | "MISSING_VERIFIED_INSTALLER_CHECKSUM"
+    | "INVALID_VERIFIED_INSTALLER_CHECKSUM"
+    | "VERIFIED_INSTALLER_URL_MISMATCH";
   /** Human-readable error message */
   message: string;
   /** Module ID where the error was detected */
@@ -67,7 +67,7 @@ export function validateDependencyExistence(manifest: Manifest): ValidationError
     for (const depId of module.dependencies) {
       if (!moduleIds.has(depId)) {
         errors.push({
-          code: 'MISSING_DEPENDENCY',
+          code: "MISSING_DEPENDENCY",
           message: `Module "${module.id}" depends on "${depId}" which does not exist`,
           moduleId: module.id,
           context: {
@@ -116,13 +116,13 @@ export function detectDependencyCycles(manifest: Manifest): ValidationError[] {
       const cyclePath = [...path.slice(cycleStart), moduleId];
       // Create sorted key for deduplication WITHOUT mutating cyclePath
       // Use Set to remove the duplicate start/end node so a->b->c->a and b->c->a->b produce the same key
-      const cycleKey = [...new Set(cyclePath)].sort().join(',');
+      const cycleKey = [...new Set(cyclePath)].sort().join(",");
 
       if (!reportedCycles.has(cycleKey)) {
         reportedCycles.add(cycleKey);
         errors.push({
-          code: 'DEPENDENCY_CYCLE',
-          message: `Dependency cycle detected: ${cyclePath.join(' → ')}`,
+          code: "DEPENDENCY_CYCLE",
+          message: `Dependency cycle detected: ${cyclePath.join(" → ")}`,
           moduleId: cyclePath[0],
           context: {
             cyclePath,
@@ -209,7 +209,7 @@ export function validateFunctionNameUniqueness(manifest: Manifest): ValidationEr
         const moduleId = moduleIds[i];
         const firstModuleId = moduleIds[0];
         errors.push({
-          code: 'FUNCTION_NAME_COLLISION',
+          code: "FUNCTION_NAME_COLLISION",
           message: `Module "${moduleId}" generates function "${funcName}" which collides with "${firstModuleId}"`,
           moduleId,
           context: {
@@ -229,7 +229,7 @@ export function validateFunctionNameUniqueness(manifest: Manifest): ValidationEr
 // preference. Each such module needs an explicitly authored production phase
 // handler; otherwise filtered installs can silently omit it. Keep this list
 // narrow until the manifest grows a first-class handler identifier.
-const ORCHESTRATION_OWNED_MODULE_IDS = new Set(['users.ubuntu']);
+const ORCHESTRATION_OWNED_MODULE_IDS = new Set(["users.ubuntu"]);
 
 export function validateOrchestrationOwnership(manifest: Manifest): ValidationError[] {
   const errors: ValidationError[] = [];
@@ -239,12 +239,13 @@ export function validateOrchestrationOwnership(manifest: Manifest): ValidationEr
       continue;
     }
     errors.push({
-      code: 'ORCHESTRATION_HANDLER_MISSING',
+      code: "ORCHESTRATION_HANDLER_MISSING",
       message: `Module "${module.id}" disables generation without a registered authored phase handler`,
       moduleId: module.id,
       context: {
         registeredModules: Array.from(ORCHESTRATION_OWNED_MODULE_IDS),
-        suggestion: 'Generate the module or register and test its production orchestration handler.',
+        suggestion:
+          "Generate the module or register and test its production orchestration handler.",
       },
     });
   }
@@ -261,7 +262,7 @@ export function validateOrchestrationOwnership(manifest: Manifest): ValidationEr
  * SECURITY: Only allow known-safe shell interpreters.
  * This is a belt-and-suspenders check - schema.ts also validates this.
  */
-const ALLOWED_VERIFIED_INSTALLER_RUNNERS = new Set(['bash', 'sh']);
+const ALLOWED_VERIFIED_INSTALLER_RUNNERS = new Set(["bash", "sh"]);
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
 
 export interface InstallerChecksumEntry {
@@ -291,7 +292,7 @@ export function validateVerifiedInstallerRunner(manifest: Manifest): ValidationE
     const runner = module.verified_installer.runner;
     if (!ALLOWED_VERIFIED_INSTALLER_RUNNERS.has(runner)) {
       errors.push({
-        code: 'INVALID_VERIFIED_INSTALLER_RUNNER',
+        code: "INVALID_VERIFIED_INSTALLER_RUNNER",
         message: `Module "${module.id}" has invalid verified_installer.runner "${runner}" - only "bash" or "sh" allowed`,
         moduleId: module.id,
         context: {
@@ -315,7 +316,7 @@ export function validateVerifiedInstallerRunner(manifest: Manifest): ValidationE
  */
 export function validateVerifiedInstallerChecksums(
   manifest: Manifest,
-  installers: Record<string, InstallerChecksumEntry>
+  installers: Record<string, InstallerChecksumEntry>,
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -328,7 +329,7 @@ export function validateVerifiedInstallerChecksums(
 
     if (!entry?.url || !entry?.sha256) {
       errors.push({
-        code: 'MISSING_VERIFIED_INSTALLER_CHECKSUM',
+        code: "MISSING_VERIFIED_INSTALLER_CHECKSUM",
         message: `checksums.yaml is missing a complete installer entry for "${tool}" (used by "${module.id}")`,
         moduleId: module.id,
         context: {
@@ -342,7 +343,7 @@ export function validateVerifiedInstallerChecksums(
 
     if (!SHA256_HEX_PATTERN.test(entry.sha256)) {
       errors.push({
-        code: 'INVALID_VERIFIED_INSTALLER_CHECKSUM',
+        code: "INVALID_VERIFIED_INSTALLER_CHECKSUM",
         message: `checksums.yaml has invalid sha256 "${entry.sha256}" for "${tool}" (used by "${module.id}")`,
         moduleId: module.id,
         context: {
@@ -355,7 +356,7 @@ export function validateVerifiedInstallerChecksums(
 
     if (verifiedInstaller.url && verifiedInstaller.url !== entry.url) {
       errors.push({
-        code: 'VERIFIED_INSTALLER_URL_MISMATCH',
+        code: "VERIFIED_INSTALLER_URL_MISMATCH",
         message: `Module "${module.id}" declares verified_installer.url "${verifiedInstaller.url}" but checksums.yaml uses "${entry.url}"`,
         moduleId: module.id,
         context: {
@@ -412,7 +413,7 @@ export function validatePhaseOrdering(manifest: Manifest): ValidationError[] {
 
       if (depPhase > modulePhase) {
         errors.push({
-          code: 'PHASE_VIOLATION',
+          code: "PHASE_VIOLATION",
           message: `Module "${module.id}" (phase ${modulePhase}) depends on "${depId}" (phase ${depPhase}) - dependencies must be same or earlier phase`,
           moduleId: module.id,
           context: {
@@ -495,48 +496,48 @@ export function validateManifest(manifest: Manifest): ValidationResult {
  */
 export function formatValidationErrors(result: ValidationResult): string {
   if (result.valid) {
-    return '✓ Manifest validation passed';
+    return "✓ Manifest validation passed";
   }
 
-  const lines: string[] = ['✗ Manifest validation failed:', ''];
+  const lines: string[] = ["✗ Manifest validation failed:", ""];
 
   for (const error of result.errors) {
     lines.push(`  [${error.code}] ${error.message}`);
 
     // Add contextual hints based on error type
     switch (error.code) {
-      case 'MISSING_DEPENDENCY':
+      case "MISSING_DEPENDENCY":
         lines.push(`    → Check spelling or add the missing module`);
         break;
-      case 'DEPENDENCY_CYCLE':
+      case "DEPENDENCY_CYCLE":
         lines.push(`    → Remove one dependency to break the cycle`);
         break;
-      case 'PHASE_VIOLATION':
+      case "PHASE_VIOLATION":
         lines.push(`    → Move dependency to earlier phase or move module to later phase`);
         break;
-      case 'FUNCTION_NAME_COLLISION':
+      case "FUNCTION_NAME_COLLISION":
         lines.push(`    → Rename one of the colliding modules to use a different ID`);
         if (error.context.suggestion) {
           lines.push(`    → ${error.context.suggestion}`);
         }
         break;
-      case 'INVALID_VERIFIED_INSTALLER_RUNNER':
+      case "INVALID_VERIFIED_INSTALLER_RUNNER":
         lines.push(`    → SECURITY: Only "bash" or "sh" are allowed as runners`);
         lines.push(`    → Change verified_installer.runner to "bash" or "sh"`);
         break;
-      case 'MISSING_VERIFIED_INSTALLER_CHECKSUM':
+      case "MISSING_VERIFIED_INSTALLER_CHECKSUM":
         lines.push(`    → Add checksum entry in checksums.yaml for this installer`);
         break;
-      case 'INVALID_VERIFIED_INSTALLER_CHECKSUM':
+      case "INVALID_VERIFIED_INSTALLER_CHECKSUM":
         lines.push(`    → Checksum mismatch: re-download installer and update checksums.yaml`);
         break;
-      case 'VERIFIED_INSTALLER_URL_MISMATCH':
+      case "VERIFIED_INSTALLER_URL_MISMATCH":
         lines.push(`    → URL in manifest does not match URL in checksums.yaml`);
         break;
     }
-    lines.push('');
+    lines.push("");
   }
 
   lines.push(`Total: ${result.errors.length} error(s)`);
-  return lines.join('\n');
+  return lines.join("\n");
 }

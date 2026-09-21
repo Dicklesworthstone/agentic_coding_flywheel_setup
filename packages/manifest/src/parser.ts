@@ -3,22 +3,22 @@
  * Parses and validates YAML manifest files
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { parse as parseYaml, YAMLParseError } from 'yaml';
-import { ZodError } from 'zod';
-import { ManifestSchema } from './schema.js';
-import { 
-  detectDependencyCycles as detectDependencyCyclesValidate,
-  validatePhaseOrdering as validatePhaseOrderingAdvanced,
-  validateDependencyExistence as validateDependencyExistenceAdvanced
-} from './validate.js';
+import { existsSync, readFileSync } from "node:fs";
+import { parse as parseYaml, YAMLParseError } from "yaml";
+import type { ZodError } from "zod";
+import { ManifestSchema } from "./schema.js";
 import type {
   Manifest,
   ParseResult,
-  ValidationResult,
   ValidationError,
+  ValidationResult,
   ValidationWarning,
-} from './types.js';
+} from "./types.js";
+import {
+  detectDependencyCycles as detectDependencyCyclesValidate,
+  validateDependencyExistence as validateDependencyExistenceAdvanced,
+  validatePhaseOrdering as validatePhaseOrderingAdvanced,
+} from "./validate.js";
 
 function isEntirelyWrappedInMatchingQuotes(value: string): boolean {
   const trimmed = value.trim();
@@ -29,7 +29,7 @@ function isEntirelyWrappedInMatchingQuotes(value: string): boolean {
   if (!trimmed.endsWith(quote)) return false;
 
   for (let i = 1; i < trimmed.length - 1; i++) {
-    if (trimmed[i] === quote && trimmed[i - 1] !== '\\') {
+    if (trimmed[i] === quote && trimmed[i - 1] !== "\\") {
       return false;
     }
   }
@@ -46,33 +46,33 @@ function unwrapOptionalQuotes(value: string): string {
 
 function looksLikeDescriptionSentence(value: string): boolean {
   const prefixes = [
-    'Install ',
-    'Ensure ',
-    'Configure ',
-    'Set up ',
-    'Setup ',
-    'Create ',
-    'Write ',
-    'Copy ',
-    'Add ',
-    'Remove ',
-    'Link ',
-    'Enable ',
-    'Disable ',
-    'Restart ',
-    'Start ',
-    'Stop ',
-    'Open ',
-    'Select ',
-    'Choose ',
-    'Run ',
+    "Install ",
+    "Ensure ",
+    "Configure ",
+    "Set up ",
+    "Setup ",
+    "Create ",
+    "Write ",
+    "Copy ",
+    "Add ",
+    "Remove ",
+    "Link ",
+    "Enable ",
+    "Disable ",
+    "Restart ",
+    "Start ",
+    "Stop ",
+    "Open ",
+    "Select ",
+    "Choose ",
+    "Run ",
   ];
 
   return prefixes.some((p) => value.startsWith(p));
 }
 
 function looksLikeDescriptionOnlyInstallEntry(raw: string): boolean {
-  if (raw.includes('\n')) return false;
+  if (raw.includes("\n")) return false;
 
   const unquoted = unwrapOptionalQuotes(raw);
   if (!unquoted) return false;
@@ -109,7 +109,7 @@ export function parseManifestFile(yamlPath: string): ParseResult<Manifest> {
   // Read file
   let content: string;
   try {
-    content = readFileSync(yamlPath, 'utf-8');
+    content = readFileSync(yamlPath, "utf-8");
   } catch (err) {
     return {
       success: false,
@@ -243,13 +243,7 @@ export function validateManifestData(data: Manifest): ValidationResult {
   }
 
   // Warnings for web-visible modules missing recommended web metadata fields
-  const recommendedWebFields = [
-    'display_name',
-    'short_name',
-    'tagline',
-    'icon',
-    'color',
-  ] as const;
+  const recommendedWebFields = ["display_name", "short_name", "tagline", "icon", "color"] as const;
   for (const module of data.modules) {
     if (module.web && module.web.visible !== false) {
       for (const field of recommendedWebFields) {
@@ -272,7 +266,7 @@ export function validateManifestData(data: Manifest): ValidationResult {
     if (!hasRealInstall) {
       warnings.push({
         path: `modules.${module.id}.install`,
-        message: 'Install commands appear to be descriptions, not actual commands',
+        message: "Install commands appear to be descriptions, not actual commands",
       });
     }
   }
@@ -294,7 +288,7 @@ export function validateManifest(manifest: unknown): ValidationResult {
   if (!schemaResult.success) {
     for (const issue of schemaResult.error.issues) {
       errors.push({
-        path: issue.path.join('.'),
+        path: issue.path.join("."),
         message: issue.message,
         value: undefined,
       });
@@ -310,8 +304,8 @@ export function validateManifest(manifest: unknown): ValidationResult {
  */
 function formatZodError(error: ZodError): string {
   const messages = error.issues.map((issue) => {
-    const path = issue.path.join('.');
+    const path = issue.path.join(".");
     return path ? `${path}: ${issue.message}` : issue.message;
   });
-  return messages.join('; ');
+  return messages.join("; ");
 }
