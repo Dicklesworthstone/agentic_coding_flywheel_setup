@@ -1,6 +1,6 @@
-import type { NextConfig } from "next";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { NextConfig } from "next";
 
 const configDir = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(configDir, "../..");
@@ -12,9 +12,7 @@ const DEFAULT_BUILD_CPUS = 1;
 export const toScopedDistDir = (scope: string): string | undefined => {
   if (!scope) return undefined;
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(scope)) {
-    throw new Error(
-      `${NEXT_DIST_SCOPE_ENV} must match ^[a-z0-9][a-z0-9_-]{0,63}$ when set.`
-    );
+    throw new Error(`${NEXT_DIST_SCOPE_ENV} must match ^[a-z0-9][a-z0-9_-]{0,63}$ when set.`);
   }
   return `.next-${scope}`;
 };

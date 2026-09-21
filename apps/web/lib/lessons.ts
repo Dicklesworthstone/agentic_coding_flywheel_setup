@@ -420,7 +420,8 @@ export const LESSONS: Lesson[] = [
     id: 49,
     slug: "debugging-agents",
     title: "Debugging Agent Issues",
-    description: "Diagnose rate limits, network failures, and cost overruns with RANO, CAUT, WA, and CASS",
+    description:
+      "Diagnose rate limits, network failures, and cost overruns with RANO, CAUT, WA, and CASS",
     duration: "8 min",
     file: "49_debugging_agents.md",
   },
@@ -484,7 +485,8 @@ export const LESSONS: Lesson[] = [
     id: 57,
     slug: "lang-runtimes",
     title: "Language Runtimes",
-    description: "Master Bun, uv, Rust/cargo, Go, and nvm — the five language runtimes in your stack",
+    description:
+      "Master Bun, uv, Rust/cargo, Go, and nvm — the five language runtimes in your stack",
     duration: "8 min",
     file: "57_lang_runtimes.md",
   },

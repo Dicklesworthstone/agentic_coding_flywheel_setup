@@ -176,9 +176,11 @@ export const cardStyles = {
   /** Base card with glass effect */
   base: "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300",
   /** Hoverable card */
-  hoverable: "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300 hover:border-primary/30",
+  hoverable:
+    "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300 hover:border-primary/30",
   /** Feature card with glow */
-  feature: "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30",
+  feature:
+    "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30",
 } as const;
 
 // =============================================================================
@@ -190,13 +192,17 @@ export const cardStyles = {
  */
 export const backgrounds = {
   /** Floating orb - cyan (top-left) */
-  orbCyan: "pointer-events-none absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-[oklch(0.75_0.18_195/0.1)] blur-[100px] hidden sm:block sm:animate-pulse-glow",
+  orbCyan:
+    "pointer-events-none absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-[oklch(0.75_0.18_195/0.1)] blur-[100px] hidden sm:block sm:animate-pulse-glow",
   /** Floating orb - pink (bottom-right) */
-  orbPink: "pointer-events-none absolute right-1/4 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[80px] hidden sm:block sm:animate-pulse-glow",
+  orbPink:
+    "pointer-events-none absolute right-1/4 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[80px] hidden sm:block sm:animate-pulse-glow",
   /** Section orb - left positioned */
-  orbLeft: "pointer-events-none absolute -left-40 top-1/4 h-80 w-80 rounded-full bg-[oklch(0.75_0.18_195/0.08)] blur-[100px]",
+  orbLeft:
+    "pointer-events-none absolute -left-40 top-1/4 h-80 w-80 rounded-full bg-[oklch(0.75_0.18_195/0.08)] blur-[100px]",
   /** Section orb - right positioned */
-  orbRight: "pointer-events-none absolute -right-40 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[100px]",
+  orbRight:
+    "pointer-events-none absolute -right-40 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[100px]",
   /** Grid pattern overlay */
   gridPattern: "bg-grid-pattern opacity-30",
   /** Hero gradient */
@@ -230,7 +236,8 @@ export const iconContainers = {
   /** Primary icon container */
   primary: "inline-flex rounded-xl bg-primary/10 p-3 text-primary",
   /** Gradient icon container */
-  gradient: (color: string) => `inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${color}`,
+  gradient: (color: string) =>
+    `inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${color}`,
 } as const;
 
 // =============================================================================
@@ -242,9 +249,11 @@ export const iconContainers = {
  */
 export const badges = {
   /** Primary badge (rounded-full) */
-  primary: "inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary",
+  primary:
+    "inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary",
   /** Subtle badge */
-  subtle: "inline-flex items-center rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-sm font-medium transition hover:scale-105 hover:border-primary/30",
+  subtle:
+    "inline-flex items-center rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-sm font-medium transition hover:scale-105 hover:border-primary/30",
 } as const;
 
 // =============================================================================

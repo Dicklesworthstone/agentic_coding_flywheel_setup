@@ -1,5 +1,5 @@
-import { defineConfig, devices } from "@playwright/test";
 import os from "node:os";
+import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Playwright configuration for Agent Flywheel web e2e testing.
@@ -35,7 +35,8 @@ const resolvedWorkers = (() => {
   // (which can cause intermittent console/page errors in highly-parallel suites).
   const available =
     typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
-  const safeAvailable = Number.isFinite(available) && available > 0 ? available : DEFAULT_LOCAL_WORKERS;
+  const safeAvailable =
+    Number.isFinite(available) && available > 0 ? available : DEFAULT_LOCAL_WORKERS;
 
   return Math.min(DEFAULT_LOCAL_WORKERS, safeAvailable);
 })();

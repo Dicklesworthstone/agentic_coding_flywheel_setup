@@ -25,9 +25,7 @@ const STORAGE_KEY = "acfs-theme";
 function resolveTheme(mode: ThemeMode): ResolvedTheme {
   if (mode === "system") {
     if (typeof window === "undefined") return "dark";
-    return window.matchMedia("(prefers-color-scheme: light)").matches
-      ? "light"
-      : "dark";
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   }
   return mode;
 }
@@ -96,8 +94,7 @@ export function useTheme() {
 
   const cycle = useCallback(() => {
     const current = getStoredMode();
-    const next: ThemeMode =
-      current === "dark" ? "light" : current === "light" ? "system" : "dark";
+    const next: ThemeMode = current === "dark" ? "light" : current === "light" ? "system" : "dark";
     setMode(next);
   }, [setMode]);
 

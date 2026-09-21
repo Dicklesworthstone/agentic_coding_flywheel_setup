@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ArrowRight, BookOpen, Home, Terminal } from "lucide-react";
+import Link from "next/link";
 
 const LINKS = [
   { href: "/", label: "Home", icon: Home },
@@ -17,7 +17,10 @@ export default function NotFound() {
   return (
     <div className="dark relative flex min-h-screen flex-col bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-gradient-hero" aria-hidden="true" />
-      <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-30" aria-hidden="true" />
+      <div
+        className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-30"
+        aria-hidden="true"
+      />
 
       <main
         id="main-content"
@@ -31,8 +34,8 @@ export default function NotFound() {
           Page not found
         </h1>
         <p className="mb-10 max-w-md text-lg leading-relaxed text-muted-foreground">
-          That address does not exist on Agent Flywheel. It may have moved, or
-          the link you followed has a typo.
+          That address does not exist on Agent Flywheel. It may have moved, or the link you followed
+          has a typo.
         </p>
 
         <nav aria-label="Where to go next" className="flex flex-col gap-3 sm:flex-row">

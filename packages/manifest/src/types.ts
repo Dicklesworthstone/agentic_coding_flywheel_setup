@@ -12,13 +12,13 @@ export interface ManifestDefaults {
   /** Root directory for projects workspace */
   workspace_root: string;
   /** Installation mode (vibe = passwordless sudo, full permissions) */
-  mode: 'vibe' | 'safe';
+  mode: "vibe" | "safe";
 }
 
 /**
  * Execution context for module commands
  */
-export type RunAs = 'target_user' | 'root' | 'current';
+export type RunAs = "target_user" | "root" | "current";
 
 /**
  * Canonical module categories. This runtime tuple is shared by schema and
@@ -26,19 +26,19 @@ export type RunAs = 'target_user' | 'root' | 'current';
  * and then fail under another.
  */
 export const MODULE_CATEGORIES = [
-  'base',
-  'users',
-  'filesystem',
-  'shell',
-  'cli',
-  'network',
-  'lang',
-  'tools',
-  'db',
-  'cloud',
-  'agents',
-  'stack',
-  'acfs',
+  "base",
+  "users",
+  "filesystem",
+  "shell",
+  "cli",
+  "network",
+  "lang",
+  "tools",
+  "db",
+  "cloud",
+  "agents",
+  "stack",
+  "acfs",
 ] as const;
 
 export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
@@ -51,7 +51,7 @@ export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
  * for everything else (the apt-based default). A module may narrow itself to a
  * subset via its `families` key; omitting the key means every family.
  */
-export const DISTRO_FAMILIES = ['ubuntu', 'arch'] as const;
+export const DISTRO_FAMILIES = ["ubuntu", "arch"] as const;
 
 export type DistroFamily = (typeof DISTRO_FAMILIES)[number];
 
@@ -59,7 +59,7 @@ export type DistroFamily = (typeof DISTRO_FAMILIES)[number];
  * Allowed runners for verified installers.
  * SECURITY: Only allow known-safe shell interpreters to prevent command injection.
  */
-export type VerifiedInstallerRunner = 'bash' | 'sh';
+export type VerifiedInstallerRunner = "bash" | "sh";
 
 /**
  * Verified upstream installer reference (curl|bash)
