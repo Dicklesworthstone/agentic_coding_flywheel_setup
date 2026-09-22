@@ -195,12 +195,12 @@ def agent_mix($count; $profile):
     | {cc: $cc, cod: $cod, agy: ($count - $cc - $cod)}
   end;
 
-def example_plan($count; $safe; $recommended; $has_warnings; $has_failures):
+def example_plan($count; $safe; $recommended; $has_warnings; $has_failures; $must_wait):
   if $has_failures then
     {requested_agents: $count, status: "fail", recommendation: "block"}
   elif $safe < 1 or $count > $safe then
     {requested_agents: $count, status: "fail", recommendation: "block"}
-  elif $recommended > 0 and $count > $recommended then
+  elif $must_wait or $recommended < 1 or $count > $recommended then
     {requested_agents: $count, status: "warn", recommendation: "defer_or_reduce"}
   elif $has_warnings then
     {requested_agents: $count, status: "warn", recommendation: "launch_with_review"}
@@ -220,10 +220,11 @@ $status as $s
 | (n($host.load_1m)) as $host_load_1m
 | (n($host.mem_available_kb)) as $host_mem_available_kb
 | (if n($host.cpu_count) > 0 then (n($host.load_1m) / n($host.cpu_count)) else 0 end) as $host_load_ratio
-| (($host_cpu_count > 0 and $host_load_ratio >= 1.25) or ($host_mem_available_kb > 0 and $host_mem_available_kb < 4194304)) as $host_pressure_high
+| (($host_cpu_count > 0 and $host_load_ratio >= 1.25) or ($host.mem_available_kb != null and $host_mem_available_kb < 4194304)) as $host_pressure_high
 | (n($c.capacity.recommended_agent_count)) as $capacity_recommended
 | (n($c.capacity.safe_agent_count)) as $capacity_safe
-| (if $capacity_safe > 0 then $capacity_safe else n($c.capacity.max_agent_count) end) as $safe_from_capacity
+# Zero is a real capacity limit, not a request to use the larger legacy maximum.
+| (if $c.capacity.safe_agent_count != null then $capacity_safe else n($c.capacity.max_agent_count) end) as $safe_from_capacity
 | (n($rch.queue_depth)) as $rch_queue_depth
 | (n($rch.active_build_count)) as $rch_active_builds
 | (n($rch.slots_available)) as $rch_slots_available
@@ -233,38 +234,37 @@ $status as $s
 | (n($rch.workers_offline)) as $rch_workers_offline
 | (n($rch.pressure_warning_count)) as $rch_pressure_warning_count
 | (n($rch.stale_worker_count)) as $rch_stale_worker_count
+| ((b($rch.queue_json_ok) | not) or $rch_stale_worker_count > 0) as $rch_telemetry_uncertain
 | (n($beads.stale_in_progress_count) + n($beads.stale_work_count) + n($beads.stale_count) + n($s.stale_work.total_stale_count) + n($s.stale_work.stale_count)) as $stale_work_count
 | (
     if (b($rch.available) | not) then "fail"
     elif (b($rch.status_json_ok) | not) then "fail"
     elif ($rch_workers_total < 1) then "fail"
     elif ($rch_workers_total > 0 and $rch_workers_healthy < 1) then "fail"
-    elif ($rch_queue_depth > 0 or $rch_active_builds > 0 or $rch_workers_busy > 0 or $rch_pressure_warning_count > 0 or $rch_stale_worker_count > 0) then "warn"
+    elif ($rch_telemetry_uncertain or $rch_slots_available < 1 or $rch_queue_depth > 0 or $rch_active_builds > 0 or $rch_workers_busy > 0 or $rch_pressure_warning_count > 0) then "warn"
     else "pass" end
   ) as $rch_check_status
+| (if $safe_from_capacity > 0 then $safe_from_capacity else 0 end) as $safe_agents
+# Every limit constrains the result. RCH availability must never increase the
+# host recommendation, and an exhausted limit must never fall back to a larger one.
+| (min2($requested_agents; min2($safe_agents; $capacity_recommended))) as $host_recommended
 | (
-    if $rch_check_status == "fail" then 0
-    elif $rch_check_status == "warn" and $rch_slots_available > 0 then min2($requested_agents; $rch_slots_available)
-    elif $capacity_recommended > 0 then min2($requested_agents; $capacity_recommended)
-    else $requested_agents end
-  ) as $pressure_adjusted_recommended
-| (
-    if $safe_from_capacity > 0 then $safe_from_capacity else 0 end
-  ) as $safe_agents
-| (
-    if $pressure_adjusted_recommended > 0 then $pressure_adjusted_recommended
-    elif $capacity_recommended > 0 then min2($requested_agents; $capacity_recommended)
-    else $requested_agents end
+    if $rch_check_status == "fail" or $rch_telemetry_uncertain then 0
+    elif $rch_check_status == "warn" then min2($host_recommended; $rch_slots_available)
+    else $host_recommended end
   ) as $recommended_agents
 | [
     check(
       "host_capacity";
-      (if ($safe_agents < 1 or $requested_agents > $safe_agents or ($c.profile_check.status // $c.status // "warn") == "fail") then "fail"
-       elif (($c.profile_check.status // "pass") == "warn" or ($capacity_recommended > 0 and $requested_agents > $capacity_recommended)) then "warn"
+      (if ($safe_agents < 1 or $requested_agents > $safe_agents or ($c.status // "warn") == "fail" or ($c.profile_check.status // "warn") == "fail") then "fail"
+       elif (($c.status // "warn") == "warn" or ($c.profile_check.status // "pass") == "warn" or $capacity_recommended < 1 or $requested_agents > $capacity_recommended) then "warn"
        else "pass" end);
       (if ($safe_agents < 1) then "Capacity model reports no safe launch size"
        elif $requested_agents > $safe_agents then "Requested agent count exceeds the safe capacity limit"
-       elif (($c.profile_check.status // "pass") == "warn" or ($capacity_recommended > 0 and $requested_agents > $capacity_recommended)) then "Requested count exceeds the conservative recommendation"
+       elif ($c.status == "fail" or $c.profile_check.status == "fail") then "Capacity model reports a hard blocker"
+       elif $capacity_recommended < 1 then "Capacity model recommends waiting before launching"
+       elif $requested_agents > $capacity_recommended then "Requested count exceeds the conservative recommendation"
+       elif ($c.status == "warn" or $c.profile_check.status == "warn") then "Capacity model reports warnings requiring review"
        else "Requested count is within the capacity recommendation" end);
       ($c.recommendations // []);
       ["acfs capacity --json --profile " + ($requested_agents | tostring) + "-agents --recommend-ntm"]
@@ -272,13 +272,13 @@ $status as $s
     check(
       "host_pressure";
       (if $host_pressure_high then "warn" else "pass" end);
-      (if ($host_cpu_count > 0 and $host_load_ratio >= 1.25 and $host_mem_available_kb > 0 and $host_mem_available_kb < 4194304) then "Host load and available memory are already under pressure"
+      (if ($host_cpu_count > 0 and $host_load_ratio >= 1.25 and $host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Host load and available memory are already under pressure"
        elif ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "Host load is already high; pause new launches until pressure clears"
-       elif ($host_mem_available_kb > 0 and $host_mem_available_kb < 4194304) then "Available memory is below the conservative launch threshold"
+       elif ($host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Available memory is below the conservative launch threshold"
        else "Host pressure is acceptable" end);
       ([
         if ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "load_1m=" + ($host_load_1m | tostring) + " cpu_count=" + ($host_cpu_count | tostring) else empty end,
-        if ($host_mem_available_kb > 0 and $host_mem_available_kb < 4194304) then "mem_available_kb=" + ($host_mem_available_kb | tostring) else empty end
+        if ($host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "mem_available_kb=" + ($host_mem_available_kb | tostring) else empty end
       ]);
       ["acfs swarm status --json", "acfs capacity --json --recommend-ntm"]
     ),
@@ -289,10 +289,12 @@ $status as $s
        elif (b($rch.status_json_ok) | not) then "RCH status JSON failed or timed out"
        elif ($rch_workers_total < 1) then "RCH reports no workers"
        elif ($rch_workers_total > 0 and $rch_workers_healthy < 1) then "RCH reports no healthy workers"
+       elif (b($rch.queue_json_ok) | not) then "RCH queue telemetry failed or is unavailable; wait for a fresh probe"
+       elif $rch_stale_worker_count > 0 then "RCH pressure telemetry has stale workers; wait for fresh telemetry"
+       elif $rch_slots_available < 1 then "RCH has no available build slots; wait for capacity"
        elif $rch_queue_depth > 0 then "RCH queue already has pending work"
        elif $rch_active_builds > 0 then "RCH has active builds"
        elif $rch_pressure_warning_count > 0 then "RCH workers report elevated pressure"
-       elif $rch_stale_worker_count > 0 then "RCH pressure telemetry has stale workers"
        else "RCH pressure is acceptable" end);
       ($rch.warnings // []);
       ["rch status", "rch queue --json", "rch workers probe --all"]
@@ -344,38 +346,34 @@ $status as $s
   ] as $checks
 | (if any($checks[]; .status == "fail") then "fail" elif any($checks[]; .status == "warn") then "warn" else "pass" end) as $plan_status
 | (if $plan_status == "fail" then 2 elif $plan_status == "warn" then 1 else 0 end) as $exit_code
-| (if $plan_status == "fail" then "block"
-   elif $requested_agents > $recommended_agents then "defer_or_reduce"
-   elif $plan_status == "warn" then "launch_with_review"
-   else "launch" end) as $recommendation
-| (if $plan_status == "fail" then null
-   elif $requested_agents > $recommended_agents then $recommended_agents
-   else $requested_agents end) as $launch_agents
-| (if ($launch_agents // 0) > 0 then agent_mix($launch_agents; $profile) else null end) as $mix
-| ([$checks[] | select(.status != "pass") | .summary] | unique) as $warnings
-| (if ($plan_status == "fail" or $host_pressure_high or $stale_work_count > 0) then "wait"
+# Resolve the admission decision once, before constructing any launch advice.
+# A warning can require waiting; it does not automatically authorize a command.
+| (if ($plan_status == "fail" or $host_pressure_high or $stale_work_count > 0 or $recommended_agents < 1) then "wait"
    elif ($requested_agents > $recommended_agents or $plan_status == "warn") then "scale_down"
    else "proceed" end) as $quiesce_recommendation
-| (if $quiesce_recommendation == "wait" then
-     ([$checks[] | select(.status == "fail" or .id == "host_pressure" or (.id == "active_work" and $stale_work_count > 0)) | select(.status != "pass") | .summary] | unique)
-   elif $quiesce_recommendation == "scale_down" then
-     ([$checks[] | select(.status == "warn") | .summary] | unique)
-   else
-     ["No load-shedding pressure detected"]
-   end) as $quiesce_reasons
+| (if $plan_status == "fail" then "block"
+   elif $quiesce_recommendation == "wait" or $requested_agents > $recommended_agents then "defer_or_reduce"
+   elif $plan_status == "warn" then "launch_with_review"
+   else "launch" end) as $recommendation
+| (if $quiesce_recommendation == "wait" then null else $recommended_agents end) as $launch_agents
+| (if ($launch_agents // 0) > 0 then agent_mix($launch_agents; $profile) else null end) as $mix
+| ([$checks[] | select(.status != "pass") | .summary] | unique) as $warnings
+| (if $quiesce_recommendation != "proceed" then $warnings
+   else ["No load-shedding pressure detected"] end) as $quiesce_reasons
 | {
     schema_version: 1,
     generated_at: (now | todateiso8601),
     status: $plan_status,
     exit_code: $exit_code,
     requested_agents: $requested_agents,
-    recommended_agents: (if $recommended_agents > 0 then $recommended_agents else null end),
+    recommended_agents: $launch_agents,
     safe_agents: (if $safe_agents > 0 then $safe_agents else null end),
     workload: $workload,
     profile: $profile,
     recommendation: $recommendation,
     recommended_action:
       (if $plan_status == "fail" then "Do not launch; resolve hard blockers first."
+       elif $quiesce_recommendation == "wait" then "Wait before launching new agents; resolve pressure or stale telemetry/work first."
        elif $requested_agents > $recommended_agents then "Reduce to " + ($recommended_agents | tostring) + " agents or wait for pressure to clear."
        elif $plan_status == "warn" then "Launch only after reviewing warnings."
        else "Launch is reasonable." end),
@@ -439,7 +437,7 @@ $status as $s
     },
     warnings: $warnings,
     next_commands: ([$checks[] | select(.status != "pass") | .commands[]] | unique),
-    examples: [10, 25, 50] | map(example_plan(.; $safe_agents; $recommended_agents; ($plan_status == "warn"); ($plan_status == "fail")))
+    examples: [10, 25, 50] | map(example_plan(.; $safe_agents; $recommended_agents; ($plan_status == "warn"); ($plan_status == "fail"); ($quiesce_recommendation == "wait")))
   }
 JQ
 }
