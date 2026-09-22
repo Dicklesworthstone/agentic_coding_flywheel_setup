@@ -200,7 +200,7 @@ export async function reviewTeamProfileFile(
       "Select one nonempty team-profile JSON file no larger than 256 KiB.",
     );
   }
-  let bytes: Uint8Array;
+  let bytes: Uint8Array<ArrayBuffer>;
   try {
     bytes = new Uint8Array(await file.slice(0, TEAM_PROFILE_FILE_LIMIT + 1).arrayBuffer());
   } catch {

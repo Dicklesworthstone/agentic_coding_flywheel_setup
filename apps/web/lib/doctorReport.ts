@@ -301,7 +301,7 @@ export async function reviewDoctorReportFile(
       "Select one nonempty doctor JSON report no larger than 1 MiB.",
     );
   }
-  let bytes: Uint8Array;
+  let bytes: Uint8Array<ArrayBuffer>;
   try {
     bytes = new Uint8Array(await file.slice(0, DOCTOR_REPORT_MAX_BYTES + 1).arrayBuffer());
   } catch {
