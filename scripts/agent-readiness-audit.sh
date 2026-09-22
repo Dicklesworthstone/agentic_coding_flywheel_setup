@@ -12,4 +12,10 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 cd "$REPO_ROOT/packages/manifest"
+# Keep the existing audit read-only by default. Rehearsal has a separate explicit
+# selection/consent parser; --run alone never enables it on the ordinary audit.
+if [[ "${1:-}" == "--rehearse" ]]; then
+    shift
+    exec bun run src/agent-profile-rehearsal.ts "$@"
+fi
 exec bun run src/agent-readiness-audit.ts "$@"

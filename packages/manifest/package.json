@@ -30,6 +30,7 @@
     "drift:contract": "bun run src/drift-contract.ts",
     "stack:provenance": "bun run src/stack-provenance-report.ts",
     "agent:readiness": "bun run src/agent-readiness-audit.ts",
+    "agent:rehearse": "bun run src/agent-profile-rehearsal.ts",
     "plugin:verify": "bun run src/plugin-verify.ts",
     "plugin:install": "bun run src/plugin-install.ts",
     "plugin:pack": "bun run src/plugin-pack-cli.ts"
