@@ -13,7 +13,9 @@ newproj_reviewed_main() {
         printf '%s\n' 'Error: reviewed project bootstrap requires python3.' >&2
         return 1
     fi
-    python3 - "$@" <<'ACFS_BOOTSTRAP_PY'
+    # Python reads its program from stdin; preserve the caller's terminal for
+    # the explicit guided workflow instead of accepting a pipe as consent.
+    python3 - "$@" 3<&0 <<'ACFS_BOOTSTRAP_PY'
 import argparse
 import hashlib
 import json
@@ -653,11 +655,152 @@ def apply(plan, resume=False):
         os.close(parent)
 
 
+class GuidedCancelled(Exception):
+    pass
+
+
+def guided():
+    """Guide a human through the SAME plan/apply boundary as the JSON CLI."""
+    import shlex
+
+    if not os.isatty(3) or not sys.stderr.isatty():
+        raise ValueError("--guided requires terminal input and stderr; use --plan / --apply for automation")
+    os.set_inheritable(3, False)
+
+    def show(message):
+        print(message, file=sys.stderr, flush=True)
+
+    def display(value):
+        return json.dumps(value, ensure_ascii=True)
+
+    with os.fdopen(os.dup(3), "r", encoding="utf-8") as terminal:
+        def ask(label, default=None, choices=None):
+            while True:
+                suffix = " [" + default + "]" if default is not None else ""
+                print(label + suffix + ": ", end="", file=sys.stderr, flush=True)
+                line = terminal.readline(4098)
+                if not line:
+                    raise GuidedCancelled()
+                if not line.endswith("\n") or len(line) > 4097:
+                    raise ValueError("guided answer is too long")
+                answer = line.strip() or default or ""
+                if any(ord(c) < 32 or ord(c) == 127 for c in answer):
+                    raise ValueError("guided answers cannot contain control characters")
+                if choices is None or answer in choices:
+                    return answer
+                show("Choose one of: " + ", ".join(choices))
+
+        show("ACFS first project — review before creating anything\n")
+        show("This creates starter code, tests, project instructions and a local Git repository.")
+        show("It does not install packages, launch agents, change global settings, commit or push.")
+        show("Beads and Agent Mail are optional. Press Ctrl-C to cancel.\n")
+        name = ask("Project name")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name):
+            raise ValueError("project name must start with a letter and contain at most 64 letters, digits, _ or -")
+        default_directory = str(Path(os.environ.get("ACFS_PROJECTS_DIR", "/data/projects")) / name)
+        # Escape displayed defaults as well as answers: environment paths are
+        # not permission to render terminal control sequences.
+        show("Suggested destination: " + display(default_directory))
+        raw = Path(ask("Project directory (Enter uses the suggestion)") or default_directory).expanduser()
+        directory = str(raw.parent.resolve(strict=True) / raw.name)
+        if any(ord(c) < 32 or ord(c) == 127 for c in directory):
+            raise ValueError("project directory cannot contain control characters")
+        stack = ask("Starter language: python or typescript", "python", ("python", "typescript"))
+        features = list(PRESET)
+        if ask("Initialize Beads task tracking? yes/no", "no", ("yes", "no")) == "yes":
+            features.append("beads")
+        settings = clients = None
+        if ask("Connect an existing Agent Mail service? yes/no", "no", ("yes", "no")) == "yes":
+            show("Use the actual service URL, ending in /. Remote connections require HTTPS.")
+            url = ask("Agent Mail URL")
+            show("Enter only an environment variable NAME, never the credential value.")
+            token_env = ask("Token variable (or none for unauthenticated loopback)", "AGENT_MAIL_TOKEN")
+            settings = mail_settings({"url": url, "token_env": None if token_env == "none" else token_env})
+            clients = mail_clients(ask("Clients: comma-separated claude,codex,gemini", "claude,codex").split(","))
+            features.append("agent-mail")
+        plan = make_plan(name, directory, stack, features, target_snapshot(directory), settings, clients)
+        suggested_plan = str(Path(directory).parent / ("." + name + "-acfs-plan.json"))
+        show("Suggested recovery plan: " + display(suggested_plan))
+        raw_plan = Path(ask("Plan file (Enter uses the suggestion)") or suggested_plan).expanduser()
+        plan_path = str(raw_plan.parent.resolve(strict=True) / raw_plan.name)
+        if any(ord(c) < 32 or ord(c) == 127 for c in plan_path):
+            raise ValueError("plan filename cannot contain control characters")
+        if Path(plan_path).is_relative_to(Path(directory)):
+            raise ValueError("save the plan outside the project so it remains available for recovery")
+        plan_parent = open_directory(str(Path(plan_path).parent))
+        try:
+            leaf = Path(plan_path).name
+            try:
+                os.stat(leaf, dir_fd=plan_parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ValueError("plan file already exists; choose another filename, nothing was overwritten")
+            show("\nREVIEW — nothing has been written")
+            show("Project: " + display(directory) + " (" + stack + ")")
+            show("Features: " + ", ".join(plan["features"]))
+            show("Files to create:")
+            for entry in plan["files"]:
+                show("  " + entry["mode"] + " " + display(entry["path"]) + " sha256=" + entry["sha256"])
+            show("Commands / remote operations:")
+            for command in plan["commands"]:
+                show("  " + display(command))
+            show("Private checkpoint: " + display(plan["state_file"]))
+            show("Private recovery plan (0600): " + display(plan_path))
+            show("Network access: " + ("YES — the reviewed Agent Mail operation" if settings else "no"))
+            show("Verification commands (not run by create): " + display(plan["verification_commands"]))
+            show("Type details to inspect the exact file contents and full JSON plan.")
+            while True:
+                decision = ask("Action: details / create / save / cancel", "cancel", ("details", "create", "save", "cancel"))
+                if decision != "details":
+                    break
+                show(json.dumps(plan, indent=2, ensure_ascii=True))
+            if decision == "cancel":
+                return {"status": "cancelled", "note": "Nothing was written or executed."}
+            # Recheck the target after the review pause, before writing even the
+            # plan. Apply checks again under its existing exclusive lock.
+            if target_snapshot(directory) != plan["target"]:
+                raise ValueError("project destination changed during review; restart the guide")
+            current_plan_parent = open_directory(str(Path(plan_path).parent))
+            try:
+                if identity(os.fstat(current_plan_parent)) != identity(os.fstat(plan_parent)):
+                    raise ValueError("plan directory changed during review; restart the guide")
+            finally:
+                os.close(current_plan_parent)
+            if decision == "create":
+                for command in plan["commands"]:
+                    if command["id"] == "agent-mail-project":
+                        mail_token(plan["agent_mail"])
+                    elif not shutil.which(command["argv"][0]):
+                        raise ValueError("required executable is missing: " + command["argv"][0])
+            # Exclusive creation: a concurrent file, symlink or existing plan
+            # is never replaced. A failed save prevents project creation.
+            write_new(plan_parent, leaf, json.dumps(plan, indent=2, ensure_ascii=True) + "\n", 0o600)
+            os.fsync(plan_parent)
+        finally:
+            os.close(plan_parent)
+        show("\nSaved recovery plan: " + display(plan_path))
+        apply_command = "acfs newproj --apply " + shlex.quote(plan_path) + " --yes"
+        show("Apply later: " + apply_command)
+        show("After an interrupted apply: " + apply_command + " --resume")
+        if decision == "save":
+            return {"status": "planned", "plan_id": plan["plan_id"], "plan_file": plan_path,
+                    "note": "Only the private plan was saved; the project was not created."}
+        result = apply(plan)
+        result["plan_file"] = plan_path
+        show("\nProject created. Next, run the starter checks:")
+        show("  cd " + shlex.quote(directory))
+        show("  sh scripts/check.sh")
+        show("Then read FIRST_AGENT_PROMPT.md before starting your chosen agent.")
+        return result
+
+
 def main():
     parser = argparse.ArgumentParser(prog="acfs newproj", description="Review a deterministic first-project plan, then explicitly apply it.")
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--plan", metavar="NAME")
     action.add_argument("--apply", metavar="PLAN_JSON")
+    action.add_argument("--guided", action="store_true", help="interactively review and create a first project")
     parser.add_argument("directory", nargs="?")
     parser.add_argument("--stack", choices=("python", "typescript"))
     selection = parser.add_mutually_exclusive_group()
@@ -670,7 +813,12 @@ def main():
     parser.add_argument("--agent-mail-token-env", metavar="NAME", help="read authentication only from this environment variable at apply/client launch")
     parser.add_argument("--agent-mail-clients", metavar="claude,codex,gemini", help="explicit project-local client selection; omitted preserves the existing Claude-only plan")
     args = parser.parse_args()
-    if args.apply:
+    if args.guided:
+        if any((args.directory, args.stack, args.preset, args.features, args.yes, args.resume,
+                args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None)):
+            parser.error("use --guided alone; select and approve its options in the terminal")
+        result = guided()
+    elif args.apply:
         if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None)):
             parser.error("use --apply PLAN_JSON --yes without plan overrides")
         result = apply(read_plan(args.apply), args.resume)
@@ -698,13 +846,16 @@ def main():
 
 try:
     main()
+except (GuidedCancelled, KeyboardInterrupt):
+    print(json.dumps({"status": "cancelled", "note": "No additional operations will run; retain any saved plan for recovery."}), file=sys.stderr)
+    sys.exit(130)
 except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
     print(json.dumps({"status": "failed", "error": str(error)}), file=sys.stderr)
     sys.exit(1)
 ACFS_BOOTSTRAP_PY
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" && ( "${1:-}" == "--plan" || "${1:-}" == "--apply" ) ]]; then
+if [[ "${BASH_SOURCE[0]}" == "$0" && ( "${1:-}" == "--plan" || "${1:-}" == "--apply" || "${1:-}" == "--guided" ) ]]; then
     newproj_reviewed_main "$@"
     exit $?
 fi
@@ -827,6 +978,7 @@ print_help() {
     echo "                      (recommended for first-time users)"
     echo ""
     echo "Reviewed bootstrap (Python 3, no automatic agent calls):"
+    echo "  --guided             Choose, review, save and create your first project"
     echo "  --plan NAME [DIR] --preset first-project --stack python|typescript"
     echo "                      Print a reviewable JSON plan; creates nothing"
     echo "  --plan NAME [DIR] --with git,readme,gitignore,agents,starter,ci,prompt"
