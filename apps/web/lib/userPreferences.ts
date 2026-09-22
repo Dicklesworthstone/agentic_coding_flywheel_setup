@@ -15,9 +15,7 @@ import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidat
 import type { ModuleSelectionInput } from "./moduleSelection";
 import {
   safeGetItem,
-  safeGetJSON,
   safeSetItem,
-  safeSetJSON,
   stripSensitiveQueryState,
   urlContainsSensitiveState,
 } from "./utils";
@@ -68,6 +66,57 @@ const MIN_TARGET_AGENTS = 5;
 const MAX_TARGET_AGENTS = 50;
 const TARGET_AGENT_STEP = 5;
 const volatileVPSIPs = new WeakMap<object, string>();
+const volatileJSONPreferences = new WeakMap<
+  object,
+  Map<string, { storedSnapshot: string | null; serialized: string }>
+>();
+
+/**
+ * Private choices must remain readable by validators, not just React's cache.
+ * A failed durable write is retained only in this browser document, never in
+ * navigation URLs. A different stored snapshot supersedes that local fallback.
+ */
+function getPrivateJSONPreference(key: string): unknown {
+  const stored = safeGetItem(key);
+  if (typeof window !== "undefined") {
+    const fallbacks = volatileJSONPreferences.get(window);
+    const fallback = fallbacks?.get(key);
+    if (fallback) {
+      if (fallback.storedSnapshot === stored) {
+        return JSON.parse(fallback.serialized);
+      }
+      fallbacks?.delete(key);
+    }
+  }
+  try {
+    return stored === null ? null : JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
+/** Success means available in this document; a fallback does not survive reload. */
+function setPrivateJSONPreference(key: string, value: unknown): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) return false;
+    const storedSnapshot = safeGetItem(key);
+    if (safeSetItem(key, serialized)) {
+      volatileJSONPreferences.get(window)?.delete(key);
+    } else {
+      let fallbacks = volatileJSONPreferences.get(window);
+      if (!fallbacks) {
+        fallbacks = new Map();
+        volatileJSONPreferences.set(window, fallbacks);
+      }
+      fallbacks.set(key, { storedSnapshot, serialized });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function normalizeStringList(values: unknown): string[] {
   if (!Array.isArray(values)) {
@@ -174,7 +223,15 @@ function usePreferenceSync(queryKey: readonly string[]) {
   const queryClient = useQueryClient();
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const invalidate = () => {
+    const invalidate = (event: Event) => {
+      if (event.type === "storage") {
+        const changedKey = (event as StorageEvent).key;
+        if (changedKey === null) {
+          volatileJSONPreferences.delete(window);
+        } else {
+          volatileJSONPreferences.get(window)?.delete(changedKey);
+        }
+      }
       queryClient.invalidateQueries({ queryKey });
     };
     window.addEventListener(USER_PREFERENCES_EVENT, invalidate);
@@ -301,14 +358,14 @@ export function setVPSIP(ip: string): boolean {
 }
 
 export function getVPSReadinessSelection(): VPSReadinessSelection | null {
-  return normalizeVPSReadinessSelection(safeGetJSON<unknown>(VPS_READINESS_SELECTION_KEY));
+  return normalizeVPSReadinessSelection(getPrivateJSONPreference(VPS_READINESS_SELECTION_KEY));
 }
 
 export function setVPSReadinessSelection(selection: VPSReadinessSelection): boolean {
   const normalized = normalizeVPSReadinessSelection(selection);
   if (!normalized) return false;
 
-  const didPersist = safeSetJSON(VPS_READINESS_SELECTION_KEY, normalized);
+  const didPersist = setPrivateJSONPreference(VPS_READINESS_SELECTION_KEY, normalized);
   if (didPersist) {
     emitUserPreferencesUpdate();
   }
@@ -411,7 +468,7 @@ export function useVPSReadinessSelection(): [
 }
 
 export function getCreateVPSChecklist(): string[] {
-  return normalizeStringList(safeGetJSON<unknown[]>(CREATE_VPS_CHECKLIST_KEY));
+  return normalizeStringList(getPrivateJSONPreference(CREATE_VPS_CHECKLIST_KEY));
 }
 
 export function isCreateVPSChecklistComplete(items: readonly string[]): boolean {
@@ -420,7 +477,7 @@ export function isCreateVPSChecklistComplete(items: readonly string[]): boolean 
 }
 
 export function setCreateVPSChecklist(items: string[]): boolean {
-  const didPersist = safeSetJSON(CREATE_VPS_CHECKLIST_KEY, normalizeStringList(items));
+  const didPersist = setPrivateJSONPreference(CREATE_VPS_CHECKLIST_KEY, normalizeStringList(items));
   if (didPersist) {
     emitUserPreferencesUpdate();
   }
@@ -441,12 +498,11 @@ export function useCreateVPSChecklist(): [string[], (items: string[]) => void, b
   const setChecklist = useCallback(
     (items: string[]) => {
       const normalized = normalizeStringList(items);
-      // Update the cache even when persistence fails (private browsing,
-      // blocked storage): unlike OS/IP/steps there is no URL fallback for the
-      // checklist, and dropping the update would leave the checkboxes
-      // permanently unchecked and the step impossible to complete.
-      setCreateVPSChecklist(normalized);
-      queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, normalized);
+      // The imperative getter and step validator see the same accepted value
+      // as the checkboxes, including when only document memory is available.
+      if (setCreateVPSChecklist(normalized)) {
+        queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, getCreateVPSChecklist());
+      }
     },
     [queryClient],
   );
@@ -457,11 +513,11 @@ export function useCreateVPSChecklist(): [string[], (items: string[]) => void, b
 // --- Checked Services (accounts wizard step) ---
 
 export function getCheckedServices(): string[] {
-  return normalizeStringList(safeGetJSON<unknown[]>(CHECKED_SERVICES_KEY));
+  return normalizeStringList(getPrivateJSONPreference(CHECKED_SERVICES_KEY));
 }
 
 export function setCheckedServices(serviceIds: string[]): boolean {
-  const didPersist = safeSetJSON(CHECKED_SERVICES_KEY, normalizeStringList(serviceIds));
+  const didPersist = setPrivateJSONPreference(CHECKED_SERVICES_KEY, normalizeStringList(serviceIds));
   if (didPersist) {
     emitUserPreferencesUpdate();
   }
@@ -481,9 +537,7 @@ export function useCheckedServices(): [string[], (serviceId: string) => void, bo
 
   const toggleService = useCallback(
     (serviceId: string) => {
-      const currentIds =
-        queryClient.getQueryData<string[]>(userPreferencesKeys.checkedServices) ??
-        getCheckedServices();
+      const currentIds = getCheckedServices();
       const currentSet = new Set(currentIds);
       if (currentSet.has(serviceId)) {
         currentSet.delete(serviceId);

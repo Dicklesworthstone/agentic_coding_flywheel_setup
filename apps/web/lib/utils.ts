@@ -161,7 +161,16 @@ function isSafeQueryEntry(key: string, value: string): boolean {
     case "ref":
       return normalizeGitRef(value) === value;
     case "steps":
-      return value.length <= 80 && /^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(value);
+      // An empty list records an explicit reset when durable storage is blocked.
+      return (
+        value === "" || (value.length <= 80 && /^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(value))
+      );
+    case "stepsBase":
+      // Only bounded step IDs (or the absent-snapshot marker) may cross routes.
+      return (
+        value === "" || value === "-" ||
+        (value.length <= 80 && /^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(value))
+      );
     case "from":
       return value === "verify-key-connection" || value === "launch-onboarding";
     default:
@@ -329,6 +338,12 @@ export function withCurrentSearch(path: string): string {
 
     const merged = new URLSearchParams(stripSensitiveQueryState(current.search));
     const explicit = new URLSearchParams(stripSensitiveQueryState(destination.search));
+    // Progress and its durable baseline are one fallback record. Never attach
+    // an inherited baseline to a different destination's explicit step list.
+    if (explicit.has("steps") || explicit.has("stepsBase")) {
+      merged.delete("steps");
+      merged.delete("stepsBase");
+    }
     for (const [key, value] of explicit.entries()) {
       merged.delete(key);
       merged.append(key, value);
