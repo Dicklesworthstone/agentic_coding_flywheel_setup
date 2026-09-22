@@ -14,6 +14,8 @@ SWARM_PLAN_AGENTS=""
 SWARM_PLAN_PROFILE="balanced"
 SWARM_PLAN_WORKLOAD="standard"
 SWARM_PLAN_STATUS_FILE=""
+SWARM_PLAN_CAPACITY_FILE=""
+SWARM_PLAN_MAX_INPUT_BYTES=1048576
 SWARM_PLAN_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWARM_STATUS_SCRIPT="${ACFS_SWARM_STATUS_SCRIPT:-$SWARM_PLAN_SCRIPT_DIR/swarm_status.sh}"
 SWARM_CAPACITY_SCRIPT="${ACFS_SWARM_CAPACITY_SCRIPT:-$SWARM_PLAN_SCRIPT_DIR/capacity.sh}"
@@ -24,16 +26,18 @@ Usage: acfs swarm plan --agents N [OPTIONS]
 
 Options:
   --json              Emit machine-readable JSON
-  --agents N          Requested agent count
+  --agents N          Requested agent count (1 through 1000000)
   --profile NAME      balanced, codex-heavy, review-heavy, or docs-heavy
                       (default: balanced)
   --workload NAME     light, standard, or heavy (default: standard)
   --status-file FILE  Read an existing swarm_status.json snapshot
+  --capacity-file FILE
+                      Replay saved capacity with --status-file; run no probes
   --help, -h          Show this help
 
 Exit codes:
   0  Launch is reasonable
-  1  Launch may proceed only after reviewing warnings
+  1  Review warnings; a wait recommendation forbids launch advice
   2  Hard blockers must be fixed before launching
 EOF
 }
@@ -77,6 +81,14 @@ swarm_plan_parse_args() {
                 SWARM_PLAN_STATUS_FILE="$2"
                 shift 2
                 ;;
+            --capacity-file)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --capacity-file requires a path" >&2
+                    return 2
+                fi
+                SWARM_PLAN_CAPACITY_FILE="$2"
+                shift 2
+                ;;
             --help|-h)
                 swarm_plan_usage
                 return 100
@@ -89,8 +101,21 @@ swarm_plan_parse_args() {
         esac
     done
 
-    if [[ ! "$SWARM_PLAN_AGENTS" =~ ^[0-9]+$ ]] || (( SWARM_PLAN_AGENTS < 1 )); then
-        echo "Error: --agents requires a positive integer" >&2
+    # Bound and normalize decimal input before Bash arithmetic or jq --argjson.
+    # Leading zeroes must not select octal, and huge values must not wrap.
+    if [[ ! "$SWARM_PLAN_AGENTS" =~ ^[0-9]+$ || ${#SWARM_PLAN_AGENTS} -gt 32 ]]; then
+        echo "Error: --agents requires an integer from 1 through 1000000" >&2
+        return 2
+    fi
+    SWARM_PLAN_AGENTS="${SWARM_PLAN_AGENTS#"${SWARM_PLAN_AGENTS%%[!0]*}"}"
+    if [[ -z "$SWARM_PLAN_AGENTS" || ${#SWARM_PLAN_AGENTS} -gt 7 ]] || (( 10#$SWARM_PLAN_AGENTS > 1000000 )); then
+        echo "Error: --agents requires an integer from 1 through 1000000" >&2
+        return 2
+    fi
+    SWARM_PLAN_AGENTS="$((10#$SWARM_PLAN_AGENTS))"
+
+    if [[ -n "$SWARM_PLAN_CAPACITY_FILE" && -z "$SWARM_PLAN_STATUS_FILE" ]]; then
+        echo "Error: --capacity-file requires --status-file for paired replay" >&2
         return 2
     fi
 
@@ -131,8 +156,8 @@ swarm_plan_collect_status_json() {
             echo "Error: status file not found: $SWARM_PLAN_STATUS_FILE" >&2
             return 2
         fi
-        cat "$SWARM_PLAN_STATUS_FILE"
-        return 0
+        cat -- "$SWARM_PLAN_STATUS_FILE"
+        return $?
     fi
 
     if [[ ! -f "$SWARM_STATUS_SCRIPT" ]]; then
@@ -144,6 +169,15 @@ swarm_plan_collect_status_json() {
 }
 
 swarm_plan_collect_capacity_json() {
+    if [[ -n "$SWARM_PLAN_CAPACITY_FILE" ]]; then
+        if [[ ! -f "$SWARM_PLAN_CAPACITY_FILE" ]]; then
+            echo "Error: capacity file not found: $SWARM_PLAN_CAPACITY_FILE" >&2
+            return 2
+        fi
+        cat -- "$SWARM_PLAN_CAPACITY_FILE"
+        return $?
+    fi
+
     if [[ ! -f "$SWARM_CAPACITY_SCRIPT" ]]; then
         echo "Error: capacity.sh not found" >&2
         return 2
@@ -154,6 +188,93 @@ swarm_plan_collect_capacity_json() {
         --workload "$SWARM_PLAN_WORKLOAD" \
         --profile "${SWARM_PLAN_AGENTS}-agents" \
         --recommend-ntm
+}
+
+# A trailing sentinel preserves whitespace through command substitution. Bash
+# drops NUL bytes, so taint them with another invalid JSON control byte instead
+# of accidentally turning malformed input into a valid (possibly healthy) report.
+swarm_plan_collect_bounded_json() {
+    local collector="$1"
+    "$collector" 2>/dev/null | head -c "$((SWARM_PLAN_MAX_INPUT_BYTES + 1))" \
+        | LC_ALL=C tr '\000' '\001' || return $?
+    printf '.'
+}
+
+# Validate the original JSON stream before normal parsing: jq normally keeps
+# only the last duplicate key, which could conceal an earlier fail/zero limit.
+# Completed node paths are unique in an unambiguous JSON tree, including empty
+# containers and scalar/container replacements. Bound nesting and node counts.
+swarm_plan_validate_snapshot() {
+    local jq_bin="$1" kind="$2" input="$3"
+    local LC_ALL=C
+    (( ${#input} <= SWARM_PLAN_MAX_INPUT_BYTES )) || return 1
+    printf '%s' "$input" | "$jq_bin" -ne --stream '
+      reduce inputs as $event ({seen: {}, count: 0};
+        ($event[0] | if ($event | length) == 1 then .[:-1] else . end) as $path
+        | ($path | tojson) as $key
+        | if ($path | length) > 32 or .count >= 50000 or .seen[$key] then
+            error("ambiguous or excessive JSON")
+          else .seen[$key] = true | .count += 1 end)
+      | true
+    ' >/dev/null 2>&1 || return 1
+
+    printf '%s' "$input" | "$jq_bin" -es \
+        --arg kind "$kind" --arg workload "$SWARM_PLAN_WORKLOAD" \
+        --argjson agents "$SWARM_PLAN_AGENTS" '
+      def number_value:
+        if type == "number" then .
+        elif type == "string" and test("^[0-9]+([.][0-9]+)?$") then tonumber
+        else -1 end;
+      def nonnegative:
+        number_value | . >= 0 and . <= 9007199254740991;
+      def count:
+        number_value | . >= 0 and . <= 9007199254740991 and . == floor;
+      def counts($keys):
+        . as $o | all($keys[]; . as $k | $o[$k] == null or ($o[$k] | count));
+      def state:
+        . == "pass" or . == "warn" or . == "fail" or . == "unknown" or . == "timeout" or . == "skip";
+      def diagnostic:
+        (.status == null or (.status | state))
+        and (.warnings == null or (.warnings | type == "array" and all(.[]; type == "string")));
+      def probe:
+        if . == null then true else
+          type == "object" and diagnostic
+          and (. as $o | all(["available", "healthy", "status_json_ok", "queue_json_ok",
+            "robot_ok", "robot_status_ok", "tmux_available"][];
+            . as $k | $o[$k] == null or ($o[$k] | type == "boolean")))
+          and counts(["queue_depth", "active_build_count", "slots_available", "slots_total",
+            "workers_total", "workers_healthy", "workers_busy", "workers_offline",
+            "pressure_warning_count", "stale_worker_count", "ready_count", "open_count",
+            "in_progress_count", "stale_in_progress_count", "stale_work_count", "stale_count",
+            "tmux_session_count", "tmux_window_count"])
+        end;
+      length == 1 and (.[0] |
+        type == "object" and .schema_version == 1
+        and (.status == "pass" or .status == "warn" or .status == "fail")
+        and if $kind == "status" then
+          (.host | type == "object" and diagnostic
+            and counts(["cpu_count", "mem_available_kb"])
+            and (.load_1m == null or (.load_1m | nonnegative)))
+          and (.probes | type == "object"
+            and all(.agent_mail, .beads, .bv, .rch, .ntm; probe))
+          and (.stale_work == null or (.stale_work | type == "object"
+            and counts(["total_stale_count", "stale_count"])))
+        else
+          (.capacity | type == "object"
+            and (.recommended_agent_count | count)
+            and (if .safe_agent_count == null then (.max_agent_count | count)
+                 else (.safe_agent_count | count) end)
+            and counts(["safe_agent_count", "max_agent_count"]))
+          and (.profile_check == null or (.profile_check | type == "object" and diagnostic
+            and (.requested_agents == null or ((.requested_agents | count)
+              and (.requested_agents | number_value) == $agents))))
+          and (.assumptions == null or (.assumptions | type == "object"
+            and (.workload == null or .workload == $workload)))
+          and (.host == null or (.host | type == "object" and counts(["cpu_count"])))
+          and (.recommendations == null or (.recommendations | type == "array"
+            and all(.[]; type == "string")))
+        end)
+    ' >/dev/null 2>&1
 }
 
 swarm_plan_jq_filter() {
@@ -219,6 +340,7 @@ $status as $s
 | (n($host.cpu_count)) as $host_cpu_count
 | (n($host.load_1m)) as $host_load_1m
 | (n($host.mem_available_kb)) as $host_mem_available_kb
+| ($host_cpu_count > 0 and $host.load_1m != null and $host.mem_available_kb != null) as $host_evidence_known
 | (if n($host.cpu_count) > 0 then (n($host.load_1m) / n($host.cpu_count)) else 0 end) as $host_load_ratio
 | (($host_cpu_count > 0 and $host_load_ratio >= 1.25) or ($host.mem_available_kb != null and $host_mem_available_kb < 4194304)) as $host_pressure_high
 | (n($c.capacity.recommended_agent_count)) as $capacity_recommended
@@ -234,14 +356,17 @@ $status as $s
 | (n($rch.workers_offline)) as $rch_workers_offline
 | (n($rch.pressure_warning_count)) as $rch_pressure_warning_count
 | (n($rch.stale_worker_count)) as $rch_stale_worker_count
-| ((b($rch.queue_json_ok) | not) or $rch_stale_worker_count > 0) as $rch_telemetry_uncertain
+| ((b($rch.queue_json_ok) | not) or $rch_stale_worker_count > 0
+   or ($rch.status != "pass" and $rch.status != "warn")
+   or any([$rch.queue_depth, $rch.active_build_count, $rch.slots_available,
+     $rch.workers_total, $rch.workers_healthy][]; . == null)) as $rch_telemetry_uncertain
 | (n($beads.stale_in_progress_count) + n($beads.stale_work_count) + n($beads.stale_count) + n($s.stale_work.total_stale_count) + n($s.stale_work.stale_count)) as $stale_work_count
 | (
     if (b($rch.available) | not) then "fail"
-    elif (b($rch.status_json_ok) | not) then "fail"
+    elif (b($rch.status_json_ok) | not) or $rch.status == "fail" then "fail"
     elif ($rch_workers_total < 1) then "fail"
     elif ($rch_workers_total > 0 and $rch_workers_healthy < 1) then "fail"
-    elif ($rch_telemetry_uncertain or $rch_slots_available < 1 or $rch_queue_depth > 0 or $rch_active_builds > 0 or $rch_workers_busy > 0 or $rch_pressure_warning_count > 0) then "warn"
+    elif ($rch.status == "warn" or $rch_telemetry_uncertain or $rch_slots_available < 1 or $rch_queue_depth > 0 or $rch_active_builds > 0 or $rch_workers_busy > 0 or $rch_pressure_warning_count > 0) then "warn"
     else "pass" end
   ) as $rch_check_status
 | (if $safe_from_capacity > 0 then $safe_from_capacity else 0 end) as $safe_agents
@@ -254,6 +379,17 @@ $status as $s
     else $host_recommended end
   ) as $recommended_agents
 | [
+    check(
+      "reported_health";
+      (if $s.status == "fail" or $host.status == "fail" then "fail"
+       elif $s.status == "warn" or ($host.status // "unknown") != "pass" then "warn"
+       else "pass" end);
+      (if $s.status == "fail" or $host.status == "fail" then "Source status reports a hard blocker"
+       elif $s.status == "warn" or ($host.status // "unknown") != "pass" then "Source status reports warnings or uncertain host health"
+       else "Source status reports usable health" end);
+      ($host.warnings // []);
+      ["acfs swarm status --json"]
+    ),
     check(
       "host_capacity";
       (if ($safe_agents < 1 or $requested_agents > $safe_agents or ($c.status // "warn") == "fail" or ($c.profile_check.status // "warn") == "fail") then "fail"
@@ -271,8 +407,9 @@ $status as $s
     ),
     check(
       "host_pressure";
-      (if $host_pressure_high then "warn" else "pass" end);
-      (if ($host_cpu_count > 0 and $host_load_ratio >= 1.25 and $host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Host load and available memory are already under pressure"
+      (if ($host_evidence_known | not) or $host_pressure_high then "warn" else "pass" end);
+      (if ($host_evidence_known | not) then "Host pressure telemetry is incomplete; collect fresh CPU, load and memory readings"
+       elif ($host_cpu_count > 0 and $host_load_ratio >= 1.25 and $host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Host load and available memory are already under pressure"
        elif ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "Host load is already high; pause new launches until pressure clears"
        elif ($host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Available memory is below the conservative launch threshold"
        else "Host pressure is acceptable" end);
@@ -286,15 +423,17 @@ $status as $s
       "rch_pressure";
       $rch_check_status;
       (if (b($rch.available) | not) then "RCH is unavailable for CPU-heavy build/test offload"
-       elif (b($rch.status_json_ok) | not) then "RCH status JSON failed or timed out"
+       elif (b($rch.status_json_ok) | not) or $rch.status == "fail" then "RCH status JSON failed or timed out"
        elif ($rch_workers_total < 1) then "RCH reports no workers"
        elif ($rch_workers_total > 0 and $rch_workers_healthy < 1) then "RCH reports no healthy workers"
        elif (b($rch.queue_json_ok) | not) then "RCH queue telemetry failed or is unavailable; wait for a fresh probe"
        elif $rch_stale_worker_count > 0 then "RCH pressure telemetry has stale workers; wait for fresh telemetry"
+       elif $rch_telemetry_uncertain then "RCH pressure telemetry is incomplete; collect fresh counters"
        elif $rch_slots_available < 1 then "RCH has no available build slots; wait for capacity"
        elif $rch_queue_depth > 0 then "RCH queue already has pending work"
        elif $rch_active_builds > 0 then "RCH has active builds"
        elif $rch_pressure_warning_count > 0 then "RCH workers report elevated pressure"
+       elif $rch_workers_busy > 0 or $rch.status == "warn" then "RCH reports busy workers or warnings requiring review"
        else "RCH pressure is acceptable" end);
       ($rch.warnings // []);
       ["rch status", "rch queue --json", "rch workers probe --all"]
@@ -348,7 +487,7 @@ $status as $s
 | (if $plan_status == "fail" then 2 elif $plan_status == "warn" then 1 else 0 end) as $exit_code
 # Resolve the admission decision once, before constructing any launch advice.
 # A warning can require waiting; it does not automatically authorize a command.
-| (if ($plan_status == "fail" or $host_pressure_high or $stale_work_count > 0 or $recommended_agents < 1) then "wait"
+| (if ($plan_status == "fail" or ($host_evidence_known | not) or $host_pressure_high or $stale_work_count > 0 or $recommended_agents < 1) then "wait"
    elif ($requested_agents > $recommended_agents or $plan_status == "warn") then "scale_down"
    else "proceed" end) as $quiesce_recommendation
 | (if $plan_status == "fail" then "block"
@@ -392,6 +531,11 @@ $status as $s
     },
     inputs: {
       swarm_status_file: (if $status_file == "" then null else $status_file end),
+      capacity_file: (if $capacity_file == "" then null else $capacity_file end),
+      assessment_scope: (if $capacity_file != "" then "snapshot_replay"
+                         elif $status_file != "" then "mixed_snapshot_and_live" else "live_probes" end),
+      replay_only: ($capacity_file != ""),
+      snapshot_freshness_verified: false,
       capacity_profile: (($requested_agents | tostring) + "-agents"),
       capacity_workload: $workload
     },
@@ -488,6 +632,7 @@ swarm_plan_build_report() {
     local jq_bin=""
     local status_json=""
     local capacity_json=""
+    local report=""
 
     jq_bin="$(swarm_plan_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
@@ -495,34 +640,42 @@ swarm_plan_build_report() {
         return 0
     fi
 
-    status_json="$(swarm_plan_collect_status_json)" || {
+    status_json="$(swarm_plan_collect_bounded_json swarm_plan_collect_status_json)" || {
         swarm_plan_jq_error_report "swarm status JSON is unavailable" "$jq_bin"
         return 0
     }
 
-    capacity_json="$(swarm_plan_collect_capacity_json)" || {
+    capacity_json="$(swarm_plan_collect_bounded_json swarm_plan_collect_capacity_json)" || {
         swarm_plan_jq_error_report "capacity JSON is unavailable" "$jq_bin"
         return 0
     }
 
-    if ! printf '%s' "$status_json" | "$jq_bin" . >/dev/null 2>&1; then
-        swarm_plan_jq_error_report "swarm status JSON is malformed" "$jq_bin"
+    status_json="${status_json%.}"
+    capacity_json="${capacity_json%.}"
+
+    if ! swarm_plan_validate_snapshot "$jq_bin" status "$status_json"; then
+        swarm_plan_jq_error_report "swarm status JSON is malformed, ambiguous, unsupported or exceeds input limits" "$jq_bin"
         return 0
     fi
 
-    if ! printf '%s' "$capacity_json" | "$jq_bin" . >/dev/null 2>&1; then
-        swarm_plan_jq_error_report "capacity JSON is malformed" "$jq_bin"
+    if ! swarm_plan_validate_snapshot "$jq_bin" capacity "$capacity_json"; then
+        swarm_plan_jq_error_report "capacity JSON is malformed, ambiguous, unsupported or does not match the requested count/workload" "$jq_bin"
         return 0
     fi
 
-    "$jq_bin" -n \
-        --argjson status "$status_json" \
-        --argjson capacity "$capacity_json" \
+    # Pass snapshots on stdin, not argv: even valid reports can exceed the OS
+    # per-argument limit. Capture before printing so failures cannot leak partial JSON.
+    if ! report="$(printf '%s\n%s\n' "$status_json" "$capacity_json" | "$jq_bin" -s \
         --argjson requested_agents "$SWARM_PLAN_AGENTS" \
         --arg profile "$SWARM_PLAN_PROFILE" \
         --arg workload "$SWARM_PLAN_WORKLOAD" \
         --arg status_file "$SWARM_PLAN_STATUS_FILE" \
-        "$(swarm_plan_jq_filter)"
+        --arg capacity_file "$SWARM_PLAN_CAPACITY_FILE" \
+        '.[0] as $status | .[1] as $capacity | '"$(swarm_plan_jq_filter)" 2>/dev/null)"; then
+        swarm_plan_jq_error_report "Unable to evaluate swarm admission from these snapshots" "$jq_bin"
+        return 0
+    fi
+    printf '%s\n' "$report"
 }
 
 swarm_plan_emit_human() {
@@ -531,6 +684,11 @@ swarm_plan_emit_human() {
     local launch_command=""
 
     echo "ACFS Swarm Plan"
+    if [[ -n "$SWARM_PLAN_CAPACITY_FILE" ]]; then
+        echo "Assessment: saved snapshot replay (no probes run; freshness and host identity are not verified)"
+    elif [[ -n "$SWARM_PLAN_STATUS_FILE" ]]; then
+        echo "Assessment: saved status with live capacity (verify both describe the same host and time)"
+    fi
     echo "Status: $("${jq_bin}" -r '.status' <<<"$report")"
     echo "Requested: $("${jq_bin}" -r '.requested_agents // "unknown"' <<<"$report") agents"
     echo "Recommended: $("${jq_bin}" -r '.recommended_agents // "none"' <<<"$report") agents"
