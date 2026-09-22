@@ -1195,19 +1195,19 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 32,
     whatItDoes:
-      "Token-optimized notation format for efficient LLM context packing. Compresses structured data into a dense format that maximizes information per token.",
+      "Rust implementation of TOON (Token-Optimized Object Notation). Encodes JSON to TOON and decodes it back, so structured data costs fewer tokens in an LLM context.",
     whyItsUseful:
-      "LLM context windows are precious. TRU compresses JSON, YAML, and other structured data into a compact notation that conveys the same information in fewer tokens, letting you fit more context into each request.",
+      "LLM context windows are precious. JSON spends tokens on quotes, braces and commas; TOON writes the same records as indented key-value lines and header-plus-rows tables, cutting tabular payloads by roughly half.",
     implementationHighlights: [
-      "Rust implementation for speed",
-      "Lossless compression of structured data",
-      "Multiple output formats (TOON, JSON, YAML)",
-      "CLI and library modes",
+      "Spec-first Rust port of the reference TOON encoder/decoder",
+      "Streaming decode and deterministic output",
+      "Key folding, path expansion and delimiter options for extra savings",
+      "--stats prints JSON vs TOON token estimates",
     ],
     synergies: [
       {
         toolId: "s2p",
-        description: "Compress source prompts for maximum context efficiency",
+        description: "Bundle source with S2P, and encode any JSON manifests or tool output alongside it as TOON",
       },
       {
         toolId: "cass",
@@ -1216,10 +1216,10 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
     techStack: ["Rust", "Serde", "Token optimization"],
     keyFeatures: [
-      "Token-optimized notation format",
-      "Structured data compression",
-      "Multiple format support",
-      "Fast Rust implementation",
+      "JSON to TOON encoding and TOON to JSON decoding",
+      "Tabular arrays: one header row plus one row per record",
+      "Token estimates with --stats",
+      "Fast, dependency-free Rust binary",
     ],
     useCases: [
       "Fitting more context into LLM requests",
@@ -1333,7 +1333,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     synergies: [
       {
         toolId: "tru",
-        description: "Compress fetched content for maximum token efficiency",
+        description: "Encode JSON page metadata (links, headings, tables) as TOON before handing it to an agent",
       },
       {
         toolId: "cm",

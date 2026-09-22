@@ -1491,34 +1491,34 @@ Key capabilities:
     href: "https://github.com/Dicklesworthstone/toon_rust",
     icon: "Minimize2",
     color: "from-violet-500 to-purple-600",
-    tagline: "Token-optimized notation for LLM context efficiency",
+    tagline: "JSON to TOON encoder for LLM context efficiency",
     description:
-      "Compress structured data into token-efficient TOON format, reducing LLM context usage by 30-50%.",
-    deepDescription: `LLM context windows are precious. TOON (Token-Optimized Object Notation) is a format
-designed specifically to minimize token usage while preserving semantic meaning.
+      "Encode JSON as TOON (Token-Optimized Object Notation) so structured data costs 30-60% fewer tokens in an LLM context.",
+    deepDescription: `LLM context windows are precious. TOON (Token-Optimized Object Notation) carries the same
+data as JSON without the quotes, braces, brackets and commas that tokenizers charge for.
 
-Instead of verbose JSON, TOON uses abbreviations, removes redundant structure, and employs
-format-aware compression. The result: 30-50% fewer tokens for the same information.
+Objects become indented key-value lines, arrays declare their length, and uniform arrays of
+objects become one header row plus one CSV-like row per record. Tables shrink by roughly half;
+deeply nested objects with unique keys save less. It is a data format, not a code minifier.
 
 Key capabilities:
-- JSON to TOON conversion with automatic optimization
-- TOON to JSON restoration for downstream processing
-- Token count estimation and comparison
-- Streaming support for large documents
-- LLM-aware compression heuristics`,
+- JSON to TOON encoding and TOON to JSON decoding (spec-first port of the reference)
+- --stats token estimates for any payload
+- Key folding, path expansion and tab/pipe delimiters for extra savings
+- Streaming decode, deterministic output, single native binary`,
     connectsTo: ["cm", "cass"],
     connectionDescriptions: {
-      cm: "Compressed memories use fewer tokens in agent context",
-      cass: "Search results can be TOON-compressed before inclusion",
+      cm: "JSON exported from cm can be encoded as TOON before it enters an agent's context",
+      cass: "cass --json search results can be TOON-encoded before inclusion",
     },
     stars: 67,
     features: [
-      "30-50% token reduction",
-      "JSON to TOON conversion",
-      "TOON to JSON restoration",
-      "Token count estimation",
-      "Streaming support",
-      "LLM-aware compression",
+      "30-60% fewer tokens on tabular data",
+      "JSON to TOON encoding",
+      "TOON to JSON decoding",
+      "Token estimates (--stats)",
+      "Streaming decode",
+      "Key folding and delimiter options",
     ],
     cliCommands: ["toon compress file.json", "toon expand file.toon", "toon --help"],
     installCommand:
@@ -1596,7 +1596,7 @@ Key capabilities:
 - Recursive crawling for documentation sites`,
     connectsTo: ["tru", "cm"],
     connectionDescriptions: {
-      tru: "Converted markdown can be TOON-compressed to save tokens",
+      tru: "JSON metadata extracted from converted pages can be TOON-encoded to save tokens",
       cm: "Web content becomes searchable procedural memory",
     },
     stars: 89,

@@ -62,33 +62,34 @@ export function ContextMasteryLesson() {
       <Divider />
 
       {/* Section 2: TRU Compression */}
-      <Section title="Compress with TRU" icon={<Minimize2 className="h-5 w-5" />} delay={0.15}>
+      <Section title="Encode Data with TRU" icon={<Minimize2 className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          <Highlight>TRU (Token-Optimized Notation)</Highlight> compresses source code into a format
-          that uses 40-70% fewer tokens while preserving all semantic meaning. The agent can still
-          understand the code perfectly.
+          <Highlight>TRU (toon_rust)</Highlight> converts JSON to TOON, a notation that carries the
+          same data with far fewer quotes, braces and commas. It is for structured data (API
+          responses, search results, config, exports), not for source code. Tables of records shrink
+          by roughly half.
         </Paragraph>
 
         <CodeBlock
-          code={`# Compress a file before feeding to an agent
-toon compress src/auth/login.ts
-# → Outputs TOON-encoded version using ~40% fewer tokens
+          code={`# Encode a JSON file before handing it to an agent
+toon results.json
+# → same records as TOON, no braces/quotes, one line per row
 
-# Compress an entire directory
-toon compress src/ --recursive --output compressed/
+# Check the estimate first
+toon --stats results.json
+# → Token estimates: ~78 (JSON) → ~53 (TOON)
 
-# Check how many tokens you're saving
-toon stats src/auth/login.ts
-# → Original: 2,847 tokens | Compressed: 1,423 tokens (50% reduction)
+# Pipe JSON straight from another tool
+gh issue list --json number,title,labels | toon --encode
 
-# Pipe compressed output directly to an agent
-toon compress src/api/ --recursive | claude "Review this API code"`}
-          filename="TRU Compression"
+# Decode back to JSON when a program needs it
+toon results.toon`}
+          filename="TRU Encoding"
         />
 
         <TipBox variant="tip">
-          TRU is especially effective on verbose languages like Java and TypeScript. Python code
-          compresses less because it&apos;s already terse.
+          TRU pays off most on uniform arrays of objects (issue lists, rows, search hits). Nested
+          objects with unique keys save less, and prose or source code is not TOON&apos;s job.
         </TipBox>
       </Section>
 
@@ -111,9 +112,6 @@ s2p src/ --include "*.ts" --show-tokens
 
 # Exclude test files and node_modules
 s2p src/ --include "*.ts" --exclude "*test*,*spec*"
-
-# Combine with TOON for maximum compression
-s2p src/api/ --include "*.ts" | toon compress -
 
 # Output to clipboard for pasting
 s2p src/components/ --include "*.tsx" --clipboard`}

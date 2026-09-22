@@ -347,8 +347,8 @@ export const LESSONS: Lesson[] = [
   {
     id: 40,
     slug: "tru",
-    title: "TRU: Token Compression",
-    description: "Compress source code to fit more context in LLM requests",
+    title: "TRU: JSON to TOON",
+    description: "Encode structured data as TOON so it costs fewer tokens in LLM requests",
     duration: "5 min",
     file: "40_tru.md",
   },

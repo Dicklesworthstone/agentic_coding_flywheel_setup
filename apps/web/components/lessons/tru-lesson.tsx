@@ -6,7 +6,6 @@ import {
   Braces,
   ChevronLeft,
   ChevronRight,
-  Code2,
   Component,
   Database,
   FileCode,
@@ -43,46 +42,49 @@ export function TruLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Compress source code into token-optimized notation so more context fits in each LLM request.
+        Hand agents structured data as TOON instead of JSON so the same records cost fewer tokens.
       </GoalBanner>
 
       {/* Section 1: What Is TRU */}
       <Section title="What Is TRU?" icon={<Minimize2 className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
-          <Highlight>TRU (toon_rust)</Highlight> converts source code into a compact,
-          token-optimized notation that preserves semantic meaning while dramatically reducing token
-          count. Feed more code context into LLMs without hitting limits.
+          <Highlight>TRU (toon_rust)</Highlight> is a fast Rust implementation of{" "}
+          <Highlight>TOON</Highlight>, Token-Optimized Object Notation: a data format that carries
+          the same information as JSON with far fewer of the quotes, braces, brackets and commas
+          that LLM tokenizers charge you for. The <code>toon</code> binary encodes JSON to TOON and
+          decodes TOON back to JSON.
         </Paragraph>
         <Paragraph>
-          When working with large codebases, context windows fill up fast. TRU compresses code by
-          40-70% in token count while keeping it understandable to LLMs, letting you include more
-          files in each request.
+          It is a serialization format, not a source-code minifier. Feed it API responses, search
+          results, config files, session exports and other structured data. Uniform arrays of
+          objects benefit most: TOON writes them as one header row plus one CSV-like line per
+          record, which is where the 40-60% token savings come from.
         </Paragraph>
 
         <div className="mt-8">
           <FeatureGrid>
             <FeatureCard
               icon={<Minimize2 className="h-5 w-5" />}
-              title="40-70% Smaller"
-              description="Dramatic token reduction"
+              title="Fewer Tokens"
+              description="Tabular data shrinks 40-60%"
               gradient="from-blue-500/20 to-indigo-500/20"
             />
             <FeatureCard
-              icon={<FileCode className="h-5 w-5" />}
-              title="Multi-Language"
-              description="Rust, Python, TypeScript, Go"
+              icon={<Braces className="h-5 w-5" />}
+              title="JSON In, JSON Out"
+              description="Encode and decode, spec-first"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
               icon={<BarChart3 className="h-5 w-5" />}
-              title="Token Counting"
-              description="Before/after comparisons"
+              title="Token Estimates"
+              description="--stats shows before/after"
               gradient="from-emerald-500/20 to-teal-500/20"
             />
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
               title="Rust Speed"
-              description="Processes large repos instantly"
+              description="Native binary, streaming decode"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -97,23 +99,32 @@ export function TruLesson() {
 
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
-        <Paragraph>Convert a file or directory to token-optimized notation.</Paragraph>
+        <Paragraph>
+          Point <code>toon</code> at a file. A <code>.json</code> input is encoded, a{" "}
+          <code>.toon</code> input is decoded, and stdin is encoded unless you pass{" "}
+          <code>--decode</code>.
+        </Paragraph>
 
         <CodeBlock
-          code={`# Convert a single file
-toon compress src/main.rs
+          code={`# Encode JSON to TOON (stdout)
+toon users.json
 
-# Convert an entire directory
-toon compress src/
+# Decode TOON back to JSON
+toon users.toon
 
-# See token savings
-toon compress --stats src/main.rs
-# Before: 2,847 tokens → After: 1,139 tokens (60% reduction)`}
+# See the token estimate for the conversion
+toon --stats users.json
+# Token estimates: ~55 (JSON) → ~24 (TOON)
+# Saved ~31 tokens (-56.4%)
+
+# Pipe from a command that emits JSON
+gh issue list --json number,title,state | toon --encode`}
           filename="Basic Usage"
         />
 
         <TipBox variant="tip">
-          Use <code>--stats</code> to see exactly how many tokens you saved.
+          Use <code>--stats</code> before you commit to TOON for a given payload. Flat records and
+          tables save the most; deeply nested objects with unique keys save the least.
         </TipBox>
       </Section>
 
@@ -123,15 +134,18 @@ toon compress --stats src/main.rs
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
+            { command: "toon <file.json>", description: "Encode JSON to TOON (auto-detected)" },
+            { command: "toon <file.toon>", description: "Decode TOON back to JSON" },
+            { command: "toon --stats <file.json>", description: "Encode and print token estimates" },
+            { command: "toon <in> -o <out>", description: "Write the result to a file" },
             {
-              command: "toon compress <file>",
-              description: "Compress a file to token-optimized format",
+              command: "toon --key-folding safe <file.json>",
+              description: "Collapse chains of single-key objects (a.b.c:)",
             },
             {
-              command: "toon compress --stats <file>",
-              description: "Compress with token count comparison",
+              command: "toon --delimiter tab <file.json>",
+              description: "Use tabs in tabular rows (often fewer tokens)",
             },
-            { command: "toon decompress <file>", description: "Restore from compressed notation" },
             { command: "toon --help", description: "Show all available options" },
           ]}
         />
@@ -142,35 +156,35 @@ toon compress --stats src/main.rs
       {/* Section 4: How It Works */}
       <Section title="How It Works" icon={<Settings className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          TRU applies language-aware transformations that LLMs can still understand.
+          TOON keeps JSON&apos;s data model and drops its punctuation. Objects become indented
+          key-value lines, arrays declare their length up front, and arrays of uniform objects
+          become a header row followed by one row per record.
         </Paragraph>
 
         <CodeBlock
-          code={`# Original (high token count):
-pub fn calculate_fibonacci(n: u64) -> u64 {
-    if n <= 1 {
-        return n;
-    }
-    let mut a: u64 = 0;
-    let mut b: u64 = 1;
-    for _ in 2..=n {
-        let temp = a + b;
-        a = b;
-        b = temp;
-    }
-    b
+          code={`# JSON (55 tokens)
+{
+  "users": [
+    { "id": 1, "name": "Alice", "role": "admin", "active": true },
+    { "id": 2, "name": "Bob", "role": "user", "active": false },
+    { "id": 3, "name": "Carol", "role": "user", "active": true },
+    { "id": 4, "name": "Dave", "role": "viewer", "active": true }
+  ]
 }
 
-# TRU compressed (lower token count):
-fn fib(n:u64)->u64{if n<=1{ret n}
-let(mut a,mut b)=(0u64,1u64);
-for _ in 2..=n{let t=a+b;a=b;b=t}b}`}
-          filename="Compression Example"
+# TOON (24 tokens)
+users[4]{id,name,role,active}:
+  1,Alice,admin,true
+  2,Bob,user,false
+  3,Carol,user,true
+  4,Dave,viewer,true`}
+          filename="JSON vs TOON"
         />
 
         <TipBox variant="info">
-          The compressed output is still valid, readable code. LLMs understand it perfectly since
-          they process tokens, not visual formatting.
+          The array length and the field header let a model (or the decoder) know exactly how many
+          records follow and what each column means, so nothing is lost even though every quote
+          and brace is gone. Values that contain delimiters or colons are quoted automatically.
         </TipBox>
       </Section>
 
@@ -178,31 +192,34 @@ for _ in 2..=n{let t=a+b;a=b;b=t}b}`}
 
       {/* Section 5: Integration */}
       <Section title="Flywheel Integration" icon={<Shield className="h-5 w-5" />} delay={0.3}>
-        <Paragraph>Combine TRU with other flywheel tools for maximum context efficiency.</Paragraph>
+        <Paragraph>
+          Anything in the flywheel that emits JSON can hand it to <code>toon</code> before it lands
+          in an agent&apos;s context.
+        </Paragraph>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-            <span className="text-emerald-400 font-semibold">TRU + S2P</span>
+            <span className="text-emerald-400 font-semibold">TRU + CASS</span>
             <p className="text-white/80 text-sm mt-1">
-              Generate prompts, then compress for more context
+              Encode <code>cass search --json</code> results before quoting them to an agent
             </p>
           </div>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
-            <span className="text-blue-400 font-semibold">TRU + FSFS</span>
+            <span className="text-blue-400 font-semibold">TRU + UBS</span>
             <p className="text-white/80 text-sm mt-1">
-              Search results compressed for LLM consumption
+              UBS can emit its findings as TOON directly (it uses <code>toon</code> under the hood)
             </p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
-            <span className="text-violet-400 font-semibold">TRU + PCR</span>
+            <span className="text-violet-400 font-semibold">TRU + ACFS doctor</span>
             <p className="text-white/80 text-sm mt-1">
-              Post-compaction reminders with compressed context
+              <code>acfs doctor --toon</code> prints the health report in TOON for agents
             </p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-            <span className="text-amber-400 font-semibold">TRU + CASR</span>
+            <span className="text-amber-400 font-semibold">TRU + gh / jq</span>
             <p className="text-white/80 text-sm mt-1">
-              Cross-agent session context stays within limits
+              Pipe issue lists, PR metadata and CI payloads through <code>toon</code> in scripts
             </p>
           </div>
         </div>
@@ -228,416 +245,91 @@ interface CodeSample {
   gradient: string;
 }
 
+// Outputs and token estimates below come from `toon --stats` (toon_rust 0.2.4).
 const CODE_SAMPLES: CodeSample[] = [
   {
-    id: "typescript-class",
-    lang: "TypeScript",
-    label: "TypeScript Class",
-    icon: <Braces className="h-3.5 w-3.5" />,
+    id: "users-table",
+    lang: "JSON",
+    label: "Array of records",
+    icon: <Database className="h-3.5 w-3.5" />,
     color: "text-blue-400",
     gradient: "from-blue-500/20 to-cyan-500/20",
-    original: `export class UserRepository {
-  private readonly db: Database;
-  private readonly cache: CacheService;
-
-  constructor(database: Database, cacheService: CacheService) {
-    this.db = database;
-    this.cache = cacheService;
-  }
-
-  async findById(userId: string): Promise<User | null> {
-    const cached = await this.cache.get(\`user:\${userId}\`);
-    if (cached !== null) {
-      return JSON.parse(cached) as User;
-    }
-    const user = await this.db.query<User>(
-      'SELECT * FROM users WHERE id = $1',
-      [userId],
-    );
-    if (user !== null) {
-      await this.cache.set(
-        \`user:\${userId}\`,
-        JSON.stringify(user),
-        3600,
-      );
-    }
-    return user;
-  }
-
-  async updateProfile(
-    userId: string,
-    updates: Partial<UserProfile>,
-  ): Promise<User> {
-    const user = await this.db.query<User>(
-      'UPDATE users SET profile = profile || $2 WHERE id = $1 RETURNING *',
-      [userId, JSON.stringify(updates)],
-    );
-    await this.cache.del(\`user:\${userId}\`);
-    return user;
-  }
+    original: `{
+  "users": [
+    { "id": 1, "name": "Alice", "role": "admin", "active": true },
+    { "id": 2, "name": "Bob", "role": "user", "active": false },
+    { "id": 3, "name": "Carol", "role": "user", "active": true },
+    { "id": 4, "name": "Dave", "role": "viewer", "active": true }
+  ]
 }`,
-    compressed: `export class UserRepo{
-private db:DB;private cache:Cache
-constructor(db:DB,cache:Cache){this.db=db;this.cache=cache}
-async findById(id:str):Promise<User|null>{
-const c=await this.cache.get(\`user:\${id}\`)
-if(c!==null)ret JSON.parse(c) as User
-const u=await this.db.query<User>(
-'SELECT * FROM users WHERE id=$1',[id])
-if(u!==null)await this.cache.set(\`user:\${id}\`,JSON.stringify(u),3600)
-ret u}
-async updateProfile(id:str,upd:Partial<Profile>):Promise<User>{
-const u=await this.db.query<User>(
-'UPDATE users SET profile=profile||$2 WHERE id=$1 RETURNING *',
-[id,JSON.stringify(upd)])
-await this.cache.del(\`user:\${id}\`)
-ret u}}`,
-    originalTokens: 248,
-    compressedTokens: 132,
+    compressed: `users[4]{id,name,role,active}:
+  1,Alice,admin,true
+  2,Bob,user,false
+  3,Carol,user,true
+  4,Dave,viewer,true`,
+    originalTokens: 55,
+    compressedTokens: 24,
   },
   {
-    id: "java-interface",
-    lang: "Java",
-    label: "Java Interface",
-    icon: <Code2 className="h-3.5 w-3.5" />,
-    color: "text-orange-400",
-    gradient: "from-orange-500/20 to-red-500/20",
-    original: `public interface PaymentGateway {
-  /**
-   * Process a payment transaction.
-   * @param amount The payment amount in cents
-   * @param currency The ISO 4217 currency code
-   * @param customerId The unique customer identifier
-   * @return PaymentResult with transaction details
-   * @throws PaymentException if processing fails
-   */
-  PaymentResult processPayment(
-    long amount,
-    String currency,
-    String customerId
-  ) throws PaymentException;
-
-  /**
-   * Refund a previously completed transaction.
-   * @param transactionId The original transaction ID
-   * @param amount Refund amount (partial or full)
-   * @return RefundResult with refund details
-   */
-  RefundResult refundTransaction(
-    String transactionId,
-    long amount
-  ) throws PaymentException;
-
-  /**
-   * Check the status of a transaction.
-   */
-  TransactionStatus getTransactionStatus(
-    String transactionId
-  );
-
-  default boolean isRefundable(TransactionStatus status) {
-    return status == TransactionStatus.COMPLETED
-        || status == TransactionStatus.PARTIALLY_REFUNDED;
-  }
-}`,
-    compressed: `interface PaymentGW{
-//Process payment txn
-PaymentResult processPayment(long amt,String cur,String custId)throws PayEx;
-//Refund completed txn
-RefundResult refundTxn(String txnId,long amt)throws PayEx;
-//Check txn status
-TxnStatus getTxnStatus(String txnId);
-default bool isRefundable(TxnStatus s){
-ret s==TxnStatus.COMPLETED||s==TxnStatus.PARTIALLY_REFUNDED;}}`,
-    originalTokens: 196,
-    compressedTokens: 78,
-  },
-  {
-    id: "python-module",
-    lang: "Python",
-    label: "Python Module",
+    id: "search-results",
+    lang: "JSON",
+    label: "Search results",
     icon: <FileCode className="h-3.5 w-3.5" />,
-    color: "text-yellow-400",
-    gradient: "from-yellow-500/20 to-green-500/20",
-    original: `from dataclasses import dataclass, field
-from typing import Optional, List
-from datetime import datetime
-
-@dataclass
-class TaskResult:
-    """Result of a completed task execution."""
-    task_id: str
-    status: str
-    output: Optional[str] = None
-    errors: List[str] = field(default_factory=list)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-
-    @property
-    def duration_seconds(self) -> Optional[float]:
-        """Calculate task duration in seconds."""
-        if self.started_at and self.completed_at:
-            delta = self.completed_at - self.started_at
-            return delta.total_seconds()
-        return None
-
-    @property
-    def is_successful(self) -> bool:
-        """Check if task completed without errors."""
-        return self.status == "completed" and len(self.errors) == 0
-
-    def to_summary(self) -> dict:
-        """Generate a summary dictionary."""
-        return {
-            "task_id": self.task_id,
-            "status": self.status,
-            "duration": self.duration_seconds,
-            "error_count": len(self.errors),
-        }`,
-    compressed: `@dataclass
-class TaskResult:
-task_id:str;status:str
-output:str|None=None
-errors:list[str]=field(default_factory=list)
-started_at:datetime|None=None
-completed_at:datetime|None=None
-@property
-def duration_s(self)->float|None:
-if self.started_at and self.completed_at:
-ret(self.completed_at-self.started_at).total_seconds()
-ret None
-@property
-def is_ok(self)->bool:ret self.status=="completed"and len(self.errors)==0
-def to_summary(self)->dict:ret{"task_id":self.task_id,
-"status":self.status,"duration":self.duration_s,
-"error_count":len(self.errors)}`,
-    originalTokens: 218,
-    compressedTokens: 108,
-  },
-  {
-    id: "go-struct",
-    lang: "Go",
-    label: "Go Struct",
-    icon: <Settings className="h-3.5 w-3.5" />,
-    color: "text-cyan-400",
-    gradient: "from-cyan-500/20 to-blue-500/20",
-    original: `type ServerConfig struct {
-	Host         string        \`json:"host"\`
-	Port         int           \`json:"port"\`
-	ReadTimeout  time.Duration \`json:"read_timeout"\`
-	WriteTimeout time.Duration \`json:"write_timeout"\`
-	MaxBodySize  int64         \`json:"max_body_size"\`
-	TLSEnabled   bool          \`json:"tls_enabled"\`
-	CertFile     string        \`json:"cert_file,omitempty"\`
-	KeyFile      string        \`json:"key_file,omitempty"\`
-}
-
-func NewServerConfig() *ServerConfig {
-	return &ServerConfig{
-		Host:         "0.0.0.0",
-		Port:         8080,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		MaxBodySize:  10 << 20, // 10 MB
-		TLSEnabled:   false,
-	}
-}
-
-func (c *ServerConfig) Validate() error {
-	if c.Port < 1 || c.Port > 65535 {
-		return fmt.Errorf("invalid port: %d", c.Port)
-	}
-	if c.TLSEnabled {
-		if c.CertFile == "" || c.KeyFile == "" {
-			return fmt.Errorf("TLS requires cert and key files")
-		}
-	}
-	return nil
-}
-
-func (c *ServerConfig) Address() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+    color: "text-emerald-400",
+    gradient: "from-emerald-500/20 to-teal-500/20",
+    original: `{
+  "query": "flaky tests",
+  "total": 3,
+  "results": [
+    { "file": "tests/api_test.rs", "line": 88, "score": 0.92, "snippet": "retry until the mock server answers" },
+    { "file": "tests/db_test.rs", "line": 14, "score": 0.81, "snippet": "sleep(2) before assert" },
+    { "file": "tests/ui_test.rs", "line": 203, "score": 0.77, "snippet": "flaky: depends on wall clock" }
+  ]
 }`,
-    compressed: `type SrvCfg struct{
-Host str;Port int;ReadTO,WriteTO time.Duration
-MaxBody int64;TLS bool;Cert,Key str}
-func NewSrvCfg()*SrvCfg{ret&SrvCfg{
-Host:"0.0.0.0",Port:8080,
-ReadTO:30*time.Second,WriteTO:30*time.Second,
-MaxBody:10<<20,TLS:false}}
-func(c*SrvCfg)Validate()err{
-if c.Port<1||c.Port>65535{ret errorf("bad port:%d",c.Port)}
-if c.TLS{if c.Cert==""||c.Key==""{
-ret errorf("TLS needs cert+key")}}
-ret nil}
-func(c*SrvCfg)Addr()str{ret sprintf("%s:%d",c.Host,c.Port)}`,
-    originalTokens: 231,
-    compressedTokens: 106,
+    compressed: `query: flaky tests
+total: 3
+results[3]{file,line,score,snippet}:
+  tests/api_test.rs,88,0.92,retry until the mock server answers
+  tests/db_test.rs,14,0.81,sleep(2) before assert
+  tests/ui_test.rs,203,0.77,"flaky: depends on wall clock"`,
+    originalTokens: 78,
+    compressedTokens: 53,
   },
   {
-    id: "react-component",
-    lang: "React",
-    label: "React Component",
+    id: "service-config",
+    lang: "JSON",
+    label: "Nested config",
     icon: <Component className="h-3.5 w-3.5" />,
     color: "text-violet-400",
     gradient: "from-violet-500/20 to-purple-500/20",
-    original: `export function DataTable<T extends Record<string, unknown>>({
-  data,
-  columns,
-  sortable = true,
-  onRowClick,
-  emptyMessage = "No data available",
-}: DataTableProps<T>) {
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(0);
-  const pageSize = 25;
-
-  const sortedData = useMemo(() => {
-    if (!sortColumn) return data;
-    return [...data].sort((a, b) => {
-      const aVal = a[sortColumn];
-      const bVal = b[sortColumn];
-      const comparison = String(aVal).localeCompare(String(bVal));
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
-  }, [data, sortColumn, sortDirection]);
-
-  const pageData = useMemo(
-    () => sortedData.slice(
-      currentPage * pageSize,
-      (currentPage + 1) * pageSize,
-    ),
-    [sortedData, currentPage],
-  );
-
-  const totalPages = Math.ceil(data.length / pageSize);
-
-  if (data.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        {emptyMessage}
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50">
-          {columns.map((col) => (
-            <th
-              key={col.key}
-              onClick={() => {
-                if (!sortable) return;
-                setSortDirection(
-                  sortColumn === col.key && sortDirection === "asc"
-                    ? "desc" : "asc"
-                );
-                setSortColumn(col.key);
-              }}
-              className="px-4 py-3 text-left font-medium"
-            >
-              {col.label}
-            </th>
-          ))}
-        </thead>
-        <tbody>
-          {pageData.map((row, i) => (
-            <tr
-              key={i}
-              onClick={() => onRowClick?.(row)}
-              className="border-t hover:bg-gray-50 cursor-pointer"
-            >
-              {columns.map((col) => (
-                <td key={col.key} className="px-4 py-3">
-                  {String(row[col.key] ?? "")}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}`,
-    compressed: `export fn DataTable<T extends Record<str,unknown>>({
-data,columns,sortable=true,onRowClick,emptyMsg="No data"}:Props<T>){
-const[sCol,setSCol]=useState<str|null>(null)
-const[sDir,setSDir]=useState<"asc"|"desc">("asc")
-const[pg,setPg]=useState(0);const pSz=25
-const sorted=useMemo(()=>{if(!sCol)ret data
-ret[...data].sort((a,b)=>{
-const c=String(a[sCol]).localeCompare(String(b[sCol]))
-ret sDir==="asc"?c:-c})},[data,sCol,sDir])
-const pgData=useMemo(
-()=>sorted.slice(pg*pSz,(pg+1)*pSz),[sorted,pg])
-const totPg=Math.ceil(data.length/pSz)
-if(!data.length)ret<div cn="text-center py-12 text-gray-500">{emptyMsg}</div>
-ret<div cn="overflow-x-auto rounded-lg border">
-<table cn="w-full text-sm"><thead cn="bg-gray-50">
-{columns.map(c=><th key={c.key}
-onClick={()=>{if(!sortable)ret
-setSDir(sCol===c.key&&sDir==="asc"?"desc":"asc")
-setSCol(c.key)}} cn="px-4 py-3 text-left font-medium">{c.label}</th>)}
-</thead><tbody>
-{pgData.map((r,i)=><tr key={i}onClick={()=>onRowClick?.(r)}
-cn="border-t hover:bg-gray-50 cursor-pointer">
-{columns.map(c=><td key={c.key}cn="px-4 py-3">
-{String(r[c.key]??"")}</td>)}</tr>)}</tbody></table></div>}`,
-    originalTokens: 382,
-    compressedTokens: 198,
+    original: `{
+  "service": "billing-api",
+  "env": "production",
+  "database": {
+    "host": "db.internal",
+    "port": 5432,
+    "pool": { "min": 2, "max": 16 }
   },
-  {
-    id: "sql-query",
-    lang: "SQL",
-    label: "SQL Query",
-    icon: <Database className="h-3.5 w-3.5" />,
-    color: "text-emerald-400",
-    gradient: "from-emerald-500/20 to-teal-500/20",
-    original: `-- Get top customers with their order statistics
--- for the current quarter, including running totals
-SELECT
-    customers.customer_id,
-    customers.full_name,
-    customers.email_address,
-    COUNT(DISTINCT orders.order_id) AS total_orders,
-    SUM(order_items.quantity * order_items.unit_price) AS total_revenue,
-    AVG(order_items.quantity * order_items.unit_price) AS avg_order_value,
-    MAX(orders.created_at) AS last_order_date,
-    SUM(SUM(order_items.quantity * order_items.unit_price))
-        OVER (ORDER BY customers.customer_id) AS running_total
-FROM customers
-INNER JOIN orders
-    ON orders.customer_id = customers.customer_id
-INNER JOIN order_items
-    ON order_items.order_id = orders.order_id
-WHERE orders.created_at >= DATE_TRUNC('quarter', CURRENT_DATE)
-    AND orders.status NOT IN ('cancelled', 'refunded')
-GROUP BY
-    customers.customer_id,
-    customers.full_name,
-    customers.email_address
-HAVING SUM(order_items.quantity * order_items.unit_price) > 1000
-ORDER BY total_revenue DESC
-LIMIT 50;`,
-    compressed: `--Top customers w/ order stats, current quarter, running totals
-SELECT c.customer_id,c.full_name,c.email_address,
-COUNT(DISTINCT o.order_id)total_orders,
-SUM(oi.quantity*oi.unit_price)total_rev,
-AVG(oi.quantity*oi.unit_price)avg_val,
-MAX(o.created_at)last_order,
-SUM(SUM(oi.quantity*oi.unit_price))OVER(ORDER BY c.customer_id)running_total
-FROM customers c
-JOIN orders o ON o.customer_id=c.customer_id
-JOIN order_items oi ON oi.order_id=o.order_id
-WHERE o.created_at>=DATE_TRUNC('quarter',CURRENT_DATE)
-AND o.status NOT IN('cancelled','refunded')
-GROUP BY c.customer_id,c.full_name,c.email_address
-HAVING SUM(oi.quantity*oi.unit_price)>1000
-ORDER BY total_rev DESC LIMIT 50;`,
-    originalTokens: 205,
-    compressedTokens: 118,
+  "cache": {
+    "host": "redis.internal",
+    "ttlSeconds": 3600
+  },
+  "features": ["invoices", "refunds", "webhooks"]
+}`,
+    compressed: `service: billing-api
+env: production
+database:
+  host: db.internal
+  port: 5432
+  pool:
+    min: 2
+    max: 16
+cache:
+  host: redis.internal
+  ttlSeconds: 3600
+features[3]: invoices,refunds,webhooks`,
+    originalTokens: 53,
+    compressedTokens: 40,
   },
 ];
 
@@ -895,11 +587,11 @@ type CompressionPhase = "idle" | "scanning" | "tokenizing" | "compressing" | "op
 
 const PHASE_CONFIG: Record<CompressionPhase, { label: string; color: string }> = {
   idle: { label: "Ready", color: "text-white/40" },
-  scanning: { label: "Scanning AST...", color: "text-blue-400" },
-  tokenizing: { label: "Tokenizing...", color: "text-cyan-400" },
-  compressing: { label: "Compressing identifiers...", color: "text-violet-400" },
-  optimizing: { label: "Optimizing output...", color: "text-amber-400" },
-  done: { label: "Compression complete", color: "text-emerald-400" },
+  scanning: { label: "Parsing JSON...", color: "text-blue-400" },
+  tokenizing: { label: "Detecting uniform arrays...", color: "text-cyan-400" },
+  compressing: { label: "Dropping quotes and braces...", color: "text-violet-400" },
+  optimizing: { label: "Writing tabular rows...", color: "text-amber-400" },
+  done: { label: "Encoded to TOON", color: "text-emerald-400" },
 };
 
 function PhaseIndicator({ phase, active }: { phase: CompressionPhase; active: boolean }) {
@@ -1079,12 +771,12 @@ function InteractiveTokenCompressorImpl() {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] bg-white/[0.02]">
             <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
             <span className="text-xs font-semibold text-white/70">
-              Token Compression Laboratory
+              JSON to TOON Laboratory
             </span>
           </div>
           <p className="text-xs text-white/40 max-w-md mx-auto">
-            Select a code sample, run compression, and watch tokens shrink in real time. See exactly
-            how much context window you recover.
+            Pick a JSON payload, encode it, and watch the token estimate drop. Outputs and counts are
+            real <code>toon --stats</code> results.
           </p>
         </div>
 
@@ -1159,7 +851,7 @@ function InteractiveTokenCompressorImpl() {
                   <div className="w-2 h-2 rounded-full bg-green-400/50" />
                 </div>
                 <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
-                  Original Source
+                  JSON Input
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1182,7 +874,7 @@ function InteractiveTokenCompressorImpl() {
                   <div className="w-2 h-2 rounded-full bg-green-400/50" />
                 </div>
                 <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
-                  TRU Compressed
+                  TOON Output
                 </span>
               </div>
               <AnimatePresence mode="wait">
@@ -1289,7 +981,7 @@ function InteractiveTokenCompressorImpl() {
                       <Minimize2 className="h-6 w-6 text-white/15" />
                     </div>
                     <span className="text-xs text-white/25">
-                      Click &ldquo;Compress&rdquo; to see the result
+                      Click &ldquo;Encode&rdquo; to see the result
                     </span>
                   </motion.div>
                 )}
@@ -1425,14 +1117,14 @@ function InteractiveTokenCompressorImpl() {
               {/* Compression breakdown */}
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-3">
                 <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
-                  Compression Techniques Applied
+                  Where The Savings Come From
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {[
-                    { label: "Identifier shortening", pct: "25%", color: "bg-blue-400" },
-                    { label: "Whitespace removal", pct: "30%", color: "bg-violet-400" },
-                    { label: "Comment stripping", pct: "20%", color: "bg-amber-400" },
-                    { label: "Syntax optimization", pct: "25%", color: "bg-emerald-400" },
+                    { label: "Unquoted keys and strings", pct: "\u201c\u201d", color: "bg-blue-400" },
+                    { label: "No braces or brackets", pct: "{ }", color: "bg-violet-400" },
+                    { label: "One header row per array", pct: "[n]{…}", color: "bg-amber-400" },
+                    { label: "One CSV-like line per record", pct: "a,b,c", color: "bg-emerald-400" },
                   ].map((technique, i) => (
                     <motion.div
                       key={technique.label}
@@ -1484,12 +1176,12 @@ function InteractiveTokenCompressorImpl() {
                 >
                   <Minimize2 className="h-4 w-4" />
                 </motion.div>
-                Compressing...
+                Encoding...
               </>
             ) : (
               <>
                 <Zap className="h-4 w-4" />
-                {isCompressed ? "Re-Compress" : "Compress"}
+                {isCompressed ? "Re-Encode" : "Encode"}
               </>
             )}
           </motion.button>
