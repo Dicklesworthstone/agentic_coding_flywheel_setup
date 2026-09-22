@@ -65,6 +65,26 @@ export function findUnexpectedGeneratedPaths(
     .sort();
 }
 
+/**
+ * Decide whether an existing generated file's permission bits count as drift.
+ *
+ * Git only records whether a file is executable (100755 vs 100644), so a
+ * checkout writes every generated file with the checking-out user's umask:
+ * umask 002 yields 0664/0775, umask 077 yields 0600/0700. Neither is drift a
+ * regeneration would fix (the generator's own fchmod pins the exact mode, so
+ * the next `git checkout` of that file re-introduces the "difference"). An
+ * exact comparison therefore reported drift forever on any host whose umask
+ * is not 022 — the ts1 checksum monitor failed closed for weeks on exactly
+ * this (#391), which is how stale installer pins reached users (#402).
+ *
+ * Drift is what git would see: a differing owner-executable bit. Group/other
+ * bits are the checkout's umask, not the manifest's content.
+ */
+export function generatedFileModeMatches(actualMode: number, expectedMode: number): boolean {
+  const OWNER_EXEC = 0o100;
+  return (actualMode & OWNER_EXEC) === (expectedMode & OWNER_EXEC);
+}
+
 function inspectRegularFileNoFollow(
   path: string,
   label: string,
@@ -3914,7 +3934,10 @@ async function main(): Promise<void> {
             console.log(`       ${error instanceof Error ? error.message : String(error)}`);
           continue;
         }
-        if (existing !== content || (process.platform !== "win32" && actualMode !== mode)) {
+        const modeDrifted =
+          process.platform !== "win32" &&
+          (actualMode === undefined || !generatedFileModeMatches(actualMode, mode));
+        if (existing !== content || modeDrifted) {
           hasDiff = true;
           console.log(`[DIFF] ${filename}`);
           if (verbose) {
@@ -3922,9 +3945,9 @@ async function main(): Promise<void> {
             const existingLines = existing.split("\n").length;
             const newLines = content.split("\n").length;
             console.log(`       Existing: ${existingLines} lines, Generated: ${newLines} lines`);
-            if (process.platform !== "win32" && actualMode !== mode) {
+            if (modeDrifted) {
               console.log(
-                `       Mode: ${actualMode?.toString(8) ?? "unknown"} (expected ${mode.toString(8)})`,
+                `       Mode: ${actualMode?.toString(8) ?? "unknown"} (expected executable bit of ${mode.toString(8)})`,
               );
             }
           }

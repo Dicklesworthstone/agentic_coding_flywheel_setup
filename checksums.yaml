@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-09-19T14:16:22-04:00
+# checksums.yaml - Auto-generated 2026-09-22T09:57:03-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -16,7 +16,7 @@ installers:
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
-    sha256: "47b2cfaa0111a462aec0ab1c4f1499e2046bc5c24fb801759c8bfac14d453d03"
+    sha256: "e632c6d1dc71e75c9710caf5f645c11131f0d94c859ed6b4266444e11240abdb"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
@@ -136,7 +136,7 @@ installers:
 
   pi:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
-    sha256: "d4261302a54c9b5726b87d66636888f27ec46cf476dd2c8d8b05ce8713e47c82"
+    sha256: "9f2c2f375a37c453e8e661f390924f7f64591dd257ff856a0be13699816f1b0c"
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
@@ -180,7 +180,7 @@ installers:
 
   ubs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh"
-    sha256: "475363f7153964203ee8ca7f60d8d9cf0975e28308887972acd532d34acd0a8e"
+    sha256: "f221a797df6055f7c9e52e69c1511a3310b2dd61d2a034bd1656fa760e914055"
 
   uv:
     url: "https://astral.sh/uv/install.sh"

@@ -1591,7 +1591,7 @@ acfs_generated_install_stack_ultimate_bug_scanner() {
                         elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
                             log_error "stack.ultimate_bug_scanner: failed to make verified installer staging file read-only"
                             ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-                        elif run_as_target_runner 'bash' "$verified_installer_file" '--easy-mode'; then
+                        elif run_as_target_runner 'bash' "$verified_installer_file" '--easy-mode' '--skip-hooks'; then
                             install_success=true
                         else
                             log_error "stack.ultimate_bug_scanner: verified installer execution failed"

@@ -16,6 +16,7 @@ import {
   buildAgentRoster,
   findUnexpectedGeneratedPaths,
   generateAgentRosterMarkdown,
+  generatedFileModeMatches,
   generateAgentRosterSummaryMarkdown,
   generateWebAgents,
   isOptionalVerifyCommand,
@@ -56,6 +57,24 @@ describe("Generator optional verify parsing", () => {
     expect(
       findUnexpectedGeneratedPaths(["/repo/generated/current.sh"], ["/repo/generated/current.sh"]),
     ).toEqual([]);
+  });
+
+  test("treats umask-derived permission bits as not drifted", () => {
+    // What git records: only the owner executable bit. A checkout under
+    // umask 002 (0664/0775) or 077 (0600/0700) must not read as drift (#391).
+    expect(generatedFileModeMatches(0o644, 0o644)).toBe(true);
+    expect(generatedFileModeMatches(0o664, 0o644)).toBe(true);
+    expect(generatedFileModeMatches(0o600, 0o644)).toBe(true);
+    expect(generatedFileModeMatches(0o755, 0o755)).toBe(true);
+    expect(generatedFileModeMatches(0o775, 0o755)).toBe(true);
+    expect(generatedFileModeMatches(0o700, 0o755)).toBe(true);
+  });
+
+  test("reports a flipped executable bit as drift", () => {
+    expect(generatedFileModeMatches(0o644, 0o755)).toBe(false);
+    expect(generatedFileModeMatches(0o664, 0o755)).toBe(false);
+    expect(generatedFileModeMatches(0o755, 0o644)).toBe(false);
+    expect(generatedFileModeMatches(0o700, 0o644)).toBe(false);
   });
 
   test("strips optional true suffixes with trailing comments", () => {

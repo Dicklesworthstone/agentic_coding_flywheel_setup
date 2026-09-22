@@ -2315,7 +2315,10 @@ modules:
     verified_installer:
       tool: ubs
       runner: bash
-      args: ["--easy-mode"]
+      # --skip-hooks: ACFS wires agent hooks itself (DCG); the UBS installer's
+      # auto-accepted hook prompts wrote user-level Claude settings when run
+      # outside a repo (#400).
+      args: ["--easy-mode", "--skip-hooks"]
     install: []
     verify:
       - ubs --help

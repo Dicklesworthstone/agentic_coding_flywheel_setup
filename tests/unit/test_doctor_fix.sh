@@ -4592,6 +4592,231 @@ EOF
     return 0
 }
 
+
+# ============================================================
+# Fixer: Atuin daemon socket (fix.atuin.daemon_socket) — #358/#404
+# ============================================================
+
+# A fake atuin whose `daemon` subcommand binds the socket its config pins
+# (as a plain file is not a socket, it forks a real unix listener via python
+# when available, else records the call; tests check the recorded path).
+write_fake_atuin() {
+    local bin_dir="$1"
+    local marker="$2"
+    cat > "$bin_dir/atuin" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "daemon" ]]; then
+    printf 'daemon-started\\n' >> "$marker"
+    sock="\$(awk -F'=' '/^\\[daemon\\]/{d=1;next} /^\\[/{d=0} d && \$1 ~ /socket_path/ {v=\$2; gsub(/[[:space:]"]/, "", v); print v}' "\$HOME/.config/atuin/config.toml" | tail -n1)"
+    mkdir -p "\$(dirname "\$sock")"
+    if command -v python3 >/dev/null 2>&1; then
+        # Bind at a short path (AF_UNIX paths are capped at ~104 bytes and the
+        # test HOME is longer), then rename the bound socket into place.
+        exec python3 -c 'import os,socket,sys,time; short="/tmp/acfs-atuin-test-%d.sock" % os.getpid(); s=socket.socket(socket.AF_UNIX); s.bind(short); s.listen(1); os.rename(short, sys.argv[1]); time.sleep(5)' "\$sock"
+    fi
+    exit 0
+fi
+echo "atuin 18.0.0"
+EOF
+    chmod +x "$bin_dir/atuin"
+}
+
+stub_atuin_stop_daemon() {
+    doctor_fix_atuin_stop_daemon() {
+        printf 'stop-called\n' >> "${ATUIN_TEST_MARKER:?}"
+        return 0
+    }
+}
+
+test_fix_atuin_daemon_socket_dispatches_only_with_yes() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    printf '[daemon]\nenabled = true\n' > "$HOME/.config/atuin/config.toml"
+
+    # warn-level without --yes: nothing happens, config untouched
+    DOCTOR_FIX_YES=false
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    if grep -q 'socket_path' "$HOME/.config/atuin/config.toml"; then
+        echo "  socket_path pinned without --yes"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -f "$ATUIN_TEST_MARKER" ]]; then
+        echo "  daemon touched without --yes"
+        cleanup_test_env
+        return 1
+    fi
+    cleanup_test_env
+    return 0
+}
+
+test_fix_atuin_daemon_socket_dry_run_changes_nothing() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    printf '[daemon]\nenabled = true\n' > "$HOME/.config/atuin/config.toml"
+
+    DOCTOR_FIX_DRY_RUN=true
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+
+    if grep -q 'socket_path' "$HOME/.config/atuin/config.toml"; then
+        echo "  dry-run modified config.toml"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -f "$ATUIN_TEST_MARKER" ]]; then
+        echo "  dry-run started or stopped the daemon"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ ${#FIXES_DRY_RUN[@]} -ne 1 ]] || [[ "${FIXES_DRY_RUN[0]}" != fix.atuin.daemon_socket* ]]; then
+        echo "  expected one fix.atuin.daemon_socket dry-run entry, got: ${FIXES_DRY_RUN[*]:-none}"
+        cleanup_test_env
+        return 1
+    fi
+    cleanup_test_env
+    return 0
+}
+
+test_fix_atuin_daemon_socket_pins_existing_daemon_table_and_restarts() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    printf 'auto_sync = true\n\n[daemon]\nenabled = true\n\n[sync]\nrecords = true\n' > "$HOME/.config/atuin/config.toml"
+
+    start_autofix_session >/dev/null || { echo "  Failed to start autofix session"; cleanup_test_env; return 1; }
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    local rc=$?
+
+    local expected="socket_path = \"$HOME/.local/share/atuin/atuin-daemon.sock\""
+    # The key must land inside [daemon], before the next table.
+    local daemon_block
+    daemon_block="$(awk '/^\[daemon\]/{d=1;next} /^\[/{d=0} d' "$HOME/.config/atuin/config.toml")"
+    if ! grep -Fq "$expected" <<< "$daemon_block"; then
+        echo "  socket_path not pinned under [daemon]; config is:"; sed 's/^/    /' "$HOME/.config/atuin/config.toml"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if ! grep -q '^enabled = true' <<< "$daemon_block" || ! grep -q '^\[sync\]' "$HOME/.config/atuin/config.toml"; then
+        echo "  existing config content was lost"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if ! grep -q 'stop-called' "$ATUIN_TEST_MARKER" || ! grep -q 'daemon-started' "$ATUIN_TEST_MARKER"; then
+        echo "  daemon was not stopped and started (marker: $(cat "$ATUIN_TEST_MARKER" 2>/dev/null | tr '\n' ' '))"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        if [[ $rc -ne 0 ]] || [[ ! -S "$HOME/.local/share/atuin/atuin-daemon.sock" ]]; then
+            echo "  expected rc 0 with the socket bound, got rc=$rc"
+            end_autofix_session >/dev/null; cleanup_test_env; return 1
+        fi
+    fi
+    if [[ $FIX_APPLIED -ne 1 ]]; then
+        echo "  FIX_APPLIED should be 1, got $FIX_APPLIED"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    # The config edit is journaled with a restorable backup.
+    if ! grep -q 'atuin daemon.socket_path' "$ACFS_CHANGES_FILE" 2>/dev/null; then
+        echo "  change not recorded in $ACFS_CHANGES_FILE"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    pkill -f 'atuin-daemon.sock' >/dev/null 2>&1 || true
+    end_autofix_session >/dev/null
+    cleanup_test_env
+    return 0
+}
+
+test_fix_atuin_daemon_socket_appends_table_when_missing() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    doctor_fix_atuin_start_daemon() { printf 'start:%s\n' "$2" >> "$ATUIN_TEST_MARKER"; return 0; }
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    printf 'auto_sync = true\n' > "$HOME/.config/atuin/config.toml"
+
+    start_autofix_session >/dev/null || { echo "  Failed to start autofix session"; cleanup_test_env; return 1; }
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    local rc=$?
+
+    local cfg="$HOME/.config/atuin/config.toml"
+    if [[ $rc -ne 0 ]] || ! grep -q '^\[daemon\]' "$cfg" || ! grep -Fq "socket_path = \"$HOME/.local/share/atuin/atuin-daemon.sock\"" "$cfg" || ! grep -q '^auto_sync = true' "$cfg"; then
+        echo "  expected [daemon] table appended with socket_path (rc=$rc); config is:"; sed 's/^/    /' "$cfg"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if ! grep -Fq "start:$HOME/.local/share/atuin/atuin-daemon.sock" "$ATUIN_TEST_MARKER"; then
+        echo "  daemon not started on the pinned socket"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    end_autofix_session >/dev/null
+    cleanup_test_env
+    return 0
+}
+
+test_fix_atuin_daemon_socket_only_restarts_when_already_pinned() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    doctor_fix_atuin_start_daemon() { printf 'start:%s\n' "$2" >> "$ATUIN_TEST_MARKER"; return 0; }
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    printf '[daemon]\nenabled = true\nsocket_path = "/custom/path/atuin.sock"\n' > "$HOME/.config/atuin/config.toml"
+    local before; before="$(cat "$HOME/.config/atuin/config.toml")"
+
+    start_autofix_session >/dev/null || { echo "  Failed to start autofix session"; cleanup_test_env; return 1; }
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    local rc=$?
+
+    if [[ "$(cat "$HOME/.config/atuin/config.toml")" != "$before" ]]; then
+        echo "  a user's explicit socket_path pin was rewritten"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if [[ $rc -ne 0 ]] || ! grep -Fq 'start:/custom/path/atuin.sock' "$ATUIN_TEST_MARKER" || ! grep -q 'stop-called' "$ATUIN_TEST_MARKER"; then
+        echo "  expected stop + start on the user's configured socket (rc=$rc): $(tr '\n' ' ' < "$ATUIN_TEST_MARKER")"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if [[ $FIX_APPLIED -ne 1 ]] || [[ -s "$ACFS_CHANGES_FILE" ]]; then
+        echo "  restart-only path should count one applied fix and journal nothing (applied=$FIX_APPLIED)"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    end_autofix_session >/dev/null
+    cleanup_test_env
+    return 0
+}
+
+test_fix_atuin_daemon_socket_reports_failed_restart() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    doctor_fix_atuin_start_daemon() { return 1; }
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    printf '[daemon]\nenabled = true\nsocket_path = "/custom/path/atuin.sock"\n' > "$HOME/.config/atuin/config.toml"
+
+    start_autofix_session >/dev/null || { echo "  Failed to start autofix session"; cleanup_test_env; return 1; }
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    local rc=$?
+    if [[ $rc -eq 0 ]] || [[ $FIX_FAILED -ne 1 ]] || [[ $FIX_MANUAL -ne 1 ]] || [[ $FIX_APPLIED -ne 0 ]]; then
+        echo "  expected rc 1, failed=1, manual=1, applied=0; got rc=$rc failed=$FIX_FAILED manual=$FIX_MANUAL applied=$FIX_APPLIED"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    end_autofix_session >/dev/null
+    cleanup_test_env
+    return 0
+}
+
+
 main() {
     echo "============================================================"
     echo "Doctor Fix Unit Tests"
@@ -4678,6 +4903,12 @@ main() {
     run_test test_fix_ssh_server_fails_when_service_enable_fails
     run_test test_fix_ssh_keepalive_applies_and_records_change
     run_test test_fix_ssh_keepalive_refuses_mutation_when_backup_fails
+    run_test test_fix_atuin_daemon_socket_dispatches_only_with_yes
+    run_test test_fix_atuin_daemon_socket_dry_run_changes_nothing
+    run_test test_fix_atuin_daemon_socket_pins_existing_daemon_table_and_restarts
+    run_test test_fix_atuin_daemon_socket_appends_table_when_missing
+    run_test test_fix_atuin_daemon_socket_only_restarts_when_already_pinned
+    run_test test_fix_atuin_daemon_socket_reports_failed_restart
     run_test test_fix_dcg_hook_uninstalls_when_record_change_fails
     run_test test_dcg_hook_already_installed_detects_hook_wiring
     run_test test_agent_mail_fix_stop_fallback_cleans_up_matching_pid

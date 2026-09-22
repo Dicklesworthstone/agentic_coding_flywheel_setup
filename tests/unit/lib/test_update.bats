@@ -16293,3 +16293,19 @@ STUBS
     assert_output --partial "RC=0"
     refute_output --partial "SHOULD_NOT_BE_CALLED"
 }
+
+@test "update.sh: nightly UBS install never wires agent hooks (#400)" {
+    # --easy-mode auto-accepts the UBS installer's hook prompts. Run from $HOME
+    # by the nightly, that reinstalled the legacy git_safety_guard the update
+    # had just removed and rewrote ~/.claude/settings.json with
+    # $CLAUDE_PROJECT_DIR-relative paths every night. ACFS owns agent hooks.
+    local update="$PROJECT_ROOT/scripts/lib/update.sh"
+
+    run grep -F 'run_cmd "Ultimate Bug Scanner" update_run_verified_installer ubs --easy-mode --skip-hooks' "$update"
+    assert_success
+
+    run grep -F 'update_run_verified_installer ubs --easy-mode"' "$update"
+    assert_failure
+    run grep -E 'update_run_verified_installer ubs --easy-mode[[:space:]]*$' "$update"
+    assert_failure
+}

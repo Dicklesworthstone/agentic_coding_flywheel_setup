@@ -1025,6 +1025,8 @@ DEEP_MODE=false
 # Related: bd-31ps.6.2
 FIX_MODE=false
 DRY_RUN_MODE=false
+# Options forwarded verbatim to run_doctor_fix (--yes, --prompt, --only ...).
+declare -a FIX_ARGS=()
 
 # Caching for deep checks - skip slow operations that recently passed
 # Related: agentic_coding_flywheel_setup-lz1
@@ -2412,7 +2414,7 @@ check_atuin_daemon() {
     if [[ -z "$configured_socket" ]]; then
         check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
             "daemon.enabled is true but socket_path is not pinned; the socket follows TMPDIR and the shell can lose the daemon (#358)" \
-            "re-run the ACFS installer (it pins socket_path), or set socket_path under [daemon] in ~/.config/atuin/config.toml"
+            "acfs doctor --fix --yes (pins socket_path under [daemon] in ~/.config/atuin/config.toml and restarts the daemon), or set it by hand"
         return 0
     fi
 
@@ -2431,9 +2433,13 @@ check_atuin_daemon() {
     elif [[ -n "$bound_sockets" ]]; then
         local bound_first=""
         bound_first="$(head -n1 <<< "$bound_sockets")"
+        # The bracketed pattern matches the daemon's own command line but not
+        # a caller whose command line contains this hint (bash -c, ssh, an
+        # agent tool wrapper): a plain `pkill -f 'atuin daemon'` killed that
+        # shell before the restart half ever ran (#404).
         check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
             "socket mismatch: config=$configured_socket bound=$bound_first -- the shell connects to the configured path, so history writes stall against the wrong daemon" \
-            "restart the atuin daemon so it binds the configured path: pkill -f 'atuin daemon' 2>/dev/null; (setsid atuin daemon >/dev/null 2>&1 &)"
+            "restart the atuin daemon so it binds the configured path: pkill -f '[a]tuin daemon' 2>/dev/null; (setsid atuin daemon >/dev/null 2>&1 &)   (or: acfs doctor --fix --yes)"
     elif [[ -S "$configured_socket" ]]; then
         check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
             "stale socket: $configured_socket exists but no daemon is listening (every command pays a failed connect)" \
@@ -5023,19 +5029,41 @@ check_updates_health() {
         else
             local details=""
             local hold_rc=0
+            local hold_entry="" hold_expiry="" hold_reason="" hold_guidance=""
             for tool in "${held_tools[@]}"; do
                 hold_rc=0
                 details="$(acfs_holds_active_details "$tool" 2>/dev/null)" || hold_rc=$?
                 case "$hold_rc" in
                     0)
-                        check "updates.holds.$tool" "Hold: $tool" "warn" \
-                            "updates skip this tool -- $details" \
-                            "acfs unhold $tool"
+                        # An unexpired hold is the user's deliberate choice —
+                        # often one this product told them to make (a stale
+                        # installer pin, security.sh) — so it is reported, not
+                        # flagged, and the hint no longer says to undo it
+                        # (#403). Only a hold with no expiry warns: it never
+                        # resolves itself and updates skip the tool forever.
+                        hold_expiry=""
+                        hold_reason=""
+                        hold_entry="$(acfs_holds_lookup "$tool" 2>/dev/null || true)"
+                        IFS=$'\t' read -r _ _ hold_reason hold_expiry <<< "$hold_entry"
+                        hold_guidance=""
+                        case "$hold_reason" in
+                            *"stale installer pin"*)
+                                hold_guidance="; unhold once 'acfs update' no longer reports a checksum mismatch for $tool"
+                                ;;
+                        esac
+                        if [[ -z "$hold_expiry" ]]; then
+                            check "updates.holds.$tool" "Hold: $tool" "warn" \
+                                "updates skip this tool indefinitely -- $details$hold_guidance" \
+                                "give the hold an end date: acfs hold $tool --reason \"...\" --expiry YYYY-MM-DD (or, when no longer needed: acfs unhold $tool)"
+                        else
+                            check "updates.holds.$tool" "Hold: $tool" "pass" \
+                                "updates skip this tool until $hold_expiry -- $details$hold_guidance"
+                        fi
                         ;;
                     2)
                         check "updates.holds.$tool" "Hold: $tool" "warn" \
                             "EXPIRED and ignored by updates -- $details" \
-                            "acfs unhold $tool"
+                            "acfs unhold $tool (or extend it: acfs hold $tool --reason \"...\" --expiry YYYY-MM-DD)"
                         ;;
                     *)
                         check "updates.holds.$tool" "Hold: $tool" "warn" \
@@ -5794,8 +5822,36 @@ main() {
                 DRY_RUN_MODE=true
                 shift
                 ;;
+            # Fix-mode options are forwarded to run_doctor_fix. They used to
+            # fall into the catch-all `*) shift` below and vanish, so the
+            # `acfs doctor --fix --yes` that every warning-level hint points
+            # at applied nothing (#401).
+            --yes|-y)
+                FIX_ARGS+=("--yes")
+                shift
+                ;;
+            --prompt)
+                FIX_ARGS+=("--prompt")
+                shift
+                ;;
+            --only)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --only requires a comma-separated category list" >&2
+                    return 2
+                fi
+                FIX_ARGS+=("--only" "$2")
+                shift 2
+                ;;
+            --only=*)
+                if [[ -z "${1#*=}" ]]; then
+                    echo "Error: --only requires a comma-separated category list" >&2
+                    return 2
+                fi
+                FIX_ARGS+=("--only" "${1#*=}")
+                shift
+                ;;
             --help|-h)
-                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run]"
+                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes] [--only <categories>]"
                 echo ""
                 echo "Options:"
                 echo "  --json           Output results as JSON"
@@ -5806,6 +5862,9 @@ main() {
                 echo "  --no-cache  Skip cache, run all checks fresh"
                 echo "  --fix       Automatically apply safe fixes for failed checks"
                 echo "  --dry-run   Preview fixes without applying (use with --fix)"
+                echo "  --yes, -y   Also apply fixes for warning-level checks (use with --fix)"
+                echo "  --prompt    Ask before each fix (use with --fix)"
+                echo "  --only <c>  Only fix the listed categories, comma-separated (use with --fix)"
                 echo "  --quiet, -q Exit code only (0=healthy, 1=issues); suppresses all output"
                 echo ""
                 echo "By default, doctor runs quick existence checks only."
@@ -5831,12 +5890,16 @@ main() {
                 echo "  acfs doctor --json            # JSON output for tooling"
                 echo "  acfs doctor --fix             # Apply safe fixes"
                 echo "  acfs doctor --fix --dry-run   # Preview fixes"
+                echo "  acfs doctor --fix --yes       # Also apply warning-level fixes"
                 echo "  acfs undo --list              # List changes recorded by --fix"
                 echo "  acfs undo --all               # Undo the most recent fix session"
                 exit 0
                 ;;
             *)
-                shift
+                # Silently dropping unknown flags is what hid #401 for months:
+                # a typo or an unforwarded flag looked like a successful run.
+                echo "Error: unknown option '$1' (see: acfs doctor --help)" >&2
+                return 2
                 ;;
         esac
     done
@@ -5883,10 +5946,9 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     if [[ "$FIX_MODE" == "true" ]]; then
         if type -t run_doctor_fix &>/dev/null; then
             if [[ "$DRY_RUN_MODE" == "true" ]]; then
-                run_doctor_fix --dry-run
-            else
-                run_doctor_fix
+                FIX_ARGS+=("--dry-run")
             fi
+            run_doctor_fix "${FIX_ARGS[@]}"
         else
             echo "Warning: doctor_fix.sh not loaded, --fix unavailable" >&2
             FIX_MODE=false

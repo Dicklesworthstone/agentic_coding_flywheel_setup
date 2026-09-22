@@ -1764,6 +1764,11 @@ dispatch_fix() {
             fix_ssh_keepalive "$check_id"
             ;;
 
+        # Atuin daemon socket: pin socket_path and (re)start the daemon (#358, #404)
+        shell.atuin_daemon)
+            fix_atuin_daemon_socket "$check_id"
+            ;;
+
         # bun global installs stranded in the XDG cache fallback dir (#388)
         bun.global_bin_dir)
             fix_bun_global_bin_dir "$check_id"
@@ -2254,6 +2259,198 @@ fix_ssh_server() {
     fi
 
     doctor_fix_log ERROR "Failed to install openssh-server"
+    FIX_FAILED=$((FIX_FAILED + 1))
+    return 1
+}
+
+# ============================================================
+# Fixer: Atuin daemon socket (fix.atuin.daemon_socket)
+# ============================================================
+
+# Read daemon.socket_path from an atuin config.toml (empty when not pinned).
+doctor_fix_atuin_configured_socket() {
+    local config_file="$1"
+    [[ -r "$config_file" ]] || return 0
+    awk -F'=' '
+        /^\[daemon\]/ { in_daemon = 1; next }
+        /^\[/ { in_daemon = 0 }
+        in_daemon && $1 ~ /^[[:space:]]*socket_path[[:space:]]*$/ {
+            v = $2
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            gsub(/^"|"$/, "", v)
+            print v
+        }
+    ' "$config_file" 2>/dev/null | tail -n1
+}
+
+# Stop any running atuin daemon. Split out so tests can replace it: the real
+# thing signals processes system-wide. The bracketed pattern cannot match the
+# command line of a shell that is running this very hint (#404).
+doctor_fix_atuin_stop_daemon() {
+    local pkill_bin=""
+    pkill_bin="$(doctor_fix_system_binary_path pkill 2>/dev/null || true)"
+    [[ -n "$pkill_bin" ]] || return 0
+    "$pkill_bin" -f '[a]tuin daemon' 2>/dev/null || true
+    return 0
+}
+
+# Start the atuin daemon detached and wait (up to ~3s) for it to bind the
+# expected socket. rc 0 when the socket appears, 1 otherwise.
+doctor_fix_atuin_start_daemon() {
+    local atuin_bin="$1"
+    local socket_path="$2"
+    local setsid_bin=""
+    setsid_bin="$(doctor_fix_system_binary_path setsid 2>/dev/null || true)"
+
+    # A stale socket file makes the daemon fail to bind; the check already
+    # established nothing is listening on it before dispatching here.
+    if [[ -S "$socket_path" ]]; then
+        rm -f "$socket_path" 2>/dev/null || true
+    fi
+
+    if [[ -n "$setsid_bin" ]]; then
+        (cd / && "$setsid_bin" "$atuin_bin" daemon >/dev/null 2>&1 < /dev/null &)
+    else
+        (cd / && "$atuin_bin" daemon >/dev/null 2>&1 < /dev/null &)
+    fi
+
+    local attempt=0
+    while [[ $attempt -lt 30 ]]; do
+        [[ -S "$socket_path" ]] && return 0
+        sleep 0.1
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+# Pin atuin's daemon socket_path to a TMPDIR-independent path and (re)start the
+# daemon so shell and daemon agree on one socket (#358). Same edit the
+# installer's _cli_pin_atuin_daemon_socket makes, but journaled for `acfs undo`
+# and reachable from `acfs doctor --fix --yes` (#404).
+fix_atuin_daemon_socket() {
+    local check_id="$1"
+    local runtime_home=""
+    runtime_home="$(doctor_fix_runtime_home)"
+    local config_dir="$runtime_home/.config/atuin"
+    local config_file="$config_dir/config.toml"
+    local default_socket="$runtime_home/.local/share/atuin/atuin-daemon.sock"
+    local atuin_bin=""
+    atuin_bin="$(doctor_fix_binary_path atuin 2>/dev/null || true)"
+
+    # Guard: the check only fires with atuin installed and a readable config
+    # that enables the daemon; anything else is not ours to repair.
+    if [[ -z "$atuin_bin" ]]; then
+        doctor_fix_log WARN "atuin not found; cannot repair its daemon socket"
+        FIXES_MANUAL+=("$check_id|Install atuin first|acfs update")
+        FIX_MANUAL=$((FIX_MANUAL + 1))
+        return 1
+    fi
+    if [[ ! -f "$config_file" ]]; then
+        doctor_fix_log INFO "atuin config not found at $config_file; nothing to pin"
+        return 0
+    fi
+    if [[ -L "$config_file" || -L "$config_dir" ]]; then
+        doctor_fix_log WARN "Refusing to edit atuin config through a symlink: $config_file"
+        FIXES_MANUAL+=("$check_id|Pin daemon.socket_path by hand|set socket_path = \"$default_socket\" under [daemon] in $config_file")
+        FIX_MANUAL=$((FIX_MANUAL + 1))
+        return 1
+    fi
+
+    local configured_socket=""
+    configured_socket="$(doctor_fix_atuin_configured_socket "$config_file")"
+    local need_pin=false
+    [[ -n "$configured_socket" ]] || need_pin=true
+    local target_socket="${configured_socket:-$default_socket}"
+
+    if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
+        if [[ "$need_pin" == "true" ]]; then
+            FIXES_DRY_RUN+=("fix.atuin.daemon_socket|Pin atuin daemon socket_path and restart the daemon|$config_file|socket_path = \"$default_socket\"")
+            doctor_fix_log DRY "Pin atuin daemon.socket_path to $default_socket in $config_file and restart the daemon"
+        else
+            FIXES_DRY_RUN+=("fix.atuin.daemon_socket|Restart the atuin daemon on its configured socket|$target_socket|$atuin_bin daemon")
+            doctor_fix_log DRY "Restart the atuin daemon so it binds $target_socket"
+        fi
+        return 0
+    fi
+
+    if [[ "$need_pin" == "true" ]]; then
+        local backup_json=""
+        local restore_command=""
+        if ! backup_json=$(create_backup "$config_file" "atuin-daemon-socket"); then
+            doctor_fix_log ERROR "Failed to back up $config_file before pinning socket_path"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+        restore_command="$(autofix_backup_restore_command "$backup_json" 2>/dev/null || true)"
+        if [[ -z "$restore_command" ]]; then
+            doctor_fix_log ERROR "Failed to build a restore command for $config_file"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+
+        # Insert under an existing [daemon] table, else append one. Atuin does
+        # not expand env vars in config.toml, so the literal path is written.
+        local tmp_config="$config_file.acfs-tmp.$$"
+        local wrote=false
+        if grep -Eq '^\[daemon\]' "$config_file"; then
+            if awk -v sock="$default_socket" '
+                { print }
+                /^\[daemon\]/ && !done { printf "socket_path = \"%s\"\n", sock; done = 1 }
+            ' "$config_file" > "$tmp_config" 2>/dev/null; then
+                wrote=true
+            fi
+        else
+            if {
+                cat "$config_file"
+                printf '\n# Managed by ACFS: pin the daemon socket to a TMPDIR-independent path (#358)\n'
+                printf '[daemon]\n'
+                printf 'socket_path = "%s"\n' "$default_socket"
+            } > "$tmp_config" 2>/dev/null; then
+                wrote=true
+            fi
+        fi
+        if [[ "$wrote" != "true" ]] || ! mv -f "$tmp_config" "$config_file" 2>/dev/null; then
+            rm -f "$tmp_config" 2>/dev/null || true
+            doctor_fix_log ERROR "Failed to write socket_path into $config_file"
+            if ! doctor_fix_run_rollback_command "$restore_command" false; then
+                doctor_fix_log ERROR "Failed to restore $config_file after the write failure"
+            fi
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+
+        if ! doctor_fix_record_change_or_rollback \
+            "$restore_command" \
+            false \
+            "config" "Pinned atuin daemon.socket_path to $default_socket" \
+            "$restore_command" \
+            false "info" "$(doctor_fix_files_json "$config_file")" "$(doctor_fix_backups_json_array "${backup_json:-[]}")" "[]"; then
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+
+        doctor_fix_log INFO "Pinned atuin daemon.socket_path to $default_socket"
+        FIXES_APPLIED+=("fix.atuin.daemon_socket|Pinned atuin daemon.socket_path to $default_socket")
+        FIX_APPLIED=$((FIX_APPLIED + 1))
+        target_socket="$default_socket"
+    fi
+
+    # Restart so the daemon binds the configured path. Starting a user daemon
+    # is not journaled: undoing the config edit and re-running the daemon is
+    # the reverse, and there is nothing durable to roll back.
+    doctor_fix_atuin_stop_daemon
+    if doctor_fix_atuin_start_daemon "$atuin_bin" "$target_socket"; then
+        doctor_fix_log INFO "atuin daemon restarted on $target_socket"
+        if [[ "$need_pin" != "true" ]]; then
+            FIXES_APPLIED+=("fix.atuin.daemon_socket|Restarted the atuin daemon on $target_socket")
+            FIX_APPLIED=$((FIX_APPLIED + 1))
+        fi
+        return 0
+    fi
+
+    doctor_fix_log ERROR "atuin daemon did not bind $target_socket within 3s after restart"
+    FIXES_MANUAL+=("$check_id|Start the atuin daemon by hand and check its output|$atuin_bin daemon")
+    FIX_MANUAL=$((FIX_MANUAL + 1))
     FIX_FAILED=$((FIX_FAILED + 1))
     return 1
 }
@@ -3123,6 +3320,15 @@ run_doctor_fix() {
             *) shift ;;
         esac
     done
+
+    # Say which tier of fixes this run may apply, so a `--fix --yes` that did
+    # not reach here is visible in the log instead of indistinguishable from
+    # a run with nothing to fix (#401).
+    if [[ "$DOCTOR_FIX_YES" == "true" ]]; then
+        doctor_fix_log INFO "warning-level fixes enabled (--yes)"
+    else
+        doctor_fix_log INFO "warning-level fixes disabled (pass --yes to apply them)"
+    fi
 
     # Fixers write ~/.zshrc, ~/.claude/settings.json, plugin clones, and
     # bun/global installs as the *invoking* uid. Running them as root for a

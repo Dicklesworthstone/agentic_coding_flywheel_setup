@@ -7196,8 +7196,14 @@ update_stack() {
         run_cmd "JeffreysPrompts" update_run_verified_installer jfp
     fi
 
-    # UBS - always install/update (installer is idempotent)
-    run_cmd "Ultimate Bug Scanner" update_run_verified_installer ubs --easy-mode
+    # UBS - always install/update (installer is idempotent). --skip-hooks: the
+    # nightly runs from $HOME, and UBS's --easy-mode auto-accepted its hook
+    # prompts there, re-installing the legacy git_safety_guard that
+    # cleanup_legacy_git_safety_guard had just removed and writing
+    # $CLAUDE_PROJECT_DIR-relative hook paths into the user-level
+    # ~/.claude/settings.json every night (#400). ACFS wires agent hooks (DCG)
+    # itself; per-project UBS hooks are a choice made inside a repo.
+    run_cmd "Ultimate Bug Scanner" update_run_verified_installer ubs --easy-mode --skip-hooks
 
     # Beads Viewer - always install/update
     run_cmd "Beads Viewer" update_run_verified_installer bv
