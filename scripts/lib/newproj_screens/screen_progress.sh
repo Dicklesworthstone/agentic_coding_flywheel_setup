@@ -23,6 +23,19 @@ SCREEN_PROGRESS_NEXT="success"
 # Step status tracking
 declare -gA STEP_STATUS=()
 declare -ga STEP_ORDER=()
+CREATION_REQUEST=""
+CREATION_PROJECT_DIR=""
+
+# Bind retry to the settings that produced the retained files. This is an
+# opaque comparison string, never shell source and never passed to eval.
+creation_request() {
+    local key value
+    for key in project_dir project_name tech_stack agents_md_custom \
+        enable_agents enable_br enable_claude enable_ubsignore; do
+        value=$(state_get "$key") || return 1
+        printf '%q=%q\n' "$key" "$value"
+    done
+}
 
 # Initialize steps based on features
 init_creation_steps() {
@@ -313,8 +326,12 @@ venv/
                     esac
                 done
 
-                export AGENTS_ENABLE_BR=$(state_get "enable_br")
-                agents_content=$(generate_agents_md "$project_name" "${tech_array[@]}")
+                AGENTS_ENABLE_BR=$(state_get "enable_br") || return 1
+                export AGENTS_ENABLE_BR
+                if ! agents_content=$(generate_agents_md "$project_name" "${tech_array[@]}"); then
+                    update_step "$step" "error"
+                    return 1
+                fi
             fi
 
             if try_write_file "$project_dir/AGENTS.md" "$agents_content"; then
@@ -391,72 +408,68 @@ __pycache__/
             ;;
 
         finalize)
-            # Make initial commit if git was initialized
-            if [[ -d "$project_dir/.git" ]]; then
-                (
-                    cd "$project_dir" || exit 1
-                    git add -A 2>/dev/null
-                    git commit -m "Initial commit
-
-Created with ACFS newproj wizard.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)" 2>/dev/null
-                ) || true
-            fi
-
+            # Users may have added work while repairing a failed step. Never
+            # stage or commit that work implicitly, and never hide git errors
+            # behind a successful project-creation result.
             update_step "$step" "success"
             return 0
             ;;
 
         *)
             log_warn "Unknown step: $step"
-            update_step "$step" "success"
-            return 0
+            update_step "$step" "error"
+            return 1
             ;;
     esac
 }
 
 # Run all creation steps
 run_creation() {
-    init_creation_steps
-    render_progress_screen_best_effort
-
-    # Begin transaction
-    local project_dir
-    project_dir=$(state_get "project_dir")
-    begin_project_creation "$project_dir"
-
-    local failed=false
-    local failed_step=""
-
-    for step in "${STEP_ORDER[@]}"; do
-        if ! execute_step "$step"; then
-            failed=true
-            failed_step="$step"
-            break
+    local project_dir request step
+    project_dir=$(state_get "project_dir") || return 1
+    request=$(creation_request) || return 1
+    if [[ "$project_dir" == "$CREATION_PROJECT_DIR" && -n "$CREATION_REQUEST" ]]; then
+        if [[ "$request" != "$CREATION_REQUEST" ]]; then
+            newproj_tty_printf '%s\n' 'The retained project was created with different settings.' \
+                'Restore the original settings to retry, or choose a different directory. Nothing was removed.'
+            return 1
         fi
-        sleep 0.2  # Small delay for visual effect
-    done
-
-    if [[ "$failed" == "true" ]]; then
-        # Rollback — display to /dev/tty (issue #214)
-        echo "" > /dev/tty
-        echo -e "${TUI_ERROR}${BOX_CROSS} Failed at: $(get_step_name "$failed_step")${TUI_NC}" > /dev/tty
-        echo "" > /dev/tty
-
-        if read_yes_no "Rollback changes?" "y"; then
-            rollback_project_creation
-            echo -e "${TUI_WARNING}Changes rolled back${TUI_NC}" > /dev/tty
-        else
-            suspend_project_creation_cleanup
-        fi
-
-        return 1
     else
-        # Commit transaction
-        commit_project_creation
-        return 0
+        init_creation_steps || return 1
+        CREATION_PROJECT_DIR="$project_dir"
+        CREATION_REQUEST="$request"
+        begin_project_creation "$project_dir" || return 1
     fi
+    # A disconnect, signal, failed command, Retry, Back or Quit must never
+    # authorize recursive deletion. Keep the old helper's EXIT trap inactive
+    # before the first filesystem operation, not only after a reported error.
+    suspend_project_creation_cleanup || return 1
+    render_progress_screen_best_effort
+    for step in "${STEP_ORDER[@]}"; do
+        case "${STEP_STATUS[$step]:-pending}" in
+            success|skipped) continue ;;
+        esac
+        if ! execute_step "$step"; then
+            update_step "$step" "error"
+            newproj_tty_printf '\nFailed at: %s\nProject preserved: %s\n' \
+                "$(get_step_name "$step")" "$project_dir"
+            newproj_tty_printf '%s\n' 'Fix the cause, then retry the unfinished steps. No files were removed.'
+            return 1
+        fi
+    done
+    commit_project_creation || return 1
+    return 0
+}
+
+creation_read_key() {
+    local tty_fd
+    if { exec {tty_fd}</dev/tty; } 2>/dev/null; then
+        local status=0
+        IFS= read -rsn1 key <&"$tty_fd" || status=$?
+        exec {tty_fd}<&-
+        return "$status"
+    fi
+    IFS= read -rsn1 key
 }
 
 # Handle the progress screen
@@ -465,18 +478,15 @@ handle_progress_input() {
         echo "$SCREEN_PROGRESS_NEXT"
         return 0
     else
-        # Failed - offer retry or exit (display to /dev/tty, issue #214)
-        echo "" > /dev/tty
-        echo "Options:" > /dev/tty
-        echo "  [r] Retry" > /dev/tty
-        echo "  [b] Go back to edit" > /dev/tty
-        echo "  [q] Quit" > /dev/tty
+        newproj_tty_printf '\n%s\n' 'Options:'
+        newproj_tty_printf '%s\n' '  [r] Retry unfinished steps (preserve completed work)' \
+            '  [b] Go back' '  [q] Quit and preserve the project'
 
+        local key
         while true; do
-            read -rsn1 key < /dev/tty
+            creation_read_key || return 2
             case "$key" in
                 'r'|'R')
-                    rollback_project_creation >/dev/null 2>&1 || true
                     return 0  # Will re-run when screen is called again
                     ;;
                 'b'|'B')
