@@ -5,6 +5,460 @@
 # Supports both CLI mode and interactive TUI wizard mode
 # ============================================================
 
+# Reviewed bootstrap is self-contained: no TUI initialization or configuration
+# writes occur while planning. Python's standard library supplies JSON and
+# no-follow, exclusive filesystem operations for the apply boundary.
+newproj_reviewed_main() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' 'Error: reviewed project bootstrap requires python3.' >&2
+        return 1
+    fi
+    python3 - "$@" <<'ACFS_BOOTSTRAP_PY'
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import stat
+import subprocess
+import sys
+
+SCHEMA = "acfs.project-bootstrap.v1"
+FEATURES = ("git", "beads", "readme", "gitignore", "agents", "starter", "ci", "prompt")
+PRESET = ("git", "readme", "gitignore", "agents", "starter", "ci", "prompt")
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+
+
+def digest(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def identity(info):
+    return {"device": info.st_dev, "inode": info.st_ino}
+
+
+def templates(name, stack, features):
+    files = {}
+    if stack == "python":
+        command = ["python3", "-B", "-m", "unittest", "discover", "-s", "tests", "-v"]
+        starter = {
+            "src/__init__.py": "",
+            "src/app.py": 'def greet(name: str) -> str:\n    """Return a greeting for a non-empty name."""\n    name = name.strip()\n    if not name:\n        raise ValueError("name must not be empty")\n    return f"Hello, {name}!"\n',
+            "tests/test_app.py": 'import unittest\n\nfrom src.app import greet\n\n\nclass GreetingTests(unittest.TestCase):\n    def test_greeting(self):\n        self.assertEqual(greet("world"), "Hello, world!")\n\n    def test_whitespace(self):\n        self.assertEqual(greet("  Ada  "), "Hello, Ada!")\n\n    def test_empty_name(self):\n        with self.assertRaises(ValueError):\n            greet("  ")\n\n\nif __name__ == "__main__":\n    unittest.main()\n',
+        }
+    else:
+        command = ["bun", "test"]
+        starter = {
+            "package.json": json.dumps({"name": name.lower(), "version": "0.1.0", "private": True, "type": "module", "scripts": {"test": "bun test"}}, indent=2) + "\n",
+            "src/app.ts": 'export function greet(name: string): string {\n  const normalized = name.trim();\n  if (!normalized) throw new Error("name must not be empty");\n  return `Hello, ${normalized}!`;\n}\n',
+            "tests/app.test.ts": 'import { expect, test } from "bun:test";\nimport { greet } from "../src/app";\n\ntest("greets a name", () => expect(greet("world")).toBe("Hello, world!"));\ntest("trims whitespace", () => expect(greet("  Ada  ")).toBe("Hello, Ada!"));\ntest("rejects empty names", () => expect(() => greet("  ")).toThrow());\n',
+        }
+    check = " ".join(command)
+    if "starter" in features:
+        files.update(starter)
+    if "readme" in features:
+        files["README.md"] = f"# {name}\n\nCreated from a reviewed ACFS bootstrap plan.\n\n" + (
+            f"## Verify the starter\n\n```sh\n{check}\n```\n\nThe starter has no third-party dependencies. Install the {stack} runtime\nwith ACFS before running it; bootstrap does not install packages or call models.\n\n" if "starter" in features else ""
+        ) + "## First change\n\nDescribe the first useful feature before asking an agent to implement it.\nReview the diff and run checks before committing. No remote is configured.\n"
+    if "gitignore" in features:
+        files[".gitignore"] = ".env\n.env.*\n!.env.example\n*.log\n__pycache__/\n*.pyc\n.venv/\nnode_modules/\ndist/\ncoverage/\n.claude/settings.local.json\n/.acfs/bootstrap-state.json\n/.acfs/bootstrap-state.tmp-*\n"
+    if "agents" in features:
+        files["AGENTS.md"] = f"# AGENTS.md — {name}\n\n## Working agreement\n\nRead the README and inspect existing code before editing.\nDo not delete files, overwrite user work, reset Git history, publish, or push\nwithout explicit permission. Never add credentials to code, prompts, or logs.\nDo not enable permission-bypass flags or change global agent settings.\nKeep changes small enough to review and report which checks actually ran.\n" + (
+            f"\n## Verification\n\nRun `{check}` from the project root. Keep the starter checks passing.\n" if "starter" in features else ""
+        ) + ("\nUse Bun for JavaScript/TypeScript; do not introduce npm/yarn/pnpm lockfiles.\n" if stack == "typescript" else "\nPrefer the Python standard library until a dependency is justified.\n")
+    if "ci" in features:
+        files["scripts/check.sh"] = '#!/usr/bin/env sh\nset -eu\ncd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"\nexec ' + check + '\n'
+    if "prompt" in features:
+        files["FIRST_AGENT_PROMPT.md"] = "# First agent task\n\n" + (
+            "Read AGENTS.md and README.md, then inspect the starter code and tests.\n" if "agents" in features and "readme" in features else "Inspect the project files and any existing project policy before editing.\n"
+        ) + (
+            f"Run `{check}` and report the result without installing anything.\n" if "starter" in features else "Identify available checks and explain how to run them.\n"
+        ) + "Ask me what useful feature to build next, propose one bounded change and\nits tests, and wait for my approval before changing code. Do not delete,\ncommit, push, invoke other agents, change authentication, or run network\ncommands. Never include credentials or machine-specific secrets in output.\n"
+    if "beads" in features:
+        if "AGENTS.md" in files:
+            files["AGENTS.md"] += "\n## Coordination\n\nUse `br ready --json` to find work and `br update ID --status in_progress`\nto claim it. Create the first bead only after agreeing on its scope.\nUse `br close ID --reason \"Completed\"` after verification, and\n`br sync --flush-only` before reviewing and committing `.beads/` changes.\nDo not edit `.beads/*.jsonl` directly.\n"
+        if "FIRST_AGENT_PROMPT.md" in files:
+            files["FIRST_AGENT_PROMPT.md"] += "\nRead `br ready --json` before proposing work. Do not create or claim a bead\nuntil I approve the scope; an empty board is expected for a new project.\n"
+    return files, [command] if "starter" in features else []
+
+
+def make_plan(name, directory, stack, features, target):
+    if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name):
+        raise ValueError("project name must start with a letter and contain at most 64 letters, digits, _ or -")
+    if stack not in ("python", "typescript"):
+        raise ValueError("stack must be python or typescript")
+    if not isinstance(features, list) or not features or any(type(f) is not str or f not in FEATURES for f in features):
+        raise ValueError("select an explicit preset or a non-empty --with feature list")
+    if len(set(features)) != len(features):
+        raise ValueError("features must not contain duplicates")
+    features = [f for f in FEATURES if f in features]
+    if "beads" in features and "git" not in features:
+        raise ValueError("beads requires explicitly selecting git too")
+    if "ci" in features and "starter" not in features:
+        raise ValueError("ci requires explicitly selecting starter too")
+    if not isinstance(directory, str) or not directory.startswith("/") or any(ord(c) < 32 for c in directory):
+        raise ValueError("project directory must be an absolute path without control characters")
+    if str(Path(directory)) != directory or ".." in Path(directory).parts or directory == "/":
+        raise ValueError("project directory must be canonical, not a filesystem root")
+    if type(target) is not dict or set(target) != {"parent", "directory"}:
+        raise ValueError("invalid target snapshot")
+    for item in (target["parent"], target["directory"]):
+        if item is not None and (type(item) is not dict or set(item) != {"device", "inode"} or any(type(v) is not int or v < 0 for v in item.values())):
+            raise ValueError("invalid target identity")
+    if target["parent"] is None:
+        raise ValueError("missing parent identity")
+    files, checks = templates(name, stack, features)
+    plan = {
+        "schema": SCHEMA,
+        "project": {"name": name, "directory": directory, "stack": stack},
+        "features": features,
+        "target": target,
+        "files": [{"path": path, "content": content, "sha256": digest(content), "mode": "0755" if path == "scripts/check.sh" else "0644"} for path, content in sorted(files.items())],
+        "commands": ([{"id": "git-init", "argv": ["git", "init", "--template=", "--initial-branch=main", "."], "writes": [".git/"]}] if "git" in features else []) + ([{"id": "beads-init", "argv": ["br", "init"], "verify_argv": ["br", "ready", "--json"], "writes": [".beads/"]}] if "beads" in features else []),
+        "state_file": ".acfs/bootstrap-state.json",
+        "verification_commands": checks,
+        "effects": {"network": False, "model_calls": False, "global_settings": False, "commit": False, "push": False},
+    }
+    plan["plan_id"] = digest(canonical(plan))
+    return plan
+
+
+def open_directory(path):
+    # Walk without following symlinks, including ancestor components.
+    fd = os.open("/", DIR_FLAGS)
+    try:
+        for part in Path(path).parts[1:]:
+            next_fd = os.open(part, DIR_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def target_snapshot(directory):
+    parent = open_directory(str(Path(directory).parent))
+    try:
+        try:
+            target = os.open(Path(directory).name, DIR_FLAGS, dir_fd=parent)
+        except FileNotFoundError:
+            current = None
+        else:
+            try:
+                if os.listdir(target):
+                    raise ValueError("project directory is not empty; choose a new directory")
+                current = identity(os.fstat(target))
+            finally:
+                os.close(target)
+        return {"parent": identity(os.fstat(parent)), "directory": current}
+    finally:
+        os.close(parent)
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON field in plan")
+        result[key] = value
+    return result
+
+
+def read_plan(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "r", encoding="utf-8") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("plan must be a regular JSON file")
+        text = stream.read(1024 * 1024 + 1)
+    if len(text) > 1024 * 1024:
+        raise ValueError("plan exceeds 1 MiB")
+    value = json.loads(text, object_pairs_hook=unique_object)
+    if type(value) is not dict or type(value.get("project")) is not dict:
+        raise ValueError("invalid bootstrap plan")
+    project = value["project"]
+    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"))
+    if value != expected:
+        raise ValueError("plan differs from this ACFS version's templates; regenerate and review it")
+    return value
+
+
+def write_new(directory_fd, name, content, mode):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=directory_fd)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.write(content)
+        stream.flush()
+        os.fchmod(stream.fileno(), mode)
+        os.fsync(stream.fileno())
+
+
+def read_regular(directory_fd, name, limit=1024 * 1024):
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
+    with os.fdopen(fd, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("bootstrap input must be a regular file: " + name)
+        data = stream.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError("bootstrap input is too large: " + name)
+        return data
+
+
+def file_parent(root, path, create=False):
+    fd = os.dup(root)
+    try:
+        for part in path.split("/")[:-1]:
+            if create:
+                try:
+                    os.mkdir(part, 0o755, dir_fd=fd)
+                except FileExistsError:
+                    pass
+            next_fd = os.open(part, DIR_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def check_existing_files(root, plan):
+    # Check the complete selection before writing any missing file. A resume
+    # must never overwrite edits made while the bootstrap was interrupted.
+    for entry in plan["files"]:
+        try:
+            parent = file_parent(root, entry["path"])
+        except FileNotFoundError:
+            continue
+        try:
+            try:
+                data = read_regular(parent, entry["path"].split("/")[-1])
+            except FileNotFoundError:
+                continue
+            if data != entry["content"].encode("utf-8"):
+                raise ValueError("planned file was edited; refusing to overwrite: " + entry["path"])
+        finally:
+            os.close(parent)
+
+
+def check_tool_tree(root, name):
+    # git/br may traverse their own metadata: reject pre-existing links and
+    # special files there rather than letting a resume redirect their writes.
+    try:
+        fd = os.open(name, DIR_FLAGS, dir_fd=root)
+    except FileNotFoundError:
+        return False
+    try:
+        for child in os.listdir(fd):
+            info = os.stat(child, dir_fd=fd, follow_symlinks=False)
+            if stat.S_ISDIR(info.st_mode):
+                check_tool_tree(fd, child)
+            elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError("unsafe tool metadata; review it before resuming")
+        return True
+    finally:
+        os.close(fd)
+
+
+def save_state(state_dir, state):
+    import uuid
+    temporary = "bootstrap-state.tmp-" + uuid.uuid4().hex
+    write_new(state_dir, temporary, canonical(state) + "\n", 0o600)
+    os.replace(temporary, "bootstrap-state.json", src_dir_fd=state_dir, dst_dir_fd=state_dir)
+    os.fsync(state_dir)
+
+
+def run_tool(executable, arguments, env):
+    import signal
+    # All argv are fixed by regenerated templates, never evaluated as shell.
+    process = subprocess.Popen([executable, *arguments], env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               start_new_session=True)
+    try:
+        code = process.wait(timeout=30)
+    except BaseException:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        raise
+    if code:
+        raise ValueError(f"{Path(executable).name} failed (exit {code}); partial project retained")
+
+
+def apply(plan, resume=False):
+    import fcntl
+    directory = plan["project"]["directory"]
+    parent = open_directory(str(Path(directory).parent))
+    root = state_dir = None
+    state = None
+    touched = False
+    try:
+        if identity(os.fstat(parent)) != plan["target"]["parent"]:
+            raise ValueError("parent directory changed after review; regenerate the plan")
+        name = Path(directory).name
+        if plan["target"]["directory"] is None and not resume:
+            # Preflight before any mutation, including creation of the root.
+            for command in plan["commands"]:
+                if not shutil.which(command["argv"][0]):
+                    raise ValueError("required executable is missing: " + command["argv"][0])
+            os.mkdir(name, 0o700, dir_fd=parent)
+            touched = True
+        root = os.open(name, DIR_FLAGS, dir_fd=parent)
+        fcntl.flock(root, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        root_identity = identity(os.fstat(root))
+        if plan["target"]["directory"] is not None and root_identity != plan["target"]["directory"]:
+            raise ValueError("project directory changed after review; regenerate the plan")
+        if resume:
+            state_dir = os.open(".acfs", DIR_FLAGS, dir_fd=root)
+            state = json.loads(read_regular(state_dir, "bootstrap-state.json"), object_pairs_hook=unique_object)
+            if type(state) is not dict or set(state) != {"schema", "plan_id", "directory_identity", "status", "completed_files", "completed_commands"}:
+                raise ValueError("invalid bootstrap checkpoint")
+            if state["schema"] != SCHEMA or state["plan_id"] != plan["plan_id"] or state["directory_identity"] != root_identity:
+                raise ValueError("checkpoint does not belong to this plan and project")
+            if state["status"] not in ("applying", "failed", "complete"):
+                raise ValueError("invalid checkpoint status")
+            for field, expected in (("completed_files", [f["path"] for f in plan["files"]]), ("completed_commands", [c["id"] for c in plan["commands"]])):
+                completed = state[field]
+                if type(completed) is not list or completed != expected[:len(completed)]:
+                    raise ValueError("invalid checkpoint progress")
+            check_existing_files(root, plan)
+            for feature, metadata in (("git", ".git"), ("beads", ".beads")):
+                if feature in plan["features"]:
+                    exists = check_tool_tree(root, metadata)
+                    if feature + "-init" in state["completed_commands"] and not exists:
+                        raise ValueError("completed tool metadata is missing: " + metadata)
+        elif os.listdir(root):
+            raise ValueError("project directory is no longer empty; use --resume only for a reviewed interrupted bootstrap")
+        # Resolve missing work now; completed commands need not be installed
+        # again just to verify or resume file-only work.
+        executables = {}
+        for command in plan["commands"]:
+            if state is not None and command["id"] in state["completed_commands"]:
+                continue
+            executable = shutil.which(command["argv"][0])
+            if not executable:
+                raise ValueError("required executable is missing: " + command["argv"][0])
+            executables[command["id"]] = os.path.abspath(executable)
+        if state is None:
+            os.mkdir(".acfs", 0o700, dir_fd=root)
+            state_dir = os.open(".acfs", DIR_FLAGS, dir_fd=root)
+            state = {"schema": SCHEMA, "plan_id": plan["plan_id"], "directory_identity": root_identity,
+                     "status": "applying", "completed_files": [], "completed_commands": []}
+            write_new(state_dir, "bootstrap-state.json", canonical(state) + "\n", 0o600)
+            os.fsync(state_dir)
+            touched = True
+        for entry in plan["files"]:
+            fd = file_parent(root, entry["path"], create=True)
+            try:
+                leaf = entry["path"].split("/")[-1]
+                try:
+                    write_new(fd, leaf, entry["content"], int(entry["mode"], 8))
+                    os.fsync(fd)
+                    touched = True
+                except FileExistsError:
+                    if not resume or read_regular(fd, leaf) != entry["content"].encode("utf-8"):
+                        raise ValueError("planned file already exists or changed: " + entry["path"])
+                if entry["path"] not in state["completed_files"]:
+                    state["completed_files"].append(entry["path"])
+                    save_state(state_dir, state)
+            finally:
+                os.close(fd)
+        os.fchdir(root)
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "BEADS_", "BR_"))}
+        env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0"})
+        for command in plan["commands"]:
+            if command["id"] in state["completed_commands"]:
+                continue
+            executable = executables[command["id"]]
+            # br init may have succeeded just before a crash prevented the
+            # checkpoint write. A successful local ready probe verifies that
+            # database rather than blindly initializing it a second time.
+            if command["id"] == "beads-init" and check_tool_tree(root, ".beads"):
+                run_tool(executable, ["ready", "--json"], env)
+            else:
+                run_tool(executable, command["argv"][1:], env)
+            metadata = ".beads" if command["id"] == "beads-init" else ".git"
+            if not check_tool_tree(root, metadata):
+                raise ValueError("tool exited successfully without creating " + metadata)
+            if command["id"] == "beads-init":
+                run_tool(executable, ["ready", "--json"], env)
+            state["completed_commands"].append(command["id"])
+            save_state(state_dir, state)
+        state["status"] = "complete"
+        save_state(state_dir, state)
+        return {"status": "resumed" if resume else "created", "plan_id": plan["plan_id"], "directory": directory,
+                "created_files": state["completed_files"], "completed_commands": state["completed_commands"],
+                "verification_commands": plan["verification_commands"],
+                "note": "Review the files and run the verification commands. No agent, commit, or push was started."}
+    except BaseException:
+        if state is not None and touched:
+            state["status"] = "failed"
+            try:
+                save_state(state_dir, state)
+            except (OSError, ValueError):
+                pass  # Preserve the original error and the last durable checkpoint.
+        if touched:
+            print("Partial project retained at " + directory + "; nothing was removed. Review it, then retry the same plan with --apply PLAN.json --yes --resume.", file=sys.stderr)
+        raise
+    finally:
+        if state_dir is not None:
+            os.close(state_dir)
+        if root is not None:
+            os.close(root)
+        os.close(parent)
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="acfs newproj", description="Review a deterministic first-project plan, then explicitly apply it.")
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--plan", metavar="NAME")
+    action.add_argument("--apply", metavar="PLAN_JSON")
+    parser.add_argument("directory", nargs="?")
+    parser.add_argument("--stack", choices=("python", "typescript"))
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--preset", choices=("first-project",))
+    selection.add_argument("--with", dest="features", metavar=",".join(FEATURES))
+    parser.add_argument("--yes", action="store_true", help="authorize only the reviewed apply operation")
+    parser.add_argument("--resume", action="store_true", help="resume this exact reviewed plan without replacing edited files")
+    parser.add_argument("--beads", action="store_true", help="also select local Beads initialization (requires git)")
+    args = parser.parse_args()
+    if args.apply:
+        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads)):
+            parser.error("use --apply PLAN_JSON --yes without plan overrides")
+        result = apply(read_plan(args.apply), args.resume)
+    else:
+        if args.yes or args.resume:
+            parser.error("--yes and --resume apply only to --apply")
+        if not args.preset and not args.features:
+            parser.error("select --preset first-project or --with FEATURES explicitly")
+        # Resolve parents once for a portable reviewable absolute destination;
+        # apply still walks the resulting path without following symlinks.
+        raw = Path(args.directory or str(Path(os.environ.get("ACFS_PROJECTS_DIR", "/data/projects")) / args.plan)).expanduser()
+        directory = str(raw.parent.resolve(strict=True) / raw.name)
+        result = make_plan(args.plan, directory, args.stack or "python", (list(PRESET) if args.preset else args.features.split(",")) + (["beads"] if args.beads else []), target_snapshot(directory))
+    print(json.dumps(result, indent=2, ensure_ascii=True))
+
+
+try:
+    main()
+except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
+    print(json.dumps({"status": "failed", "error": str(error)}), file=sys.stderr)
+    sys.exit(1)
+ACFS_BOOTSTRAP_PY
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" && ( "${1:-}" == "--plan" || "${1:-}" == "--apply" ) ]]; then
+    newproj_reviewed_main "$@"
+    exit $?
+fi
+
 set -e
 
 # Get script directory for sourcing other modules
@@ -121,6 +575,16 @@ print_help() {
     echo "Interactive mode:"
     echo "  -i, --interactive   Launch TUI wizard for guided project setup"
     echo "                      (recommended for first-time users)"
+    echo ""
+    echo "Reviewed bootstrap (Python 3, no automatic agent or network calls):"
+    echo "  --plan NAME [DIR] --preset first-project --stack python|typescript"
+    echo "                      Print a reviewable JSON plan; creates nothing"
+    echo "  --plan NAME [DIR] --with git,readme,gitignore,agents,starter,ci,prompt"
+    echo "                      Include only explicitly selected features"
+    echo "  --apply PLAN.json --yes  Apply reviewed files without overwriting work"
+    echo ""
+    echo "  --beads               Include local Beads initialization in a plan"
+    echo "  --apply PLAN.json --yes --resume  Continue an interrupted bootstrap"
     echo ""
     echo "CLI mode options:"
     echo "  --no-br         Skip beads (br) initialization"
