@@ -198,7 +198,8 @@ function setQueryParam(key: string, value: string | null): boolean {
   try {
     const url = new URL(window.location.href);
     url.search = stripSensitiveQueryState(url.search);
-    if (value === null || value === "") {
+    // An empty ref is an explicit clear override; null removes the override.
+    if (value === null) {
       url.searchParams.delete(key);
     } else {
       url.searchParams.set(key, value);
@@ -641,7 +642,12 @@ export function setSSHUsername(username: string): boolean {
   const normalized = normalizeSSHUsername(username);
   if (!normalized) return false;
   const storedOk = safeSetItem(SSH_USERNAME_KEY, normalized);
-  const urlOk = setQueryParam(SSH_USERNAME_QUERY_KEY, normalized === "ubuntu" ? null : normalized);
+  // Elide defaults only after durable storage accepted them; otherwise an old
+  // stored username would silently win when the URL override disappears.
+  const urlOk = setQueryParam(
+    SSH_USERNAME_QUERY_KEY,
+    storedOk && normalized === "ubuntu" ? null : normalized,
+  );
   if (storedOk || urlOk) {
     emitUserPreferencesUpdate();
   }
@@ -674,7 +680,10 @@ export function useSavedSSHUsername(): [string, (username: string) => void, bool
 // --- ACFS Ref (git ref pin) ---
 
 export function getACFSRef(): string | null {
-  const fromQuery = normalizeGitRef(getQueryParam(ACFS_REF_QUERY_KEY));
+  const queryRef = getQueryParam(ACFS_REF_QUERY_KEY);
+  // An empty query value records a cleared pin against read-only storage.
+  if (queryRef === "") return null;
+  const fromQuery = normalizeGitRef(queryRef);
   if (fromQuery) return fromQuery;
   return normalizeGitRef(safeGetItem(ACFS_REF_KEY));
 }
@@ -686,7 +695,7 @@ export function setACFSRef(ref: string | null): boolean {
   }
   const value = raw ? normalizeGitRef(raw) : null;
   const storedOk = value ? safeSetItem(ACFS_REF_KEY, value) : safeSetItem(ACFS_REF_KEY, "");
-  const urlOk = setQueryParam(ACFS_REF_QUERY_KEY, value);
+  const urlOk = setQueryParam(ACFS_REF_QUERY_KEY, value ?? (storedOk ? null : ""));
   if (storedOk || urlOk) {
     emitUserPreferencesUpdate();
   }
@@ -737,7 +746,10 @@ export function getModuleProfile(): ModuleSelectionProfileId {
 export function setModuleProfile(profile: ModuleSelectionProfileId): boolean {
   if (!VALID_WEB_PROFILES.has(profile)) return false;
   const storedOk = safeSetItem(MODULE_PROFILE_KEY, profile);
-  const urlOk = setQueryParam(MODULE_PROFILE_QUERY_KEY, profile === "full" ? null : profile);
+  const urlOk = setQueryParam(
+    MODULE_PROFILE_QUERY_KEY,
+    storedOk && profile === "full" ? null : profile,
+  );
   if (storedOk || urlOk) {
     emitUserPreferencesUpdate();
   }

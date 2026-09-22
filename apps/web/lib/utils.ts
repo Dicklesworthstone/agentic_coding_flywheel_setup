@@ -159,7 +159,8 @@ function isSafeQueryEntry(key: string, value: string): boolean {
     case "user":
       return normalizeSSHUsername(value) === value;
     case "ref":
-      return normalizeGitRef(value) === value;
+      // Empty is an explicit cleared installer pin when storage is read-only.
+      return value === "" || normalizeGitRef(value) === value;
     case "steps":
       // An empty list records an explicit reset when durable storage is blocked.
       return (

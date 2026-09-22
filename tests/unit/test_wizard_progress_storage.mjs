@@ -377,3 +377,103 @@ test('server-side calls cannot create or observe document-private fallback state
   assert.equal(b.prefs.setCheckedServices(['codex']), false);
   assert.deepEqual(Array.from(b.prefs.getCheckedServices()), []);
 });
+
+const usernameKey = 'agent-flywheel-ssh-username';
+const profileKey = 'agent-flywheel-module-profile';
+const refKey = 'agent-flywheel-acfs-ref';
+
+function seedNonDefaultInstallerPreferences(b) {
+  b.storage.set(usernameKey, 'old_operator');
+  b.storage.set(profileKey, 'minimal');
+  b.storage.set(refKey, 'release/old');
+}
+
+function assertDefaultInstallerPreferences(b) {
+  assert.equal(b.prefs.getSSHUsername(), 'ubuntu');
+  assert.equal(b.prefs.getModuleProfile(), 'full');
+  assert.equal(b.prefs.getACFSRef(), null);
+}
+
+test('restoring default installer choices overrides read-only non-default storage', async () => {
+  const b = await browser({ blockStorage: true });
+  seedNonDefaultInstallerPreferences(b);
+  assert.equal(b.prefs.setSSHUsername('ubuntu'), true);
+  assert.equal(b.prefs.setModuleProfile('full'), true);
+  assert.equal(b.prefs.setACFSRef(null), true);
+  assertDefaultInstallerPreferences(b);
+  assert.equal(b.storage.get(usernameKey), 'old_operator');
+  assert.equal(b.storage.get(profileKey), 'minimal');
+  assert.equal(b.storage.get(refKey), 'release/old');
+  assert.equal(b.params().get('user'), 'ubuntu');
+  assert.equal(b.params().get('profile'), 'full');
+  assert.equal(b.params().get('ref'), '', 'explicitly cleared pin is distinct from an absent override');
+});
+
+test('default installer choices survive privacy-safe navigation and reload', async () => {
+  const b = await browser({ blockStorage: true });
+  seedNonDefaultInstallerPreferences(b);
+  b.prefs.setSSHUsername('ubuntu');
+  b.prefs.setModuleProfile('full');
+  b.prefs.setACFSRef('   ');
+  b.navigate('/wizard/run-installer');
+  assertDefaultInstallerPreferences(b);
+  assert.equal(b.utils.urlContainsSensitiveState(b.window.location.href), false);
+  const reloaded = await browser({ search: b.window.location.search, blockStorage: true });
+  seedNonDefaultInstallerPreferences(reloaded);
+  assertDefaultInstallerPreferences(reloaded);
+});
+
+test('saved-preference hooks expose accepted defaults, not old command inputs', async () => {
+  const b = await browser({ blockStorage: true });
+  seedNonDefaultInstallerPreferences(b);
+  b.prefs.useSavedSSHUsername()[1]('ubuntu');
+  b.prefs.useSavedModuleProfile()[1]('full');
+  b.prefs.useSavedACFSRef()[1](null);
+  assert.equal(b.queryClient.getQueryData(b.prefs.userPreferencesKeys.sshUsername), 'ubuntu');
+  assert.equal(b.queryClient.getQueryData(b.prefs.userPreferencesKeys.moduleProfile), 'full');
+  assert.equal(b.queryClient.getQueryData(b.prefs.userPreferencesKeys.acfsRef), null);
+});
+
+test('recovered storage saves defaults and removes their URL overrides', async () => {
+  const b = await browser({ blockStorage: true });
+  seedNonDefaultInstallerPreferences(b);
+  b.prefs.setSSHUsername('ubuntu');
+  b.prefs.setModuleProfile('full');
+  b.prefs.setACFSRef(null);
+  b.controls.blockStorage = false;
+  assert.equal(b.prefs.setSSHUsername('ubuntu'), true);
+  assert.equal(b.prefs.setModuleProfile('full'), true);
+  assert.equal(b.prefs.setACFSRef(null), true);
+  assertDefaultInstallerPreferences(b);
+  assert.equal(b.params().has('user'), false);
+  assert.equal(b.params().has('profile'), false);
+  assert.equal(b.params().has('ref'), false);
+  assert.equal(b.storage.get(usernameKey), 'ubuntu');
+  assert.equal(b.storage.get(profileKey), 'full');
+  assert.equal(b.storage.get(refKey), '');
+});
+
+test('an explicit ref reset can be replaced by a valid new pin but not invalid input', async () => {
+  const b = await browser({ blockStorage: true });
+  b.storage.set(refKey, 'release/old');
+  assert.equal(b.prefs.setACFSRef(null), true);
+  assert.equal(b.prefs.getACFSRef(), null);
+  assert.equal(b.prefs.setACFSRef('bad ref'), false);
+  assert.equal(b.prefs.getACFSRef(), null);
+  assert.equal(b.prefs.setACFSRef('release/new'), true);
+  assert.equal(b.prefs.getACFSRef(), 'release/new');
+  assert.equal(b.utils.queryContainsSensitiveState('?ref='), false);
+  assert.equal(b.utils.queryContainsSensitiveState('?ref=bad%20ref'), true);
+});
+
+test('failed storage and history writes do not claim that installer defaults were restored', async () => {
+  const b = await browser({ blockStorage: true, blockHistory: true });
+  seedNonDefaultInstallerPreferences(b);
+  assert.equal(b.prefs.setSSHUsername('ubuntu'), false);
+  assert.equal(b.prefs.setModuleProfile('full'), false);
+  assert.equal(b.prefs.setACFSRef(null), false);
+  assert.equal(b.prefs.getSSHUsername(), 'old_operator');
+  assert.equal(b.prefs.getModuleProfile(), 'minimal');
+  assert.equal(b.prefs.getACFSRef(), 'release/old');
+  assert.equal(b.events.length, 0);
+});
