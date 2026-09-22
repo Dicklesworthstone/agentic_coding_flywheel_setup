@@ -26,7 +26,7 @@ import subprocess
 import sys
 
 SCHEMA = "acfs.project-bootstrap.v1"
-FEATURES = ("git", "beads", "readme", "gitignore", "agents", "starter", "ci", "prompt")
+FEATURES = ("git", "beads", "readme", "gitignore", "agents", "starter", "ci", "prompt", "agent-mail")
 PRESET = ("git", "readme", "gitignore", "agents", "starter", "ci", "prompt")
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
@@ -88,7 +88,111 @@ def templates(name, stack, features):
     return files, [command] if "starter" in features else []
 
 
-def make_plan(name, directory, stack, features, target):
+def mail_settings(value):
+    """Validate destinations without reading credentials or contacting a server."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    if type(value) is not dict or set(value) != {"url", "token_env"}:
+        raise ValueError("Agent Mail requires an explicit endpoint and optional token environment name")
+    url, token_env = value["url"], value["token_env"]
+    if type(url) is not str or not url.isascii() or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        raise ValueError("invalid Agent Mail endpoint")
+    parsed = urlsplit(url)
+    if (parsed.scheme not in ("http", "https") or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.query or parsed.fragment or "?" in url or "#" in url
+            or any(c in url for c in ('\\', '$', '{', '}', '"', "'", '`'))
+            or not re.fullmatch(r"/[A-Za-z0-9_./-]*/", parsed.path)):
+        raise ValueError("Agent Mail endpoint must be an HTTP(S) URL ending in /, without credentials, query, or fragment")
+    if parsed.port is not None and not 1 <= parsed.port <= 65535:
+        raise ValueError("invalid Agent Mail port")
+    try:
+        loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+    except ValueError:
+        loopback = False
+    if parsed.scheme == "http" and not loopback:
+        raise ValueError("unencrypted Agent Mail requires a literal loopback address; use HTTPS elsewhere")
+    if token_env is not None and (type(token_env) is not str or not re.fullmatch(r"[A-Z_][A-Z0-9_]{0,127}", token_env)):
+        raise ValueError("Agent Mail token environment name must contain uppercase letters, digits or underscores")
+    if not loopback and token_env is None:
+        raise ValueError("remote Agent Mail requires --agent-mail-token-env")
+    return {"url": url, "token_env": token_env}
+
+
+def mail_token(settings):
+    name = settings["token_env"]
+    if name is None:
+        return None
+    token = os.environ.get(name, "")
+    if not token or len(token) > 8192 or not re.fullmatch(r"[!-~]+", token):
+        raise ValueError("Agent Mail token environment variable is missing or invalid")
+    return token
+
+
+def ensure_mail_project(command, token):
+    """Use Agent Mail's stateless JSON HTTP API, not shell/curl or proxy env."""
+    import http.client
+    import signal
+    import ssl
+    from urllib.parse import urlsplit
+
+    def expired(signum, frame):
+        raise TimeoutError("Agent Mail request deadline exceeded")
+
+    parsed = urlsplit(command["url"])
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if token is not None:
+        headers["Authorization"] = "Bearer " + token
+    body = canonical({"jsonrpc": "2.0", "id": "acfs-project", "method": "tools/call",
+                      "params": {"name": "ensure_project", "arguments": command["arguments"]}})
+    connection = (http.client.HTTPSConnection(parsed.hostname, parsed.port, timeout=5, context=ssl.create_default_context())
+                  if parsed.scheme == "https" else http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5))
+    # Socket timeouts alone do not stop a peer that sends one byte at a time.
+    # This entrypoint is a Unix main process (the apply path already uses flock).
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, 10)
+    try:
+        connection.request("POST", parsed.path, body.encode("utf-8"), headers)
+        response = connection.getresponse()
+        if response.status != 200:
+            # Do not follow redirects or echo untrusted bodies (which may contain tokens).
+            raise ValueError("Agent Mail HTTP request failed (status " + str(response.status) + "); check the reviewed endpoint and authentication")
+        if response.getheader("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise ValueError("Agent Mail endpoint must provide the stateless JSON API")
+        data = response.read(65537)
+        if len(data) > 65536:
+            raise ValueError("Agent Mail response exceeds 64 KiB")
+        try:
+            envelope = json.loads(data, object_pairs_hook=unique_object)
+            if (type(envelope) is not dict or envelope.get("jsonrpc") != "2.0"
+                    or envelope.get("id") != "acfs-project" or "error" in envelope):
+                raise ValueError()
+            result = envelope["result"]
+            if type(result) is not dict or result.get("isError", False) is not False:
+                raise ValueError()
+            structured = result.get("structuredContent")
+            content = result.get("content", [])
+            if type(content) is not list:
+                raise ValueError()
+            texts = [entry["text"] for entry in content if type(entry) is dict and entry.get("type") == "text"]
+            if len(texts) > 1:
+                raise ValueError()
+            payload = json.loads(texts[0], object_pairs_hook=unique_object) if texts else structured
+            if structured is not None and payload != structured:
+                raise ValueError()
+            if type(payload) is not dict or payload.get("human_key") != command["arguments"]["human_key"]:
+                raise ValueError()
+        except (KeyError, ValueError, TypeError, UnicodeError):
+            raise ValueError("Agent Mail did not confirm registration of the reviewed project") from None
+    except (OSError, http.client.HTTPException):
+        raise ValueError("Agent Mail connection failed; check the service, TLS and authentication, then resume the same plan") from None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+        connection.close()
+
+
+def make_plan(name, directory, stack, features, target, agent_mail=None):
     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name):
         raise ValueError("project name must start with a letter and contain at most 64 letters, digits, _ or -")
     if stack not in ("python", "typescript"):
@@ -102,6 +206,10 @@ def make_plan(name, directory, stack, features, target):
         raise ValueError("beads requires explicitly selecting git too")
     if "ci" in features and "starter" not in features:
         raise ValueError("ci requires explicitly selecting starter too")
+    if ("agent-mail" in features) != (agent_mail is not None):
+        raise ValueError("select Agent Mail with --agent-mail URL; do not supply connection options without selecting it")
+    if agent_mail is not None:
+        agent_mail = mail_settings(agent_mail)
     if not isinstance(directory, str) or not directory.startswith("/") or any(ord(c) < 32 for c in directory):
         raise ValueError("project directory must be an absolute path without control characters")
     if str(Path(directory)) != directory or ".." in Path(directory).parts or directory == "/":
@@ -114,6 +222,40 @@ def make_plan(name, directory, stack, features, target):
     if target["parent"] is None:
         raise ValueError("missing parent identity")
     files, checks = templates(name, stack, features)
+    if agent_mail is not None:
+        server = {"type": "http", "url": agent_mail["url"]}
+        if agent_mail["token_env"]:
+            server["headers"] = {"Authorization": "Bearer ${" + agent_mail["token_env"] + "}"}
+        files[".mcp.json"] = json.dumps({"mcpServers": {"mcp-agent-mail": server}}, indent=2) + "\n"
+        # Keep machine-specific connection details out of commits even when
+        # gitignore was not otherwise selected. No credential values are stored.
+        files[".gitignore"] = files.get(".gitignore", "") + "/.mcp.json\n"
+        files["AGENT_MAIL.md"] = (
+            "# Project coordination with Agent Mail\n\n"
+            "Bootstrap registers this project's canonical absolute path with the reviewed\n"
+            "Agent Mail service. It does not create a shared agent identity or launch agents.\n"
+            "The project-local `.mcp.json` connects Claude Code after you approve its MCP\n"
+            "server prompt. Other clients need their own reviewed connection configuration.\n\n"
+            + ("Export `" + agent_mail["token_env"] + "` in the terminal that launches the client.\n"
+               "Never paste its value into files, commands recorded in history, or prompts.\n\n" if agent_mail["token_env"] else "")
+            + "## Every agent session\n\n"
+            "1. Read project policy. Use the absolute project root as `project_key`.\n"
+            "2. Call `register_agent` with that key and your actual program/model. Let the\n"
+            "   server generate a unique name; retain its registration token privately.\n"
+            "   Do not share identities or put registration tokens in repository files.\n"
+            "3. Call `fetch_inbox` for that identity and check for coordination messages.\n"
+            "4. After the human approves the task, reserve only the files needed with\n"
+            "   `file_reservation_paths`. Respect conflicts; do not force takeover.\n"
+            "5. Use the Bead ID as the message `thread_id` when Beads is enabled. Report\n"
+            "   progress and verification, then release reservations when finished.\n\n"
+            "Registration tokens belong only in the MCP client's private state. The\n"
+            "initial session registration and inbox check are allowed; sending messages,\n"
+            "reserving files, or editing code still requires an approved work scope.\n"
+        )
+        if "AGENTS.md" in files:
+            files["AGENTS.md"] += "\n## Agent Mail\n\nRead AGENT_MAIL.md and register a distinct identity for each agent session.\n"
+        if "FIRST_AGENT_PROMPT.md" in files:
+            files["FIRST_AGENT_PROMPT.md"] += "\nAgent Mail exception to the network restriction above: read AGENT_MAIL.md,\nregister this session through the configured MCP server, and check its inbox.\nDo not send messages or reserve files until the task scope is approved.\n"
     plan = {
         "schema": SCHEMA,
         "project": {"name": name, "directory": directory, "stack": stack},
@@ -125,6 +267,13 @@ def make_plan(name, directory, stack, features, target):
         "verification_commands": checks,
         "effects": {"network": False, "model_calls": False, "global_settings": False, "commit": False, "push": False},
     }
+    if agent_mail is not None:
+        plan["agent_mail"] = agent_mail
+        plan["effects"]["network"] = True
+        plan["commands"].append({"id": "agent-mail-project", "transport": "agent-mail-http",
+                                 "url": agent_mail["url"], "token_env": agent_mail["token_env"],
+                                 "tool": "ensure_project", "arguments": {"human_key": directory},
+                                 "writes": ["Agent Mail project namespace on the reviewed service"]})
     plan["plan_id"] = digest(canonical(plan))
     return plan
 
@@ -183,7 +332,7 @@ def read_plan(path):
     if type(value) is not dict or type(value.get("project")) is not dict:
         raise ValueError("invalid bootstrap plan")
     project = value["project"]
-    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"))
+    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"), value.get("agent_mail"))
     if value != expected:
         raise ValueError("plan differs from this ACFS version's templates; regenerate and review it")
     return value
@@ -299,6 +448,7 @@ def apply(plan, resume=False):
     root = state_dir = None
     state = None
     touched = False
+    token = None
     try:
         if identity(os.fstat(parent)) != plan["target"]["parent"]:
             raise ValueError("parent directory changed after review; regenerate the plan")
@@ -306,6 +456,9 @@ def apply(plan, resume=False):
         if plan["target"]["directory"] is None and not resume:
             # Preflight before any mutation, including creation of the root.
             for command in plan["commands"]:
+                if command["id"] == "agent-mail-project":
+                    token = mail_token(plan["agent_mail"])
+                    continue
                 if not shutil.which(command["argv"][0]):
                     raise ValueError("required executable is missing: " + command["argv"][0])
             os.mkdir(name, 0o700, dir_fd=parent)
@@ -342,6 +495,9 @@ def apply(plan, resume=False):
         for command in plan["commands"]:
             if state is not None and command["id"] in state["completed_commands"]:
                 continue
+            if command["id"] == "agent-mail-project":
+                token = mail_token(plan["agent_mail"])
+                continue
             executable = shutil.which(command["argv"][0])
             if not executable:
                 raise ValueError("required executable is missing: " + command["argv"][0])
@@ -375,6 +531,11 @@ def apply(plan, resume=False):
         env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0"})
         for command in plan["commands"]:
             if command["id"] in state["completed_commands"]:
+                continue
+            if command["id"] == "agent-mail-project":
+                ensure_mail_project(command, token)
+                state["completed_commands"].append(command["id"])
+                save_state(state_dir, state)
                 continue
             executable = executables[command["id"]]
             # br init may have succeeded just before a crash prevented the
@@ -428,9 +589,11 @@ def main():
     parser.add_argument("--yes", action="store_true", help="authorize only the reviewed apply operation")
     parser.add_argument("--resume", action="store_true", help="resume this exact reviewed plan without replacing edited files")
     parser.add_argument("--beads", action="store_true", help="also select local Beads initialization (requires git)")
+    parser.add_argument("--agent-mail", metavar="URL", help="also register the project on this Agent Mail service and configure project-local Claude MCP")
+    parser.add_argument("--agent-mail-token-env", metavar="NAME", help="read authentication only from this environment variable at apply/client launch")
     args = parser.parse_args()
     if args.apply:
-        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads)):
+        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads, args.agent_mail, args.agent_mail_token_env)):
             parser.error("use --apply PLAN_JSON --yes without plan overrides")
         result = apply(read_plan(args.apply), args.resume)
     else:
@@ -438,11 +601,17 @@ def main():
             parser.error("--yes and --resume apply only to --apply")
         if not args.preset and not args.features:
             parser.error("select --preset first-project or --with FEATURES explicitly")
+        if args.agent_mail_token_env and not args.agent_mail:
+            parser.error("--agent-mail-token-env requires --agent-mail URL")
         # Resolve parents once for a portable reviewable absolute destination;
         # apply still walks the resulting path without following symlinks.
         raw = Path(args.directory or str(Path(os.environ.get("ACFS_PROJECTS_DIR", "/data/projects")) / args.plan)).expanduser()
         directory = str(raw.parent.resolve(strict=True) / raw.name)
-        result = make_plan(args.plan, directory, args.stack or "python", (list(PRESET) if args.preset else args.features.split(",")) + (["beads"] if args.beads else []), target_snapshot(directory))
+        features = (list(PRESET) if args.preset else args.features.split(",")) + (["beads"] if args.beads else [])
+        if args.agent_mail and "agent-mail" not in features:
+            features.append("agent-mail")
+        result = make_plan(args.plan, directory, args.stack or "python", features, target_snapshot(directory),
+                           {"url": args.agent_mail, "token_env": args.agent_mail_token_env} if args.agent_mail else None)
     print(json.dumps(result, indent=2, ensure_ascii=True))
 
 
@@ -576,7 +745,7 @@ print_help() {
     echo "  -i, --interactive   Launch TUI wizard for guided project setup"
     echo "                      (recommended for first-time users)"
     echo ""
-    echo "Reviewed bootstrap (Python 3, no automatic agent or network calls):"
+    echo "Reviewed bootstrap (Python 3, no automatic agent calls):"
     echo "  --plan NAME [DIR] --preset first-project --stack python|typescript"
     echo "                      Print a reviewable JSON plan; creates nothing"
     echo "  --plan NAME [DIR] --with git,readme,gitignore,agents,starter,ci,prompt"
@@ -585,6 +754,8 @@ print_help() {
     echo ""
     echo "  --beads               Include local Beads initialization in a plan"
     echo "  --apply PLAN.json --yes --resume  Continue an interrupted bootstrap"
+    echo "  --agent-mail URL        Opt into project registration and Claude MCP setup"
+    echo "  --agent-mail-token-env NAME  Read authentication from this variable, never store it"
     echo ""
     echo "CLI mode options:"
     echo "  --no-br         Skip beads (br) initialization"

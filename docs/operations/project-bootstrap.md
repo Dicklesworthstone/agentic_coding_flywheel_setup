@@ -36,7 +36,8 @@ acfs newproj --apply /tmp/notes-plan.json --yes
 ```
 
 Available features are `git`, `beads`, `readme`, `gitignore`, `agents`,
-`starter`, `ci`, and `prompt`. Selecting `ci` also requires explicitly selecting
+`starter`, `ci`, `prompt`, and `agent-mail`. The last requires `--agent-mail URL`.
+Selecting `ci` also requires explicitly selecting
 `starter`; selecting `beads` requires explicitly selecting `git`.
 
 ## Optional Beads initialization
@@ -51,7 +52,8 @@ Beads is off unless requested. With it selected, the plan lists `br init`, its
 `.beads/` write scope, and the `br ready --json` verification probe. The local
 `br` executable must already be installed. No issues are invented or claimed;
 the generated policy and prompt explain how to agree on the first task.
-Agent Mail registration and agent launch are not performed automatically.
+Agent launch remains manual. Agent Mail project registration is a separate,
+explicit option described below; enabling Beads alone never enables it.
 
 ## Review and execution boundaries
 
@@ -72,8 +74,9 @@ Tools use fixed argument arrays with bounded execution, not shell evaluation.
 Installed `git` and `br` remain trusted executables: this is not a sandbox for
 malicious tools or an untrusted user concurrently modifying the project.
 
-No model requests, package installation, remote setup, Git staging, commits,
+No model requests, package installation, Git staging, commits,
 pushes, global agent configuration changes, or permission bypasses are initiated.
+Remote project registration occurs only when Agent Mail is explicitly selected.
 Generated checks and `FIRST_AGENT_PROMPT.md` are offered for separate review and
 execution. Plans contain local absolute paths and filesystem identities; treat
 them as local artifacts, not redacted support bundles.
@@ -111,3 +114,61 @@ explicit executable contract fixture, not a real Beads database. The TypeScript
 source is also executed through Node's type stripper where available; that is
 not a substitute for running the generated suite with Bun. Live `br` and Bun
 validation remain required before claiming those integrations are fully tested.
+
+## Connect the first project to Agent Mail
+
+`--agent-mail URL` is an explicit opt-in to network access. It adds the exact
+`ensure_project(human_key=<canonical project path>)` request to the reviewed
+plan, a project-local Claude Code `.mcp.json`, and `AGENT_MAIL.md` with the
+per-session registration, inbox, Beads-thread and file-reservation workflow.
+The configuration is ignored by Git and contains no credential values.
+Without this option the bootstrap remains offline.
+
+```sh
+acfs newproj --plan myapp /data/projects/myapp --preset first-project --beads \
+  --agent-mail http://127.0.0.1:8765/api/ \
+  --agent-mail-token-env AGENT_MAIL_TOKEN > /tmp/myapp-plan.json
+# Review the plan. Supply AGENT_MAIL_TOKEN through your secret manager or an
+# existing private shell environment, not a literal command in shell history.
+acfs newproj --apply /tmp/myapp-plan.json --yes
+```
+
+Use the service's actual endpoint, including the trailing slash. Plain HTTP is
+accepted only for literal loopback IPs; other destinations require HTTPS and
+an explicitly named authentication environment variable. For a deliberately
+unauthenticated loopback service, omit `--agent-mail-token-env`. Ambient bearer
+tokens, `.env` files, and HTTP proxy variables are not imported automatically.
+
+A missing credential fails before creating the project. An unavailable server,
+HTTP error, malformed result, or response naming a different project fails
+without claiming registration succeeded. Files and local Git/Beads setup remain
+available; fix the service/credential and resume the **same** plan:
+
+```sh
+acfs newproj --apply /tmp/myapp-plan.json --yes --resume
+```
+
+Completed registration is checkpointed and is not repeated on resume. A lost
+response can safely repeat `ensure_project`: that operation is idempotent for
+the same canonical project key. Remote writes are not rolled back. The client
+uses Agent Mail's stateless JSON HTTP API, with no redirects, bounded response
+size, connection timeout and total deadline. It does not support an arbitrary
+SSE-only MCP service. Error responses and credential values are never printed.
+
+After apply, start Claude Code from the project, approve its project-local MCP
+server, and use `FIRST_AGENT_PROMPT.md`. Export the same credential environment
+variable for the client. Other MCP clients need a separately reviewed connection
+configuration; this option does not modify their settings or global settings.
+
+Bootstrap registers a **project**, not an agent impersonating your session.
+Each real agent calls `register_agent` with its actual program and model, keeps
+its own returned registration token private, and checks its inbox. It must wait
+for approved work before sending messages or reserving files. No model, agent,
+server installer, message send, file lease, commit or push is started by apply.
+
+The HTTP integration tests use a real loopback HTTP server with contract
+fixtures, not a running Agent Mail deployment or a live Claude session:
+
+```sh
+python3 -B tests/unit/test_project_bootstrap_mail.py
+```
