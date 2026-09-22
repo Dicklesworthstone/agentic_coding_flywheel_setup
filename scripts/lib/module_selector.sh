@@ -40,8 +40,9 @@ acfs_is_interactive_terminal() {
     if [[ -t 0 && -t 1 ]]; then
         return 0
     fi
+    # Scope stderr suppression to the open; exec redirections otherwise persist.
     local tty_fd=""
-    if exec {tty_fd}<>/dev/tty 2>/dev/null; then
+    if { exec {tty_fd}<>/dev/tty; } 2>/dev/null; then
         exec {tty_fd}>&-
         return 0
     fi
@@ -49,9 +50,10 @@ acfs_is_interactive_terminal() {
 }
 
 acfs_format_reproducible_cli_command() {
-    local cmd="bash install.sh"
+    local -a cmd=(bash install.sh)
+    local value="" module="" tag="" module_tag="" category=""
     if [[ -n "${MODE:-}" && "$MODE" != "vibe" ]]; then
-        cmd+=" --mode $MODE"
+        cmd+=(--mode "$MODE")
     fi
     local profile_has_selectors=false
     if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]] \
@@ -60,30 +62,58 @@ acfs_format_reproducible_cli_command() {
         profile_has_selectors=true
     fi
     if [[ "$profile_has_selectors" == "true" ]]; then
-        cmd+=" --profile $ACFS_SELECTED_PROFILE"
-    fi
-    if [[ "${#ONLY_MODULES[@]}" -gt 0 && "$profile_has_selectors" != "true" ]]; then
-        local m=""
-        for m in "${ONLY_MODULES[@]}"; do
-            [[ -n "$m" ]] && cmd+=" --only $m"
+        cmd+=(--profile "$ACFS_SELECTED_PROFILE")
+    else
+        for value in "${ONLY_MODULES[@]}"; do
+            [[ -n "$value" ]] && cmd+=(--only "$value")
+        done
+        for value in "${ONLY_PHASES[@]}"; do
+            [[ -n "$value" ]] && cmd+=(--only-phase "$value")
         done
     fi
-    if [[ "${#ONLY_PHASES[@]}" -gt 0 && "$profile_has_selectors" != "true" ]]; then
-        local ph=""
-        for ph in "${ONLY_PHASES[@]}"; do
-            [[ -n "$ph" ]] && cmd+=" --only-phase $ph"
+
+    local -A skipped=()
+    for module in "${SKIP_MODULES[@]}"; do
+        [[ -n "$module" && -z "${skipped[$module]:-}" ]] || continue
+        cmd+=(--skip "$module")
+        skipped["$module"]=1
+    done
+    # Tags/categories are internal selectors, not public CLI flags. Expand them
+    # into supported --skip arguments so the copied command preserves exclusions.
+    local -a module_tags=()
+    for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        [[ -z "${skipped[$module]:-}" ]] || continue
+        local exclude=false
+        for category in "${SKIP_CATEGORIES[@]}"; do
+            if [[ -n "$category" && "${ACFS_MODULE_CATEGORY["$module"]:-}" == "$category" ]]; then
+                exclude=true
+                break
+            fi
         done
-    fi
-    if [[ "${#SKIP_MODULES[@]}" -gt 0 ]]; then
-        local sm=""
-        for sm in "${SKIP_MODULES[@]}"; do
-            [[ -n "$sm" ]] && cmd+=" --skip $sm"
+        IFS=',' read -ra module_tags <<< "${ACFS_MODULE_TAGS["$module"]:-}"
+        for tag in "${SKIP_TAGS[@]}"; do
+            [[ -n "$tag" ]] || continue
+            for module_tag in "${module_tags[@]}"; do
+                if [[ "$module_tag" == "$tag" ]]; then
+                    exclude=true
+                    break
+                fi
+            done
+            [[ "$exclude" == "true" ]] && break
         done
-    fi
+        if [[ "$exclude" == "true" ]]; then
+            cmd+=(--skip "$module")
+            skipped["$module"]=1
+        fi
+    done
     if [[ "${NO_DEPS:-false}" == "true" ]]; then
-        cmd+=" --no-deps"
+        cmd+=(--no-deps)
     fi
-    echo "$cmd"
+    # Bash %q preserves argument boundaries and prevents shell metacharacters in
+    # values from becoming commands when a user copies the displayed invocation.
+    local rendered=""
+    printf -v rendered '%q ' "${cmd[@]}"
+    printf '%s\n' "${rendered% }"
 }
 
 acfs_render_selection_review() {
@@ -374,7 +404,7 @@ acfs_interactive_module_selector() {
     fi
 
     local tty_fd=""
-    if ! exec {tty_fd}<>/dev/tty 2>/dev/null; then
+    if ! { exec {tty_fd}<>/dev/tty; } 2>/dev/null; then
         log_error "Interactive module selection requested, but /dev/tty could not be opened."
         return 1
     fi
