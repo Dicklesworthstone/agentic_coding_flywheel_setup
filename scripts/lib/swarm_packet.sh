@@ -27,6 +27,7 @@ swarm_packet_usage() {
     cat <<'EOF'
 Usage: acfs swarm packet --bead ID [OPTIONS]
        acfs swarm packet --deliver PACKET.json --help
+       acfs swarm packet --deliver-batch BATCH.json [--expect-sha256 HASH --send]
 
 Options:
   --json                Emit machine-readable JSON
@@ -729,6 +730,8 @@ import time
 
 LIMIT = 1024 * 1024
 SCHEMA = "acfs.packet-delivery.v1"
+BATCH_SCHEMA = "acfs.packet-delivery-batch.v1"
+MAX_DELIVERIES = 32
 
 
 class DeliveryError(Exception):
@@ -867,7 +870,7 @@ def publish_intent(path, request, target):
         os.close(fd)
 
 
-def main():
+def single_arguments(arguments=None):
     parser = argparse.ArgumentParser(prog="acfs swarm packet --deliver", allow_abbrev=False,
         description="Preview a saved packet, then explicitly submit it to one existing NTM agent. "
                     "This can start paid model work. Reusing a receipt only queries the outcome; it never resends.")
@@ -880,7 +883,10 @@ def main():
     parser.add_argument("--receipt", required=True, help="New private intent file; reuse to reconcile without resending")
     parser.add_argument("--expect-sha256", help="Packet file hash from preview; required with --send")
     parser.add_argument("--send", action="store_true")
-    args = parser.parse_args()
+    return parser.parse_args(arguments)
+
+
+def prepare(args):
     require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", args.session), "Invalid session name.")
     require(re.fullmatch(r"%[0-9]{1,10}", args.pane), "Use a stable tmux pane ID such as %42.")
     require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", args.operation_id), "Invalid operation ID.")
@@ -920,18 +926,31 @@ def main():
               "sends_prompt": False, "agent_execution_verified": False,
               "note": "Submission can start paid model work. No agent is spawned, interrupted, or trusted automatically. "
                       "Beads claims and Agent Mail registration/reservations remain the agent's responsibility."}
-    if not args.send:
-        report["send_command"] = shlex.join(["acfs", "swarm", "packet", "--deliver", os.path.abspath(args.packet),
-            "--repo", str(repo), "--session", args.session, "--pane", args.pane, "--agent-type", args.agent_type,
-            "--operation-id", args.operation_id, "--receipt", str(receipt), "--expect-sha256", packet_hash, "--send"])
-        print(encode(report).decode(), end="")
-        return 0
-    require(args.expect_sha256 == packet_hash, "Preview first and pass --expect-sha256 with --send.")
+    report["send_command"] = shlex.join(["acfs", "swarm", "packet", "--deliver", os.path.abspath(args.packet),
+        "--repo", str(repo), "--session", args.session, "--pane", args.pane, "--agent-type", args.agent_type,
+        "--operation-id", args.operation_id, "--receipt", str(receipt), "--expect-sha256", packet_hash, "--send"])
+    return {"args": args, "request": request, "receipt": receipt, "payload": payload,
+            "argv": argv, "report": report, "packet_path": Path(os.path.abspath(args.packet))}
+
+
+def existing_intent(prepared):
+    receipt, request = prepared["receipt"], prepared["request"]
+    if not receipt.exists() and not receipt.is_symlink():
+        return None
+    saved = parse(read_file(receipt, private=True))
+    require(isinstance(saved, dict) and saved.get("schema") == SCHEMA and saved.get("request") == request
+            and isinstance(saved.get("target"), str), "Receipt belongs to a different delivery; it was not changed.")
+    return saved
+
+
+def deliver(prepared):
+    args, request, receipt = prepared["args"], prepared["request"], prepared["receipt"]
+    payload, argv, report = prepared["payload"], prepared["argv"], dict(prepared["report"])
+    repo = Path(request["repo"])
+    report.pop("send_command", None)
+    saved = existing_intent(prepared)
     ntm = binary("ntm")
-    if receipt.exists() or receipt.is_symlink():
-        saved = parse(read_file(receipt, private=True))
-        require(isinstance(saved, dict) and saved.get("schema") == SCHEMA and saved.get("request") == request
-                and isinstance(saved.get("target"), str), "Receipt belongs to a different delivery; it was not changed.")
+    if saved is not None:
         report["status"] = "unconfirmed"
         try:
             code, data = run([ntm, "--robot-send-receipt=" + args.operation_id, "--robot-format=json"], repo)
@@ -945,7 +964,7 @@ def main():
         code, data = run([br, "ready", "--json"], repo)
         ready = parse(data)
         require(code == 0 and isinstance(ready, list)
-                and sum(isinstance(b, dict) and b.get("id") == bead["id"]
+                and sum(isinstance(b, dict) and b.get("id") == request["bead_id"]
                         and b.get("status", "open") == "open" for b in ready) == 1,
                 "Bead is not in the current ready queue; no prompt was sent.")
         target_check(tmux, request)
@@ -976,8 +995,122 @@ def main():
             pass
         report["reconciled_only"] = False
     report["recovery"] = "Run the identical --deliver command with the same receipt to query NTM; ACFS will not resend."
+    return report, 0 if report["status"] == "submitted" else 1
+
+
+def main(arguments=None):
+    args = single_arguments(arguments)
+    prepared = prepare(args)
+    if args.send:
+        require(args.expect_sha256 == prepared["request"]["packet_sha256"],
+                "Preview first and pass --expect-sha256 with --send.")
+        report, code = deliver(prepared)
+    else:
+        report, code = prepared["report"], 0
     print(encode(report).decode(), end="")
-    return 0 if report["status"] == "submitted" else 1
+    return code
+
+
+def error_message(exc):
+    if isinstance(exc, DeliveryError):
+        return str(exc)
+    return "Delivery interrupted or unavailable; retain the receipt and reconcile before retrying."
+
+
+def batch_main(arguments):
+    parser = argparse.ArgumentParser(prog="acfs swarm packet --deliver-batch", allow_abbrev=False,
+        description="Review and deliver distinct work packets to up to 32 existing agents. "
+                    "Stops at an uncertain outcome; subsequent runs reconcile earlier receipts before continuing.")
+    parser.add_argument("batch")
+    parser.add_argument("--expect-sha256", help="Combined review hash from preview (binds batch and every packet)")
+    parser.add_argument("--send", action="store_true")
+    args = parser.parse_args(arguments)
+    batch_path = Path(os.path.abspath(args.batch))
+    batch_bytes = read_file(batch_path)
+    spec = parse(batch_bytes)
+    require(isinstance(spec, dict) and set(spec) == {"schema", "deliveries"}
+            and spec["schema"] == BATCH_SCHEMA and isinstance(spec["deliveries"], list)
+            and 1 <= len(spec["deliveries"]) <= MAX_DELIVERIES,
+            "Expected a packet-delivery-batch.v1 manifest containing 1 through 32 deliveries.")
+    keys = {"packet", "repo", "session", "pane", "agent_type", "operation_id", "receipt"}
+    prepared = []
+    seen_panes, seen_ops, seen_receipts, seen_beads = set(), set(), set(), set()
+    # Complete local validation first: a bad later packet must not leave an
+    # earlier agent working. Keep the reviewed payloads in memory, not mutable
+    # filenames or freshly regenerated time-varying context between sends.
+    for item in spec["deliveries"]:
+        require(isinstance(item, dict) and set(item) == keys
+                and all(isinstance(value, str) and value and "\0" not in value for value in item.values()),
+                "Each delivery must provide exactly packet, repo, session, pane, agent_type, operation_id and receipt strings.")
+        require(item["agent_type"] in ("claude", "codex"), "Unsupported delivery agent type.")
+        values = dict(item)
+        for key in ("packet", "repo", "receipt"):
+            values[key] = os.path.abspath(batch_path.parent / values[key])
+        single = argparse.Namespace(**values, expect_sha256=None, send=False)
+        current = prepare(single)
+        request = current["request"]
+        pane = int(request["pane"][1:])
+        bead_key = (request["repo"], request["bead_id"])
+        require(pane not in seen_panes, "A batch may target each stable pane only once.")
+        require(request["operation_id"] not in seen_ops, "Each batch delivery needs a distinct operation ID.")
+        require(current["receipt"] not in seen_receipts, "Each batch delivery needs a distinct receipt file.")
+        require(bead_key not in seen_beads, "A batch cannot assign the same repository Bead more than once.")
+        seen_panes.add(pane)
+        seen_ops.add(request["operation_id"])
+        seen_receipts.add(current["receipt"])
+        seen_beads.add(bead_key)
+        existing_intent(current)  # validate prior intent without invoking NTM
+        prepared.append(current)
+    input_paths = {batch_path, *(entry["packet_path"] for entry in prepared)}
+    require(not input_paths.intersection(seen_receipts), "A receipt must not replace any batch or packet input.")
+    review = {"schema": BATCH_SCHEMA, "manifest_sha256": digest(batch_bytes),
+              "deliveries": [{"request": entry["request"], "receipt": str(entry["receipt"]),
+                              "packet": str(entry["packet_path"])} for entry in prepared]}
+    review_hash = digest(encode(review))
+    require(args.expect_sha256 is None or args.expect_sha256 == review_hash,
+            "Batch or packet changed since review; preview the entire batch again.")
+    report = {"schema": BATCH_SCHEMA, "status": "preview", "review_sha256": review_hash,
+              "manifest_sha256": review["manifest_sha256"], "agent_execution_verified": False,
+              "delivery_count": len(prepared), "sends_prompt": False,
+              "note": "Each submission can start paid model work. This is sequential dispatch, not an atomic work claim. "
+                      "Receiving agents must coordinate edits and reservations; no agent is spawned or interrupted."}
+    if not args.send:
+        report["deliveries"] = [entry["report"] for entry in prepared]
+        report["send_command"] = shlex.join(["acfs", "swarm", "packet", "--deliver-batch", str(batch_path),
+                                            "--expect-sha256", review_hash, "--send"])
+        print(encode(report).decode(), end="")
+        return 0
+    require(args.expect_sha256 == review_hash, "Preview the batch first and pass --expect-sha256 with --send.")
+    results = []
+    stopped = False
+    exit_code = 0
+    for entry in prepared:
+        if stopped:
+            result = dict(entry["report"], status="not_attempted")
+            result.pop("send_command", None)
+        else:
+            try:
+                result, code = deliver(entry)
+            except (DeliveryError, OSError, UnicodeError, KeyboardInterrupt) as exc:
+                result = dict(entry["report"], status="error", error=error_message(exc))
+                result.pop("send_command", None)
+                # A signal can land just after NTM submission. Treat any intent
+                # file as possibly submitted, never as permission to start over.
+                result["submission_may_have_occurred"] = entry["receipt"].exists()
+                code = 2
+            if code:
+                stopped, exit_code = True, code
+        results.append(result)
+    report["status"] = "stopped" if stopped else "submitted"
+    report["sends_prompt"] = any(item.get("sends_prompt") for item in results)
+    report["deliveries"] = results
+    report["summary"] = {key: sum(item["status"] == key for item in results)
+                         for key in ("submitted", "unconfirmed", "error", "not_attempted")}
+    report["summary"]["reconciled"] = sum(item.get("reconciled_only") is True for item in results)
+    report["recovery"] = "Keep the unchanged batch, packets and receipts. Repeat this command to query existing intents " \
+                         "and continue only after earlier submissions are confirmed. Never delete receipts to force a resend."
+    print(encode(report).decode(), end="")
+    return exit_code
 
 
 def cancelled(signum, frame):
@@ -987,9 +1120,9 @@ def cancelled(signum, frame):
 for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, cancelled)
 try:
-    sys.exit(main())
+    sys.exit(batch_main(sys.argv[2:]) if sys.argv[1:2] == ["--batch"] else main())
 except (DeliveryError, OSError, UnicodeError, KeyboardInterrupt) as exc:
-    message = str(exc) if isinstance(exc, DeliveryError) else "Delivery interrupted or unavailable; retain the receipt and reconcile before retrying."
+    message = error_message(exc)
     print(encode({"schema": SCHEMA, "status": "error", "error": message,
                   "agent_execution_verified": False}).decode(), end="")
     sys.exit(2)
@@ -999,6 +1132,9 @@ PY_ACFS_PACKET_DELIVERY
 if [[ "${1:-}" == "--deliver" ]]; then
     shift
     swarm_packet_deliver "$@"
+elif [[ "${1:-}" == "--deliver-batch" ]]; then
+    shift
+    swarm_packet_deliver --batch "$@"
 else
     swarm_packet_main "$@"
 fi

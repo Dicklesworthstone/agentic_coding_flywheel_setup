@@ -92,3 +92,74 @@ bash tests/unit/test_swarm_packet_delivery.sh
 The suite drives the real Bash/Python command, real packet generation, and
 executable NTM/tmux/Beads contract fixtures. Live provider/NTM acceptance must be
 run separately on a configured VPS; these tests make no model calls.
+
+## Deliver different work to several agents
+
+`--deliver-batch` connects a set of reviewed packets to up to 32 existing agents.
+It does not spawn or provision a swarm. First generate a separate, complete
+packet for each distinct Bead, review each prompt, and identify the exact panes.
+Keep the batch manifest next to the saved packets:
+
+```json
+{
+  "schema": "acfs.packet-delivery-batch.v1",
+  "deliveries": [
+    {
+      "packet": "implementation.json",
+      "repo": "/data/projects/myproject",
+      "session": "myproject",
+      "pane": "%42",
+      "agent_type": "claude",
+      "operation_id": "myproject-implementation-1",
+      "receipt": "implementation.receipt.json"
+    },
+    {
+      "packet": "tests.json",
+      "repo": "/data/projects/myproject",
+      "session": "myproject",
+      "pane": "%43",
+      "agent_type": "codex",
+      "operation_id": "myproject-tests-1",
+      "receipt": "tests.receipt.json"
+    }
+  ]
+}
+```
+
+Relative packet, repository and receipt paths resolve from the manifest's
+parent directory, not the invocation directory. Every entry must supply exactly
+the fields shown. Panes, operation IDs and receipt paths must be distinct. The
+same Bead in the same repository cannot be dispatched twice within one batch.
+Receipt paths cannot replace the batch manifest or any packet input.
+
+Preview the entire handoff:
+
+```bash
+acfs swarm packet --deliver-batch batch.json
+```
+
+This validates **all** saved packets and existing local receipts before any tool
+calls. The returned `review_sha256` binds the manifest bytes, all packet file
+hashes, target identities and resolved receipt paths. The returned `send_command`
+includes that combined hash and `--send`. It is not just a hash of the manifest:
+editing a referenced packet also invalidates the reviewed batch.
+
+Authorized dispatch is sequential. Each target still receives the single-agent
+live ready-queue, native-pane, NTM dry-run and durable-intent checks described
+above. The reviewed packet bytes are retained in memory for the run. Agents may
+begin working as soon as their packet is submitted; this is **not** a transaction,
+a reservation, or evidence that their editing scopes are independent. Use the
+scope-aware assignment planner and Agent Mail coordination when preparing work.
+
+A failed preflight or uncertain outcome stops dispatch immediately. The JSON
+report keeps the earlier results and labels later entries `not_attempted`.
+Completed submissions are not rolled back. Preserve the unchanged batch,
+packets and receipts, then repeat the same authorized command: earlier intents
+are queried, not resent, and remaining agents are dispatched only after those
+outcomes are confirmed. A missing or ambiguous upstream receipt continues to
+block later entries rather than triggering a blind resend.
+
+The batch report exposes per-entry `submitted`, `unconfirmed`, `error`, and
+`not_attempted` states plus summary counts and a reconciled count. Its exit code
+is `0` after preview or all submissions, `1` when an outcome is unconfirmed, or
+`2` for validation/preflight/interruption errors. It never claims task completion.
