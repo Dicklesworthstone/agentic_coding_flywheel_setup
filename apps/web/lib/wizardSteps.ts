@@ -217,6 +217,11 @@ export function validateStep(stepId: number): ValidationResult {
 /** localStorage key for storing completed steps */
 export const COMPLETED_STEPS_KEY = "agent-flywheel-wizard-completed-steps";
 const COMPLETED_STEPS_QUERY_KEY = "steps";
+const COMPLETED_STEPS_BASE_QUERY_KEY = "stepsBase";
+
+// A successful durable write is authoritative even if history.replaceState
+// cannot remove the preceding fallback from this document's URL.
+let supersededFallback: { document: Window; search: string } | null = null;
 
 export const COMPLETED_STEPS_CHANGED_EVENT = "acfs:wizard:completed-steps-changed";
 
@@ -236,31 +241,53 @@ function normalizeCompletedSteps(steps: unknown[]): number[] {
   return Array.from(new Set(validSteps)).sort((a, b) => a - b);
 }
 
-function getCompletedStepsFromQuery(): number[] {
-  if (typeof window === "undefined") return [];
+function getCompletedStepsFromQuery(): number[] | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = new URLSearchParams(window.location.search).get(COMPLETED_STEPS_QUERY_KEY);
-    if (!raw) return [];
-    if (!/^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(raw)) return [];
-    return normalizeCompletedSteps(raw.split(",").map(Number));
+    // An explicitly empty fallback is a saved reset, not an absent value.
+    if (raw === null) return null;
+    if (raw === "") return [];
+    if (!/^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(raw)) return null;
+    const steps = raw.split(",").map(Number);
+    if (steps.some((step) => step > TOTAL_STEPS)) return null;
+    return normalizeCompletedSteps(steps);
   } catch {
-    return [];
+    return null;
   }
 }
 
-function setCompletedStepsQuery(steps: number[]): boolean {
+function setCompletedStepsQuery(steps: number[], fallbackBase?: string): boolean {
   if (typeof window === "undefined") return false;
   try {
     const normalized = normalizeCompletedSteps(steps);
     const url = new URL(window.location.href);
     url.search = stripSensitiveQueryState(url.search);
-    if (normalized.length === 0) {
+    if (fallbackBase === undefined) {
       url.searchParams.delete(COMPLETED_STEPS_QUERY_KEY);
+      url.searchParams.delete(COMPLETED_STEPS_BASE_QUERY_KEY);
     } else {
       url.searchParams.set(COMPLETED_STEPS_QUERY_KEY, normalized.join(","));
+      url.searchParams.set(COMPLETED_STEPS_BASE_QUERY_KEY, fallbackBase);
     }
     window.history.replaceState(window.history.state, "", url.toString());
     return true;
+  } catch {
+    return false;
+  }
+}
+
+function fallbackMatchesStoredSteps(storedSteps: number[]): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const search = window.location.search;
+    if (supersededFallback?.document === window && supersededFallback.search === search) {
+      return false;
+    }
+    // Only a fallback written against this exact durable snapshot can take
+    // precedence. Ordinary shared links and a fallback superseded by another
+    // tab's saved progress must not replace the current stored value.
+    return new URLSearchParams(search).get(COMPLETED_STEPS_BASE_QUERY_KEY) === storedSteps.join(",");
   } catch {
     return false;
   }
@@ -307,18 +334,34 @@ export function getCompletedSteps(): number[] {
   const querySteps = getCompletedStepsFromQuery();
   const parsed = safeGetJSON<unknown[]>(COMPLETED_STEPS_KEY);
   if (Array.isArray(parsed)) {
-    return normalizeCompletedSteps(parsed);
+    const storedSteps = normalizeCompletedSteps(parsed);
+    if (querySteps !== null && fallbackMatchesStoredSteps(storedSteps)) {
+      return querySteps;
+    }
+    return storedSteps;
   }
-  return querySteps;
+  return querySteps ?? [];
 }
 
 /** Save completed steps to localStorage, falling back to the URL for storage-blocked browsers. */
 export function setCompletedSteps(steps: number[]): boolean {
   const normalized = normalizeCompletedSteps(steps);
+  const stored = safeGetJSON<unknown[]>(COMPLETED_STEPS_KEY);
+  const fallbackBase = Array.isArray(stored) ? normalizeCompletedSteps(stored).join(",") : "-";
   const didPersist = safeSetJSON(COMPLETED_STEPS_KEY, normalized);
   const didPersistQuery = didPersist
     ? setCompletedStepsQuery([])
-    : setCompletedStepsQuery(normalized);
+    : setCompletedStepsQuery(normalized, fallbackBase);
+  if (didPersistQuery) {
+    supersededFallback = null;
+  } else if (didPersist && typeof window !== "undefined") {
+    try {
+      supersededFallback = { document: window, search: window.location.search };
+    } catch {
+      // There is no usable URL fallback in a document without location access.
+      supersededFallback = null;
+    }
+  }
   if (didPersist || didPersistQuery) {
     emitCompletedStepsChanged(normalized);
   }
