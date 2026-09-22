@@ -141,11 +141,147 @@ acfs_render_selection_review() {
     echo ""
 }
 
+# A failed resolver clears its output arrays. Never allow an old readiness flag
+# or an empty --only selection (which means defaults) to authorize installation.
+acfs_validate_interactive_plan() {
+    ACFS_GENERATED_SELECTION_READY=false
+    if ! acfs_resolve_selection; then
+        return 1
+    fi
+    if [[ "${#ACFS_EFFECTIVE_PLAN[@]}" -eq 0 ]]; then
+        ACFS_GENERATED_SELECTION_READY=false
+        log_error "No modules selected. Choose a nonempty plan or abort installation."
+        return 1
+    fi
+}
+
+acfs_render_custom_module_choices() {
+    local mod="" state="" i=1
+    for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        [[ "${ACFS_MODULE_OPTIONAL["$mod"]:-1}" == "1" ]] || continue
+        state="[ ]"
+        [[ -n "${ACFS_EFFECTIVE_RUN["$mod"]:-}" ]] && state="[x]"
+        printf "  %2d) %s %-25s - %s\n" "$i" "$state" "$mod" "${ACFS_MODULE_DESC["$mod"]:-$mod}"
+        i=$((i + 1))
+    done
+}
+
+# Build a candidate without changing the accepted plan. Disabling a dependency
+# also disables its selected optional dependents, but never a locked core module.
+# Enabling a module explicitly restores any prerequisites excluded by earlier
+# toggles. The shared resolver remains the authority for the final plan.
+acfs_toggle_custom_module() {
+    local target="${1:-}" mod="" dep="" current=""
+    local -A exists=() affected=() skip_set=()
+    for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        exists["$mod"]=1
+    done
+    if [[ -z "$target" || -z "${exists[$target]:-}" ]]; then
+        log_error "Unknown module: $target"
+        return 1
+    fi
+    if [[ "${ACFS_MODULE_OPTIONAL["$target"]:-1}" != "1" ]]; then
+        log_error "Cannot disable locked core module: $target"
+        return 1
+    fi
+
+    local disabling=false changed=true
+    local -a deps=() queue=("$target")
+    affected["$target"]=1
+    if [[ -n "${ACFS_EFFECTIVE_RUN["$target"]:-}" ]]; then
+        disabling=true
+        if [[ "${NO_DEPS:-false}" != "true" ]]; then
+            while [[ "$changed" == "true" ]]; do
+                changed=false
+                for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+                    [[ -n "${ACFS_EFFECTIVE_RUN["$mod"]:-}" && -z "${affected[$mod]:-}" ]] || continue
+                    IFS=',' read -ra deps <<< "${ACFS_MODULE_DEPS["$mod"]:-}"
+                    for dep in "${deps[@]}"; do
+                        [[ -n "$dep" && -n "${affected[$dep]:-}" ]] || continue
+                        affected["$mod"]=1
+                        changed=true
+                        break
+                    done
+                done
+            done
+        fi
+        for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+            if [[ -n "${affected[$mod]:-}" && "${ACFS_MODULE_OPTIONAL["$mod"]:-1}" != "1" ]]; then
+                log_error "Cannot disable $target: it is required by locked core module $mod."
+                return 1
+            fi
+        done
+    elif [[ "${NO_DEPS:-false}" != "true" ]]; then
+        local index=0
+        while [[ "$index" -lt "${#queue[@]}" ]]; do
+            current="${queue[$index]}"
+            index=$((index + 1))
+            IFS=',' read -ra deps <<< "${ACFS_MODULE_DEPS["$current"]:-}"
+            for dep in "${deps[@]}"; do
+                [[ -n "$dep" && -z "${affected[$dep]:-}" ]] || continue
+                affected["$dep"]=1
+                queue+=("$dep")
+            done
+        done
+    fi
+
+    local -a candidate_only=() candidate_skip=()
+    for mod in "${ONLY_MODULES[@]}"; do
+        if [[ "$disabling" != "true" || -z "${affected[$mod]:-}" ]]; then
+            candidate_only+=("$mod")
+        fi
+    done
+    [[ "$disabling" == "true" ]] || candidate_only+=("$target")
+    if [[ "${#candidate_only[@]}" -eq 0 ]]; then
+        log_error "Cannot disable the last selected module. Abort instead of installing defaults."
+        return 1
+    fi
+    for mod in "${SKIP_MODULES[@]}"; do
+        [[ -n "$mod" ]] || continue
+        if [[ "$disabling" == "true" || -z "${affected[$mod]:-}" ]]; then
+            skip_set["$mod"]=1
+        fi
+    done
+    if [[ "$disabling" == "true" ]]; then
+        for mod in "${!affected[@]}"; do
+            skip_set["$mod"]=1
+        done
+    fi
+    for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        [[ -z "${skip_set[$mod]:-}" ]] || candidate_skip+=("$mod")
+    done
+
+    # Resolver globals and readiness flags from a rejected edit cannot escape
+    # this subshell. There is no eval and no installer execution here.
+    if ! (
+        ONLY_MODULES=("${candidate_only[@]}")
+        SKIP_MODULES=("${candidate_skip[@]}")
+        acfs_validate_interactive_plan
+    ); then
+        log_error "Selection unchanged; the proposed edit could not be resolved."
+        return 1
+    fi
+    ONLY_MODULES=("${candidate_only[@]}")
+    SKIP_MODULES=("${candidate_skip[@]}")
+    acfs_validate_interactive_plan || return 1
+    for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        [[ -n "${affected[$mod]:-}" ]] || continue
+        if [[ "$disabling" == "true" ]]; then
+            printf 'Disabled: %s\n' "$mod"
+        elif [[ "$mod" == "$target" ]]; then
+            printf 'Enabled: %s\n' "$mod"
+        else
+            printf 'Required by %s: %s\n' "$target" "$mod"
+        fi
+    done
+}
+
 acfs_interactive_custom_module_toggles() {
     echo ""
     echo "--- Custom Module Selection ---"
     echo "Core required modules are locked and cannot be disabled."
-    echo "Enter module IDs to toggle (or press Enter when finished):"
+    echo "Disabling a prerequisite also disables its optional dependents."
+    echo "Enabling a module restores its required dependencies."
     echo ""
 
     local optional_modules=()
@@ -157,20 +293,7 @@ acfs_interactive_custom_module_toggles() {
         fi
     done
 
-    local i=1
-    for mod in "${optional_modules[@]}"; do
-        local state="[ ]"
-        local selected=""
-        for selected in "${ONLY_MODULES[@]}"; do
-            if [[ "$selected" == "$mod" ]]; then
-                state="[x]"
-                break
-            fi
-        done
-        local desc="${ACFS_MODULE_DESC["$mod"]:-$mod}"
-        printf "  %2d) %s %-25s - %s\n" "$i" "$state" "$mod" "$desc"
-        i=$((i + 1))
-    done
+    acfs_render_custom_module_choices
     echo ""
     echo "Type the number or ID to toggle skip status, or 'done' to finish:"
 
@@ -184,8 +307,14 @@ acfs_interactive_custom_module_toggles() {
         [[ -z "$input" || "$input" == "done" || "$input" == "d" ]] && break
 
         local target=""
-        if [[ "$input" =~ ^[0-9]+$ ]] && [[ "$input" -ge 1 && "$input" -le "${#optional_modules[@]}" ]]; then
-            target="${optional_modules[$((input - 1))]}"
+        # Bound arithmetic and force decimal: 08 is a valid menu selection, not
+        # an octal expression, and untrusted input must never become a subscript.
+        local number=0
+        if [[ "$input" =~ ^[0-9]{1,6}$ ]]; then
+            number=$((10#$input))
+            if [[ "$number" -ge 1 && "$number" -le "${#optional_modules[@]}" ]]; then
+                target="${optional_modules[$((number - 1))]}"
+            fi
         else
             for mod in "${optional_modules[@]}"; do
                 if [[ "$mod" == "$input" ]]; then
@@ -200,31 +329,27 @@ acfs_interactive_custom_module_toggles() {
             continue
         fi
 
-        local is_selected=false
-        local new_selection=()
-        for selected in "${ONLY_MODULES[@]}"; do
-            if [[ "$selected" == "$target" ]]; then
-                is_selected=true
-            else
-                new_selection+=("$selected")
-            fi
-        done
-
-        if [[ "$is_selected" == "true" ]]; then
-            ONLY_MODULES=("${new_selection[@]}")
-            echo "Disabled: $target"
-        else
-            ONLY_MODULES+=("$target")
-            echo "Enabled: $target"
+        if acfs_toggle_custom_module "$target"; then
+            acfs_render_custom_module_choices
         fi
     done
 }
 
 acfs_prepare_custom_selection() {
+    acfs_validate_interactive_plan || return 1
     ONLY_MODULES=("${ACFS_EFFECTIVE_PLAN[@]}")
     ONLY_PHASES=()
     SKIP_MODULES=()
+    local mod=""
+    for mod in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        [[ -n "${ACFS_EFFECTIVE_RUN["$mod"]:-}" ]] || SKIP_MODULES+=("$mod")
+    done
+    # Capture the effect of broad filters in the exact module lists. Leaving a
+    # hidden skip-tag/category active would make later toggles impossible.
+    SKIP_TAGS=()
+    SKIP_CATEGORIES=()
     ACFS_SELECTED_PROFILE=""
+    ACFS_CLI_PROFILE=""
     ACFS_EXPLICIT_TARGETED_SELECTION=true
     export ACFS_SELECTED_PROFILE
 }
@@ -286,33 +411,30 @@ _acfs_interactive_module_selector_on_tty() {
         case "$profile_choice" in
             1|vibe|"")
                 ACFS_EXPLICIT_TARGETED_SELECTION=false
-                acfs_apply_profile "vibe"
+                acfs_apply_profile "vibe" || continue
                 ;;
             2|safe)
                 ACFS_EXPLICIT_TARGETED_SELECTION=false
-                acfs_apply_profile "safe"
+                acfs_apply_profile "safe" || continue
                 ;;
             3|minimal)
                 ACFS_EXPLICIT_TARGETED_SELECTION=false
-                acfs_apply_profile "minimal"
+                acfs_apply_profile "minimal" || continue
                 ;;
             4|agents-only|agents)
                 ACFS_EXPLICIT_TARGETED_SELECTION=false
-                acfs_apply_profile "agents-only"
+                acfs_apply_profile "agents-only" || continue
                 ;;
             5|cloud-only|cloud)
                 ACFS_EXPLICIT_TARGETED_SELECTION=false
-                acfs_apply_profile "cloud-only"
+                acfs_apply_profile "cloud-only" || continue
                 ;;
             6|stack-only|stack)
                 ACFS_EXPLICIT_TARGETED_SELECTION=false
-                acfs_apply_profile "stack-only"
+                acfs_apply_profile "stack-only" || continue
                 ;;
             7|custom)
-                if ! acfs_resolve_selection; then
-                    continue
-                fi
-                acfs_prepare_custom_selection
+                acfs_prepare_custom_selection || continue
                 if ! acfs_interactive_custom_module_toggles; then
                     return 1
                 fi
@@ -327,7 +449,7 @@ _acfs_interactive_module_selector_on_tty() {
                 ;;
         esac
 
-        if ! acfs_resolve_selection; then
+        if ! acfs_validate_interactive_plan; then
             echo "Failed to resolve selection. Please adjust your choices." >&2
             continue
         fi
@@ -349,6 +471,7 @@ _acfs_interactive_module_selector_on_tty() {
 
             case "$confirm_choice" in
                 1|""|y|Y|yes)
+                    acfs_validate_interactive_plan || return 1
                     echo "Proceeding with installation..."
                     return 0
                     ;;
@@ -356,19 +479,20 @@ _acfs_interactive_module_selector_on_tty() {
                     ONLY_MODULES=()
                     ONLY_PHASES=()
                     SKIP_MODULES=()
+                    SKIP_TAGS=()
+                    SKIP_CATEGORIES=()
                     ACFS_SELECTED_PROFILE=""
+                    ACFS_CLI_PROFILE=""
                     ACFS_EXPLICIT_TARGETED_SELECTION=false
                     MODE="vibe"
                     break
                     ;;
                 3)
-                    acfs_prepare_custom_selection
+                    acfs_prepare_custom_selection || return 1
                     if ! acfs_interactive_custom_module_toggles; then
                         return 1
                     fi
-                    if ! acfs_resolve_selection; then
-                        continue
-                    fi
+                    acfs_validate_interactive_plan || return 1
                     acfs_render_selection_review
                     continue
                     ;;
