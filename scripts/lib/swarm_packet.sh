@@ -26,6 +26,7 @@ SWARM_PACKET_WARNINGS=()
 swarm_packet_usage() {
     cat <<'EOF'
 Usage: acfs swarm packet --bead ID [OPTIONS]
+       acfs swarm packet --deliver PACKET.json --help
 
 Options:
   --json                Emit machine-readable JSON
@@ -706,4 +707,298 @@ swarm_packet_main() {
     "$jq_bin" -r '.packet_markdown' <<<"$report"
 }
 
-swarm_packet_main "$@"
+# Delivery is an explicitly separate execution path. Ordinary generation stays read-only.
+swarm_packet_deliver() {
+    command -v python3 >/dev/null 2>&1 || { echo 'Error: python3 is required for packet delivery' >&2; return 2; }
+    python3 - "$@" <<'PY_ACFS_PACKET_DELIVERY'
+"""Opt-in packet delivery through NTM's durable robot-send protocol."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+LIMIT = 1024 * 1024
+SCHEMA = "acfs.packet-delivery.v1"
+
+
+class DeliveryError(Exception):
+    pass
+
+
+def require(ok, message):
+    if not ok:
+        raise DeliveryError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def encode(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2) + "\n").encode()
+
+
+def parse(data):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            require(key not in result, "Duplicate JSON key; regenerate the input.")
+            result[key] = value
+        return result
+    try:
+        require(len(data) <= LIMIT, "Input exceeds 1 MiB.")
+        return json.loads(data.decode("utf-8"), object_pairs_hook=pairs,
+                          parse_constant=lambda _: (_ for _ in ()).throw(DeliveryError("Invalid JSON number.")))
+    except (ValueError, UnicodeError, RecursionError):
+        raise DeliveryError("Invalid JSON input.") from None
+
+
+def directory(path):
+    path = Path(os.path.abspath(path))
+    for item in [*reversed(path.parents), path]:
+        info = item.lstat()
+        require(stat.S_ISDIR(info.st_mode), "Directory path contains a link or non-directory.")
+    return path
+
+
+def read_file(path, private=False):
+    path = Path(os.path.abspath(path))
+    directory(path.parent)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "Expected a single-link regular file.")
+        if private:
+            require(info.st_uid == os.geteuid() and info.st_mode & 0o077 == 0,
+                    "Receipt must be owned by this user and private (mode 0600).")
+        data = handle.read(LIMIT + 1)
+    require(len(data) <= LIMIT, "Input exceeds 1 MiB.")
+    return data
+
+
+def run(argv, cwd, payload=b"", timeout=30):
+    # File-backed pipes bound memory and keep the prompt out of argv/logs. Poll
+    # output size while the subprocess runs, not just after a flooding process exits.
+    with tempfile.TemporaryFile() as inp, tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        inp.write(payload)
+        inp.seek(0)
+        proc = subprocess.Popen(argv, cwd=cwd, stdin=inp, stdout=out, stderr=err, start_new_session=True)
+        deadline = time.monotonic() + timeout
+        try:
+            while proc.poll() is None:
+                require(time.monotonic() < deadline, "Command timed out; inspect the receipt before retrying.")
+                require(os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size <= LIMIT,
+                        "Command output exceeded its limit; inspect the receipt before retrying.")
+                time.sleep(0.05)
+            require(os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size <= LIMIT,
+                    "Command output exceeded its limit.")
+            out.seek(0)
+            return proc.returncode, out.read(LIMIT + 1)
+        finally:
+            # Also clean up descendants that outlive the parent or inherit output.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+
+
+def binary(name):
+    value = shutil.which(name)
+    require(value is not None, "Required command is unavailable: " + name)
+    return os.path.abspath(value)
+
+
+def target_check(tmux, request):
+    code, output = run([tmux, "display-message", "-p", "-t", request["pane"],
+                        "#{session_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_dead}\t#{pane_current_command}"], request["repo"])
+    try:
+        session, pane, cwd, dead, command = output.decode("utf-8").rstrip("\n").split("\t")
+        path = Path(cwd).resolve(strict=True)
+        root = Path(request["repo"])
+        require(code == 0 and session == request["session"] and pane == request["pane"]
+                and dead == "0" and command == request["agent_type"] and (path == root or root in path.parents),
+                "Target pane is not the requested native agent in this session/repository.")
+    except (ValueError, UnicodeError):
+        raise DeliveryError("Unable to verify the target pane.") from None
+
+
+def outcome(response, request, target, receipt_query=False):
+    require(isinstance(response, dict), "Unrecognized NTM response; inspect the receipt.")
+    operation = response.get("operation")
+    require(isinstance(operation, dict), "NTM did not return a durable operation; inspect the receipt.")
+    require(response.get("session") == request["session"]
+            and operation.get("operation_id") == request["operation_id"]
+            and operation.get("payload_sha256") == request["payload_sha256"]
+            and operation.get("payload_bytes") == request["payload_bytes"],
+            "NTM receipt does not match this packet and session; no automatic retry.")
+    result = response.get("outcome") if receipt_query else response
+    admissions = operation.get("admissions")
+    submitted = (response.get("success") is True and operation.get("status") == "completed"
+                 and isinstance(result, dict) and result.get("success") is True
+                 and result.get("targets") == [target] and result.get("successful") == [target]
+                 and result.get("failed") == []
+                 and admissions == [{"target": target, "state": "submitted"}])
+    return "submitted" if submitted else "unconfirmed"
+
+
+def publish_intent(path, request, target):
+    # Create-only intent is the recovery boundary. Never delete/replace it on an
+    # error: a killed client may already have submitted keystrokes to the agent.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(encode({"schema": SCHEMA, "request": request, "target": target}))
+        handle.flush()
+        os.fsync(handle.fileno())
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="acfs swarm packet --deliver", allow_abbrev=False,
+        description="Preview a saved packet, then explicitly submit it to one existing NTM agent. "
+                    "This can start paid model work. Reusing a receipt only queries the outcome; it never resends.")
+    parser.add_argument("packet")
+    parser.add_argument("--repo", default=os.getcwd())
+    parser.add_argument("--session", required=True)
+    parser.add_argument("--pane", required=True, help="Stable tmux pane ID, e.g. %%42 (not a pane index)")
+    parser.add_argument("--agent-type", choices=("claude", "codex"), required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--receipt", required=True, help="New private intent file; reuse to reconcile without resending")
+    parser.add_argument("--expect-sha256", help="Packet file hash from preview; required with --send")
+    parser.add_argument("--send", action="store_true")
+    args = parser.parse_args()
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", args.session), "Invalid session name.")
+    require(re.fullmatch(r"%[0-9]{1,10}", args.pane), "Use a stable tmux pane ID such as %42.")
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", args.operation_id), "Invalid operation ID.")
+    repo = directory(args.repo)
+    packet_bytes = read_file(args.packet)
+    packet = parse(packet_bytes)
+    require(isinstance(packet, dict) and type(packet.get("schema_version")) is int
+            and packet["schema_version"] == 1 and packet.get("status") in ("pass", "warn"),
+            "Expected a schema-1 swarm packet JSON report.")
+    require(isinstance(packet.get("repository"), dict) and packet["repository"].get("path") == str(repo),
+            "Packet repository does not match --repo.")
+    require(isinstance(packet.get("output"), dict) and packet["output"].get("truncated") is False,
+            "Packet is incomplete; regenerate it with a larger --max-chars.")
+    bead = packet.get("bead")
+    require(isinstance(bead, dict) and isinstance(bead.get("id"), str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", bead["id"]), "Invalid packet Bead ID.")
+    text = packet.get("packet_markdown")
+    require(isinstance(text, str) and text.startswith("# ACFS Swarm Startup Packet\n")
+            and not any(ord(c) < 32 and c not in "\n\t" for c in text), "Invalid packet prompt.")
+    payload = text.encode("utf-8")
+    require(1 <= len(payload) <= 65536, "Packet prompt must fit in 64 KiB.")
+    packet_hash = digest(packet_bytes)
+    require(args.expect_sha256 is None or args.expect_sha256 == packet_hash,
+            "Packet changed since review; preview it again.")
+    request = {"repo": str(repo), "session": args.session, "pane": args.pane,
+               "agent_type": args.agent_type, "operation_id": args.operation_id,
+               "bead_id": bead["id"], "packet_sha256": packet_hash,
+               "payload_sha256": digest(payload), "payload_bytes": len(payload)}
+    receipt = Path(os.path.abspath(args.receipt))
+    directory(receipt.parent)
+    require(receipt != Path(os.path.abspath(args.packet)), "Receipt must not replace the packet.")
+    argv = ["ntm", "--robot-send=" + args.session, "--panes=" + args.pane,
+            "--type=" + args.agent_type, "--msg-file=-", "--op-id=" + args.operation_id,
+            "--robot-format=json", "--no-cass", "--with-memory=false"]
+    report = {"schema": SCHEMA, "status": "preview", "request": request,
+              "receipt": str(receipt), "ntm_argv": argv,
+              "sends_prompt": False, "agent_execution_verified": False,
+              "note": "Submission can start paid model work. No agent is spawned, interrupted, or trusted automatically. "
+                      "Beads claims and Agent Mail registration/reservations remain the agent's responsibility."}
+    if not args.send:
+        report["send_command"] = shlex.join(["acfs", "swarm", "packet", "--deliver", os.path.abspath(args.packet),
+            "--repo", str(repo), "--session", args.session, "--pane", args.pane, "--agent-type", args.agent_type,
+            "--operation-id", args.operation_id, "--receipt", str(receipt), "--expect-sha256", packet_hash, "--send"])
+        print(encode(report).decode(), end="")
+        return 0
+    require(args.expect_sha256 == packet_hash, "Preview first and pass --expect-sha256 with --send.")
+    ntm = binary("ntm")
+    if receipt.exists() or receipt.is_symlink():
+        saved = parse(read_file(receipt, private=True))
+        require(isinstance(saved, dict) and saved.get("schema") == SCHEMA and saved.get("request") == request
+                and isinstance(saved.get("target"), str), "Receipt belongs to a different delivery; it was not changed.")
+        report["status"] = "unconfirmed"
+        try:
+            code, data = run([ntm, "--robot-send-receipt=" + args.operation_id, "--robot-format=json"], repo)
+            if code == 0:
+                report["status"] = outcome(parse(data), request, saved["target"], receipt_query=True)
+        except (DeliveryError, OSError):
+            pass
+        report["reconciled_only"] = True
+    else:
+        tmux, br = binary("tmux"), binary("br")
+        code, data = run([br, "ready", "--json"], repo)
+        ready = parse(data)
+        require(code == 0 and isinstance(ready, list)
+                and sum(isinstance(b, dict) and b.get("id") == bead["id"]
+                        and b.get("status", "open") == "open" for b in ready) == 1,
+                "Bead is not in the current ready queue; no prompt was sent.")
+        target_check(tmux, request)
+        code, data = run([ntm, *[a for a in argv[1:] if not a.startswith("--op-id=")], "--dry-run"], repo, payload)
+        preview = parse(data)
+        require(code == 0 and isinstance(preview, dict) and preview.get("success") is True
+                and preview.get("session") == args.session and preview.get("dry_run") is True
+                and preview.get("blocked") is False and preview.get("successful") == []
+                and preview.get("failed") == [] and isinstance(preview.get("would_send_to"), list)
+                and len(preview["would_send_to"]) == 1 and isinstance(preview["would_send_to"][0], str),
+                "NTM did not confirm exactly one matching agent target; no prompt was sent.")
+        # NTM can enable CM injection from its config even with a false CLI
+        # flag. Refuse that mode rather than silently adding unreviewed context.
+        for key in ("cm_injection", "memory_injection", "cass_injection"):
+            enrichment = preview.get(key)
+            require(enrichment is None or (isinstance(enrichment, dict) and enrichment.get("enabled") is False),
+                    "Disable NTM send-time context injection before delivering an already-reviewed packet.")
+        target = preview["would_send_to"][0]
+        target_check(tmux, request)
+        publish_intent(receipt, request, target)
+        report["status"] = "unconfirmed"
+        report["sends_prompt"] = True
+        try:
+            code, data = run([ntm, *argv[1:]], repo, payload)
+            if code == 0:
+                report["status"] = outcome(parse(data), request, target)
+        except (DeliveryError, OSError):
+            pass
+        report["reconciled_only"] = False
+    report["recovery"] = "Run the identical --deliver command with the same receipt to query NTM; ACFS will not resend."
+    print(encode(report).decode(), end="")
+    return 0 if report["status"] == "submitted" else 1
+
+
+def cancelled(signum, frame):
+    raise KeyboardInterrupt
+
+
+for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+    signal.signal(sig, cancelled)
+try:
+    sys.exit(main())
+except (DeliveryError, OSError, UnicodeError, KeyboardInterrupt) as exc:
+    message = str(exc) if isinstance(exc, DeliveryError) else "Delivery interrupted or unavailable; retain the receipt and reconcile before retrying."
+    print(encode({"schema": SCHEMA, "status": "error", "error": message,
+                  "agent_execution_verified": False}).decode(), end="")
+    sys.exit(2)
+PY_ACFS_PACKET_DELIVERY
+}
+
+if [[ "${1:-}" == "--deliver" ]]; then
+    shift
+    swarm_packet_deliver "$@"
+else
+    swarm_packet_main "$@"
+fi
