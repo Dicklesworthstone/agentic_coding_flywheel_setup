@@ -157,8 +157,8 @@ SSE-only MCP service. Error responses and credential values are never printed.
 
 After apply, start Claude Code from the project, approve its project-local MCP
 server, and use `FIRST_AGENT_PROMPT.md`. Export the same credential environment
-variable for the client. Other MCP clients need a separately reviewed connection
-configuration; this option does not modify their settings or global settings.
+variable for the client. For Codex or Gemini, select their project-local
+configuration explicitly as described below. Global settings are never changed.
 
 Bootstrap registers a **project**, not an agent impersonating your session.
 Each real agent calls `register_agent` with its actual program and model, keeps
@@ -171,4 +171,67 @@ fixtures, not a running Agent Mail deployment or a live Claude session:
 
 ```sh
 python3 -B tests/unit/test_project_bootstrap_mail.py
+```
+
+## Configure multiple agent clients for the same project
+
+Select the clients explicitly when creating the plan:
+
+```sh
+acfs newproj --plan myapp /data/projects/myapp --preset first-project --beads \
+  --agent-mail http://127.0.0.1:8765/api/ \
+  --agent-mail-token-env AGENT_MAIL_TOKEN \
+  --agent-mail-clients claude,codex > /tmp/myapp-plan.json
+cat /tmp/myapp-plan.json
+acfs newproj --apply /tmp/myapp-plan.json --yes
+```
+
+Any non-empty subset of `claude,codex,gemini` is supported. Gemini remains an
+optional client: selecting it here does not install or promote it to a default
+ACFS agent. Unknown, duplicate, or empty selections fail before mutation. The
+selection requires `--agent-mail URL`, belongs to the reviewed plan, and cannot
+be overridden at apply time. Configuration is created only for selected clients:
+
+| Client | Project-local configuration | Authentication reference | Shared policy |
+| --- | --- | --- | --- |
+| Claude Code | `.mcp.json` | `Authorization: Bearer ${NAME}` | `CLAUDE.md` imports `AGENTS.md` |
+| Codex | `.codex/config.toml` | `bearer_token_env_var = "NAME"` | Native `AGENTS.md` discovery |
+| Gemini CLI | `.gemini/settings.json` | HTTP `headers.Authorization` environment reference | `context.fileName` includes `AGENTS.md` and `GEMINI.md` |
+
+Policy integration is emitted only when the `agents` feature is selected; a
+minimal file-only selection never imports a nonexistent AGENTS file. The Claude
+import supports sessions without native AGENTS discovery and does not copy the
+policy. Gemini retains its native GEMINI.md discovery alongside the shared policy.
+All connection files are ignored by Git. No credential values are stored, and
+unauthenticated loopback configurations do not import ambient token variables.
+
+The project is registered **once**, not once per client. An interrupted apply
+can resume the same plan without rewriting matching client files or repeating
+completed registration. Edited or redirected client configuration stops resume
+before another network request or creation of missing planned files.
+
+After apply, launch the chosen client from the project root and follow the
+client-specific steps in `AGENT_MAIL.md`. Codex must trust the project before it
+loads `.codex/config.toml`; bootstrap does not grant that trust. Use `/mcp` in
+the client to check connectivity. Configuration presence alone is not proof of
+a live connection. Each session still registers its own Agent Mail identity.
+There are no model calls, automatic logins, tool-approval bypasses, global MCP
+writes, agent launches, message sends, or file reservations during bootstrap.
+
+Omitting `--agent-mail-clients` preserves the earlier Claude-only template and
+plan shape, so previously reviewed plans remain usable with this extension.
+Choosing `--agent-mail-clients claude` explicitly adds the new policy handoff;
+it is a new plan, not an override for an old interrupted apply.
+
+Native formats were checked against the official [Codex MCP documentation](https://developers.openai.com/codex/mcp),
+[Claude instruction-file documentation](https://code.claude.com/docs/en/memory),
+[Gemini MCP documentation](https://geminicli.com/docs/tools/mcp-server/), and
+[Gemini configuration reference](https://geminicli.com/docs/reference/configuration/).
+
+The client suite uses Python 3.11+ for standard-library TOML parsing, the real
+shell entrypoint, Git, and a real loopback HTTP contract fixture. It does not
+launch installed provider clients or replace live client/service acceptance:
+
+```sh
+python3 -B tests/unit/test_project_bootstrap_clients.py
 ```

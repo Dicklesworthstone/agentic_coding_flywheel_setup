@@ -192,7 +192,69 @@ def ensure_mail_project(command, token):
         connection.close()
 
 
-def make_plan(name, directory, stack, features, target, agent_mail=None):
+MAIL_CLIENTS = ("claude", "codex", "gemini")
+
+
+def mail_clients(value):
+    """Canonical, explicit selection; never infer installed clients from PATH."""
+    if (type(value) is not list or not value
+            or any(type(client) is not str or client not in MAIL_CLIENTS for client in value)
+            or len(set(value)) != len(value)):
+        raise ValueError("Agent Mail clients must be a non-empty, unique selection of claude,codex,gemini")
+    return [client for client in MAIL_CLIENTS if client in value]
+
+
+def mail_client_files(settings, clients, has_policy):
+    """Render native project configuration, not global activation or shell commands."""
+    files = {}
+    connection_files = []
+    instructions = ["## Connect the selected clients\n\n",
+                    "Start each client from this project root after reviewing its configuration.\n",
+                    "Keep the selected token variable in the launching terminal's environment.\n",
+                    "Approve project trust and MCP connections yourself; bootstrap does not\n",
+                    "approve tools, change sandbox settings, log in, or launch a model.\n\n"]
+    headers = ({"Authorization": "Bearer ${" + settings["token_env"] + "}"}
+               if settings["token_env"] else {})
+    if "claude" in clients:
+        server = {"type": "http", "url": settings["url"]}
+        if headers:
+            server["headers"] = headers
+        files[".mcp.json"] = json.dumps({"mcpServers": {"mcp-agent-mail": server}}, indent=2) + "\n"
+        connection_files.append(".mcp.json")
+        if has_policy:
+            files["CLAUDE.md"] = "@AGENTS.md\n"
+        instructions.append("### Claude Code\n\nRun `claude`, approve the project-local `.mcp.json`, and use `/mcp` to\nconfirm `mcp-agent-mail` connected. ")
+        instructions.append("`CLAUDE.md` imports the shared `AGENTS.md`;\ncheck `/context` to verify the instructions loaded.\n\n" if has_policy else "Read the project policy before starting work.\n\n")
+    if "codex" in clients:
+        # The validated endpoint and environment name are ASCII. JSON basic
+        # string escaping is also valid TOML for this restricted input domain.
+        content = "[mcp_servers.mcp-agent-mail]\nurl = " + json.dumps(settings["url"]) + "\n"
+        if settings["token_env"]:
+            content += "bearer_token_env_var = " + json.dumps(settings["token_env"]) + "\n"
+        files[".codex/config.toml"] = content
+        connection_files.append(".codex/config.toml")
+        instructions.append("### Codex\n\nRun `codex` and explicitly trust this project after review. Codex loads\n`.codex/config.toml` only for trusted projects. Use `/mcp` to verify\n`mcp-agent-mail`; `codex mcp list` inspects configuration, not server health.\n")
+        if has_policy:
+            instructions.append("Codex reads the shared `AGENTS.md` from the project.\n")
+        instructions.append("Do not use `codex mcp add` for this setup: it can change user configuration.\n\n")
+    if "gemini" in clients:
+        server = {"httpUrl": settings["url"], "trust": False}
+        if headers:
+            server["headers"] = headers
+        config = {"mcpServers": {"mcp-agent-mail": server}}
+        if has_policy:
+            # Retain Gemini's native instruction discovery as well as AGENTS.
+            config["context"] = {"fileName": ["AGENTS.md", "GEMINI.md"]}
+        files[".gemini/settings.json"] = json.dumps(config, indent=2) + "\n"
+        connection_files.append(".gemini/settings.json")
+        instructions.append("### Gemini CLI\n\nRun `gemini`, review project trust, and use `/mcp` to verify the HTTP\nconnection from `.gemini/settings.json`. Tool confirmations remain enabled.\n")
+        if has_policy:
+            instructions.append("Use `/memory show` to confirm the shared `AGENTS.md` instructions loaded.\n")
+        instructions.append("Gemini is optional; selecting its configuration does not install it.\n\n")
+    return files, connection_files, "".join(instructions)
+
+
+def make_plan(name, directory, stack, features, target, agent_mail=None, agent_mail_clients=None):
     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name):
         raise ValueError("project name must start with a letter and contain at most 64 letters, digits, _ or -")
     if stack not in ("python", "typescript"):
@@ -210,6 +272,10 @@ def make_plan(name, directory, stack, features, target, agent_mail=None):
         raise ValueError("select Agent Mail with --agent-mail URL; do not supply connection options without selecting it")
     if agent_mail is not None:
         agent_mail = mail_settings(agent_mail)
+    if agent_mail_clients is not None:
+        if agent_mail is None:
+            raise ValueError("--agent-mail-clients requires --agent-mail URL")
+        agent_mail_clients = mail_clients(agent_mail_clients)
     if not isinstance(directory, str) or not directory.startswith("/") or any(ord(c) < 32 for c in directory):
         raise ValueError("project directory must be an absolute path without control characters")
     if str(Path(directory)) != directory or ".." in Path(directory).parts or directory == "/":
@@ -223,19 +289,28 @@ def make_plan(name, directory, stack, features, target, agent_mail=None):
         raise ValueError("missing parent identity")
     files, checks = templates(name, stack, features)
     if agent_mail is not None:
-        server = {"type": "http", "url": agent_mail["url"]}
-        if agent_mail["token_env"]:
-            server["headers"] = {"Authorization": "Bearer ${" + agent_mail["token_env"] + "}"}
-        files[".mcp.json"] = json.dumps({"mcpServers": {"mcp-agent-mail": server}}, indent=2) + "\n"
-        # Keep machine-specific connection details out of commits even when
-        # gitignore was not otherwise selected. No credential values are stored.
-        files[".gitignore"] = files.get(".gitignore", "") + "/.mcp.json\n"
+        if agent_mail_clients is None:
+            server = {"type": "http", "url": agent_mail["url"]}
+            if agent_mail["token_env"]:
+                server["headers"] = {"Authorization": "Bearer ${" + agent_mail["token_env"] + "}"}
+            files[".mcp.json"] = json.dumps({"mcpServers": {"mcp-agent-mail": server}}, indent=2) + "\n"
+            # Keep machine-specific connection details out of commits even when
+            # gitignore was not otherwise selected. No credential values are stored.
+            files[".gitignore"] = files.get(".gitignore", "") + "/.mcp.json\n"
+            connection_instructions = (
+                "The project-local `.mcp.json` connects Claude Code after you approve its MCP\n"
+                "server prompt. Other clients need their own reviewed connection configuration.\n\n")
+        else:
+            client_files, connection_files, connection_instructions = mail_client_files(
+                agent_mail, agent_mail_clients, "AGENTS.md" in files)
+            files.update(client_files)
+            files[".gitignore"] = files.get(".gitignore", "") + "".join(
+                "/" + path + "\n" for path in connection_files)
         files["AGENT_MAIL.md"] = (
             "# Project coordination with Agent Mail\n\n"
             "Bootstrap registers this project's canonical absolute path with the reviewed\n"
             "Agent Mail service. It does not create a shared agent identity or launch agents.\n"
-            "The project-local `.mcp.json` connects Claude Code after you approve its MCP\n"
-            "server prompt. Other clients need their own reviewed connection configuration.\n\n"
+            + connection_instructions
             + ("Export `" + agent_mail["token_env"] + "` in the terminal that launches the client.\n"
                "Never paste its value into files, commands recorded in history, or prompts.\n\n" if agent_mail["token_env"] else "")
             + "## Every agent session\n\n"
@@ -274,6 +349,8 @@ def make_plan(name, directory, stack, features, target, agent_mail=None):
                                  "url": agent_mail["url"], "token_env": agent_mail["token_env"],
                                  "tool": "ensure_project", "arguments": {"human_key": directory},
                                  "writes": ["Agent Mail project namespace on the reviewed service"]})
+    if agent_mail_clients is not None:
+        plan["agent_mail_clients"] = agent_mail_clients
     plan["plan_id"] = digest(canonical(plan))
     return plan
 
@@ -332,7 +409,7 @@ def read_plan(path):
     if type(value) is not dict or type(value.get("project")) is not dict:
         raise ValueError("invalid bootstrap plan")
     project = value["project"]
-    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"), value.get("agent_mail"))
+    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"), value.get("agent_mail"), value.get("agent_mail_clients"))
     if value != expected:
         raise ValueError("plan differs from this ACFS version's templates; regenerate and review it")
     return value
@@ -591,9 +668,10 @@ def main():
     parser.add_argument("--beads", action="store_true", help="also select local Beads initialization (requires git)")
     parser.add_argument("--agent-mail", metavar="URL", help="also register the project on this Agent Mail service and configure project-local Claude MCP")
     parser.add_argument("--agent-mail-token-env", metavar="NAME", help="read authentication only from this environment variable at apply/client launch")
+    parser.add_argument("--agent-mail-clients", metavar="claude,codex,gemini", help="explicit project-local client selection; omitted preserves the existing Claude-only plan")
     args = parser.parse_args()
     if args.apply:
-        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads, args.agent_mail, args.agent_mail_token_env)):
+        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None)):
             parser.error("use --apply PLAN_JSON --yes without plan overrides")
         result = apply(read_plan(args.apply), args.resume)
     else:
@@ -601,6 +679,8 @@ def main():
             parser.error("--yes and --resume apply only to --apply")
         if not args.preset and not args.features:
             parser.error("select --preset first-project or --with FEATURES explicitly")
+        if args.agent_mail_clients is not None and not args.agent_mail:
+            parser.error("--agent-mail-clients requires --agent-mail URL")
         if args.agent_mail_token_env and not args.agent_mail:
             parser.error("--agent-mail-token-env requires --agent-mail URL")
         # Resolve parents once for a portable reviewable absolute destination;
@@ -611,7 +691,8 @@ def main():
         if args.agent_mail and "agent-mail" not in features:
             features.append("agent-mail")
         result = make_plan(args.plan, directory, args.stack or "python", features, target_snapshot(directory),
-                           {"url": args.agent_mail, "token_env": args.agent_mail_token_env} if args.agent_mail else None)
+                           {"url": args.agent_mail, "token_env": args.agent_mail_token_env} if args.agent_mail else None,
+                           args.agent_mail_clients.split(",") if args.agent_mail_clients is not None else None)
     print(json.dumps(result, indent=2, ensure_ascii=True))
 
 
@@ -756,6 +837,7 @@ print_help() {
     echo "  --apply PLAN.json --yes --resume  Continue an interrupted bootstrap"
     echo "  --agent-mail URL        Opt into project registration and Claude MCP setup"
     echo "  --agent-mail-token-env NAME  Read authentication from this variable, never store it"
+    echo "  --agent-mail-clients claude,codex,gemini  Configure only the selected clients"
     echo ""
     echo "CLI mode options:"
     echo "  --no-br         Skip beads (br) initialization"
