@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /** Opt-in isolated-profile startup checks. Never activates global credentials. */
 import { spawn } from "node:child_process";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, statSync, lstatSync, openSync, fstatSync, writeFileSync, fsyncSync, closeSync } from "node:fs";
 import { userInfo } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const PROVIDERS = ["claude", "codex", "gemini", "agy"] as const;
@@ -25,7 +25,7 @@ export interface ProbeRequest {
 export interface Selection { provider: Provider; name: string; ref: string }
 export interface RehearsalPlan { selections: readonly Selection[]; timeoutMs: number }
 export interface Check {
-  id: "profile_status" | "isolated_version" | "profile_status_after";
+  id: "profile_status" | "isolated_version" | "native_auth_status" | "profile_status_after";
   status: "pass" | "fail" | "warn" | "skipped";
   code: string;
   exitCode: number | null;
@@ -36,6 +36,7 @@ export interface ProfileResult {
   status: "planned" | "pass" | "fail" | "warn";
   localAuthPresent: boolean | null;
   version: string | null;
+  nativeAuth: NativeAuthState;
   checks: Check[];
   nextAction: string;
 }
@@ -48,6 +49,8 @@ export interface RehearsalReport {
   liveAuthenticationVerified: false;
   globalActivationRequested: false;
   modelPromptSent: false;
+  nativeAuthRequested: boolean;
+  nativeAuthRequired: boolean;
   profiles: ProfileResult[];
   redaction: { rawOutputIncluded: false; profileNamesIncluded: false };
 }
@@ -187,8 +190,105 @@ function safeVersion(result: ProbeResult): string | null {
   const match = /(?:^|\s|v)(\d{1,4}\.\d{1,4}\.\d{1,4})(?=\s|$|[-+(])/.exec(result.stdout.toString("utf8"));
   return match?.[1] ?? null;
 }
+export type NativeAuthState = "not_requested" | "not_checked" | "present" | "missing" | "unknown" | "unsupported";
+export function nativeAuthArgs(provider: Provider): string[] | null {
+  // These are status subcommands, never the interactive login flow. Claude
+  // emits JSON by default; Codex emits its status on stderr, not stdout.
+  if (provider === "claude") return ["auth", "status"];
+  if (provider === "codex") return ["login", "status"];
+  return null; // Never guess flags for an unverified provider protocol.
+}
+function uniqueJsonObject(bytes: Buffer): Record<string, unknown> | null {
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    // JSON.parse accepts duplicate keys. Inspect string/punctuation tokens after
+    // syntax validation, decoding escaped keys before comparing each object's
+    // key set. Nested objects have independent sets; string values are not keys.
+    const tokens = /"(?:\\.|[^"\\])*"|[{}\[\]:,]/g;
+    const stack: (Set<string> | null)[] = [];
+    let token: RegExpExecArray | null;
+    while ((token = tokens.exec(text))) {
+      const value = token[0];
+      if (value === "{") stack.push(new Set());
+      else if (value === "[") stack.push(null);
+      else if (value === "}" || value === "]") stack.pop();
+      else if (value.startsWith('"') && /^\s*:/.test(text.slice(tokens.lastIndex))) {
+        const keys = stack.at(-1);
+        const key = JSON.parse(value) as string;
+        if (!keys || keys.has(key)) return null;
+        keys.add(key);
+      }
+    }
+    return parsed as Record<string, unknown>;
+  } catch { return null; }
+}
+export function parseNativeAuth(provider: Provider, result: ProbeResult): NativeAuthState {
+  if (!nativeAuthArgs(provider)) return "unsupported";
+  if (result.outcome !== "ok" && result.outcome !== "exit_nonzero") return "unknown";
+  if (provider === "claude") {
+    const parsed = uniqueJsonObject(result.stdout);
+    if (parsed?.loggedIn === true && result.exitCode === 0) return "present";
+    if (parsed?.loggedIn === false && result.exitCode === 1) return "missing";
+    return "unknown";
+  }
+  let text: string;
+  try {
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    if (decoder.decode(result.stdout).trim() !== "") return "unknown";
+    text = decoder.decode(result.stderr).trim();
+  } catch { return "unknown"; }
+  if (text === "Not logged in" && result.exitCode === 1) return "missing";
+  if (result.exitCode !== 0) return "unknown";
+  if (/^Logged in using (ChatGPT|access token|personal access token|workload identity|Amazon Bedrock API key|Amazon Bedrock AWS access keys)$/.test(text) ||
+      /^Logged in using an API key - [^\x00-\x1f\x7f]{1,256}$/.test(text)) return "present";
+  return "unknown";
+}
+
+/** Preflight before probes, then recheck at publication. Never overwrite evidence. */
+export function preflightEvidencePath(path: string): string {
+  if (!path || /[\x00-\x1f\x7f]/.test(path)) refuse("invalid_evidence_path");
+  const target = resolve(path);
+  const uid = process.getuid?.();
+  if (uid === undefined) refuse("posix_host_required");
+  const parent = dirname(target);
+  let current = "/";
+  for (const part of parent.split("/").filter(Boolean)) {
+    current = join(current, part);
+    const info = lstatSync(current);
+    const stickyRoot = info.uid === 0 && (info.mode & 0o1000) !== 0;
+    if (!info.isDirectory() || info.isSymbolicLink() || (info.uid !== 0 && info.uid !== uid) ||
+        ((info.mode & 0o022) !== 0 && !stickyRoot)) refuse("unsafe_evidence_directory");
+  }
+  const info = lstatSync(parent);
+  if (info.uid !== uid || (info.mode & 0o022) !== 0) refuse("evidence_parent_must_be_private");
+  try { lstatSync(target); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return target;
+    return refuse("evidence_path_unavailable");
+  }
+  return refuse("evidence_already_exists");
+}
+export function writeRehearsalEvidence(path: string, report: RehearsalReport): void {
+  const target = preflightEvidencePath(path);
+  const bytes = Buffer.from(JSON.stringify(report, null, 2) + "\n");
+  if (bytes.length > 64 * 1024) refuse("evidence_size_limit");
+  let fd: number;
+  try { fd = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
+  catch { return refuse("evidence_create_failed"); }
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.nlink !== 1 || info.uid !== process.getuid!() || (info.mode & 0o077) !== 0)
+      refuse("evidence_file_unsafe");
+    writeFileSync(fd, bytes);
+    fsyncSync(fd);
+  } finally { closeSync(fd); }
+}
+
 export interface RehearsalOptions {
   execute?: boolean;
+  nativeAuth?: boolean;
+  requireNativeAuth?: boolean;
   signal?: AbortSignal;
   env?: NodeJS.ProcessEnv;
 }
@@ -213,9 +313,11 @@ export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOp
     schema: "acfs.agent-profile-rehearsal.v1", generatedAt: new Date().toISOString(),
     executed: options.execute === true, status: "planned", scope: "isolated-cli-startup-and-local-auth",
     liveAuthenticationVerified: false, globalActivationRequested: false, modelPromptSent: false,
+    nativeAuthRequested: options.nativeAuth === true || options.requireNativeAuth === true,
+    nativeAuthRequired: options.requireNativeAuth === true,
     profiles: checked.selections.map((s) => ({
       provider: s.provider, profileRef: s.ref, status: "planned", localAuthPresent: null,
-      version: null, checks: [], nextAction: "Pass --run to execute these local checks; no model prompt will be sent.",
+      version: null, nativeAuth: options.nativeAuth || options.requireNativeAuth ? "not_checked" : "not_requested", checks: [], nextAction: "Pass --run to execute these local checks; no model prompt will be sent.",
     })),
     redaction: { rawOutputIncluded: false, profileNamesIncluded: false },
   };
@@ -260,6 +362,23 @@ export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOp
     if (version.outcome !== "ok") continue;
     profile.version = safeVersion(version);
     if (!profile.version) Object.assign(profile.checks.at(-1)!, { status: "warn", code: "version_not_recognized" });
+    if (report.nativeAuthRequested) {
+      const args = nativeAuthArgs(selection.provider);
+      if (!args) {
+        profile.nativeAuth = "unsupported";
+        profile.checks.push({ id: "native_auth_status", status: report.nativeAuthRequired ? "fail" : "skipped",
+          code: "native_status_unavailable", exitCode: null });
+      } else {
+        const native = await probe("native_auth_status", ["exec", selection.provider, selection.name, "--", ...args]);
+        profile.nativeAuth = parseNativeAuth(selection.provider, native);
+        const check = profile.checks.at(-1)!;
+        if (profile.nativeAuth === "present") Object.assign(check, { status: "pass", code: "native_auth_present" });
+        else if (profile.nativeAuth === "missing") Object.assign(check, { status: "fail", code: "native_auth_missing" });
+        else if (native.outcome === "ok" || native.outcome === "exit_nonzero")
+          Object.assign(check, { status: report.nativeAuthRequired ? "fail" : "warn", code: "native_status_unrecognized" });
+        if (cancelled) continue;
+      }
+    }
     const after = await probe("profile_status_after", statusArgs);
     const finalState = parseProfileStatus(after, selection);
     if (!finalState || !finalState.loggedIn || finalState.locked) {
@@ -267,8 +386,12 @@ export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOp
       profile.nextAction = "Inspect the isolated profile after execution. ACFS did not restore credentials, unlock it, or retry.";
       continue;
     }
-    profile.status = profile.version ? "pass" : "warn";
-    profile.nextAction = "Local profile and isolated CLI startup checked. Server-side authentication, token validity, quota, and model execution are NOT verified.";
+    profile.status = profile.checks.some((c) => c.status === "fail") ? "fail" :
+      profile.checks.some((c) => c.status === "warn") ? "warn" : "pass";
+    profile.nextAction = profile.nativeAuth === "missing" ? AUTH_GUIDANCE :
+      profile.nativeAuth === "unknown" ? "Native authentication status was not recognized. Inspect the provider locally; no login or retry was attempted." :
+      profile.nativeAuth === "unsupported" && report.nativeAuthRequired ? "No verified native status protocol is available for this provider; the required check did not pass." :
+      "Local profile and isolated CLI startup checked. Server-side authentication, token validity, quota, and model execution are NOT verified.";
   }
   report.status = cancelled ? "cancelled" : report.profiles.some((p) => p.status === "fail") ? "fail" :
     report.profiles.some((p) => p.status !== "pass") ? "warn" : "pass";
@@ -279,13 +402,14 @@ export function formatRehearsal(report: RehearsalReport): string {
   const lines = ["ACFS isolated agent profile rehearsal", `Status: ${report.status}`, "Profile references follow --profile argument order; names and raw output are omitted."];
   for (const profile of report.profiles) {
     lines.push(`${profile.profileRef} (${profile.provider}): ${profile.status}`);
+    if (report.nativeAuthRequested) lines.push(`  native authentication status: ${profile.nativeAuth}`);
     for (const check of profile.checks) lines.push(`  ${check.id}: ${check.status} (${check.code})`);
     lines.push(`  ${profile.nextAction}`);
   }
   lines.push("No global activation or model prompt was requested. CAAM/provider commands may update their own local metadata.");
   return lines.join("\n");
 }
-export const REHEARSAL_HELP = `Usage: scripts/agent-readiness-audit.sh --rehearse --profile PROVIDER:NAME [--profile ...] [--run] [--json] [--timeout SECONDS]
+export const REHEARSAL_HELP = `Usage: scripts/agent-readiness-audit.sh --rehearse --profile PROVIDER:NAME [--profile ...] [--run] [--native-auth] [--require-native-auth] [--output FILE] [--json] [--timeout SECONDS]
 
 Default: plan only. --run explicitly permits local CAAM status and isolated CLI
 --version checks (1-8 profiles; per-command timeout 1-30 seconds, default 10).
@@ -295,13 +419,23 @@ not vault-only profiles from caam ls. Busy profiles are never unlocked.
 CAAM exec owns isolation and locks. No activate, login, refresh, model prompt,
 quota rotation or task dispatch is requested. API-key environment overrides are
 removed. Local files/CLI startup do not prove live authentication or token validity.
+--native-auth adds Claude auth status / Codex login status through CAAM exec.
+--require-native-auth also rejects unsupported or unrecognized native status.
+These are LOCAL provider checks, not proof of server token validity or quota.
+--output FILE saves the redacted JSON to a NEW mode-0600 file in an existing,
+user-owned directory. Existing files and symlinked paths are refused. This
+explicit export also works in plan mode; it never writes raw command output.
 Raw output, account names and paths are omitted from reports.
 
 Example: --rehearse --profile claude:work --profile codex:review --run --json`;
 export async function rehearsalMain(args: string[]): Promise<number> {
   let json = false;
+  let completed: RehearsalReport | undefined;
   try {
     let execute = false;
+    let nativeAuth = false;
+    let requireNativeAuth = false;
+    let output: string | undefined;
     let timeout = 10;
     const selections: string[] = [];
     for (let i = 0; i < args.length; i++) {
@@ -309,6 +443,11 @@ export async function rehearsalMain(args: string[]): Promise<number> {
         case "--help": case "-h": console.log(REHEARSAL_HELP); return 0;
         case "--json": json = true; break;
         case "--run": execute = true; break;
+        case "--native-auth": nativeAuth = true; break;
+        case "--require-native-auth": nativeAuth = true; requireNativeAuth = true; break;
+        case "--output":
+          if (output !== undefined || !args[i + 1] || args[i + 1]!.startsWith("--")) refuse("invalid_evidence_path");
+          output = args[++i]!; break;
         case "--profile": selections.push(args[++i] ?? ""); break;
         case "--timeout": {
           const value = args[++i] ?? "";
@@ -319,18 +458,24 @@ export async function rehearsalMain(args: string[]): Promise<number> {
       }
     }
     const plan = buildRehearsalPlan(selections, timeout);
+    if (output !== undefined) output = preflightEvidencePath(output);
     const controller = new AbortController();
     const stop = (): void => controller.abort();
-    process.on("SIGINT", stop); process.on("SIGTERM", stop);
+    process.on("SIGINT", stop); process.on("SIGTERM", stop); process.on("SIGHUP", stop);
     try {
-      const report = await rehearseProfiles(plan, { execute, signal: controller.signal });
+      const report = await rehearseProfiles(plan, { execute, nativeAuth, requireNativeAuth, signal: controller.signal });
+      completed = report;
+      if (output !== undefined) writeRehearsalEvidence(output, report);
       console.log(json ? JSON.stringify(report, null, 2) : formatRehearsal(report));
       return report.status === "cancelled" ? 130 : report.status === "planned" || report.status === "pass" ? 0 : 1;
-    } finally { process.off("SIGINT", stop); process.off("SIGTERM", stop); }
+    } finally { process.off("SIGINT", stop); process.off("SIGTERM", stop); process.off("SIGHUP", stop); }
   } catch (error) {
     const code = error instanceof RehearsalError ? error.code : "rehearsal_failed";
-    if (json || args.includes("--json")) console.log(JSON.stringify({ schema: "acfs.agent-profile-rehearsal.error.v1", code }));
-    else console.error(`Rehearsal refused: ${code}. Run with --help for usage.`);
+    if (json || args.includes("--json")) console.log(JSON.stringify({ schema: "acfs.agent-profile-rehearsal.error.v1", code, report: completed }));
+    else {
+      if (completed) console.log(formatRehearsal(completed));
+      console.error(`Rehearsal refused: ${code}. Run with --help for usage.`);
+    }
     return 2;
   }
 }
