@@ -120,6 +120,7 @@ BANNER
     echo "  [Enter/o]   Open project in shell"
     echo "  [c]         Open in Claude Code"
     echo "  [n]         Start a multi-agent NTM workspace"
+    echo "  [w]         Start agents and hand off ready Beads tasks"
     echo "  [q]         Exit wizard"
 }
 
@@ -190,12 +191,10 @@ newproj_ntm_project() {
     (CDPATH='' cd -P -- "$project_dir" && pwd -P)
 }
 
-# This helper only launches an explicitly reviewed mix. It returns NTM's
-# validated session name on stdout; diagnostics go to stderr. No prompt is
-# broadcast and no permission/model overrides are added by ACFS.
-newproj_start_ntm() {
+# Validate before either task creation or agent launch can mutate the project.
+newproj_validate_ntm_request() {
     local project_dir="$1" session="$2" cc="$3" cod="$4" agy="$5"
-    local count total=0 tool response status=0
+    local count total=0 tool
     if [[ ! "$session" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$ ]]; then
         echo "Use a session name of 1-64 letters, numbers, underscores, or hyphens." >&2
         return 1
@@ -227,27 +226,106 @@ newproj_start_ntm() {
         echo "A selected agent CLI is missing; adjust the mix or run acfs doctor." >&2
         return 1
     fi
+}
+
+# Scope both Beads and NTM's child processes to this project. A terminal can
+# inherit another repository's database overrides; changing cwd alone is not
+# sufficient. The subshell preserves the caller's environment and directory.
+newproj_ntm_project_command() (
+    local project_dir="$1"
+    shift
+    unset BEADS_DB BD_DB BD_DATABASE BEADS_JSONL
+    export BEADS_DIR="$project_dir/.beads"
+    cd -- "$project_dir" || return 1
+    "$@"
+)
+
+# Read the local ready queue before asking for permission to assign work. NTM
+# remains responsible for fresh triage, claims, reservations and safe dispatch.
+newproj_ntm_ready_work() {
+    local project_dir="$1" ready
+    if [[ ! -d "$project_dir/.beads" || -L "$project_dir/.beads" ]]; then
+        echo "This project needs its own initialized .beads directory. Run br init first." >&2
+        return 1
+    fi
+    if ! command -v br >/dev/null 2>&1 || ! command -v bv >/dev/null 2>&1; then
+        echo "Beads Rust (br) and Beads Viewer (bv) are required for task handoff." >&2
+        return 1
+    fi
+    ready=$(newproj_ntm_project_command "$project_dir" br ready --json) || {
+        echo "Could not read ready tasks; no work was assigned." >&2
+        return 1
+    }
+    if ! jq -e -s '
+        length == 1 and (.[0] | type == "array" and all(.[];
+            type == "object" and
+            (.id | type == "string" and test("^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")) and
+            (.title | type == "string")))
+    ' >/dev/null 2>&1 <<< "$ready"; then
+        echo "Beads returned an invalid ready queue; no work was assigned." >&2
+        return 1
+    fi
+    printf '%s\n' "$ready"
+}
+
+# Returns a validated session name. Ordinary launch never sends a task. Work
+# mode delegates dispatch to NTM, never raw tmux send-keys or a shell broadcast.
+newproj_start_ntm() {
+    local project_dir="$1" session="$2" cc="$3" cod="$4" agy="$5" work="${6:-false}"
+    local response status=0 total delivered assignments
+    newproj_validate_ntm_request "$project_dir" "$session" "$cc" "$cod" "$agy" || return 1
+    total=$((cc + cod + agy))
+    local -a work_args=()
+    case "$work" in
+        true)
+            newproj_ntm_ready_work "$project_dir" >/dev/null || return 1
+            work_args=(--spawn-assign-work)
+            ;;
+        false) ;;
+        *) echo "Work assignment requires an explicit true/false choice." >&2; return 1 ;;
+    esac
     # --spawn-safety delegates the create-only check to NTM. Never retry without
     # it: an existing session may belong to another project or contain live work.
-    response=$(cd -- "$project_dir" && ntm "--robot-spawn=$session" \
+    response=$(newproj_ntm_project_command "$project_dir" ntm "--robot-spawn=$session" \
         "--spawn-dir=$project_dir" --spawn-safety --robot-format=json \
-        "--spawn-cc=$cc" "--spawn-cod=$cod" "--spawn-agy=$agy") || status=$?
-    if ((status != 0)) || ! jq -e --arg session "$session" --arg dir "$project_dir" \
+        "--spawn-cc=$cc" "--spawn-cod=$cod" "--spawn-agy=$agy" "${work_args[@]}") || status=$?
+    if ((status != 0)) || ! jq -e -s --arg session "$session" --arg dir "$project_dir" \
         --argjson count "$total" '
+        length == 1 and (.[0] |
         type == "object" and .success == true and .session == $session and
         .working_dir == $dir and (.dry_run != true) and
-        (.agents | type == "array" and length == $count) and
-        ((.error // "") == "")
+        (.agents | type == "array" and length == $count and
+            all(.[]; type == "object" and ((.error // "") == ""))) and
+        ((.error // "") == ""))
     ' >/dev/null 2>&1 <<< "$response"; then
         echo "NTM did not confirm the requested workspace. No automatic retry or cleanup was attempted." >&2
         echo "Inspect ntm list and acfs doctor; a partial or existing session may need attention." >&2
         return 1
+    fi
+    if [[ "$work" == true ]]; then
+        # NTM omits its empty assignment list (omitempty). That is zero
+        # confirmed deliveries, not malformed output or proof of started work.
+        if ! jq -e '(if has("assignments") then .assignments else [] end) |
+            type == "array" and all(.[];
+            type == "object" and (.claimed | type == "boolean") and
+            (.prompt_sent | type == "boolean"))' >/dev/null 2>&1 <<< "$response"; then
+            echo "Workspace started, but task handoff was not confirmed. Inspect NTM before retrying." >&2
+            return 1
+        fi
+        delivered=$(jq '[(.assignments // [])[] | select(.claimed == true and .prompt_sent == true)] | length' <<< "$response")
+        assignments=$(jq '(.assignments // []) | length' <<< "$response")
+        printf 'NTM confirmed %s delivered task(s) from %s assignment(s).\n' "$delivered" "$assignments" >&2
+        if ((delivered == 0 || delivered < assignments)); then
+            echo "Some or all work was not delivered. Check agent sign-in and NTM assignments before retrying." >&2
+        fi
     fi
     printf '%s\n' "$session"
 }
 
 open_in_ntm() {
     local project_dir project_name session answer cc=0 cod=0 agy=0 available=0
+    local work="${1:-false}" ready task_title="" created_task=""
+    [[ "$work" == true || "$work" == false ]] || return 1
     project_dir=$(newproj_ntm_project) || return 1
     project_name=$(state_get "project_name") || return 1
     for answer in ntm tmux jq; do
@@ -274,7 +352,11 @@ open_in_ntm() {
     echo "Start separate agent panes plus your own shell in a persistent tmux session."
     echo "Installed does not mean authenticated. Sign in inside each agent as needed."
     echo "Agents use your existing NTM configuration and may incur provider charges."
-    echo "ACFS will not send a task or enable automatic work assignment."
+    if [[ "$work" == true ]]; then
+        echo "Work mode lets NTM claim ready Beads tasks and send prompts to agents."
+    else
+        echo "ACFS will not send a task or enable automatic work assignment."
+    fi
     read -r -p "Session name [$session]: " answer || return 1
     session="${answer:-$session}"
     if ((cc > 0)); then
@@ -290,12 +372,40 @@ open_in_ntm() {
         agy="${answer:-$agy}"
     fi
     printf '\nSession: %s\nClaude: %s  Codex: %s  Antigravity: %s\n' "$session" "$cc" "$cod" "$agy"
+    newproj_validate_ntm_request "$project_dir" "$session" "$cc" "$cod" "$agy" || return 1
+    if [[ "$work" == true ]]; then
+        ready=$(newproj_ntm_ready_work "$project_dir") || return 1
+        if [[ "$(jq 'length' <<< "$ready")" == 0 ]]; then
+            echo "No tasks are ready. Enter a concrete first task, or leave blank to cancel."
+            read -r -p "First task: " task_title || return 1
+            if [[ -z "${task_title//[[:space:]]/}" || ${#task_title} -gt 512 || "$task_title" == *[[:cntrl:]]* ]]; then
+                echo "A nonblank task title of at most 512 characters is required." >&2
+                return 1
+            fi
+            printf 'Will create a priority-2 task: %s\n' "$task_title"
+        else
+            echo "Ready task preview (up to eight; NTM will recheck the queue before claiming):"
+            jq -r '.[:8][] | "  \(.id | @json): \(.title | @json)"' <<< "$ready"
+        fi
+        echo "Consent covers NTM assigning currently ready tasks, not only this preview."
+        echo "Tasks, claims and sessions are preserved if launch or prompt delivery fails."
+    fi
     read -r -p "Start these agents? Type yes to continue: " answer || return 1
     if [[ "$answer" != yes ]]; then
         echo "Workspace launch cancelled; your project is unchanged."
         return 1
     fi
-    if ! session=$(newproj_start_ntm "$project_dir" "$session" "$cc" "$cod" "$agy"); then
+    if [[ -n "$task_title" ]]; then
+        # --silent is br's single-ID output contract. A title stays one argument,
+        # including quotes or shell syntax. Never recreate automatically on error.
+        if ! created_task=$(newproj_ntm_project_command "$project_dir" br create "--title=$task_title" --type=task --priority=2 --silent) ||
+           [[ ! "$created_task" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$ ]]; then
+            echo "Task creation was not confirmed. Inspect br list before retrying; existing work was preserved." >&2
+            return 1
+        fi
+        printf 'Created task %s. It remains in Beads even if workspace launch fails.\n' "$created_task"
+    fi
+    if ! session=$(newproj_start_ntm "$project_dir" "$session" "$cc" "$cod" "$agy" "$work"); then
         return 1
     fi
     printf '\nWorkspace started. Reconnect later with: ntm attach %q\n' "$session"
@@ -332,6 +442,14 @@ handle_success_input() {
             'n'|'N')
                 log_input "success" "open_ntm"
                 if open_in_ntm; then
+                    return 0
+                fi
+                echo "Press any key to return to the project menu."
+                read -rsn1 key || return 0
+                ;;
+            'w'|'W')
+                log_input "success" "open_ntm_work"
+                if open_in_ntm true; then
                     return 0
                 fi
                 echo "Press any key to return to the project menu."
