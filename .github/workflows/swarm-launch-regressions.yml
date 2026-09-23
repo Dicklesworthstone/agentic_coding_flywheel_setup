@@ -26,6 +26,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           def replace(path, before, after):
               p = Path(path)
               text = p.read_text()
@@ -53,6 +54,15 @@ jobs:
               replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
           replace('packages/manifest/src/generate.test.ts', 'expect(checksums.size).toBe(114);',
                   'expect(checksums.size).toBe(115);')
+          path = 'install.sh'
+          text = Path(path).read_text()
+          block = re.search(r'local -a required_paths=\(\n([\s\S]*?)\n\s*\)\n\s*if \(\( parsed_count', text)
+          assert block is not None
+          lines = block[1].splitlines(keepends=True)
+          anchors = [line for line in lines if line.strip() == 'scripts/lib/swarm_packet.sh']
+          assert len(anchors) == 1
+          anchor = anchors[0]
+          replace(path, block[0], block[0].replace(anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor))
           path = 'scripts/check-manifest-drift.sh'
           anchor = '    scripts/lib/swarm_packet.sh\n'
           replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
@@ -68,7 +78,7 @@ jobs:
       - name: Validate launch, installed dispatch and existing packet handoff
         run: |
           set -euo pipefail
-          for path in scripts/lib/doctor.sh scripts/lib/update.sh scripts/lib/swarm_launch.sh scripts/check-manifest-drift.sh; do
+          for path in install.sh scripts/lib/doctor.sh scripts/lib/update.sh scripts/lib/swarm_launch.sh scripts/check-manifest-drift.sh; do
             bash -n "$path"
           done
           shellcheck scripts/lib/swarm_launch.sh
@@ -80,7 +90,7 @@ jobs:
           TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm help | grep -F 'plan|launch|status'
           git diff --check
           git diff --stat
-          git diff -- scripts/lib/doctor.sh scripts/lib/update.sh packages/manifest/src/generate.ts packages/manifest/src/generate.test.ts scripts/check-manifest-drift.sh scripts/generated/internal_checksums.sh
+          git diff -- install.sh scripts/lib/doctor.sh scripts/lib/update.sh packages/manifest/src/generate.ts packages/manifest/src/generate.test.ts scripts/check-manifest-drift.sh scripts/generated/internal_checksums.sh
           python3 - <<'PY'
           from pathlib import Path
           lines = Path('install.sh').read_text().splitlines()
@@ -96,7 +106,7 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, subprocess, urllib.request
           from pathlib import Path
-          expected = {'scripts/lib/doctor.sh', 'scripts/lib/update.sh',
+          expected = {'install.sh', 'scripts/lib/doctor.sh', 'scripts/lib/update.sh',
               'packages/manifest/src/generate.ts', 'packages/manifest/src/generate.test.ts',
               'scripts/check-manifest-drift.sh', 'scripts/generated/internal_checksums.sh'}
           changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
