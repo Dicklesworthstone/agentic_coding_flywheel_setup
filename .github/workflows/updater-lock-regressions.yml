@@ -4,142 +4,50 @@ on:
   push:
     branches: [main]
     paths:
+      - 'scripts/lib/update.sh'
+      - 'scripts/lib/security.sh'
+      - 'tests/unit/test_update_lock.py'
+      - 'tests/unit/test_update_pin_failures.py'
       - '.github/workflows/updater-lock-regressions.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: updater-pin-preparation-${{ github.ref }}
+  group: updater-lock-regression-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prepare:
+  locking:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
           persist-credentials: false
-      - name: Apply only the reviewed immutable candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test "$(git hash-object scripts/lib/update.sh)" = 9eba6cb0741b914b82eeb481c8e29119655facd2
-          test "$(git hash-object scripts/lib/security.sh)" = 301822725da75abc43f893d03ba5017b026ac74e
-          git rev-parse HEAD > "$RUNNER_TEMP/pin-parent"
-          fetch_blob() {
-            gh api "repos/$GITHUB_REPOSITORY/git/blobs/$1" --jq .content | base64 --decode > "$2"
-            test "$(git hash-object "$2")" = "$1"
-          }
-          fetch_blob ca4501f6f72c1bffd21c245c422190f0dd2fa0be "$RUNNER_TEMP/pin.patch"
-          git apply --check "$RUNNER_TEMP/pin.patch"
-          git apply "$RUNNER_TEMP/pin.patch"
-          test ! -e tests/unit/test_update_pin_failures.py
-          test ! -e docs/operations/updater-pin-recovery.md
-          fetch_blob 2434029923e49dc19536cf5117de6c06c1091edd tests/unit/test_update_pin_failures.py
-          fetch_blob 5167822b374de891dec76625bb84e20390929ff8 docs/operations/updater-pin-recovery.md
-          fetch_blob f70c0fdc0b73e0c7355add01c708b648eb2bb169 .github/workflows/updater-lock-regressions.yml
       - name: Check complete updater and verifier syntax and ShellCheck
         run: |
           set -euo pipefail
           bash -n scripts/lib/update.sh
           bash -n scripts/lib/security.sh
           shellcheck scripts/lib/update.sh scripts/lib/security.sh
-      - name: Run kernel locking and pin-recovery regressions without skips
+      - name: Exercise real kernel locking, including cross-UID admission
         run: |
           set -euo pipefail
           sudo python3 -B - <<'PY'
           import importlib.util
+          import sys
           import unittest
-          for path, expected in [('tests/unit/test_update_lock.py', 27), ('tests/unit/test_update_pin_failures.py', 24)]:
-              spec = importlib.util.spec_from_file_location('regression', path)
-              module = importlib.util.module_from_spec(spec)
-              spec.loader.exec_module(module)
-              suite = unittest.defaultTestLoader.loadTestsFromModule(module)
-              if suite.countTestCases() != expected:
-                  raise SystemExit('Unexpected test count: ' + path)
-              result = unittest.TextTestRunner(verbosity=2).run(suite)
-              if not result.wasSuccessful() or result.skipped or result.testsRun != expected:
-                  raise SystemExit('Regression failed: ' + path)
+          spec = importlib.util.spec_from_file_location("update_lock_tests", "tests/unit/test_update_lock.py")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+          expected = suite.countTestCases()
+          if expected < 27:
+              raise SystemExit("Expected at least 27 updater-lock regressions")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - name: Install locked generator dependencies without package scripts
-        run: bun install --frozen-lockfile --ignore-scripts
-        working-directory: packages/manifest
-      - name: Run canonical generator and verify all generated outputs
-        run: |
-          set -euo pipefail
-          bun run generate
-          bun run generate:diff
-        working-directory: packages/manifest
-      - name: Preserve candidate runtime for local follow-up validation
-        uses: actions/upload-artifact@v4
-        with:
-          name: pin-candidate-runtime
-          retention-days: 1
-          path: |
-            scripts/lib/*.sh
-            scripts/generated/*.sh
-            tests/unit/test_update_pin_failures.py
-            tests/unit/test_update_lock.py
-            checksums.yaml
-            VERSION
-      - name: Export validated blobs without changing any branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import base64, hashlib, json, os, re, subprocess, urllib.request
-          from pathlib import Path
-          repo = os.environ['GITHUB_REPOSITORY']
-          if repo != 'Dicklesworthstone/agentic_coding_flywheel_setup':
-              raise SystemExit('Unexpected repository')
-          paths = ['scripts/lib/update.sh', 'scripts/lib/security.sh', 'tests/unit/test_update_pin_failures.py',
-                   'docs/operations/updater-pin-recovery.md', 'scripts/generated/internal_checksums.sh',
-                   '.github/workflows/updater-lock-regressions.yml']
-          def git(*args):
-              return subprocess.check_output(['git', *args])
-          changed = set(git('diff', '--name-only', '-z').decode().rstrip('\0').split('\0'))
-          changed |= set(git('ls-files', '--others', '--exclude-standard', '-z').decode().rstrip('\0').split('\0'))
-          changed.discard('')
-          if changed != set(paths):
-              raise SystemExit('Unexpected changed paths: ' + repr(sorted(changed)))
-          ledger = Path('scripts/generated/internal_checksums.sh').read_text()
-          for path in paths[:2]:
-              digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-              if re.findall(r'^  \[' + re.escape(path) + r'\]="([a-f0-9]{64})"$', ledger, re.M) != [digest]:
-                  raise SystemExit('Generated runtime checksum mismatch: ' + path)
-          parent = Path(os.environ['RUNNER_TEMP'], 'pin-parent').read_text().strip()
-          if git('rev-parse', 'HEAD').decode().strip() != parent:
-              raise SystemExit('Candidate parent changed')
-          output = {'parent': parent, 'base_tree': git('rev-parse', 'HEAD^{tree}').decode().strip(),
-                    'tests_passed': 51, 'tests_skipped': 0, 'bash_syntax': 'pass', 'shellcheck': 'pass',
-                    'canonical_generation': 'pass', 'generation_diff': 'pass', 'files': []}
-          for path in paths:
-              data = Path(path).read_bytes()
-              if Path(path).is_symlink() or not Path(path).is_file():
-                  raise SystemExit('Unsafe candidate file')
-              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
-              request = urllib.request.Request('https://api.github.com/repos/' + repo + '/git/blobs',
-                  data=json.dumps({'content': base64.b64encode(data).decode(), 'encoding': 'base64'}).encode(),
-                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
-                           'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'}, method='POST')
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  actual = json.load(response)['sha']
-              if actual != expected:
-                  raise SystemExit('Uploaded blob hash mismatch')
-              indexed = git('ls-files', '--stage', '--', path).decode().split()
-              mode = indexed[0] if indexed else '100644'
-              if mode not in ('100644', '100755'):
-                  raise SystemExit('Unexpected candidate mode')
-              output['files'].append({'path': path, 'mode': mode, 'sha': actual,
-                                      'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
-          print('ACFS_VALIDATED_BLOBS=' + json.dumps(output, sort_keys=True))
-          PY
+      - name: Exercise installer pin recovery and failure reporting
+        run: python3 -B tests/unit/test_update_pin_failures.py

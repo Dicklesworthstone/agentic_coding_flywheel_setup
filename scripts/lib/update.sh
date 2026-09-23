@@ -388,6 +388,9 @@ UPDATE_HELD_TOOLS=()
 # as skips instead of failures. Chosen well away from common tool exit codes.
 UPDATE_EXIT_HELD=93
 UPDATE_EXIT_ROLLBACK_BACKOFF=94
+# Internal result from verification BEFORE execution, not an installer exit.
+UPDATE_EXIT_CHECKSUM=95
+UPDATE_PIN_FAILURES=()
 UPDATE_LAST_HOLD_DETAILS=""
 UPDATE_LAST_HOLD_TOOL=""
 UPDATE_LAST_BACKOFF_DETAILS=""
@@ -1283,6 +1286,28 @@ update_finish_cmd_skip() {
     ((SKIP_COUNT += 1))
 }
 
+# Only ACFS verification wrappers own result 95. An unrelated command that
+# happens to exit 95 must remain an ordinary command failure.
+update_is_pin_failure() {
+    [[ "${1:-}" == "$UPDATE_EXIT_CHECKSUM" ]] || return 1
+    case "${2:-}" in
+        update_run_verified_installer|update_run_verified_installer_with_env) return 0 ;;
+        update_run_verified_installer_with_target_tmpdir|_run_claude_installer_with_timeout) return 0 ;;
+        update_run_pcr_installer_and_verify|update_run_slb_verified_install) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+update_finish_cmd_pin_failure() {
+    local desc="$1" seen=""
+    for seen in "${UPDATE_PIN_FAILURES[@]}"; do
+        [[ "$seen" == "$desc" ]] && return 0
+    done
+    UPDATE_PIN_FAILURES+=("$desc")
+    local details="CHECKSUM BLOCKED: installer not executed; review published checksums.yaml."
+    update_finish_cmd_fail "$desc" "$details Reinstalling or --force cannot bypass verification."
+}
+
 update_finish_cmd_fail() {
     local desc="$1"
     local details="${2:-}"
@@ -1370,6 +1395,12 @@ update_run_command_capture_with_retry() {
 
         if [[ $exit_code -eq 0 ]]; then
             return 0
+        fi
+
+        # A pin refusal is not a transient network error, even when the
+        # diagnostic contains retry-looking text (for example in the URL).
+        if update_is_pin_failure "$exit_code" "${1:-}"; then
+            return "$exit_code"
         fi
 
         # Hold/backoff skips (issue #357) are deliberate; never retry them.
@@ -1926,6 +1957,9 @@ run_cmd() {
         fi
         log_to_file "Success: $desc"
         ((SUCCESS_COUNT += 1))
+        return 0
+    elif update_is_pin_failure "$exit_code" "${1:-}"; then
+        update_finish_cmd_pin_failure "$desc"
         return 0
     elif [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
         # A held tool is a deliberate skip, not a failure (issue #357). The
@@ -5079,9 +5113,9 @@ update_run_verified_installer_with_env() {
     local expected_sha256
     expected_sha256="$(get_checksum "$tool")"
 
-    if [[ -z "$url" ]] || [[ -z "$expected_sha256" ]]; then
-        echo "Missing checksum entry for $tool" >&2
-        return 1
+    if [[ -z "$url" ]] || [[ ! "$expected_sha256" =~ ^[[:xdigit:]]{64}$ ]]; then
+        echo "Missing or invalid checksum entry for $tool in checksums.yaml" >&2
+        return "$UPDATE_EXIT_CHECKSUM"
     fi
 
     if [[ -n "$bash_env_assignment" ]]; then
@@ -5105,11 +5139,18 @@ update_run_verified_installer_with_env() {
         return 1
     fi
 
+    # verify_checksum runs in this shell and sets a structured failure reason.
+    # Clear it first: a previous refusal cannot classify a later network error.
+    ACFS_LAST_MODULE_FAILURE_REASON=""
     if verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
         :
     else
         local verify_exit_code=$?
         rm -f "$tmp_install" 2>/dev/null || true
+        if [[ "${ACFS_LAST_MODULE_FAILURE_REASON:-}" == "checksum" ]]; then
+            return "$UPDATE_EXIT_CHECKSUM"
+        fi
+        [[ "$verify_exit_code" == "$UPDATE_EXIT_CHECKSUM" ]] && verify_exit_code=1
         return "$verify_exit_code"
     fi
 
@@ -5127,6 +5168,9 @@ update_run_verified_installer_with_env() {
     local exit_code=0
     update_run_in_target_context "$bash_env_assignment" bash "$tmp_install" "$@" </dev/null || exit_code=$?
     rm -f "$tmp_install" 2>/dev/null || true
+    # A verified upstream script may use any exit code. It cannot manufacture
+    # the pre-execution checksum-refusal classification used by callers.
+    [[ "$exit_code" == "$UPDATE_EXIT_CHECKSUM" ]] && exit_code=1
 
     if [[ $exit_code -eq 0 ]]; then
         update_verify_tool_or_rollback "$tool" || return 1
@@ -5235,6 +5279,10 @@ update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() {
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer_with_target_tmpdir "$installer_key" "$@" || exit_code=$?
 
+    if [[ $exit_code -eq $UPDATE_EXIT_CHECKSUM ]]; then
+        update_finish_cmd_pin_failure "$desc"
+        return "$exit_code"
+    fi
     if [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
         update_finish_cmd_skip "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
         update_note_held_tool "$installer_key"
@@ -5290,6 +5338,10 @@ update_run_verified_installer_or_existing_on_transient() {
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer "$installer_key" "$@" || exit_code=$?
 
+    if [[ $exit_code -eq $UPDATE_EXIT_CHECKSUM ]]; then
+        update_finish_cmd_pin_failure "$desc"
+        return "$exit_code"
+    fi
     if [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
         update_finish_cmd_skip "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
         update_note_held_tool "$installer_key"
@@ -6271,8 +6323,11 @@ update_agents() {
     if [[ -n "$claude_path" ]] && [[ "$bun_claude_detected" != "true" || "$FORCE_MODE" != "true" ]]; then
         capture_version_before "claude"
 
-        # Try native update first
-        if ! run_cmd_claude_update; then
+        # Verification already refreshes metadata once. A refused pin cannot
+        # be repaired by rerunning the same installer as a "reinstall".
+        local claude_update_status=0
+        run_cmd_claude_update || claude_update_status=$?
+        if [[ "$claude_update_status" != 0 && "$claude_update_status" != "$UPDATE_EXIT_CHECKSUM" ]]; then
             log_to_file "Claude update failed, attempting reinstall via official installer"
             if update_require_security; then
                 # INTENTIONAL: verified installer is the correct fallback for failed updates.
@@ -6570,6 +6625,13 @@ run_cmd_claude_update() {
         local output=""
         output=$(_run_claude_installer_with_timeout "$claude_installer_timeout" 2>&1) || exit_code=$?
         [[ -n "$output" ]] && log_to_file "Output: $output"
+    fi
+
+    # This typed result crosses the background process/pipeline boundary;
+    # do not infer checksum failures from log text or a stale shell global.
+    if [[ $exit_code -eq $UPDATE_EXIT_CHECKSUM ]]; then
+        update_finish_cmd_pin_failure "$desc"
+        return "$exit_code"
     fi
 
     # Detect timeout specifically (exit code 124 from timeout(1))
@@ -7783,6 +7845,20 @@ update_report_service_binary_drift() {
 }
 
 print_summary() {
+    # Pin failures are infrastructure blockers, not background noise among
+    # ordinary tool failures. Keep the existing aggregate/exit-code contract,
+    # but always name the blocked updates, including under --quiet.
+    if [[ ${#UPDATE_PIN_FAILURES[@]} -gt 0 ]]; then
+        local blocked=""
+        printf '\nCHECKSUM BLOCKED: %d update(s) were refused before installer execution.\n' "${#UPDATE_PIN_FAILURES[@]}"
+        for blocked in "${UPDATE_PIN_FAILURES[@]}"; do
+            printf '  - %s\n' "$blocked"
+            log_to_file "CHECKSUM BLOCKED: $blocked"
+        done
+        printf '%s\n' 'Review published checksums.yaml and the verification diagnostics; do not bypass the pin.'
+        log_to_file 'Pin recovery requires reviewed checksums.yaml metadata; --force is not an override.'
+    fi
+
     # Log footer to file
     if [[ -n "$UPDATE_LOG_FILE" ]]; then
         {

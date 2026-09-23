@@ -1541,6 +1541,7 @@ verify_checksum() {
     local expected_sha256="$2"
     local name="${3:-installer}"
     local fresh_tmp_file=""
+    ACFS_LAST_MODULE_FAILURE_REASON=""
 
     if ! enforce_https "$url"; then
         return 1
@@ -1597,7 +1598,11 @@ verify_checksum() {
                     verified_file="$tmp_file"
                 fi
 
-                if [[ -z "$verified_file" ]]; then
+                # Retrying the identical URL against the identical rejected
+                # pin cannot repair stale metadata. Only a changed contract
+                # justifies another download; matching refreshed metadata can
+                # already accept the original exact bytes above.
+                if [[ -z "$verified_file" && ( "$refreshed_url" != "$url" || "$refreshed_expected_sha256" != "$expected_sha256" ) ]]; then
                     fresh_tmp_file="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-verify.XXXXXX" 2>/dev/null)" || fresh_tmp_file=""
                     if [[ -n "$fresh_tmp_file" ]] && acfs_download_to_file "$refreshed_url" "$fresh_tmp_file" "$name"; then
                         refreshed_actual_sha256="$(calculate_file_sha256 "$fresh_tmp_file")" || refreshed_actual_sha256=""
