@@ -15,17 +15,21 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 SWARM_INV_SUBCOMMAND="report"
+SWARM_INV_SUBCOMMAND_SET=false
 SWARM_INV_JSON=false
 SWARM_INV_FORMAT="json"
 SWARM_INV_INPUT=""
 SWARM_INV_OUTPUT=""
 SWARM_INV_ARTIFACT_DIR=""
+SWARM_INV_AGENTS=""
+SWARM_INV_WORKLOAD="standard"
+SWARM_INV_WORKLOAD_SET=false
 SWARM_INV_INVENTORY_FILE="${ACFS_SWARM_INVENTORY_FILE:-${HOME:-/tmp}/.acfs/swarm/hosts.inventory.json}"
 SWARM_INV_GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
 
 swarm_inventory_usage() {
     cat <<'EOF'
-Usage: acfs swarm inventory <report|import|export|validate> [OPTIONS]
+Usage: acfs swarm inventory <report|plan|import|export|validate> [OPTIONS]
 
 Options:
   --json                Emit machine-readable JSON
@@ -34,20 +38,25 @@ Options:
   --input FILE          Input file for import
   --output FILE         Output file for import/export
   --format json         Export format (json only for v1)
+  --agents N            Required total agent target for plan (1-1000000)
+  --workload NAME       Plan workload: light, standard (default), or heavy
   --artifact-dir DIR    Write deterministic error artifacts on failure
   --help, -h            Show this help
 
 Commands are advisory and local-first. They never SSH, launch NTM, run RU,
 send Agent Mail, mutate Beads, or change RCH configuration. Import/export
 write only to explicit output targets or the canonical inventory file.
+Plan distributes a target total across eligible hosts, not additional agents.
+It requires fresh live admission on each host before any actual launch.
 EOF
 }
 
 swarm_inventory_parse_args() {
     if [[ $# -gt 0 ]]; then
         case "$1" in
-            report|import|export|validate)
+            report|plan|import|export|validate)
                 SWARM_INV_SUBCOMMAND="$1"
+                SWARM_INV_SUBCOMMAND_SET=true
                 shift
                 ;;
             help|-h|--help)
@@ -59,8 +68,10 @@ swarm_inventory_parse_args() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            report|import|export|validate)
+            report|plan|import|export|validate)
+                [[ "$SWARM_INV_SUBCOMMAND_SET" == false ]] || { echo "Error: select only one inventory command" >&2; return 2; }
                 SWARM_INV_SUBCOMMAND="$1"
+                SWARM_INV_SUBCOMMAND_SET=true
                 shift
                 ;;
             --json)
@@ -91,6 +102,19 @@ swarm_inventory_parse_args() {
                 SWARM_INV_FORMAT="$2"
                 shift 2
                 ;;
+            --agents)
+                [[ -n "${2:-}" && -z "$SWARM_INV_AGENTS" ]] || { echo "Error: supply --agents once with a positive integer" >&2; return 2; }
+                [[ "$2" =~ ^([1-9][0-9]{0,5}|1000000)$ ]] || { echo "Error: --agents must be an integer from 1 to 1000000" >&2; return 2; }
+                SWARM_INV_AGENTS="$2"
+                shift 2
+                ;;
+            --workload)
+                [[ -n "${2:-}" && "$SWARM_INV_WORKLOAD_SET" == false ]] || { echo "Error: supply --workload once" >&2; return 2; }
+                case "$2" in light|standard|heavy) ;; *) echo "Error: workload must be light, standard, or heavy" >&2; return 2 ;; esac
+                SWARM_INV_WORKLOAD="$2"
+                SWARM_INV_WORKLOAD_SET=true
+                shift 2
+                ;;
             --artifact-dir)
                 [[ -n "${2:-}" && "$2" != -* ]] || { echo "Error: --artifact-dir requires a directory" >&2; return 2; }
                 SWARM_INV_ARTIFACT_DIR="$2"
@@ -109,7 +133,7 @@ swarm_inventory_parse_args() {
     done
 
     case "$SWARM_INV_SUBCOMMAND" in
-        report|import|export|validate) ;;
+        report|plan|import|export|validate) ;;
         *)
             echo "Error: unknown inventory subcommand: $SWARM_INV_SUBCOMMAND" >&2
             return 2
@@ -118,6 +142,17 @@ swarm_inventory_parse_args() {
 
     if [[ "$SWARM_INV_FORMAT" != "json" ]]; then
         echo "Error: unsupported inventory format: $SWARM_INV_FORMAT" >&2
+        return 2
+    fi
+
+    if [[ "$SWARM_INV_SUBCOMMAND" == plan ]]; then
+        [[ -n "$SWARM_INV_AGENTS" ]] || { echo "Error: plan requires --agents N" >&2; return 2; }
+        [[ -z "$SWARM_INV_INPUT" && -z "$SWARM_INV_OUTPUT" && -z "$SWARM_INV_ARTIFACT_DIR" ]] || {
+            echo "Error: plan is read-only; --input, --output, and --artifact-dir do not apply" >&2
+            return 2
+        }
+    elif [[ -n "$SWARM_INV_AGENTS" || "$SWARM_INV_WORKLOAD_SET" == true ]]; then
+        echo "Error: --agents and --workload require the plan command" >&2
         return 2
     fi
 }
@@ -137,14 +172,63 @@ swarm_inventory_binary_path() {
 }
 
 swarm_inventory_read_single_json() {
-    local jq_bin="$1"
     local path="$2"
-    local output=""
+    local python_bin=""
 
-    [[ -r "$path" ]] || return 1
-    output="$("$jq_bin" -c -s 'if length == 1 then .[0] else empty end' "$path" 2>/dev/null)" || return 1
-    [[ -n "$output" ]] || return 1
-    printf '%s\n' "$output"
+    # jq discards duplicate keys before validation. Read the original bytes
+    # first so a second can_launch/status/capacity value cannot hide a veto.
+    python_bin="$(swarm_inventory_binary_path python3)" || return 1
+    "$python_bin" -I - "$path" <<'PY'
+import json
+import math
+import os
+import stat
+import sys
+
+
+def reject(*_):
+    raise ValueError("invalid inventory")
+
+
+def unique(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value or any(0xD800 <= ord(c) <= 0xDFFF for c in key):
+            reject()
+        value[key] = item
+    return value
+
+
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 1048576:
+            reject()
+        data = stream.read(1048577)
+    if len(data) > 1048576:
+        reject()
+    value = json.loads(data.decode("utf-8"), object_pairs_hook=unique, parse_constant=reject)
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        item, depth = pending.pop()
+        nodes += 1
+        if depth > 32 or nodes > 50000:
+            reject()
+        if isinstance(item, dict):
+            pending.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            pending.extend((child, depth + 1) for child in item)
+        elif isinstance(item, float) and not math.isfinite(item):
+            reject()
+        elif isinstance(item, str) and any(0xD800 <= ord(c) <= 0xDFFF for c in item):
+            reject()
+    print(json.dumps(value, separators=(",", ":"), ensure_ascii=True, allow_nan=False))
+except (OSError, ValueError, RecursionError):
+    # Do not echo untrusted JSON, paths, or parser errors containing secrets.
+    sys.exit(1)
+PY
 }
 
 swarm_inventory_parent_dir() {
@@ -281,9 +365,8 @@ swarm_inventory_validation_json() {
     local inventory_json="$2"
     local source_file="$3"
 
-    "$jq_bin" -n \
+    "$jq_bin" \
         --arg source_file "$source_file" \
-        --argjson inventory "$inventory_json" \
         '
         def pathstr($p):
           reduce $p[] as $x ("";
@@ -305,12 +388,17 @@ swarm_inventory_validation_json() {
         def is_object($v): (($v | type) == "object");
         def stale_hours_ok($v):
           if ($v | type) != "number" then false
-          else ($v >= 1 and ($v | floor) == $v) end;
+          else ($v >= 1 and $v <= 8760 and ($v | floor) == $v) end;
+        def counter_ok($v):
+          if ($v | type) != "number" then false
+          else ($v >= 0 and $v <= 1000000 and ($v | floor) == $v) end;
+        def workload_ok($v): ($v | IN("light", "standard", "heavy"));
         def unknown_count($obj; $allowed):
           if ($obj | type) == "object" then
             ([($obj | keys_unsorted[]) as $k | select(($allowed | index($k)) | not)] | length)
           else 0 end;
-        ($inventory | type) as $inventory_type
+        . as $inventory
+        | ($inventory | type) as $inventory_type
         | (if $inventory_type == "object" then $inventory else {} end) as $inventory_obj
         | (if $inventory_type == "object" then [] else
              [err("invalid_inventory"; ""; "inventory must be an object")]
@@ -326,6 +414,9 @@ swarm_inventory_validation_json() {
            elif stale_hours_ok($defaults.stale_after_hours) then []
            else [err("invalid_stale_after_hours"; "defaults.stale_after_hours"; "stale_after_hours must be a positive integer")]
            end) as $stale_hours_errors
+        | (if (($defaults | has("workload")) | not) or workload_ok($defaults.workload) then []
+           else [err("invalid_workload"; "defaults.workload"; "workload must be light, standard, or heavy when present")]
+           end) as $workload_errors
         | (if ($hosts | type) == "array" then [] else [err("invalid_hosts"; "hosts"; "hosts must be an array")] end) as $host_array_errors
         | (if ($hosts | type) == "array" then $hosts else [] end) as $host_list
         | ([
@@ -383,12 +474,28 @@ swarm_inventory_validation_json() {
                  end),
                 (if is_object($h.ru) then empty else
                    err("invalid_ru"; "hosts[" + ($idx | tostring) + "].ru"; "ru must be an object")
-                 end)
+                 end),
+                (if is_object($h.capacity) then
+                   if (($h.capacity | has("workload")) | not) or workload_ok($h.capacity.workload) then empty else
+                     err("invalid_workload"; "hosts[" + ($idx | tostring) + "].capacity.workload"; "workload must be light, standard, or heavy when present")
+                   end
+                 else empty end),
+                (if is_object($h.capacity) then
+                   ["recommended_agents", "safe_agents"][] as $key
+                   | if $h.capacity[$key] == null or counter_ok($h.capacity[$key]) then empty else
+                       err("invalid_capacity_counter"; "hosts[" + ($idx | tostring) + "].capacity." + $key; "capacity counters must be integers from 0 to 1000000 or null")
+                     end
+                 else empty end),
+                (if is_object($h.ntm) then
+                   if $h.ntm.can_launch == null or ($h.ntm.can_launch | type) == "boolean" then empty else
+                     err("invalid_launch_flag"; "hosts[" + ($idx | tostring) + "].ntm.can_launch"; "can_launch must be boolean or null")
+                   end
+                 else empty end)
               end
           ] as $field_errors
         | ($sensitive_paths | map(err("forbidden_sensitive_field"; .; "Inventory contains forbidden sensitive field name"))) as $sensitive_errors
         | ($duplicates | map(err("duplicate_host_id"; "hosts[].id"; "duplicate host id: " + .))) as $duplicate_errors
-        | ($inventory_errors + $schema_errors + $defaults_errors + $stale_hours_errors + $host_array_errors + $field_errors + $sensitive_errors + $duplicate_errors) as $errors
+        | ($inventory_errors + $schema_errors + $defaults_errors + $stale_hours_errors + $workload_errors + $host_array_errors + $field_errors + $sensitive_errors + $duplicate_errors) as $errors
         | {
             schema_version: 1,
             source_file: $source_file,
@@ -402,7 +509,7 @@ swarm_inventory_validation_json() {
             ),
             warnings: []
           }
-        '
+        ' <<< "$inventory_json"
 }
 
 swarm_inventory_report_json() {
@@ -411,39 +518,62 @@ swarm_inventory_report_json() {
     local validation_json="$3"
     local inventory_file="$4"
 
-    "$jq_bin" -n \
+    # Feed documents through stdin, not argv (large inventories exceed ARG_MAX).
+    printf '%s\n' "$inventory_json" "$validation_json" | "$jq_bin" -s \
         --arg generated_at "$SWARM_INV_GENERATED_AT" \
         --arg inventory_file "$inventory_file" \
-        --argjson inventory "$inventory_json" \
-        --argjson validation "$validation_json" \
         '
         def n($v):
           if ($v | type) == "number" then $v
           elif ($v | type) != "string" then 0
           elif ($v | test("^[0-9]+$")) then ($v | tonumber)
           else 0 end;
-        def ts($s): if ($s | type) == "string" then ($s | fromdateiso8601? // null) else null end;
+        def ts($s):
+          if ($s | type) != "string" then null
+          elif ($s | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) | not then null
+          else (try ($s | fromdateiso8601) catch null) as $t
+            | if $t == null then null
+              elif ($t | strftime("%Y-%m-%dT%H:%M:%SZ")) == $s then $t else null end
+          end;
         def launch_role($role): ($role | IN("swarm-controller", "swarm-worker", "support"));
-        ($inventory.hosts // []) as $hosts
+        .[0] as $inventory | .[1] as $validation
+        | ts($generated_at) as $evaluated_at
+        | ($inventory.hosts // []) as $hosts
         | (($inventory.defaults.stale_after_hours // 24) | tonumber) as $stale_hours
         | [
             $hosts[]
             | . as $h
             | ((ts($h.last_probe_at)) as $probe_ts
-              | (($probe_ts != null) and ((now - $probe_ts) > ($stale_hours * 3600))) as $is_stale
+              | (if $probe_ts == null or $evaluated_at == null then "unknown"
+                 elif $probe_ts > $evaluated_at then "future"
+                 elif ($evaluated_at - $probe_ts) >= ($stale_hours * 3600) then "stale"
+                 else "fresh" end) as $probe_state
+              | [
+                  (if $h.status != "active" then "host_not_active" else empty end),
+                  (if launch_role($h.role) | not then "role_not_launchable" else empty end),
+                  (if $h.ntm.can_launch != true then "launch_not_enabled" else empty end),
+                  (if $probe_state != "fresh" then "probe_" + $probe_state else empty end),
+                  (if $h.capacity.recommended_agents == null or $h.capacity.safe_agents == null
+                   then "capacity_unknown" else empty end),
+                  (if $h.capacity.recommended_agents == 0 or $h.capacity.safe_agents == 0
+                   then "capacity_exhausted" else empty end)
+                ] as $exclusions
               | {
                   id: $h.id,
                   display_name: ($h.display_name // $h.id),
                   role: $h.role,
                   status: $h.status,
-                  stale_probe: $is_stale,
+                  stale_probe: ($probe_state == "stale"),
+                  probe_state: $probe_state,
+                  last_probe_at: $h.last_probe_at,
+                  eligible: ($exclusions | length == 0),
+                  exclusion_reasons: $exclusions,
                   recommended_agents: (
-                    if (($h.status == "active") and ($is_stale | not) and launch_role($h.role) and (($h.ntm.can_launch // true) == true))
-                    then n($h.capacity.recommended_agents) else 0 end
+                    if ($exclusions | length) == 0
+                    then ([$h.capacity.recommended_agents, $h.capacity.safe_agents] | min) else 0 end
                   ),
                   safe_agents: (
-                    if (($h.status == "active") and ($is_stale | not) and launch_role($h.role) and (($h.ntm.can_launch // true) == true))
-                    then n($h.capacity.safe_agents) else 0 end
+                    if ($exclusions | length) == 0 then $h.capacity.safe_agents else 0 end
                   ),
                   capacity: {
                     workload: ($h.capacity.workload // ($inventory.defaults.workload // "standard")),
@@ -472,6 +602,10 @@ swarm_inventory_report_json() {
         | (
             (if ($hosts | length) == 0 then ["inventory has no hosts; import or add host records before planning a swarm"] else [] end)
             + ($stale_probe_hosts | map("host " + .id + " has stale probe data older than " + ($stale_hours | tostring) + "h"))
+            + ([$report_hosts[] | select(.status == "active" and (.role | launch_role(.)) and .eligible == false)
+                | (.exclusion_reasons - ["probe_stale"]) as $other_reasons
+                | select(($other_reasons | length) > 0)
+                | "host " + .id + " excluded: " + ($other_reasons | join(", "))])
           ) as $warnings
         | {
             schema_version: 1,
@@ -479,6 +613,7 @@ swarm_inventory_report_json() {
             status: (if $validation.status == "fail" then "fail" elif ($warnings | length) > 0 then "warn" else "pass" end),
             inventory_file: $inventory_file,
             advisory_only: true,
+            evidence: {source: "operator_inventory", live_verified: false, requires_live_admission: true},
             mutations: {
               ntm: false,
               ru: false,
@@ -526,8 +661,9 @@ swarm_inventory_emit_report_human() {
       (if (.recommended_launch_targets | length) == 0 then
         "  None"
       else
-        (.recommended_launch_targets[] | "  \(.id): \(.recommended_agents) agents now, safe max \(.safe_agents), role \(.role)")
+        (.recommended_launch_targets[] | "  \(.id): \(.recommended_agents) recorded agents, safe max \(.safe_agents), role \(.role)")
       end),
+      "Recorded capacity only. Recheck live admission on each target before launching.",
       "",
       "Warnings",
       (if (.warnings | length) == 0 then
@@ -630,10 +766,73 @@ swarm_inventory_command_validate() {
     if [[ "$SWARM_INV_JSON" == true ]]; then
         printf '%s\n' "$validation_json"
     else
-        swarm_inventory_emit_action_human "$("$jq_bin" -n --argjson validation "$validation_json" '{operation:"validate", status:$validation.status, inventory_file:$validation.source_file, summary:{hosts_total:0}}')" "$jq_bin"
+        swarm_inventory_emit_action_human "$("$jq_bin" '{operation:"validate", status:.status, inventory_file:.source_file, summary:{hosts_total:0}}' <<< "$validation_json")" "$jq_bin"
     fi
 
     [[ "$("$jq_bin" -r '.status' <<< "$validation_json")" == "pass" ]] || return 2
+}
+
+swarm_inventory_command_plan() {
+    local jq_bin="$1"
+    local inventory_json="" validation_json="" report_json="" plan_json=""
+
+    swarm_inventory_read_inventory_or_fail inventory_json "$jq_bin" "plan" "$SWARM_INV_INVENTORY_FILE" || return $?
+    swarm_inventory_validate_or_fail validation_json "$jq_bin" "plan" "$inventory_json" "$SWARM_INV_INVENTORY_FILE" || return $?
+    report_json="$(swarm_inventory_report_json "$jq_bin" "$inventory_json" "$validation_json" "$SWARM_INV_INVENTORY_FILE")" || return 2
+    # One shared eligibility calculation drives both the report and placement.
+    # Pack the largest recorded headroom first to minimize coordination hosts;
+    # host IDs break ties so input order never decides an allocation.
+    plan_json="$("$jq_bin" --argjson requested "$SWARM_INV_AGENTS" --arg workload "$SWARM_INV_WORKLOAD" '
+      . as $report
+      | [.hosts[]
+          | .exclusion_reasons += (if .capacity.workload == $workload then [] else ["workload_mismatch"] end)
+          | .eligible = (.exclusion_reasons | length == 0)] as $hosts
+      | ([$hosts[] | select(.eligible)] | sort_by(-.recommended_agents, .id)) as $eligible
+      | (reduce $eligible[] as $h ({remaining: $requested, allocations: []};
+          ([.remaining, $h.recommended_agents] | min) as $count
+          | if $count == 0 then . else
+              .remaining -= $count
+              | .allocations += [{
+                  host_id: $h.id,
+                  agents: $count,
+                  recorded_recommendation: $h.recommended_agents,
+                  safe_agents: $h.safe_agents,
+                  last_probe_at: $h.last_probe_at,
+                  live_admission_command: ("acfs swarm plan --agents " + ($count | tostring) + " --workload " + $workload + " --json")
+                }]
+            end)) as $placement
+      | {
+          schema_version: 1, operation: "plan",
+          status: (if $placement.remaining == 0 then "pass" else "warn" end),
+          generated_at: $report.generated_at,
+          strategy: "largest-recorded-headroom-first",
+          allocation_semantics: "target_totals_not_additional_agents",
+          requested_agents: $requested, workload: $workload,
+          assigned_agents: ($requested - $placement.remaining),
+          unassigned_agents: $placement.remaining,
+          fully_placed: ($placement.remaining == 0),
+          recorded_capacity_total: ([$eligible[].recommended_agents] | add // 0),
+          allocations: $placement.allocations,
+          excluded_hosts: ([$hosts[] | select(.eligible | not) | {id, reasons: .exclusion_reasons}] | sort_by(.id)),
+          warnings: ($report.warnings + (if $placement.remaining > 0 then ["Insufficient eligible recorded capacity; no host limit was exceeded."] else [] end)),
+          evidence: $report.evidence, advisory_only: true, mutations: $report.mutations
+        }
+    ' <<< "$report_json")" || return 2
+
+    if [[ "$SWARM_INV_JSON" == true ]]; then
+        printf '%s\n' "$plan_json"
+    else
+        "$jq_bin" -r '
+          "ACFS Fleet Placement (recorded capacity only)",
+          "Status: \(.status); target: \(.requested_agents) \(.workload) agents",
+          "Placed: \(.assigned_agents); unassigned: \(.unassigned_agents)",
+          "Allocations are target totals, NOT additional agents to spawn.",
+          (.allocations[] | "  \(.host_id): \(.agents) agents (recorded limit \(.recorded_recommendation))\n    Recheck ON THAT HOST: \(.live_admission_command)"),
+          (.excluded_hosts[] | "  Excluded \(.id): \(.reasons | join(", "))"),
+          "No agents launched. Inventory cannot authorize a live launch."
+        ' <<< "$plan_json"
+    fi
+    [[ "$("$jq_bin" -r .fully_placed <<< "$plan_json")" == true ]] || return 1
 }
 
 swarm_inventory_command_import() {
@@ -658,12 +857,10 @@ swarm_inventory_command_import() {
         return 2
     fi
 
-    action_json="$("$jq_bin" -n \
+    action_json="$(printf '%s\n' "$normalized_json" "$validation_json" | "$jq_bin" -s \
         --arg input_file "$input_file" \
         --arg output_file "$output_file" \
-        --argjson validation "$validation_json" \
-        --argjson inventory "$normalized_json" \
-        '{
+        '.[0] as $inventory | .[1] as $validation | {
           schema_version: 1,
           operation: "import",
           status: "pass",
@@ -705,12 +902,10 @@ swarm_inventory_command_export() {
         printf '%s\n' "$export_json"
     fi
 
-    action_json="$("$jq_bin" -n \
+    action_json="$(printf '%s\n' "$export_json" "$validation_json" | "$jq_bin" -s \
         --arg inventory_file "$SWARM_INV_INVENTORY_FILE" \
         --arg output_file "$output_file" \
-        --argjson validation "$validation_json" \
-        --argjson inventory "$export_json" \
-        '{
+        '.[0] as $inventory | .[1] as $validation | {
           schema_version: 1,
           operation: "export",
           status: "pass",
@@ -747,9 +942,14 @@ swarm_inventory_main() {
         echo "Error: jq is required for swarm inventory" >&2
         return 2
     fi
+    if ! swarm_inventory_binary_path python3 >/dev/null; then
+        swarm_inventory_fail "$jq_bin" "$SWARM_INV_SUBCOMMAND" "python_required" "Python 3 is required for bounded inventory input validation"
+        return 2
+    fi
 
     case "$SWARM_INV_SUBCOMMAND" in
         report) swarm_inventory_command_report "$jq_bin" ;;
+        plan) swarm_inventory_command_plan "$jq_bin" ;;
         import) swarm_inventory_command_import "$jq_bin" ;;
         export) swarm_inventory_command_export "$jq_bin" ;;
         validate) swarm_inventory_command_validate "$jq_bin" ;;

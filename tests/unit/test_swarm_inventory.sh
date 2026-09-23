@@ -34,7 +34,9 @@ write_fixture() {
 }
 
 sample_inventory_fixture() {
-    write_fixture sample_inventory <<'JSON'
+    local probe_at
+    probe_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    write_fixture sample_inventory <<JSON
 {
   "schema_version": 1,
   "updated_at": "2026-05-08T00:00:00Z",
@@ -51,7 +53,7 @@ sample_inventory_fixture() {
       "role": "swarm-controller",
       "status": "active",
       "manual_tags": ["primary", "ntm"],
-      "last_probe_at": "2099-01-01T00:00:00Z",
+      "last_probe_at": "$probe_at",
       "probe_source": "manual",
       "resources": {"cpu_count": 64, "mem_total_mib": 262144, "disk_available_mib": 524288},
       "capacity": {"workload": "standard", "recommended_agents": 25, "safe_agents": 44, "source": "acfs capacity --json --recommend-ntm"},
@@ -66,7 +68,7 @@ sample_inventory_fixture() {
       "display_name": "RCH worker A",
       "role": "rch-worker",
       "status": "active",
-      "last_probe_at": "2099-01-01T00:00:00Z",
+      "last_probe_at": "$probe_at",
       "resources": {"cpu_count": 32, "mem_total_mib": 131072, "disk_available_mib": 262144},
       "capacity": {"workload": "heavy", "recommended_agents": 0, "safe_agents": 0, "source": "reserved for RCH"},
       "rch": {"worker": true, "controller": false, "slots_total": 12, "slots_available": 10},
@@ -167,7 +169,9 @@ JSON
 }
 
 role_boundary_inventory_fixture() {
-    write_fixture role_boundary_inventory <<'JSON'
+    local probe_at
+    probe_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    write_fixture role_boundary_inventory <<JSON
 {
   "schema_version": 1,
   "updated_at": "2026-05-08T00:00:00Z",
@@ -177,7 +181,7 @@ role_boundary_inventory_fixture() {
       "id": "support-host",
       "role": "support",
       "status": "active",
-      "last_probe_at": "2099-01-01T00:00:00Z",
+      "last_probe_at": "$probe_at",
       "resources": {},
       "capacity": {"recommended_agents": 4, "safe_agents": 6},
       "rch": {},
@@ -188,7 +192,7 @@ role_boundary_inventory_fixture() {
       "id": "rch-worker-b",
       "role": "rch-worker",
       "status": "active",
-      "last_probe_at": "2099-01-01T00:00:00Z",
+      "last_probe_at": "$probe_at",
       "resources": {},
       "capacity": {"recommended_agents": 99, "safe_agents": 120},
       "rch": {"worker": true},
@@ -199,7 +203,7 @@ role_boundary_inventory_fixture() {
       "id": "disabled-but-active-status",
       "role": "disabled",
       "status": "active",
-      "last_probe_at": "2099-01-01T00:00:00Z",
+      "last_probe_at": "$probe_at",
       "resources": {},
       "capacity": {"recommended_agents": 30, "safe_agents": 40},
       "rch": {},
