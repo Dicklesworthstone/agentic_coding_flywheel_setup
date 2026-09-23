@@ -48,6 +48,48 @@ Register/verify those identities through the normal Agent Mail workflow before
 editing. Process readiness does not establish authentication or successful
 model execution.
 
+## Prepare work directly from a verified launch
+
+There is no need to copy pane IDs into the work preparer. Supply the original
+launch intent and explicitly map each launched slot to its Agent Mail identity:
+
+```bash
+acfs swarm launch --prepare-batch ./handoff \
+  --receipt "$HOME/implementation-launch.json" \
+  --scopes-file scopes.json --roles implementation,documentation \
+  --identity '1:RedFox' --identity '2:BlueLake'
+```
+
+This reads the private launch intent and result, rechecks the recorded native
+process, stable pane, session creation time, tmux server PID, and repository
+working directory, then delegates to the installed scope-aware packet preparer.
+Repository, session, pane and provider choices come only from the saved launch;
+there is no handoff override that can retarget another session. Provide one
+identity for every launched slot, including slots that may be idle. Names are
+explicit operator input, not verified Agent Mail registrations.
+
+The original slot mapping is preserved even when NTM groups providers by type.
+Only selected work produces packets. Use `--assignments assignments.json` instead
+of `--scopes-file` to prepare saved assignments, including reports with idle-slot
+holes. `--ready-file`, `--triage-file`, `--beads-file`, `--no-live-context` and the
+role/profile options have the same meanings as in
+[packet preparation](swarm-packet-preparation.md). Relative inputs resolve from
+the invocation directory and their bytes are pinned before preparation.
+
+The handoff does not spawn, send prompts, claim Beads or acquire reservations.
+It rechecks the launch again after preparation. A changed agent causes failure
+without advertising a usable handoff; any already-written bundle is retained for
+inspection. Missing or unconfirmed launch receipts never trigger a replacement
+launch or adoption of arbitrary same-named panes. Existing output is not replaced.
+Review every generated packet and then use the returned `preview_command` for
+the separate hash-bound delivery workflow. Preparation success is not proof of
+current readiness at a later delivery time.
+
+Handoff exit codes are `0` for prepared work, `1` for no independent ready work
+(no bundle is created), and `2` for unusable launch evidence or preparation errors.
+The result's `launch` object records the identity mapping and makes explicit that
+no agents were started and no work was dispatched.
+
 ## Recovery: never blindly repeat a spawn
 
 The owned receipt parent must already exist and must not be writable by other
@@ -78,10 +120,12 @@ failure. Preserve any intent even after an exit-2 interruption.
 ```bash
 bash -n scripts/lib/swarm_launch.sh
 python3 -B tests/unit/test_swarm_launch.py
+python3 -B tests/unit/test_swarm_launch_handoff.py
 ```
 
-The regression suite executes the actual Bash/Python launcher against executable
-planner/NTM/tmux contract fixtures. It covers both admissions, exact agent mix,
+The regression suites execute the actual Bash/Python launcher against executable
+planner/NTM/tmux contract fixtures. They cover both admissions, exact agent mix,
 original-slot mapping, private receipts, directory exclusion, unready/native
-process failures, response loss and no-relaunch recovery. It does not exercise
-installed providers, live account authentication or a production VPS.
+process failures, response loss and no-relaunch recovery. Handoff tests also run
+the actual packet preparer and allocator when executed from a complete checkout.
+They do not exercise installed providers, live authentication or a production VPS.

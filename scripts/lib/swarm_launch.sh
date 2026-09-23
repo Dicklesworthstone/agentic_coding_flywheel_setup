@@ -242,6 +242,10 @@ def reconcile(fd, receipt, request):
     require(isinstance(result, dict) and result.get("schema") == SCHEMA and result.get("request") == request
             and isinstance(result.get("targets"), list) and len(result["targets"]) == len(request["agents"]),
             "Launch has no complete confirmation. Inspect the session manually; this receipt will never relaunch it.")
+    require(all(isinstance(t, dict) and type(t.get("slot")) is int and t["slot"] == i
+                and isinstance(t.get("pane"), str) for i, t in enumerate(result["targets"], 1))
+            and len({t["pane"] for t in result["targets"]}) == len(result["targets"]),
+            "Saved launch slots or panes are not distinct and ordered.")
     tmux = binary("tmux")
     for index, target in enumerate(result["targets"]):
         require(isinstance(target, dict) and isinstance(target.get("pane"), str)
@@ -254,10 +258,145 @@ def reconcile(fd, receipt, request):
     return result["targets"]
 
 
+def saved_request(fd, receipt):
+    """Recover only an existing launch, never reconstruct authority from pane names."""
+    saved = read_receipt(fd, receipt.name)
+    require(isinstance(saved, dict) and saved.get("schema") == SCHEMA,
+            "A private launch intent and complete result are required; launch will not be retried.")
+    request = saved.get("request")
+    require(isinstance(request, dict) and set(request) == {
+        "repo", "session", "agents", "receipt", "profile", "workload", "accept_warnings"},
+        "Invalid saved launch request.")
+    require(isinstance(request["repo"], str) and os.path.isabs(request["repo"])
+            and request["receipt"] == str(receipt)
+            and isinstance(request["session"], str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", request["session"])
+            and "--" not in request["session"]
+            and request["profile"] in ("balanced", "codex-heavy", "review-heavy", "docs-heavy")
+            and request["workload"] in ("light", "standard", "heavy")
+            and type(request["accept_warnings"]) is bool,
+            "Saved launch repository, receipt or options are invalid.")
+    require(str(directory(request["repo"])) == request["repo"], "Saved repository path is not canonical.")
+    agents = request["agents"]
+    require(isinstance(agents, list) and 1 <= len(agents) <= 32
+            and all(isinstance(a, dict) and set(a) == {"agent_name", "agent_type"}
+                    and isinstance(a["agent_name"], str)
+                    and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", a["agent_name"])
+                    and a["agent_type"] in ("claude", "codex") for a in agents)
+            and len({a["agent_name"].lower() for a in agents}) == len(agents),
+            "Saved launch agent identities are invalid.")
+    return request
+
+
+def read_input(path):
+    path = Path(os.path.abspath(path))
+    directory(path.parent)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "Input must be a single-link regular file.")
+        data = stream.read(LIMIT + 1)
+    require(len(data) <= LIMIT, "Input exceeds 1 MiB.")
+    return data
+
+
+def preparation_main(arguments):
+    parser = argparse.ArgumentParser(prog="acfs swarm launch --prepare-batch", allow_abbrev=False,
+        description="Prepare scoped work for an already-confirmed launch. Rechecks saved native panes; "
+                    "never launches agents or sends work. Review and delivery remain separate.")
+    parser.add_argument("output", help="New private handoff directory")
+    parser.add_argument("--receipt", required=True, help="Existing acfs swarm launch intent (not its result file)")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--scopes-file", help="Select work using the installed scoped allocator")
+    source.add_argument("--assignments", help="Prepare an existing explicit-scopes assignment report")
+    parser.add_argument("--identity", action="append", required=True,
+                        help="SLOT:AGENT_MAIL_NAME; supply every launched slot, including potentially idle ones")
+    roles = parser.add_mutually_exclusive_group()
+    roles.add_argument("--roles")
+    roles.add_argument("--profile", choices=("balanced", "codex-heavy", "review-heavy", "docs-heavy"))
+    parser.add_argument("--ready-file")
+    parser.add_argument("--triage-file")
+    parser.add_argument("--beads-file")
+    parser.add_argument("--no-live-context", action="store_true")
+    args = parser.parse_args(arguments)
+    require(args.scopes_file is not None or all(value is None for value in
+            (args.roles, args.profile, args.ready_file, args.triage_file)),
+            "Selection options require --scopes-file, not saved --assignments.")
+    receipt = Path(os.path.abspath(args.receipt))
+    output = Path(os.path.abspath(args.output))
+    directory(output.parent)
+    require(not os.path.lexists(output), "Output directory already exists; no files were changed.")
+    preparer = RUNTIME.with_name("swarm_packet.sh")
+    require(preparer.is_file() and not preparer.is_symlink(), "The installed work-packet preparer is unavailable.")
+    identities = {}
+    for value in args.identity:
+        match = re.fullmatch(r"([0-9]{1,2}):([A-Za-z][A-Za-z0-9_-]{0,63})", value)
+        require(match is not None and 1 <= int(match[1]) <= 32, "Use --identity SLOT:AGENT_MAIL_NAME.")
+        slot, name = int(match[1]), match[2]
+        require(slot not in identities and name.lower() not in {n.lower() for n in identities.values()},
+                "Identity slots and Agent Mail names must be distinct.")
+        identities[slot] = name
+    # Snapshot each input before checking the session. Saved assignments can
+    # contain idle holes; their selected slot IDs, not list positions, bind panes.
+    inputs = {}
+    for option in ("scopes_file", "assignments", "ready_file", "triage_file", "beads_file"):
+        value = getattr(args, option)
+        if value is not None:
+            inputs[option] = read_input(value)
+    with receipt_directory(receipt, lock=True) as fd:
+        request = saved_request(fd, receipt)
+        require(set(identities) == set(range(1, len(request["agents"]) + 1)),
+                "Supply exactly one --identity for every recorded launch slot.")
+        targets = reconcile(fd, receipt, request)
+        selected = {t["slot"] for t in targets}
+        if args.assignments is not None:
+            assignments = parse(inputs["assignments"])
+            require(isinstance(assignments, dict) and isinstance(assignments.get("assignments"), list),
+                    "Invalid assignment report.")
+            slots = [a.get("slot") if isinstance(a, dict) else None for a in assignments["assignments"]]
+            require(slots and all(type(s) is int and s in selected for s in slots)
+                    and len(set(slots)) == len(slots), "Assignments reference unknown or duplicate launch slots.")
+            selected = set(slots)
+        with tempfile.TemporaryDirectory(prefix="acfs-launch-handoff-") as scratch:
+            argv = [binary("bash"), str(preparer), "--prepare-batch", str(output),
+                    "--repo", request["repo"], "--session", request["session"]]
+            for option, data in inputs.items():
+                path = Path(scratch) / (option + ".json")
+                path.write_bytes(data)
+                argv.extend(("--" + option.replace("_", "-"), str(path)))
+            for target in targets:
+                if target["slot"] in selected:
+                    argv.extend(("--target", f'{target["slot"]}:{identities[target["slot"]]}:{target["agent_type"]}:{target["pane"]}'))
+            for option in ("roles", "profile"):
+                value = getattr(args, option)
+                if value is not None:
+                    argv.extend(("--" + option, value))
+            if args.no_live_context:
+                argv.append("--no-live-context")
+            code, data = run(argv, request["repo"], timeout=60 + 65 * len(selected))
+        result = parse(data)
+        require(isinstance(result, dict) and result.get("schema") == "acfs.packet-preparation.v1"
+                and (code, result.get("status")) in ((0, "prepared"), (1, "no_work"))
+                and result.get("sends_prompt") is False, "Work preparation failed; inspect any retained output directory.")
+        if code == 0:
+            require(result.get("directory") == str(output), "Preparer returned an unexpected output directory.")
+        # If an agent disappeared while collecting context, do not advertise a
+        # usable handoff. No prompts have been sent, and existing files stay intact.
+        reconcile(fd, receipt, request)
+        result["launch"] = {"receipt": str(receipt), "session": request["session"],
+            "request_sha256": hashlib.sha256(encode(request)).hexdigest(), "identities_rechecked": True,
+            "starts_agents": False, "work_dispatched": False, "agent_mail_registration_verified": False,
+            "identity_mapping": [{"slot": t["slot"], "launch_name": t["agent_name"],
+                "agent_mail_name": identities[t["slot"]], "agent_type": t["agent_type"], "pane": t["pane"]} for t in targets]}
+        print(encode(result).decode(), end="")
+        return code
+
+
 def main():
     parser = argparse.ArgumentParser(prog="acfs swarm launch", allow_abbrev=False,
         description="Preview and explicitly start a new NTM native-agent session. May use paid providers. "
-                    "Existing receipts only verify saved panes; they NEVER spawn again.")
+                    "Existing receipts only verify saved panes; they NEVER spawn again.",
+        epilog="For work handoff: acfs swarm launch --prepare-batch DIRECTORY --help")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--agent", action="append", required=True, help="Unique NAME:claude or NAME:codex; repeat for each slot")
@@ -348,7 +487,7 @@ def cancelled(signum, frame):
 for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, cancelled)
 try:
-    sys.exit(main())
+    sys.exit(preparation_main(sys.argv[2:]) if sys.argv[1:2] == ["--prepare-batch"] else main())
 except (LaunchError, OSError, UnicodeError, KeyboardInterrupt) as exc:
     print(encode({"schema": SCHEMA, "status": "error", "error": str(exc) if isinstance(exc, LaunchError)
                   else "Launch unavailable or interrupted; retain any receipt and inspect the session before retrying."}).decode(), end="")

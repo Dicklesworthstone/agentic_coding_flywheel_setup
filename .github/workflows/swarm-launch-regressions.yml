@@ -15,6 +15,7 @@ on:
       - 'packages/manifest/src/generate.ts'
       - 'scripts/generated/internal_checksums.sh'
       - 'tests/unit/test_swarm_launch.py'
+      - 'tests/unit/test_swarm_launch_handoff.py'
       - 'tests/unit/test_swarm_packet_preparation.py'
       - '.github/workflows/swarm-launch-regressions.yml'
   workflow_dispatch:
@@ -49,9 +50,11 @@ jobs:
           shellcheck scripts/lib/swarm_launch.sh
           python3 -B tests/unit/test_swarm_launch.py -v
           python3 -B tests/unit/test_swarm_packet_preparation.py -v
+          python3 -B tests/unit/test_swarm_launch_handoff.py -v
           TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --help > /tmp/acfs-launch-help
           grep -F -- '--expect-sha256' /tmp/acfs-launch-help
           grep -F -- '--launch' /tmp/acfs-launch-help
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --prepare-batch --help | grep -F -- '--identity'
           TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm help | grep -F 'plan|launch|status'
       - name: Verify the fresh-install launch asset
         run: |
