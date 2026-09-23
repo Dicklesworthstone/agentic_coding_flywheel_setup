@@ -82,13 +82,62 @@ without advertising a usable handoff; any already-written bundle is retained for
 inspection. Missing or unconfirmed launch receipts never trigger a replacement
 launch or adoption of arbitrary same-named panes. Existing output is not replaced.
 Review every generated packet and then use the returned `preview_command` for
-the separate hash-bound delivery workflow. Preparation success is not proof of
-current readiness at a later delivery time.
+the separate receipt-checked dispatch workflow below.
 
 Handoff exit codes are `0` for prepared work, `1` for no independent ready work
 (no bundle is created), and `2` for unusable launch evidence or preparation errors.
 The result's `launch` object records the identity mapping and makes explicit that
 no agents were started and no work was dispatched.
+
+## Dispatch reviewed work to the original launched agents
+
+Preparation from a launch now returns this preview command:
+
+```bash
+acfs swarm launch --dispatch-batch ./handoff/batch.json \
+  --receipt "$HOME/implementation-launch.json"
+```
+
+The preview validates every packet using the installed packet-delivery module,
+checks that each target belongs to the recorded launch, and verifies original
+native process/session identity for each pending delivery. It does not send
+prompts or create delivery receipts. Its `send_command` requires a hash binding
+**the launch request and original targets plus the batch and every packet**.
+A hash from the lower-level packet dispatcher does not authorize this command.
+
+Use that returned command only after reviewing the packet Markdown and the
+slot-to-pane mapping. Each new submission rechecks the original native target,
+then uses the existing single-packet sender's live ready-queue check, NTM dry run,
+private durable intent, exact payload hash and stdin transport. It does not create
+sessions, register identities, claim Beads or acquire reservations.
+
+Dispatch is sequential, not transactional. An uncertain submission or failed
+identity check stops the batch, retains earlier submissions, and marks later
+entries `not_attempted`. Keep the unchanged batch, packets, launch receipt/result,
+and per-delivery receipts. Repeating the same approved command queries known
+intents first and continues pending entries only after earlier submissions are
+confirmed. A known intent never enters a send-capable path again during that
+invocation, even if its file is moved after validation. Do not remove receipts
+between invocations: an absent receipt cannot prove a previous send did not occur.
+
+Historical submission receipts can be queried after the original agents exit;
+new work still requires the original live identities. A missing upstream receipt,
+wrong operation/payload/target, or malformed response stays `unconfirmed` and
+never authorizes resending. `submitted` means matching NTM submission evidence,
+not task execution or completion. `submission_may_have_occurred` flags uncertain
+child execution even when no valid result was returned.
+
+The native identity check and NTM send are separate operations, not an atomic
+compare-and-send. Do not restart agents or replace panes during dispatch. This
+path detects identity changes at its checks but cannot eliminate that final race.
+The launch receipt directory lock excludes concurrent launch-aware dispatchers
+using the same directory, not unrelated NTM callers or all users on the machine.
+
+Dispatch exit codes are `0` for a valid preview or confirmed submissions, `1`
+for an unconfirmed submission, and `2` for invalid evidence or a failed preflight.
+After a stopped batch, inspect its per-delivery results before taking any action.
+The lower-level `acfs swarm packet --deliver-batch` remains available for manually
+managed agents; it does not add these original-launch identity checks.
 
 ## Recovery: never blindly repeat a spawn
 
@@ -126,6 +175,7 @@ python3 -B tests/unit/test_swarm_launch_handoff.py
 The regression suites execute the actual Bash/Python launcher against executable
 planner/NTM/tmux contract fixtures. They cover both admissions, exact agent mix,
 original-slot mapping, private receipts, directory exclusion, unready/native
-process failures, response loss and no-relaunch recovery. Handoff tests also run
-the actual packet preparer and allocator when executed from a complete checkout.
+process failures, response loss and no-relaunch recovery. Handoff and dispatch
+tests also exercise the actual allocator, preparer and packet sender from a
+complete checkout, including receipt-only recovery after native agents exit.
 They do not exercise installed providers, live authentication or a production VPS.

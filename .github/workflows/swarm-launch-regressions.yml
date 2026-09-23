@@ -55,6 +55,7 @@ jobs:
           grep -F -- '--expect-sha256' /tmp/acfs-launch-help
           grep -F -- '--launch' /tmp/acfs-launch-help
           TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --prepare-batch --help | grep -F -- '--identity'
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --dispatch-batch --help | grep -F -- '--send'
           TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm help | grep -F 'plan|launch|status'
       - name: Verify the fresh-install launch asset
         run: |

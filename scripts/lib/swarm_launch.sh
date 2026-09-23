@@ -25,6 +25,9 @@ import time
 
 RUNTIME = Path(sys.argv.pop(1)).resolve(strict=True)
 SCHEMA = "acfs.swarm-launch.v1"
+DISPATCH_SCHEMA = "acfs.swarm-dispatch.v1"
+PACKET_SCHEMA = "acfs.packet-delivery.v1"
+BATCH_SCHEMA = "acfs.packet-delivery-batch.v1"
 LIMIT = 1024 * 1024
 FORMAT = "\t".join(("#{session_name}", "#{session_id}", "#{session_created}",
     "#{pane_id}", "#{pane_pid}", "#{pid}", "#{pane_current_path}",
@@ -237,7 +240,13 @@ def verify_targets(agents, request):
     return targets
 
 
-def reconcile(fd, receipt, request):
+def check_target(target, request):
+    live = observe(binary("tmux"), target["pane"], request)
+    require(all(target.get(key) == value for key, value in live.items()),
+            "Recorded native agent identity changed; no replacement agent was started.")
+
+
+def reconcile(fd, receipt, request, verify_live=True):
     result = read_receipt(fd, receipt.name + ".result.json")
     require(isinstance(result, dict) and result.get("schema") == SCHEMA and result.get("request") == request
             and isinstance(result.get("targets"), list) and len(result["targets"]) == len(request["agents"]),
@@ -246,15 +255,18 @@ def reconcile(fd, receipt, request):
                 and isinstance(t.get("pane"), str) for i, t in enumerate(result["targets"], 1))
             and len({t["pane"] for t in result["targets"]}) == len(result["targets"]),
             "Saved launch slots or panes are not distinct and ordered.")
-    tmux = binary("tmux")
     for index, target in enumerate(result["targets"]):
         require(isinstance(target, dict) and isinstance(target.get("pane"), str)
                 and re.fullmatch(r"%[0-9]+", target["pane"])
                 and target.get("agent_name") == request["agents"][index]["agent_name"]
-                and target.get("agent_type") == request["agents"][index]["agent_type"], "Invalid saved launch target.")
-        live = observe(tmux, target["pane"], request)
-        require(all(target.get(key) == value for key, value in live.items()),
-                "Recorded native agent identity changed; no replacement agent was started.")
+                and target.get("agent_type") == request["agents"][index]["agent_type"]
+                and isinstance(target.get("session_id"), str) and re.fullmatch(r"\$[0-9]+", target["session_id"])
+                and all(isinstance(target.get(key), str) and re.fullmatch(r"[0-9]+", target[key])
+                        for key in ("session_created", "pane_pid", "server_pid")), "Invalid saved launch target.")
+        if verify_live:
+            check_target(target, request)
+    require(len({(t["session_id"], t["session_created"], t["server_pid"]) for t in result["targets"]}) == 1,
+            "Saved targets do not belong to one launch session.")
     return result["targets"]
 
 
@@ -388,15 +400,189 @@ def preparation_main(arguments):
             "starts_agents": False, "work_dispatched": False, "agent_mail_registration_verified": False,
             "identity_mapping": [{"slot": t["slot"], "launch_name": t["agent_name"],
                 "agent_mail_name": identities[t["slot"]], "agent_type": t["agent_type"], "pane": t["pane"]} for t in targets]}
+        if code == 0:
+            result["preview_command"] = shlex.join(["acfs", "swarm", "launch", "--dispatch-batch",
+                str(output / "batch.json"), "--receipt", str(receipt)])
         print(encode(result).decode(), end="")
         return code
+
+
+def packet_intent(path, request=None):
+    with receipt_directory(path) as fd:
+        saved = read_receipt(fd, path.name)
+    require(saved is None or (isinstance(saved, dict) and saved.get("schema") == PACKET_SCHEMA
+            and isinstance(saved.get("request"), dict) and (request is None or saved["request"] == request)
+            and isinstance(saved.get("target"), str)
+            and saved["target"]), "Delivery receipt belongs to another packet; it was not changed.")
+    return saved
+
+
+def query_delivery(entry, saved):
+    """A known intent NEVER goes back through a send-capable execution path."""
+    request, target = entry["request"], saved["target"]
+    report = {"schema": PACKET_SCHEMA, "request": request, "receipt": str(entry["receipt"]),
+              "status": "unconfirmed", "sends_prompt": False, "reconciled_only": True,
+              "agent_execution_verified": False}
+    try:
+        code, data = run([binary("ntm"), "--robot-send-receipt=" + request["operation_id"],
+                          "--robot-format=json"], request["repo"])
+        response = parse(data)
+        operation = response.get("operation") if isinstance(response, dict) else None
+        outcome = response.get("outcome") if isinstance(response, dict) else None
+        if (code == 0 and isinstance(response, dict) and response.get("success") is True and response.get("session") == request["session"]
+                and isinstance(operation, dict) and operation.get("operation_id") == request["operation_id"]
+                and operation.get("payload_sha256") == request["payload_sha256"]
+                and type(operation.get("payload_bytes")) is int and operation["payload_bytes"] == request["payload_bytes"]
+                and operation.get("status") == "completed" and isinstance(outcome, dict)
+                and outcome.get("success") is True and outcome.get("targets") == [target]
+                and outcome.get("successful") == [target] and outcome.get("failed") == []
+                and operation.get("admissions") == [{"target": target, "state": "submitted"}]):
+            report["status"] = "submitted"
+    except (LaunchError, OSError, UnicodeError):
+        pass
+    return report, 0 if report["status"] == "submitted" else 1
+
+
+def dispatch_preview(batch, request, targets, packet_script):
+    raw = read_input(batch)
+    spec = parse(raw)
+    require(isinstance(spec, dict) and set(spec) == {"schema", "deliveries"}
+            and spec["schema"] == BATCH_SCHEMA and isinstance(spec["deliveries"], list)
+            and 1 <= len(spec["deliveries"]) <= len(targets), "Expected a nonempty batch for this recorded launch.")
+    keys = {"packet", "repo", "session", "pane", "agent_type", "operation_id", "receipt"}
+    known_intents = {}
+    for item in spec["deliveries"]:
+        require(isinstance(item, dict) and set(item) == keys
+                and all(isinstance(v, str) and v and "\0" not in v for v in item.values()), "Invalid batch entry.")
+        path = Path(os.path.abspath(batch.parent / item["receipt"]))
+        known_intents[path] = packet_intent(path)
+    code, data = run([binary("bash"), str(packet_script), "--deliver-batch", str(batch)], request["repo"])
+    preview = parse(data)
+    require(code == 0 and isinstance(preview, dict) and preview.get("schema") == BATCH_SCHEMA
+            and preview.get("status") == "preview" and preview.get("sends_prompt") is False
+            and isinstance(preview.get("deliveries"), list)
+            and len(preview["deliveries"]) == len(spec["deliveries"])
+            and preview.get("manifest_sha256") == hashlib.sha256(raw).hexdigest()
+            and read_input(batch) == raw, "Batch validation failed or inputs changed; no work was sent.")
+    by_pane = {t["pane"]: t for t in targets}
+    entries, reviewed, panes = [], [], set()
+    for item, detail in zip(spec["deliveries"], preview["deliveries"]):
+        require(isinstance(item, dict) and set(item) == keys
+                and all(isinstance(v, str) and v and "\0" not in v for v in item.values())
+                and isinstance(detail, dict) and isinstance(detail.get("request"), dict), "Invalid batch entry.")
+        packet, receipt, repo = (Path(os.path.abspath(batch.parent / item[k])) for k in ("packet", "receipt", "repo"))
+        r = detail["request"]
+        require(r.get("repo") == str(repo) == request["repo"] and r.get("session") == item["session"] == request["session"]
+                and r.get("pane") == item["pane"] and r["pane"] in by_pane and r["pane"] not in panes
+                and r.get("agent_type") == item["agent_type"] == by_pane[r["pane"]]["agent_type"]
+                and r.get("operation_id") == item["operation_id"] and detail.get("receipt") == str(receipt)
+                and all(isinstance(r.get(k), str) and re.fullmatch(r"[a-f0-9]{64}", r[k])
+                        for k in ("packet_sha256", "payload_sha256"))
+                and type(r.get("payload_bytes")) is int and 1 <= r["payload_bytes"] <= 65536,
+                "Batch target does not match the original launch; no work was sent.")
+        panes.add(r["pane"])
+        entry = {"packet": packet, "receipt": receipt, "request": r, "target": by_pane[r["pane"]]}
+        prior, current = known_intents[receipt], packet_intent(receipt, r)
+        require(prior is None or (prior["request"] == r and (current is None or current == prior)),
+                "Delivery intent changed during validation; preserve it and inspect the recorded submission.")
+        entry["saved"] = prior or current
+        entries.append(entry)
+        reviewed.append({"request": r, "receipt": str(receipt), "packet": str(packet)})
+    digest = hashlib.sha256(encode({"schema": BATCH_SCHEMA, "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+                                    "deliveries": reviewed})).hexdigest()
+    require(preview.get("review_sha256") == digest, "Batch review identity mismatch; no work was sent.")
+    return entries, digest
+
+
+def dispatch_main(arguments):
+    parser = argparse.ArgumentParser(prog="acfs swarm launch --dispatch-batch", allow_abbrev=False,
+        description="Review and dispatch a batch only to its original launched agents. "
+                    "Each new send rechecks launch identity. Existing delivery intents are queried, never resent.")
+    parser.add_argument("batch")
+    parser.add_argument("--receipt", required=True, help="Original launch intent; never a delivery receipt")
+    parser.add_argument("--expect-sha256", help="Combined launch-and-batch hash from this command's preview")
+    parser.add_argument("--send", action="store_true", help="May start paid model work; otherwise preview only")
+    args = parser.parse_args(arguments)
+    receipt, batch = Path(os.path.abspath(args.receipt)), Path(os.path.abspath(args.batch))
+    packet_script = RUNTIME.with_name("swarm_packet.sh")
+    require(packet_script.is_file() and not packet_script.is_symlink(), "Installed packet delivery is unavailable.")
+    with receipt_directory(receipt, lock=args.send) as fd:
+        request = saved_request(fd, receipt)
+        targets = reconcile(fd, receipt, request, verify_live=False)
+        entries, batch_hash = dispatch_preview(batch, request, targets, packet_script)
+        review = {"schema": DISPATCH_SCHEMA, "request": request, "targets": targets, "batch_sha256": batch_hash}
+        review_hash = hashlib.sha256(encode(review)).hexdigest()
+        require(args.expect_sha256 is None or args.expect_sha256 == review_hash,
+                "Launch evidence, batch or packet changed since review; preview again.")
+        require(not args.send or args.expect_sha256 == review_hash,
+                "Preview receipt-checked dispatch first and pass its --expect-sha256 with --send.")
+        report = {"schema": DISPATCH_SCHEMA, "status": "preview", "review_sha256": review_hash,
+                  "batch_review_sha256": batch_hash, "launch_receipt": str(receipt), "batch": str(batch),
+                  "starts_agents": False, "sends_prompt": False, "agent_execution_verified": False,
+                  "note": "New submissions can start paid work. Checks are not atomic with NTM; "
+                          "do not restart agents during dispatch. No sessions, claims or reservations are created."}
+        if not args.send:
+            for entry in entries:
+                if entry["saved"] is None:
+                    check_target(entry["target"], request)
+            report["deliveries"] = [{"request": e["request"], "receipt": str(e["receipt"]),
+                "slot": e["target"]["slot"], "action": "reconcile_only" if e["saved"] else "submit"} for e in entries]
+            report["send_command"] = shlex.join(["acfs", "swarm", "launch", "--dispatch-batch", str(batch),
+                "--receipt", str(receipt), "--expect-sha256", review_hash, "--send"])
+            print(encode(report).decode(), end="")
+            return 0
+        results, exit_code = [], 0
+        for entry in entries:
+            r, target = entry["request"], entry["target"]
+            result = {"request": r, "receipt": str(entry["receipt"]), "slot": target["slot"],
+                      "status": "not_attempted", "sends_prompt": False, "agent_execution_verified": False}
+            if not exit_code:
+                send_invoked = False
+                try:
+                    # A known intent is never sent again even if another process
+                    # removes its file after preview. Keep and query the snapshot.
+                    saved = entry["saved"] or packet_intent(entry["receipt"], r)
+                    if saved is not None:
+                        outcome, code = query_delivery(entry, saved)
+                    else:
+                        check_target(target, request)
+                        argv = [binary("bash"), str(packet_script), "--deliver", str(entry["packet"])]
+                        for key in ("repo", "session", "pane", "agent_type", "operation_id"):
+                            argv.extend(("--" + key.replace("_", "-"), r[key]))
+                        argv.extend(("--receipt", str(entry["receipt"]), "--expect-sha256", r["packet_sha256"], "--send"))
+                        send_invoked = True
+                        code, data = run(argv, request["repo"], timeout=150)
+                        outcome = parse(data)
+                        require(isinstance(outcome, dict) and outcome.get("schema") == PACKET_SCHEMA
+                                and outcome.get("request") == r and outcome.get("receipt") == str(entry["receipt"])
+                                and (code, outcome.get("status")) in ((0, "submitted"), (1, "unconfirmed"))
+                                and type(outcome.get("sends_prompt")) is bool,
+                                "Delivery did not return matching submission evidence; retain its receipt.")
+                    result.update(outcome)
+                    exit_code = code
+                except (LaunchError, OSError, UnicodeError, KeyboardInterrupt) as exc:
+                    result.update(status="error", error=str(exc) if isinstance(exc, LaunchError) else "Dispatch interrupted or unavailable.",
+                                  submission_may_have_occurred=send_invoked or os.path.lexists(entry["receipt"]))
+                    exit_code = 2
+            results.append(result)
+        report.update(status="stopped" if exit_code else "submitted", deliveries=results,
+            sends_prompt=any(r.get("sends_prompt") for r in results),
+            submission_may_have_occurred=any(r.get("sends_prompt") or r.get("submission_may_have_occurred") for r in results))
+        report["summary"] = {s: sum(r["status"] == s for r in results)
+                             for s in ("submitted", "unconfirmed", "error", "not_attempted")}
+        report["summary"]["reconciled"] = sum(r.get("reconciled_only") is True for r in results)
+        report["recovery"] = "Keep launch and delivery receipts plus unchanged packets and manifest. Repeat this command to " \
+                             "query known intents and continue pending entries; never delete receipts to force a resend."
+        print(encode(report).decode(), end="")
+        return exit_code
 
 
 def main():
     parser = argparse.ArgumentParser(prog="acfs swarm launch", allow_abbrev=False,
         description="Preview and explicitly start a new NTM native-agent session. May use paid providers. "
                     "Existing receipts only verify saved panes; they NEVER spawn again.",
-        epilog="For work handoff: acfs swarm launch --prepare-batch DIRECTORY --help")
+        epilog="Work handoff: acfs swarm launch --prepare-batch DIRECTORY --help; "
+               "reviewed dispatch: acfs swarm launch --dispatch-batch BATCH.json --help")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--agent", action="append", required=True, help="Unique NAME:claude or NAME:codex; repeat for each slot")
@@ -487,6 +673,8 @@ def cancelled(signum, frame):
 for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, cancelled)
 try:
+    if sys.argv[1:2] == ["--dispatch-batch"]:
+        sys.exit(dispatch_main(sys.argv[2:]))
     sys.exit(preparation_main(sys.argv[2:]) if sys.argv[1:2] == ["--prepare-batch"] else main())
 except (LaunchError, OSError, UnicodeError, KeyboardInterrupt) as exc:
     print(encode({"schema": SCHEMA, "status": "error", "error": str(exc) if isinstance(exc, LaunchError)
