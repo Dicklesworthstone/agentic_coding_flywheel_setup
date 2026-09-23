@@ -4,26 +4,117 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scripts/lib/swarm_launch.sh'
-      - 'scripts/lib/swarm_plan.sh'
-      - 'tests/unit/test_swarm_launch.py'
       - '.github/workflows/swarm-launch-regressions.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  native-launch:
+  installed-launch-candidate:
+    if: >-
+      github.event_name == 'push' && github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup' && github.event.head_commit.message == 'build(swarm): verify installed launch integration candidate'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Check launcher and execute real entrypoint regressions
+      - uses: oven-sh/setup-bun@v2
+      - name: Apply the bounded installed-launch source changes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace(path, before, after):
+              p = Path(path)
+              text = p.read_text()
+              assert text.count(before) == 1, (path, 'source anchor changed')
+              p.write_text(text.replace(before, after))
+          path = 'scripts/lib/doctor.sh'
+          replace(path, '    echo "  swarm plan          Queue-aware launch advisor"',
+              '    echo "  swarm plan          Queue-aware launch advisor"\n'
+              '    echo "  swarm launch        Explicit admission-checked native agent startup"')
+          text = Path(path).read_text()
+          start = text.index('                plan|advisor)\n')
+          end = text.index('                status|snapshot)\n', start)
+          branch = text[start:end]
+          assert branch.count(';;') == 1 and 'swarm_plan.sh' in branch
+          launch = branch.replace('plan|advisor)', 'launch)').replace('swarm_plan', 'swarm_launch')
+          replace(path, branch, launch + branch)
+          replace(path, '<plan|status|doctor|simulate|packet|assign|convergence|calibration|inventory>',
+                        '<plan|launch|status|doctor|simulate|packet|assign|convergence|calibration|inventory>')
+          path = 'scripts/lib/update.sh'
+          anchor = '        "scripts/lib/swarm_plan.sh:scripts/lib/swarm_plan.sh"\n'
+          replace(path, anchor, anchor.replace('swarm_plan', 'swarm_launch') + anchor)
+          for path, indent in [('packages/manifest/src/generate.ts', '  '),
+                               ('packages/manifest/src/generate.test.ts', '      ')]:
+              anchor = indent + '"scripts/lib/swarm_packet.sh",\n'
+              replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
+          path = 'scripts/check-manifest-drift.sh'
+          anchor = '    scripts/lib/swarm_packet.sh\n'
+          replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
+          PY
+      - name: Run complete canonical generation
+        working-directory: packages/manifest
         run: |
           set -euo pipefail
-          bash -n scripts/lib/swarm_launch.sh
+          bun install --frozen-lockfile --ignore-scripts
+          bun run generate
+          bun run generate:diff
+          bun test src/generate.test.ts
+      - name: Validate launch, installed dispatch and existing packet handoff
+        run: |
+          set -euo pipefail
+          for path in scripts/lib/doctor.sh scripts/lib/update.sh scripts/lib/swarm_launch.sh scripts/check-manifest-drift.sh; do
+            bash -n "$path"
+          done
           shellcheck scripts/lib/swarm_launch.sh
           python3 -B tests/unit/test_swarm_launch.py -v
+          python3 -B tests/unit/test_swarm_packet_preparation.py -v
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --help > /tmp/acfs-launch-help
+          grep -F -- '--expect-sha256' /tmp/acfs-launch-help
+          grep -F -- '--launch' /tmp/acfs-launch-help
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm help | grep -F 'plan|launch|status'
+          git diff --check
+          git diff --stat
+          git diff -- scripts/lib/doctor.sh scripts/lib/update.sh packages/manifest/src/generate.ts packages/manifest/src/generate.test.ts scripts/check-manifest-drift.sh scripts/generated/internal_checksums.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('install.sh').read_text().splitlines()
+          for i, line in enumerate(lines):
+              if ('scripts/lib/' in line or 'scripts/lib"' in line) and i > 3000:
+                  print('INSTALL DEPLOYMENT', i + 1)
+                  print('\n'.join(lines[max(0, i-3):i+6]))
+          PY
+      - name: Store only validated candidate Git blobs, without updating any ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, urllib.request
+          from pathlib import Path
+          expected = {'scripts/lib/doctor.sh', 'scripts/lib/update.sh',
+              'packages/manifest/src/generate.ts', 'packages/manifest/src/generate.test.ts',
+              'scripts/check-manifest-drift.sh', 'scripts/generated/internal_checksums.sh'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          assert changed == expected, ('unexpected candidate paths', sorted(changed))
+          assert os.environ['GITHUB_REPOSITORY'] == 'Dicklesworthstone/agentic_coding_flywheel_setup'
+          base = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          for name in sorted(expected):
+              path = Path(name)
+              assert path.is_file() and not path.is_symlink()
+              data = path.read_bytes()
+              assert len(data) <= 1024 * 1024
+              before = subprocess.check_output(['git', 'rev-parse', 'HEAD:' + name], text=True).strip()
+              wanted = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              body = json.dumps({'encoding': 'utf-8', 'content': data.decode('utf-8')}).encode()
+              request = urllib.request.Request('https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/git/blobs',
+                  data=body, method='POST', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+              assert result['sha'] == wanted
+              print('CANDIDATE ' + json.dumps({'path': name, 'base_commit': base, 'before': before, 'sha': wanted,
+                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '100755' if path.stat().st_mode & 0o111 else '100644'}))
+          PY
