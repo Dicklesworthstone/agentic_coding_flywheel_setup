@@ -5,6 +5,48 @@ private directory of complete per-agent work packets and a delivery manifest.
 It removes the manual packet/manifest assembly between `swarm assign` and
 `swarm packet --deliver-batch`. It does not spawn agents or send prompts.
 
+## Select work and prepare in one command
+
+With a scope map and existing agent panes, preparation can run the installed
+scope-aware allocator directly in the target repository:
+
+```bash
+acfs swarm packet --prepare-batch ./handoff \
+  --scopes-file scopes.json --roles implementation,documentation \
+  --repo "$PWD" --session myproject \
+  --target '1:RedFox:claude:%42' --target '2:BlueLake:codex:%43'
+```
+
+This reads `br ready --json`, optionally enriches ranking with `bv --robot-triage`,
+selects independent tasks using the existing allocator, fetches the full selected
+task briefs, and generates the bundle. It does not implement a second scheduler.
+Supply consecutive target slots `1` through `N`, including panes that may end up
+idle. The role count must equal `N`. Without `--roles`, the default is the existing
+`balanced` role profile; `--profile` can select `codex-heavy`, `review-heavy`, or
+`docs-heavy`. Role profiles never change the explicitly selected native agent type
+or move a slot to another pane.
+
+Conflicting or unscoped work remains deferred. Only assigned slots produce
+packets; `idle_targets` explains unused panes by name and stable ID. When no
+independent work is available, the command returns `status: "no_work"` and exit
+code `1`, with the full assignment explanation and **no output directory or
+sendable manifest**. A prepared nonempty bundle exits `0`; input or preparation
+failure exits `2`.
+
+Automatic selection accepts `--ready-file ready.json --triage-file triage.json`
+to replay saved queue and ranking inputs. An explicit `{}` triage file disables
+ranking enrichment. Add `--beads-file full-beads.json --no-live-context` to avoid
+all br, bv, CM and CASS probes. These flags have separate purposes: a saved full
+Beads file alone does not disable live ready-queue selection. All relative input
+paths resolve from the invocation directory, not the target repository.
+
+The bundle retains exact supplied `scopes.json`, `ready.json` and `triage.json`
+bytes (when supplied) as well as the actual allocator report. The preparation
+result records their hashes. Saved evidence does not establish current readiness,
+capacity or reservations. Review the produced task-to-pane mapping before sending.
+
+## Prepare an existing assignment report
+
 Generate an assignment report from the intended write scopes:
 
 ```bash
@@ -28,6 +70,8 @@ for every **assigned** slot, excluding idle slots. Argument order does not matte
 a slot is never reassigned to another pane merely because another slot is idle.
 Panes, slots and agent identities must be distinct. Scope-aware assignments are
 required; inferred paths and overlapping declared write sets are refused.
+`--assignments` and `--scopes-file` are mutually exclusive. Role/profile and
+ready/triage options cannot silently override an existing assignment report.
 
 By default preparation reads each selected task with `br show ID --json` and
 uses the existing packet generator's bounded CM/CASS context lookups. Supply

@@ -1139,7 +1139,7 @@ def batch_main(arguments):
     return exit_code
 
 
-def scoped_assignments(data):
+def scoped_assignments(data, allow_empty=False):
     """Recheck declared write sets, rather than trusting a saved pass label."""
     report = parse(data)
     require(isinstance(report, dict) and type(report.get("schema_version")) is int
@@ -1149,7 +1149,7 @@ def scoped_assignments(data):
             and report["scope_admission"].get("mode") == "explicit-scopes",
             "Use acfs swarm assign --scopes-file to produce explicit scoped assignments.")
     items = report.get("assignments")
-    require(isinstance(items, list) and 1 <= len(items) <= MAX_DELIVERIES,
+    require(isinstance(items, list) and (0 if allow_empty else 1) <= len(items) <= MAX_DELIVERIES,
             "Preparation needs 1 through 32 assigned tasks; no batch was written.")
     slots, beads, previous_paths = set(), set(), []
     for item in items:
@@ -1183,7 +1183,8 @@ def scoped_assignments(data):
     return report, sorted(items, key=lambda item: item["slot"])
 
 
-def preparation_targets(values, items):
+def preparation_targets(values, items=None):
+    require(1 <= len(values) <= MAX_DELIVERIES, "Provide 1 through 32 preparation targets.")
     targets, panes, names = {}, set(), set()
     for value in values:
         parts = value.split(":")
@@ -1199,9 +1200,48 @@ def preparation_targets(values, items):
         targets[slot] = {"name": name, "agent_type": agent_type, "pane": pane}
         panes.add(pane)
         names.add(name)
-    require(set(targets) == {item["slot"] for item in items},
-            "Provide exactly one --target for every assigned slot (not idle slots).")
+    if items is not None:
+        require(set(targets) == {item["slot"] for item in items},
+                "Provide exactly one --target for every assigned slot (not idle slots).")
     return targets
+
+
+def allocate_preparation(args, repo, targets, bash):
+    """Use the installed allocator's ranking and scope policy, not a second scheduler."""
+    require(set(targets) == set(range(1, len(targets) + 1)),
+            "Automatic selection requires consecutive target slots starting at 1.")
+    allocator = RUNTIME.with_name("swarm_assign.sh")
+    require(allocator.is_file() and not allocator.is_symlink(), "The installed scoped allocator is unavailable.")
+    # Pin explicit input bytes before invoking the allocator from the target
+    # repository. Relative input paths belong to the caller's cwd, not --repo.
+    sources = {}
+    for key, path in (("scopes", args.scopes_file), ("ready", args.ready_file), ("triage", args.triage_file)):
+        if path is not None:
+            sources[key + ".json"] = read_file(path)
+    with tempfile.TemporaryDirectory(prefix="acfs-assignment-inputs-") as temporary:
+        scratch = Path(temporary)
+        argv = [bash, str(allocator), "--json", "--agents", str(len(targets))]
+        for name, data in sources.items():
+            path = scratch / name
+            path.write_bytes(data)
+            argv += ["--" + name.removesuffix(".json") + "-file", str(path)]
+        if args.roles is not None:
+            argv += ["--roles", args.roles]
+        elif args.profile is not None:
+            argv += ["--profile", args.profile]
+        code, data = run(argv, repo, timeout=60)
+    require(code == 0, "Scoped work selection failed; inspect the scope, ready and triage inputs. No bundle was written.")
+    assignments, items = scoped_assignments(data, allow_empty=True)
+    require(isinstance(assignments.get("inputs"), dict)
+            and assignments["inputs"].get("requested_agents") == len(targets),
+            "The selected role count must match the number of target slots.")
+    idle = assignments.get("idle_agents")
+    require(isinstance(idle, list) and all(isinstance(item, dict) and type(item.get("slot")) is int for item in idle),
+            "Allocator did not return usable idle-slot evidence.")
+    all_slots = [item["slot"] for item in items] + [item["slot"] for item in idle]
+    require(len(all_slots) == len(targets) and set(all_slots) == set(targets),
+            "Allocator slot identities do not match the reviewed target map.")
+    return data, assignments, items, sources
 
 
 def preparation_bead(value, bead_id):
@@ -1258,13 +1298,24 @@ def preparation_main(arguments):
         description="Turn scoped assignments into complete per-agent packets and a reviewable delivery batch. "
                     "Creates a new private directory; does not send prompts or launch agents.")
     parser.add_argument("output", help="New directory; existing work is never overwritten")
-    parser.add_argument("--assignments", required=True, help="JSON from acfs swarm assign --scopes-file")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--assignments", help="JSON from acfs swarm assign --scopes-file")
+    source.add_argument("--scopes-file", help="Select independent ready work with the installed allocator")
+    roles = parser.add_mutually_exclusive_group()
+    roles.add_argument("--roles", help="Automatic selection role mix; count must match target slots")
+    roles.add_argument("--profile", choices=("balanced", "codex-heavy", "review-heavy", "docs-heavy"),
+                       help="Automatic selection role profile (default: balanced)")
+    parser.add_argument("--ready-file", help="Saved br ready JSON for automatic selection; otherwise probe br")
+    parser.add_argument("--triage-file", help="Saved bv triage JSON for automatic selection; {} disables enrichment")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--target", action="append", required=True, help="SLOT:AGENT_NAME:claude|codex:%%PANE")
     parser.add_argument("--beads-file", help="Saved full Beads objects; otherwise read br show for each assignment")
     parser.add_argument("--no-live-context", action="store_true", help="Do not query CM or CASS during preparation")
     args = parser.parse_args(arguments)
+    require(args.scopes_file is not None or all(value is None for value in
+            (args.roles, args.profile, args.ready_file, args.triage_file)),
+            "Role profiles and ready/triage inputs require --scopes-file, not saved --assignments.")
     require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", args.session), "Invalid session name.")
     repo = directory(args.repo)
     output = Path(os.path.abspath(args.output))
@@ -1272,12 +1323,29 @@ def preparation_main(arguments):
     require(not os.path.lexists(output), "Output directory already exists; no files were changed.")
     info = parent.stat()
     parent_identity = (info.st_dev, info.st_ino)
-    assignments_bytes = read_file(args.assignments)
-    assignments, items = scoped_assignments(assignments_bytes)
-    targets = preparation_targets(args.target, items)
-    saved_beads = parse(read_file(args.beads_file)) if args.beads_file else None
     bash = binary("bash")
     binary("jq")
+    targets = preparation_targets(args.target)
+    source_artifacts = {}
+    if args.scopes_file is not None:
+        assignments_bytes, assignments, items, source_artifacts = allocate_preparation(args, repo, targets, bash)
+    else:
+        assignments_bytes = read_file(args.assignments)
+        assignments, items = scoped_assignments(assignments_bytes)
+        require(set(targets) == {item["slot"] for item in items},
+                "Provide exactly one --target for every assigned slot (not idle slots).")
+    selection = {"mode": "scoped-allocation" if args.scopes_file is not None else "saved-assignments",
+                 "repository": str(repo), "requested_targets": len(targets),
+                 "input_sha256": {name: digest(data) for name, data in source_artifacts.items()}}
+    idle_targets = [{**item, "target": targets[item["slot"]]} for item in assignments.get("idle_agents", [])
+                    if isinstance(item, dict) and item.get("slot") in targets]
+    if not items:
+        print(encode({"schema": "acfs.packet-preparation.v1", "status": "no_work", "delivery_count": 0,
+                      "selection": selection, "sends_prompt": False, "directory_created": False,
+                      "idle_targets": idle_targets, "assignment_report": assignments,
+                      "note": "No independent scoped task is ready. No packet or delivery manifest was created."}).decode(), end="")
+        return 1
+    saved_beads = parse(read_file(args.beads_file)) if args.beads_file else None
     br = None if args.beads_file else binary("br")
     selected = []
     # Fetch all task descriptions before any output publication. A bad later
@@ -1289,7 +1357,7 @@ def preparation_main(arguments):
             require(code == 0, "Unable to read an assigned Bead; no bundle was written.")
             value = parse(data)
         selected.append(preparation_bead(value, item["bead_id"]))
-    artifacts = {"assignments.json": assignments_bytes}
+    artifacts = {"assignments.json": assignments_bytes, **source_artifacts}
     deliveries, mapping = [], []
     # Fresh random operation namespace avoids collisions between independently
     # prepared bundles. Recovery reuses the stored manifest, never regenerates it.
@@ -1344,6 +1412,7 @@ def preparation_main(arguments):
     print(encode({"schema": "acfs.packet-preparation.v1", "status": "prepared", "directory": str(output),
                   "delivery_count": len(deliveries), "assignments": mapping,
                   "source_assignment_sha256": digest(assignments_bytes), "sends_prompt": False,
+                  "selection": selection, "idle_targets": idle_targets,
                   "live_reservations_checked": False, "agent_execution_verified": False,
                   "idle_agents": assignments.get("idle_agents", []),
                   "preview_command": shlex.join(["acfs", "swarm", "packet", "--deliver-batch", str(output / "batch.json")]),

@@ -21,11 +21,16 @@ with (root / "calls.jsonl").open("a") as stream:
     stream.write(json.dumps([name, args]) + "\n")
 beads = json.loads((root / "beads.json").read_text())
 if name == "br":
+    assert pathlib.Path.cwd() == root / "repo"
     if args == ["ready", "--json"]:
         print(json.dumps(beads))
     else:
         assert args[0] == "show" and args[2:] == ["--json"], args
         print(json.dumps([b for b in beads if b["id"] == args[1]]))
+    sys.exit(0)
+if name == "bv":
+    assert args == ["--robot-triage"] and pathlib.Path.cwd() == root / "repo", args
+    print((root / "triage.json").read_text())
     sys.exit(0)
 if name == "tmux":
     assert args[:3] == ["display-message", "-p", "-t"], args
@@ -70,7 +75,7 @@ class PreparationTests(unittest.TestCase):
         (self.repo / "README.md").write_text("The project.\n")
         self.bin = self.root / "bin"
         self.bin.mkdir()
-        for name in ("br", "tmux", "ntm", "cm", "cass"):
+        for name in ("br", "bv", "tmux", "ntm", "cm", "cass"):
             path = self.bin / name
             path.write_text(TOOLS)
             path.chmod(0o755)
@@ -95,6 +100,12 @@ class PreparationTests(unittest.TestCase):
                        "acceptance_criteria": "The example matches the public API.", "labels": ["docs"]}]
         self.assignment_path = self.root / "assignments.json"
         self.bead_path = self.root / "beads.json"
+        self.scopes_path = self.root / "scopes.json"
+        self.triage_path = self.root / "triage.json"
+        self.scopes = {"schema_version": 1, "scopes": {
+            "bd-api": ["src/api/**", "tests/api/**"], "bd-doc": ["docs/**"]}}
+        self.scopes_path.write_text(json.dumps(self.scopes))
+        self.triage_path.write_text("{}")
         self.write_inputs()
 
     def write_inputs(self):
@@ -118,6 +129,21 @@ class PreparationTests(unittest.TestCase):
 
     def packet(self, slot):
         return json.loads((self.output / f"packet-{slot:02}.json").read_text())
+
+    def invoke_auto(self, offline=True, targets=None, roles="implementation,documentation", extra=(), cwd=None):
+        args = ["bash", str(SCRIPT), "--prepare-batch", str(self.output), "--repo", str(self.repo),
+                "--session", "project", "--scopes-file", str(self.scopes_path), "--no-live-context"]
+        for target in targets or ["1:RedFox:claude:%42", "2:BlueLake:codex:%43"]:
+            args += ["--target", target]
+        if roles is not None:
+            args += ["--roles", roles]
+        if offline:
+            args += ["--ready-file", str(self.bead_path), "--triage-file", str(self.triage_path),
+                     "--beads-file", str(self.bead_path)]
+        result = subprocess.run(args + list(extra), cwd=cwd, env=self.env,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.stderr, "", result.stderr)
+        return result.returncode, json.loads(result.stdout)
 
     def test_offline_prepares_complete_private_packets_without_tools(self):
         code, report = self.invoke()
@@ -270,6 +296,127 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(code, 0, report)
         self.assertNotIn("top-secret", self.packet(1)["packet_markdown"])
         self.assertIn("credential redacted", self.packet(1)["packet_markdown"])
+
+    def test_automatic_live_selection_reads_queue_then_full_tasks(self):
+        code, report = self.invoke_auto(offline=False)
+        self.assertEqual(code, 0, report)
+        self.assertEqual(self.calls(), [["br", ["ready", "--json"]], ["bv", ["--robot-triage"]],
+            ["br", ["show", "bd-api", "--json"]], ["br", ["show", "bd-doc", "--json"]]])
+        self.assertEqual([a["bead_id"] for a in report["assignments"]], ["bd-api", "bd-doc"])
+        self.assertEqual(report["selection"]["mode"], "scoped-allocation")
+        self.assertFalse(report["sends_prompt"])
+
+    def test_automatic_file_selection_matches_canonical_allocator(self):
+        expected = subprocess.run(["bash", str(SCRIPT.with_name("swarm_assign.sh")), "--agents", "2",
+            "--roles", "implementation,documentation", "--scopes-file", str(self.scopes_path),
+            "--ready-file", str(self.bead_path), "--triage-file", str(self.triage_path), "--json"],
+            cwd=self.repo, capture_output=True, env=self.env, timeout=20)
+        self.assertEqual(expected.returncode, 0, expected.stderr)
+        code, report = self.invoke_auto()
+        self.assertEqual(code, 0, report)
+        self.assertEqual((self.output / "assignments.json").read_bytes(), expected.stdout)
+        for name, path in (("scopes.json", self.scopes_path), ("ready.json", self.bead_path), ("triage.json", self.triage_path)):
+            self.assertEqual((self.output / name).read_bytes(), path.read_bytes())
+            self.assertEqual(report["selection"]["input_sha256"][name], hashlib.sha256(path.read_bytes()).hexdigest())
+        self.assertEqual(self.calls(), [])
+
+    def test_automatic_conflicts_leave_named_target_idle(self):
+        for bead in self.beads:
+            bead["issue_type"] = "feature"
+        conflict = {**self.beads[0], "id": "bd-conflict", "priority": 2}
+        self.beads.append(conflict)
+        self.scopes["scopes"]["bd-conflict"] = ["src/api/routes.py"]
+        self.scopes_path.write_text(json.dumps(self.scopes))
+        self.write_inputs()
+        code, report = self.invoke_auto(roles="implementation:3", targets=[
+            "3:GreenHill:claude:%44", "2:BlueLake:codex:%43", "1:RedFox:claude:%42"])
+        self.assertEqual(code, 0, report)
+        self.assertEqual([a["bead_id"] for a in report["assignments"]], ["bd-api", "bd-doc"])
+        self.assertEqual(report["idle_targets"][0]["target"]["pane"], "%44")
+        self.assertEqual(report["idle_targets"][0]["reason"], "no-independent-ready-bead")
+        self.assertFalse((self.output / "packet-03.json").exists())
+        saved = json.loads((self.output / "assignments.json").read_text())
+        self.assertEqual(saved["unassigned_ready_beads"][0]["admission"]["reason"], "scope-conflict")
+
+    def test_automatic_no_ready_work_returns_explanation_without_writes(self):
+        self.scopes_path.write_text('{"schema_version":1,"scopes":{}}')
+        code, report = self.invoke_auto()
+        self.assertEqual((code, report["status"]), (1, "no_work"), report)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(len(report["idle_targets"]), 2)
+        self.assertEqual(report["assignment_report"]["unassigned_ready_beads"][0]["admission"]["reason"], "missing-scope")
+        self.beads = []
+        self.write_inputs()
+        code, report = self.invoke_auto()
+        self.assertEqual((code, report["status"]), (1, "no_work"))
+        self.assertEqual(report["idle_targets"][0]["reason"], "no-ready-bead")
+        self.assertNotIn("preview_command", report)
+        self.assertEqual(self.calls(), [])
+
+    def test_automatic_role_count_and_sparse_slots_are_rejected(self):
+        code, report = self.invoke_auto(roles="implementation")
+        self.assertEqual(code, 2)
+        self.assertIn("role count", report["error"])
+        code, report = self.invoke_auto(offline=False, targets=["1:RedFox:claude:%42", "3:BlueLake:codex:%43"])
+        self.assertEqual(code, 2)
+        self.assertIn("consecutive", report["error"])
+        self.assertEqual(self.calls(), [])
+        self.assertFalse(self.output.exists())
+
+    def test_automatic_rejects_invalid_inputs_without_partial_bundle(self):
+        self.triage_path.write_text("{")
+        self.assertEqual(self.invoke_auto()[0], 2)
+        self.triage_path.write_text("{}")
+        self.scopes["scopes"]["bd-api"] = ["../outside"]
+        self.scopes_path.write_text(json.dumps(self.scopes))
+        self.assertEqual(self.invoke_auto()[0], 2)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(self.calls(), [])
+
+    def test_saved_assignments_do_not_silently_accept_selection_overrides(self):
+        for extra in (("--roles", "testing:2"), ("--profile", "docs-heavy"),
+                      ("--ready-file", str(self.bead_path)), ("--triage-file", str(self.triage_path))):
+            with self.subTest(extra=extra):
+                self.assertEqual(self.invoke(extra=extra)[0], 2)
+                self.assertFalse(self.output.exists())
+        self.assertEqual(self.calls(), [])
+
+    def test_automatic_relative_inputs_resolve_from_invocation_directory(self):
+        code, report = self.invoke_auto(cwd=self.root, extra=("--scopes-file", "scopes.json",
+            "--ready-file", "beads.json", "--triage-file", "triage.json", "--beads-file", "beads.json"))
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["selection"]["repository"], str(self.repo))
+        self.assertEqual(self.calls(), [])
+
+    def test_automatic_profile_changes_roles_not_agent_bindings(self):
+        code, report = self.invoke_auto(roles=None, extra=("--profile", "docs-heavy"))
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["assignments"][0]["bead_id"], "bd-doc")
+        self.assertEqual(report["assignments"][0]["role"], "documentation")
+        self.assertEqual(report["assignments"][0]["pane"], "%42")
+        batch = json.loads((self.output / "batch.json").read_text())
+        self.assertEqual(batch["deliveries"][0]["agent_type"], "claude")
+
+    def test_automatic_selection_through_batch_dispatch_and_recovery(self):
+        code, report = self.invoke_auto()
+        self.assertEqual(code, 0, report)
+        command = shlex.split(report["preview_command"])
+        preview = subprocess.run(["bash", str(SCRIPT), *command[3:]], env=self.env,
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        self.assertEqual(self.calls(), [])
+        args = shlex.split(json.loads(preview.stdout)["send_command"])
+        for attempt in (0, 1):
+            result = subprocess.run(["bash", str(SCRIPT), *args[3:]], env=self.env,
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            data = json.loads(result.stdout)
+            self.assertEqual(data["summary"]["submitted"], 2)
+            self.assertEqual(data["summary"]["reconciled"], attempt * 2)
+        for slot, pane in ((1, "42"), (2, "43")):
+            self.assertEqual((self.root / (pane + ".prompt")).read_text(), self.packet(slot)["packet_markdown"])
+        self.assertEqual(sum(name == "ntm" and "--robot-send=project" in argv and "--dry-run" not in argv
+                             for name, argv in self.calls()), 2)
 
 
 if __name__ == "__main__":
