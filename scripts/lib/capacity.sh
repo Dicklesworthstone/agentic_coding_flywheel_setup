@@ -606,6 +606,269 @@ capacity_emit_resource_profile_human() {
     fi
 }
 
+# Observe the execution context, not just the machine's advertised resources.
+# Keep this collector embedded: capacity.sh is already an installed, verified
+# asset and must work identically through doctor, inventory and the planner.
+capacity_process_limits() {
+    local python_bin=""
+    python_bin="$(capacity_system_binary_path python3 2>/dev/null || true)"
+    [[ -n "$python_bin" ]] || return 1
+    "$python_bin" -I - "$1" "$2" "${ACFS_CAPACITY_CPU_COUNT:-}" "${ACFS_CAPACITY_MEM_TOTAL_KB:-}" <<'ACFS_PROCESS_LIMITS_PY'
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import stat
+import sys
+
+
+class LimitsError(ValueError):
+    pass
+
+
+def number(value, positive=False):
+    if not re.fullmatch(r"[0-9]{1,20}", value):
+        raise LimitsError("invalid_limit")
+    result = int(value)
+    if result > 2**64 - 1 or (positive and result == 0):
+        raise LimitsError("invalid_limit")
+    return result
+
+
+def text(path, limit=262144):
+    # Kernel pseudo-files report size 0; bound reads instead of trusting st_size.
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as source:
+        if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            raise LimitsError("invalid_kernel_file")
+        raw = source.read(limit + 1)
+    if len(raw) > limit:
+        raise LimitsError("oversized_kernel_file")
+    return raw.decode("utf-8", "strict")
+
+
+def path_parts(value):
+    if not value.startswith("/") or "\x00" in value:
+        raise LimitsError("invalid_cgroup_path")
+    parts = value.split("/")[1:]
+    if any(part in (".", "..") for part in parts):
+        raise LimitsError("unresolved_cgroup_namespace")
+    return tuple(part for part in parts if part)
+
+
+def mount_unescape(value):
+    # mountinfo escapes space, tab, newline and backslash in pathname fields.
+    return re.sub(r"\\(040|011|012|134)", lambda m: chr(int(m[1], 8)), value)
+
+
+def memberships(raw):
+    result = {}
+    for line in raw.splitlines():
+        fields = line.split(":", 2)
+        if len(fields) != 3 or not fields[0].isdigit():
+            raise LimitsError("invalid_cgroup_membership")
+        hierarchy, controllers, name = fields
+        keys = controllers.split(",") if controllers else ["v2"]
+        for key in keys:
+            if key not in ("cpu", "memory", "v2"):
+                continue
+            if key in result or (key == "v2" and hierarchy != "0"):
+                raise LimitsError("ambiguous_cgroup_membership")
+            result[key] = path_parts(name)
+    return result
+
+
+def mounts(raw):
+    result = []
+    for line in raw.splitlines():
+        before, separator, after = line.partition(" - ")
+        fields, extra = before.split(), after.split()
+        if not separator or len(fields) < 6 or len(extra) < 3:
+            raise LimitsError("invalid_mountinfo")
+        if extra[0] not in ("cgroup", "cgroup2"):
+            continue
+        root = path_parts(mount_unescape(fields[3]))
+        point = mount_unescape(fields[4])
+        path_parts(point)
+        controllers = {"v2"} if extra[0] == "cgroup2" else set(extra[2].split(","))
+        result.append((root, point, controllers))
+    return result
+
+
+def open_directory(path):
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in path_parts(str(path)):
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def values_from_hierarchy(group, available, controller):
+    choices = [(root, point) for root, point, controllers in available
+               if controller in controllers and group[:len(root)] == root]
+    if not choices:
+        raise LimitsError("cgroup_mount_unavailable")
+    # Prefer the widest visible hierarchy, not a convenient subtree bind mount
+    # that would hide a tighter ancestor. Never look above its mount boundary.
+    root, point = min(choices, key=lambda item: (len(item[0]), item[1]))
+    relative = group[len(root):]
+    if len(relative) > 128:
+        raise LimitsError("cgroup_hierarchy_too_deep")
+    directories = []
+    try:
+        directories.append(open_directory(point))
+        for part in relative:
+            directories.append(os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                       dir_fd=directories[-1]))
+        values = []
+        for fd in reversed(directories):
+            def read(name):
+                try:
+                    child = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd)
+                except FileNotFoundError:
+                    return None  # Controller not enabled here, or real root.
+                with os.fdopen(child, "rb") as source:
+                    if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                        raise LimitsError("invalid_controller_file")
+                    data = source.read(4097)
+                if len(data) > 4096:
+                    raise LimitsError("oversized_controller_file")
+                return data.decode("ascii", "strict").strip()
+            if controller == "v2":
+                memory, cpu = read("memory.max"), read("cpu.max")
+                if memory is not None and memory != "max":
+                    values.append(("memory", number(memory)))
+                if cpu is not None:
+                    pair = cpu.split()
+                    if len(pair) != 2:
+                        raise LimitsError("invalid_cpu_quota")
+                    period = number(pair[1], positive=True)
+                    if pair[0] != "max":
+                        values.append(("cpu", number(pair[0], positive=True) * 1000 // period))
+            elif controller == "memory":
+                memory = read("memory.limit_in_bytes")
+                if memory is not None and memory != "-1":
+                    values.append(("memory", number(memory)))
+                # This kernel-computed ceiling also covers hierarchical limits
+                # hidden by a v1 subtree mount. Not present on every kernel.
+                summary = read("memory.stat")
+                if summary is not None:
+                    for line in summary.splitlines():
+                        pair = line.split()
+                        if pair and pair[0] == "hierarchical_memory_limit":
+                            if len(pair) != 2:
+                                raise LimitsError("invalid_memory_stat")
+                            values.append(("memory", number(pair[1])))
+            else:
+                quota, period = read("cpu.cfs_quota_us"), read("cpu.cfs_period_us")
+                if (quota is None) != (period is None):
+                    raise LimitsError("incomplete_cpu_quota")
+                if quota is not None:
+                    period = number(period, positive=True)
+                    if quota != "-1":
+                        values.append(("cpu", number(quota, positive=True) * 1000 // period))
+        return values, len(directories), bool(root)
+    finally:
+        for fd in directories:
+            os.close(fd)
+
+
+def inspect_limits(proc=Path("/proc"), affinity=None):
+    result = {"status": "known", "scope": "current_process_visible_hierarchy",
+              "cgroup_version": "none", "affinity_cpus": None,
+              "cpu_quota_millicores": None, "memory_limit_bytes": None,
+              "ancestor_observations": 0, "subtree_mount": False, "errors": []}
+    try:
+        # The scheduler's affinity already includes effective cpuset constraints.
+        result["affinity_cpus"] = len(os.sched_getaffinity(0)) if affinity is None else affinity
+        if type(result["affinity_cpus"]) is not int or result["affinity_cpus"] < 1:
+            raise LimitsError("cpu_affinity_unavailable")
+        groups_raw = text(proc / "self/cgroup")
+        mounts_raw = text(proc / "self/mountinfo", 4 * 1024 * 1024)
+        groups, available = memberships(groups_raw), mounts(mounts_raw)
+        relevant = set(groups)
+        if relevant:
+            result["cgroup_version"] = "hybrid" if "v2" in relevant and len(relevant) > 1 else (
+                "v2" if "v2" in relevant else "v1")
+        values = []
+        for controller, group in groups.items():
+            observed, count, subtree = values_from_hierarchy(group, available, controller)
+            values.extend(observed)
+            result["ancestor_observations"] += count
+            result["subtree_mount"] |= subtree
+        for key, field in (("cpu", "cpu_quota_millicores"), ("memory", "memory_limit_bytes")):
+            candidates = [value for kind, value in values if kind == key]
+            if candidates:
+                result[field] = min(candidates)
+        if groups_raw != text(proc / "self/cgroup") or mounts_raw != text(proc / "self/mountinfo", 4 * 1024 * 1024):
+            raise LimitsError("cgroup_changed_during_observation")
+    except (OSError, ValueError, AttributeError) as error:
+        result["status"] = "unavailable"
+        # Never copy kernel paths, process identifiers or raw exception text.
+        result["errors"] = [str(error) if isinstance(error, LimitsError) else "kernel_limits_unreadable"]
+    return result
+
+
+def model_limits(cpu, memory_kb, cpu_override="", memory_override="", proc=Path("/proc"), affinity=None):
+    cpu, memory_kb = number(cpu, positive=True), number(memory_kb)
+    if cpu > 1000000 or memory_kb > 2**53 - 1:
+        raise LimitsError("host_resource_out_of_range")
+    def supplied(value, expected):
+        return bool(re.fullmatch(r"[0-9]{1,20}", value)) and int(value) > 0 and int(value) == expected
+    cpu_fixture, memory_fixture = supplied(cpu_override, cpu), supplied(memory_override, memory_kb)
+    result = ({"status": "fixture", "scope": "explicit_test_overrides", "errors": []}
+              if cpu_fixture and memory_fixture else inspect_limits(proc, affinity))
+    result["cpu_source"] = "test_override" if cpu_fixture else "kernel"
+    result["memory_source"] = "test_override" if memory_fixture else "kernel"
+    effective_cpu, effective_memory = cpu * 1000, memory_kb
+    if not cpu_fixture:
+        if result["status"] != "known":
+            effective_cpu = 0
+        else:
+            effective_cpu = min(effective_cpu, result["affinity_cpus"] * 1000)
+            if result["cpu_quota_millicores"] is not None:
+                effective_cpu = min(effective_cpu, result["cpu_quota_millicores"])
+    if not memory_fixture:
+        if result["status"] != "known":
+            effective_memory = 0
+        elif result["memory_limit_bytes"] is not None:
+            effective_memory = min(effective_memory, result["memory_limit_bytes"] // 1024)
+    result["effective_cpu_millicores"] = effective_cpu
+    result["effective_memory_kb"] = effective_memory
+    return effective_cpu, effective_memory, result
+
+
+if __name__ == "__main__":
+    try:
+        cpu, memory, result = model_limits(*sys.argv[1:])
+        print(str(cpu) + "\t" + str(memory) + "\t" + json.dumps(result, separators=(",", ":")))
+    except (OSError, ValueError, TypeError):
+        sys.exit(1)
+ACFS_PROCESS_LIMITS_PY
+}
+
+capacity_apply_process_limits() {
+    local observed="" cpu="" memory="" details=""
+    CAPACITY_EFFECTIVE_CPU_MILLI=0
+    CAPACITY_EFFECTIVE_MEM_TOTAL_KB=0
+    CAPACITY_PROCESS_LIMITS_JSON='{"status":"unavailable","errors":["collector_failed"]}'
+    if observed="$(capacity_process_limits "$1" "$2")"; then
+        IFS=$'\t' read -r cpu memory details <<< "$observed"
+        if [[ "$cpu" =~ ^[0-9]{1,10}$ && "$memory" =~ ^[0-9]{1,16}$ && "$details" == \{*\} ]]; then
+            CAPACITY_EFFECTIVE_CPU_MILLI="$cpu"
+            CAPACITY_EFFECTIVE_MEM_TOTAL_KB="$memory"
+            CAPACITY_PROCESS_LIMITS_JSON="$details"
+            return 0
+        fi
+    fi
+    echo "Warning: unable to observe process resource limits; no positive agent capacity is recommended." >&2
+}
+
 capacity_collect_model() {
     local cpu_count mem_total_kb disk_available_kb rch_available ntm_available
     cpu_count="$(capacity_read_cpu_count)"
@@ -613,6 +876,10 @@ capacity_collect_model() {
     disk_available_kb="$(capacity_read_disk_available_kb)"
     rch_available="$(capacity_tool_available rch ACFS_CAPACITY_RCH_AVAILABLE)"
     ntm_available="$(capacity_tool_available ntm ACFS_CAPACITY_NTM_AVAILABLE)"
+    CAPACITY_PHYSICAL_MEM_TOTAL_MIB=$((mem_total_kb / 1024))
+    capacity_apply_process_limits "$cpu_count" "$mem_total_kb"
+    mem_total_kb="$CAPACITY_EFFECTIVE_MEM_TOTAL_KB"
+    # Keep fractional CPU quotas in millicores until dividing by the workload.
 
     local mem_total_mib disk_available_mib reserve_mib usable_mem_mib
     mem_total_mib=$((mem_total_kb / 1024))
@@ -644,7 +911,7 @@ capacity_collect_model() {
 
     local mem_limit cpu_limit disk_limit safe_agents recommended_agents
     mem_limit=$((usable_mem_mib / per_agent_mib))
-    cpu_limit=$(((cpu_count * 1000) / cpu_milli_per_agent))
+    cpu_limit=$((CAPACITY_EFFECTIVE_CPU_MILLI / cpu_milli_per_agent))
     disk_limit=$((usable_disk_mib / disk_per_agent_mib))
     safe_agents="$(capacity_min3 "$mem_limit" "$cpu_limit" "$disk_limit")"
     recommended_agents=$(((safe_agents * 70) / 100))
@@ -712,6 +979,9 @@ capacity_emit_json() {
         --arg profile_reason "$CAPACITY_PROFILE_REASON" \
         --argjson requested_agents "${CAPACITY_REQUESTED_AGENTS:-null}" \
         --argjson cpu_count "$CAPACITY_CPU_COUNT" \
+        --argjson effective_cpu_millicores "$CAPACITY_EFFECTIVE_CPU_MILLI" \
+        --argjson physical_mem_total_mib "$CAPACITY_PHYSICAL_MEM_TOTAL_MIB" \
+        --argjson process_limits "$CAPACITY_PROCESS_LIMITS_JSON" \
         --argjson mem_total_mib "$CAPACITY_MEM_TOTAL_MIB" \
         --argjson disk_available_mib "$CAPACITY_DISK_AVAILABLE_MIB" \
         --argjson reserve_mib "$CAPACITY_RESERVE_MIB" \
@@ -734,9 +1004,12 @@ capacity_emit_json() {
             status: $status,
             host: {
                 cpu_count: $cpu_count,
+                effective_cpu_millicores: $effective_cpu_millicores,
+                physical_mem_total_mib: $physical_mem_total_mib,
                 mem_total_mib: $mem_total_mib,
                 disk_available_mib: $disk_available_mib
             },
+            resource_limits: $process_limits,
             tools: {
                 rch: {available: $rch_available},
                 ntm: {available: $ntm_available}
@@ -765,6 +1038,7 @@ capacity_emit_json() {
             },
             recommendations: (
                 [
+                    if $process_limits.status == "unavailable" then "Unable to observe process resource limits; repair cgroup/Python visibility before launching agents." else empty end,
                     if $rch_available then empty else "Install or repair RCH before launching CPU-heavy Rust build/test swarms." end,
                     if $safe_agents < 1 then "Increase RAM, CPU, or disk headroom before launching agents." else empty end,
                     if $recommended_agents > 0 then "Start at the recommended tier, then increase only after status/doctor checks stay clean." else empty end
@@ -805,10 +1079,13 @@ capacity_emit_human() {
     echo "ACFS Capacity Report"
     echo "Workload: $CAPACITY_WORKLOAD"
     echo ""
-    echo "Host"
-    echo "  CPU cores:           $CAPACITY_CPU_COUNT"
-    echo "  Memory:              ${CAPACITY_MEM_TOTAL_MIB} MiB"
+    echo "Host / Current Process Budget"
+    echo "  Visible CPU cores:   $CAPACITY_CPU_COUNT"
+    echo "  Effective CPU:       ${CAPACITY_EFFECTIVE_CPU_MILLI} millicores"
+    echo "  Host memory:         ${CAPACITY_PHYSICAL_MEM_TOTAL_MIB} MiB"
+    echo "  Effective memory:    ${CAPACITY_MEM_TOTAL_MIB} MiB"
     echo "  Disk available:      ${CAPACITY_DISK_AVAILABLE_MIB} MiB"
+    echo "  Scope:               current process and visible cgroup ancestors"
     echo ""
     echo "Agent Capacity"
     echo "  Recommended agents:  $CAPACITY_RECOMMENDED_AGENTS"
