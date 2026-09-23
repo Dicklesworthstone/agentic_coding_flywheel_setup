@@ -31,36 +31,11 @@ export NEEDRESTART_SUSPEND=1
 # overlapping runs were observed on one host, each independently reinstalling
 # the same tools while the box became unreachable.
 #
-# The lock is per-UID because the hazard is a shared CARGO_HOME/RUSTUP_HOME:
-# a root run and a target-user run (via runuser) have different homes and do
-# not conflict, while two runs as the same user do.
-#
-# Deliberately NOT re-acquired after the self-update re-exec. `flock` is held
-# on the open file description, which survives `exec` (fd 9 has no CLOEXEC),
-# so the re-executed process inherits the held lock. Re-running the block
-# would `exec 9>` the path again — closing the inherited description, briefly
-# releasing the lock, and letting a waiting run seize it while this one is
-# mid-update. Inheriting is both cheaper and safer.
-# The lock path depends ONLY on the uid — deliberately not on $XDG_RUNTIME_DIR
-# or $TMPDIR. Both vary between invocation contexts for the SAME user, and two
-# runs that pick different paths do not exclude each other at all:
-#   - `runuser -u ubuntu` leaks root's XDG_RUNTIME_DIR=/run/user/0, which the
-#     target user cannot even open (verified: the guard degraded to unlocked on
-#     exactly the dual-user hosts this fix is for);
-#   - TMPDIR differs between an interactive shell and a cron/ssh invocation;
-#   - /run/user/<uid> exists only when that user has a logind session, so it
-#     varies by context too.
-# /tmp is always present, always writable, and identical from every context.
-ACFS_UPDATE_LOCK="${ACFS_UPDATE_LOCK:-/tmp/acfs-update.$(id -u).lock}"
-
-# Stamp the holder AFTER acquiring, via a truncating write (tee) so a shorter
-# line cannot leave a previous holder's trailing bytes behind. Safe to truncate
-# here precisely because we hold the lock.
-_acfs_stamp_update_lock() {
-    printf 'pid=%s started=%s user=%s\n' \
-        "$$" "$(date -Is 2>/dev/null || date)" "$(id -un 2>/dev/null || echo "$EUID")" \
-        | tee "$ACFS_UPDATE_LOCK" >/dev/null 2>&1 || true
-}
+# Lock the resolved target home, not the invoking UID: root and the target
+# user can otherwise update the same installation concurrently. An existing
+# directory inode also avoids creating/truncating caller-selected /tmp files.
+# Acquisition runs after home resolution but before repository discovery,
+# self-update, logging, or any component update. Never proceed unlocked.
 
 # `--help`/`-h` must always answer, even while another update holds the lock:
 # argument parsing happens far below this point, so without this check a user
@@ -75,11 +50,7 @@ _acfs_update_wants_lock() {
     return 0
 }
 
-# Only guard a DIRECT execution. tests/vm/test_acfs_update.sh sources this file
-# to reuse its functions; in a sourced context `exec 9<>` would plant an fd in
-# the caller's shell and, worse, the "another run in progress" path's `exit 0`
-# would terminate the caller — a test that silently passes without running its
-# assertions. When sourced, BASH_SOURCE[0] is this file while $0 is the caller.
+# Sourcing this library must not acquire a lock or terminate its caller.
 _acfs_update_is_direct_run() {
     # `:-$0` so an interpreter without BASH_SOURCE cannot trip `set -u` here;
     # the fallback compares equal, i.e. defaults to guarding rather than to
@@ -87,43 +58,68 @@ _acfs_update_is_direct_run() {
     [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]
 }
 
-if _acfs_update_is_direct_run \
-    && [[ "${ACFS_SELF_UPDATE_DONE:-false}" != "true" ]] \
-    && _acfs_update_wants_lock "$@"; then
-    if command -v flock >/dev/null 2>&1; then
-        # `9<>` (O_RDWR|O_CREAT), never `9>` (O_TRUNC): opening the lock must
-        # not erase the holder record that a blocked run is about to read.
-        #
-        # Probe in a SUBSHELL first. `exec` with no command applies its
-        # redirections permanently to the current shell, so the obvious
-        # `if exec 9<>"$LOCK" 2>/dev/null` would also make `2>/dev/null`
-        # permanent — silently discarding stderr for the entire rest of the
-        # update. Probing in a subshell keeps that redirect scoped, and also
-        # contains the fatal-exit behaviour a redirection error triggers on the
-        # `exec` special builtin.
-        if ( exec 3<>"$ACFS_UPDATE_LOCK" ) 2>/dev/null; then
-            exec 9<>"$ACFS_UPDATE_LOCK"
-            if flock -n 9; then
-                _acfs_stamp_update_lock
-            elif [[ "${ACFS_UPDATE_LOCK_WAIT:-0}" == "1" ]]; then
-                echo "acfs update: another run is in progress, waiting for it to finish..." >&2
-                flock 9
-                _acfs_stamp_update_lock
-            else
-                echo "acfs update: another run is already in progress for this user; skipping." >&2
-                if [[ -s "$ACFS_UPDATE_LOCK" ]]; then
-                    echo "  holder: $(head -1 "$ACFS_UPDATE_LOCK" 2>/dev/null)" >&2
-                fi
-                echo "  set ACFS_UPDATE_LOCK_WAIT=1 to queue behind it instead of skipping." >&2
-                exit 0
-            fi
-        else
-            echo "acfs update: cannot open lock file $ACFS_UPDATE_LOCK; continuing unlocked." >&2
+_acfs_update_acquire_lock() {
+    local target_home="${1:-}" flock_bin="" rc=0
+    if [[ -z "$target_home" || "$target_home" != /* || ! -d "$target_home/." || "$target_home/." -ef / ]]; then
+        printf 'acfs update: cannot resolve a non-root target home; refusing to update unlocked.\n' >&2
+        return 1
+    fi
+    case "${ACFS_UPDATE_LOCK_WAIT:-0}" in
+        0|1) ;;
+        *) printf 'acfs update: ACFS_UPDATE_LOCK_WAIT must be 0 or 1.\n' >&2; return 1 ;;
+    esac
+    flock_bin="$(_update_early_system_binary_path flock)" || {
+        printf 'acfs update: system flock is required; refusing to update unlocked.\n' >&2
+        return 127
+    }
+
+    # Only an exec in this SAME process may reuse its open file description.
+    # A child inherits descriptors too, but must contend independently rather
+    # than start a nested update under its parent's lock. A marker alone is
+    # never authority: check the descriptor's inode and call flock every time.
+    if [[ "${_ACFS_UPDATE_LOCK_PID:-}" == "$BASHPID" ]]; then
+        if [[ ! -d /proc/self/fd/9 || ! "$target_home/." -ef /proc/self/fd/9 ]]; then
+            printf 'acfs update: inherited lock does not match the target home; refusing to continue.\n' >&2
+            return 1
         fi
     else
-        echo "acfs update: flock not found; continuing without a single-instance guard." >&2
+        # The /. suffix requires directory traversal even if the path is
+        # replaced with a FIFO/device while opening. Never open for writing.
+        # Scope stderr to the group, not the exec builtin's permanent state.
+        if ! { exec 9<"$target_home/."; } 2>/dev/null; then
+            printf 'acfs update: cannot open the target home for locking; refusing to continue.\n' >&2
+            return 1
+        fi
     fi
-fi
+
+    if "$flock_bin" -x -n -E 75 9; then
+        rc=0
+    else
+        rc=$?
+    fi
+    if [[ "$rc" == 75 && "${ACFS_UPDATE_LOCK_WAIT:-0}" == 1 ]]; then
+        printf 'acfs update: another update holds this target home; waiting for it to finish...\n' >&2
+        if "$flock_bin" -x 9; then rc=0; else rc=$?; fi
+    fi
+    if [[ "$rc" != 0 ]]; then
+        exec 9<&-
+        if [[ "$rc" == 75 ]]; then
+            printf 'acfs update: another update holds this target home; no update was performed.\n' >&2
+            printf 'Set ACFS_UPDATE_LOCK_WAIT=1 to queue behind it.\n' >&2
+            return 75
+        fi
+        printf 'acfs update: kernel lock acquisition failed; refusing to update unlocked.\n' >&2
+        return 1
+    fi
+    # In particular, do not resume against a replacement home after waiting
+    # for a lock on the old directory. No pathname write is used as a stamp.
+    if [[ ! -d /proc/self/fd/9 || ! "$target_home/." -ef /proc/self/fd/9 ]]; then
+        exec 9<&-
+        printf 'acfs update: target home changed while acquiring its lock; refusing to continue.\n' >&2
+        return 1
+    fi
+    export _ACFS_UPDATE_LOCK_PID="$BASHPID"
+}
 
 ACFS_VERSION="${ACFS_VERSION:-0.1.0}"
 ACFS_REPO_OWNER="${ACFS_REPO_OWNER:-Dicklesworthstone}"
@@ -297,6 +293,9 @@ _UPDATE_EARLY_HOME="$(_update_early_runtime_home 2>/dev/null || true)"
 if [[ -n "$_UPDATE_EARLY_HOME" ]]; then
     HOME="$_UPDATE_EARLY_HOME"
     export HOME
+fi
+if _acfs_update_is_direct_run && _acfs_update_wants_lock "$@"; then
+    _acfs_update_acquire_lock "$_UPDATE_EARLY_HOME" || exit "$?"
 fi
 unset _UPDATE_EARLY_HOME
 
