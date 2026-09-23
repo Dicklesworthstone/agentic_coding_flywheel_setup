@@ -63,6 +63,12 @@ jobs:
           assert len(anchors) == 1
           anchor = anchors[0]
           replace(path, block[0], block[0].replace(anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor))
+          anchor = '    try_step "Installing swarm_plan.sh" install_asset "scripts/lib/swarm_plan.sh" "$ACFS_HOME/scripts/lib/swarm_plan.sh" || return 1\n'
+          replace('install.sh', anchor, anchor.replace('swarm_plan', 'swarm_launch') + anchor)
+          replace('packages/manifest/src/generate.test.ts',
+                  '    expect(literalInstallAssets.length).toBeGreaterThan(0);',
+                  '    expect(literalInstallAssets.length).toBeGreaterThan(0);\n'
+                  '    expect(literalInstallAssets).toContain("scripts/lib/swarm_launch.sh");')
           path = 'scripts/check-manifest-drift.sh'
           anchor = '    scripts/lib/swarm_packet.sh\n'
           replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
@@ -93,11 +99,20 @@ jobs:
           git diff -- install.sh scripts/lib/doctor.sh scripts/lib/update.sh packages/manifest/src/generate.ts packages/manifest/src/generate.test.ts scripts/check-manifest-drift.sh scripts/generated/internal_checksums.sh
           python3 - <<'PY'
           from pathlib import Path
+          import subprocess, tempfile
           lines = Path('install.sh').read_text().splitlines()
-          for i, line in enumerate(lines):
-              if ('scripts/lib/' in line or 'scripts/lib"' in line) and i > 3000:
-                  print('INSTALL DEPLOYMENT', i + 1)
-                  print('\n'.join(lines[max(0, i-3):i+6]))
+          copies = [line for line in lines if line.strip().startswith('try_step "Installing swarm_launch.sh" install_asset ')]
+          assert len(copies) == 1
+          # Execute the actual installation statement in an isolated fake home.
+          # Only its generic copy/step helpers are replaced; no package manager
+          # or host service is invoked.
+          with tempfile.TemporaryDirectory(prefix='acfs-launch-install-') as home:
+              script = 'set -euo pipefail\nACFS_HOME="$1"\nmkdir -p "$ACFS_HOME/scripts/lib"\n'
+              script += 'try_step() { shift; "$@"; }\ninstall_asset() { cp -- "$1" "$2"; }\n'
+              script += copies[0] + '\n'
+              script += 'bash "$ACFS_HOME/scripts/lib/swarm_launch.sh" --help\n'
+              subprocess.run(['bash', '-c', script, 'installation-smoke', home], check=True)
+              assert (Path(home) / 'scripts/lib/swarm_launch.sh').read_bytes() == Path('scripts/lib/swarm_launch.sh').read_bytes()
           PY
       - name: Store only validated candidate Git blobs, without updating any ref
         env:
