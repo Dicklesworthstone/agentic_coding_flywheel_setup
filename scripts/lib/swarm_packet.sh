@@ -28,6 +28,7 @@ swarm_packet_usage() {
 Usage: acfs swarm packet --bead ID [OPTIONS]
        acfs swarm packet --deliver PACKET.json --help
        acfs swarm packet --deliver-batch BATCH.json [--expect-sha256 HASH --send]
+       acfs swarm packet --prepare-batch DIRECTORY --help
 
 Options:
   --json                Emit machine-readable JSON
@@ -330,7 +331,14 @@ swarm_packet_collect_bead_json() {
         return 2
     fi
 
-    jq -c 'if type == "array" then .[0] else . end' <<<"$raw_json"
+    jq -ce --arg id "$SWARM_PACKET_BEAD_ID" '
+      (if type == "array" then . elif type == "object" then [.] else [] end)
+      | (if $id != "" then map(select(.id == $id)) else . end)
+      | if length == 1 then .[0] else error("expected exactly one selected Bead") end
+      | if (.id | type) == "string" and (.id | test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"))
+           and all(.description, .design, .acceptance_criteria; . == null or type == "string")
+        then . else error("invalid Bead identity or task brief") end
+    ' <<<"$raw_json"
 }
 
 swarm_packet_indent_text() {
@@ -360,6 +368,7 @@ swarm_packet_build_markdown() {
     local cm_context="$8"
     local cass_context="$9"
     local warnings_block="${10}"
+    local task_brief="${11}"
     local agents_block=""
     local readme_block=""
     local cm_block=""
@@ -381,6 +390,10 @@ Title: $bead_title
 Status: $bead_status
 Priority: $bead_priority
 Labels: $bead_labels
+
+## Assigned Task
+
+$task_brief
 
 ## Source Priority
 
@@ -477,6 +490,7 @@ swarm_packet_build_report() {
     local bead_labels_json=""
     local bead_labels_text=""
     local query=""
+    local task_brief=""
     local agents_excerpt=""
     local readme_excerpt=""
     local cm_context=""
@@ -509,6 +523,16 @@ swarm_packet_build_report() {
         return 2
     fi
     SWARM_PACKET_BEAD_ID="$bead_id"
+
+    # The delivered prompt needs the actual task, not just its title. Keep
+    # acceptance criteria alongside the description; never silently omit them.
+    task_brief="$("$jq_bin" -r '
+      [["Description", .description], ["Design", .design], ["Acceptance criteria", .acceptance_criteria]]
+      | map(select(.[1] != null and .[1] != ""))
+      | if length == 0 then "No task brief recorded. Read the current Bead and agree on scope before editing."
+        else .[] | "### " + .[0] + "\n\n" + .[1] + "\n" end
+    ' <<<"$bead_json")"
+    task_brief="$(swarm_packet_sanitize_context_text "$task_brief" | swarm_packet_indent_text)"
 
     query="$bead_id $bead_title in $SWARM_PACKET_REPO_ROOT"
     if [[ ! -f "$SWARM_PACKET_AGENTS_FILE" ]]; then
@@ -576,7 +600,8 @@ swarm_packet_build_report() {
         "$readme_excerpt" \
         "$cm_context" \
         "$cass_context" \
-        "$warnings_block")"
+        "$warnings_block" \
+        "$task_brief")"
 
     if (( ${#packet_markdown} > SWARM_PACKET_MAX_CHARS )); then
         output_truncated=true
@@ -711,7 +736,7 @@ swarm_packet_main() {
 # Delivery is an explicitly separate execution path. Ordinary generation stays read-only.
 swarm_packet_deliver() {
     command -v python3 >/dev/null 2>&1 || { echo 'Error: python3 is required for packet delivery' >&2; return 2; }
-    python3 - "$@" <<'PY_ACFS_PACKET_DELIVERY'
+    python3 - "${BASH_SOURCE[0]}" "$@" <<'PY_ACFS_PACKET_DELIVERY'
 """Opt-in packet delivery through NTM's durable robot-send protocol."""
 import argparse
 import hashlib
@@ -732,6 +757,7 @@ LIMIT = 1024 * 1024
 SCHEMA = "acfs.packet-delivery.v1"
 BATCH_SCHEMA = "acfs.packet-delivery-batch.v1"
 MAX_DELIVERIES = 32
+RUNTIME = Path(sys.argv.pop(1)).resolve(strict=True)
 
 
 class DeliveryError(Exception):
@@ -1113,6 +1139,219 @@ def batch_main(arguments):
     return exit_code
 
 
+def scoped_assignments(data):
+    """Recheck declared write sets, rather than trusting a saved pass label."""
+    report = parse(data)
+    require(isinstance(report, dict) and type(report.get("schema_version")) is int
+            and report["schema_version"] == 1 and report.get("status") in ("pass", "warn")
+            and report.get("advisory_only") is True
+            and isinstance(report.get("scope_admission"), dict)
+            and report["scope_admission"].get("mode") == "explicit-scopes",
+            "Use acfs swarm assign --scopes-file to produce explicit scoped assignments.")
+    items = report.get("assignments")
+    require(isinstance(items, list) and 1 <= len(items) <= MAX_DELIVERIES,
+            "Preparation needs 1 through 32 assigned tasks; no batch was written.")
+    slots, beads, previous_paths = set(), set(), []
+    for item in items:
+        require(isinstance(item, dict) and type(item.get("slot")) is int
+                and 1 <= item["slot"] <= 100 and item["slot"] not in slots
+                and isinstance(item.get("bead_id"), str)
+                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", item["bead_id"])
+                and item["bead_id"] not in beads and item.get("issue_type") != "epic"
+                and item.get("role") in ("implementation", "review", "testing", "documentation")
+                and item.get("scope_source") == "explicit", "Invalid or duplicate scoped assignment.")
+        paths = item.get("reservation_surfaces")
+        require(isinstance(paths, list) and 1 <= len(paths) <= 32
+                and all(isinstance(p, str) and 1 <= len(p) <= 256
+                        and re.fullmatch(r"[A-Za-z0-9_.*?/ -]+", p)
+                        and all(part not in ("", ".", "..") for part in p.split("/")) for p in paths)
+                and len(set(paths)) == len(paths), "Each task needs valid explicit relative write scopes.")
+        for left in paths:
+            for right in previous_paths:
+                if not any(c in left + right for c in "*?"):
+                    overlap = left == right
+                else:
+                    a, b = re.split(r"[*?]", left, maxsplit=1)[0], re.split(r"[*?]", right, maxsplit=1)[0]
+                    overlap = a.startswith(b) or b.startswith(a)
+                require(not overlap, "Assigned write scopes overlap; regenerate independent assignments.")
+        dependency = item.get("dependency_position", {})
+        require(isinstance(dependency, dict) and dependency.get("blocked_by", []) == [],
+                "An assigned task has unresolved dependency blockers.")
+        slots.add(item["slot"])
+        beads.add(item["bead_id"])
+        previous_paths.extend(paths)
+    return report, sorted(items, key=lambda item: item["slot"])
+
+
+def preparation_targets(values, items):
+    targets, panes, names = {}, set(), set()
+    for value in values:
+        parts = value.split(":")
+        require(len(parts) == 4, "Use --target SLOT:AGENT_NAME:claude|codex:%PANE.")
+        slot, name, agent_type, pane = parts
+        require(re.fullmatch(r"[0-9]{1,3}", slot) and 1 <= int(slot) <= 100
+                and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name)
+                and agent_type in ("claude", "codex") and re.fullmatch(r"%[0-9]{1,10}", pane),
+                "Invalid target slot, agent name, native agent type or stable pane ID.")
+        slot, pane = int(slot), "%" + str(int(pane[1:]))
+        require(slot not in targets and pane not in panes and name not in names,
+                "Targets must have distinct slots, panes and Agent Mail identities.")
+        targets[slot] = {"name": name, "agent_type": agent_type, "pane": pane}
+        panes.add(pane)
+        names.add(name)
+    require(set(targets) == {item["slot"] for item in items},
+            "Provide exactly one --target for every assigned slot (not idle slots).")
+    return targets
+
+
+def preparation_bead(value, bead_id):
+    records = value if isinstance(value, list) else [value]
+    require(len(records) <= 2048 and all(isinstance(item, dict) and isinstance(item.get("id"), str)
+                                      for item in records), "Expected Beads JSON objects with IDs.")
+    require(len({item["id"] for item in records}) == len(records), "Duplicate Bead IDs in task input.")
+    matches = [item for item in records if item["id"] == bead_id]
+    require(len(matches) == 1, "A selected Bead is missing from the task input.")
+    bead = matches[0]
+    require(bead.get("status") == "open" and bead.get("blocked", False) is False
+            and bead.get("blocked_by", []) == [] and bead.get("issue_type") != "epic",
+            "A selected Bead is no longer open, is blocked, or needs decomposition.")
+    require(isinstance(bead.get("title"), str) and bead["title"].strip()
+            and all(bead.get(key) is None or isinstance(bead[key], str)
+                    for key in ("description", "design", "acceptance_criteria")), "Invalid Bead task brief.")
+    require(isinstance(bead.get("labels", []), list)
+            and all(isinstance(label, str) for label in bead.get("labels", [])), "Invalid Bead labels.")
+    require(len(encode(bead)) <= 65536, "Selected Bead exceeds 64 KiB; split the task before dispatch.")
+    return bead
+
+
+def publish_preparation(output, artifacts, parent_identity):
+    """Create a private bundle; batch.json is the last, completion-defining write."""
+    parent = directory(output.parent)
+    parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(parent_fd)
+        require((info.st_dev, info.st_ino) == parent_identity,
+                "Output parent changed while preparing; no bundle was published.")
+        os.mkdir(output.name, mode=0o700, dir_fd=parent_fd)
+        root_fd = os.open(output.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        try:
+            os.fchmod(root_fd, 0o700)
+            for name, data in artifacts.items():
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root_fd)
+                with os.fdopen(fd, "wb") as handle:
+                    os.fchmod(handle.fileno(), 0o600)
+                    handle.write(data)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            os.fsync(root_fd)
+            require(os.path.samestat(os.stat(output, follow_symlinks=False), os.fstat(root_fd)),
+                    "Bundle path changed during publication; inspect the retained files.")
+        finally:
+            os.close(root_fd)
+        os.fsync(parent_fd)
+    finally:
+        os.close(parent_fd)
+
+
+def preparation_main(arguments):
+    parser = argparse.ArgumentParser(prog="acfs swarm packet --prepare-batch", allow_abbrev=False,
+        description="Turn scoped assignments into complete per-agent packets and a reviewable delivery batch. "
+                    "Creates a new private directory; does not send prompts or launch agents.")
+    parser.add_argument("output", help="New directory; existing work is never overwritten")
+    parser.add_argument("--assignments", required=True, help="JSON from acfs swarm assign --scopes-file")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--session", required=True)
+    parser.add_argument("--target", action="append", required=True, help="SLOT:AGENT_NAME:claude|codex:%%PANE")
+    parser.add_argument("--beads-file", help="Saved full Beads objects; otherwise read br show for each assignment")
+    parser.add_argument("--no-live-context", action="store_true", help="Do not query CM or CASS during preparation")
+    args = parser.parse_args(arguments)
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", args.session), "Invalid session name.")
+    repo = directory(args.repo)
+    output = Path(os.path.abspath(args.output))
+    parent = directory(output.parent)
+    require(not os.path.lexists(output), "Output directory already exists; no files were changed.")
+    info = parent.stat()
+    parent_identity = (info.st_dev, info.st_ino)
+    assignments_bytes = read_file(args.assignments)
+    assignments, items = scoped_assignments(assignments_bytes)
+    targets = preparation_targets(args.target, items)
+    saved_beads = parse(read_file(args.beads_file)) if args.beads_file else None
+    bash = binary("bash")
+    binary("jq")
+    br = None if args.beads_file else binary("br")
+    selected = []
+    # Fetch all task descriptions before any output publication. A bad later
+    # task cannot leave a ready-to-send manifest containing earlier tasks.
+    for item in items:
+        value = saved_beads
+        if br:
+            code, data = run([br, "show", item["bead_id"], "--json"], repo)
+            require(code == 0, "Unable to read an assigned Bead; no bundle was written.")
+            value = parse(data)
+        selected.append(preparation_bead(value, item["bead_id"]))
+    artifacts = {"assignments.json": assignments_bytes}
+    deliveries, mapping = [], []
+    # Fresh random operation namespace avoids collisions between independently
+    # prepared bundles. Recovery reuses the stored manifest, never regenerates it.
+    namespace = "acfs-" + os.urandom(12).hex()
+    with tempfile.TemporaryDirectory(prefix="acfs-packet-prepare-") as temporary:
+        scratch = Path(temporary)
+        for item, bead in zip(items, selected):
+            slot, target = item["slot"], targets[item["slot"]]
+            bead_path = scratch / "bead.json"
+            bead_path.write_bytes(encode(bead))
+            argv = [bash, str(RUNTIME), "--bead", bead["id"], "--bead-file", str(bead_path),
+                    "--repo", str(repo), "--agent-name", target["name"], "--role", item["role"],
+                    "--max-chars", "65536", "--json"]
+            if args.no_live_context:
+                argv.append("--no-live-context")
+            code, data = run(argv, repo, timeout=60)
+            require(code == 0, "Packet generation failed; no bundle was written.")
+            packet = parse(data)
+            require(isinstance(packet, dict) and isinstance(packet.get("output"), dict)
+                    and packet["output"].get("truncated") is False, "Task packet was truncated; narrow the task.")
+            paths = item["reservation_surfaces"]
+            scope_text = ("## Declared Write Scope\n\n" + "\n".join("    " + path for path in paths)
+                          + "\n\nThese are the explicitly assigned write surfaces, not acquired reservations.\n"
+                            "Acquire Agent Mail reservations before editing. If work needs other paths,\n"
+                            "stop and renegotiate this assignment rather than expanding it silently.\n\n")
+            packet["packet_markdown"] = packet["packet_markdown"].replace("## Source Priority\n", scope_text + "## Source Priority\n", 1)
+            packet["output"]["char_count"] = len(packet["packet_markdown"])
+            packet["preparation"] = {"assignment_sha256": digest(assignments_bytes), "slot": slot,
+                                     "declared_write_scopes": paths, "reservations_acquired": False,
+                                     "bead_source": "file" if args.beads_file else "live-br-show"}
+            name = "packet-" + str(slot).zfill(2)
+            packet_data = encode(packet)
+            packet_path = scratch / (name + ".json")
+            packet_path.write_bytes(packet_data)
+            operation_id = namespace + "-" + str(slot)
+            # Use the same packet and target validator as delivery before
+            # publishing, with scratch-only receipt paths (no receipt is created).
+            prepare(argparse.Namespace(packet=str(packet_path), repo=str(repo), session=args.session,
+                pane=target["pane"], agent_type=target["agent_type"], operation_id=operation_id,
+                receipt=str(scratch / (name + ".receipt.json")), expect_sha256=None, send=False))
+            artifacts[name + ".json"] = packet_data
+            artifacts[name + ".md"] = packet["packet_markdown"].encode("utf-8")
+            deliveries.append({"packet": name + ".json", "repo": str(repo), "session": args.session,
+                               "pane": target["pane"], "agent_type": target["agent_type"],
+                               "operation_id": operation_id, "receipt": name + ".receipt.json"})
+            mapping.append({"slot": slot, "agent": target["name"], "bead_id": bead["id"],
+                            "pane": target["pane"], "role": item["role"], "packet": name + ".json",
+                            "packet_sha256": digest(packet_data), "declared_write_scopes": paths})
+    artifacts["batch.json"] = encode({"schema": BATCH_SCHEMA, "deliveries": deliveries})
+    require(sum(len(data) for data in artifacts.values()) <= 16 * LIMIT, "Prepared bundle exceeds 16 MiB.")
+    publish_preparation(output, artifacts, parent_identity)
+    print(encode({"schema": "acfs.packet-preparation.v1", "status": "prepared", "directory": str(output),
+                  "delivery_count": len(deliveries), "assignments": mapping,
+                  "source_assignment_sha256": digest(assignments_bytes), "sends_prompt": False,
+                  "live_reservations_checked": False, "agent_execution_verified": False,
+                  "idle_agents": assignments.get("idle_agents", []),
+                  "preview_command": shlex.join(["acfs", "swarm", "packet", "--deliver-batch", str(output / "batch.json")]),
+                  "note": "Review every packet Markdown file, then preview the batch. Sending requires a separate hash-bound command. "
+                          "Saved assignments have no host identity; verify --repo and the current Beads/Agent Mail state."}).decode(), end="")
+    return 0
+
+
 def cancelled(signum, frame):
     raise KeyboardInterrupt
 
@@ -1120,6 +1359,8 @@ def cancelled(signum, frame):
 for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, cancelled)
 try:
+    if sys.argv[1:2] == ["--prepare"]:
+        sys.exit(preparation_main(sys.argv[2:]))
     sys.exit(batch_main(sys.argv[2:]) if sys.argv[1:2] == ["--batch"] else main())
 except (DeliveryError, OSError, UnicodeError, KeyboardInterrupt) as exc:
     message = error_message(exc)
@@ -1135,6 +1376,9 @@ if [[ "${1:-}" == "--deliver" ]]; then
 elif [[ "${1:-}" == "--deliver-batch" ]]; then
     shift
     swarm_packet_deliver --batch "$@"
+elif [[ "${1:-}" == "--prepare-batch" ]]; then
+    shift
+    swarm_packet_deliver --prepare "$@"
 else
     swarm_packet_main "$@"
 fi
