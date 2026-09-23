@@ -1056,6 +1056,7 @@ print_acfs_help() {
     echo "  policy-lint         Lint AGENTS/templates/docs for policy drift"
     echo "  credential-preflight Read-only credential exposure preflight"
     echo "  swarm plan          Queue-aware launch advisor"
+    echo "  swarm launch        Explicit admission-checked native agent startup"
     echo "  swarm status        Local swarm/coordination JSON snapshot"
     echo "  swarm doctor        Pre-swarm coordination preflight"
     echo "  swarm simulate      Dry-run 10/25/50 logical-agent harness"
@@ -5293,6 +5294,18 @@ main() {
             shift
             local swarm_subcmd="${1:-status}"
             case "$swarm_subcmd" in
+                launch)
+                    [[ $# -gt 0 ]] && shift
+                    local swarm_launch_script=""
+                    swarm_launch_script="$(_acfs_doctor_find_lib_script "swarm_launch.sh" 2>/dev/null || true)"
+
+                    if [[ -n "$swarm_launch_script" ]]; then
+                        _acfs_doctor_exec_bash_script "$swarm_launch_script" "$@"
+                    fi
+
+                    echo "Error: swarm_launch.sh not found" >&2
+                    return 1
+                    ;;
                 plan|advisor)
                     [[ $# -gt 0 ]] && shift
                     local swarm_plan_script=""
@@ -5402,7 +5415,7 @@ main() {
                     return 1
                     ;;
                 help|-h|--help)
-                    echo "Usage: acfs swarm <plan|status|doctor|simulate|packet|assign|convergence|calibration|inventory> [--json]"
+                    echo "Usage: acfs swarm <plan|launch|status|doctor|simulate|packet|assign|convergence|calibration|inventory> [--json]"
                     return 0
                     ;;
                 *)

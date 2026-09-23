@@ -3444,6 +3444,7 @@ sync_acfs_deployed() {
         "scripts/lib/support.sh:scripts/lib/support.sh"
         "scripts/lib/policy_lint.sh:scripts/lib/policy_lint.sh"
         "scripts/lib/credential_preflight.sh:scripts/lib/credential_preflight.sh"
+        "scripts/lib/swarm_launch.sh:scripts/lib/swarm_launch.sh"
         "scripts/lib/swarm_plan.sh:scripts/lib/swarm_plan.sh"
         "scripts/lib/swarm_status.sh:scripts/lib/swarm_status.sh"
         "scripts/lib/swarm_doctor.sh:scripts/lib/swarm_doctor.sh"
