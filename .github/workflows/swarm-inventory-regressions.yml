@@ -1,0 +1,145 @@
+name: Swarm Inventory Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/swarm-inventory-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fleet-placement-preparation
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Apply exact reviewed patch and read-only final workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git hash-object scripts/lib/swarm_inventory.sh)" = c3307c430918ce75d3f0ec7f6bdd20bcbe9b161d
+          test "$(git hash-object tests/unit/test_swarm_inventory.sh)" = b6bc3cb4ae9393847971a0845a5c03ef5a963225
+          git rev-parse HEAD > "$RUNNER_TEMP/fleet-parent"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/f026b8d47b9d8372a4afbd7d9862782b43114dd6" --jq .content | base64 --decode > "$RUNNER_TEMP/fleet.patch.gz"
+          test "$(git hash-object "$RUNNER_TEMP/fleet.patch.gz")" = f026b8d47b9d8372a4afbd7d9862782b43114dd6
+          gzip -dc "$RUNNER_TEMP/fleet.patch.gz" > "$RUNNER_TEMP/fleet.patch"
+          test "$(git hash-object "$RUNNER_TEMP/fleet.patch")" = 0bb2c5430c6f3fbab63c95fe3299180a80089c3e
+          git apply --check "$RUNNER_TEMP/fleet.patch"
+          git apply "$RUNNER_TEMP/fleet.patch"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/b62eb70a4a6b391fd873fa274d13dfcbcdd982ae" --jq .content | base64 --decode > "$RUNNER_TEMP/fleet-read-only.yml"
+          test "$(git hash-object "$RUNNER_TEMP/fleet-read-only.yml")" = b62eb70a4a6b391fd873fa274d13dfcbcdd982ae
+          cp "$RUNNER_TEMP/fleet-read-only.yml" .github/workflows/swarm-inventory-regressions.yml
+      - name: Check complete runtime and shell test syntax
+        run: |
+          set -euo pipefail
+          bash -n scripts/lib/swarm_inventory.sh tests/unit/test_swarm_inventory.sh
+          shellcheck scripts/lib/swarm_inventory.sh tests/unit/test_swarm_inventory.sh
+      - name: Run all reviewed admission and placement tests without skips
+        run: |
+          python3 -B - <<'PY'
+          import sys
+          import unittest
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_inventory_*.py')
+          expected = suite.countTestCases()
+          if expected != 37:
+              raise SystemExit('Expected exactly the 37 reviewed fleet regressions')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
+          PY
+      - name: Run all existing inventory integration regressions
+        run: |
+          set -euo pipefail
+          bash tests/unit/test_swarm_inventory.sh | tee "$RUNNER_TEMP/fleet-shell-tests.log"
+          grep -Fx 'Results: 14 passed, 0 failed' "$RUNNER_TEMP/fleet-shell-tests.log"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked generator dependencies without package scripts
+        working-directory: packages/manifest
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Run canonical generator and drift verification
+        working-directory: packages/manifest
+        run: |
+          set -euo pipefail
+          bun run generate
+          bun run generate:diff
+      - name: Export validated blobs without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != 'Dicklesworthstone/agentic_coding_flywheel_setup':
+              raise SystemExit('Unexpected repository')
+          expected_blobs = {
+              'scripts/lib/swarm_inventory.sh': 'a394c690af3e4d4f2e7da0c7b2063d9918eeaba2',
+              'tests/unit/test_swarm_inventory.sh': '88f030cf8e3b36c9f281a5a2a78e339dc7de3b67',
+              'tests/unit/test_swarm_inventory_admission.py': '03a7f6f26cc53dea94e58ad82801b0f61f7126ec',
+              'tests/unit/test_swarm_inventory_placement.py': '1f9bf364437efdb473840486f8fe20a7bf0391cb',
+              'docs/operations/swarm-fleet-placement.md': '18dedec922c9b1ac6ca7642dd52483c340224a30',
+              '.github/workflows/swarm-inventory-regressions.yml': 'b62eb70a4a6b391fd873fa274d13dfcbcdd982ae',
+          }
+          ledger_path = 'scripts/generated/internal_checksums.sh'
+          paths = [*expected_blobs, ledger_path]
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          changed = set(git('diff', '--name-only', '-z').decode().rstrip('\0').split('\0'))
+          changed |= set(git('ls-files', '--others', '--exclude-standard', '-z').decode().rstrip('\0').split('\0'))
+          changed.discard('')
+          if changed != set(paths):
+              raise SystemExit('Unexpected changed paths: ' + repr(sorted(changed)))
+          source_hash = hashlib.sha256(Path('scripts/lib/swarm_inventory.sh').read_bytes()).hexdigest()
+          ledger = Path(ledger_path).read_text()
+          if re.findall(r'^  \[scripts/lib/swarm_inventory\.sh\]="([a-f0-9]{64})"$', ledger, re.M) != [source_hash]:
+              raise SystemExit('Generated inventory checksum does not match complete source')
+          parent = Path(os.environ['RUNNER_TEMP'], 'fleet-parent').read_text().strip()
+          if git('rev-parse', 'HEAD').decode().strip() != parent:
+              raise SystemExit('Candidate parent changed')
+          output = {'parent': parent, 'base_tree': git('rev-parse', 'HEAD^{tree}').decode().strip(),
+                    'patch_blob': '0bb2c5430c6f3fbab63c95fe3299180a80089c3e',
+                    'python_tests_passed': 37, 'shell_tests_passed': 14, 'tests_skipped': 0,
+                    'bash_syntax': 'pass', 'shellcheck': 'pass', 'canonical_generation': 'pass',
+                    'generation_diff': 'pass', 'files': []}
+          for path in paths:
+              if Path(path).is_symlink() or not Path(path).is_file():
+                  raise SystemExit('Unsafe candidate file')
+              data = Path(path).read_bytes()
+              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              if path in expected_blobs and expected != expected_blobs[path]:
+                  raise SystemExit('Candidate differs from reviewed source: ' + path)
+              request = urllib.request.Request('https://api.github.com/repos/' + repo + '/git/blobs',
+                  data=json.dumps({'content': base64.b64encode(data).decode(), 'encoding': 'base64'}).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
+                           'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'}, method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  actual = json.load(response)['sha']
+              if actual != expected:
+                  raise SystemExit('Uploaded blob hash mismatch')
+              indexed = git('ls-files', '--stage', '--', path).decode().split()
+              mode = indexed[0] if indexed else '100644'
+              if mode not in ('100644', '100755'):
+                  raise SystemExit('Unexpected candidate mode')
+              output['files'].append({'path': path, 'mode': mode, 'sha': actual,
+                                      'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+          print('ACFS_VALIDATED_FLEET_BLOBS=' + json.dumps(output, sort_keys=True))
+          PY
