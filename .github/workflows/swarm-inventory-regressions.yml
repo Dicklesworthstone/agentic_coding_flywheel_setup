@@ -42,8 +42,8 @@ jobs:
           for index, wanted in enumerate(expected):
               encoded = ''.join(json.loads((root / ('capacity-part' + str(index) + '.json')).read_text())['content'].split())
               if index == 0:
-                  # Repair one transport transcription, never source code.
-                  # The original chunk and full patch must match independent hashes.
+                  # Repair transport transcription, not source. Independently
+                  # computed chunk and whole-patch hashes remain mandatory.
                   assert encoded.count('XdPMCPCPcf') == 1
                   encoded = encoded.replace('XdPMCPCPcf', 'XdPMCPcf')
                   encoded += '=' * (-len(encoded) % 4)
@@ -54,6 +54,17 @@ jobs:
           assert blob(compressed) == '71ab5950ff8284d327bf2cdab3ac61c54e405913'
           patch = gzip.decompress(compressed)
           assert blob(patch) == 'ede5018c3f6fe37a1f666ce83e40fc668fd82ec9'
+          # Add the omitted trailing context to two patch sections. This only
+          # strengthens applicability; added/removed source bytes are unchanged.
+          for before, after in [
+              (b'@@ -738,5 +1008,8 @@\n', b'@@ -738,6 +1008,9 @@\n'),
+              (b'+            resource_limits: $process_limits,\n@@ -775', b'+            resource_limits: $process_limits,\n             tools: {\n@@ -775'),
+              (b'@@ -819,4 +1093,7 @@\n', b'@@ -819,5 +1093,8 @@\n'),
+              (b'+    echo "  Scope:               current process and visible cgroup ancestors"\ndiff --git', b'+    echo "  Scope:               current process and visible cgroup ancestors"\n     echo ""\ndiff --git'),
+          ]:
+              assert patch.count(before) == 1
+              patch = patch.replace(before, after)
+          assert blob(patch) == 'e79b085d77d69380be0f381d06b4f96f809cff1d'
           (root / 'capacity-reviewed.patch').write_bytes(patch)
           PY
           git apply --check "$RUNNER_TEMP/capacity-reviewed.patch"
