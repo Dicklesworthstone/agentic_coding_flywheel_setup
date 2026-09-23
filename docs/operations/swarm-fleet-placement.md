@@ -94,3 +94,78 @@ They cover eligibility, contradictory limits, duplicate keys, bad timestamps,
 large import/export, workload matching, stable ordering, bounded allocations,
 shortfalls, and inert invalid options. They do not perform live fleet or NTM
 acceptance testing.
+
+## Populate and refresh records from the local machine
+
+Run the probe **on the host whose record you are creating**, using an
+operator-chosen inventory ID, not its real hostname or IP address:
+
+```bash
+acfs swarm inventory probe-local --host-id worker-a --workload standard \
+  --disk-path /data/projects --allow-launch --output worker-a.inventory.json
+```
+
+This invokes the installed sibling `capacity.sh` with its real local resource
+readers and selected workload. It projects CPU, RAM, disk headroom, recommended
+and safe counts into the existing inventory schema and records a UTC observation
+time. The default filesystem is the current user's home; `--disk-path` selects
+an existing project filesystem without including that local path in the output.
+No commands run over SSH; no model, NTM session, RU operation, Beads write, Mail
+request, or RCH service request is made. Executable availability is not service
+health, authentication, or a live queue admission check.
+
+New records default to role `swarm-worker`, status `active`, and
+`ntm.can_launch: false`. `--role` selects another inventory role for a new record;
+`--allow-launch` explicitly enables the new record's recommendation hint only
+when NTM is installed and the role permits agent launches. It does **not** start
+agents. Omit it for a record that should remain excluded until separately reviewed.
+
+To refresh one local host in an existing fleet snapshot:
+
+```bash
+acfs swarm inventory probe-local --host-id worker-a \
+  --inventory hosts.inventory.json --disk-path /data/projects \
+  --output hosts.refreshed.json
+acfs swarm inventory plan --inventory hosts.refreshed.json \
+  --agents 50 --workload standard --json
+```
+
+An explicit `--inventory` is a merge base, never an implicit write destination.
+Other hosts retain their exact records, including their original probe times.
+Existing role, status, notes, tags, RCH/RU settings, and unrelated metadata are
+preserved. Existing workload is retained unless `--workload` explicitly changes
+it; new records use the inventory default. An old launch veto stays false.
+Missing NTM withdraws an existing positive hint. `--role` and `--allow-launch`
+are rejected for existing records: changing operator policy needs a separate
+review, not a side effect of measurement. Refreshing a host never re-enables a
+disabled host or repurposes a build-only worker.
+
+With no `--output`, the result is JSON on stdout and no file is created. No
+canonical inventory is read unless `--inventory` is explicit; the environment
+variable `ACFS_SWARM_INVENTORY_FILE` does not silently select a merge base.
+With `--output`, the parent must already exist and a complete private (0600)
+snapshot is atomically created. Existing files, symlinks, directories, and even
+a destination created during measurement are never replaced. Use a new filename,
+review the diff against the original, then use the existing explicit `import`
+command to adopt that complete snapshot. A snapshot is not an in-place fleet
+transaction: concurrent edits to the original must be reconciled before import.
+
+The producer has a ten-second deadline, a 64 KiB response limit, strict JSON and
+capacity schema checks, and no inherited capacity test overrides, bearer tokens,
+proxy variables, or shell startup configuration. A failed or malformed producer
+never refreshes a timestamp or publishes a snapshot. Only approved numeric and
+boolean observations are projected; raw diagnostics and local paths are omitted.
+The final snapshot passes the same sensitive-field and size validation as other
+inventory input. Import/export does not turn saved evidence into a fresh probe.
+
+Focused probe coverage runs with:
+
+```bash
+python3 -B tests/unit/test_swarm_inventory_probe.py
+```
+
+Those tests execute the actual inventory shell with a sibling calculator
+contract fixture. The regression workflow separately runs the actual installed
+calculator on its Linux runner, validates and plans from its snapshot, and
+checks that refreshing one record leaves an unrelated host unchanged. Neither
+proves that a remote fleet is currently ready for an agent launch.

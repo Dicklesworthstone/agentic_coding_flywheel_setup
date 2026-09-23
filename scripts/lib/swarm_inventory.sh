@@ -24,22 +24,32 @@ SWARM_INV_ARTIFACT_DIR=""
 SWARM_INV_AGENTS=""
 SWARM_INV_WORKLOAD="standard"
 SWARM_INV_WORKLOAD_SET=false
+SWARM_INV_HOST_ID=""
+SWARM_INV_DISK_PATH=""
+SWARM_INV_ROLE="swarm-worker"
+SWARM_INV_ROLE_SET=false
+SWARM_INV_ALLOW_LAUNCH=false
+SWARM_INV_INVENTORY_SET=false
 SWARM_INV_INVENTORY_FILE="${ACFS_SWARM_INVENTORY_FILE:-${HOME:-/tmp}/.acfs/swarm/hosts.inventory.json}"
 SWARM_INV_GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
 
 swarm_inventory_usage() {
     cat <<'EOF'
-Usage: acfs swarm inventory <report|plan|import|export|validate> [OPTIONS]
+Usage: acfs swarm inventory <report|plan|probe-local|import|export|validate> [OPTIONS]
 
 Options:
   --json                Emit machine-readable JSON
   --markdown            Emit human output (default)
   --inventory FILE      Inventory file (default: ~/.acfs/swarm/hosts.inventory.json)
   --input FILE          Input file for import
-  --output FILE         Output file for import/export
+  --output FILE         Output file (probe-local creates a NEW snapshot only)
   --format json         Export format (json only for v1)
   --agents N            Required total agent target for plan (1-1000000)
-  --workload NAME       Plan workload: light, standard (default), or heavy
+  --workload NAME       Plan/probe workload: light, standard, or heavy
+  --host-id ID          Required operator-chosen local ID for probe-local
+  --disk-path DIR       Probe this filesystem (default: current user's home)
+  --role ROLE           Role for a NEW probed host (default: swarm-worker)
+  --allow-launch        Opt a NEW probed host into launch recommendations
   --artifact-dir DIR    Write deterministic error artifacts on failure
   --help, -h            Show this help
 
@@ -48,13 +58,17 @@ send Agent Mail, mutate Beads, or change RCH configuration. Import/export
 write only to explicit output targets or the canonical inventory file.
 Plan distributes a target total across eligible hosts, not additional agents.
 It requires fresh live admission on each host before any actual launch.
+Probe-local measures this machine with the installed capacity calculator.
+It prints an inventory snapshot, or creates --output without overwriting.
+An explicit --inventory merges that snapshot with existing host records;
+other hosts and existing operator policy are preserved. No implicit writes.
 EOF
 }
 
 swarm_inventory_parse_args() {
     if [[ $# -gt 0 ]]; then
         case "$1" in
-            report|plan|import|export|validate)
+            report|plan|probe-local|import|export|validate)
                 SWARM_INV_SUBCOMMAND="$1"
                 SWARM_INV_SUBCOMMAND_SET=true
                 shift
@@ -68,7 +82,7 @@ swarm_inventory_parse_args() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            report|plan|import|export|validate)
+            report|plan|probe-local|import|export|validate)
                 [[ "$SWARM_INV_SUBCOMMAND_SET" == false ]] || { echo "Error: select only one inventory command" >&2; return 2; }
                 SWARM_INV_SUBCOMMAND="$1"
                 SWARM_INV_SUBCOMMAND_SET=true
@@ -85,7 +99,32 @@ swarm_inventory_parse_args() {
             --inventory)
                 [[ -n "${2:-}" && "$2" != -* ]] || { echo "Error: --inventory requires a path" >&2; return 2; }
                 SWARM_INV_INVENTORY_FILE="$2"
+                SWARM_INV_INVENTORY_SET=true
                 shift 2
+                ;;
+            --host-id)
+                [[ -n "${2:-}" && -z "$SWARM_INV_HOST_ID" && "$2" =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || {
+                    echo "Error: supply --host-id once with an inventory ID, not a network address" >&2; return 2;
+                }
+                SWARM_INV_HOST_ID="$2"
+                shift 2
+                ;;
+            --role)
+                [[ -n "${2:-}" && "$SWARM_INV_ROLE_SET" == false ]] || { echo "Error: supply --role once" >&2; return 2; }
+                case "$2" in swarm-controller|swarm-worker|support|rch-worker|disabled) ;; *) echo "Error: invalid inventory role" >&2; return 2 ;; esac
+                SWARM_INV_ROLE="$2"
+                SWARM_INV_ROLE_SET=true
+                shift 2
+                ;;
+            --disk-path)
+                [[ -n "${2:-}" && -z "$SWARM_INV_DISK_PATH" ]] || { echo "Error: supply --disk-path once with a directory" >&2; return 2; }
+                SWARM_INV_DISK_PATH="$2"
+                shift 2
+                ;;
+            --allow-launch)
+                [[ "$SWARM_INV_ALLOW_LAUNCH" == false ]] || { echo "Error: supply --allow-launch once" >&2; return 2; }
+                SWARM_INV_ALLOW_LAUNCH=true
+                shift
                 ;;
             --input)
                 [[ -n "${2:-}" && "$2" != -* ]] || { echo "Error: --input requires a path" >&2; return 2; }
@@ -133,7 +172,7 @@ swarm_inventory_parse_args() {
     done
 
     case "$SWARM_INV_SUBCOMMAND" in
-        report|plan|import|export|validate) ;;
+        report|plan|probe-local|import|export|validate) ;;
         *)
             echo "Error: unknown inventory subcommand: $SWARM_INV_SUBCOMMAND" >&2
             return 2
@@ -145,14 +184,24 @@ swarm_inventory_parse_args() {
         return 2
     fi
 
-    if [[ "$SWARM_INV_SUBCOMMAND" == plan ]]; then
+    if [[ "$SWARM_INV_SUBCOMMAND" != probe-local ]] &&
+        [[ -n "$SWARM_INV_HOST_ID" || -n "$SWARM_INV_DISK_PATH" || "$SWARM_INV_ROLE_SET" == true || "$SWARM_INV_ALLOW_LAUNCH" == true ]]; then
+        echo "Error: --host-id, --disk-path, --role, and --allow-launch require probe-local" >&2
+        return 2
+    fi
+    if [[ "$SWARM_INV_SUBCOMMAND" == probe-local ]]; then
+        [[ -n "$SWARM_INV_HOST_ID" && -z "$SWARM_INV_INPUT" && -z "$SWARM_INV_AGENTS" && -z "$SWARM_INV_ARTIFACT_DIR" ]] || {
+            echo "Error: probe-local requires --host-id and does not accept --input, --agents, or --artifact-dir" >&2
+            return 2
+        }
+    elif [[ "$SWARM_INV_SUBCOMMAND" == plan ]]; then
         [[ -n "$SWARM_INV_AGENTS" ]] || { echo "Error: plan requires --agents N" >&2; return 2; }
         [[ -z "$SWARM_INV_INPUT" && -z "$SWARM_INV_OUTPUT" && -z "$SWARM_INV_ARTIFACT_DIR" ]] || {
             echo "Error: plan is read-only; --input, --output, and --artifact-dir do not apply" >&2
             return 2
         }
     elif [[ -n "$SWARM_INV_AGENTS" || "$SWARM_INV_WORKLOAD_SET" == true ]]; then
-        echo "Error: --agents and --workload require the plan command" >&2
+        echo "Error: --agents requires plan; --workload requires plan or probe-local" >&2
         return 2
     fi
 }
@@ -835,6 +884,231 @@ swarm_inventory_command_plan() {
     [[ "$("$jq_bin" -r .fully_placed <<< "$plan_json")" == true ]] || return 1
 }
 
+swarm_inventory_command_probe_local() {
+    local jq_bin="$1" python_bin="" capacity_script=""
+    local inventory_json='{"schema_version":1,"hosts":[]}' validation_json="" candidate=""
+
+    if [[ "$SWARM_INV_INVENTORY_SET" == true ]]; then
+        swarm_inventory_read_inventory_or_fail inventory_json "$jq_bin" "probe-local" "$SWARM_INV_INVENTORY_FILE" || return $?
+        swarm_inventory_validate_or_fail validation_json "$jq_bin" "probe-local" "$inventory_json" "$SWARM_INV_INVENTORY_FILE" || return $?
+    fi
+    python_bin="$(swarm_inventory_binary_path python3)" || return 2
+    capacity_script="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/capacity.sh"
+    # The calculator is the installed sibling, not a command, path, or report
+    # supplied by the caller. Only normalized inventory travels over fd 3.
+    if ! candidate="$("$python_bin" -I - "$capacity_script" "$SWARM_INV_HOST_ID" \
+        "$SWARM_INV_WORKLOAD" "$SWARM_INV_WORKLOAD_SET" "$SWARM_INV_ROLE" \
+        "$SWARM_INV_ROLE_SET" "$SWARM_INV_ALLOW_LAUNCH" "$SWARM_INV_DISK_PATH" 3<<< "$inventory_json" <<'PY'
+import datetime
+import json
+import math
+import os
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+
+def reject(*_):
+    raise ValueError("invalid capacity evidence")
+
+
+def unique(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            reject()
+        value[key] = item
+    return value
+
+
+def checked_json(data, limit):
+    if len(data) > limit:
+        reject()
+    value = json.loads(data.decode("utf-8"), object_pairs_hook=unique, parse_constant=reject)
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        item, depth = pending.pop()
+        nodes += 1
+        if depth > 32 or nodes > 50000:
+            reject()
+        if type(item) is dict:
+            pending.extend((child, depth + 1) for pair in item.items() for child in pair)
+        elif type(item) is list:
+            pending.extend((child, depth + 1) for child in item)
+        elif type(item) is float and not math.isfinite(item):
+            reject()
+        elif type(item) is str and any(0xD800 <= ord(c) <= 0xDFFF for c in item):
+            reject()
+    return value
+
+
+def count(value, maximum=1000000, minimum=0):
+    if type(value) is not int or not minimum <= value <= maximum:
+        reject()
+    return value
+
+
+def measure(path, workload, disk_path):
+    home = os.environ.get("HOME", "")
+    if not os.path.isabs(home) or not os.path.isdir(home):
+        reject()
+    # No ACFS_CAPACITY_* fixture values, shell startup files, preload libraries,
+    # credentials, proxies, or caller-supplied executable search path reach the
+    # calculator. It only inspects tool availability; no agent is executed.
+    env = {"HOME": os.path.realpath(home), "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+           "LANG": "C", "LC_ALL": "C", "TERM": "dumb"}
+    if disk_path:
+        if not os.path.isdir(disk_path):
+            reject()
+        # This one override is derived only from the explicit CLI selection.
+        # The local path itself is deliberately absent from the snapshot.
+        env["ACFS_CAPACITY_DISK_PATH"] = os.path.realpath(disk_path)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    process = None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            reject()
+        process = subprocess.Popen(
+            ["/bin/bash", f"/proc/self/fd/{fd}", "--json", "--workload", workload],
+            env=env, pass_fds=(fd,), stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+        deadline = time.monotonic() + 10
+        data = bytearray()
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    reject()
+                for key, _ in selector.select(remaining):
+                    chunk = os.read(key.fd, 65537 - len(data))
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                    data.extend(chunk)
+                    if len(data) > 65536:
+                        reject()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or process.wait(timeout=remaining) != 0:
+            reject()
+        return checked_json(bytes(data), 65536)
+    finally:
+        if process is not None:
+            # Also bound a descendant that outlives the producing shell.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            process.stdout.close()
+        os.close(fd)
+
+
+try:
+    path, host_id, workload, workload_set, role, role_set, allow_launch, disk_path = sys.argv[1:]
+    with os.fdopen(3, "rb") as stream:
+        inventory = checked_json(stream.read(1048577), 1048576)
+    existing = next((h for h in inventory["hosts"] if h["id"] == host_id), None)
+    if existing is not None and (role_set == "true" or allow_launch == "true"):
+        raise ValueError("existing host policy requires separate review")
+    if workload_set != "true":
+        workload = (existing or {}).get("capacity", {}).get("workload") or (inventory.get("defaults") or {}).get("workload", "standard")
+    observed_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = measure(path, workload, disk_path)
+    if type(result) is not dict or type(result.get("schema_version")) is not int or result["schema_version"] != 1:
+        reject()
+    if result.get("status") not in ("pass", "warn", "fail") or result["assumptions"]["workload"] != workload:
+        reject()
+    resources = {key: count(result["host"][key], 1099511627776, 1 if key != "disk_available_mib" else 0)
+                 for key in ("cpu_count", "mem_total_mib", "disk_available_mib")}
+    recommended = count(result["capacity"]["recommended_agent_count"])
+    safe = count(result["capacity"]["safe_agent_count"])
+    if recommended > safe or (result["status"] == "fail" and safe != 0):
+        reject()
+    ntm = result["tools"]["ntm"]["available"]
+    rch = result["tools"]["rch"]["available"]
+    if type(ntm) is not bool or type(rch) is not bool:
+        reject()
+    if allow_launch == "true" and (not ntm or role not in ("swarm-controller", "swarm-worker", "support")):
+        raise ValueError("launch opt-in needs NTM and a launch-capable role")
+    if existing is None:
+        existing = {"id": host_id, "role": role, "status": "disabled" if role == "disabled" else "active",
+                    "resources": {}, "capacity": {}, "ntm": {"can_launch": allow_launch == "true"}, "rch": {}, "ru": {}}
+        inventory["hosts"].append(existing)
+    existing["resources"].update(resources)
+    existing["capacity"].update({"workload": workload, "recommended_agents": recommended,
+                                 "safe_agents": safe, "source": "acfs capacity --json"})
+    # A measurement can withdraw capability, but never override an old veto,
+    # re-enable a disabled host, or convert a build worker into a launch host.
+    existing["ntm"]["can_launch"] = existing["ntm"].get("can_launch") is True and ntm
+    existing["last_probe_at"] = observed_at
+    existing["probe_source"] = "acfs swarm inventory probe-local"
+    existing["local_observation"] = {"capacity_status": result["status"], "ntm_available": ntm,
+                                      "rch_available": rch, "live_admission_checked": False}
+    inventory["updated_at"] = observed_at
+    data = (json.dumps(inventory, ensure_ascii=True, allow_nan=False, separators=(",", ":")) + "\n").encode()
+    checked_json(data, 1048576)
+    sys.stdout.buffer.write(data)
+except (OSError, ValueError, TypeError, KeyError, RecursionError, subprocess.SubprocessError):
+    # Service output and parser errors can contain secrets; emit neither.
+    sys.exit(1)
+PY
+    )"; then
+        swarm_inventory_fail "$jq_bin" "probe-local" "probe_failed" "Local measurement failed or conflicts with existing policy. Check capacity.sh, NTM availability, and new-host-only options; no snapshot was published."
+        return 2
+    fi
+    swarm_inventory_validate_or_fail validation_json "$jq_bin" "probe-local" "$candidate" "local snapshot" || return $?
+    if [[ -z "$SWARM_INV_OUTPUT" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+    if ! "$python_bin" -I -c '
+import os, pathlib, sys, uuid
+fd = temporary = None
+created = False
+try:
+    path = pathlib.Path(os.path.abspath(sys.argv[1]))
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    for part in path.parts[1:-1]:
+        child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+        os.close(fd)
+        fd = child
+    temporary = ".swarm-probe-" + uuid.uuid4().hex
+    output = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+    created = True
+    with os.fdopen(output, "wb") as stream:
+        data = sys.stdin.buffer.read(1048577)
+        if len(data) > 1048576:
+            raise ValueError()
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    # Atomic create, never replace even a concurrently created destination.
+    os.link(temporary, path.name, src_dir_fd=fd, dst_dir_fd=fd, follow_symlinks=False)
+    os.fsync(fd)
+except (OSError, ValueError):
+    sys.exit(1)
+finally:
+    if fd is not None:
+        if created:
+            try:
+                os.unlink(temporary, dir_fd=fd)
+            except FileNotFoundError:
+                pass
+        os.close(fd)
+' "$SWARM_INV_OUTPUT" <<< "$candidate"; then
+        swarm_inventory_fail "$jq_bin" "probe-local" "snapshot_write_failed" "Could not create a new durable snapshot. Existing files are not replaced; inspect the destination before retrying."
+        return 2
+    fi
+    "$jq_bin" -n --arg id "$SWARM_INV_HOST_ID" --arg output "$SWARM_INV_OUTPUT" \
+        '{schema_version:1, operation:"probe-local", status:"pass", host_id:$id, output_file:$output,
+          advisory_only:true, live_admission_checked:false,
+          mutations:{ntm:false, ru:false, agent_mail:false, beads:false, rch_config:false}}'
+}
+
 swarm_inventory_command_import() {
     local jq_bin="$1"
     local input_file="$SWARM_INV_INPUT"
@@ -950,6 +1224,7 @@ swarm_inventory_main() {
     case "$SWARM_INV_SUBCOMMAND" in
         report) swarm_inventory_command_report "$jq_bin" ;;
         plan) swarm_inventory_command_plan "$jq_bin" ;;
+        probe-local) swarm_inventory_command_probe_local "$jq_bin" ;;
         import) swarm_inventory_command_import "$jq_bin" ;;
         export) swarm_inventory_command_export "$jq_bin" ;;
         validate) swarm_inventory_command_validate "$jq_bin" ;;
