@@ -1,0 +1,141 @@
+name: Updater Lock Regression
+
+# One-time preparation of the user-approved patch. Export blobs only: no
+# branch/ref writes or PR creation. The validated candidate replaces this
+# preparation job with the read-only regression workflow pinned below.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/updater-lock-regressions.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-lock-publication
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Apply only the exact reviewed patch and read-only final workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git hash-object scripts/lib/update.sh)" = c949cf1985ed9c55596f2fe47239389fc61a4432
+          git rev-parse HEAD > "$RUNNER_TEMP/updater-parent"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/44be1e9ec0075303e1cafe0e8da48a67f8a257d6" --jq .content | base64 --decode > "$RUNNER_TEMP/updater-approved.patch"
+          test "$(git hash-object "$RUNNER_TEMP/updater-approved.patch")" = 44be1e9ec0075303e1cafe0e8da48a67f8a257d6
+          git apply --check "$RUNNER_TEMP/updater-approved.patch"
+          git apply "$RUNNER_TEMP/updater-approved.patch"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/7925bb10c2564242c7f1c71cc83139f89626af7a" --jq .content | base64 --decode > "$RUNNER_TEMP/updater-read-only.yml"
+          test "$(git hash-object "$RUNNER_TEMP/updater-read-only.yml")" = 7925bb10c2564242c7f1c71cc83139f89626af7a
+          cp "$RUNNER_TEMP/updater-read-only.yml" .github/workflows/updater-lock-regressions.yml
+      - name: Check complete updater syntax and ShellCheck
+        run: |
+          set -euo pipefail
+          bash -n scripts/lib/update.sh
+          shellcheck scripts/lib/update.sh
+      - name: Run all real-lock regressions, requiring zero skips
+        run: |
+          set -euo pipefail
+          sudo python3 -B - <<'PY'
+          import importlib.util
+          import sys
+          import unittest
+          spec = importlib.util.spec_from_file_location("update_lock_tests", "tests/unit/test_update_lock.py")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+          expected = suite.countTestCases()
+          if expected != 27:
+              raise SystemExit("Expected exactly the 27 reviewed updater-lock regressions")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
+          PY
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked generator dependencies without package scripts
+        working-directory: packages/manifest
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Run canonical generator and drift verification
+        working-directory: packages/manifest
+        run: |
+          set -euo pipefail
+          bun run generate
+          bun run generate:diff
+      - name: Export validated blobs without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          if repo != 'Dicklesworthstone/agentic_coding_flywheel_setup':
+              raise SystemExit('Unexpected repository')
+          paths = [
+              'scripts/lib/update.sh',
+              'tests/unit/test_update_lock.py',
+              'docs/operations/updater-locking.md',
+              'scripts/generated/internal_checksums.sh',
+              '.github/workflows/updater-lock-regressions.yml',
+          ]
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          changed = set(git('diff', '--name-only', '-z').decode().rstrip('\0').split('\0'))
+          changed |= set(git('ls-files', '--others', '--exclude-standard', '-z').decode().rstrip('\0').split('\0'))
+          changed.discard('')
+          if changed != set(paths):
+              raise SystemExit('Unexpected changed paths: ' + repr(sorted(changed)))
+          updater = Path(paths[0]).read_bytes()
+          updater_sha256 = hashlib.sha256(updater).hexdigest()
+          ledger = Path(paths[3]).read_text()
+          if re.findall(r'^  \[scripts/lib/update\.sh\]="([a-f0-9]{64})"$', ledger, re.M) != [updater_sha256]:
+              raise SystemExit('Generated updater checksum does not match complete source')
+          parent = Path(os.environ['RUNNER_TEMP'], 'updater-parent').read_text().strip()
+          if git('rev-parse', 'HEAD').decode().strip() != parent:
+              raise SystemExit('Candidate parent changed')
+          output = {'parent': parent, 'base_tree': git('rev-parse', 'HEAD^{tree}').decode().strip(),
+                    'patch_blob': '44be1e9ec0075303e1cafe0e8da48a67f8a257d6',
+                    'tests_passed': 27, 'tests_skipped': 0, 'bash_syntax': 'pass',
+                    'shellcheck': 'pass', 'canonical_generation': 'pass', 'generation_diff': 'pass', 'files': []}
+          for path in paths:
+              data = Path(path).read_bytes()
+              if Path(path).is_symlink() or not Path(path).is_file():
+                  raise SystemExit('Unsafe candidate file')
+              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              request = urllib.request.Request('https://api.github.com/repos/' + repo + '/git/blobs',
+                  data=json.dumps({'content': base64.b64encode(data).decode(), 'encoding': 'base64'}).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
+                           'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'}, method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  actual = json.load(response)['sha']
+              if actual != expected:
+                  raise SystemExit('Uploaded blob hash mismatch')
+              indexed = git('ls-files', '--stage', '--', path).decode().split()
+              mode = indexed[0] if indexed else '100644'
+              if mode not in ('100644', '100755'):
+                  raise SystemExit('Unexpected candidate mode')
+              output['files'].append({'path': path, 'mode': mode, 'sha': actual,
+                                      'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+          print('ACFS_VALIDATED_BLOBS=' + json.dumps(output, sort_keys=True))
+          PY
