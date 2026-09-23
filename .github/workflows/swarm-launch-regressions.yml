@@ -1,0 +1,29 @@
+name: Swarm Launch Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/swarm_launch.sh'
+      - 'scripts/lib/swarm_plan.sh'
+      - 'tests/unit/test_swarm_launch.py'
+      - '.github/workflows/swarm-launch-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check launcher and execute real entrypoint regressions
+        run: |
+          set -euo pipefail
+          bash -n scripts/lib/swarm_launch.sh
+          shellcheck scripts/lib/swarm_launch.sh
+          python3 -B tests/unit/test_swarm_launch.py -v
