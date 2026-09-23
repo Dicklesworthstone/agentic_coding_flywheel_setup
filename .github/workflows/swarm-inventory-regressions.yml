@@ -11,7 +11,8 @@ permissions:
 
 jobs:
   measured-inventory-candidate:
-    if: github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup' && github.event.head_commit.message == 'build(swarm): verify local capacity snapshot candidate'
+    if: >-
+      github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup' && github.event.head_commit.message == 'build(swarm): verify local capacity snapshot candidate'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
