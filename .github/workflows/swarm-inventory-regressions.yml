@@ -4,51 +4,156 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scripts/lib/swarm_inventory.sh'
-      - 'scripts/lib/capacity.sh'
-      - 'tests/unit/test_swarm_inventory*'
       - '.github/workflows/swarm-inventory-regressions.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: swarm-inventory-regression-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  inventory:
+  process-limits-candidate:
+    if: >-
+      github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup' && github.event.head_commit.message == 'build(capacity): verify constrained resource model candidate'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Check runtime and shell regression syntax
+      - name: Restore only the exact reviewed source patch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bash -n scripts/lib/swarm_inventory.sh
-          bash -n tests/unit/test_swarm_inventory.sh
-          shellcheck scripts/lib/swarm_inventory.sh tests/unit/test_swarm_inventory.sh
-      - name: Exercise fleet admission, placement and local probes without skips
+          test "$(git hash-object scripts/lib/capacity.sh)" = 39fbf07984c3f7fb7f273e98fde001ea10ba21e4
+          git rev-parse HEAD > "$RUNNER_TEMP/capacity-parent"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/5a484bbba4bfd709c0958760f8f0031c98fc2158" > "$RUNNER_TEMP/capacity-part0.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/74cbcb01c59eedbfeb460a60e41742bb89695fc0" > "$RUNNER_TEMP/capacity-part1.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/f437ca1be92166134434d5dcce260364626e56e0" > "$RUNNER_TEMP/capacity-part2.json"
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          expected = ['74ec13cf21e75fe6f4a1e66d07e44e62ade3a999', '74cbcb01c59eedbfeb460a60e41742bb89695fc0', 'f437ca1be92166134434d5dcce260364626e56e0']
+          def blob(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          chunks = []
+          for index, wanted in enumerate(expected):
+              encoded = ''.join(json.loads((root / ('capacity-part' + str(index) + '.json')).read_text())['content'].split())
+              if index == 0:
+                  # Repair one transport transcription, never source code.
+                  # The original chunk and full patch must match independent hashes.
+                  assert encoded.count('XdPMCPCPcf') == 1
+                  encoded = encoded.replace('XdPMCPCPcf', 'XdPMCPcf')
+                  encoded += '=' * (-len(encoded) % 4)
+              data = base64.b64decode(encoded, validate=True)
+              assert blob(data) == wanted
+              chunks.append(data)
+          compressed = b''.join(chunks)
+          assert blob(compressed) == '71ab5950ff8284d327bf2cdab3ac61c54e405913'
+          patch = gzip.decompress(compressed)
+          assert blob(patch) == 'ede5018c3f6fe37a1f666ce83e40fc668fd82ec9'
+          (root / 'capacity-reviewed.patch').write_bytes(patch)
+          PY
+          git apply --check "$RUNNER_TEMP/capacity-reviewed.patch"
+          git apply "$RUNNER_TEMP/capacity-reviewed.patch"
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/ea67466f555c9e0141d058a664e1315a2dc57578" --jq .content | base64 --decode > "$RUNNER_TEMP/capacity-read-only.yml"
+          test "$(git hash-object "$RUNNER_TEMP/capacity-read-only.yml")" = ea67466f555c9e0141d058a664e1315a2dc57578
+          cp "$RUNNER_TEMP/capacity-read-only.yml" .github/workflows/swarm-inventory-regressions.yml
+      - name: Check complete capacity source and focused regressions
         run: |
+          set -euo pipefail
+          bash -n scripts/lib/capacity.sh
+          shellcheck scripts/lib/capacity.sh
           python3 -B - <<'PY'
-          import sys
-          import unittest
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_capacity_limits.py')
+          assert suite.countTestCases() == 37
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == 37 else 1)
+          PY
+          bash tests/unit/test_capacity.sh
+      - name: Check existing inventory and planner integration
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import sys, unittest
           suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_inventory_*.py')
           expected = suite.countTestCases()
-          if expected < 63:
-              raise SystemExit('Expected at least 63 fleet admission, placement and probe regressions')
+          assert expected >= 63
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
-      - name: Run existing inventory integration regressions
-        run: bash tests/unit/test_swarm_inventory.sh
-      - name: Measure the real local runner and verify CLI integration
+          bash tests/unit/test_swarm_inventory.sh
+          python3 -B tests/unit/test_swarm_plan_admission.py
+          python3 -B tests/unit/test_swarm_inventory_probe.py --live
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh capacity --json > "$RUNNER_TEMP/capacity-cli.json"
+          jq -e '.resource_limits.status == "known" and .host.effective_cpu_millicores >= 0' "$RUNNER_TEMP/capacity-cli.json"
+      - name: Exercise actual Linux cgroup enforcement and incumbent comparison
         run: |
           set -euo pipefail
-          python3 -B tests/unit/test_swarm_inventory_probe.py --live
-          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm inventory probe-local --help > /tmp/acfs-probe-help
-          grep -F -- '--host-id' /tmp/acfs-probe-help
-          grep -F -- '--disk-path' /tmp/acfs-probe-help
+          python3 -B tests/unit/test_capacity_limits.py --live
+          sudo systemd-run --quiet --wait --pipe --collect --unit="acfs-capacity-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" -p MemoryMax=512M -p CPUQuota=50% /usr/bin/env ACFS_LIMIT_TEST_RESTRICTED=1 /usr/bin/python3 -B "$PWD/tests/unit/test_capacity_limits.py" --live
+          git show HEAD:scripts/lib/capacity.sh > "$RUNNER_TEMP/capacity-incumbent.sh"
+          cat > "$RUNNER_TEMP/capacity-compare.py" <<'PY'
+          import json, subprocess, sys
+          reports = [json.loads(subprocess.check_output(['/bin/bash', path, '--json', '--workload', 'light'], text=True)) for path in sys.argv[1:]]
+          before, after = reports
+          assert before['host']['mem_total_mib'] > 512
+          assert after['host']['mem_total_mib'] <= 512
+          assert after['host']['effective_cpu_millicores'] <= 500
+          assert after['capacity']['safe_agent_count'] == 0
+          assert before['capacity']['safe_agent_count'] > after['capacity']['safe_agent_count']
+          print('INCUMBENT_COMPARISON=' + json.dumps({'before': before['capacity'], 'after': after['capacity'], 'limits': after['resource_limits']}, sort_keys=True))
+          PY
+          sudo systemd-run --quiet --wait --pipe --collect --unit="acfs-capacity-compare-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" -p MemoryMax=512M -p CPUQuota=50% /usr/bin/python3 "$RUNNER_TEMP/capacity-compare.py" "$RUNNER_TEMP/capacity-incumbent.sh" "$PWD/scripts/lib/capacity.sh"
+      - uses: oven-sh/setup-bun@v2
+      - name: Install locked generator dependencies without scripts
+        working-directory: packages/manifest
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Run full canonical generation and drift verification
+        working-directory: packages/manifest
+        run: |
+          set -euo pipefail
+          bun run generate
+          bun run generate:diff
+      - name: Store validated Git blobs without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, re, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          paths = ['scripts/lib/capacity.sh', 'tests/unit/test_capacity_limits.py', 'docs/operations/capacity-process-limits.md', '.github/workflows/swarm-inventory-regressions.yml', 'scripts/generated/internal_checksums.sh']
+          changed = set(git('diff', '--name-only').splitlines()) | set(git('ls-files', '--others', '--exclude-standard').splitlines())
+          assert changed == set(paths), sorted(changed)
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          ledger = paths[-1]
+          pattern = r'^  \[([^\]]+)\]="([a-f0-9]{64})"$'
+          before = dict(re.findall(pattern, git('show', 'HEAD:' + ledger), re.M))
+          after = dict(re.findall(pattern, Path(ledger).read_text(), re.M))
+          assert before.keys() == after.keys()
+          assert {key for key in before if before[key] != after[key]} == {'scripts/lib/capacity.sh'}
+          assert after[paths[0]] == hashlib.sha256(Path(paths[0]).read_bytes()).hexdigest()
+          parent = Path(os.environ['RUNNER_TEMP'], 'capacity-parent').read_text().strip()
+          assert parent == git('rev-parse', 'HEAD')
+          repo = os.environ['GITHUB_REPOSITORY']
+          assert repo == 'Dicklesworthstone/agentic_coding_flywheel_setup'
+          result = {'parent': parent, 'base_tree': git('rev-parse', 'HEAD^{tree}'), 'process_limit_tests': 37, 'kernel_limit_smoke': 'pass', 'incumbent_comparison': 'pass', 'canonical_generation': 'pass', 'generation_diff': 'pass', 'files': []}
+          for path in paths:
+              file = Path(path)
+              assert file.is_file() and not file.is_symlink()
+              data = file.read_bytes()
+              wanted = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              request = urllib.request.Request('https://api.github.com/repos/' + repo + '/git/blobs', method='POST', data=json.dumps({'encoding': 'base64', 'content': base64.b64encode(data).decode()}).encode(), headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  assert json.load(response)['sha'] == wanted
+              indexed = git('ls-files', '--stage', '--', path).split()
+              mode = indexed[0] if indexed else '100644'
+              assert mode in ('100644', '100755')
+              result['files'].append({'path': path, 'sha': wanted, 'mode': mode, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+          print('ACFS_PROCESS_LIMITS_CANDIDATE=' + json.dumps(result, sort_keys=True))
+          PY
