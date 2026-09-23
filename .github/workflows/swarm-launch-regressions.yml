@@ -51,6 +51,8 @@ jobs:
                                ('packages/manifest/src/generate.test.ts', '      ')]:
               anchor = indent + '"scripts/lib/swarm_packet.sh",\n'
               replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
+          replace('packages/manifest/src/generate.test.ts', 'expect(checksums.size).toBe(114);',
+                  'expect(checksums.size).toBe(115);')
           path = 'scripts/check-manifest-drift.sh'
           anchor = '    scripts/lib/swarm_packet.sh\n'
           replace(path, anchor, anchor.replace('swarm_packet', 'swarm_launch') + anchor)
