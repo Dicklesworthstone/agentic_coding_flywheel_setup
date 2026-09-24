@@ -805,6 +805,133 @@ async function verify(
   return true;
 }
 
+export interface PluginInstallHealth {
+  schema: "acfs.plugin-install-health.v1";
+  planSha256: string;
+  receiptSha256: string | null;
+  receiptStatus: PluginInstallInspection["status"];
+  status: "not_started" | "busy" | "interrupted" | "incomplete" | "healthy" | "unhealthy";
+  healthChecked: boolean;
+  prerequisites: Array<{ id: string; passed: boolean }>;
+  actions: Array<{ id: string; recordedStatus: ActionState["status"]; passed: boolean }>;
+}
+
+/**
+ * Opt-in live verification, not installation or recovery. Commands come only
+ * from the freshly reviewed plan, never the receipt. Hold the inherited lease
+ * throughout checks so installation cannot race a healthy result. No directory,
+ * lock file or receipt is created, and no installer is fetched or executed.
+ */
+export async function checkPluginInstallPlan(
+  plan: PluginInstallPlan,
+  options: Pick<PluginRuntimeOptions, "home" | "signal" | "timeoutSeconds"> = {},
+): Promise<PluginInstallHealth> {
+  checkTarget(plan.target);
+  validateRuntimePlan(plan);
+  options.signal?.throwIfAborted();
+  const seconds = options.timeoutSeconds ?? 120;
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 600)
+    refuse("plugin_timeout_invalid", "Health-check deadline must be between 1 and 600 seconds");
+  const result: PluginInstallHealth = {
+    schema: "acfs.plugin-install-health.v1",
+    planSha256: plan.planSha256,
+    receiptSha256: null,
+    receiptStatus: "not_started",
+    status: "not_started",
+    healthChecked: false,
+    prerequisites: [],
+    actions: [],
+  };
+  const home = options.home ?? userInfo().homedir;
+  const directory = stateDirectory(home, false);
+  if (!directory) return result;
+  let lock: ExecutionLease;
+  try {
+    lock = acquireLock(directory, environment(home), false);
+  } catch (error) {
+    if (error instanceof PluginInstallError && error.code === "plugin_install_busy")
+      return { ...result, receiptStatus: "busy", status: "busy" };
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (readReceiptSnapshot(directory, plan))
+      refuse("plugin_state_unsafe", "Existing plugin receipt has no execution lock");
+    return result;
+  }
+  const controller = new AbortController();
+  const cancel = (): void => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  if (options.signal?.aborted) cancel();
+  const signal = controller.signal;
+  // Bound the entire sweep, not just each command in a potentially large graph.
+  const timer = setTimeout(
+    () => controller.abort(
+      new PluginInstallError(
+        "plugin_health_timeout",
+        "Plugin health verification exceeded its total deadline",
+      ),
+    ),
+    seconds * 1000,
+  );
+  try {
+    signal.throwIfAborted();
+    const snapshot = readReceiptSnapshot(directory, plan);
+    lock.assertHeld();
+    if (!snapshot) return result;
+    result.receiptSha256 = snapshot.receiptSha256;
+    const interrupted = Object.values(snapshot.receipt.actions).some(
+      (action) => action.status === "running",
+    );
+    result.receiptStatus = interrupted
+      ? "interrupted"
+      : snapshot.receipt.status === "running"
+        ? "incomplete"
+        : snapshot.receipt.status;
+    if (interrupted) return { ...result, status: "interrupted" };
+
+    for (const prerequisite of plan.prerequisites) {
+      let passed = true;
+      for (const check of prerequisite.verify) {
+        const code = await command("/bin/bash", ["-p", "-c", check], home, 30, signal, lock);
+        signal.throwIfAborted();
+        if (code !== 0) {
+          passed = false;
+          break;
+        }
+      }
+      result.prerequisites.push({ id: prerequisite.id, passed });
+    }
+    for (const action of plan.actions) {
+      const passed = await verify(action, home, signal, lock);
+      signal.throwIfAborted();
+      result.actions.push({
+        id: action.id,
+        recordedStatus: snapshot.receipt.actions[action.id]!.status,
+        passed,
+      });
+    }
+    signal.throwIfAborted();
+    lock.assertHeld();
+    if (readReceiptSnapshot(directory, plan)?.receiptSha256 !== snapshot.receiptSha256)
+      refuse("plugin_receipt_changed", "Plugin receipt changed during health verification");
+    result.healthChecked = true;
+    // Mere binary existence must never promote incomplete or failed work into
+    // an installation success. Likewise, a saved success is not a health check.
+    const complete =
+      snapshot.receipt.status === "complete" &&
+      result.actions.every((action) => action.recordedStatus === "complete");
+    result.status = !complete
+      ? "incomplete"
+      : result.prerequisites.every((check) => check.passed) &&
+          result.actions.every((check) => check.passed)
+        ? "healthy"
+        : "unhealthy";
+    return result;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel);
+    lock.release();
+  }
+}
+
 /** Never accepts a plan file: production callers rebuild this from trusted inputs. */
 export async function executePluginInstallPlan(
   plan: PluginInstallPlan,
