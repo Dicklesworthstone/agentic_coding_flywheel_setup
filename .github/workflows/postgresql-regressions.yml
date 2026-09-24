@@ -32,7 +32,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Apply the exact reviewed PostgreSQL candidate
+      - name: Apply the exact reviewed PostgreSQL and serialization candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -42,6 +42,10 @@ jobs:
           echo "2558b90b85f62bd7e6c5351cd7539924bfd07d2eca67cb395d21c2959e7bcbf1  $RUNNER_TEMP/postgres.patch" | sha256sum -c -
           git apply --check --index "$RUNNER_TEMP/postgres.patch"
           git apply --index "$RUNNER_TEMP/postgres.patch"
+          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/e65fc3271d9813aad6f899fd02fa41b8a7621950 --jq .content | base64 -d > "$RUNNER_TEMP/serialization.patch"
+          echo "2c3b9b98824747e58884927ae0ec21dd716f72e083811eb0072a61d7f7414823  $RUNNER_TEMP/serialization.patch" | sha256sum -c -
+          git apply --check --index "$RUNNER_TEMP/serialization.patch"
+          git apply --index "$RUNNER_TEMP/serialization.patch"
       - name: Install locked generator dependencies without lifecycle scripts
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Generate and verify canonical installer and metadata
@@ -60,8 +64,8 @@ jobs:
           import sys, unittest
           suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_postgresql_install.py')
           expected = suite.countTestCases()
-          if expected < 18:
-              raise SystemExit('Expected at least 18 PostgreSQL provisioning regressions')
+          if expected < 20:
+              raise SystemExit('Expected at least 20 PostgreSQL provisioning regressions')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
@@ -88,8 +92,10 @@ jobs:
           root = pathlib.Path.cwd()
           authored = {
               'acfs.manifest.yaml': 'f7e6763eae358f9be998088b29abcaed9b3a3db0f5979081f1298d1645b089b3',
-              'tests/unit/test_postgresql_install.py': 'e122087f8a7392d1c1be92b231c725186d2c2bb4176f001900d0aa9436ab4e6c',
+              'tests/unit/test_postgresql_install.py': '966c5f7a530ec1f5331f05c936f57e68718c4b5d3e2e348b86471971907c7c63',
               'docs/operations/postgresql.md': '8a6b9f9960e1926d11a40056c17b93f311ac07798eca8586ec1919b30c8749ee',
+              'packages/manifest/src/generate.ts': '631ed1e698f495d618fd9d4f8e9d0708c99c26ce3d947490ab645a24bd3e7476',
+              'packages/manifest/src/generate.test.ts': 'd629df2976c1de0ff0297592206b8cd142366c789514e5c208dc53dde2afe6ca',
           }
           paths = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], text=True).splitlines()
           if not set(authored).issubset(paths):
