@@ -364,72 +364,68 @@ acfs_generated_install_db_postgres18() {
     log_step "Installing db.postgres18"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: mkdir -p /etc/apt/keyrings (root)"
+        log_info "dry-run: install: unset ID VERSION_ID VERSION_CODENAME (root)"
     else
         if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
-mkdir -p /etc/apt/keyrings
-CURL_ARGS=(-q -fsSL)
-if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
-  CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
-fi
-curl "${CURL_ARGS[@]}" https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-  | gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg
-CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
-case "$CODENAME" in
-  oracular|plucky|questing) CODENAME="noble" ;;
+# Never substitute another release's packages or mistake an older
+# client for the requested server. 26.04 ships PostgreSQL 18 natively.
+# Older supported LTS hosts use PGDG for their own release only.
+unset ID VERSION_ID VERSION_CODENAME
+. /etc/os-release
+case "${ID:-}:${VERSION_ID:-}:${VERSION_CODENAME:-}" in
+  ubuntu:26.04:resolute) USE_PGDG=false ;;
+  ubuntu:24.04:noble|ubuntu:22.04:jammy) USE_PGDG=true ;;
+  *) echo "PostgreSQL 18 requires Ubuntu 22.04, 24.04 or 26.04 LTS; complete the OS upgrade first." >&2; exit 1 ;;
 esac
-echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${CODENAME}-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list
-INSTALL_DB_POSTGRES18
-        then
-            log_warn "db.postgres18: install command failed: mkdir -p /etc/apt/keyrings"
-            # Optional-module failures are warnings on a default install, but a
-            # module the user explicitly named with --only had exactly one job:
-            # propagate the failure instead of reporting phase success (#373).
-            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
-                && acfs_module_explicitly_selected "db.postgres18"; then
-              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
-              return 1
-            fi
-            if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "install command failed: mkdir -p /etc/apt/keyrings"
-            elif type -t state_tool_skip >/dev/null 2>&1; then
-              state_tool_skip "db.postgres18"
-            fi
-            return 0
-        fi
+if [[ "$USE_PGDG" == true ]]; then
+  # Keep existing custom repository configuration intact. An old or
+  # conflicting pgdg.list needs explicit review, not silent retargeting.
+  PGDG_SOURCE="deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main"
+  for path in /etc/apt /etc/apt/keyrings /etc/apt/sources.list.d /etc/apt/keyrings/postgresql.gpg /etc/apt/sources.list.d/pgdg.list; do
+    if [[ -L "$path" ]]; then
+      echo "Refusing symlinked PostgreSQL repository path: $path" >&2
+      exit 1
     fi
-    if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 update (root)"
-    else
-        if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
-apt-get -o DPkg::Lock::Timeout=120 update
-INSTALL_DB_POSTGRES18
-        then
-            log_warn "db.postgres18: install command failed: apt-get -o DPkg::Lock::Timeout=120 update"
-            # Optional-module failures are warnings on a default install, but a
-            # module the user explicitly named with --only had exactly one job:
-            # propagate the failure instead of reporting phase success (#373).
-            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
-                && acfs_module_explicitly_selected "db.postgres18"; then
-              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
-              return 1
-            fi
-            if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "install command failed: apt-get -o DPkg::Lock::Timeout=120 update"
-            elif type -t state_tool_skip >/dev/null 2>&1; then
-              state_tool_skip "db.postgres18"
-            fi
-            return 0
-        fi
+  done
+  if [[ -e /etc/apt/sources.list.d/pgdg.list ]]; then
+    if [[ ! -f /etc/apt/sources.list.d/pgdg.list ]] ||
+       [[ "$(stat -c %h /etc/apt/sources.list.d/pgdg.list)" != 1 ]] ||
+       [[ "$(cat /etc/apt/sources.list.d/pgdg.list)" != "$PGDG_SOURCE" ]]; then
+      echo "Existing pgdg.list differs from this release's repository; review it before retrying." >&2
+      exit 1
     fi
-    if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18 (root)"
-    else
-        if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
-apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18
+  fi
+  if [[ -e /etc/apt/keyrings/postgresql.gpg ]] &&
+     { [[ ! -f /etc/apt/keyrings/postgresql.gpg ]] ||
+       [[ "$(stat -c %h /etc/apt/keyrings/postgresql.gpg)" != 1 ]]; }; then
+    echo "Refusing non-regular or linked PostgreSQL keyring." >&2
+    exit 1
+  fi
+  install -d -m 0755 /etc/apt/keyrings /etc/apt/sources.list.d
+  if [[ ! -s /etc/apt/keyrings/postgresql.gpg ]]; then
+    # Stage the complete key before publication; no curl|interpreter.
+    # Failed staging is retained for inspection, never accepted by APT.
+    PGDG_KEY=$(mktemp /etc/apt/keyrings/.acfs-postgresql.XXXXXX)
+    curl -q --proto '=https' --proto-redir '=https' -fsSL --connect-timeout 15 --max-time 60 \
+      https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      | gpg --batch --dearmor > "$PGDG_KEY"
+    test -s "$PGDG_KEY"
+    chmod 0644 "$PGDG_KEY"
+    mv -T "$PGDG_KEY" /etc/apt/keyrings/postgresql.gpg
+  fi
+  if [[ ! -e /etc/apt/sources.list.d/pgdg.list ]]; then
+    PGDG_LIST=$(mktemp /etc/apt/sources.list.d/.acfs-pgdg.XXXXXX)
+    printf '%s\n' "$PGDG_SOURCE" > "$PGDG_LIST"
+    chmod 0644 "$PGDG_LIST"
+    mv -T "$PGDG_LIST" /etc/apt/sources.list.d/pgdg.list
+  fi
+fi
+apt-get -o DPkg::Lock::Timeout=120 -o APT::Update::Error-Mode=any update
+# Do not resolve an incompatible PGDG/native mix by removing packages.
+apt-get -o DPkg::Lock::Timeout=120 --no-remove install -y postgresql-18 postgresql-client-18
 INSTALL_DB_POSTGRES18
         then
-            log_warn "db.postgres18: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18"
+            log_warn "db.postgres18: install command failed: unset ID VERSION_ID VERSION_CODENAME"
             # Optional-module failures are warnings on a default install, but a
             # module the user explicitly named with --only had exactly one job:
             # propagate the failure instead of reporting phase success (#373).
@@ -439,7 +435,7 @@ INSTALL_DB_POSTGRES18
               return 1
             fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18"
+              record_skipped_tool "db.postgres18" "install command failed: unset ID VERSION_ID VERSION_CODENAME"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "db.postgres18"
             fi
@@ -449,13 +445,18 @@ INSTALL_DB_POSTGRES18
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: psql --version (root)"
+        log_info "dry-run: verify: for package in postgresql-18 postgresql-client-18; do (root)"
     else
         if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
-psql --version
+for package in postgresql-18 postgresql-client-18; do
+  package_status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null) || exit 1
+  test "$package_status" = installed || exit 1
+done
+/usr/lib/postgresql/18/bin/postgres --version | grep -E '^postgres \(PostgreSQL\) 18\.' || exit 1
+/usr/lib/postgresql/18/bin/psql --version | grep -E '^psql \(PostgreSQL\) 18\.'
 INSTALL_DB_POSTGRES18
         then
-            log_warn "db.postgres18: verify failed: psql --version"
+            log_warn "db.postgres18: verify failed: for package in postgresql-18 postgresql-client-18; do"
             # Optional-module failures are warnings on a default install, but a
             # module the user explicitly named with --only had exactly one job:
             # propagate the failure instead of reporting phase success (#373).
@@ -465,7 +466,7 @@ INSTALL_DB_POSTGRES18
               return 1
             fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "verify failed: psql --version"
+              record_skipped_tool "db.postgres18" "verify failed: for package in postgresql-18 postgresql-client-18; do"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "db.postgres18"
             fi

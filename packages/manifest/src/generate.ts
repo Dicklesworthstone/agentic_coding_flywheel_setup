@@ -2115,7 +2115,10 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
   lines.push("declare -gA ACFS_MODULE_INSTALLED_CHECK=(");
   for (const module of orderedModules) {
     if (module.installed_check?.command) {
-      lines.push(`  ['${module.id}']="${escapeBash(module.installed_check.command)}"`);
+      // This is executable source, not display metadata: flattening newlines
+      // changes comments, loops, functions and heredocs. A literal shell word
+      // preserves every byte without executing substitutions while sourcing.
+      lines.push(`  ['${module.id}']=${shellQuote(module.installed_check.command)}`);
     }
   }
   lines.push(")");

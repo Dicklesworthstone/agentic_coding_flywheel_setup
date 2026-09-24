@@ -1437,29 +1437,84 @@ modules:
     dependencies:
       - base.system
     installed_check:
-      run_as: current
-      command: "command -v psql"
+      run_as: root
+      command: |
+        for package in postgresql-18 postgresql-client-18; do
+          package_status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null) || exit 1
+          test "$package_status" = installed || exit 1
+        done
+        /usr/lib/postgresql/18/bin/postgres --version | grep -Eq '^postgres \(PostgreSQL\) 18\.'
+        /usr/lib/postgresql/18/bin/psql --version | grep -Eq '^psql \(PostgreSQL\) 18\.'
     install:
       - |
-        mkdir -p /etc/apt/keyrings
-        CURL_ARGS=(-q -fsSL)
-        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
-        fi
-        curl "${CURL_ARGS[@]}" https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-          | gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg
-        CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
-        case "$CODENAME" in
-          oracular|plucky|questing) CODENAME="noble" ;;
+        # Never substitute another release's packages or mistake an older
+        # client for the requested server. 26.04 ships PostgreSQL 18 natively.
+        # Older supported LTS hosts use PGDG for their own release only.
+        unset ID VERSION_ID VERSION_CODENAME
+        . /etc/os-release
+        case "${ID:-}:${VERSION_ID:-}:${VERSION_CODENAME:-}" in
+          ubuntu:26.04:resolute) USE_PGDG=false ;;
+          ubuntu:24.04:noble|ubuntu:22.04:jammy) USE_PGDG=true ;;
+          *) echo "PostgreSQL 18 requires Ubuntu 22.04, 24.04 or 26.04 LTS; complete the OS upgrade first." >&2; exit 1 ;;
         esac
-        echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${CODENAME}-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list
-      - apt-get -o DPkg::Lock::Timeout=120 update
-      - apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18
+        if [[ "$USE_PGDG" == true ]]; then
+          # Keep existing custom repository configuration intact. An old or
+          # conflicting pgdg.list needs explicit review, not silent retargeting.
+          PGDG_SOURCE="deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main"
+          for path in /etc/apt /etc/apt/keyrings /etc/apt/sources.list.d /etc/apt/keyrings/postgresql.gpg /etc/apt/sources.list.d/pgdg.list; do
+            if [[ -L "$path" ]]; then
+              echo "Refusing symlinked PostgreSQL repository path: $path" >&2
+              exit 1
+            fi
+          done
+          if [[ -e /etc/apt/sources.list.d/pgdg.list ]]; then
+            if [[ ! -f /etc/apt/sources.list.d/pgdg.list ]] ||
+               [[ "$(stat -c %h /etc/apt/sources.list.d/pgdg.list)" != 1 ]] ||
+               [[ "$(cat /etc/apt/sources.list.d/pgdg.list)" != "$PGDG_SOURCE" ]]; then
+              echo "Existing pgdg.list differs from this release's repository; review it before retrying." >&2
+              exit 1
+            fi
+          fi
+          if [[ -e /etc/apt/keyrings/postgresql.gpg ]] &&
+             { [[ ! -f /etc/apt/keyrings/postgresql.gpg ]] ||
+               [[ "$(stat -c %h /etc/apt/keyrings/postgresql.gpg)" != 1 ]]; }; then
+            echo "Refusing non-regular or linked PostgreSQL keyring." >&2
+            exit 1
+          fi
+          install -d -m 0755 /etc/apt/keyrings /etc/apt/sources.list.d
+          if [[ ! -s /etc/apt/keyrings/postgresql.gpg ]]; then
+            # Stage the complete key before publication; no curl|interpreter.
+            # Failed staging is retained for inspection, never accepted by APT.
+            PGDG_KEY=$(mktemp /etc/apt/keyrings/.acfs-postgresql.XXXXXX)
+            curl -q --proto '=https' --proto-redir '=https' -fsSL --connect-timeout 15 --max-time 60 \
+              https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+              | gpg --batch --dearmor > "$PGDG_KEY"
+            test -s "$PGDG_KEY"
+            chmod 0644 "$PGDG_KEY"
+            mv -T "$PGDG_KEY" /etc/apt/keyrings/postgresql.gpg
+          fi
+          if [[ ! -e /etc/apt/sources.list.d/pgdg.list ]]; then
+            PGDG_LIST=$(mktemp /etc/apt/sources.list.d/.acfs-pgdg.XXXXXX)
+            printf '%s\n' "$PGDG_SOURCE" > "$PGDG_LIST"
+            chmod 0644 "$PGDG_LIST"
+            mv -T "$PGDG_LIST" /etc/apt/sources.list.d/pgdg.list
+          fi
+        fi
+        apt-get -o DPkg::Lock::Timeout=120 -o APT::Update::Error-Mode=any update
+        # Do not resolve an incompatible PGDG/native mix by removing packages.
+        apt-get -o DPkg::Lock::Timeout=120 --no-remove install -y postgresql-18 postgresql-client-18
     verify:
-      - psql --version
+      - |
+        for package in postgresql-18 postgresql-client-18; do
+          package_status=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null) || exit 1
+          test "$package_status" = installed || exit 1
+        done
+        /usr/lib/postgresql/18/bin/postgres --version | grep -E '^postgres \(PostgreSQL\) 18\.' || exit 1
+        /usr/lib/postgresql/18/bin/psql --version | grep -E '^psql \(PostgreSQL\) 18\.'
       - systemctl status postgresql --no-pager || true
     notes:
-      - "Uses official PGDG apt repository"
+      - "Ubuntu 26.04 uses native PostgreSQL 18; Ubuntu 22.04/24.04 use their matching signed PGDG repository"
+      - "Installs server and client 18 side by side; does not migrate existing clusters, change authentication or open network access"
 
   - id: cloud.wrangler
     description: Cloudflare Wrangler CLI

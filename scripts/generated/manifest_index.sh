@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="2203545bc1beb9cce1f279841825d8d4bf988698f064d7ebbbcbef049b28197f"
+ACFS_MANIFEST_SHA256="c9e19172343a24be7ef640f33f0a5242ada10216301b8b1e9c3952b0564ac615"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -717,76 +717,129 @@ declare -gA ACFS_MODULE_DESC=(
 )
 
 declare -gA ACFS_MODULE_INSTALLED_CHECK=(
-  ['base.system']="command -v curl && command -v git && command -v jq"
-  ['base.filesystem']="test -d /data/projects && test -d ~/.acfs"
-  ['shell.zsh']="command -v zsh"
-  ['shell.omz']="test -d ~/.oh-my-zsh && test -f ~/.acfs/zsh/acfs.zshrc"
-  ['cli.modern']="command -v rg && command -v tmux && command -v fzf"
-  ['tools.lazygit']="command -v lazygit"
-  ['tools.lazydocker']="command -v lazydocker"
-  ['network.tailscale']="command -v tailscale"
-  ['network.ssh_keepalive']="# Check if ClientAliveInterval is configured (non-zero) grep -qE '^ClientAliveInterval[[:space:]]+[1-9]' /etc/ssh/sshd_config 2>/dev/null "
-  ['lang.bun']="test -x ~/.bun/bin/bun"
-  ['lang.uv']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/uv\" || test -x \"\$HOME/.local/bin/uv\""
-  ['lang.rust']="test -x ~/.cargo/bin/cargo"
-  ['lang.go']="command -v go"
-  ['lang.nvm']="test -d ~/.nvm && ls ~/.nvm/versions/node/ 2>/dev/null | grep -q ."
-  ['tools.atuin']="test -x ~/.atuin/bin/atuin && test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/atuin\" && grep -Fq \"agent hook integration disabled by ACFS\" \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/atuin\""
-  ['tools.zoxide']="command -v zoxide"
-  ['tools.ast_grep']="command -v sg"
-  ['agents.claude']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/claude\" || test -x \"\$HOME/.local/bin/claude\""
-  ['agents.codex']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/codex\" || test -x \"\$HOME/.local/bin/codex\""
-  ['agents.gemini']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/gemini\" || test -x \"\$HOME/.local/bin/gemini\""
-  ['agents.antigravity']="target_bin=\"\${ACFS_BIN_DIR:-\$HOME/.local/bin}\"; test -x \"\$target_bin/agy\" && test -x \"\$target_bin/agy-locked\" && test -x \"\$target_bin/agy-real\" && test -x \"\$target_bin/gmi\""
-  ['agents.opencode']="command -v opencode"
-  ['agents.omp']="command -v omp"
-  ['agents.grok']="command -v grok"
-  ['tools.vault']="command -v vault"
-  ['db.postgres18']="command -v psql"
-  ['cloud.wrangler']="command -v wrangler"
-  ['cloud.supabase']="command -v supabase"
-  ['cloud.vercel']="command -v vercel"
-  ['stack.ntm']="command -v ntm"
-  ['stack.mcp_agent_mail']="command -v am"
-  ['stack.meta_skill']="command -v ms"
-  ['stack.automated_plan_reviser']="command -v apr"
-  ['stack.jeffreysprompts']="command -v jfp"
-  ['stack.process_triage']="command -v pt"
-  ['stack.ultimate_bug_scanner']="command -v ubs"
-  ['stack.beads_rust']="command -v br"
-  ['stack.beads_viewer']="command -v bv"
-  ['stack.cass']="command -v cass"
-  ['stack.cm']="command -v cm"
-  ['stack.caam']="command -v caam"
-  ['stack.slb']="command -v slb"
-  ['stack.dcg']="command -v dcg"
-  ['stack.ru']="command -v ru"
-  ['stack.brenner_bot']="command -v brenner"
-  ['stack.rch']="command -v rch"
-  ['stack.wezterm_automata']="command -v wa"
-  ['stack.srps']="command -v sysmoni && systemctl is-active ananicy-cpp >/dev/null 2>&1"
-  ['stack.frankensearch']="command -v fsfs"
-  ['stack.storage_ballast_helper']="command -v sbh"
-  ['stack.cross_agent_session_resumer']="command -v casr"
-  ['stack.doodlestein_self_releaser']="command -v dsr"
-  ['stack.agent_settings_backup']="command -v asb"
-  ['stack.pcr']="claude_settings_has_command_hook() {   local settings_file=\"\${1:-}\"   local command_pattern=\"\${2:-}\"   local jq_bin=\"\"    [[ -n \"\$settings_file\" && -n \"\$command_pattern\" ]] || return 1   [[ -f \"\$settings_file\" ]] || return 1   for jq_bin in /usr/bin/jq /bin/jq /usr/local/bin/jq /usr/local/sbin/jq /usr/sbin/jq /sbin/jq; do     [[ -x \"\$jq_bin\" ]] && break   done   [[ -x \"\$jq_bin\" ]] || return 1    \"\$jq_bin\" -e --arg pattern \"\$command_pattern\" '     def command_hook_matches:       type == \"object\"       and ((.type? // \"command\") == \"command\")       and ((.command? // \"\") | strings | test(\$pattern));     def event_entry_matches:       if type == \"object\" and (.hooks? | type) == \"array\" then         any(.hooks[]?; command_hook_matches)       else         command_hook_matches       end;     def hook_event_entries:       if (.hooks? | type) == \"object\" then         .hooks | to_entries[]? | .value | arrays | .[]?       elif (.hooks? | type) == \"array\" then         .hooks[]?       else         empty       end;     any(hook_event_entries; event_entry_matches)   ' \"\$settings_file\" >/dev/null 2>&1 }  target_home=\"\${TARGET_HOME:-\$HOME}\" hook_script=\"\$target_home/.local/bin/claude-post-compact-reminder\" settings=\"\$target_home/.claude/settings.json\" alt_settings=\"\$target_home/.config/claude/settings.json\" pcr_command_pattern='(^|[[:space:]/])claude-post-compact-reminder([[:space:]]|\$)'  test -x \"\$hook_script\" || exit 1  claude_settings_has_command_hook \"\$settings\" \"\$pcr_command_pattern\" ||   claude_settings_has_command_hook \"\$alt_settings\" \"\$pcr_command_pattern\" "
-  ['stack.eidetic_engine_cli']="command -v ee"
-  ['stack.franken_markdown']="command -v fmd"
-  ['stack.pi_agent_rust']="command -v pi"
-  ['stack.power_failure_resumer']="command -v pfr"
-  ['utils.giil']="command -v giil"
-  ['utils.csctf']="command -v csctf"
-  ['utils.xf']="command -v xf"
-  ['utils.toon_rust']="command -v toon"
-  ['utils.rano']="command -v rano"
-  ['utils.mdwb']="command -v mdwb"
-  ['utils.s2p']="command -v s2p"
-  ['utils.rust_proxy']="command -v rust_proxy"
-  ['utils.aadc']="command -v aadc"
-  ['utils.caut']="command -v caut"
-  ['acfs.workspace']="test -d /data/projects/my_first_project"
-  ['acfs.nightly']="systemctl --user is-enabled acfs-nightly-update.timer 2>/dev/null"
+  ['base.system']='command -v curl && command -v git && command -v jq'
+  ['base.filesystem']='test -d /data/projects && test -d ~/.acfs'
+  ['shell.zsh']='command -v zsh'
+  ['shell.omz']='test -d ~/.oh-my-zsh && test -f ~/.acfs/zsh/acfs.zshrc'
+  ['cli.modern']='command -v rg && command -v tmux && command -v fzf'
+  ['tools.lazygit']='command -v lazygit'
+  ['tools.lazydocker']='command -v lazydocker'
+  ['network.tailscale']='command -v tailscale'
+  ['network.ssh_keepalive']='# Check if ClientAliveInterval is configured (non-zero)
+grep -qE '\''^ClientAliveInterval[[:space:]]+[1-9]'\'' /etc/ssh/sshd_config 2>/dev/null
+'
+  ['lang.bun']='test -x ~/.bun/bin/bun'
+  ['lang.uv']='test -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/uv" || test -x "$HOME/.local/bin/uv"'
+  ['lang.rust']='test -x ~/.cargo/bin/cargo'
+  ['lang.go']='command -v go'
+  ['lang.nvm']='test -d ~/.nvm && ls ~/.nvm/versions/node/ 2>/dev/null | grep -q .'
+  ['tools.atuin']='test -x ~/.atuin/bin/atuin && test -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/atuin" && grep -Fq "agent hook integration disabled by ACFS" "${ACFS_BIN_DIR:-$HOME/.local/bin}/atuin"'
+  ['tools.zoxide']='command -v zoxide'
+  ['tools.ast_grep']='command -v sg'
+  ['agents.claude']='test -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/claude" || test -x "$HOME/.local/bin/claude"'
+  ['agents.codex']='test -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/codex" || test -x "$HOME/.local/bin/codex"'
+  ['agents.gemini']='test -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/gemini" || test -x "$HOME/.local/bin/gemini"'
+  ['agents.antigravity']='target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"; test -x "$target_bin/agy" && test -x "$target_bin/agy-locked" && test -x "$target_bin/agy-real" && test -x "$target_bin/gmi"'
+  ['agents.opencode']='command -v opencode'
+  ['agents.omp']='command -v omp'
+  ['agents.grok']='command -v grok'
+  ['tools.vault']='command -v vault'
+  ['db.postgres18']='for package in postgresql-18 postgresql-client-18; do
+  package_status=$(dpkg-query -W -f='\''${db:Status-Status}'\'' "$package" 2>/dev/null) || exit 1
+  test "$package_status" = installed || exit 1
+done
+/usr/lib/postgresql/18/bin/postgres --version | grep -Eq '\''^postgres \(PostgreSQL\) 18\.'\''
+/usr/lib/postgresql/18/bin/psql --version | grep -Eq '\''^psql \(PostgreSQL\) 18\.'\''
+'
+  ['cloud.wrangler']='command -v wrangler'
+  ['cloud.supabase']='command -v supabase'
+  ['cloud.vercel']='command -v vercel'
+  ['stack.ntm']='command -v ntm'
+  ['stack.mcp_agent_mail']='command -v am'
+  ['stack.meta_skill']='command -v ms'
+  ['stack.automated_plan_reviser']='command -v apr'
+  ['stack.jeffreysprompts']='command -v jfp'
+  ['stack.process_triage']='command -v pt'
+  ['stack.ultimate_bug_scanner']='command -v ubs'
+  ['stack.beads_rust']='command -v br'
+  ['stack.beads_viewer']='command -v bv'
+  ['stack.cass']='command -v cass'
+  ['stack.cm']='command -v cm'
+  ['stack.caam']='command -v caam'
+  ['stack.slb']='command -v slb'
+  ['stack.dcg']='command -v dcg'
+  ['stack.ru']='command -v ru'
+  ['stack.brenner_bot']='command -v brenner'
+  ['stack.rch']='command -v rch'
+  ['stack.wezterm_automata']='command -v wa'
+  ['stack.srps']='command -v sysmoni && systemctl is-active ananicy-cpp >/dev/null 2>&1'
+  ['stack.frankensearch']='command -v fsfs'
+  ['stack.storage_ballast_helper']='command -v sbh'
+  ['stack.cross_agent_session_resumer']='command -v casr'
+  ['stack.doodlestein_self_releaser']='command -v dsr'
+  ['stack.agent_settings_backup']='command -v asb'
+  ['stack.pcr']='claude_settings_has_command_hook() {
+  local settings_file="${1:-}"
+  local command_pattern="${2:-}"
+  local jq_bin=""
+
+  [[ -n "$settings_file" && -n "$command_pattern" ]] || return 1
+  [[ -f "$settings_file" ]] || return 1
+  for jq_bin in /usr/bin/jq /bin/jq /usr/local/bin/jq /usr/local/sbin/jq /usr/sbin/jq /sbin/jq; do
+    [[ -x "$jq_bin" ]] && break
+  done
+  [[ -x "$jq_bin" ]] || return 1
+
+  "$jq_bin" -e --arg pattern "$command_pattern" '\''
+    def command_hook_matches:
+      type == "object"
+      and ((.type? // "command") == "command")
+      and ((.command? // "") | strings | test($pattern));
+    def event_entry_matches:
+      if type == "object" and (.hooks? | type) == "array" then
+        any(.hooks[]?; command_hook_matches)
+      else
+        command_hook_matches
+      end;
+    def hook_event_entries:
+      if (.hooks? | type) == "object" then
+        .hooks | to_entries[]? | .value | arrays | .[]?
+      elif (.hooks? | type) == "array" then
+        .hooks[]?
+      else
+        empty
+      end;
+    any(hook_event_entries; event_entry_matches)
+  '\'' "$settings_file" >/dev/null 2>&1
+}
+
+target_home="${TARGET_HOME:-$HOME}"
+hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+settings="$target_home/.claude/settings.json"
+alt_settings="$target_home/.config/claude/settings.json"
+pcr_command_pattern='\''(^|[[:space:]/])claude-post-compact-reminder([[:space:]]|$)'\''
+
+test -x "$hook_script" || exit 1
+
+claude_settings_has_command_hook "$settings" "$pcr_command_pattern" ||
+  claude_settings_has_command_hook "$alt_settings" "$pcr_command_pattern"
+'
+  ['stack.eidetic_engine_cli']='command -v ee'
+  ['stack.franken_markdown']='command -v fmd'
+  ['stack.pi_agent_rust']='command -v pi'
+  ['stack.power_failure_resumer']='command -v pfr'
+  ['utils.giil']='command -v giil'
+  ['utils.csctf']='command -v csctf'
+  ['utils.xf']='command -v xf'
+  ['utils.toon_rust']='command -v toon'
+  ['utils.rano']='command -v rano'
+  ['utils.mdwb']='command -v mdwb'
+  ['utils.s2p']='command -v s2p'
+  ['utils.rust_proxy']='command -v rust_proxy'
+  ['utils.aadc']='command -v aadc'
+  ['utils.caut']='command -v caut'
+  ['acfs.workspace']='test -d /data/projects/my_first_project'
+  ['acfs.nightly']='systemctl --user is-enabled acfs-nightly-update.timer 2>/dev/null'
 )
 
 declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=(
@@ -815,7 +868,7 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=(
   ['agents.omp']="target_user"
   ['agents.grok']="target_user"
   ['tools.vault']="current"
-  ['db.postgres18']="current"
+  ['db.postgres18']="root"
   ['cloud.wrangler']="target_user"
   ['cloud.supabase']="target_user"
   ['cloud.vercel']="target_user"

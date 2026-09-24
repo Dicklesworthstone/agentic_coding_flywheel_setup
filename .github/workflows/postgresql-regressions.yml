@@ -7,11 +7,13 @@ on:
       - 'acfs.manifest.yaml'
       - 'tests/unit/test_postgresql_install.py'
       - 'packages/manifest/**'
+      - 'scripts/generated/**'
+      - 'scripts/check-manifest-drift.sh'
       - '.github/workflows/postgresql-regressions.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: postgresql-lts-${{ github.ref }}
@@ -32,30 +34,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Apply the exact reviewed PostgreSQL and serialization candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test "$(git hash-object acfs.manifest.yaml)" = 172664ed9cfcdcc238703e3d5e048482f323fb0d
-          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/647482cc7a5c9405049ba59e42aac3f39ba2c0e3 --jq .content | base64 -d | gzip -dc > "$RUNNER_TEMP/postgres.patch"
-          echo "2558b90b85f62bd7e6c5351cd7539924bfd07d2eca67cb395d21c2959e7bcbf1  $RUNNER_TEMP/postgres.patch" | sha256sum -c -
-          git apply --check --index "$RUNNER_TEMP/postgres.patch"
-          git apply --index "$RUNNER_TEMP/postgres.patch"
-          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/e65fc3271d9813aad6f899fd02fa41b8a7621950 --jq .content | base64 -d > "$RUNNER_TEMP/serialization.patch"
-          echo "2c3b9b98824747e58884927ae0ec21dd716f72e083811eb0072a61d7f7414823  $RUNNER_TEMP/serialization.patch" | sha256sum -c -
-          git apply --check --index "$RUNNER_TEMP/serialization.patch"
-          git apply --index "$RUNNER_TEMP/serialization.patch"
-          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/891585c996b2b11a75b0be0a25d1d24abf86a105 --jq .content | base64 -d > "$RUNNER_TEMP/doctor.patch"
-          echo "9ed30cb42f2b0e3355ee6b024407499246112b09f13e6af3fe03c7633a952371  $RUNNER_TEMP/doctor.patch" | sha256sum -c -
-          git apply --check --index "$RUNNER_TEMP/doctor.patch"
-          git apply --index "$RUNNER_TEMP/doctor.patch"
       - name: Install locked generator dependencies without lifecycle scripts
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Generate and verify canonical installer and metadata
+      - name: Verify the committed installer and metadata are canonical
         run: |
           set -euo pipefail
-          bun run --cwd packages/manifest generate
           bun run --cwd packages/manifest generate:diff
           bun run --cwd packages/manifest type-check
           bun test packages/manifest/src/generate.test.ts packages/manifest/src/parser.test.ts packages/manifest/src/schema.test.ts
@@ -87,54 +70,3 @@ jobs:
               '
             echo '::endgroup::'
           done
-      - name: Preserve verified source and generated Git objects without changing refs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 -B - <<'PY'
-          import base64, hashlib, json, os, pathlib, subprocess, tarfile
-          root = pathlib.Path.cwd()
-          authored = {
-              'acfs.manifest.yaml': 'c9e19172343a24be7ef640f33f0a5242ada10216301b8b1e9c3952b0564ac615',
-              'tests/unit/test_postgresql_install.py': '5f39cde0e7246b75df22f1739a457ebba602d7b59f8d71a0bbc600d696ab1cd1',
-              'docs/operations/postgresql.md': '8a6b9f9960e1926d11a40056c17b93f311ac07798eca8586ec1919b30c8749ee',
-              'packages/manifest/src/generate.ts': '631ed1e698f495d618fd9d4f8e9d0708c99c26ce3d947490ab645a24bd3e7476',
-              'packages/manifest/src/generate.test.ts': 'd629df2976c1de0ff0297592206b8cd142366c789514e5c208dc53dde2afe6ca',
-          }
-          paths = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], text=True).splitlines()
-          if not set(authored).issubset(paths):
-              raise SystemExit('Missing reviewed source changes')
-          for path in paths:
-              if path not in authored and not (
-                  path.startswith('scripts/generated/') and path.endswith('.sh') or
-                  path.startswith('apps/web/lib/generated/') and path.endswith('.ts')):
-                  raise SystemExit('Unexpected candidate path: ' + path)
-          objects = []
-          for path in sorted(paths):
-              data = (root / path).read_bytes()
-              digest = hashlib.sha256(data).hexdigest()
-              if path in authored and digest != authored[path]:
-                  raise SystemExit('Reviewed source changed: ' + path)
-              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
-              payload = json.dumps({'encoding': 'base64', 'content': base64.b64encode(data).decode()})
-              response = subprocess.check_output(['gh', 'api', '--method', 'POST',
-                  'repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs', '--input', '-'],
-                  input=payload, text=True)
-              if json.loads(response)['sha'] != expected:
-                  raise SystemExit('Uploaded blob mismatch: ' + path)
-              mode = subprocess.check_output(['git', 'ls-files', '-s', '--', path], text=True).split()[0]
-              objects.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': expected, 'sha256': digest})
-          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'postgres-verified'
-          output.mkdir()
-          (output / 'objects.json').write_text(json.dumps(objects, indent=2) + '\n')
-          with tarfile.open(output / 'candidate-files.tar.gz', 'w:gz') as archive:
-              for path in sorted(paths):
-                  archive.add(root / path, arcname=path, recursive=False)
-          print(json.dumps(objects, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: postgres-candidate-${{ github.sha }}-${{ matrix.runner }}
-          path: ${{ runner.temp }}/postgres-verified/
-          retention-days: 1
-          if-no-files-found: error

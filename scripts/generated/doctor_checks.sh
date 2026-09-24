@@ -397,7 +397,7 @@ declare -a MANIFEST_CHECKS=(
     "agents.omp	oh-my-pi (omp) — community fork of the Pi coding agent	omp --version || omp --help	optional	target_user"
     "agents.grok	Grok CLI (xAI coding agent)	grok --version || grok --help	optional	target_user"
     "tools.vault	HashiCorp Vault CLI	vault --version	optional	root"
-    "db.postgres18.1	PostgreSQL 18	psql --version	optional	root"
+    "db.postgres18.1	PostgreSQL 18	for package in postgresql-18 postgresql-client-18; do\\n  package_status=\$(dpkg-query -W -f='\${db:Status-Status}' \"\$package\" 2>/dev/null) || exit 1\\n  test \"\$package_status\" = installed || exit 1\\ndone\\n/usr/lib/postgresql/18/bin/postgres --version | grep -E '^postgres \\\\(PostgreSQL\\\\) 18\\\\.' || exit 1\\n/usr/lib/postgresql/18/bin/psql --version | grep -E '^psql \\\\(PostgreSQL\\\\) 18\\\\.'	optional	root"
     "db.postgres18.2	PostgreSQL 18	systemctl status postgresql --no-pager	optional	root"
     "cloud.wrangler	Cloudflare Wrangler CLI	wrangler --version	optional	target_user"
     "cloud.supabase	Supabase CLI	supabase --version	optional	target_user"

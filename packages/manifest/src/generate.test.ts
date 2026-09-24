@@ -16,6 +16,7 @@ import {
   buildAgentRoster,
   findUnexpectedGeneratedPaths,
   generateAgentRosterMarkdown,
+  generateManifestIndex,
   generatedFileModeMatches,
   generateAgentRosterSummaryMarkdown,
   generateWebAgents,
@@ -144,6 +145,48 @@ describe("Generated manifest_index.sh content", () => {
     const sha256Match = manifestIndexContent.match(/ACFS_MANIFEST_SHA256="([a-f0-9]{64})"/);
     expect(sha256Match).not.toBeNull();
   });
+
+  test("installed commands round-trip exactly through the sourced generated index", () => {
+    const modules = manifest.modules.filter((module) => module.installed_check?.command);
+    const result = spawnSync("bash", ["-euo", "pipefail", "-s", "--", ...modules.map((module) => module.id)], {
+      encoding: "utf8",
+      input: manifestIndexContent + '\nfor id in "$@"; do printf "%s\\0" "${ACFS_MODULE_INSTALLED_CHECK[$id]}"; done\n',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(modules.map((module) => module.installed_check!.command + "\0").join(""));
+    for (const command of result.stdout.split("\0").slice(0, -1)) {
+      const syntax = spawnSync("bash", ["-n"], { input: command, encoding: "utf8" });
+      expect(syntax.status, syntax.stderr).toBe(0);
+    }
+  });
+
+  for (const [label, command, expectedStatus] of [
+    ["comment followed by failure", "# This comment must not hide the failed probe\nfalse\n", 1],
+    ["loop with newline separators", "for value in first second; do\n  test -n \"$value\" || exit 1\ndone\n", 0],
+    ["function body with a failing probe", "probe() {\n  false\n}\nprobe\n", 1],
+    ["quoted heredoc and substitutions", "cat <<'LITERAL' >/dev/null\n$HOME `echo unsafe` $(echo unsafe) \\\nLITERAL\ntest \"a'b\" = \"a'b\"\n", 0],
+  ] as const) {
+    test(`installed-check dispatch preserves ${label}`, () => {
+      const fixture = {
+        ...manifest,
+        modules: [{
+          ...manifest.modules[0]!, id: "base.fixture", dependencies: [],
+          installed_check: { run_as: "current" as const, command },
+        }],
+      } satisfies Manifest;
+      const generated = generateManifestIndex(fixture, "a".repeat(64));
+      const result = spawnSync("bash", ["-euo", "pipefail", "-s", "--",
+        resolve(PROJECT_ROOT, "scripts/lib/install_helpers.sh")], {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH || "/usr/bin:/bin", HOME: process.env.HOME || "/tmp" },
+        input: 'source "$1"\n' + generated + '\nacfs_module_is_installed base.fixture\n',
+      });
+      expect(result.status, result.stderr).toBe(expectedStatus);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+    });
+  }
 
   test("contains ACFS_MODULES_IN_ORDER array", () => {
     expect(manifestIndexContent).toContain("ACFS_MODULES_IN_ORDER=(");
