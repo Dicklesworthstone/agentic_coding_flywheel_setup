@@ -1,0 +1,130 @@
+name: PostgreSQL LTS Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'acfs.manifest.yaml'
+      - 'tests/unit/test_postgresql_install.py'
+      - 'packages/manifest/**'
+      - '.github/workflows/postgresql-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: postgresql-lts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Apply the exact reviewed PostgreSQL candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git hash-object acfs.manifest.yaml)" = 172664ed9cfcdcc238703e3d5e048482f323fb0d
+          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/647482cc7a5c9405049ba59e42aac3f39ba2c0e3 --jq .content | base64 -d | gzip -dc > "$RUNNER_TEMP/postgres.patch"
+          echo "2558b90b85f62bd7e6c5351cd7539924bfd07d2eca67cb395d21c2959e7bcbf1  $RUNNER_TEMP/postgres.patch" | sha256sum -c -
+          git apply --check --index "$RUNNER_TEMP/postgres.patch"
+          git apply --index "$RUNNER_TEMP/postgres.patch"
+      - name: Install locked generator dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Generate and verify canonical installer and metadata
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/manifest generate
+          bun run --cwd packages/manifest generate:diff
+          bun run --cwd packages/manifest type-check
+          bun test packages/manifest/src/generate.test.ts packages/manifest/src/parser.test.ts packages/manifest/src/schema.test.ts
+          bash scripts/check-manifest-drift.sh --json
+          bash -n scripts/generated/install_db.sh
+          shellcheck scripts/generated/install_db.sh
+      - name: Execute authored provisioning and installed-check regressions without skips
+        run: |
+          python3 -B - <<'PY'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_postgresql_install.py')
+          expected = suite.countTestCases()
+          if expected < 18:
+              raise SystemExit('Expected at least 18 PostgreSQL provisioning regressions')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
+          PY
+      - name: Install and query real PostgreSQL packages in fresh LTS containers
+        run: |
+          set -euo pipefail
+          for release in 22.04 24.04 26.04; do
+            echo "::group::Actual Ubuntu ${release} PostgreSQL installation and SQL round trip"
+            timeout 360 docker run --rm \
+              -e DEBIAN_FRONTEND=noninteractive -e ACFS_POSTGRES_DISPOSABLE=1 \
+              -v "$PWD:/work:ro" "ubuntu:${release}" /bin/bash -ec '
+                apt-get -o APT::Update::Error-Mode=any update
+                apt-get install -y python3 curl ca-certificates gnupg
+                python3 -B /work/tests/unit/test_postgresql_install.py --live-package
+              '
+            echo '::endgroup::'
+          done
+      - name: Preserve verified source and generated Git objects without changing refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -B - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, tarfile
+          root = pathlib.Path.cwd()
+          authored = {
+              'acfs.manifest.yaml': 'f7e6763eae358f9be998088b29abcaed9b3a3db0f5979081f1298d1645b089b3',
+              'tests/unit/test_postgresql_install.py': 'e122087f8a7392d1c1be92b231c725186d2c2bb4176f001900d0aa9436ab4e6c',
+              'docs/operations/postgresql.md': '8a6b9f9960e1926d11a40056c17b93f311ac07798eca8586ec1919b30c8749ee',
+          }
+          paths = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], text=True).splitlines()
+          if not set(authored).issubset(paths):
+              raise SystemExit('Missing reviewed source changes')
+          for path in paths:
+              if path not in authored and not (
+                  path.startswith('scripts/generated/') and path.endswith('.sh') or
+                  path.startswith('apps/web/lib/generated/') and path.endswith('.ts')):
+                  raise SystemExit('Unexpected candidate path: ' + path)
+          objects = []
+          for path in sorted(paths):
+              data = (root / path).read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              if path in authored and digest != authored[path]:
+                  raise SystemExit('Reviewed source changed: ' + path)
+              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              payload = json.dumps({'encoding': 'base64', 'content': base64.b64encode(data).decode()})
+              response = subprocess.check_output(['gh', 'api', '--method', 'POST',
+                  'repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs', '--input', '-'],
+                  input=payload, text=True)
+              if json.loads(response)['sha'] != expected:
+                  raise SystemExit('Uploaded blob mismatch: ' + path)
+              mode = subprocess.check_output(['git', 'ls-files', '-s', '--', path], text=True).split()[0]
+              objects.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': expected, 'sha256': digest})
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'postgres-verified'
+          output.mkdir()
+          (output / 'objects.json').write_text(json.dumps(objects, indent=2) + '\n')
+          with tarfile.open(output / 'candidate-files.tar.gz', 'w:gz') as archive:
+              for path in sorted(paths):
+                  archive.add(root / path, arcname=path, recursive=False)
+          print(json.dumps(objects, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: postgres-candidate-${{ github.sha }}-${{ matrix.runner }}
+          path: ${{ runner.temp }}/postgres-verified/
+          retention-days: 1
+          if-no-files-found: error
