@@ -46,6 +46,10 @@ jobs:
           echo "2c3b9b98824747e58884927ae0ec21dd716f72e083811eb0072a61d7f7414823  $RUNNER_TEMP/serialization.patch" | sha256sum -c -
           git apply --check --index "$RUNNER_TEMP/serialization.patch"
           git apply --index "$RUNNER_TEMP/serialization.patch"
+          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/891585c996b2b11a75b0be0a25d1d24abf86a105 --jq .content | base64 -d > "$RUNNER_TEMP/doctor.patch"
+          echo "9ed30cb42f2b0e3355ee6b024407499246112b09f13e6af3fe03c7633a952371  $RUNNER_TEMP/doctor.patch" | sha256sum -c -
+          git apply --check --index "$RUNNER_TEMP/doctor.patch"
+          git apply --index "$RUNNER_TEMP/doctor.patch"
       - name: Install locked generator dependencies without lifecycle scripts
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Generate and verify canonical installer and metadata
@@ -64,8 +68,8 @@ jobs:
           import sys, unittest
           suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_postgresql_install.py')
           expected = suite.countTestCases()
-          if expected < 20:
-              raise SystemExit('Expected at least 20 PostgreSQL provisioning regressions')
+          if expected < 22:
+              raise SystemExit('Expected at least 22 PostgreSQL provisioning regressions')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
@@ -91,8 +95,8 @@ jobs:
           import base64, hashlib, json, os, pathlib, subprocess, tarfile
           root = pathlib.Path.cwd()
           authored = {
-              'acfs.manifest.yaml': 'f7e6763eae358f9be998088b29abcaed9b3a3db0f5979081f1298d1645b089b3',
-              'tests/unit/test_postgresql_install.py': '966c5f7a530ec1f5331f05c936f57e68718c4b5d3e2e348b86471971907c7c63',
+              'acfs.manifest.yaml': 'c9e19172343a24be7ef640f33f0a5242ada10216301b8b1e9c3952b0564ac615',
+              'tests/unit/test_postgresql_install.py': '5f39cde0e7246b75df22f1739a457ebba602d7b59f8d71a0bbc600d696ab1cd1',
               'docs/operations/postgresql.md': '8a6b9f9960e1926d11a40056c17b93f311ac07798eca8586ec1919b30c8749ee',
               'packages/manifest/src/generate.ts': '631ed1e698f495d618fd9d4f8e9d0708c99c26ce3d947490ab645a24bd3e7476',
               'packages/manifest/src/generate.test.ts': 'd629df2976c1de0ff0297592206b8cd142366c789514e5c208dc53dde2afe6ca',
