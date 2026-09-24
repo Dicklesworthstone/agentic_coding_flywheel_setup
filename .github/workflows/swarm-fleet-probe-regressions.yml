@@ -1,0 +1,64 @@
+name: Swarm Fleet Probe Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/swarm_fleet_probe.sh'
+      - 'scripts/lib/swarm_inventory.sh'
+      - 'scripts/lib/capacity.sh'
+      - 'tests/unit/test_swarm_fleet_probe.py'
+      - '.github/workflows/swarm-fleet-probe-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swarm-fleet-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fleet-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check runtime syntax and ShellCheck
+        run: |
+          bash -n scripts/lib/swarm_fleet_probe.sh
+          shellcheck scripts/lib/swarm_fleet_probe.sh
+      - name: Run bounded collector and canonical validator regressions without skips
+        run: |
+          python3 -B - <<'PY'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_fleet_probe.py')
+          expected = suite.countTestCases()
+          if expected < 31:
+              raise SystemExit('Expected at least 31 fleet probe regressions')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
+          PY
+      - name: Install loopback SSH test server on the disposable runner
+        run: |
+          if ! test -x /usr/sbin/sshd; then
+            sudo apt-get update -qq
+            sudo apt-get install -y openssh-server
+          fi
+      - name: Verify real OpenSSH transport and conservative partial results
+        run: python3 -B tests/unit/test_swarm_fleet_probe.py --live-ssh
+      - name: Run existing inventory regressions
+        run: |
+          python3 -B -m unittest discover -s tests/unit -p 'test_swarm_inventory_*.py' -v
+          bash tests/unit/test_swarm_inventory.sh
+      - name: Capture exact tracked source for reproducible verification
+        if: always()
+        run: git archive --format=tar.gz --output="$RUNNER_TEMP/acfs-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acfs-fleet-source-${{ github.sha }}
+          path: ${{ runner.temp }}/acfs-source.tar.gz
+          retention-days: 1
