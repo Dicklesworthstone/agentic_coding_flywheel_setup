@@ -4,10 +4,20 @@ on:
   push:
     branches: [main]
     paths:
+      - 'install.sh'
       - 'scripts/lib/swarm_fleet_probe.sh'
       - 'scripts/lib/swarm_inventory.sh'
       - 'scripts/lib/capacity.sh'
+      - 'scripts/lib/doctor.sh'
+      - 'scripts/lib/update.sh'
+      - 'scripts/check-manifest-drift.sh'
+      - 'scripts/generated/**'
+      - 'packages/manifest/**'
+      - 'acfs.manifest.yaml'
+      - 'checksums.yaml'
+      - 'bun.lock'
       - 'tests/unit/test_swarm_fleet_probe.py'
+      - 'tests/unit/test_swarm_inventory*'
       - '.github/workflows/swarm-fleet-probe-regressions.yml'
   workflow_dispatch:
 
@@ -25,35 +35,51 @@ jobs:
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install bounded-probe and loopback-test dependencies
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install test dependencies without package lifecycle scripts
         run: |
+          set -euo pipefail
+          bun install --frozen-lockfile --ignore-scripts
           if ! command -v shellcheck || ! command -v jq || ! test -x /usr/sbin/sshd; then
             sudo apt-get update -qq
             sudo apt-get install -y openssh-server shellcheck jq
           fi
+      - name: Verify committed runtime distribution and checksums without regeneration
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/manifest generate:diff
+          bun run --cwd packages/manifest type-check
+          bun test packages/manifest/src/generate.test.ts
+          bash scripts/check-manifest-drift.sh --json
       - name: Check runtime syntax and ShellCheck
         run: |
-          bash -n scripts/lib/swarm_fleet_probe.sh
-          shellcheck scripts/lib/swarm_fleet_probe.sh
-      - name: Run bounded collector and canonical validator regressions without skips
+          set -euo pipefail
+          for file in install.sh scripts/lib/doctor.sh scripts/lib/update.sh scripts/lib/swarm_inventory.sh scripts/lib/swarm_fleet_probe.sh scripts/check-manifest-drift.sh; do
+            bash -n "$file"
+          done
+          shellcheck install.sh scripts/lib/doctor.sh scripts/lib/update.sh scripts/lib/swarm_inventory.sh scripts/lib/swarm_fleet_probe.sh scripts/check-manifest-drift.sh
+      - name: Run collector and installed-command regressions without skips
         run: |
+          test "$(id -u)" -ne 0
           python3 -B - <<'PY'
           import sys, unittest
           suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_fleet_probe.py')
           expected = suite.countTestCases()
-          if expected < 35:
-              raise SystemExit('Expected at least 35 fleet probe regressions')
+          if expected < 40:
+              raise SystemExit('Expected at least 40 fleet and installed-command regressions')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
-      - name: Verify real OpenSSH transport and conservative partial results
+      - name: Verify actual OpenSSH through checkout and installed CLI
         run: python3 -B tests/unit/test_swarm_fleet_probe.py --live-ssh
-      - name: Run existing inventory regressions
+      - name: Run existing fleet inventory regressions
         run: |
           python3 -B -m unittest discover -s tests/unit -p 'test_swarm_inventory_*.py' -v
           bash tests/unit/test_swarm_inventory.sh

@@ -3857,6 +3857,7 @@ acfs_load_internal_checksums_data() {
         scripts/lib/swarm_calibration.sh
         scripts/lib/swarm_convergence.sh
         scripts/lib/swarm_doctor.sh
+        scripts/lib/swarm_fleet_probe.sh
         scripts/lib/swarm_inventory.sh
         scripts/lib/swarm_launch.sh
         scripts/lib/swarm_packet.sh
@@ -10829,6 +10830,7 @@ finalize() {
     try_step "Installing swarm_convergence.sh" install_asset "scripts/lib/swarm_convergence.sh" "$ACFS_HOME/scripts/lib/swarm_convergence.sh" || return 1
     try_step "Installing swarm_calibration.sh" install_asset "scripts/lib/swarm_calibration.sh" "$ACFS_HOME/scripts/lib/swarm_calibration.sh" || return 1
     try_step "Installing swarm_inventory.sh" install_asset "scripts/lib/swarm_inventory.sh" "$ACFS_HOME/scripts/lib/swarm_inventory.sh" || return 1
+    try_step "Installing swarm_fleet_probe.sh" install_asset "scripts/lib/swarm_fleet_probe.sh" "$ACFS_HOME/scripts/lib/swarm_fleet_probe.sh" || return 1
     try_step "Installing landing_plane.sh" install_asset "scripts/lib/landing_plane.sh" "$ACFS_HOME/scripts/lib/landing_plane.sh" || return 1
     try_step "Installing provenance.sh" install_asset "scripts/lib/provenance.sh" "$ACFS_HOME/scripts/lib/provenance.sh" || return 1
     try_step "Installing offline_artifact_pack.sh" install_asset "scripts/lib/offline_artifact_pack.sh" "$ACFS_HOME/scripts/lib/offline_artifact_pack.sh" || return 1

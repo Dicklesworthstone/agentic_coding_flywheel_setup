@@ -5,6 +5,8 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import pwd
+import shutil
 import signal
 import stat
 import subprocess
@@ -21,6 +23,43 @@ SCRIPT = ROOT / "scripts/lib/swarm_fleet_probe.sh"
 source = SCRIPT.read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
 m = types.ModuleType("swarm_fleet_probe_test_module")
 exec(compile(source, str(SCRIPT), "exec"), m.__dict__)
+
+
+def deployed_cli(home):
+    """Exercise the actual runtime sync function, never the update dispatcher.
+
+    All destinations are inside a newly created test home. No update, install,
+    package manager, repository fetch, or system service is invoked.
+    """
+    updater = (ROOT / "scripts/lib/update.sh").read_text()
+    start, end = "sync_acfs_deployed() {", "\nsync_acfs_global_wrapper() {"
+    if updater.count(start) != 1 or updater.count(end) != 1:
+        raise AssertionError("Review the deployed-runtime function boundary")
+    function = start + updater.split(start, 1)[1].split(end, 1)[0]
+    # Limit this fixture checkout to the real public-dispatch dependency set.
+    # The unmodified sync loop must discover and install these registered paths;
+    # unrelated onboarding and shell assets are not part of this feature test.
+    checkout = home / "checkout"
+    library = checkout / "scripts/lib"
+    library.mkdir(parents=True)
+    for name in ("doctor.sh", "swarm_inventory.sh", "swarm_fleet_probe.sh"):
+        shutil.copyfile(ROOT / "scripts/lib" / name, library / name)
+        (library / name).chmod(0o644)
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "ACFS_REPO_ROOT": str(checkout)}
+    subprocess.run(["/bin/bash", "-eu", "-c",
+                    'update_runtime_acfs_home() { printf "%s\\n" "$HOME/.acfs"; }\n'
+                    'log_to_file() { :; }\n' + function + '\nsync_acfs_deployed\n'],
+                   env=env, check=True, capture_output=True, timeout=30)
+    return home / ".acfs/bin/acfs"
+
+
+def installed_command(cli, args):
+    home = cli.parents[2]
+    return subprocess.run(["/bin/bash", str(cli), "swarm", "inventory", *args],
+                          env={"HOME": str(home), "TARGET_HOME": str(home),
+                               "TARGET_USER": pwd.getpwuid(os.getuid()).pw_name,
+                               "ACFS_HOME": str(home / ".acfs"), "PATH": "/usr/bin:/bin"},
+                          capture_output=True, timeout=30)
 
 
 def inventory():
@@ -308,6 +347,77 @@ class FleetTests(unittest.TestCase):
         args = ["--inventory", str(base), "--targets", str(targets), "--known-hosts", str(known), "--parallel", "2"]
         return args, library, base, known
 
+    def public_fixture(self):
+        home = self.directory / "installed home"
+        home.mkdir()
+        cli = deployed_cli(home)
+        base = self.file("inventory with spaces.json", m.encoded(inventory()))
+        destinations = self.file("targets ; literal.json", m.encoded({
+            "schema": "acfs.swarm-probe-targets.v1", "targets": [target()]}))
+        known = self.file("known hosts", "public-preview-fixture\n")
+        args = ["--inventory", str(base), "--targets", str(destinations),
+                "--known-hosts", str(known), "--json"]
+        return cli, args, base, known
+
+    def test_runtime_updater_distributes_collector_and_public_help(self):
+        cli, _, _, _ = self.public_fixture()
+        runtime = cli.parents[1] / "scripts/lib/swarm_fleet_probe.sh"
+        self.assertEqual(runtime.read_bytes(), SCRIPT.read_bytes())
+        self.assertTrue(os.access(runtime, os.X_OK))
+        result = installed_command(cli, ["probe-fleet", "--help"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for option in (b"--targets", b"--known-hosts", b"--accept-plan", b"--probe"):
+            self.assertIn(option, result.stdout)
+        self.assertNotIn(b"not found", result.stderr)
+
+    def test_installed_cli_preview_preserves_literal_arguments_and_policy(self):
+        cli, args, base, _ = self.public_fixture()
+        result = installed_command(cli, ["probe-fleet", *args])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = m.decode(result.stdout)
+        direct, code = m.main(args, cli.parents[1] / "scripts/lib")
+        self.assertEqual((code, report), (0, direct))
+        self.assertEqual(report["status"], "planned")
+        self.assertEqual(base.read_bytes(), m.encoded(inventory()))
+        self.assertFalse((cli.parents[2] / ".acfs/swarm").exists())
+
+    def test_installed_cli_rejects_stale_approval_without_output(self):
+        cli, args, base, known = self.public_fixture()
+        preview = m.decode(installed_command(cli, ["probe-fleet", *args]).stdout)
+        known.write_text("different reviewed trust\n")
+        output = self.directory / "must not exist.json"
+        result = installed_command(cli, ["probe-fleet", *args, "--probe",
+            "--accept-plan", preview["plan_sha256"], "--output", str(output)])
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(m.decode(result.stdout)["code"], "plan_changed")
+        self.assertFalse(output.exists())
+        self.assertEqual(base.read_bytes(), m.encoded(inventory()))
+
+    def test_installed_cli_does_not_broaden_local_options_into_remote_consent(self):
+        cli, args, _, _ = self.public_fixture()
+        output = self.directory / "not-authorized.json"
+        for extra in (["--probe"], ["--yes"], ["--accept-plan", "a" * 64]):
+            result = installed_command(cli, ["probe-fleet", *args, *extra, "--output", str(output)])
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertFalse(output.exists())
+        result = installed_command(cli, ["--json", "probe-fleet", *args])
+        self.assertEqual(result.returncode, 2)
+        result = installed_command(cli, ["validate", "--inventory", str(self.directory / "inventory with spaces.json"), "--json"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_missing_or_symlinked_installed_collector_never_falls_back(self):
+        cli, args, _, _ = self.public_fixture()
+        runtime = cli.parents[1] / "scripts/lib/swarm_fleet_probe.sh"
+        saved = runtime.with_suffix(".saved")
+        runtime.rename(saved)
+        for symlink in (False, True):
+            if symlink:
+                runtime.symlink_to(saved)
+            result = installed_command(cli, ["probe-fleet", *args])
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(b"refresh the ACFS runtime", result.stderr)
+            self.assertEqual(result.stdout, b"")
+
     def test_coordinator_preview_and_stale_approval_never_probe(self):
         args, library, base, known = self.coordinator()
         output = self.directory / "result.json"
@@ -491,6 +601,21 @@ LogLevel ERROR
         assert measured["hosts"][0]["ntm"]["can_launch"] is True
         assert measured["hosts"][1:] == inventory()["hosts"][1:]
         assert base.read_bytes() == m.encoded(inventory()), "Input inventory changed"
+        # Now use the real installed CLI and runtime updater, not an imported
+        # coordinator. This catches missing files, argument loss and dispatch
+        # regressions all the way through actual OpenSSH authentication.
+        installed_home = root / "installed home"
+        installed_home.mkdir()
+        cli = deployed_cli(installed_home)
+        preview = installed_command(cli, ["probe-fleet", *args])
+        assert preview.returncode == 0, preview.stderr
+        approval = m.decode(preview.stdout)["plan_sha256"]
+        installed_output = root / "installed-result.json"
+        applied = installed_command(cli, ["probe-fleet", *args, "--probe",
+            "--accept-plan", approval, "--output", str(installed_output)])
+        assert applied.returncode == 0, (applied.stdout, applied.stderr)
+        assert m.decode(applied.stdout)["status"] == "measured"
+        assert m.decode(installed_output.read_bytes())["hosts"][0]["capacity"]["recommended_agents"] == 6
         calls = (root / "called").read_bytes()
         # Output collision must stop before a second SSH command.
         try:
@@ -526,7 +651,7 @@ LogLevel ERROR
         assert snapshot["hosts"][2] == inventory()["hosts"][2]
         for endpoint in (b"127.0.0.1", b"127.0.0.2", str(root).encode()):
             assert endpoint not in m.encoded(partial) and endpoint not in m.encoded(snapshot)
-        print("PASS: actual OpenSSH authentication, pinned host/identity snapshots, strict key refusal, no-preview SSH, stale-approval refusal, create-only output and partial-fleet invalidation")
+        print("PASS: actual OpenSSH authentication through checkout and installed CLI, runtime updater distribution, pinned host/identity snapshots, strict key refusal, no-preview SSH, stale-approval refusal, create-only output and partial-fleet invalidation")
     finally:
         subprocess.run(["sudo", "kill", "-TERM", "--", "-" + str(server.pid)], check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -3454,6 +3454,7 @@ sync_acfs_deployed() {
         "scripts/lib/swarm_convergence.sh:scripts/lib/swarm_convergence.sh"
         "scripts/lib/swarm_calibration.sh:scripts/lib/swarm_calibration.sh"
         "scripts/lib/swarm_inventory.sh:scripts/lib/swarm_inventory.sh"
+        "scripts/lib/swarm_fleet_probe.sh:scripts/lib/swarm_fleet_probe.sh"
         "scripts/lib/landing_plane.sh:scripts/lib/landing_plane.sh"
         "scripts/lib/capacity.sh:scripts/lib/capacity.sh"
         "scripts/lib/provenance.sh:scripts/lib/provenance.sh"

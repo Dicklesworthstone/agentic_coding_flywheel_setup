@@ -1063,7 +1063,7 @@ print_acfs_help() {
     echo "  swarm assign        Role-aware Beads assignment planner"
     echo "  swarm convergence   Epic success-criteria convergence audit"
     echo "  swarm calibration   Artifact-backed capacity calibration report"
-    echo "  swarm inventory     Local host inventory report/import/export/validate"
+    echo "  swarm inventory     Host inventory, placement, and approved fleet probes"
     echo "  provisioning-packet Validate/render provider provisioning packet JSON"
     echo "  installer-cache     Build a verified installer entrypoint cache"
     echo "  coordinate doctor   Alias for swarm doctor"
