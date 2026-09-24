@@ -17,10 +17,12 @@ import {
   type PluginPlanTarget,
 } from "./plugin-plan.js";
 import {
+  checkPluginInstallPlan,
   downloadPluginInstaller,
   executePluginInstallPlan,
   inspectPluginInstallPlan,
   PluginInstallError,
+  type PluginInstallHealth,
   type PluginInstallInspection,
   type PluginInstallReceipt,
   type PluginInstallRecovery,
@@ -36,6 +38,7 @@ export interface PluginInstallArguments {
   apply: boolean;
   acceptPlan?: string;
   status: boolean;
+  check: boolean;
   recover: boolean;
   acceptReceipt?: string;
   prepareCache?: string;
@@ -47,7 +50,7 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
   const flags = new Set<string>();
   for (let index = 0; index < args.length; index++) {
     const option = args[index]!;
-    if (["--yes", "--dry-run", "--json", "--status", "--recover"].includes(option)) {
+    if (["--yes", "--dry-run", "--json", "--status", "--check", "--recover"].includes(option)) {
       if (flags.has(option)) throw new Error("Duplicate plugin install option");
       flags.add(option);
       continue;
@@ -94,10 +97,19 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
   const apply = flags.has("--yes");
   const acceptPlan = values.get("--accept-plan");
   const status = flags.has("--status");
+  const check = flags.has("--check");
   const recover = flags.has("--recover");
   const acceptReceipt = values.get("--accept-receipt");
   const prepareCache = values.get("--prepare-cache");
   const installerCache = values.get("--installer-cache");
+  if (
+    check &&
+    (status || recover || apply || flags.has("--dry-run") ||
+      acceptPlan !== undefined || acceptReceipt !== undefined ||
+      prepareCache !== undefined || installerCache !== undefined)
+  ) {
+    throw new Error("Live health checking is a separate operation; use --check without installation, status, recovery or cache options");
+  }
   if (
     (apply && flags.has("--dry-run")) ||
     apply !== (acceptPlan !== undefined) ||
@@ -137,6 +149,7 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
     apply,
     acceptPlan,
     status,
+    check,
     recover,
     acceptReceipt,
     prepareCache,
@@ -232,6 +245,7 @@ export interface PluginInstallCommandServices {
     signal: AbortSignal,
   ) => Promise<PluginInstallReceipt>;
   inspect?: (plan: PluginInstallPlan, signal: AbortSignal) => Promise<PluginInstallInspection>;
+  check?: (plan: PluginInstallPlan, signal: AbortSignal) => Promise<PluginInstallHealth>;
   recover?: (
     plan: PluginInstallPlan,
     receiptSha256: string,
@@ -249,13 +263,14 @@ export async function pluginInstallMain(
     executeCached: (plan, directory, signal) =>
       executeCachedPluginInstallPlan(plan, directory, { signal }),
     inspect: (plan, signal) => inspectPluginInstallPlan(plan, { signal }),
+    check: (plan, signal) => checkPluginInstallPlan(plan, { signal }),
     recover: (plan, digest, signal) => recoverPluginInstallPlan(plan, digest, { signal }),
     write: (message) => console.log(message),
   },
 ): Promise<number> {
   if (args.length === 1 && ["--help", "-h"].includes(args[0]!)) {
     services.write(
-      "Usage: bun run plugin:install --archive package.tar.gz --review trusted-review.json --target os/version/arch/libc --only plugin.package.module[,id...] [--skip id,...] [--json]\nDefault: read-only plan; no network, installers, or state writes.\nApply: repeat the same inputs with --yes --accept-plan <planSha256>. Run installs as the target user, never root.\nPrepare entrypoints: --prepare-cache <new-directory> plus --yes --accept-plan downloads and verifies scripts without installing.\nUse local entrypoints: --installer-cache <directory> refuses missing, changed or expired caches without any live entrypoint fallback. Execution may still need networking; this is not an air-gap bundle.\nInspect: --status reads the receipt without running health checks or installers.\nRecover: --recover --yes --accept-plan <planSha256> --accept-receipt <receiptSha256> preserves interrupted evidence and allows a separate retry; it never installs.",
+      "Usage: bun run plugin:install --archive package.tar.gz --review trusted-review.json --target os/version/arch/libc --only plugin.package.module[,id...] [--skip id,...] [--json]\nDefault: read-only plan; no network, installers, or state writes.\nApply: repeat the same inputs with --yes --accept-plan <planSha256>. Run installs as the target user, never root.\nPrepare entrypoints: --prepare-cache <new-directory> plus --yes --accept-plan downloads and verifies scripts without installing.\nUse local entrypoints: --installer-cache <directory> refuses missing, changed or expired caches without any live entrypoint fallback. Execution may still need networking; this is not an air-gap bundle.\nInspect: --status reads the receipt without running health checks or installers.\nCheck health: --check runs canonical prerequisite checks and checks plugin executable availability as the target user, with a 120-second total deadline. No installers, downloads or receipt changes; exit zero only for a completed, currently healthy plan. Do not combine with other operation flags.\nRecover: --recover --yes --accept-plan <planSha256> --accept-receipt <receiptSha256> preserves interrupted evidence and allows a separate retry; it never installs.",
     );
     return 0;
   }
@@ -278,6 +293,64 @@ export async function pluginInstallMain(
     parsed = true;
     const plan = await services.loadPlan(options);
     controller.signal.throwIfAborted();
+    if (options.check) {
+      if (!services.check)
+        throw new PluginInstallError("plugin_operation_unavailable", "Live health verification is unavailable");
+      const health = await services.check(plan, controller.signal);
+      controller.signal.throwIfAborted();
+      // A result must cover exactly this freshly validated plan. A status label
+      // alone cannot turn an empty, partial or inconsistent sweep into success.
+      const checked = ["healthy", "unhealthy", "incomplete"].includes(health.status);
+      const validReceiptStatus = ["pending", "running", "failed", "complete", "incomplete"];
+      const complete = health.receiptStatus === "complete" &&
+        health.actions.every((action) => action.recordedStatus === "complete");
+      const passed = health.prerequisites.every((entry) => entry.passed) &&
+        health.actions.every((entry) => entry.passed);
+      if (
+        health.schema !== "acfs.plugin-install-health.v1" ||
+        health.planSha256 !== plan.planSha256 ||
+        health.healthChecked !== checked ||
+        (checked && (
+          !/^[a-f0-9]{64}$/.test(health.receiptSha256 ?? "") ||
+          !validReceiptStatus.includes(health.receiptStatus) ||
+          health.prerequisites.length !== plan.prerequisites.length ||
+          health.actions.length !== plan.actions.length ||
+          health.prerequisites.some((entry, index) =>
+            entry.id !== plan.prerequisites[index]!.id || typeof entry.passed !== "boolean") ||
+          health.actions.some((entry, index) =>
+            entry.id !== plan.actions[index]!.id || typeof entry.passed !== "boolean" ||
+            !["pending", "failed", "complete"].includes(entry.recordedStatus)) ||
+          health.status !== (!complete ? "incomplete" : passed ? "healthy" : "unhealthy")
+        )) ||
+        (!checked && (
+          !["busy", "interrupted", "not_started"].includes(health.status) ||
+          health.receiptStatus !== health.status ||
+          health.prerequisites.length !== 0 || health.actions.length !== 0 ||
+          (health.status === "interrupted"
+            ? !/^[a-f0-9]{64}$/.test(health.receiptSha256 ?? "")
+            : health.receiptSha256 !== null)
+        ))
+      ) {
+        throw new PluginInstallError("plugin_state_invalid", "Health verification returned an inconsistent result");
+      }
+      const findings = [
+        ...health.prerequisites.filter((entry) => !entry.passed).map((entry) => `Prerequisite failed: ${entry.id}`),
+        ...health.actions.filter((entry) => !entry.passed).map((entry) => `Executable check failed: ${entry.id}`),
+      ];
+      services.write(
+        json
+          ? JSON.stringify({ status: "checked", mode: "check", health })
+          : [
+              `Plugin health: ${health.status}`,
+              `Recorded state: ${health.receiptStatus}`,
+              `Receipt digest: ${health.receiptSha256 ?? "unavailable"}`,
+              ...findings,
+              "No installers ran or receipts changed. Plugin checks establish executable availability, not version, authentication or end-to-end functionality.",
+              ...(health.status === "interrupted" ? ["Inspect with --status before explicit recovery; health checks cannot recover interrupted work."] : []),
+            ].join("\n"),
+      );
+      return health.status === "healthy" ? 0 : 1;
+    }
     if (options.status) {
       if (!services.inspect)
         throw new PluginInstallError(

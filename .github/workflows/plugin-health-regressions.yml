@@ -1,0 +1,48 @@
+name: Plugin Health Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/manifest/**'
+      - 'acfs.manifest.yaml'
+      - 'checksums.yaml'
+      - 'bun.lock'
+      - '.github/workflows/plugin-health-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-health-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Type-check manifest package
+        run: bun run --cwd packages/manifest type-check
+      - name: Exercise real target-user health and existing plugin regressions
+        working-directory: packages/manifest
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          bun test src/plugin-health.test.ts src/plugin-health-cli.test.ts \
+            src/plugin-plan.test.ts src/plugin-install.test.ts \
+            src/plugin-runtime.test.ts src/plugin-supervision.test.ts \
+            src/plugin-recovery.test.ts src/plugin-recovery-cli.test.ts \
+            src/plugin-cache.test.ts src/plugin-cache-install.test.ts
+      - name: Verify root refusal independently
+        working-directory: packages/manifest
+        run: sudo "$(command -v bun)" test src/plugin-health.test.ts -t 'health refuses root'
