@@ -36,11 +36,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 9e6d76ff224d886c5364e36567d38998e58efc7e
+          test "$(git rev-parse HEAD^)" = 50988cc79cf65f9da2abe114af515a292761ee4f
           gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/cb6ca7438db4dd3b640c9a2189fc95a61eeb6c38 --jq .content | base64 -d > "$RUNNER_TEMP/candidate.patch"
           echo "e2d6953d999a84eb580ebad1b0227b986b3f70bc845226f42e49d1a674fe5d53  $RUNNER_TEMP/candidate.patch" | sha256sum -c -
           git apply --check --index "$RUNNER_TEMP/candidate.patch"
           git apply --index "$RUNNER_TEMP/candidate.patch"
+          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/dc11e9992d9529113fc6e53b96e7c892fca09837 --jq .content | base64 -d > "$RUNNER_TEMP/cardinality.patch"
+          echo "2ef7b1b038c5059f6b6ddd75fde3cb29d6b47af9da6fb529f75f6d8c05b90104  $RUNNER_TEMP/cardinality.patch" | sha256sum -c -
+          git apply --check --index "$RUNNER_TEMP/cardinality.patch"
+          git apply --index "$RUNNER_TEMP/cardinality.patch"
       - name: Install test dependencies without package lifecycle scripts
         run: |
           set -euo pipefail
@@ -90,7 +94,7 @@ jobs:
           expected = {
             'docs/operations/swarm-fleet-probe.md':'5aa1b5ecb0bee4174c30c16ece8960bed63d401a',
             'install.sh':'fe8f2441aa51ec24f4a0e80b584c0fabb8cd6511',
-            'packages/manifest/src/generate.test.ts':'d3c265c62129fdf0350cb9b9352be2ac4bbd4753',
+            'packages/manifest/src/generate.test.ts':'ebb4dc11a5f4bd84046524f9a10ea52c2da7f93c',
             'packages/manifest/src/generate.ts':'3e5d1ab0cad20a313728f56e1a748c091377c4e7',
             'scripts/check-manifest-drift.sh':'424995882c3ebfc686a1117b047efe59b374f2b3',
             'scripts/lib/doctor.sh':'be813de12bbd1614428a128fff36edda8de508b3',
