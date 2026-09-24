@@ -3,7 +3,8 @@
 # ACFS Swarm Inventory - advisory local host inventory
 #
 # Implements the v1 local-first swarm capacity inventory contract.
-# Commands read or explicitly write JSON files only; they never launch NTM,
+# Local commands read or explicitly write JSON files. The separate, explicitly
+# approved probe-fleet command measures named SSH targets. None launch NTM,
 # run RU, send Agent Mail, mutate Beads, or change RCH configuration.
 # ============================================================
 
@@ -35,7 +36,7 @@ SWARM_INV_GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
 
 swarm_inventory_usage() {
     cat <<'EOF'
-Usage: acfs swarm inventory <report|plan|probe-local|import|export|validate> [OPTIONS]
+Usage: acfs swarm inventory <report|plan|probe-local|probe-fleet|import|export|validate> [OPTIONS]
 
 Options:
   --json                Emit machine-readable JSON
@@ -53,8 +54,8 @@ Options:
   --artifact-dir DIR    Write deterministic error artifacts on failure
   --help, -h            Show this help
 
-Commands are advisory and local-first. They never SSH, launch NTM, run RU,
-send Agent Mail, mutate Beads, or change RCH configuration. Import/export
+Local commands are advisory and never SSH. No command launches NTM, runs RU,
+sends Agent Mail, mutates Beads, or changes RCH configuration. Import/export
 write only to explicit output targets or the canonical inventory file.
 Plan distributes a target total across eligible hosts, not additional agents.
 It requires fresh live admission on each host before any actual launch.
@@ -62,6 +63,11 @@ Probe-local measures this machine with the installed capacity calculator.
 It prints an inventory snapshot, or creates --output without overwriting.
 An explicit --inventory merges that snapshot with existing host records;
 other hosts and existing operator policy are preserved. No implicit writes.
+
+For explicit remote measurement, use 'acfs swarm inventory probe-fleet --help'.
+That separate command requires an explicit inventory, private target mapping,
+and trusted host keys. It previews without SSH; collection requires --probe,
+the reviewed --accept-plan digest, and a NEW --output snapshot.
 EOF
 }
 
@@ -1203,6 +1209,20 @@ swarm_inventory_command_export() {
 swarm_inventory_main() {
     local parse_status=0
     local jq_bin=""
+
+    # Only this leading subcommand enters the network-capable collector. Keep
+    # its approval parser separate: local --output/--yes/default selectors must
+    # never be reinterpreted as authorization to probe a fleet.
+    if [[ "${1:-}" == probe-fleet ]]; then
+        shift
+        local fleet_script=""
+        fleet_script="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/swarm_fleet_probe.sh"
+        if [[ ! -f "$fleet_script" || -L "$fleet_script" ]]; then
+            echo "Error: installed swarm_fleet_probe.sh is unavailable; refresh the ACFS runtime." >&2
+            return 2
+        fi
+        exec /bin/bash "$fleet_script" "$@"
+    fi
 
     swarm_inventory_parse_args "$@" || parse_status=$?
     case "$parse_status" in

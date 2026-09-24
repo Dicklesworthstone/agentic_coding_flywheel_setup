@@ -1234,7 +1234,7 @@ describe("Generated script headers", () => {
     expect(countMatch).not.toBeNull();
     expect(rawEntries.length).toBe(checksums.size);
     expect(Number(countMatch?.[1])).toBe(checksums.size);
-    expect(checksums.size).toBe(115);
+    expect(checksums.size).toBe(116);
 
     const mandatoryPaths = [
       "install.sh",
@@ -1329,6 +1329,7 @@ describe("Generated script headers", () => {
       "scripts/lib/swarm_calibration.sh",
       "scripts/lib/swarm_convergence.sh",
       "scripts/lib/swarm_doctor.sh",
+      "scripts/lib/swarm_fleet_probe.sh",
       "scripts/lib/swarm_inventory.sh",
       "scripts/lib/swarm_launch.sh",
       "scripts/lib/swarm_packet.sh",
@@ -1371,6 +1372,7 @@ describe("Generated script headers", () => {
     );
     expect(literalInstallAssets.length).toBeGreaterThan(0);
     expect(literalInstallAssets).toContain("scripts/lib/swarm_launch.sh");
+    expect(literalInstallAssets).toContain("scripts/lib/swarm_fleet_probe.sh");
     for (const path of literalInstallAssets) {
       expect(checksums.has(path)).toBe(true);
     }

@@ -37,16 +37,23 @@ context; separately configured agent services may have different resource limits
 
 ## Preview, review, collect
 
-From a checkout:
+On a fresh or updated installation:
 
 ```bash
-bash scripts/lib/swarm_fleet_probe.sh \
+acfs swarm inventory probe-fleet \
   --inventory hosts.inventory.json \
   --targets targets.json \
   --known-hosts "$HOME/.ssh/known_hosts" \
   --identity-file "$HOME/.ssh/id_ed25519" \
   --parallel 4 --timeout 45 --json
 ```
+
+The checkout entrypoint `bash scripts/lib/swarm_fleet_probe.sh` accepts the same
+arguments. Fresh installs and runtime updates distribute the collector alongside
+the inventory command under the canonical internal-checksum contract. An older
+partial installation without that sibling fails closed; it never searches PATH
+for a replacement collector. Local `report`, `plan`, `probe-local`, `import`,
+`export` and `validate` commands never turn into remote probes.
 
 The optional identity must be an existing private, single-link, user-owned file.
 Without it, normal default SSH identities or an existing local authentication

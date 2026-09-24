@@ -202,6 +202,7 @@ INTERNAL_CHECKSUM_REQUIRED_PATHS=(
     scripts/lib/swarm_calibration.sh
     scripts/lib/swarm_convergence.sh
     scripts/lib/swarm_doctor.sh
+    scripts/lib/swarm_fleet_probe.sh
     scripts/lib/swarm_inventory.sh
     scripts/lib/swarm_launch.sh
     scripts/lib/swarm_packet.sh

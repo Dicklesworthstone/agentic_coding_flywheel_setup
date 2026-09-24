@@ -3,7 +3,22 @@ name: Swarm Fleet Probe Regression
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/swarm-fleet-probe-regressions.yml']
+    paths:
+      - 'install.sh'
+      - 'scripts/lib/swarm_fleet_probe.sh'
+      - 'scripts/lib/swarm_inventory.sh'
+      - 'scripts/lib/capacity.sh'
+      - 'scripts/lib/doctor.sh'
+      - 'scripts/lib/update.sh'
+      - 'scripts/check-manifest-drift.sh'
+      - 'scripts/generated/**'
+      - 'packages/manifest/**'
+      - 'acfs.manifest.yaml'
+      - 'checksums.yaml'
+      - 'bun.lock'
+      - 'tests/unit/test_swarm_fleet_probe.py'
+      - 'tests/unit/test_swarm_inventory*'
+      - '.github/workflows/swarm-fleet-probe-regressions.yml'
   workflow_dispatch:
 
 permissions:
@@ -21,30 +36,13 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 2
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Apply the exact reviewed installed-fleet candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 50988cc79cf65f9da2abe114af515a292761ee4f
-          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/cb6ca7438db4dd3b640c9a2189fc95a61eeb6c38 --jq .content | base64 -d > "$RUNNER_TEMP/candidate.patch"
-          echo "e2d6953d999a84eb580ebad1b0227b986b3f70bc845226f42e49d1a674fe5d53  $RUNNER_TEMP/candidate.patch" | sha256sum -c -
-          git apply --check --index "$RUNNER_TEMP/candidate.patch"
-          git apply --index "$RUNNER_TEMP/candidate.patch"
-          gh api repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/dc11e9992d9529113fc6e53b96e7c892fca09837 --jq .content | base64 -d > "$RUNNER_TEMP/cardinality.patch"
-          echo "2ef7b1b038c5059f6b6ddd75fde3cb29d6b47af9da6fb529f75f6d8c05b90104  $RUNNER_TEMP/cardinality.patch" | sha256sum -c -
-          git apply --check --index "$RUNNER_TEMP/cardinality.patch"
-          git apply --index "$RUNNER_TEMP/cardinality.patch"
       - name: Install test dependencies without package lifecycle scripts
         run: |
           set -euo pipefail
@@ -53,10 +51,9 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y openssh-server shellcheck jq
           fi
-      - name: Canonically generate and verify distribution checksums
+      - name: Verify committed runtime distribution and checksums without regeneration
         run: |
           set -euo pipefail
-          bun run --cwd packages/manifest generate
           bun run --cwd packages/manifest generate:diff
           bun run --cwd packages/manifest type-check
           bun test packages/manifest/src/generate.test.ts
@@ -70,6 +67,7 @@ jobs:
           shellcheck install.sh scripts/lib/doctor.sh scripts/lib/update.sh scripts/lib/swarm_inventory.sh scripts/lib/swarm_fleet_probe.sh scripts/check-manifest-drift.sh
       - name: Run collector and installed-command regressions without skips
         run: |
+          test "$(id -u)" -ne 0
           python3 -B - <<'PY'
           import sys, unittest
           suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_fleet_probe.py')
@@ -85,53 +83,12 @@ jobs:
         run: |
           python3 -B -m unittest discover -s tests/unit -p 'test_swarm_inventory_*.py' -v
           bash tests/unit/test_swarm_inventory.sh
-      - name: Preserve verified candidate Git objects without changing any ref
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib, json, os, pathlib, subprocess, tarfile, urllib.request
-          expected = {
-            'docs/operations/swarm-fleet-probe.md':'5aa1b5ecb0bee4174c30c16ece8960bed63d401a',
-            'install.sh':'fe8f2441aa51ec24f4a0e80b584c0fabb8cd6511',
-            'packages/manifest/src/generate.test.ts':'ebb4dc11a5f4bd84046524f9a10ea52c2da7f93c',
-            'packages/manifest/src/generate.ts':'3e5d1ab0cad20a313728f56e1a748c091377c4e7',
-            'scripts/check-manifest-drift.sh':'424995882c3ebfc686a1117b047efe59b374f2b3',
-            'scripts/lib/doctor.sh':'be813de12bbd1614428a128fff36edda8de508b3',
-            'scripts/lib/swarm_inventory.sh':'1f1681420937eaf4f5bcc978cc8c1da373137e39',
-            'scripts/lib/update.sh':'f71bef73ed6f02cc0d480663293d84df01c7f2c3',
-            'tests/unit/test_swarm_fleet_probe.py':'f9aac61a4f12ce16ad4b24de9b61b7a060d1077d',
-          }
-          paths = set(subprocess.check_output(['git','diff','HEAD','--name-only'], text=True).splitlines())
-          assert paths == set(expected) | {'scripts/generated/internal_checksums.sh'}, paths
-          objects = []
-          for path in sorted(paths):
-              data = pathlib.Path(path).read_bytes()
-              sha = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
-              if path in expected:
-                  assert sha == expected[path], (path, sha)
-              mode = subprocess.check_output(['git','ls-tree','HEAD','--',path], text=True).split()[0]
-              request = urllib.request.Request(
-                  'https://api.github.com/repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs',
-                  data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),
-                  headers={'Authorization':'Bearer ' + os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},
-                  method='POST')
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  assert json.load(response)['sha'] == sha
-              objects.append({'path':path,'mode':mode,'type':'blob','sha':sha})
-          result = {'tested_head':os.environ['GITHUB_SHA'],'objects':objects}
-          output = pathlib.Path(os.environ['RUNNER_TEMP'])
-          (output / 'candidate-objects.json').write_text(json.dumps(result,indent=2) + '\n')
-          print(json.dumps(result,indent=2))
-          with tarfile.open(output / 'candidate-files.tar.gz','w:gz') as archive:
-              for path in sorted(paths):
-                  archive.add(path,arcname=path,recursive=False)
-          PY
+      - name: Capture exact tracked source for reproducible verification
+        if: always()
+        run: git archive --format=tar.gz --output="$RUNNER_TEMP/acfs-source.tar.gz" HEAD
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: installed-fleet-candidate-${{ github.sha }}-${{ matrix.runner }}
-          path: |
-            ${{ runner.temp }}/candidate-objects.json
-            ${{ runner.temp }}/candidate-files.tar.gz
-          if-no-files-found: error
+          name: acfs-fleet-source-${{ github.sha }}-${{ matrix.runner }}
+          path: ${{ runner.temp }}/acfs-source.tar.gz
           retention-days: 1
