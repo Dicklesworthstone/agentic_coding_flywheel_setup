@@ -20,12 +20,22 @@ concurrency:
 
 jobs:
   fleet-probe:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Install bounded-probe and loopback-test dependencies
+        run: |
+          if ! command -v shellcheck || ! command -v jq || ! test -x /usr/sbin/sshd; then
+            sudo apt-get update -qq
+            sudo apt-get install -y openssh-server shellcheck jq
+          fi
       - name: Check runtime syntax and ShellCheck
         run: |
           bash -n scripts/lib/swarm_fleet_probe.sh
@@ -36,17 +46,11 @@ jobs:
           import sys, unittest
           suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_fleet_probe.py')
           expected = suite.countTestCases()
-          if expected < 31:
-              raise SystemExit('Expected at least 31 fleet probe regressions')
+          if expected < 35:
+              raise SystemExit('Expected at least 35 fleet probe regressions')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
-      - name: Install loopback SSH test server on the disposable runner
-        run: |
-          if ! test -x /usr/sbin/sshd; then
-            sudo apt-get update -qq
-            sudo apt-get install -y openssh-server
-          fi
       - name: Verify real OpenSSH transport and conservative partial results
         run: python3 -B tests/unit/test_swarm_fleet_probe.py --live-ssh
       - name: Run existing inventory regressions
@@ -59,6 +63,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: acfs-fleet-source-${{ github.sha }}
+          name: acfs-fleet-source-${{ github.sha }}-${{ matrix.runner }}
           path: ${{ runner.temp }}/acfs-source.tar.gz
           retention-days: 1

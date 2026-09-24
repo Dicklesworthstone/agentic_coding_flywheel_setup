@@ -14,6 +14,7 @@ import threading
 import time
 import types
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/lib/swarm_fleet_probe.sh"
@@ -293,6 +294,104 @@ class FleetTests(unittest.TestCase):
         self.directory.chmod(0o777)
         self.rejects("output_directory_unsafe", m.output_parent, self.directory / "result")
 
+    def coordinator(self):
+        # Coordinator tests isolate transport/schema services. The separate
+        # canonical-validator and live-SSH tests exercise those real boundaries.
+        library = self.directory / "lib"
+        library.mkdir()
+        (library / "swarm_inventory.sh").write_text("inventory policy fixture")
+        (library / "swarm_fleet_probe.sh").write_bytes(SCRIPT.read_bytes())
+        base = self.file("inventory.json", m.encoded(inventory()))
+        targets = self.file("targets.json", m.encoded({"schema": "acfs.swarm-probe-targets.v1", "targets": [
+            target("alpha", "alpha.example"), target("beta", "beta.example"), target("untouched", "gamma.example")]}))
+        known = self.file("known_hosts", "known-key fixture\n")
+        args = ["--inventory", str(base), "--targets", str(targets), "--known-hosts", str(known), "--parallel", "2"]
+        return args, library, base, known
+
+    def test_coordinator_preview_and_stale_approval_never_probe(self):
+        args, library, base, known = self.coordinator()
+        output = self.directory / "result.json"
+        with patch.object(m, "validate_inventory") as validate, patch.object(m, "probe_one") as probe:
+            preview, code = m.main(args, library)
+            self.assertEqual(code, 0)
+            self.assertEqual(validate.call_count, 1)
+            probe.assert_not_called()
+            known.write_text("changed known-key fixture\n")
+            self.rejects("plan_changed", m.main, args + ["--probe", "--accept-plan", preview["plan_sha256"], "--output", str(output)], library)
+            probe.assert_not_called()
+        self.assertFalse(output.exists())
+        self.assertEqual(base.read_bytes(), m.encoded(inventory()))
+
+    def test_coordinator_limits_parallelism_and_keeps_result_order(self):
+        args, library, base, _ = self.coordinator()
+        output = self.directory / "result.json"
+        active = maximum = 0
+        lock = threading.Lock()
+        both_started = threading.Event()
+        def observe(target, *_):
+            nonlocal active, maximum
+            with lock:
+                active += 1
+                maximum = max(maximum, active)
+                if active == 2:
+                    both_started.set()
+            try:
+                self.assertTrue(both_started.wait(2), "Two selected peers did not run concurrently")
+                time.sleep(0.02 if target["id"] == "alpha" else 0.01)
+                value = m.observation(
+                    m.encoded(response(target["id"])), target, time.time() - 2, time.time())
+                return {"id": target["id"], "status": "measured", "observation": value}
+            finally:
+                with lock:
+                    active -= 1
+        with patch.object(m, "validate_inventory") as validate, patch.object(m, "probe_one", side_effect=observe):
+            preview, _ = m.main(args, library)
+            result, code = m.main(args + ["--probe", "--accept-plan", preview["plan_sha256"], "--output", str(output)], library)
+            self.assertEqual(validate.call_count, 3)
+        self.assertEqual((code, maximum, active), (0, 2, 0))
+        self.assertEqual([item["id"] for item in result["results"]], ["alpha", "beta", "untouched"])
+        self.assertTrue(result["snapshot_created"])
+        self.assertEqual(base.read_bytes(), m.encoded(inventory()))
+        self.assertEqual(result["inventory_sha256"], m.digest(output.read_bytes()))
+
+    def test_coordinator_partial_failure_publishes_only_conservative_capacity(self):
+        args, library, base, _ = self.coordinator()
+        output = self.directory / "partial.json"
+        def observe(target, *_):
+            if target["id"] == "beta":
+                return {"id": "beta", "status": "failed", "code": "probe_timeout"}
+            return {"id": target["id"], "status": "measured", "observation": m.observation(
+                m.encoded(response(target["id"])), target, time.time() - 2, time.time())}
+        with patch.object(m, "validate_inventory"), patch.object(m, "probe_one", side_effect=observe):
+            preview, _ = m.main(args, library)
+            result, code = m.main(args + ["--probe", "--accept-plan", preview["plan_sha256"], "--output", str(output)], library)
+        self.assertEqual((code, result["status"], result["snapshot_created"]), (1, "partial", True))
+        snapshot = m.decode(output.read_bytes())
+        self.assertEqual([host["capacity"]["recommended_agents"] for host in snapshot["hosts"]], [6, 0, 6])
+        self.assertIsNone(snapshot["hosts"][1]["last_probe_at"])
+        self.assertEqual(base.read_bytes(), m.encoded(inventory()))
+        self.assertNotIn(b".example", m.encoded(result))
+        self.assertNotIn(b".example", output.read_bytes())
+
+    def test_coordinator_cancellation_and_output_collision_cannot_publish_success(self):
+        args, library, _, _ = self.coordinator()
+        output = self.directory / "cancelled.json"
+        def cancel(target, *_):
+            m.STOP.set()
+            return {"id": target["id"], "status": "failed", "code": "cancelled"}
+        try:
+            with patch.object(m, "validate_inventory"), patch.object(m, "probe_one", side_effect=cancel):
+                preview, _ = m.main(args, library)
+                self.rejects("cancelled", m.main, args + ["--probe", "--accept-plan", preview["plan_sha256"], "--output", str(output)], library)
+            self.assertFalse(output.exists())
+        finally:
+            m.STOP.clear()
+        output.write_bytes(b"existing output")
+        with patch.object(m, "validate_inventory"), patch.object(m, "probe_one") as probe:
+            self.rejects("output_exists", m.main, args + ["--probe", "--accept-plan", preview["plan_sha256"], "--output", str(output)], library)
+            probe.assert_not_called()
+        self.assertEqual(output.read_bytes(), b"existing output")
+
     def test_canonical_validator_and_preview_have_no_mutation(self):
         if not (ROOT / "scripts/lib/swarm_inventory.sh").exists():
             self.skipTest("Full checkout required for canonical inventory integration")
@@ -314,7 +413,9 @@ def live_ssh():
     """Real OpenSSH client/server, pinned keys and private identity FD on loopback."""
     import pwd
     import socket
-    root = Path(tempfile.mkdtemp(prefix="acfs-fleet-openssh-"))
+    # StrictModes verifies ancestors of authorized_keys. Use the account's
+    # private home, not world-writable /tmp, without weakening the SSH server.
+    root = Path(tempfile.mkdtemp(prefix="acfs-fleet-openssh-", dir=Path.home()))
     user = pwd.getpwuid(os.getuid()).pw_name
     if os.getuid() == 0:
         raise RuntimeError("Run OpenSSH acceptance as the normal non-root runner")
@@ -353,7 +454,7 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 AuthenticationMethods publickey
 PubkeyAuthentication yes
-UsePAM no
+UsePAM yes
 StrictModes yes
 PermitTTY no
 DisableForwarding yes
