@@ -1,0 +1,75 @@
+name: Swarm Recovery Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/swarm_launch_recovery.py'
+      - 'scripts/lib/swarm_launch.sh'
+      - 'tests/unit/test_swarm_launch_recovery.py'
+      - '.github/workflows/swarm-recovery-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - name: Install locked generator dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Preserve the exact source and minimal offline validation runtime
+        run: |
+          python3 -B - <<'PY'
+          import gzip, os, pathlib, shutil, subprocess, tarfile
+          root = pathlib.Path.cwd()
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'swarm-recovery-validation'
+          output.mkdir()
+          source = output / 'source.tar'
+          subprocess.run(['git', 'archive', '--format=tar', 'HEAD', '-o', str(source)], check=True)
+          with tarfile.open(source, 'a') as archive:
+              archive.add(pathlib.Path(shutil.which('bun')).resolve(), arcname='.validation-tools/bun')
+              for name in ('yaml', 'zod', 'typescript', '@types/node', 'undici-types'):
+                  candidates = (root / 'node_modules' / name, root / 'packages/manifest/node_modules' / name)
+                  package = next((p.resolve() for p in candidates if p.is_dir()), None)
+                  if package is None:
+                      raise SystemExit('Missing locked validation dependency: ' + name)
+                  archive.add(package, arcname='node_modules/' + name)
+          with source.open('rb') as src, gzip.open(output / 'source.tar.gz', 'wb') as dst:
+              shutil.copyfileobj(src, dst)
+          (output / 'commit.txt').write_text(os.environ['GITHUB_SHA'] + '\n')
+          PY
+      - name: Verify all recovery cases execute without skips
+        run: |
+          python3 -B - <<'PY'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_launch_recovery.py')
+          expected = suite.countTestCases()
+          if expected < 32:
+              raise SystemExit('Expected at least 32 launch-recovery regressions')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
+          PY
+      - name: Verify canonical generation and existing launch behavior
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/manifest generate:diff
+          bun run --cwd packages/manifest type-check
+          bash -n scripts/lib/swarm_launch.sh
+          python3 -B tests/unit/test_swarm_launch.py -v
+          python3 -B tests/unit/test_swarm_launch_handoff.py -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swarm-recovery-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swarm-recovery-validation/source.tar.gz
+            ${{ runner.temp }}/swarm-recovery-validation/commit.txt
+          retention-days: 1
+          if-no-files-found: error
