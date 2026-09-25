@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-09-22T15:15:58+00:00
+# checksums.yaml - Auto-generated 2026-09-25T14:20:59-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "2a210512ecaf057d5f08493c25f4f660e19b77f7a9da63b76d1175509ec4ee2e"
+    sha256: "9c26dd7fae887b2d8125a887892fc05f14a0decef951584e4275c7b51d997c11"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -136,11 +136,11 @@ installers:
 
   pi:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
-    sha256: "9f2c2f375a37c453e8e661f390924f7f64591dd257ff856a0be13699816f1b0c"
+    sha256: "4ddea5bce9c0a9168d62fee76c05cb61e9c8c911d9fdcbe65aafac485e002bd1"
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
-    sha256: "a531a674c29a468fd95dc5a9ff5d2e9d6e8051418dce53da853cfc60db144d3b"
+    sha256: "9206f4eabc9c81216a7030f11f28f31f92b5635aca242a9cebd92c2b72e2f897"
 
   rano:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh"
@@ -184,7 +184,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "37b82230b28617c6c24fa52364fa28aa37f2aa40c114809a623f6b064a9730e5"
+    sha256: "61b349611f1b6e1ba33645f30c36da5287df2609dd7af8605d96a031435eb35b"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"

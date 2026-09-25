@@ -6497,11 +6497,27 @@ update_agents() {
     # block the updater never touched opencode at all.)
     if update_binary_exists opencode; then
         local opencode_bin=""
+        local opencode_timeout_bin=""
         opencode_bin="$(update_binary_path opencode 2>/dev/null || true)"
-        capture_version_before "opencode"
-        run_cmd "OpenCode" update_run_in_target_context "" "$opencode_bin" upgrade
-        if capture_version_after "opencode"; then
-            update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[opencode]}" "${VERSION_AFTER[opencode]}"
+        opencode_timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+        if [[ -f "$opencode_bin" ]] && grep -q 'exec mise x' "$opencode_bin" 2>/dev/null; then
+            # Omarchy's mise wrapper (omarchy-mise-install) runs `mise use -g`
+            # on every launch, so it is already current; `opencode upgrade`
+            # under mise hung for 4.5 days on omarchy holding the update lock.
+            log_item "skip" "OpenCode" "managed by a mise wrapper (updates itself on launch)"
+        else
+            capture_version_before "opencode"
+            # run_cmd cannot apply its own timeout to a shell function, so bound
+            # the external `opencode upgrade` explicitly.
+            if [[ -n "$opencode_timeout_bin" ]]; then
+                run_cmd "OpenCode" update_run_in_target_context "" "$opencode_timeout_bin" \
+                    --kill-after=30s "${UPDATE_OPENCODE_TIMEOUT:-600}" "$opencode_bin" upgrade
+            else
+                run_cmd "OpenCode" update_run_in_target_context "" "$opencode_bin" upgrade
+            fi
+            if capture_version_after "opencode"; then
+                update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[opencode]}" "${VERSION_AFTER[opencode]}"
+            fi
         fi
     elif [[ "$FORCE_MODE" == "true" ]]; then
         capture_version_before "opencode"

@@ -14589,6 +14589,57 @@ EOF
     [[ "$(cat "$HOME/codex-update-attempts")" == "3" ]]
 }
 
+setup_opencode_update_fixture() {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    FORCE_MODE=false
+    ABORT_ON_FAILURE=false
+    UPDATE_AGENTS=true
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+    mkdir -p "$HOME/.local/bin"
+
+    update_target_user() { printf 'tester\n'; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_binary_exists() { [[ "${1:-}" == "opencode" ]]; }
+    update_binary_path() {
+        [[ "${1:-}" == "opencode" ]] && printf '%s\n' "$HOME/.local/bin/opencode"
+    }
+    update_system_binary_path() {
+        [[ "${1:-}" == "timeout" ]] && printf '/usr/bin/timeout\n'
+    }
+    get_version() { printf 'unknown\n'; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_run_in_target_context() {
+        shift
+        printf '%s\n' "$*" >> "$HOME/opencode-calls"
+    }
+}
+
+@test "update_agents: OpenCode behind an Omarchy mise wrapper is skipped, not upgraded" {
+    setup_opencode_update_fixture
+    printf '#!/bin/bash\nmise use -g --quiet "opencode" || exit 1\nexec mise x "opencode" -- "opencode" "$@"\n' \
+        > "$HOME/.local/bin/opencode"
+
+    run update_agents
+
+    [[ ! -f "$HOME/opencode-calls" ]]
+    grep -q "\[skip\] OpenCode - managed by a mise wrapper" "$HOME/update.log"
+}
+
+@test "update_agents: OpenCode upgrade runs under a hard timeout" {
+    setup_opencode_update_fixture
+    printf '#!/bin/bash\necho opencode\n' > "$HOME/.local/bin/opencode"
+
+    run update_agents
+
+    grep -qx "/usr/bin/timeout --kill-after=30s 600 $HOME/.local/bin/opencode upgrade" "$HOME/opencode-calls"
+}
+
 @test "update_zoxide: retries transient reinstall failures before succeeding" {
     init_stub_dir
     export PATH="$STUB_DIR:$PATH"
