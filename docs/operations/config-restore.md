@@ -45,7 +45,17 @@ for an intentional OS upgrade.
 
 ## Input and output contract
 
-JSON exports and `acfs export-config --minimal` output are accepted. Minimal
+All three exporter formats are accepted: default YAML, `--json`, and `--minimal`.
+For example, `acfs export-config --output acfs-export.yaml` can be restored with
+`python3 scripts/import-config.py acfs-export.yaml --apply`.
+
+YAML support deliberately covers the block mappings, quoted scalars and module
+list emitted by ACFS, without requiring PyYAML. It does not accept arbitrary YAML
+features such as tags, anchors, aliases, merge keys or multiline scalars. Use the
+JSON export for other tooling rather than hand-authoring a richer YAML dialect.
+Duplicate sections and fields are refused, not silently overwritten.
+
+Minimal
 files contain one canonical module ID per line, with optional blank lines and
 `#` comments. UTF-8 BOM and CRLF are accepted. Use `-` to read from stdin; applying
 from stdin also requires `--yes`, because the export consumes the input stream.
@@ -62,6 +72,32 @@ It cannot be combined with `--apply`, whose terminal belongs to the installer.
 `--plan-timeout` bounds planning (default 60 seconds, maximum 300), not the actual
 installation. `--installer /trusted/checkout/install.sh` selects another local
 installer explicitly; this is an executable trust decision, not an export field.
+
+## Install only the missing modules
+
+For an additive restore on a host that already has ACFS, capture a **fresh
+export on that destination** and supply it separately:
+
+```bash
+acfs export-config --minimal > destination.modules
+python3 scripts/import-config.py source-export.yaml --against destination.modules --json
+python3 scripts/import-config.py source-export.yaml --against destination.modules --apply
+```
+
+The report separates `missing`, `already_present` and `extra` modules. Only
+missing modules become explicit installer selections; their dependencies still
+go through the ordinary resolver. Extras are reported, never uninstalled. An
+empty delta returns `status: "noop"` and does not invoke the installer at all,
+including with `--apply`. It cannot fall back to the installer's full default
+selection. An empty destination export is valid; an empty source export is not.
+
+Comparison is based on the supplied snapshot (`comparison.basis` is
+`supplied_export`), **not a live health check**. A stale or wrong-host destination
+export can hide missing or broken tools. Omit `--against` to submit the complete
+source selection to the installer, or refresh the destination export before
+applying. Credentials and versions are not compared. The JSON report retains
+all desired `modules` and separately records the reduced `install_modules`.
+Only one input may be stdin; either stdin input requires `--yes` when applying.
 
 ## What is deliberately not restored
 
@@ -80,5 +116,6 @@ python3 -m unittest discover -s tests/unit -p test_import_config.py -v
 
 Tests use real files, pipes and subprocesses with an inert installer fixture.
 They verify parsing, safe defaults, exact argv, resolver refusal, timeout cleanup,
-startup-hook isolation, stdin handling and exit-status propagation. They do not
+startup-hook isolation, stdin handling, YAML handling, snapshot deltas, no-op
+restores and exit-status/signal propagation. They do not
 perform a privileged installation or claim a fresh Ubuntu VM end-to-end result.

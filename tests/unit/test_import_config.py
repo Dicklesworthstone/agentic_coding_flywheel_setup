@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -62,6 +63,86 @@ class ExportTests(unittest.TestCase):
                 import_config.read_export(str(fifo))
 
 
+class YamlExportTests(unittest.TestCase):
+    def test_default_export_schema(self):
+        exported = """# ACFS Configuration Export
+# Generated: 2026-09-25T12:30:00-04:00
+# Hostname: source-host
+# ACFS Version: 0.9.0
+
+settings:
+  mode: 'vibe'
+  shell: 'zsh'
+
+modules:
+  - 'lang.bun'
+  - 'agents.claude'
+  - 'lang.bun'
+
+tools:
+  bun:
+    version: '1.2.3'
+    installed: true
+
+agents:
+  claude:
+    version: '2.0.0'
+    installed: true
+
+flywheel_stack:
+"""
+        parsed = import_config.parse_export(exported)
+        self.assertEqual(parsed["source_format"], "yaml")
+        self.assertEqual(parsed["source_mode"], "vibe")
+        self.assertEqual(parsed["modules"], ["lang.bun", "agents.claude"])
+
+    def test_quotes_comments_and_inert_metadata(self):
+        text = r"""settings:
+  mode: "safe" # explicit mode
+modules:
+  - 'lang.bun' # runtime
+  - "agents.codex"
+  - stack.beads_rust
+tools:
+  bun:
+    version: 'vendor''s $(touch NEVER) \n literal'
+    installed: true
+"""
+        parsed = import_config.parse_export(text)
+        self.assertEqual(parsed["modules"], ["lang.bun", "agents.codex", "stack.beads_rust"])
+        self.assertEqual(import_config.yaml_scalar("'vendor''s version'"), "vendor's version")
+
+    def test_reject_ambiguous_and_executable_yaml_constructs(self):
+        cases = [
+            "modules: [lang.bun]", "modules: &modules\n  - lang.bun",
+            "modules:\n  - *alias", "modules:\n  - !!str lang.bun",
+            "modules:\n  - 'lang.bun'\nmodules:\n  - 'agents.codex'",
+            "modules:\n  - lang.bun\nsettings:\n  mode: safe\n  mode: vibe",
+            "modules:\n  - lang.bun\ntools:\n  bun:\n    version: '1'\n    version: '2'",
+            "modules:\n  - lang.bun\n---\nmodules:\n  - agents.codex",
+            "modules:\n  - lang.bun\nsettings:\n  mode: |\n    vibe",
+            "modules:\n\t- lang.bun", "modules:\n    - lang.bun",
+            "modules:\n  mode: safe", "modules:\n  - 'lang.bun' garbage",
+            "modules:\n  - \"lang.bun'", "modules:\n  - lang.bun\n  <<: *defaults",
+            "modules:\n  - lang.bun\nsettings:\n    mode: safe",
+            "modules:\n  - lang.bun\nsettings:\n  mode: !!python/object/apply:os.system 'false'",
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                with self.assertRaises(import_config.ImportConfigError):
+                    import_config.parse_export(text)
+
+    def test_empty_destination_is_valid_but_empty_source_is_not(self):
+        for text in ("", "# empty destination", '{"modules": []}', "modules:\n\ntools:\n"):
+            with self.subTest(text=text):
+                self.assertEqual(import_config.parse_export(text, allow_empty=True)["modules"], [])
+                with self.assertRaises(import_config.ImportConfigError):
+                    import_config.parse_export(text)
+        for text in ("{}", "[]", "settings:\n  mode: safe"):
+            with self.assertRaises(import_config.ImportConfigError):
+                import_config.parse_export(text, allow_empty=True)
+
+
 class CommandTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -77,16 +158,18 @@ class CommandTests(unittest.TestCase):
         # Use the current interpreter by absolute path: the helper must not
         # depend on shell command lookup or invoke anything from the export.
         self.installer.write_text("#!/bin/bash\n" +
-            "exec " + __import__("shlex").quote(sys.executable) + " - \"$@\" <<'PYCODE'\n" +
-            "import json, os, sys, time\n"
+            "exec " + shlex.quote(sys.executable) + " - \"$@\" <<'PYCODE'\n" +
+            "import json, os, signal, sys, time\n"
             "args = sys.argv[1:]\n"
             "with open(os.environ['TRACE'], 'a') as f: f.write(json.dumps(args) + '\\n')\n"
             "if '--print-plan' in args:\n"
             "    if 'invalid.module' in args: print('Unknown module', file=sys.stderr); sys.exit(7)\n"
             "    if os.environ.get('PLAN_SLEEP'): time.sleep(10)\n"
+            "    if os.environ.get('PLAN_LARGE'): print('x' * (2 * 1024 * 1024))\n"
             "    print('users.ubuntu -> lang.bun -> agents.claude')\n"
             "else:\n"
             "    print('INSTALLER EXECUTED')\n"
+            "    if os.environ.get('INSTALL_SIGNAL'): os.kill(os.getpid(), signal.SIGTERM)\n"
             "    sys.exit(int(os.environ.get('INSTALL_EXIT', '0')))\n"
             "PYCODE\n")
         self.env = {**os.environ, "TRACE": str(self.trace)}
@@ -172,6 +255,100 @@ class CommandTests(unittest.TestCase):
         result = self.run_cli("--apply", "--yes", data="lang.bun\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.calls()), 2)
+
+    def test_default_yaml_can_be_applied(self):
+        self.export.write_text("settings:\n  mode: 'vibe'\nmodules:\n  - 'agents.claude'\n  - 'lang.bun'\n")
+        result = self.run_cli("--apply")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.calls()), 2)
+        self.assertEqual(self.calls()[1][:2], ["--mode", "safe"])
+
+    def test_comparison_only_installs_missing_and_never_removes_extras(self):
+        current = self.directory / "destination.yaml"
+        current.write_text("modules:\n  - 'lang.bun'\n  - 'agents.codex'\n")
+        result = self.run_cli("--against", str(current), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["modules"], ["agents.claude", "lang.bun"])
+        self.assertEqual(report["install_modules"], ["agents.claude"])
+        self.assertEqual(report["comparison"]["basis"], "supplied_export")
+        self.assertEqual(report["comparison"]["already_present"], ["lang.bun"])
+        self.assertEqual(report["comparison"]["extra"], ["agents.codex"])
+        self.assertEqual(self.calls()[0].count("--only"), 1)
+        self.assertIn("agents.claude", self.calls()[0])
+        self.assertNotIn("agents.codex", self.calls()[0])
+        self.assertNotIn("lang.bun", self.calls()[0])
+        result = self.run_cli("--against", str(current), "--apply")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls()[-1].count("--only"), 1)
+
+    def test_comparison_noop_never_falls_through_to_default_install(self):
+        current = self.directory / "destination.json"
+        current.write_text('{"modules": ["lang.bun", "agents.claude", "agents.codex"]}')
+        self.installer = self.directory / "does-not-exist.sh"
+        result = self.run_cli("--against", str(current), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "noop")
+        self.assertEqual(report["install_modules"], [])
+        self.assertEqual(report["installer_argv"], [])
+        self.assertIsNone(report["installer_command"])
+        result = self.run_cli("--against", str(current), "--apply", "--yes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No installer was invoked", result.stdout)
+        self.assertEqual(self.calls(), [])
+
+    def test_empty_comparison_installs_the_entire_nonempty_source_selection(self):
+        current = self.directory / "empty.modules"
+        current.write_text("")
+        result = self.run_cli("--against", str(current), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["install_modules"], ["agents.claude", "lang.bun"])
+        self.assertEqual(self.calls()[0].count("--only"), 2)
+
+    def test_invalid_comparison_never_invokes_installer(self):
+        current = self.directory / "invalid.json"
+        current.write_text("{}")
+        result = self.run_cli("--against", str(current), "--apply")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.calls(), [])
+
+    def test_comparison_stdin_and_duplicate_stdin_are_guarded(self):
+        result = self.run_cli("--against", "-", "--json", data="lang.bun\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["install_modules"], ["agents.claude"])
+        count = len(self.calls())
+        result = self.run_cli("--against", "-", "--apply", data="lang.bun\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(len(self.calls()), count)
+        self.export = "-"
+        result = self.run_cli("--against", "-", "--json", data="lang.bun\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(len(self.calls()), count)
+
+    def test_oversized_plan_refuses_apply(self):
+        result = self.run_cli("--apply", PLAN_LARGE="1")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("exceeds 1 MiB", result.stderr)
+        self.assertEqual(len(self.calls()), 1)
+
+    def test_installer_signal_is_not_reported_as_success(self):
+        result = self.run_cli("--apply", INSTALL_SIGNAL="1")
+        self.assertEqual(result.returncode, -15)
+        self.assertEqual(len(self.calls()), 2)
+
+    def test_export_cannot_select_executable_paths_or_commands(self):
+        marker = self.directory / "must-not-exist"
+        self.export.write_text(json.dumps({
+            "modules": ["lang.bun"], "installer": str(marker),
+            "settings": {"mode": "vibe", "target_home": "/untrusted/source/path"},
+            "commands": ["touch " + str(marker)],
+            "tools": {"bun": {"version": "$(touch " + str(marker) + ")"}},
+        }))
+        result = self.run_cli("--apply")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.calls()[1], ["--mode", "safe", "--skip-ubuntu-upgrade", "--only", "lang.bun"])
 
 
 if __name__ == "__main__":
