@@ -1,0 +1,58 @@
+name: Rescue Transcript Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/rescue.sh'
+      - 'scripts/lib/errors.sh'
+      - 'scripts/lib/error_tracking.sh'
+      - 'scripts/lib/doctor.sh'
+      - 'scripts/generated/**'
+      - 'packages/manifest/**'
+      - 'tests/unit/test_installer_transcript.py'
+      - 'tests/unit/test_rescue.sh'
+      - '.github/workflows/rescue-transcript-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rescue:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - name: Verify committed generation and shell syntax
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/manifest generate:diff
+          bun test packages/manifest/src/generate.test.ts
+          bash -n scripts/lib/rescue.sh
+          shellcheck scripts/lib/rescue.sh
+      - name: Exercise the real transcript CLI without skipped tests
+        run: |
+          python3 -B - <<'PY'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_installer_transcript.py')
+          expected = suite.countTestCases()
+          if expected < 33:
+              raise SystemExit('Expected at least 33 transcript regressions')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
+          PY
+      - name: Preserve checkpoint-based rescue and installed routing
+        run: |
+          set -euo pipefail
+          command -v jq
+          TARGET_USER="$(id -un)" bash tests/unit/test_rescue.sh
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh rescue --help | grep -F -- '--log-file'

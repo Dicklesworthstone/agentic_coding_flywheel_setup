@@ -46,6 +46,228 @@ RESCUE_NON_ACTIONS=(
     "Use only the next command listed here before changing installer flags."
 )
 
+# Keep transcript analysis out of the checkpoint collectors: an explicit log
+# must not trigger home-directory discovery, subprocess probes, or file writes.
+rescue_explain_log() (
+    local python_bin="" source_dir="${BASH_SOURCE[0]%/*}"
+    [[ "$source_dir" != "${BASH_SOURCE[0]}" ]] || source_dir=.
+    python_bin="$(rescue_system_binary_path python3 2>/dev/null || true)"
+    if [[ -z "$python_bin" || ! -f "$source_dir/errors.sh" || -L "$source_dir/errors.sh" ]]; then
+        printf '%s\n' '{"schema":"acfs.installer-transcript.v1","status":"error","error_code":"analyzer_unavailable","raw_log_included":false}'
+        return 2
+    fi
+    # Reuse the installer's matching vocabulary, NOT its mutating fix commands.
+    unset ACFS_ERRORS_LOADED
+    # shellcheck source=errors.sh
+    source "$source_dir/errors.sh"
+    "$python_bin" -I - "$source_dir" "${#ERROR_PATTERNS[@]}" "${!ERROR_PATTERNS[@]}" "$@" <<'ACFS_TRANSCRIPT_PY'
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+
+SCHEMA = "acfs.installer-transcript.v1"
+library = Path(sys.argv[1]).absolute()
+pattern_count = int(sys.argv[2])
+patterns = sorted(sys.argv[3:3 + pattern_count], key=lambda p: (-len(p), p))
+arguments = sys.argv[3 + pattern_count:]
+
+
+class InputError(Exception):
+    pass
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        # argparse normally echoes unknown arguments (possibly secrets/paths).
+        raise InputError("invalid_arguments")
+
+
+def read_regular(value, maximum, tail=False):
+    path = Path(os.path.abspath(value))
+    if ".." in Path(value).parts or any(ord(c) < 32 or ord(c) == 127 for c in str(path)):
+        raise InputError("unsafe_input")
+    fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in path.parts[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        handle = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    finally:
+        os.close(fd)
+    with os.fdopen(handle, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise InputError("unsafe_input")
+        if not tail and before.st_size > maximum:
+            raise InputError("input_too_large")
+        offset = max(0, before.st_size - maximum)
+        stream.seek(offset)
+        data = stream.read(maximum)
+        after = os.fstat(stream.fileno())
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise InputError("input_changed")
+    if offset:
+        # Never diagnose a fragment whose prefix was outside the bounded tail.
+        data = data.partition(b"\n")[2]
+    return data, before.st_size, bool(offset)
+
+
+def module_ids():
+    # Read the generated data as inert text. Never source it or execute a log.
+    try:
+        raw, _, _ = read_regular(str(library.parent / "generated/manifest_index.sh"), 1024 * 1024)
+        block = re.search(rb"(?m)^ACFS_MODULES_IN_ORDER=\(\n(.*?)^\)", raw, re.S)
+        if block:
+            return {m.decode("ascii") for m in re.findall(rb'^  "([a-z][a-z0-9_.]*)"$', block[1], re.M)}
+    except (InputError, OSError, ValueError):
+        pass
+    return set()
+
+
+# Confidence describes a match in a transcript, never a verified host diagnosis.
+CAUSES = {
+    "checksum": ("high", "Downloaded content did not match trusted checksums or signatures.", "Stop and review the trusted source and checksum pin. Do not bypass verification.", ["acfs", "doctor", "--json"]),
+    "host_key": ("high", "SSH could not verify the host identity.", "Verify the host key independently. Do not remove known-host entries just to suppress this error.", ["acfs", "status", "--json"]),
+    "disk": ("high", "The log reports exhausted disk space or a quota.", "Inspect storage and preserve logs and databases. Choose any cleanup separately.", ["df", "-h"]),
+    "memory": ("high", "The log reports memory allocation failure.", "Inspect memory pressure before retrying; do not automatically kill processes.", ["free", "-h"]),
+    "package_lock": ("high", "Another package manager may own the APT or dpkg lock.", "Wait for the owner to finish. Never remove lock files or kill live package-manager processes.", ["ps", "-eo", "pid,comm"]),
+    "package_state": ("medium", "Package configuration or dependency resolution failed.", "Inspect package state and the supported Ubuntu release before choosing a repair.", ["dpkg", "--audit"]),
+    "network": ("medium", "A download, DNS lookup, or network connection failed.", "Check connectivity, provider availability, and firewall policy before retrying.", ["acfs", "status", "--json"]),
+    "tls": ("medium", "TLS or repository-key validation could not complete.", "Check the clock and trusted repository configuration. Do not disable TLS or signature checks.", ["date", "-u"]),
+    "permission": ("medium", "The log reports an access or permission failure.", "Check the intended account and ownership. Do not apply recursive ownership changes or retry every command as root.", ["id"]),
+    "rate_limit": ("medium", "An upstream service reports rate limiting.", "Wait for its documented reset and review authentication separately; do not retry in a tight loop.", ["acfs", "status", "--json"]),
+    "authentication": ("medium", "A service reports missing or rejected authentication.", "Use that service's explicit login or token-rotation flow. Never paste credentials into logs or support reports.", ["acfs", "services", "status"]),
+    "interrupted_upgrade": ("medium", "The transcript reports an interrupted upgrade or a required reboot.", "Inspect the saved upgrade checkpoint and package state before any reboot or resume.", ["acfs", "rescue", "--json"]),
+    "process_killed": ("low", "A process was killed; this alone does not prove an out-of-memory event.", "Inspect memory and system evidence before choosing a retry.", ["free", "-h"]),
+    "tool_failure": ("low", "A tool failed or a required dependency was unavailable.", "Inspect the saved installer summary for the exact failed module and original selection.", ["acfs", "rescue", "--json"]),
+}
+
+
+def category(pattern):
+    p = pattern.lower()
+    if any(s in p for s in ("checksum", "hash sum", "signature verification")): return "checksum"
+    if "host key" in p: return "host_key"
+    if "space left" in p or "quota" in p: return "disk"
+    if "allocate memory" in p: return "memory"
+    if "get lock" in p: return "package_lock"
+    if any(s in p for s in ("dpkg", "dependencies", "locate package")): return "package_state"
+    if any(s in p for s in ("ssl", "gpg", "pubkey")): return "tls"
+    if "permission" in p or "permitted" in p: return "permission"
+    if "rate limit" in p or "too many requests" in p: return "rate_limit"
+    if p == "killed": return "process_killed"
+    if any(s in p for s in ("curl:", "connection", "timed out")): return "network"
+    return "tool_failure"
+
+
+def explain(args):
+    raw, total, truncated = read_regular(args.log_file, args.max_bytes, tail=True)
+    # Drop ANSI/OSC payloads, including hyperlink URLs, before matching.
+    text = raw.decode("utf-8", errors="replace")
+    text = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", text)
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+    text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text)
+    lines = text.splitlines()
+    # Concatenated runs must not attribute an older run's failure to this one.
+    start = max((i for i, line in enumerate(lines) if line.strip() == "=== ACFS Install Log ==="), default=0)
+    known_modules = module_ids()
+    phase_names = {"User Normalization": "user_setup", "Filesystem Setup": "filesystem",
+        "Shell Setup": "shell_setup", "CLI Tools": "cli_tools", "Language Runtimes": "languages",
+        "Coding Agents": "agents", "Cloud & Database Tools": "cloud_db", "Agent Flywheel Stack": "stack",
+        "Final Wiring": "finalize", "Ubuntu Auto-Upgrade": "ubuntu_upgrade"}
+    phase = module = None
+    findings = {}
+    long_lines = 0
+    completion_seen = False
+    for index, line in enumerate(lines[start:], start + 1):
+        if len(line) > 65536:
+            long_lines += 1
+            continue
+        stripped = line.strip()
+        if stripped.startswith("Phase: "):
+            value = stripped[7:].split(" ", 1)[0]
+            phase = value if value in set(phase_names.values()) | {"bootstrap", "preflight"} else None
+        match = re.fullmatch(r"Phase [0-9]+/[0-9]+: (.+)", stripped)
+        if match:
+            phase = phase_names.get(match[1])
+        match = re.search(r"(?:Generated module failed:|Module:) ([a-z][a-z0-9_.]*)\b", line)
+        if match:
+            module = match[1] if match[1] in known_modules else None
+        lowered = line.lower()
+        cause = next((category(p) for p in patterns if p.lower() in lowered), None)
+        if re.search(r"(?:\b(?:401|403)\b.*(?:unauthorized|forbidden)|authentication failed|invalid api key|token (?:has )?expired)", lowered):
+            cause = "authentication"
+        if "dpkg was interrupted" in lowered:
+            cause = "package_state"
+        if any(p in lowered for p in ("upgrade interrupted", "reboot required", "system restart required")):
+            cause = "interrupted_upgrade"
+        if cause is None and ("generated module failed:" in lowered or stripped == "INSTALLATION FAILED" or "ACFS Installation Finished With Failures" in line):
+            cause = "tool_failure"
+        completion_seen |= "ACFS Installation Complete!" in line
+        if cause:
+            entry = findings.setdefault(cause, {"pattern_id": cause, "occurrences": 0})
+            entry.update(occurrences=entry["occurrences"] + 1, last_line=index)
+    ranked = sorted(findings.values(), key=lambda f: (f["pattern_id"] not in ("checksum", "host_key"),
+                    f["pattern_id"] in ("tool_failure", "process_killed"), -f["last_line"], f["pattern_id"]))
+    for finding in ranked:
+        confidence, reason, action, command = CAUSES[finding["pattern_id"]]
+        finding.update(confidence=confidence, explanation=reason, remediation=action, diagnostic_argv=command)
+    return {"schema": SCHEMA, "status": "needs_attention" if ranked else "inconclusive",
+        "installation_verified": False, "raw_log_included": False, "paths_included": False,
+        "redaction_policy": "omit_all_raw_input_except_allowlisted_phase_and_module_ids",
+        "source": {"bytes_analyzed": len(raw), "total_bytes": total, "tail_truncated": truncated,
+                   "line_numbers": "analyzed_tail" if truncated else "original_file",
+                   "analyzed_from_line": start + 1, "oversized_lines_omitted": long_lines},
+        "phase": phase, "module": module, "completion_marker_seen": completion_seen,
+        "primary_cause": ranked[0]["pattern_id"] if ranked else None, "findings": ranked,
+        "retry": {"command": None, "inspection_argv": ["acfs", "rescue", "--json"],
+                  "reason": "Logs do not establish the original ref, flags, live package locks, or checkpoint validity. Inspect saved state before resuming; never execute a command copied from a transcript."},
+        "support_argv": ["acfs", "support-bundle"], "commands_executed": False,
+        "note": "Pattern matches are advisory, not proof of the root cause. No match or a success footer is not evidence of a healthy installation."}
+
+
+def main():
+    parser = Parser(prog="acfs rescue --log-file", allow_abbrev=False,
+        description="Explain a bounded local installer transcript without commands, uploads, or raw excerpts.")
+    parser.add_argument("--log-file", required=True)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--max-bytes", type=int, default=1048576)
+    args = parser.parse_args(arguments)
+    if not 1024 <= args.max_bytes <= 8 * 1024 * 1024:
+        raise InputError("invalid_arguments")
+    report = explain(args)
+    if args.json:
+        print(json.dumps(report, sort_keys=True, indent=2))
+    else:
+        print("ACFS Installer Transcript\nStatus: " + report["status"])
+        print("Recorded phase: " + (report["phase"] or "unknown"))
+        print("Recorded module: " + (report["module"] or "unknown"))
+        for f in report["findings"]:
+            print("\n" + f["pattern_id"] + " (" + f["confidence"] + " confidence): " + f["explanation"])
+            print(f["remediation"] + "\nInspect: " + " ".join(f["diagnostic_argv"]))
+        if report["source"]["tail_truncated"] or report["source"]["oversized_lines_omitted"]:
+            print("\nOnly a bounded portion of the transcript was analyzed; earlier evidence may be missing.")
+        print("\n" + report["note"])
+        print("Before retrying: acfs rescue --json\nSupport: acfs support-bundle")
+    return 1 if report["findings"] else 0
+
+
+try:
+    sys.exit(main())
+except (InputError, OSError, ValueError):
+    # Neither exception text nor an offending input path belongs in evidence.
+    exc = sys.exc_info()[1]
+    print(json.dumps({"schema": SCHEMA, "status": "error", "raw_log_included": False,
+                      "commands_executed": False,
+                      "error_code": str(exc) if isinstance(exc, InputError) else "input_unavailable"}))
+    sys.exit(2)
+ACFS_TRANSCRIPT_PY
+)
+
 rescue_usage() {
     cat <<'EOF'
 Usage: acfs rescue [options]
@@ -54,6 +276,8 @@ Read-only recovery advisor for first-run ACFS installer problems.
 
 Options:
   --json                     Output machine-readable JSON
+  --log-file PATH             Explain a local installer transcript instead of probing checkpoints
+  --max-bytes N               Transcript tail limit, 1024..8388608 (default: 1048576)
   --state-file PATH          Read installer state from PATH
   --summary-file PATH        Read install_summary JSON from PATH
   --doctor-file PATH         Read acfs doctor --json output from PATH
@@ -760,6 +984,15 @@ rescue_parse_args() {
 }
 
 rescue_main() {
+    local argument
+    for argument in "$@"; do
+        case "$argument" in
+            --log-file|--log-file=*)
+                rescue_explain_log "$@"
+                return $?
+                ;;
+        esac
+    done
     rescue_parse_args "$@"
     rescue_resolve_defaults
     rescue_probe_support
