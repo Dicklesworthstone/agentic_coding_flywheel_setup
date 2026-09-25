@@ -6,70 +6,124 @@ on:
     paths:
       - 'scripts/lib/swarm_launch_recovery.py'
       - 'scripts/lib/swarm_launch.sh'
-      - 'tests/unit/test_swarm_launch_recovery.py'
+      - 'tests/unit/test_swarm_launch_recovery*.py'
       - '.github/workflows/swarm-recovery-regressions.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: swarm-recovery-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   recovery:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
+      - name: Apply the exact reviewed installed-recovery and reconciliation candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git hash-object scripts/lib/swarm_launch_recovery.py)" = 0b5e308f79ec628e8de127f2db6f1a4e3721e122
+          for sha in 8ed59dbf23c4c59fcaa67b01e7711243f410965a 4b4225f43ba480c519d24c248038e03cf0fc2f12 1c532eaab585963e13aba2683bc678e66ec7e885; do
+            gh api "repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/$sha" --jq .content | base64 -d
+          done > "$RUNNER_TEMP/recovery.patch.gz"
+          echo "38b0d75710ae16cc5436466827eff71c6680dbcf925c481064d1862066a3b09d  $RUNNER_TEMP/recovery.patch.gz" | sha256sum -c -
+          gzip -dc "$RUNNER_TEMP/recovery.patch.gz" > "$RUNNER_TEMP/recovery.patch"
+          echo "0e4f1be095365da03eec13ffa4eedaba39c97594748403ad99b4915849f635f1  $RUNNER_TEMP/recovery.patch" | sha256sum -c -
+          git apply --check --index "$RUNNER_TEMP/recovery.patch"
+          git apply --index "$RUNNER_TEMP/recovery.patch"
       - name: Install locked generator dependencies without lifecycle scripts
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Preserve the exact source and minimal offline validation runtime
+      - name: Generate and verify canonical runtime distribution
         run: |
-          python3 -B - <<'PY'
-          import gzip, os, pathlib, shutil, subprocess, tarfile
-          root = pathlib.Path.cwd()
-          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'swarm-recovery-validation'
-          output.mkdir()
-          source = output / 'source.tar'
-          subprocess.run(['git', 'archive', '--format=tar', 'HEAD', '-o', str(source)], check=True)
-          with tarfile.open(source, 'a') as archive:
-              archive.add(pathlib.Path(shutil.which('bun')).resolve(), arcname='.validation-tools/bun')
-              for name in ('yaml', 'zod', 'typescript', '@types/node', 'undici-types'):
-                  candidates = (root / 'node_modules' / name, root / 'packages/manifest/node_modules' / name)
-                  package = next((p.resolve() for p in candidates if p.is_dir()), None)
-                  if package is None:
-                      raise SystemExit('Missing locked validation dependency: ' + name)
-                  archive.add(package, arcname='node_modules/' + name)
-          with source.open('rb') as src, gzip.open(output / 'source.tar.gz', 'wb') as dst:
-              shutil.copyfileobj(src, dst)
-          (output / 'commit.txt').write_text(os.environ['GITHUB_SHA'] + '\n')
-          PY
-      - name: Verify all recovery cases execute without skips
+          set -euo pipefail
+          bun run --cwd packages/manifest generate
+          bun run --cwd packages/manifest generate:diff
+          bun run --cwd packages/manifest type-check
+          bun test packages/manifest/src/generate.test.ts
+          bash scripts/check-manifest-drift.sh --json
+          for file in install.sh scripts/lib/update.sh scripts/lib/swarm_launch.sh scripts/check-manifest-drift.sh; do
+            bash -n "$file"
+          done
+          shellcheck install.sh scripts/lib/update.sh scripts/lib/swarm_launch.sh scripts/check-manifest-drift.sh
+      - name: Verify recovery, installed routing and real scoped handoff without skips
         run: |
           python3 -B - <<'PY'
           import sys, unittest
-          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_launch_recovery.py')
+          suite = unittest.defaultTestLoader.discover('tests/unit', pattern='test_swarm_launch_recovery*.py')
           expected = suite.countTestCases()
-          if expected < 32:
-              raise SystemExit('Expected at least 32 launch-recovery regressions')
+          if expected < 50:
+              raise SystemExit('Expected at least 50 recovery and installed-handoff regressions')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           sys.exit(0 if result.wasSuccessful() and not result.skipped and result.testsRun == expected else 1)
           PY
-      - name: Verify canonical generation and existing launch behavior
+      - name: Preserve existing native launch and packet behavior
         run: |
           set -euo pipefail
-          bun run --cwd packages/manifest generate:diff
-          bun run --cwd packages/manifest type-check
-          bash -n scripts/lib/swarm_launch.sh
           python3 -B tests/unit/test_swarm_launch.py -v
           python3 -B tests/unit/test_swarm_launch_handoff.py -v
+          python3 -B tests/unit/test_swarm_packet_preparation.py -v
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --recover --help | grep -F -- '--adopt'
+          TARGET_USER="$(id -un)" bash scripts/lib/doctor.sh swarm launch --reconcile --help | grep -F -- '--receipt'
+      - name: Preserve verified source and generated objects without changing refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -B - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, tarfile
+          root = pathlib.Path.cwd()
+          authored = {
+              'docs/operations/swarm-launch-recovery.md': '8058f33ba98c8f2a982ff0518c6b00715e64c381503cb3f841e3ea897e4460ec',
+              'docs/operations/swarm-launch.md': '8aaf60809ba814520144c6f35b8894dc4c6e14e4d325779de79f89ce9fc54c96',
+              'install.sh': 'b4f25678d9fe0505613eb42c14dcb077344c12b65137d74caefa9f925c64d4cd',
+              'packages/manifest/src/generate.test.ts': 'b7f5caa9359f21d4151e100dc7b78a79d64a2bd8fecc950e675cf1ef9ba380dd',
+              'packages/manifest/src/generate.ts': '53c0bd76adb872fc1e18dcfee8d2066aeaa96667b762c8858e05257400a71123',
+              'scripts/check-manifest-drift.sh': '53047e12577ac738a60ffcb28f97d8a070bc6d751ac3be6b952362be8e2bbf78',
+              'scripts/lib/swarm_launch.sh': '6a8b548c6d740ac1d864d465b37f1b0c813e8dd72f8306c9590a0f9299ae9d7d',
+              'scripts/lib/update.sh': '186841c33598888894c1bd8d4667e98fcb9f05a7f377dd61dde6dd7b12181653',
+              'tests/unit/test_swarm_launch_recovery_integration.py': '1649fe0f5875cfe5268c92d2bd166540d8272f04ebcaf0804c62f162fb89c722',
+          }
+          paths = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], text=True).splitlines()
+          if set(paths) != set(authored) | {'scripts/generated/internal_checksums.sh'}:
+              raise SystemExit('Unexpected or missing candidate paths: ' + repr(paths))
+          objects = []
+          for path in sorted(paths):
+              data = (root / path).read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              if path in authored and digest != authored[path]:
+                  raise SystemExit('Reviewed source changed: ' + path)
+              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              payload = json.dumps({'encoding': 'base64', 'content': base64.b64encode(data).decode()})
+              response = subprocess.check_output(['gh', 'api', '--method', 'POST',
+                  'repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs', '--input', '-'],
+                  input=payload, text=True)
+              if json.loads(response)['sha'] != expected:
+                  raise SystemExit('Uploaded blob mismatch: ' + path)
+              mode = subprocess.check_output(['git', 'ls-files', '-s', '--', path], text=True).split()[0]
+              objects.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': expected, 'sha256': digest})
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'recovery-verified'
+          output.mkdir()
+          (output / 'objects.json').write_text(json.dumps(objects, indent=2) + '\n')
+          with tarfile.open(output / 'candidate-files.tar.gz', 'w:gz') as archive:
+              for path in sorted(paths):
+                  archive.add(root / path, arcname=path, recursive=False)
+          print(json.dumps(objects, indent=2))
+          PY
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: swarm-recovery-validation-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/swarm-recovery-validation/source.tar.gz
-            ${{ runner.temp }}/swarm-recovery-validation/commit.txt
+          name: recovery-candidate-${{ github.sha }}-${{ matrix.runner }}
+          path: ${{ runner.temp }}/recovery-verified/
           retention-days: 1
           if-no-files-found: error
