@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-09-25T14:20:59-04:00
+# checksums.yaml - Auto-generated 2026-09-25T19:01:17+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -68,7 +68,7 @@ installers:
 
   ee:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
-    sha256: "a503a8f5b9286dbfb42645932256178c5d529cbb6c3a4004438cf2c0907a1d5f"
+    sha256: "152dc0d499c0a986aadd5cb4a74ab3bf67e031275f0e57102b4f4b2bc76db7b3"
 
   fmd:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
