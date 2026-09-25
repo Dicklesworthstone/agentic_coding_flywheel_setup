@@ -179,3 +179,17 @@ process failures, response loss and no-relaunch recovery. Handoff and dispatch
 tests also exercise the actual allocator, preparer and packet sender from a
 complete checkout, including receipt-only recovery after native agents exit.
 They do not exercise installed providers, live authentication or a production VPS.
+
+## Lost startup confirmation and receipt-only reconciliation
+
+Use `acfs swarm launch --reconcile --receipt /absolute/path/launch.json` to
+verify an existing launch without retyping its original arguments. This command
+only inspects saved evidence and live native pane identities; it never launches
+agents or sends work.
+
+When the original durable intent exists but its result is missing, use
+`acfs swarm launch --recover --receipt /absolute/path/launch.json` to preview
+explicit adoption of the current session. Adoption needs a separate recovery
+digest and `--adopt`. It never retries spawn or replaces an existing result.
+See [launch recovery](swarm-launch-recovery.md) for the identity checks,
+provenance limitations, and return path to scoped work-packet preparation.

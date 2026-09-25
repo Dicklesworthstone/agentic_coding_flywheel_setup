@@ -3860,6 +3860,7 @@ acfs_load_internal_checksums_data() {
         scripts/lib/swarm_fleet_probe.sh
         scripts/lib/swarm_inventory.sh
         scripts/lib/swarm_launch.sh
+        scripts/lib/swarm_launch_recovery.py
         scripts/lib/swarm_packet.sh
         scripts/lib/swarm_plan.sh
         scripts/lib/swarm_simulation.sh
@@ -10821,6 +10822,7 @@ finalize() {
     try_step "Installing policy_lint.sh" install_asset "scripts/lib/policy_lint.sh" "$ACFS_HOME/scripts/lib/policy_lint.sh" || return 1
     try_step "Installing credential_preflight.sh" install_asset "scripts/lib/credential_preflight.sh" "$ACFS_HOME/scripts/lib/credential_preflight.sh" || return 1
     try_step "Installing swarm_launch.sh" install_asset "scripts/lib/swarm_launch.sh" "$ACFS_HOME/scripts/lib/swarm_launch.sh" || return 1
+    try_step "Installing swarm_launch_recovery.py" install_asset "scripts/lib/swarm_launch_recovery.py" "$ACFS_HOME/scripts/lib/swarm_launch_recovery.py" || return 1
     try_step "Installing swarm_plan.sh" install_asset "scripts/lib/swarm_plan.sh" "$ACFS_HOME/scripts/lib/swarm_plan.sh" || return 1
     try_step "Installing swarm_status.sh" install_asset "scripts/lib/swarm_status.sh" "$ACFS_HOME/scripts/lib/swarm_status.sh" || return 1
     try_step "Installing swarm_doctor.sh" install_asset "scripts/lib/swarm_doctor.sh" "$ACFS_HOME/scripts/lib/swarm_doctor.sh" || return 1

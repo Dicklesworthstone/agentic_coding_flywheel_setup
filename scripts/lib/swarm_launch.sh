@@ -577,12 +577,59 @@ def dispatch_main(arguments):
         return exit_code
 
 
+def reconcile_main(arguments):
+    parser = argparse.ArgumentParser(prog="acfs swarm launch --reconcile", allow_abbrev=False,
+        description="Verify an existing launch from its saved receipt only. Never starts agents or sends work.")
+    parser.add_argument("--receipt", required=True, help="Existing private launch intent, not its result")
+    args = parser.parse_args(arguments)
+    receipt = Path(os.path.abspath(args.receipt))
+    with receipt_directory(receipt, lock=True) as fd:
+        request = saved_request(fd, receipt)
+        report = {"schema": SCHEMA, "status": "unconfirmed", "request": request,
+            "starts_agents": False, "work_dispatched": False, "reconciled_only": True,
+            "authentication_verified": False, "agent_mail_registered": False}
+        try:
+            saved = read_receipt(fd, receipt.name + ".result.json")
+            targets = reconcile(fd, receipt, request)
+            require(saved_request(fd, receipt) == request
+                    and read_receipt(fd, receipt.name + ".result.json") == saved,
+                    "Saved launch evidence changed during reconciliation; inspect the retained files.")
+            if "recovery" in saved:
+                provenance = saved["recovery"]
+                require(isinstance(provenance, dict)
+                        and provenance.get("schema") == "acfs.swarm-launch-recovery.v1"
+                        and provenance.get("original_launch_verified") is False
+                        and all(isinstance(provenance.get(key), str)
+                                and re.fullmatch(r"[0-9a-f]{64}", provenance[key])
+                                for key in ("review_sha256", "intent_sha256"))
+                        and isinstance(provenance.get("adopted_at"), str)
+                        and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+                                         provenance["adopted_at"]), "Invalid recovery provenance; retain the result.")
+                report["original_launch_verified"] = False
+                report["recovery_provenance"] = {key: provenance[key] for key in (
+                    "schema", "review_sha256", "intent_sha256", "original_launch_verified", "adopted_at")}
+            report.update(status="ready", targets=targets)
+        except (LaunchError, OSError, UnicodeError) as exc:
+            report["error"] = str(exc) if isinstance(exc, LaunchError) else "Unable to verify saved native agents."
+        if report.get("targets"):
+            report["preparation_targets"] = [str(t["slot"]) + ":" + t["agent_name"] + ":" + t["agent_type"] + ":" + t["pane"]
+                                             for t in report["targets"]]
+        if report["status"] == "unconfirmed" and not os.path.lexists(str(receipt) + ".result.json"):
+            report["recovery_preview_command"] = shlex.join(["acfs", "swarm", "launch", "--recover", "--receipt", str(receipt)])
+        report["recovery"] = "Preserve the intent and any result. Reconciliation never relaunches. " \
+                             "A missing result requires a separate, explicitly approved recovery before work handoff."
+    print(encode(report).decode(), end="")
+    return 0 if report["status"] == "ready" else 1
+
+
 def main():
     parser = argparse.ArgumentParser(prog="acfs swarm launch", allow_abbrev=False,
         description="Preview and explicitly start a new NTM native-agent session. May use paid providers. "
                     "Existing receipts only verify saved panes; they NEVER spawn again.",
         epilog="Work handoff: acfs swarm launch --prepare-batch DIRECTORY --help; "
-               "reviewed dispatch: acfs swarm launch --dispatch-batch BATCH.json --help")
+               "reviewed dispatch: acfs swarm launch --dispatch-batch BATCH.json --help; "
+               "receipt-only status: acfs swarm launch --reconcile --help; "
+               "incomplete launch recovery: acfs swarm launch --recover --help")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--agent", action="append", required=True, help="Unique NAME:claude or NAME:codex; repeat for each slot")
@@ -673,6 +720,12 @@ def cancelled(signum, frame):
 for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, cancelled)
 try:
+    if sys.argv[1:2] == ["--recover"]:
+        helper = RUNTIME.with_name("swarm_launch_recovery.py")
+        require(helper.is_file() and not helper.is_symlink(), "The installed launch recovery helper is unavailable.")
+        os.execv(sys.executable, [sys.executable, "-B", str(helper), *sys.argv[2:]])
+    if sys.argv[1:2] == ["--reconcile"]:
+        sys.exit(reconcile_main(sys.argv[2:]))
     if sys.argv[1:2] == ["--dispatch-batch"]:
         sys.exit(dispatch_main(sys.argv[2:]))
     sys.exit(preparation_main(sys.argv[2:]) if sys.argv[1:2] == ["--prepare-batch"] else main())
