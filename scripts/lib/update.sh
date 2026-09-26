@@ -931,9 +931,23 @@ update_ensure_gemini_patch_node() {
     update_has_nvm_node
 }
 
+# Strip userinfo ("user:token@") from a URL. `git remote get-url` applies
+# url.<base>.insteadOf rewrites, so a host that injects a token that way
+# reports https://x-access-token:<token>@github.com/... as its origin. That
+# must never reach a log, and it is still the expected origin.
+acfs_strip_url_userinfo() {
+    local url="${1:-}"
+    if [[ "$url" =~ ^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]+@(.*)$ ]]; then
+        printf '%s%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    else
+        printf '%s\n' "$url"
+    fi
+}
+
 is_expected_acfs_origin_url() {
     local url="$1"
-    local normalized="$url"
+    local normalized=""
+    normalized="$(acfs_strip_url_userinfo "$url")"
     normalized="${normalized%/}"
 
     case "$normalized" in
@@ -5520,7 +5534,7 @@ update_acfs_self() {
                 return 0
             fi
         else
-            log_item "warn" "ACFS self-update" "unexpected origin during git recovery: ${actual_origin:-<unset>}"
+            log_item "warn" "ACFS self-update" "unexpected origin during git recovery: $(acfs_strip_url_userinfo "${actual_origin:-<unset>}")"
             return 0
         fi
     fi
@@ -5561,7 +5575,7 @@ update_acfs_self() {
             local existing_url
             existing_url=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null) || true
             if ! is_expected_acfs_origin_url "$existing_url"; then
-                log_item "warn" "ACFS self-update" "unexpected origin remote: $existing_url"
+                log_item "warn" "ACFS self-update" "unexpected origin remote: $(acfs_strip_url_userinfo "$existing_url")"
                 return 0
             fi
         fi
@@ -5600,7 +5614,7 @@ update_acfs_self() {
         return 0
     fi
     if ! is_expected_acfs_origin_url "$origin_url"; then
-        log_item "warn" "ACFS self-update" "unexpected origin remote: $origin_url"
+        log_item "warn" "ACFS self-update" "unexpected origin remote: $(acfs_strip_url_userinfo "$origin_url")"
         return 0
     fi
 

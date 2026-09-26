@@ -16361,3 +16361,20 @@ STUBS
     run grep -E 'update_run_verified_installer ubs --easy-mode[[:space:]]*$' "$update"
     assert_failure
 }
+
+@test "acfs origin check: insteadOf-injected credentials are accepted but never logged" {
+    local tokened="https://x-access-token:gho_FAKE0000000000000000000000000000000@github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git"
+
+    run acfs_strip_url_userinfo "$tokened"
+    assert_success
+    assert_output "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git"
+
+    run is_expected_acfs_origin_url "$tokened"
+    assert_success
+
+    run is_expected_acfs_origin_url "https://x-access-token:gho_FAKE@example.com/Dicklesworthstone/agentic_coding_flywheel_setup.git"
+    assert_failure
+
+    run acfs_strip_url_userinfo "git@github.com:Dicklesworthstone/agentic_coding_flywheel_setup.git"
+    assert_output "git@github.com:Dicklesworthstone/agentic_coding_flywheel_setup.git"
+}
