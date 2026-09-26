@@ -13118,6 +13118,7 @@ EOF
     assert_output --partial "ACFS_UPDATE_TMPDIR"
     assert_output --partial "/data/tmp"
     assert_output --partial 'mktemp -d "$candidate/acfs_cargo_build.XXXXXX"'
+    assert_output --partial "RCH_ENABLED=0 cargo build --release"
     assert_output --partial "sentinel=_"
     assert_output --partial "repo=https://example.test/tool.git"
     assert_output --partial "binary=tool-bin"

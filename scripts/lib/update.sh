@@ -4551,7 +4551,11 @@ ACFS_TMP_DIR="$(make_acfs_cargo_tmp_dir)" || {
 trap '[ -n "$ACFS_TMP_DIR" ] && rm -rf "$ACFS_TMP_DIR"' EXIT
 git clone --depth 1 "$1" "$ACFS_TMP_DIR/src"
 cd "$ACFS_TMP_DIR/src"
-cargo build --release --target-dir "$ACFS_TMP_DIR/target"
+# A throwaway clone outside rch's canonical project root can never be offloaded:
+# rch rejects it ("Project path normalization failed ... outside canonical root")
+# and, where the shim requires remote, refuses local fallback too (exit 103).
+# RCH_ENABLED=0 is rch's own disable switch, scoped to this one-off tool build.
+RCH_ENABLED=0 cargo build --release --target-dir "$ACFS_TMP_DIR/target"
 install -m 0755 "$ACFS_TMP_DIR/target/release/$2" "$HOME/.cargo/bin/$2"
 EOF
 )"
