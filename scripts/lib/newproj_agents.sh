@@ -29,6 +29,7 @@ declare -ga AGENTS_SECTION_ORDER=(
     "elixir_toolchain"
     "docker_workflow"
     "code_editing"
+    "shell_environment"
     "console_output"
     "landing_the_plane"
     "issue_tracking"
@@ -49,6 +50,7 @@ declare -gA AGENTS_SECTION_META=(
     ["elixir_toolchain"]="Elixir Toolchain|false|"
     ["docker_workflow"]="Docker Workflow|false|"
     ["code_editing"]="Code Editing Discipline|true|"
+    ["shell_environment"]="Shell Environment|true|"
     ["console_output"]="Console Output|false|"
     ["landing_the_plane"]="Landing the Plane|true|"
     ["issue_tracking"]="Issue Tracking with br|false|"
@@ -103,6 +105,9 @@ get_section_content() {
             ;;
         code_editing)
             _section_code_editing
+            ;;
+        shell_environment)
+            _section_shell_environment
             ;;
         console_output)
             _section_console_output
@@ -200,6 +205,21 @@ _section_code_editing() {
 - Do **not** run scripts that bulk-modify code (codemods, invented one-off scripts, giant `sed`/regex refactors).
 - Large mechanical changes: break into smaller, explicit edits and review diffs.
 - Subtle/complex changes: edit by hand, file-by-file, with careful reasoning.
+
+---
+EOF
+}
+
+# The ACFS zshrc (acfs/zsh/acfs.zshrc) replaces `ls`/`tree` with lsd or eza
+# aliases. Agents that assume GNU `ls` output silently get wrong answers (GH #413).
+_section_shell_environment() {
+    cat << 'EOF'
+
+## Shell Environment
+
+- The ACFS zshrc aliases `ls` and `tree`. With lsd installed (the default): `ls` = `lsd --inode --long --all`, `tree` = `lsd --tree`. Without lsd but with eza: `ls` = `eza --icons`, `tree` = `eza --tree --icons`. `ll`, `la` and `l` also map to lsd (or eza). Agent shells that load the zsh config get these aliases; scripts run with `bash` or `sh` get the real GNU `ls`, so the same command can behave differently in your shell and in a script you write.
+- Aliased `ls` output is not GNU `ls` output. The lsd alias always prints long format (inode, permissions, owner, size, date), even into a pipe, and `--all` adds `.`, `..` and dotfiles. So `ls | wc -l` overcounts and piping `ls` into `grep`/`comm`/`cut`/`xargs` compares formatted lines instead of paths. lsd rejects GNU flags such as `--time-style`, and eza's flags differ from GNU's too.
+- When a command or script consumes the listing, bypass the alias: `command ls` (or `/usr/bin/ls`), `find <dir> -maxdepth 1`, or `stat`. Use the aliased `ls`/`tree` only to read a listing yourself. `type ls` shows which alias is active.
 
 ---
 EOF

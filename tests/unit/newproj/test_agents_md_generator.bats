@@ -87,6 +87,7 @@ teardown() {
     [[ "$required" == *"rule_1_absolute"* ]]
     [[ "$required" == *"irreversible_actions"* ]]
     [[ "$required" == *"code_editing"* ]]
+    [[ "$required" == *"shell_environment"* ]]
     [[ "$required" == *"landing_the_plane"* ]]
 }
 
@@ -260,6 +261,25 @@ teardown() {
     [[ "$content" == *"IRREVERSIBLE"* ]]
     [[ "$content" == *"Code Editing"* ]]
     [[ "$content" == *"Landing the Plane"* ]]
+}
+
+@test "generate_agents_md warns that ls and tree are aliased (GH #413)" {
+    local content
+    content=$(generate_agents_md "test-project")
+
+    [[ "$content" == *"## Shell Environment"* ]]
+    [[ "$content" == *"lsd --inode --long --all"* ]]
+    [[ "$content" == *"eza --icons"* ]]
+    [[ "$content" == *"command ls"* ]]
+}
+
+@test "shell_environment section matches the aliases in the ACFS zshrc" {
+    local zshrc="$PROJECT_ROOT/acfs/zsh/acfs.zshrc"
+    [[ -f "$zshrc" ]]
+    grep -qF "alias ls='lsd --inode --long --all'" "$zshrc"
+    grep -qF "alias tree='lsd --tree'" "$zshrc"
+    grep -qF "alias ls='eza --icons'" "$zshrc"
+    grep -qF "alias tree='eza --tree --icons'" "$zshrc"
 }
 
 @test "generate_agents_md includes nodejs for nodejs stack" {
