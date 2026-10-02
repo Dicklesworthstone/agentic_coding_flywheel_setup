@@ -64,7 +64,7 @@ installers:
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
-    sha256: "aaf8cad08ff3f67b15871293be5718b1217080d1cc8ea2c7eea8d083b0147939"
+    sha256: "4d1ebd3664ecf1b5c0ffb5e3e8fe86dcfe30461a35839bf02b9d5d935769da09"
 
   ee:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
