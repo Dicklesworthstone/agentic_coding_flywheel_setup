@@ -52,6 +52,8 @@ class UpgradeEntrypointTests(unittest.TestCase):
         # A new state-reader helper, when present, runs real jq against fixture files.
         if re.search(r'^acfs_read_upgrade_checkpoint\(\)', source, re.M):
             cls.functions += '\n' + definition(source, 'acfs_read_upgrade_checkpoint')
+        if re.search(r'^acfs_read_upgrade_checkpoint_root\(\)', source, re.M):
+            cls.functions += '\n' + definition(source, 'acfs_read_upgrade_checkpoint_root')
         cls.policy = '\n'.join(definition(policy, name) for name in (
             'ubuntu_get_version_number', 'ubuntu_version_gte', 'ubuntu_validate_upgrade_versions',
             'ubuntu_get_next_version_hardcoded', 'ubuntu_calculate_upgrade_path'))
@@ -174,13 +176,19 @@ sleep() { trace UNEXPECTED_SLEEP; exit 98; }
     def test_default_target_is_supported_lts(self):
         self.assertEqual(self.default, '26.04')
 
-    def test_default_does_not_skip_a_fully_patched_lts(self):
+    def test_default_preserves_supported_lts_without_loading_upgrade_machinery(self):
         for version in ('22.04', '24.04'):
             with self.subTest(version=version):
                 rc, events, errors = self.invoke(version=version, target=self.default, explicit=False)
                 self.assertEqual(rc, 0, errors)
-                self.assertTrue(any(e.startswith('start:26.04:2604:') for e in events), events)
-                self.assertNotIn('legacy_apt_list', events)
+                self.assertEqual(events, ['restored:/preserved/original-state.json'])
+
+    def test_nonroot_default_preserves_supported_lts(self):
+        for version in ('22.04', '24.04'):
+            with self.subTest(version=version):
+                rc, events, errors = self.invoke(version=version, explicit=False, uid=65534)
+                self.assertEqual(rc, 0, errors)
+                self.assertEqual(events, ['restored:/preserved/original-state.json'])
 
     def test_requested_target_is_bound_before_library_load(self):
         for target in ('22.04', '24.04', '26.04'):
@@ -280,12 +288,18 @@ sleep() { trace UNEXPECTED_SLEEP; exit 98; }
             self.assertNotEqual(rc, 0)
             self.assertFalse(any(e.startswith('start:') for e in events))
 
-    def test_every_active_checkpoint_blocks_even_fully_patched_lts(self):
+    def test_active_checkpoint_blocks_explicit_upgrade_and_implicit_phase_stays_dormant(self):
         for stage in ('initializing', 'upgrading', 'awaiting_reboot', 'resumed', 'step_complete', 'error'):
             for explicit in (True, False):
                 with self.subTest(stage=stage, explicit=explicit):
                     rc, events, _ = self.invoke(stage=stage, explicit=explicit)
-                    self.assertNotEqual(rc, 0)
+                    if explicit:
+                        self.assertNotEqual(rc, 0)
+                    else:
+                        # main's mandatory checkpoint guard blocks normal
+                        # installs; the unrequested phase must remain dormant.
+                        self.assertEqual(rc, 0)
+                        self.assertFalse(any(e.startswith('library:') for e in events))
                     self.assertFalse(any(e.startswith(('start:', 'apt:', 'state_update')) for e in events))
 
     def test_completed_checkpoint_does_not_override_actual_os(self):
@@ -333,9 +347,9 @@ sleep() { trace UNEXPECTED_SLEEP; exit 98; }
         self.assertNotEqual(rc, 0)
         self.assertFalse(any(e.startswith(('apt:', 'start:')) for e in events))
 
-    def test_noop_needs_neither_jq_install_nor_root(self):
+    def test_default_noop_needs_neither_jq_install_nor_root(self):
         override = 'acfs_early_system_binary_path() { [[ "$1" != jq ]] || return 1; trace UNEXPECTED_TOOL; return 1; }'
-        rc, events, errors = self.invoke(version='26.04', overrides=override, uid=65534)
+        rc, events, errors = self.invoke(version='26.04', explicit=False, overrides=override, uid=65534)
         self.assertEqual(rc, 0, errors)
         self.assertFalse(any(e.startswith(('apt:', 'start:')) for e in events))
 

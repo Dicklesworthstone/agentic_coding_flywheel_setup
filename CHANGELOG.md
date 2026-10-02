@@ -10,6 +10,19 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.9.0...HEAD)
 
+- Ordinary installs preserve supported Ubuntu 22.04/24.04 LTS releases. An OS
+  release upgrade requires an explicit `--target-ubuntu=26.04` (or another
+  supported LTS destination); `--skip-ubuntu-upgrade` takes precedence in either
+  argument order. Non-root sudo, Docker, and WSL installs no longer enter the
+  root-only, reboot-capable upgrade phase by default.
+- The system checkpoint gate still blocks unfinished or malformed upgrades
+  before any package changes. A sudo user can now validate a completed
+  root-only checkpoint through an absolute, privileged read of the fixed system
+  path, without changing its permissions or trusting inherited runner paths.
+- Real CLI, orchestration, and root-only checkpoint regressions cover the new
+  default, explicit upgrade ordering, skip precedence, and preserved evidence.
+  README recipes distinguish LTS retention from opt-in upgrade qualification.
+
 ## [v0.9.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/tag/v0.9.0) -- 2026-09-04
 
 > 57 commits since v0.8.0 (2026-08-25 through 2026-09-04). Installer-only release, like every ACFS release: the deliverable is that this tag installs. Pinned install: `curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v0.9.0/install.sh" | bash -s -- --yes --mode vibe --ref v0.9.0`.
