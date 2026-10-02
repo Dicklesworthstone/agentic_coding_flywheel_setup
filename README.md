@@ -96,7 +96,7 @@ graph LR
     end
 
     subgraph vps ["Fresh VPS"]
-        UBUNTU["Ubuntu 25.10"]
+        UBUNTU["Ubuntu 22.04 / 24.04 LTS"]
         INSTALLER["install.sh"]
         CONFIGURED["Configured VPS"]
     end
@@ -181,7 +181,7 @@ flowchart TB
   end
 
   %% Target VPS
-  subgraph V["Target VPS (Ubuntu 25.10, auto-upgraded)"]
+  subgraph V["Target VPS (Ubuntu LTS, existing release preserved)"]
     Run["Run install.sh"]
     Verify["Verified upstream installers<br/>(security.sh + checksums.yaml)"]
     AcfsHome["~/.acfs/<br/>configs + scripts + state.json"]
@@ -556,7 +556,7 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_f
 ```
 
 This checks:
-- OS compatibility (Ubuntu 22.04+ or Arch-family: Arch, Omarchy; installer upgrades Ubuntu to 25.10)
+- OS compatibility (Ubuntu 22.04+ or Arch-family: Arch, Omarchy; supported LTS releases stay in place unless an upgrade is explicitly requested)
 - Architecture (x86_64 or ARM64)
 - Memory and disk space (warns below 4GB RAM; fails below 20GB free disk)
 - Network connectivity to required URLs
@@ -604,13 +604,15 @@ The installer uses semantic colors for progress visibility:
 ✔ Shell setup complete                    # Green: success
 ```
 
-### Automatic Ubuntu Upgrade
+### Optional Ubuntu Release Upgrade
 
-ACFS automatically upgrades Ubuntu to version **25.10** before installation when running on older versions. This ensures compatibility with the latest packages and optimal performance.
+A no-flags install keeps supported **Ubuntu 22.04 and 24.04 LTS** hosts on their current release. Non-root users with sudo and Ubuntu 24.04 Docker/WSL environments can install ACFS without opting into an OS upgrade.
+
+Pass **`--target-ubuntu=26.04`** to explicitly request an upgrade to Ubuntu 26.04 LTS. An OS upgrade requires a root-run installer on a host that can reboot; it is separate from installing or updating the ACFS tools.
 
 **How it works:**
 1. Detects your current Ubuntu version
-2. Calculates the upgrade path (e.g., 24.04 → 25.04 → 25.10)
+2. Calculates a supported upgrade path (e.g., 24.04 → 26.04 LTS)
 3. Performs sequential `do-release-upgrade` operations
 4. Reboots after each upgrade (handled automatically)
 5. Resumes via systemd service after reboot
@@ -618,18 +620,20 @@ ACFS automatically upgrades Ubuntu to version **25.10** before installation when
 
 **Expected timeline:**
 - Each version hop takes 30-60 minutes
-- Full chain from 24.04 → 25.10 takes 1.5-3 hours
+- Multiple LTS hops take longer; the path must be offered by Ubuntu's stable release upgrader
 - SSH sessions disconnect during reboots (reconnect to monitor)
 
-**To skip automatic upgrade:**
+**To explicitly request the 26.04 LTS upgrade:**
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --skip-ubuntu-upgrade
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --target-ubuntu=26.04
 ```
 
-**To specify a different target version:**
+**To suppress an explicit upgrade request:**
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --target-ubuntu=25.04
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --target-ubuntu=26.04 --skip-ubuntu-upgrade
 ```
+
+`--skip-ubuntu-upgrade` wins regardless of flag order. Neither this flag nor an ordinary no-target install bypasses an active system upgrade checkpoint: normal installation remains blocked until the unfinished upgrade is resolved. Inspect the checkpoint and resume logs before retrying; keep the recovery state intact.
 
 **Monitoring upgrade progress:**
 ```bash
@@ -647,7 +651,7 @@ tail -f /var/log/acfs/upgrade_resume.log
 - Create a VM snapshot before upgrading (recommended but not required)
 - Upgrades cannot be undone without restoring from snapshot
 - The system will reboot multiple times automatically
-- EOL interim releases (like 24.10) may be skipped automatically if they are no longer offered by `do-release-upgrade`
+- Ubuntu 25.10 is supported only as a recovery source when explicitly upgrading to 26.04 LTS; it is not an upgrade destination
 - Reconnect via SSH after each reboot to monitor progress
 
 ---
@@ -2072,7 +2076,7 @@ OS detection and validation:
 
 ```bash
 detect_os()      # Sets OS_ID, OS_VERSION, OS_CODENAME
-validate_os()    # Checks for Ubuntu 25.10 (or upgrade path)
+validate_os()    # Checks supported Ubuntu or Arch-family releases
 is_fresh_vps()   # Heuristic detection of fresh VPS
 get_arch()       # Returns amd64/arm64
 is_wsl()         # Detects WSL
@@ -2267,7 +2271,7 @@ After installation, run `tailscale up` to authenticate and join your tailnet.
 
 ### `ubuntu_upgrade.sh`
 
-Multi-reboot Ubuntu version upgrade automation:
+Multi-reboot Ubuntu version upgrade automation, invoked only when an upgrade is explicitly requested:
 
 ```bash
 start_ubuntu_upgrade                # Begin upgrade chain
@@ -2277,7 +2281,7 @@ resume_upgrade_after_reboot         # Continue after reboot
 
 Handles the complex multi-step Ubuntu upgrade process:
 1. Detects current version
-2. Calculates upgrade path (e.g., 24.04 → 25.04 → 25.10)
+2. Calculates a supported LTS upgrade path (e.g., 24.04 → 26.04)
 3. Performs sequential `do-release-upgrade` operations
 4. Installs systemd service for post-reboot resume
 5. Continues ACFS installation after reaching target
@@ -2777,9 +2781,11 @@ Workflow artifact directories and uploads include only the current GitHub run id
 
 The target host must be freshly provisioned. By default the harness fails if the `ubuntu` user already exists before install, because the real beginner path must prove ACFS creates that user automatically. The harness also requires `acfs doctor --json` to report zero failures and zero warnings, then separately verifies Agent Mail liveness/systemd service state and the ACFS nightly user timer.
 
-For the slower upgrade/resume gate, provision a fresh Ubuntu 24.04 host and run the same workflow or script with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`.
+For current release qualification, provision a fresh Ubuntu 24.04 LTS host and pass `--expect-ubuntu 24.04 --expect-final-ubuntu 24.04` to the factory script. This verifies that an ordinary install preserves the host release. The historical workflow inputs above describe the disabled workflow's 25.10 defaults.
 
-For provider-specific real VPS sentinels, use an external provisioning job to create a disposable server, wait for root SSH, dispatch `acfs-factory-host-ready`, and destroy the server after artifact collection. The dispatch payload should include the fresh host address so the repository does not store a stale long-lived VPS as `ACFS_FACTORY_SSH_TARGET`:
+The separate upgrade/resume gate must explicitly pass `--target-ubuntu=26.04` to the installer on a disposable reboot-capable host. The factory harness's `--expect-final-ubuntu` and `--allow-install-reboot` options only control verification and reboot tolerance; they do not request an OS upgrade. The current harness does not forward `--target-ubuntu`, so those options alone cannot qualify the opt-in upgrade path.
+
+The disabled workflow previously accepted provider-specific real VPS sentinels through an `acfs-factory-host-ready` dispatch from an external provisioning job. This historical payload included the fresh host address instead of storing a long-lived VPS as `ACFS_FACTORY_SSH_TARGET`; current release checks run the factory script directly:
 
 ```json
 {
@@ -2801,7 +2807,7 @@ Runs the same factory-host harness inside a real local VM instead of a Docker co
 
 ```bash
 sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils openssh-client
-./tests/vm/test_factory_install_qemu.sh
+./tests/vm/test_factory_install_qemu.sh --ubuntu 24.04 --expect-final-ubuntu 24.04
 ```
 
 Use this when Docker passes but you need local proof for systemd, sshd, cloud-init, kernel, filesystem, and login behavior before spending time on a disposable provider VPS.
@@ -2863,7 +2869,7 @@ Plan names, specs, and prices below were verified against the provider sites in 
 ### Requirements
 
 | Requirement | Minimum | Recommended |
-| **OS** | Ubuntu 22.04+ (auto-upgraded) or Arch-family (Arch, Omarchy) | Ubuntu 25.10 |
+| **OS** | Ubuntu 22.04+ or Arch-family (Arch, Omarchy) | Ubuntu 24.04 LTS; supported LTS hosts stay on their current release by default |
 | **RAM** | 32GB (tight) | 48-64GB |
 | **Storage** | 250GB NVMe SSD | 300GB+ NVMe SSD |
 | **CPU** | 12 vCPU | 16 vCPU |
@@ -3014,18 +3020,20 @@ bun run generate:dry  # Preview without writing files
 # Local lint
 shellcheck install.sh scripts/lib/*.sh
 
-# Full installer integration test (Docker, same as CI)
-./tests/vm/test_install_ubuntu.sh
+# Full installer integration test on supported Ubuntu 24.04 LTS
+./tests/vm/test_install_ubuntu.sh --ubuntu 24.04
 
-# Authoritative factory-host E2E (requires a disposable fresh Ubuntu 25.10 VM/VPS)
-./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+# Authoritative factory-host E2E (disposable fresh Ubuntu 24.04 LTS VM/VPS)
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 24.04
 
 # Local authoritative VM E2E (QEMU/KVM + official Ubuntu cloud image)
-./tests/vm/test_factory_install_qemu.sh
+./tests/vm/test_factory_install_qemu.sh --ubuntu 24.04 --expect-final-ubuntu 24.04
 
-# Slow real-host upgrade/resume gate from Ubuntu 24.04 to 25.10
-./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
+# Explicit upgrade entrypoint (run as root on a disposable Ubuntu 24.04 host)
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --target-ubuntu=26.04
 ```
+
+The explicit upgrade command starts the upgrade; it is not a complete factory E2E verdict. Capture resume, final OS, and tool-health evidence separately until the factory harness can forward the opt-in target.
 
 ### Security Verification
 
@@ -3114,20 +3122,21 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 
 **Running Tests:**
 ```bash
-# Full Docker integration test
-./tests/vm/test_install_ubuntu.sh
+# Full Docker integration test on supported Ubuntu 24.04 LTS
+./tests/vm/test_install_ubuntu.sh --ubuntu 24.04
 
-# Full Docker integration matrix
+# Historical Docker integration matrix (includes interim-release images)
 ./tests/vm/test_install_ubuntu.sh --all
 
-# Real factory-host integration test
-./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+# Real factory-host integration test preserving Ubuntu 24.04 LTS
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 24.04
 
 # Local QEMU/KVM factory-host integration test
-./tests/vm/test_factory_install_qemu.sh
+./tests/vm/test_factory_install_qemu.sh --ubuntu 24.04 --expect-final-ubuntu 24.04
 
-# Real upgrade/resume integration test
-./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
+# Explicit upgrade entrypoint (root on a disposable Ubuntu 24.04 host;
+# collect resume and final-state evidence separately)
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --target-ubuntu=26.04
 
 # Selection logic tests
 ./tests/vm/selection_checks.sh
@@ -4868,10 +4877,12 @@ The installer supports extensive command-line customization:
 
 **Ubuntu Upgrade:**
 ```bash
---skip-ubuntu-upgrade           # Don't upgrade Ubuntu version
---target-ubuntu=25.10           # Specify target Ubuntu version
---target-ubuntu 25.04           # Alternative syntax
+--skip-ubuntu-upgrade           # Suppress an explicit upgrade request (wins in any flag order)
+--target-ubuntu=26.04           # Opt into upgrading to Ubuntu 26.04 LTS
+--target-ubuntu 26.04           # Alternative syntax
 ```
+
+Without `--target-ubuntu`, supported Ubuntu 22.04/24.04 LTS hosts stay on their current release. Active system upgrade checkpoints still block normal installation, including when `--skip-ubuntu-upgrade` is set.
 
 **Skip Flags:**
 ```bash

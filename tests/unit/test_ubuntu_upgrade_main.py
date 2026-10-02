@@ -9,6 +9,7 @@ real; their directories and all evidence are retained.
 """
 from __future__ import annotations
 import os
+import hashlib
 from pathlib import Path
 import re
 import shlex
@@ -156,7 +157,7 @@ confirm_resume() { trace normal_install_ready; exit 0; }
         self.assertNotIn('normal_install_ready', events)
 
     def test_upgrade_precedes_all_package_helpers(self):
-        result, events, _ = self.run_main()
+        result, events, _ = self.run_main(overrides={'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(events.count('upgrade'), 1, events)
         for event in events:
@@ -167,11 +168,13 @@ confirm_resume() { trace normal_install_ready; exit 0; }
     def test_failed_upgrade_never_reaches_package_helpers(self):
         for code in ('1', '2', '17'):
             with self.subTest(code=code):
-                result, events, _ = self.run_main(overrides={'TEST_UPGRADE_STATUS': code})
+                result, events, _ = self.run_main(overrides={
+                    'TARGET_UBUNTU_VERSION_EXPLICIT': 'true', 'TEST_UPGRADE_STATUS': code})
                 self.assert_no_mutation(result, events)
 
     def test_scheduled_reboot_stops_before_normal_bootstrap(self):
-        result, events, _ = self.run_main(overrides={'TEST_UPGRADE_EXITS': 'true'})
+        result, events, _ = self.run_main(overrides={
+            'TARGET_UBUNTU_VERSION_EXPLICIT': 'true', 'TEST_UPGRADE_EXITS': 'true'})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('reboot_requested', events)
         self.assertFalse(any(e.startswith('mut:') for e in events), events)
@@ -193,11 +196,12 @@ confirm_resume() { trace normal_install_ready; exit 0; }
             self.assert_no_mutation(result, events)
 
     def test_pre_upgrade_checkpoint_requires_the_actual_resume_path(self):
-        for mode in ({'SKIP_UBUNTU_UPGRADE': 'true'}, {'ACFS_EXPLICIT_TARGETED_SELECTION': 'true'},
+        for mode in ({}, {'SKIP_UBUNTU_UPGRADE': 'true'}, {'ACFS_EXPLICIT_TARGETED_SELECTION': 'true'},
                      {'RESET_STATE_ONLY': 'true'}):
             result, events, _ = self.run_main(overrides={'TEST_STAGE': 'pre_upgrade_reboot', **mode})
             self.assert_no_mutation(result, events)
-        result, events, _ = self.run_main(overrides={'TEST_STAGE': 'pre_upgrade_reboot'})
+        result, events, _ = self.run_main(overrides={
+            'TEST_STAGE': 'pre_upgrade_reboot', 'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(events.count('upgrade'), 1)
 
@@ -272,18 +276,23 @@ confirm_resume() { trace normal_install_ready; exit 0; }
             self.assertEqual(events, ['parse', 'ref', 'archive', 'verified_child'])
 
     def test_completed_checkpoint_allows_normal_upgrade_decision(self):
-        result, events, _ = self.run_main(overrides={'TEST_STAGE': 'completed'})
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(events.count('upgrade'), 1)
+        for explicit in ('false', 'true'):
+            result, events, _ = self.run_main(overrides={
+                'TEST_STAGE': 'completed', 'TARGET_UBUNTU_VERSION_EXPLICIT': explicit})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(events.count('upgrade'), int(explicit == 'true'))
 
     def test_profile_selection_does_not_become_an_implicit_targeted_repair(self):
-        result, events, _ = self.run_main(overrides={'ACFS_CLI_PROFILE': 'minimal'})
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('profile', events)
-        self.assertIn('upgrade', events)
+        for explicit in ('false', 'true'):
+            result, events, _ = self.run_main(overrides={
+                'ACFS_CLI_PROFILE': 'minimal', 'TARGET_UBUNTU_VERSION_EXPLICIT': explicit})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('profile', events)
+            self.assertEqual(events.count('upgrade'), int(explicit == 'true'))
 
     def test_preflight_skip_does_not_skip_upgrade_or_checkpoint_checks(self):
-        result, events, _ = self.run_main(overrides={'SKIP_PREFLIGHT': 'true'})
+        result, events, _ = self.run_main(overrides={
+            'SKIP_PREFLIGHT': 'true', 'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('upgrade', events)
         self.assertIn('checkpoint:/var/lib/acfs/state.json:26.04', events)
@@ -309,13 +318,15 @@ class IntegratedUpgradeFlowTests(unittest.TestCase):
         cls.phase = definitions(source, ['run_ubuntu_upgrade_phase',
             'release_ubuntu_upgrade_lock_if_acquired', 'restore_previous_acfs_state_file'])
         reader = definition(source, 'acfs_read_upgrade_checkpoint')
+        if re.search(r'^acfs_read_upgrade_checkpoint_root\(\)', source, re.M):
+            reader += '\n' + definition(source, 'acfs_read_upgrade_checkpoint_root')
         cls.reader = reader.replace('acfs_read_upgrade_checkpoint()', '_fixture_read_checkpoint()', 1)
         cls.loader = definition(LOADER.read_text(), '_source_ubuntu_upgrade_lib')
         cls.policy = definitions(POLICY.read_text(), ['ubuntu_get_version_number', 'ubuntu_version_gte',
             'ubuntu_validate_upgrade_versions', 'ubuntu_get_next_version_hardcoded',
             'ubuntu_calculate_upgrade_path'])
 
-    def integrated(self, *, version='24.04', state=None, options=None, extra='', arguments=()):
+    def integrated(self, *, version='24.04', state=None, options=None, extra='', arguments=(), uid=None):
         setup = r'''
 mkdir -p "$TEST_ROOT/recovery" "$TEST_ROOT/policy/scripts/lib"
 chmod 700 "$TEST_ROOT/recovery"
@@ -365,12 +376,23 @@ ubuntu_start_upgrade_sequence() {
             setup += '\nprintf %s ' + shlex.quote(state) + ' > "$ACFS_RESUME_DIR/state.json"\n'
             setup += 'chmod 600 "$ACFS_RESUME_DIR/state.json"\n'
         return self.run_main(overrides={'TEST_VERSION': version, 'TEST_MISSING_TOOLS': 'false', **(options or {})},
-            extra='\n'.join([self.reader, self.phase, self.loader, setup, extra]), arguments=arguments)
+            extra='\n'.join([self.reader, self.phase, self.loader, setup, extra]), arguments=arguments, uid=uid)
 
-    def test_old_lts_exits_for_upgrade_before_normal_installs(self):
-        for version, hops in (('22.04', '24.04,26.04,'), ('24.04', '26.04,'), ('25.10', '26.04,')):
+    def test_default_preserves_supported_lts_and_continues_install(self):
+        for version in ('22.04', '24.04'):
             with self.subTest(version=version):
                 result, events, _ = self.integrated(version=version)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('normal_install_ready', events)
+                self.assertNotIn('upgrade_lock', events)
+                self.assertNotIn('upgrade_preflight', events)
+                self.assertFalse(any(e.startswith('release_target:') for e in events), events)
+
+    def test_explicit_old_lts_upgrade_precedes_normal_installs(self):
+        for version, hops in (('22.04', '24.04,26.04,'), ('24.04', '26.04,'), ('25.10', '26.04,')):
+            with self.subTest(version=version):
+                result, events, _ = self.integrated(version=version,
+                    options={'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('release_target:26.04:2604', events)
                 self.assertIn('release_hops:' + hops, events)
@@ -379,7 +401,8 @@ ubuntu_start_upgrade_sequence() {
 
     def test_supported_destination_continues_normal_install_without_distribution_changes(self):
         for version, target in (('26.04','26.04'), ('24.04','24.04'), ('26.04','24.04')):
-            result, events, _ = self.integrated(version=version, options={'TARGET_UBUNTU_VERSION': target})
+            result, events, _ = self.integrated(version=version, options={
+                'TARGET_UBUNTU_VERSION': target, 'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('normal_install_ready', events)
             self.assertNotIn('upgrade_lock', events)
@@ -411,7 +434,8 @@ ubuntu_start_upgrade_sequence() {
             self.assertNotIn('state_validate', events)
 
     def test_local_archive_cannot_begin_upgrade_or_normal_package_install(self):
-        result, events, _ = self.integrated(options={'ACFS_LOCAL_ARCHIVE_SOURCE':'true'})
+        result, events, _ = self.integrated(options={
+            'ACFS_LOCAL_ARCHIVE_SOURCE':'true', 'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
         self.assert_no_mutation(result, events)
         self.assertNotIn('upgrade_lock', events)
 
@@ -420,19 +444,22 @@ ubuntu_start_upgrade_sequence() {
     trace upgrade_lock
     printf '%s' '{"schema_version":3,"ubuntu_upgrade":{"enabled":true,"current_stage":"upgrading","target_version":"26.04"}}' > "$ACFS_STATE_FILE"
 }'''
-        result, events, root = self.integrated(extra=extra)
+        result, events, root = self.integrated(extra=extra,
+            options={'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
         self.assert_no_mutation(result, events)
         self.assertIn('upgrade_unlock', events)
         self.assertIn('upgrading', (root / 'recovery/state.json').read_text())
 
     def test_actual_library_source_failure_cannot_be_masked_by_loader_or_main(self):
-        result, events, _ = self.integrated(extra='printf "return 17\\n" > "$ACFS_LIB_DIR/ubuntu_upgrade.sh"')
+        result, events, _ = self.integrated(extra='printf "return 17\\n" > "$ACFS_LIB_DIR/ubuntu_upgrade.sh"',
+            options={'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'})
         self.assert_no_mutation(result, events)
         self.assertNotIn('upgrade_lock', events)
 
     def test_release_executor_failure_stops_main_and_preserves_checkpoint(self):
         state = '{"schema_version":3,"ubuntu_upgrade":{"enabled":false,"current_stage":"not_started"}}'
         result, events, root = self.integrated(state=state,
+            options={'TARGET_UBUNTU_VERSION_EXPLICIT': 'true'},
             extra='ubuntu_start_upgrade_sequence() { trace release_failed; return 17; }')
         self.assert_no_mutation(result, events)
         self.assertIn('upgrade_unlock', events)
@@ -505,6 +532,104 @@ class PolicyLoadingTests(unittest.TestCase):
 
     def test_nonconditional_source_failure_also_stops(self):
         self.assertNotEqual(self.load('return 1\n', conditional=False).returncode, 0)
+
+
+class ActualUpgradeArgumentsTests(MainUpgradeOrderTests):
+    """Exercise the real CLI parser and main upgrade decision together."""
+
+    def test_actual_target_and_skip_argument_orders(self):
+        parser = definition(MAIN.read_text(), 'parse_args')
+        cases = (((), False), (('--target-ubuntu=26.04',), True),
+                 (('--target-ubuntu', '26.04'), True),
+                 (('--skip-ubuntu-upgrade', '--target-ubuntu=26.04'), False),
+                 (('--target-ubuntu=26.04', '--skip-ubuntu-upgrade'), False))
+        for args, requested in cases:
+            with self.subTest(args=args):
+                result, events, _ = self.run_main(arguments=args, extra=parser)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(events.count('upgrade'), int(requested), events)
+                self.assertIn('normal_install_ready', events)
+                self.assertIn('checkpoint:/var/lib/acfs/state.json:26.04', events)
+
+
+class PrivilegedCheckpointReadTests(unittest.TestCase):
+    """Real sudo/stat/jq and root-only files in a disposable Linux container.
+
+    The fixture adapter changes only the fixed system path to a fresh retained
+    directory. Run as root with passwordless sudo for UID 1000 in that container.
+    Never configure sudo or install packages on the test runner's live host.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if os.geteuid() != 0 or not Path('/.dockerenv').exists():
+            raise RuntimeError('This real-sudo suite requires a disposable Linux container as root')
+        cls.source = definitions(MAIN.read_text(), ['acfs_early_system_binary_path',
+            'acfs_early_sudo_binary_path', 'acfs_read_upgrade_checkpoint',
+            'acfs_read_upgrade_checkpoint_root', 'acfs_ubuntu_upgrade_requested',
+            'acfs_guard_ubuntu_install_checkpoint'])
+
+    def read_as_sudo_user(self, stage=None, *, kind='regular', hidden=True, guard=False):
+        root = Path(tempfile.mkdtemp(prefix='acfs-sudo-checkpoint-'))
+        root.chmod(0o755)
+        parent = root / 'state'
+        parent.mkdir(mode=0o700 if hidden else 0o755)
+        checkpoint = parent / 'state.json'
+        if stage is not None:
+            body = '{broken' if kind == 'malformed' else (
+                '{"schema_version":3,"ubuntu_upgrade":{"enabled":true,"current_stage":"'
+                + stage + '","target_version":"26.04"}}')
+            checkpoint.write_text(body)
+            checkpoint.chmod(0o666 if kind == 'writable' else 0o600)
+            if kind == 'hardlink':
+                os.link(checkpoint, parent / 'retained-link')
+            elif kind == 'symlink':
+                checkpoint.rename(parent / 'retained-original')
+                checkpoint.symlink_to(parent / 'retained-original')
+        before = [(str(p), p.lstat().st_ino, p.lstat().st_mode,
+                   hashlib.sha256(p.read_bytes()).hexdigest()) for p in parent.iterdir()]
+        script = '\n'.join(['set -euo pipefail',
+            'log_error() { printf "%s\\n" "$*" >&2; }; log_info() { :; }',
+            'TARGET_UBUNTU_VERSION=26.04; TARGET_UBUNTU_VERSION_EXPLICIT=false',
+            self.source.replace('/var/lib/acfs/state.json', str(checkpoint)),
+            'acfs_guard_ubuntu_install_checkpoint' if guard else
+            'acfs_read_upgrade_checkpoint ' + shlex.quote(str(checkpoint)) + ' 26.04'])
+        (root / 'read.sh').write_text(script)
+        result = subprocess.run(['/bin/bash', '-p', '-c', script], text=True,
+            capture_output=True, timeout=10, user=1000, group=1000,
+            env={'PATH':'/usr/bin:/bin', 'HOME':str(root), 'SUDO':'/untrusted/sudo',
+                 'ACFS_STATE_FILE':'/untrusted/state', 'ACFS_RESUME_DIR':'/untrusted',
+                 'BASH_ENV':'/untrusted/hook'})
+        after = [(str(p), p.lstat().st_ino, p.lstat().st_mode,
+                  hashlib.sha256(p.read_bytes()).hexdigest()) for p in parent.iterdir()]
+        self.assertEqual(before, after, 'Checkpoint evidence changed')
+        return result
+
+    def test_nonroot_reads_completed_and_absent_root_only_state(self):
+        for hidden in (False, True):
+            for stage in ('completed', None):
+                with self.subTest(hidden=hidden, stage=stage):
+                    result = self.read_as_sudo_user(stage, hidden=hidden)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), stage or 'not_started')
+
+    def test_active_state_is_read_and_unsafe_state_is_refused(self):
+        result = self.read_as_sudo_user('upgrading')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), 'upgrading')
+        for kind in ('malformed', 'writable', 'hardlink', 'symlink'):
+            with self.subTest(kind=kind):
+                result = self.read_as_sudo_user('completed', kind=kind)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_nonroot_normal_install_guard_accepts_terminal_and_blocks_active_state(self):
+        for stage, accepted in ((None, True), ('completed', True), ('upgrading', False),
+                                ('awaiting_reboot', False), ('pre_upgrade_reboot', False)):
+            with self.subTest(stage=stage):
+                result = self.read_as_sudo_user(stage, guard=True)
+                self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
+        result = self.read_as_sudo_user('completed', kind='malformed', guard=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

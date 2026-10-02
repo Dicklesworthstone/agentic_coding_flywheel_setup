@@ -24,8 +24,8 @@
 #   --no-auto-fix     Disable auto-fix (only warn about issues)
 #   --auto-fix-accept-all  Auto-fix all issues without prompting (for CI)
 #   --auto-fix-dry-run     Show what auto-fix would do without executing
-#   --skip-ubuntu-upgrade  Skip automatic Ubuntu version upgrade
-#   --target-ubuntu=VER    Set target Ubuntu version (default: 26.04 LTS)
+#   --skip-ubuntu-upgrade  Suppress an explicitly requested Ubuntu upgrade
+#   --target-ubuntu=VER    Opt into a Ubuntu release upgrade (e.g., 26.04 LTS)
 #   --strict          Treat ALL tools as critical (any checksum mismatch aborts)
 #   --list-modules    List available modules and exit
 #   --print-plan      Print execution plan and exit (no installs)
@@ -467,7 +467,7 @@ SKIP_PREFLIGHT=false
 AUTO_FIX_MODE="prompt"
 export AUTO_FIX_MODE
 
-# Ubuntu upgrade options (nb4: integrate upgrade phase)
+# Ubuntu release upgrades are opt-in; supported LTS hosts stay in place by default.
 SKIP_UBUNTU_UPGRADE=false
 TARGET_UBUNTU_VERSION="26.04"
 TARGET_UBUNTU_VERSION_EXPLICIT=false  # true when user passes --target-ubuntu
@@ -2385,6 +2385,8 @@ Options:
   --no-deps               Disable automatic dependency closure (expert/debug)
   --verified-installer-cache <dir>
                           Use a verified installer entrypoint cache and refuse live fallback
+  --target-ubuntu <VER>   Opt into a release upgrade (22.04, 24.04, or 26.04 LTS)
+  --skip-ubuntu-upgrade   Suppress an explicitly requested release upgrade
   --help, -h              Show this help message
 EOF
                 exit 0
@@ -2561,23 +2563,23 @@ EOF
                 export ACFS_REF ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT
                 ;;
             --skip-ubuntu-upgrade)
-                # Skip automatic Ubuntu version upgrade (nb4)
+                # Suppress an explicitly requested Ubuntu version upgrade.
                 # shellcheck disable=SC2034  # used by run_ubuntu_upgrade_phase
                 SKIP_UBUNTU_UPGRADE=true
                 shift
                 ;;
             --target-ubuntu|--target-ubuntu=*)
-                # Set target Ubuntu version for auto-upgrade (nb4)
+                # Opt into an Ubuntu release upgrade with this destination.
                 if [[ "$1" == "--target-ubuntu" ]]; then
                     if [[ -z "${2:-}" || "$2" == -* ]]; then
-                        log_fatal "--target-ubuntu requires a version (e.g., --target-ubuntu 25.10)"
+                        log_fatal "--target-ubuntu requires a version (e.g., --target-ubuntu 26.04)"
                     fi
                     # shellcheck disable=SC2034  # used by run_ubuntu_upgrade_phase
                     TARGET_UBUNTU_VERSION="$2"
                     TARGET_UBUNTU_VERSION_EXPLICIT=true
                     shift 2
                 else
-                    # Handle --target-ubuntu=25.10 format
+                    # Handle --target-ubuntu=26.04 format
                     # shellcheck disable=SC2034  # used by run_ubuntu_upgrade_phase
                     TARGET_UBUNTU_VERSION="${1#*=}"
                     TARGET_UBUNTU_VERSION_EXPLICIT=true
@@ -6556,6 +6558,27 @@ ensure_ubuntu() {
 # Handles supported LTS hops (22.04 → 24.04 → 26.04) and 25.10 recovery.
 # ============================================================
 acfs_read_upgrade_checkpoint() {
+    if [[ "$EUID" -eq 0 ]]; then
+        acfs_read_upgrade_checkpoint_root "$@"
+        return $?
+    fi
+
+    # Upgrade evidence is deliberately root-only. Read the fixed system path
+    # with the same sudo authentication available to normal package installs,
+    # rather than mistaking an inaccessible parent for an absent checkpoint.
+    [[ "${1:-}" == /var/lib/acfs/state.json ]] || return 1
+    local sudo_bin bash_bin
+    sudo_bin=$(acfs_early_sudo_binary_path) || return 1
+    bash_bin=$(acfs_early_system_binary_path bash) || return 1
+    {
+        printf 'set -euo pipefail\nPATH=/usr/sbin:/usr/bin:/sbin:/bin\nexport PATH\n'
+        declare -f acfs_early_system_binary_path acfs_read_upgrade_checkpoint_root
+        printf 'acfs_read_upgrade_checkpoint_root "$1" "$2"\n'
+    } | "$sudo_bin" -u root "$bash_bin" --noprofile --norc -p -s -- /var/lib/acfs/state.json "${2:-}"
+}
+
+acfs_read_upgrade_checkpoint_root() {
+    [[ "$EUID" -eq 0 ]] || return 1
     local checkpoint="${1:-}" target="${2:-}" parent jq_bin stat_bin metadata
     local links owner permissions size
     [[ "$checkpoint" == /* && "$checkpoint" != *'/../'* && "$checkpoint" != */.. ]] || return 1
@@ -6613,6 +6636,11 @@ run_ubuntu_upgrade_phase() {
         return 0
     fi
 
+    if [[ "${TARGET_UBUNTU_VERSION_EXPLICIT:-false}" != true ]]; then
+        log_detail "Keeping the current Ubuntu release; use --target-ubuntu=26.04 to request an upgrade."
+        return 0
+    fi
+
     # Only upgrade actual Ubuntu systems
     if [[ ! -f /etc/os-release ]]; then
         log_detail "Not an Ubuntu system, skipping upgrade"
@@ -6630,8 +6658,8 @@ run_ubuntu_upgrade_phase() {
 
     # Validate the release before arithmetic, library loading, or package writes.
     # A cached/failed `apt list` is not evidence that an OS upgrade is unnecessary.
-    # The default is now an LTS destination; keeping an older supported LTS is
-    # an explicit --target-ubuntu or --skip-ubuntu-upgrade choice.
+    # An explicit destination opts into this phase. Normal installs keep
+    # supported LTS releases in place and never enter the upgrade machinery.
     case "$TARGET_UBUNTU_VERSION" in
         22.04|24.04|26.04) ;;
         *)
@@ -10265,7 +10293,9 @@ UNIT_EOF
         log_detail "Ultimate Bug Scanner already installed"
     else
         log_detail "Installing Ultimate Bug Scanner"
-        try_step "Installing UBS" acfs_run_verified_upstream_script_as_target "ubs" "bash" --easy-mode || acfs_optional_module_install_failed "ubs" "UBS"
+        # --skip-hooks as in the manifest entry: ACFS wires agent hooks itself,
+        # so the UBS installer must not edit ~/.claude/settings.json (#400).
+        try_step "Installing UBS" acfs_run_verified_upstream_script_as_target "ubs" "bash" --easy-mode --skip-hooks || acfs_optional_module_install_failed "ubs" "UBS"
     fi
 
     # Beads Rust
@@ -10818,6 +10848,8 @@ finalize() {
     try_step "Installing info.sh" install_asset "scripts/lib/info.sh" "$ACFS_HOME/scripts/lib/info.sh" || return 1
     try_step "Installing status.sh" install_asset "scripts/lib/status.sh" "$ACFS_HOME/scripts/lib/status.sh" || return 1
     try_step "Installing rescue.sh" install_asset "scripts/lib/rescue.sh" "$ACFS_HOME/scripts/lib/rescue.sh" || return 1
+    # rescue --log-file sources errors.sh from its own directory.
+    try_step "Installing errors.sh" install_asset "scripts/lib/errors.sh" "$ACFS_HOME/scripts/lib/errors.sh" || return 1
     try_step "Installing capacity.sh" install_asset "scripts/lib/capacity.sh" "$ACFS_HOME/scripts/lib/capacity.sh" || return 1
     try_step "Installing policy_lint.sh" install_asset "scripts/lib/policy_lint.sh" "$ACFS_HOME/scripts/lib/policy_lint.sh" || return 1
     try_step "Installing credential_preflight.sh" install_asset "scripts/lib/credential_preflight.sh" "$ACFS_HOME/scripts/lib/credential_preflight.sh" || return 1
@@ -11708,13 +11740,11 @@ acfs_validate_ubuntu_target() {
     esac
 }
 
-# A narrow tool repair does not imply an OS upgrade. An explicit destination
-# does request one, even with --only/--only-phase. --skip-ubuntu-upgrade wins.
+# OS upgrades require an explicit destination, including full installs and
+# targeted repairs. --skip-ubuntu-upgrade wins regardless of argument order.
 acfs_ubuntu_upgrade_requested() {
-    [[ "${SKIP_UBUNTU_UPGRADE:-false}" != true ]] && {
-        [[ "${ACFS_EXPLICIT_TARGETED_SELECTION:-false}" != true ]] \
-            || [[ "${TARGET_UBUNTU_VERSION_EXPLICIT:-false}" == true ]]
-    }
+    [[ "${SKIP_UBUNTU_UPGRADE:-false}" != true ]] \
+        && [[ "${TARGET_UBUNTU_VERSION_EXPLICIT:-false}" == true ]]
 }
 
 # Check SYSTEM upgrade evidence before gum, autofix, dependency bootstrap, or
@@ -11746,6 +11776,11 @@ acfs_guard_ubuntu_install_checkpoint() {
     esac
     log_error "Ubuntu recovery is incomplete (stage: $stage); normal package installation is blocked."
     log_info "Inspect the resume service and /var/log/acfs/upgrade_resume.log; preserve the checkpoint."
+    log_info "  journalctl -u acfs-upgrade-resume"
+    # This guard runs before the upgrade phase, whose own reset hint is
+    # therefore never shown for these stages.
+    log_info "Once the upgrade is resolved (or abandoned), set the checkpoint aside and rerun:"
+    log_info "  sudo mv -- /var/lib/acfs/state.json /var/lib/acfs/state.json.backup.\$(date +%Y%m%d_%H%M%S)"
     return 1
 }
 
