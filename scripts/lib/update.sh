@@ -3449,6 +3449,7 @@ sync_acfs_deployed() {
         "scripts/lib/info.sh:scripts/lib/info.sh"
         "scripts/lib/status.sh:scripts/lib/status.sh"
         "scripts/lib/rescue.sh:scripts/lib/rescue.sh"
+        "scripts/lib/errors.sh:scripts/lib/errors.sh"
         "scripts/lib/changelog.sh:scripts/lib/changelog.sh"
         "scripts/lib/export-config.sh:scripts/lib/export-config.sh"
         "scripts/lib/continue.sh:scripts/lib/continue.sh"

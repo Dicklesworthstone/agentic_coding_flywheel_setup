@@ -10265,7 +10265,9 @@ UNIT_EOF
         log_detail "Ultimate Bug Scanner already installed"
     else
         log_detail "Installing Ultimate Bug Scanner"
-        try_step "Installing UBS" acfs_run_verified_upstream_script_as_target "ubs" "bash" --easy-mode || acfs_optional_module_install_failed "ubs" "UBS"
+        # --skip-hooks as in the manifest entry: ACFS wires agent hooks itself,
+        # so the UBS installer must not edit ~/.claude/settings.json (#400).
+        try_step "Installing UBS" acfs_run_verified_upstream_script_as_target "ubs" "bash" --easy-mode --skip-hooks || acfs_optional_module_install_failed "ubs" "UBS"
     fi
 
     # Beads Rust
@@ -10818,6 +10820,8 @@ finalize() {
     try_step "Installing info.sh" install_asset "scripts/lib/info.sh" "$ACFS_HOME/scripts/lib/info.sh" || return 1
     try_step "Installing status.sh" install_asset "scripts/lib/status.sh" "$ACFS_HOME/scripts/lib/status.sh" || return 1
     try_step "Installing rescue.sh" install_asset "scripts/lib/rescue.sh" "$ACFS_HOME/scripts/lib/rescue.sh" || return 1
+    # rescue --log-file sources errors.sh from its own directory.
+    try_step "Installing errors.sh" install_asset "scripts/lib/errors.sh" "$ACFS_HOME/scripts/lib/errors.sh" || return 1
     try_step "Installing capacity.sh" install_asset "scripts/lib/capacity.sh" "$ACFS_HOME/scripts/lib/capacity.sh" || return 1
     try_step "Installing policy_lint.sh" install_asset "scripts/lib/policy_lint.sh" "$ACFS_HOME/scripts/lib/policy_lint.sh" || return 1
     try_step "Installing credential_preflight.sh" install_asset "scripts/lib/credential_preflight.sh" "$ACFS_HOME/scripts/lib/credential_preflight.sh" || return 1
@@ -11746,6 +11750,11 @@ acfs_guard_ubuntu_install_checkpoint() {
     esac
     log_error "Ubuntu recovery is incomplete (stage: $stage); normal package installation is blocked."
     log_info "Inspect the resume service and /var/log/acfs/upgrade_resume.log; preserve the checkpoint."
+    log_info "  journalctl -u acfs-upgrade-resume"
+    # This guard runs before the upgrade phase, whose own reset hint is
+    # therefore never shown for these stages.
+    log_info "Once the upgrade is resolved (or abandoned), set the checkpoint aside and rerun:"
+    log_info "  sudo mv -- /var/lib/acfs/state.json /var/lib/acfs/state.json.backup.\$(date +%Y%m%d_%H%M%S)"
     return 1
 }
 

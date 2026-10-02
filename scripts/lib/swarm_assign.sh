@@ -352,8 +352,10 @@ def records(value):
         for key in ("title", "status", "issue_type", "type", "action"):
             if key in item and item[key] is not None and type(item[key]) is not str:
                 reject("invalid issue text field")
+        # bv emits "labels": null for unlabeled beads; null means absent.
         for key in ("labels", "blocked_by"):
-            if key in item and (type(item[key]) is not list or any(type(v) is not str for v in item[key])):
+            if item.get(key) is not None and (type(item[key]) is not list
+                                              or any(type(v) is not str for v in item[key])):
                 reject("invalid issue array field")
         if "blocked" in item and type(item["blocked"]) is not bool:
             reject("invalid blocked flag")
@@ -371,7 +373,14 @@ try:
                 reject("input must be a regular file")
             data = stream.read(LIMIT + 1)
     else:
-        data = probe()
+        try:
+            data = probe()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            # Live triage is advisory: a failing bv probe means "no triage",
+            # as when bv is absent. An explicit --triage-file still fails.
+            if kind != "triage":
+                raise
+            data = b"{}"
     if len(data) > LIMIT:
         reject("input exceeds 1 MiB")
     value = json.loads(data, object_pairs_hook=unique, parse_constant=reject)

@@ -216,6 +216,31 @@ done
         os.chown(self.state_dir, 65534, 65534)
         self.checked(self.file_check(self.state), 1)
 
+    def dir_check(self, path):
+        script = self.functions("resume_recovery_directory_safe")
+        return run(script + '\nresume_recovery_directory_safe "$1"\n', path)
+
+    @unittest.skipUnless(os.geteuid() == 0, "root-owned recovery boundary requires root fixtures")
+    def test_stock_ubuntu_var_log_ancestor_is_accepted(self):
+        # Ubuntu ships /var/log as root:syslog 0775 (group-writable, not
+        # sticky), and the resume log directory lives below it. That ancestor
+        # must be accepted; world-writable or non-system-group ancestors and a
+        # writable final directory must still be refused.
+        log_dir = self.log.parent
+        log_dir.mkdir(mode=0o700)
+        os.chown(self.log_parent, 0, 4)
+        self.log_parent.chmod(0o775)
+        self.checked(self.dir_check(log_dir))
+        for gid, mode in [(65534, 0o775), (4, 0o777)]:
+            with self.subTest(gid=gid, mode=oct(mode)):
+                os.chown(self.log_parent, 0, gid)
+                self.log_parent.chmod(mode)
+                self.checked(self.dir_check(log_dir), 1)
+        os.chown(self.log_parent, 0, 4)
+        self.log_parent.chmod(0o775)
+        log_dir.chmod(0o770)
+        self.checked(self.dir_check(log_dir), 1)
+
     @unittest.skipUnless(os.geteuid() == 0, "root-owned recovery boundary requires root fixtures")
     def test_symlinked_log_parent_and_log_do_not_change_target(self):
         other = self.root / 'other'

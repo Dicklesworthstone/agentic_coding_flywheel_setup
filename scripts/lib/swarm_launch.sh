@@ -2,7 +2,7 @@
 # Explicit native-agent startup. The swarm planner remains read-only.
 set -euo pipefail
 command -v python3 >/dev/null 2>&1 || { echo 'Error: python3 is required' >&2; exit 2; }
-exec python3 - "${BASH_SOURCE[0]}" "$@" <<'PY'
+exec python3 -I - "${BASH_SOURCE[0]}" "$@" <<'PY'
 """Admission-checked NTM startup with a create-only, never-relaunch receipt."""
 import argparse
 from collections import Counter

@@ -15,7 +15,7 @@ newproj_reviewed_main() {
     fi
     # Python reads its program from stdin; preserve the caller's terminal for
     # the explicit guided workflow instead of accepting a pipe as consent.
-    python3 - "$@" 3<&0 <<'ACFS_BOOTSTRAP_PY'
+    python3 -I - "$@" 3<&0 <<'ACFS_BOOTSTRAP_PY'
 import argparse
 import hashlib
 import json
