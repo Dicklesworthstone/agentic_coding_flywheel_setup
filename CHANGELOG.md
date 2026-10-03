@@ -35,6 +35,17 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
   Existing resume harnesses also need updated checkpoint schemas and helper
   extraction. External installer checksum changes remain subject to explicit
   authorization; this release does not authorize new upstream bytes.
+- A real Ubuntu 24.04 factory qualification retained 24.04 and passed all eight
+  critical smoke checks, but the full installer exited 1 because the UV and DCG
+  checksum guards refused changed upstream installers. The guest-local published
+  checker passed `validate`, `list`, and `check --dry-run --local`. Repeat-install,
+  zero-warning doctor, and subsequent service assertions were not reached;
+  opt-in Ubuntu 26.04 upgrade remains unqualified. See
+  [#427](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/427).
+  The exact v0.9.0 and current stock checksum guards both reject today's same
+  upstream bytes and current pinned checksums. This component comparison does
+  not establish full-factory parity: the v0.9.0 factory run disconnected during
+  its guest kernel reboot before reaching those installers.
 
 ## [v0.9.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/tag/v0.9.0) -- 2026-09-04
 
