@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-01T20:30:20+00:00
+# checksums.yaml - Auto-generated 2026-10-03T18:16:03-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -176,7 +176,7 @@ installers:
 
   tru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
-    sha256: "8cf88d66be8be01228dde13aae85a639156df66e477543571743a015f1253609"
+    sha256: "c8f4cb532af93f10763950f183de061668dee5308bbb4068ff00fd1ec6d7e841"
 
   ubs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh"
