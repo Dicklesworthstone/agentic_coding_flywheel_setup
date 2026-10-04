@@ -7191,33 +7191,6 @@ acfs_arch_aur_helper() {
     return 1
 }
 
-# Look up binaries.<name>.{url,sha256} in checksums.yaml.
-# Prints "<url> <sha256>" when a pinned generic Linux binary is published.
-acfs_pinned_binary_info() {
-    local name="$1"
-    local yaml_file="${SCRIPT_DIR:-}/checksums.yaml"
-    if [[ -z "${SCRIPT_DIR:-}" ]] || [[ ! -f "$yaml_file" ]]; then
-        return 1
-    fi
-
-    local info=""
-    info="$(awk -v want="$name" '
-        BEGIN { top = ""; found = 0; url = ""; sha = "" }
-        /^[A-Za-z0-9_-]+:$/ { sub(/:$/, ""); top = $0; found = 0; next }
-        top == "binaries" && !found && $0 ~ ("^  " want ":$") { found = 1; next }
-        found && $0 ~ /^  [A-Za-z0-9_-]+:$/ { exit }
-        found && /^[^ #]/ { exit }
-        found && $1 == "url:" { url = $2; gsub(/"/, "", url); next }
-        found && $1 == "sha256:" { sha = $2; gsub(/"/, "", sha); next }
-        END { if (url != "" && sha != "") print url, sha }
-    ' "$yaml_file" 2>/dev/null)" || true
-    if [[ -n "$info" ]]; then
-        printf '%s\n' "$info"
-        return 0
-    fi
-    return 1
-}
-
 
 ensure_base_deps() {
     set_phase "base_deps" "Base Dependencies" 1
@@ -9115,25 +9088,9 @@ acfs_arch_install_vault() {
     if acfs_arch_pkg_install vault && binary_installed "vault"; then
         return 0
     fi
-    log_detail "Vault: pacman install unavailable; trying pinned binary / AUR fallbacks"
-
-    local pinned="" pin_url="" pin_sha256=""
-    if pinned="$(acfs_pinned_binary_info vault)"; then
-        pin_url="${pinned%% *}"
-        pin_sha256="${pinned##* }"
-        local tmp_dir=""
-        tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-vault.XXXXXX" 2>/dev/null)" || tmp_dir=""
-        if [[ -n "$tmp_dir" ]]; then
-            if acfs_download_file_and_verify_sha256 "$pin_url" "$tmp_dir/vault.zip" "$pin_sha256" "Vault (generic Linux)" &&
-               unzip -o -q "$tmp_dir/vault.zip" vault -d "$tmp_dir" && \
-               $SUDO install -m 0755 "$tmp_dir/vault" /usr/local/bin/vault; then
-                rm -rf "$tmp_dir"
-                return 0
-            fi
-            rm -rf "$tmp_dir"
-            log_warn "Vault: pinned binary install failed; falling back to AUR"
-        fi
-    fi
+    # checksums.yaml pins installer scripts only (no generic binaries), so the
+    # remaining fallback is the AUR vault-bin package when a helper is present.
+    log_detail "Vault: pacman install unavailable; trying the AUR fallback"
 
     local aur_helper=""
     if aur_helper="$(acfs_arch_aur_helper)"; then
@@ -9144,7 +9101,7 @@ acfs_arch_install_vault() {
         return 1
     fi
 
-    log_warn "Vault: no pinned binary in checksums.yaml and no AUR helper found (skipping)"
+    log_warn "Vault: not available from pacman and no AUR helper (yay/paru) found (skipping; install vault manually if needed)"
     return 1
 }
 
