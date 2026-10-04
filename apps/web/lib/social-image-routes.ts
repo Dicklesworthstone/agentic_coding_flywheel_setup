@@ -64,15 +64,6 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     theme: "tools",
     tags: ["Linux", "VPS", "Agent Tools"],
   },
-  "/tools": {
-    badge: "Tool Catalog",
-    title: "Agent Tool Stack",
-    description:
-      "Explore the integrated toolchain powering orchestration, safety, debugging, memory, and multi-repo execution.",
-    path: "/tools",
-    theme: "tools",
-    tags: ["Orchestration", "Safety", "Productivity"],
-  },
   "/workflow": {
     badge: "Execution Blueprint",
     title: "The Complete Workflow",
