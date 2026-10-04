@@ -10,10 +10,10 @@ Set up a VPS on Contabo for running ACFS and coding agents.
 
 | Aspect | Details |
 |--------|---------|
-| **Recommended Tier** | Cloud VPS S or M (~$6-12/mo) |
-| **Minimum Specs** | 4 vCPU, 8GB RAM, 100GB SSD |
-| **Best For** | Budget-conscious users who want high specs |
-| **Signup** | [contabo.com](https://contabo.com/en/vps/) |
+| **Recommended Tier** | Cloud VPS 16 (64GB RAM, ~$43/mo); Cloud VPS 12 (48GB RAM, ~$29/mo) on a budget |
+| **ACFS Target** | 48-64GB RAM for a multi-agent swarm (32GB is a tight minimum) |
+| **Best For** | Best value overall: the most RAM per dollar |
+| **Signup** | [contabo.com](https://contabo.com/en-us/vps/) |
 
 ### Pros
 - Incredible value (most RAM/storage for price)
@@ -22,7 +22,7 @@ Set up a VPS on Contabo for running ACFS and coding agents.
 - No hidden fees
 
 ### Cons
-- Provisioning can take 1-3 hours (not instant)
+- Activation usually takes minutes but can take up to ~1 hour
 - Support is email-only
 - Fewer data center locations
 
@@ -44,11 +44,12 @@ Contabo offers exceptional specs for the price:
 
 | Plan | vCPU | RAM | Storage | Price |
 |------|------|-----|---------|-------|
-| VPS S | 4 | 8GB | 200GB | ~$6/mo |
-| VPS M | 6 | 16GB | 400GB | ~$11/mo |
-| VPS L | 8 | 30GB | 800GB | ~$18/mo |
+| **Cloud VPS 16** | 16 | 64GB | 500GB SSD | ~$43/mo (EUR 37 list) |
+| Cloud VPS 12 | 12 | 48GB | 400GB SSD | ~$29/mo (EUR 25 list) |
 
-**Recommended**: VPS S (plenty for ACFS)
+**Recommended**: Cloud VPS 16 for serious multi-agent work; Cloud VPS 12 is the budget option.
+
+USD prices are approximate conversions of Contabo's EUR list price (24-month introductory rate, incl. VAT). Month-to-month terms and US datacenters can cost more; the checkout page shows the final price. These figures mirror `apps/web/lib/vpsProviders.ts`, the single source the wizard renders from.
 
 ![Contabo Step 2: Choose plan](screenshots/contabo-step2-choose-plan.png)
 
@@ -57,9 +58,9 @@ Contabo offers exceptional specs for the price:
 ## Step 3: Select Data Center Region
 
 Choose a location closest to you:
-- **Europe**: Germany (Nuremberg, Munich), UK
-- **Americas**: US East, US Central, US West
-- **Asia-Pacific**: Singapore, Japan, Australia
+- **US**: good default for users in North America
+- **EU**: good default for users in Europe
+- **Asia** or **AU**: use only if it is close to you or your users
 
 ![Contabo Step 3: Select region](screenshots/contabo-step3-select-region.png)
 
@@ -67,7 +68,7 @@ Choose a location closest to you:
 
 ## Step 4: Choose Operating System
 
-1. Under "Image", select **Ubuntu 24.04**
+1. Under "Image", select **Ubuntu 26.04 LTS**
 2. Leave default storage type (SSD)
 
 ![Contabo Step 4: Select Ubuntu](screenshots/contabo-step4-select-os.png)
