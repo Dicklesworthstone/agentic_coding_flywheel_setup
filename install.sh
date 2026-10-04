@@ -7223,11 +7223,11 @@ ensure_base_deps() {
             log_detail "dry-run: would install (pacman): curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf"
             return 0
         fi
-        # This runs before the user has confirmed the install. On Arch the
-        # first pacman call triggers a full 'pacman -Syu', so only touch pacman
+        # On Arch the first pacman call triggers a full 'pacman -Syu' (main()
+        # only calls this after the install is confirmed), so only touch pacman
         # here when a base dependency is actually missing; on Omarchy they are
-        # all present already and the system upgrade then waits until after
-        # confirmation, at the first real package install.
+        # all present already and the system upgrade then waits for the first
+        # real package install.
         local -a arch_base_missing=()
         local arch_base_pkg=""
         local pacman_bin=""
@@ -12143,10 +12143,6 @@ main() {
     disable_needrestart_apt_hook  # Prevent apt hangs on Ubuntu 22.04+ (issue #70)
     acfs_log_init   # Start capturing stderr to log file (uses ACFS_HOME/logs)
 
-    # Normal ACFS dependencies belong after the OS upgrade decision. The upgrade
-    # phase installs its own minimal requirements under its own lock.
-    ensure_base_deps
-
     # ============================================================
     # State Management and Resume Logic (mjt.5.8)
     # ============================================================
@@ -12188,6 +12184,13 @@ main() {
         # Fallback: use original confirm_or_exit
         confirm_or_exit
     fi
+
+    # Normal ACFS dependencies belong after the OS upgrade decision (the
+    # upgrade phase installs its own minimal requirements under its own lock)
+    # and after the user's go-ahead: on Arch the first package install is a
+    # full `pacman -Syu`, which must not upgrade the whole system before an
+    # interactive user has answered the confirmation prompt.
+    ensure_base_deps
 
     # From here on the user has confirmed a real install: the cleanup() EXIT
     # trap's best-effort skills/summary fallback is only allowed to engage
