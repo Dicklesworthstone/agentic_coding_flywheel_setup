@@ -1578,6 +1578,37 @@ test_init_autofix_state_rejects_symlinked_state_parent() {
     return 0
 }
 
+# Test: repair (reachable without init, e.g. from doctor) applies the same
+# pre-mkdir symlink-component guard as init
+test_repair_state_files_rejects_symlinked_state_parent() {
+    local test_root="/tmp/test_autofix_repair_parent_symlink_$$"
+    local state_target="$test_root/target"
+    local state_parent_link="$test_root/home/.acfs"
+    local state_dir="$state_parent_link/autofix"
+    mkdir -p "$state_target" "$test_root/home"
+    ln -s "$state_target" "$state_parent_link"
+
+    export ACFS_STATE_DIR="$state_dir"
+    unset ACFS_AUTOFIX_LOCK_FD
+
+    if repair_state_files >/dev/null 2>&1; then
+        echo "  repair_state_files accepted a symlinked state parent"
+        rm -f "$state_parent_link"
+        rm -rf "$test_root"
+        return 1
+    fi
+    if [[ -e "$state_target/autofix" ]]; then
+        echo "  Symlinked parent repair created state outside the trusted layout"
+        rm -f "$state_parent_link"
+        rm -rf "$test_root"
+        return 1
+    fi
+
+    rm -f "$state_parent_link"
+    rm -rf "$test_root"
+    return 0
+}
+
 test_init_autofix_state_rejects_symlinked_journal() {
     setup_test_env
 
@@ -3533,6 +3564,7 @@ main() {
     run_test test_init_autofix_state_fails_when_repair_fails
     run_test test_init_autofix_state_rejects_symlinked_state_paths
     run_test test_init_autofix_state_rejects_symlinked_state_parent
+    run_test test_repair_state_files_rejects_symlinked_state_parent
     run_test test_init_autofix_state_rejects_symlinked_journal
     run_test test_session_management
     run_test test_session_lock_preserves_caller_descriptors
