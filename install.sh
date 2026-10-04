@@ -1675,6 +1675,20 @@ acfs_install_run_has_failures() {
         || [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]
 }
 
+# Terminal exit status of a finished run (returned, not exited): 0 when clean;
+# 2 when the only thing that went wrong is that SOME (not all) of the
+# explicitly requested --only modules failed, so callers can tell a partial
+# result from a total failure (#357/#373); 1 for every other failure.
+acfs_install_terminal_exit_status() {
+    acfs_install_run_has_failures || return 0
+    if [[ "${ACFS_INSTALL_PARTIAL_FAILURE:-0}" == "1" ]] \
+        && [[ "${SMOKE_TEST_FAILED:-false}" != "true" ]] \
+        && [[ ${#ACFS_PHASE_FAILURES[@]} -le 1 ]]; then
+        return 2
+    fi
+    return 1
+}
+
 # Emit success-only UI and integrations behind one terminal-status gate.
 # This intentionally returns success when the run failed: main still performs
 # the normal summary/exit path, but no success side effect escapes first.
@@ -12310,17 +12324,10 @@ main() {
     ACFS_SKILLS_AND_SUMMARY_DONE=1
     print_summary
 
-    if acfs_install_run_has_failures; then
-        # Partial-failure exit semantics (#357/#373): when the only thing
-        # that went wrong is that SOME (not all) of the explicitly requested
-        # --only modules failed, exit 2 so callers can tell a partial result
-        # from a total failure.
-        if [[ "${ACFS_INSTALL_PARTIAL_FAILURE:-0}" == "1" ]] \
-            && [[ "${SMOKE_TEST_FAILED:-false}" != "true" ]] \
-            && [[ ${#ACFS_PHASE_FAILURES[@]} -le 1 ]]; then
-            exit 2
-        fi
-        exit 1
+    local terminal_exit_status=0
+    acfs_install_terminal_exit_status || terminal_exit_status=$?
+    if [[ "$terminal_exit_status" -ne 0 ]]; then
+        exit "$terminal_exit_status"
     fi
 }
 
