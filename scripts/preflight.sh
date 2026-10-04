@@ -1191,7 +1191,20 @@ check_sudo() {
     elif "$sudo_bin" -n true 2>/dev/null; then
         pass "Privileges: Passwordless sudo available"
     else
-        pass "Privileges: sudo available" "Password may be required during install"
+        # Without passwordless sudo the rights cannot be probed non-interactively;
+        # membership in the usual admin groups (Ubuntu: sudo/admin, Arch: wheel)
+        # is the best available evidence that a password prompt will succeed.
+        local id_bin="" user_groups=""
+        id_bin="$(preflight_system_binary_path id 2>/dev/null || true)"
+        [[ -n "$id_bin" ]] && user_groups=" $("$id_bin" -nG 2>/dev/null || true) "
+        case "$user_groups" in
+            *" sudo "*|*" wheel "*|*" admin "*)
+                pass "Privileges: sudo available" "Password may be required during install"
+                ;;
+            *)
+                warn "Privileges: sudo rights not confirmed" "Not in the sudo/wheel/admin group and no passwordless sudo; run the installer as root or have an administrator grant sudo"
+                ;;
+        esac
     fi
 }
 

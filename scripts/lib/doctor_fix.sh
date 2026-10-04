@@ -73,6 +73,27 @@ doctor_fix_is_valid_username() {
     [[ "$username" =~ ^[a-z_][a-z0-9._-]*$ ]]
 }
 
+# Arch-family hosts repair packages with pacman, not apt. doctor.sh owns the
+# detection (installer verdict, then /etc/os-release); when this file is sourced
+# on its own, only the installer's exported verdict is consulted.
+doctor_fix_is_arch_family() {
+    if declare -F _acfs_doctor_is_arch_family >/dev/null 2>&1; then
+        _acfs_doctor_is_arch_family
+        return
+    fi
+    [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]
+}
+
+# Display form of the SSH server install command for dry-run and manual hints.
+doctor_fix_ssh_server_install_display() {
+    local root_display="$1"
+    if doctor_fix_is_arch_family; then
+        printf '%spacman -S --needed --noconfirm openssh' "$root_display"
+    else
+        printf '%sapt-get -o DPkg::Lock::Timeout=120 install -y openssh-server' "$root_display"
+    fi
+}
+
 doctor_fix_system_binary_path() {
     local name="${1:-}"
     local candidate=""
@@ -2153,6 +2174,7 @@ fix_ssh_server() {
     local root_display=""
     local sshd_bin=""
     local systemctl_bin=""
+    local sshd_config="${DOCTOR_FIX_SSHD_CONFIG:-/etc/ssh/sshd_config}"
     local -a root_cmd=()
 
     root_display="$(doctor_fix_root_display_prefix)"
@@ -2160,7 +2182,7 @@ fix_ssh_server() {
     systemctl_bin="$(doctor_fix_system_binary_path systemctl 2>/dev/null || true)"
 
     # Guard: Check if already installed
-    if [[ -n "$sshd_bin" ]] || [[ -f /etc/ssh/sshd_config ]]; then
+    if [[ -n "$sshd_bin" ]] || [[ -f "$sshd_config" ]]; then
         # Check if running
         if [[ -n "$systemctl_bin" && -d /run/systemd/system ]]; then
             if "$systemctl_bin" is-active --quiet ssh 2>/dev/null || "$systemctl_bin" is-active --quiet sshd 2>/dev/null; then
@@ -2207,15 +2229,24 @@ fix_ssh_server() {
 
     # Not installed - install it
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-        FIXES_DRY_RUN+=("fix.ssh.server|Install openssh-server|/etc/ssh/sshd_config|${root_display}apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server")
+        FIXES_DRY_RUN+=("fix.ssh.server|Install openssh-server|/etc/ssh/sshd_config|$(doctor_fix_ssh_server_install_display "$root_display")")
         doctor_fix_log DRY "Install openssh-server"
         return 0
     fi
 
-    apt_get_bin="$(doctor_fix_system_binary_path apt-get 2>/dev/null || true)"
+    local package_manager_bin=""
+    local -a install_argv=()
     env_bin="$(doctor_fix_system_binary_path env 2>/dev/null || true)"
-    if [[ -z "$apt_get_bin" ]]; then
-        doctor_fix_log ERROR "apt-get not found; cannot install openssh-server"
+    if doctor_fix_is_arch_family; then
+        package_manager_bin="$(doctor_fix_system_binary_path pacman 2>/dev/null || true)"
+        install_argv=("$package_manager_bin" -S --needed --noconfirm openssh)
+    else
+        apt_get_bin="$(doctor_fix_system_binary_path apt-get 2>/dev/null || true)"
+        package_manager_bin="$apt_get_bin"
+        install_argv=("$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y openssh-server)
+    fi
+    if [[ -z "$package_manager_bin" ]]; then
+        doctor_fix_log ERROR "No supported package manager (apt-get/pacman) found; cannot install the SSH server"
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -2235,7 +2266,7 @@ fix_ssh_server() {
         return 1
     fi
 
-    if "${root_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y openssh-server 2>/dev/null; then
+    if "${root_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "${install_argv[@]}" 2>/dev/null; then
         if ! ("${root_cmd[@]}" "$systemctl_bin" enable --now ssh 2>/dev/null || "${root_cmd[@]}" "$systemctl_bin" enable --now sshd 2>/dev/null); then
             doctor_fix_log ERROR "Installed openssh-server but failed to enable/start SSH service"
             FIX_FAILED=$((FIX_FAILED + 1))
@@ -2485,7 +2516,7 @@ fix_ssh_keepalive() {
     # Guard: sshd_config must exist
     if [[ ! -f "$sshd_config" ]]; then
         doctor_fix_log WARN "sshd_config not found, install openssh-server first"
-        FIXES_MANUAL+=("$check_id|Install openssh-server first|${root_display}apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server")
+        FIXES_MANUAL+=("$check_id|Install openssh-server first|$(doctor_fix_ssh_server_install_display "$root_display")")
         FIX_MANUAL=$((FIX_MANUAL + 1))
         return 1
     fi

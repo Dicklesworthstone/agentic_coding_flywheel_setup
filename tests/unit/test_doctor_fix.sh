@@ -2799,6 +2799,69 @@ EOF
     return 0
 }
 
+test_fix_ssh_server_installs_openssh_with_pacman_on_arch() {
+    setup_test_env
+    local original_resolver=""
+    local temp_bin=""
+    local pkg_log=""
+
+    if [[ ! -d /run/systemd/system ]]; then
+        echo "  SKIP: requires a systemd host"
+        cleanup_test_env
+        return 0
+    fi
+    start_autofix_session >/dev/null || {
+        echo "  Failed to start autofix session"
+        cleanup_test_env
+        return 1
+    }
+
+    original_resolver="$(declare -f doctor_fix_system_binary_path)"
+    temp_bin="$ACFS_STATE_DIR/bin"
+    pkg_log="$ACFS_STATE_DIR/pkg.log"
+    mkdir -p "$temp_bin"
+    printf '#!/usr/bin/env bash\nprintf "pacman %%s\\n" "$*" >> %q\nexit 0\n' "$pkg_log" > "$temp_bin/pacman"
+    printf '#!/usr/bin/env bash\nprintf "apt-get %%s\\n" "$*" >> %q\nexit 0\n' "$pkg_log" > "$temp_bin/apt-get"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$temp_bin/systemctl"
+    printf '#!/usr/bin/env bash\n[[ "${1:-}" == "-n" ]] || exit 42\nshift\nexec "$@"\n' > "$temp_bin/sudo"
+    chmod +x "$temp_bin/pacman" "$temp_bin/apt-get" "$temp_bin/systemctl" "$temp_bin/sudo"
+
+    doctor_fix_system_binary_path() {
+        case "${1:-}" in
+            sshd) return 1 ;;
+            pacman|apt-get|systemctl|sudo) printf '%s\n' "$temp_bin/${1:-}" ;;
+            *) command -v -- "${1:-}" 2>/dev/null || return 1 ;;
+        esac
+    }
+
+    local fix_rc=0
+    DOCTOR_FIX_SSHD_CONFIG="$ACFS_STATE_DIR/absent-sshd_config" ACFS_DISTRO_FAMILY=arch _ACFS_DOCTOR_IS_ARCH_FAMILY="" \
+        fix_ssh_server "network.ssh_server" >/dev/null 2>&1 || fix_rc=$?
+    eval "$original_resolver"
+
+    if [[ $fix_rc -ne 0 ]]; then
+        echo "  fix_ssh_server failed on Arch (rc=$fix_rc)"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$(cat "$pkg_log" 2>/dev/null)" != "pacman -S --needed --noconfirm openssh" ]]; then
+        echo "  expected exactly one pacman openssh install, got: $(cat "$pkg_log" 2>/dev/null)"
+        cleanup_test_env
+        return 1
+    fi
+
+    local hint=""
+    hint="$(ACFS_DISTRO_FAMILY=arch _ACFS_DOCTOR_IS_ARCH_FAMILY="" doctor_fix_ssh_server_install_display "sudo ")"
+    if [[ "$hint" != "sudo pacman -S --needed --noconfirm openssh" ]]; then
+        echo "  Arch dry-run/manual hint is not pacman-based: $hint"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
 test_fix_ssh_server_fails_when_service_enable_fails() {
     setup_test_env
     local created_systemd_dir=false
@@ -4900,6 +4963,7 @@ main() {
     run_test test_fix_verified_install_ms_arm64_fails_closed_without_anchored_source
     run_test test_fix_verified_install_removes_binary_when_record_change_fails
     run_test test_fix_ssh_server_records_change_when_enabling_service
+    run_test test_fix_ssh_server_installs_openssh_with_pacman_on_arch
     run_test test_fix_ssh_server_fails_when_service_enable_fails
     run_test test_fix_ssh_keepalive_applies_and_records_change
     run_test test_fix_ssh_keepalive_refuses_mutation_when_backup_fails
