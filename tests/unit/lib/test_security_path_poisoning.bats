@@ -121,10 +121,8 @@ EOF
 }
 
 @test "security: autofix restore resolution excludes locally managed prefixes" {
-    local privileged_path_line
     local resolver_body
 
-    privileged_path_line="$(grep '^readonly AUTOFIX_PRIVILEGED_PATH=' "$PROJECT_ROOT/scripts/lib/autofix.sh")"
     resolver_body="$(awk '
         /^autofix_system_binary_path\(\) \{/ { capture=1 }
         capture { print }
@@ -133,7 +131,19 @@ EOF
 
     [[ "$resolver_body" != *'/usr/local/'* ]]
     [[ "$resolver_body" != *'/opt/homebrew/'* ]]
-    [[ "$privileged_path_line" == 'readonly AUTOFIX_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"' ]]
+
+    # Loaded (and re-loaded after clearing the guard), the privileged PATH is
+    # the OS-only set and read-only.
+    run bash -ec 'source "$1"; unset _ACFS_AUTOFIX_SOURCED; source "$1" || exit 9
+        [[ "$AUTOFIX_PRIVILEGED_PATH" == "/usr/sbin:/usr/bin:/sbin:/bin" ]] || exit 8
+        (AUTOFIX_PRIVILEGED_PATH=/evil) 2>/dev/null && exit 7
+        [[ "$AUTOFIX_PRIVILEGED_PATH" == "/usr/sbin:/usr/bin:/sbin:/bin" ]]' _ "$PROJECT_ROOT/scripts/lib/autofix.sh"
+    assert_success
+
+    # A caller-supplied read-only value is refused rather than used.
+    run bash -c 'readonly AUTOFIX_PRIVILEGED_PATH=/evil; source "$1"; status=$?
+        printf "status=%s sourced=%s\n" "$status" "${_ACFS_AUTOFIX_SOURCED:-unset}"' _ "$PROJECT_ROOT/scripts/lib/autofix.sh"
+    assert_output --partial "status=1 sourced=unset"
 
     local undo_body
     undo_body="$(awk '

@@ -2679,9 +2679,9 @@ test_autofix_existing_restore_from_backup_fsyncs_restored_path() {
     setup_mock_env
 
     local target_home="$TEST_HOME/autofix-existing-restore-sync-target"
-    mkdir -p "$target_home"
+    mkdir -p "$target_home/backups"
     printf 'old\n' > "$target_home/config.toml"
-    printf 'restored\n' > "$target_home/config.toml.backup"
+    printf 'restored\n' > "$target_home/backups/config.toml.backup"
 
     local output=""
     output=$(HOME="$TEST_HOME/root-home" TARGET_HOME="$target_home" \
@@ -2693,11 +2693,14 @@ test_autofix_existing_restore_from_backup_fsyncs_restored_path() {
                 printf "%s\n" "$1" >> "$fsync_log"
                 return 0
             }
+            # A complete backup record (path_type + checksum) inside an
+            # explicit trusted backup root, as the restore contract requires.
             backup_json=$(jq -cn \
                 --arg original "$TARGET_HOME/config.toml" \
-                --arg backup "$TARGET_HOME/config.toml.backup" \
-                "{original: \$original, backup: \$backup}")
-            if autofix_existing_restore_from_backup "$backup_json" "$TARGET_HOME/config.toml" >/dev/null 2>&1; then
+                --arg backup "$TARGET_HOME/backups/config.toml.backup" \
+                --arg checksum "$(calculate_backup_checksum "$TARGET_HOME/backups/config.toml.backup")" \
+                "{original: \$original, backup: \$backup, path_type: \"file\", checksum: \$checksum}")
+            if autofix_existing_restore_from_backup "$backup_json" "$TARGET_HOME/config.toml" "$TARGET_HOME/backups" >/dev/null 2>&1; then
                 result="success"
             else
                 result="failure"

@@ -11,7 +11,17 @@ _ACFS_AUTOFIX_SOURCED=1
 # only through install.sh. Never let a root caller's PATH select the journal,
 # backup, or rollback utilities used below. Non-root callers retain their PATH
 # so target-user version-manager checks can still find user-installed tools.
-readonly AUTOFIX_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+# Re-sourcing (the guard above can be cleared) must not trip over the existing
+# read-only declaration, and a caller that pre-declared it read-only with any
+# other value must not get that value used for root's PATH.
+if [[ "${AUTOFIX_PRIVILEGED_PATH-}" != "/usr/sbin:/usr/bin:/sbin:/bin" ]]; then
+    readonly AUTOFIX_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin" 2>/dev/null || {
+        printf 'autofix.sh: refusing to load: AUTOFIX_PRIVILEGED_PATH is read-only with an untrusted value\n' >&2
+        unset _ACFS_AUTOFIX_SOURCED
+        return 1 2>/dev/null || exit 1
+    }
+fi
+readonly AUTOFIX_PRIVILEGED_PATH
 if [[ "$EUID" -eq 0 ]]; then
     export PATH="$AUTOFIX_PRIVILEGED_PATH"
 fi
@@ -900,8 +910,12 @@ autofix_record_is_reversible() {
     [[ "$reversible" == "true" ]]
 }
 
+# Usage: autofix_backup_restore_command BACKUP_JSON [BACKUP_ROOT]
+# BACKUP_ROOT (default: ACFS_BACKUPS_DIR) is the trusted store the backup must
+# live under, e.g. a clean reinstall's own installation-backup directory.
 autofix_backup_restore_command() {
     local backup_json="$1"
+    local backup_root="${2:-${ACFS_BACKUPS_DIR:-}}"
     local original_path=""
     local backup_path=""
     local backups_dir=""
@@ -928,7 +942,7 @@ autofix_backup_restore_command() {
 
     [[ "$(autofix_sanitize_abs_nonroot_path "$original_path" 2>/dev/null || true)" == "$original_path" ]] || return 1
     [[ "$(autofix_sanitize_abs_nonroot_path "$backup_path" 2>/dev/null || true)" == "$backup_path" ]] || return 1
-    backups_dir="$(autofix_sanitize_abs_nonroot_path "${ACFS_BACKUPS_DIR:-}" 2>/dev/null || true)"
+    backups_dir="$(autofix_sanitize_abs_nonroot_path "$backup_root" 2>/dev/null || true)"
     [[ -n "$backups_dir" ]] || return 1
     [[ "$backup_path" == "$backups_dir/"* ]] || return 1
 
@@ -938,7 +952,7 @@ autofix_backup_restore_command() {
     [[ "$original_path" != "$backups_dir/"* ]] || return 1
     [[ "$backups_dir" != "$original_path/"* ]] || return 1
 
-    verify_backup_integrity "$backup_json" >/dev/null 2>&1 || return 1
+    verify_backup_integrity "$backup_json" "$backups_dir" >/dev/null 2>&1 || return 1
 
     rm_bin="$(autofix_system_binary_path rm 2>/dev/null || true)"
     mkdir_bin="$(autofix_system_binary_path mkdir 2>/dev/null || true)"
@@ -1977,8 +1991,10 @@ create_backup() {
 }
 
 # Verify a backup file's integrity
+# Usage: verify_backup_integrity BACKUP_JSON [BACKUP_ROOT]  (root default: ACFS_BACKUPS_DIR)
 verify_backup_integrity() {
     local backup_json="$1"
+    local backup_root="${2:-${ACFS_BACKUPS_DIR:-}}"
 
     local backup_path=""
     local backups_dir=""
@@ -1999,7 +2015,7 @@ verify_backup_integrity() {
     expected_path_type=$(echo "$backup_json" | jq -r '.path_type')
     expected_checksum=$(echo "$backup_json" | jq -r '.checksum')
     [[ "$(autofix_sanitize_abs_nonroot_path "$backup_path" 2>/dev/null || true)" == "$backup_path" ]] || return 1
-    backups_dir="$(autofix_sanitize_abs_nonroot_path "${ACFS_BACKUPS_DIR:-}" 2>/dev/null || true)"
+    backups_dir="$(autofix_sanitize_abs_nonroot_path "$backup_root" 2>/dev/null || true)"
     [[ -n "$backups_dir" && "$backup_path" == "$backups_dir/"* ]] || return 1
 
     if ! autofix_path_exists "$backup_path"; then
