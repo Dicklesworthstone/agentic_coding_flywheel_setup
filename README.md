@@ -2965,10 +2965,9 @@ agentic_coding_flywheel_setup/
 │   │   ├── security.sh           # HTTPS + checksum verification
 │   │   ├── os_detect.sh          # OS detection
 │   │   ├── user.sh               # User management
-│   │   ├── zsh.sh                # Shell setup
 │   │   ├── update.sh             # Update command logic
 │   │   ├── gum_ui.sh             # Enhanced UI
-│   │   ├── cli_tools.sh          # Tool installation
+│   │   ├── stack.sh              # Flywheel stack helpers
 │   │   └── doctor.sh             # Health checks
 │   ├── generated/                # Auto-generated from manifest
 │   │   ├── install_<category>.sh # 13 source-only category libraries

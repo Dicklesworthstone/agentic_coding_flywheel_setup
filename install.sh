@@ -3788,7 +3788,6 @@ acfs_load_internal_checksums_data() {
         scripts/lib/holds.sh
         scripts/lib/github_api.sh
         scripts/lib/contract.sh
-        scripts/lib/agents.sh
         scripts/lib/update.sh
         scripts/lib/doctor.sh
         scripts/lib/acfs-services.sh
@@ -9440,52 +9439,6 @@ WRANGLER_SHIM
                                 fi
                             fi
                         fi
-                    else
-                        acfs_warn_bun_global_binary_missing "$cli" "${cli}@latest" "$bun_bin"
-                    fi
-                else
-                    log_warn "$cli installation failed (optional)"
-                fi
-            done
-        fi
-    fi
-}
-
-install_cloud_db_legacy() {
-    # Cloud CLIs (bun global installs)
-    if [[ "$SKIP_CLOUD" == "true" ]]; then
-        log_detail "Skipping cloud CLIs (--skip-cloud)"
-    else
-        local bun_bin="$TARGET_HOME/.bun/bin/bun"
-        if [[ ! -x "$bun_bin" ]]; then
-            log_warn "Cloud CLIs: bun not found at $bun_bin (skipping)"
-        else
-            local cli
-            for cli in wrangler supabase vercel; do
-                if [[ "$cli" == "supabase" ]]; then
-                    if [[ -x "$ACFS_BIN_DIR/supabase" ]] || [[ -x "$TARGET_HOME/.bun/bin/supabase" ]]; then
-                        log_detail "supabase already installed"
-                        continue
-                    fi
-
-                    log_detail "Installing supabase (direct binary)"
-                    if try_step "Installing supabase" install_supabase_cli_release; then
-                        log_success "supabase installed"
-                    else
-                        log_warn "supabase installation failed (optional)"
-                    fi
-                    continue
-                fi
-
-                if [[ -x "$TARGET_HOME/.bun/bin/$cli" ]]; then
-                    log_detail "$cli already installed"
-                    continue
-                fi
-
-                log_detail "Installing $cli via bun"
-                if try_step "Installing $cli via bun" run_as_target "$bun_bin" install -g --trust "${cli}@latest"; then
-                    if [[ -x "$TARGET_HOME/.bun/bin/$cli" ]]; then
-                        log_success "$cli installed"
                     else
                         acfs_warn_bun_global_binary_missing "$cli" "${cli}@latest" "$bun_bin"
                     fi

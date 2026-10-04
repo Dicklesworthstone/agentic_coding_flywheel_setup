@@ -29,10 +29,6 @@ AUTOFIX_SH="$REPO_ROOT/scripts/lib/autofix.sh"
 AUTOFIX_EXISTING_SH="$REPO_ROOT/scripts/lib/autofix_existing.sh"
 UBUNTU_UPGRADE_SH="$REPO_ROOT/scripts/lib/ubuntu_upgrade.sh"
 STACK_SH="$REPO_ROOT/scripts/lib/stack.sh"
-CLI_TOOLS_SH="$REPO_ROOT/scripts/lib/cli_tools.sh"
-AGENTS_SH="$REPO_ROOT/scripts/lib/agents.sh"
-LANGUAGES_SH="$REPO_ROOT/scripts/lib/languages.sh"
-CLOUD_DB_SH="$REPO_ROOT/scripts/lib/cloud_db.sh"
 GITHUB_API_SH="$REPO_ROOT/scripts/lib/github_api.sh"
 NIGHTLY_UPDATE_SH="$REPO_ROOT/scripts/lib/nightly_update.sh"
 OS_DETECT_SH="$REPO_ROOT/scripts/lib/os_detect.sh"
@@ -4795,123 +4791,6 @@ EOF
     cleanup_mock_env
 }
 
-test_cli_tools_ignore_other_user_home_bin_dir_override() {
-    setup_cross_home_bin_dir_env
-
-    local tool_name="cli-cross-home-tool"
-    write_fake_command "$STALE_HOME/.local/bin/$tool_name" "stale"
-
-    local output=""
-    output=$(HOME="$TEST_ROOT_HOME" TARGET_HOME="$TEST_TARGET_HOME" TARGET_USER="$(id -un 2>/dev/null || whoami 2>/dev/null)" \
-        ACFS_BIN_DIR="$STALE_HOME/.local/bin" TEST_CLI_TOOLS_SCRIPT="$CLI_TOOLS_SH" TEST_TOOL_NAME="$tool_name" \
-        bash <<'EOF'
-set -u
-source "$TEST_CLI_TOOLS_SCRIPT"
-if _cli_target_has_command "$TEST_TOOL_NAME"; then
-    printf 'has=0\n'
-else
-    printf 'has=%s\n' "$?"
-fi
-_cli_run_as_user 'printf "%s\n" "${ACFS_BIN_DIR:-}"'
-EOF
-)
-
-    if [[ "$output" == $'has=1\n'"$TEST_TARGET_HOME/.local/bin" ]]; then
-        harness_pass "cli_tools ignore other-user home bin_dir override"
-    else
-        harness_fail "cli_tools ignore other-user home bin_dir override" "$output"
-    fi
-
-    cleanup_mock_env
-}
-
-test_agents_ignore_other_user_home_bin_dir_override() {
-    setup_cross_home_bin_dir_env
-
-    cat > "$STALE_HOME/.local/bin/am" <<'EOF'
-#!/usr/bin/env bash
-printf 'stale am\n'
-EOF
-    chmod +x "$STALE_HOME/.local/bin/am"
-
-    local output=""
-    output=$(HOME="$TEST_ROOT_HOME" TARGET_HOME="$TEST_TARGET_HOME" TARGET_USER="$(id -un 2>/dev/null || whoami 2>/dev/null)" \
-        ACFS_BIN_DIR="$STALE_HOME/.local/bin" TEST_AGENTS_SCRIPT="$AGENTS_SH" \
-        bash <<'EOF'
-set -u
-source "$TEST_AGENTS_SCRIPT"
-if out="$(_agent_find_am_bin "$TARGET_HOME" 2>/dev/null)"; then
-    printf 'find=%s\n' "$out"
-else
-    printf 'find=rc%s\n' "$?"
-fi
-_agent_run_as_user 'printf "%s\n" "${ACFS_BIN_DIR:-}"'
-EOF
-)
-
-    if [[ "$output" == $'find=rc1\n'"$TEST_TARGET_HOME/.local/bin" ]]; then
-        harness_pass "agents ignore other-user home bin_dir override"
-    else
-        harness_fail "agents ignore other-user home bin_dir override" "$output"
-    fi
-
-    cleanup_mock_env
-}
-
-test_language_cloud_ignore_other_user_home_bin_dir_override() {
-    setup_mock_env
-
-    local target_user="acfstestuser"
-    local target_home="$TEST_HOME/users/$target_user"
-    local stale_home="$TEST_HOME/users/staleuser"
-
-    mkdir -p "$target_home" "$stale_home/.local/bin"
-
-    local output=""
-    output=$(HOME="$TEST_ROOT_HOME" TARGET_HOME="$target_home" TARGET_USER="$target_user" \
-        ACFS_BIN_DIR="$stale_home/.local/bin" TEST_LANGUAGES_SCRIPT="$LANGUAGES_SH" TEST_CLOUD_DB_SCRIPT="$CLOUD_DB_SH" \
-        TEST_TARGET_USER="$target_user" TEST_TARGET_HOME="$target_home" TEST_STALE_HOME="$stale_home" \
-        bash <<'EOF'
-set -u
-emit_test_passwd_entry() {
-    local user="${1-}"
-
-    case "$user" in
-        "$TEST_TARGET_USER")
-            printf '%s:x:1001:1001::%s:/bin/bash\n' "$TEST_TARGET_USER" "$TEST_TARGET_HOME"
-            ;;
-        staleuser)
-            printf 'staleuser:x:1002:1002::%s:/bin/bash\n' "$TEST_STALE_HOME"
-            ;;
-        "")
-            printf '%s:x:1001:1001::%s:/bin/bash\n' "$TEST_TARGET_USER" "$TEST_TARGET_HOME"
-            printf 'staleuser:x:1002:1002::%s:/bin/bash\n' "$TEST_STALE_HOME"
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-source "$TEST_LANGUAGES_SCRIPT"
-_lang_resolve_current_user() { printf '%s\n' "$TEST_TARGET_USER"; }
-_lang_getent_passwd_entry() { emit_test_passwd_entry "${1-}"; }
-_lang_run_as_user 'printf "lang=%s\n" "${ACFS_BIN_DIR:-}"'
-source "$TEST_CLOUD_DB_SCRIPT"
-_cloud_resolve_current_user() { printf '%s\n' "$TEST_TARGET_USER"; }
-_cloud_getent_passwd_entry() { emit_test_passwd_entry "${1-}"; }
-_cloud_run_as_user 'printf "cloud=%s\n" "${ACFS_BIN_DIR:-}"'
-EOF
-)
-
-    if [[ "$output" == $'lang='"$target_home/.local/bin"$'\ncloud='"$target_home/.local/bin" ]]; then
-        harness_pass "language/cloud run_as_user ignore other-user home bin_dir override"
-    else
-        harness_fail "language/cloud run_as_user ignore other-user home bin_dir override" "$output"
-    fi
-
-    cleanup_mock_env
-}
-
 test_github_api_binary_path_ignores_other_user_home_bin_dir_override() {
     setup_cross_home_bin_dir_env
 
@@ -8340,10 +8219,6 @@ onboard|$REPO_ROOT/packages/onboard/onboard.sh|onboard_system_binary_path|name
 install-helpers|$REPO_ROOT/scripts/lib/install_helpers.sh|_acfs_system_binary_path|name
 update-early-lib|$REPO_ROOT/scripts/lib/update.sh|_update_early_system_binary_path|name
 update-system-lib|$REPO_ROOT/scripts/lib/update.sh|update_system_binary_path|name
-cli-tools-lib|$REPO_ROOT/scripts/lib/cli_tools.sh|_cli_system_binary_path|name
-agents-lib|$REPO_ROOT/scripts/lib/agents.sh|_agent_system_binary_path|name
-languages-lib|$REPO_ROOT/scripts/lib/languages.sh|_lang_system_binary_path|name
-cloud-db-lib|$REPO_ROOT/scripts/lib/cloud_db.sh|_cloud_system_binary_path|name
 stack-lib|$REPO_ROOT/scripts/lib/stack.sh|_stack_system_binary_path|name
 autofix-lib|$REPO_ROOT/scripts/lib/autofix.sh|autofix_system_binary_path|name
 changelog-lib|$REPO_ROOT/scripts/lib/changelog.sh|changelog_system_binary_path|name
@@ -8366,7 +8241,6 @@ support-lib|$REPO_ROOT/scripts/lib/support.sh|support_system_binary_path|name
 user-lib|$REPO_ROOT/scripts/lib/user.sh|user_system_binary_path|name
 webhook-lib|$REPO_ROOT/scripts/lib/webhook.sh|webhook_system_binary_path|name
 ubuntu-upgrade-lib|$REPO_ROOT/scripts/lib/ubuntu_upgrade.sh|ubuntu_system_binary_path|name
-zsh-lib|$REPO_ROOT/scripts/lib/zsh.sh|zsh_system_binary_path|name
 generated-install-all|$REPO_ROOT/scripts/generated/install_all.sh|acfs_generated_system_binary_path|name
 generated-doctor-checks|$REPO_ROOT/scripts/generated/doctor_checks.sh|acfs_generated_system_binary_path|name
 EOF
@@ -8393,7 +8267,6 @@ EOF
 install-target-lookup|$REPO_ROOT/install.sh|binary_path|name
 preflight-target-lookup|$REPO_ROOT/scripts/preflight.sh|preflight_binary_path|name
 services-setup-target-lookup|$REPO_ROOT/scripts/services-setup.sh|find_user_bin|name
-cli-tools-target-lookup|$REPO_ROOT/scripts/lib/cli_tools.sh|_cli_target_has_command|cmd
 stack-target-lookup|$REPO_ROOT/scripts/lib/stack.sh|_stack_target_command_path|cmd
 update-target-lookup|$REPO_ROOT/scripts/lib/update.sh|update_binary_path|tool
 doctor-target-lookup|$REPO_ROOT/scripts/lib/doctor.sh|doctor_binary_path|name
@@ -8451,8 +8324,6 @@ install-helpers|$REPO_ROOT/scripts/lib/install_helpers.sh|_acfs_system_binary_pa
 update-early-lib|$REPO_ROOT/scripts/lib/update.sh|_update_early_system_binary_path
 update-system-lib|$REPO_ROOT/scripts/lib/update.sh|update_system_binary_path
 stack-lib|$REPO_ROOT/scripts/lib/stack.sh|_stack_system_binary_path
-agents-lib|$REPO_ROOT/scripts/lib/agents.sh|_agent_system_binary_path
-cloud-db-lib|$REPO_ROOT/scripts/lib/cloud_db.sh|_cloud_system_binary_path
 notify-lib|$REPO_ROOT/scripts/lib/notify.sh|_acfs_notify_system_binary_path
 notifications-lib|$REPO_ROOT/scripts/lib/notifications.sh|notifications_system_binary_path
 webhook-lib|$REPO_ROOT/scripts/lib/webhook.sh|webhook_system_binary_path
@@ -11675,7 +11546,6 @@ main() {
     test_services_setup_repairs_invalid_bun_bin_from_target_user_paths || true
     test_services_setup_init_target_context_repairs_stale_other_user_bun_bin || true
     test_services_setup_cloud_clis_use_find_user_bin || true
-    test_language_cloud_ignore_other_user_home_bin_dir_override || true
 
     harness_section "Stack"
     test_stack_is_installed_handles_unknown_tool_under_set_u || true
@@ -11912,8 +11782,6 @@ main() {
     test_onboard_copy_install_ignores_relative_home_trap || true
 
     harness_section "Runtime Helper Libs"
-    test_cli_tools_ignore_other_user_home_bin_dir_override || true
-    test_agents_ignore_other_user_home_bin_dir_override || true
     test_github_api_binary_path_ignores_other_user_home_bin_dir_override || true
     test_nightly_update_ignores_other_user_home_bin_dir_before_preflight_path || true
     test_nightly_update_ignores_stale_explicit_target_home_before_preflight_path || true

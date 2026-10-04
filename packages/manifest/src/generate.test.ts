@@ -1286,7 +1286,7 @@ describe("Generated script headers", () => {
     expect(countMatch).not.toBeNull();
     expect(rawEntries.length).toBe(checksums.size);
     expect(Number(countMatch?.[1])).toBe(checksums.size);
-    expect(checksums.size).toBe(117);
+    expect(checksums.size).toBe(116);
 
     const mandatoryPaths = [
       "install.sh",
@@ -1296,7 +1296,6 @@ describe("Generated script headers", () => {
       "scripts/lib/holds.sh",
       "scripts/lib/github_api.sh",
       "scripts/lib/contract.sh",
-      "scripts/lib/agents.sh",
       "scripts/lib/update.sh",
       "scripts/lib/doctor.sh",
       "scripts/lib/acfs-services.sh",

@@ -3343,88 +3343,6 @@ EOF
     assert_output "$HOME/.local/bin/uvx"
 }
 
-@test "install_atuin: does not skip target install because of a global atuin or partial target dir" {
-    source_lib "cli_tools"
-    init_stub_dir
-
-    export PATH="$STUB_DIR:$PATH"
-    export TARGET_USER="tester"
-    export TARGET_HOME="$HOME/target-home"
-    export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
-    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/.atuin"
-
-    cat > "$STUB_DIR/atuin" <<'EOF'
-#!/usr/bin/env bash
-echo "global atuin"
-EOF
-    chmod +x "$STUB_DIR/atuin"
-
-    CLI_RUN_AS_USER_CALLS=0
-
-    _cli_target_home() {
-        printf '%s\n' "$TARGET_HOME"
-    }
-
-    _cli_require_security() {
-        return 0
-    }
-
-    _cli_run_as_user() {
-        CLI_RUN_AS_USER_CALLS=$((CLI_RUN_AS_USER_CALLS + 1))
-        mkdir -p "$TARGET_HOME/.atuin/bin"
-        cat > "$TARGET_HOME/.atuin/bin/atuin" <<'EOF'
-#!/usr/bin/env bash
-echo "atuin 18.14.1"
-EOF
-        chmod +x "$TARGET_HOME/.atuin/bin/atuin"
-        return 0
-    }
-
-    declare -gA KNOWN_INSTALLERS=(["atuin"]="https://example.com")
-    get_checksum() {
-        echo "deadbeef"
-    }
-
-    install_atuin
-
-    [[ "$CLI_RUN_AS_USER_CALLS" -eq 1 ]]
-    [[ -x "$TARGET_HOME/.atuin/bin/atuin" ]]
-    [[ -x "$TARGET_HOME/.local/bin/atuin" ]]
-    [[ ! -L "$TARGET_HOME/.local/bin/atuin" ]]
-
-    run "$TARGET_HOME/.local/bin/atuin" --version
-    assert_success
-    assert_output "atuin 18.14.1"
-
-    run env CODEX_THREAD_ID=test "$TARGET_HOME/.local/bin/atuin" history start
-    assert_success
-    assert_output ""
-}
-
-@test "_cli_target_has_command: ignores current-shell-only PATH entries" {
-    source_lib "cli_tools"
-    init_stub_dir
-
-    export PATH="$STUB_DIR:$PATH"
-    export TARGET_USER="tester"
-    export TARGET_HOME="$HOME/target-home"
-    export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
-    mkdir -p "$TARGET_HOME/.local/bin"
-
-    cat > "$STUB_DIR/current-shell-only-tool" <<'EOF'
-#!/usr/bin/env bash
-echo "current shell only"
-EOF
-    chmod +x "$STUB_DIR/current-shell-only-tool"
-
-    _cli_target_home() {
-        printf '%s\n' "$TARGET_HOME"
-    }
-
-    run _cli_target_has_command "current-shell-only-tool"
-    assert_failure
-}
-
 @test "acfs.zshrc: does not load Atuin shell hooks" {
     local zshrc="$PROJECT_ROOT/acfs/zsh/acfs.zshrc"
 
@@ -3495,9 +3413,6 @@ EOF
     assert_success
 
     run grep -F "$agent_contexts" "$PROJECT_ROOT/scripts/generated/install_tools.sh"
-    assert_success
-
-    run grep -F "$agent_contexts" "$PROJECT_ROOT/scripts/lib/cli_tools.sh"
     assert_success
 
     run grep -F "$agent_contexts" "$PROJECT_ROOT/scripts/lib/update.sh"
@@ -4142,53 +4057,6 @@ EOF
     assert_success
 }
 
-@test "scripts/lib/zsh.sh: mirrors Atuin-aware login PATH setup" {
-    local zsh_lib="$PROJECT_ROOT/scripts/lib/zsh.sh"
-
-    run grep -F 'local user_zprofile="$HOME/.zprofile"' "$zsh_lib"
-    assert_success
-
-    run grep -F '_zsh_is_managed_loader() {' "$zsh_lib"
-    assert_success
-
-    run grep -F 'zsh_external_shell_handoff_configured() {' "$zsh_lib"
-    assert_success
-
-    run grep -F "grep -q 'ACFS externally-managed shell handoff' \"\$bashrc\"" "$zsh_lib"
-    assert_failure
-
-    run grep -F 'grep -q "ACFS loader" "$user_zshrc"' "$zsh_lib"
-    assert_failure
-
-    run grep -F 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$PATH"' "$zsh_lib"
-    assert_success
-
-    run grep -F 'grep -Fxq "$legacy_profile_path_line"' "$zsh_lib"
-    assert_success
-
-    run grep -F '# ACFS loader — user overrides go in ~/.zshrc.local (sourced by acfs.zshrc)' "$zsh_lib"
-    assert_success
-}
-
-@test "scripts/lib/zsh.sh: resolves shell user via trusted helpers" {
-    local zsh_lib="$PROJECT_ROOT/scripts/lib/zsh.sh"
-
-    run grep -F 'current_user="$(zsh_resolve_current_user 2>/dev/null || true)"' "$zsh_lib"
-    assert_success
-
-    run grep -F 'passwd_entry="$(zsh_getent_passwd_entry "$current_user" 2>/dev/null || true)"' "$zsh_lib"
-    assert_success
-
-    run grep -F 'if zsh_is_externally_managed_user "$current_user"; then' "$zsh_lib"
-    assert_success
-
-    run grep -F '$SUDO "$chsh_path" -s "$zsh_path" "$current_user"' "$zsh_lib"
-    assert_success
-
-    run grep -F 'getent passwd "$(whoami)"' "$zsh_lib"
-    assert_failure
-}
-
 @test "scripts/preflight.sh: resolves identity and passwd data via trusted helpers" {
     local preflight="$PROJECT_ROOT/scripts/preflight.sh"
 
@@ -4285,10 +4153,6 @@ EOF
     local notifications_lib="$PROJECT_ROOT/scripts/lib/notifications.sh"
     local notify_lib="$PROJECT_ROOT/scripts/lib/notify.sh"
     local webhook_lib="$PROJECT_ROOT/scripts/lib/webhook.sh"
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
-    local cli_tools_lib="$PROJECT_ROOT/scripts/lib/cli_tools.sh"
-    local languages_lib="$PROJECT_ROOT/scripts/lib/languages.sh"
-    local cloud_db_lib="$PROJECT_ROOT/scripts/lib/cloud_db.sh"
     local stack_lib="$PROJECT_ROOT/scripts/lib/stack.sh"
     local doctor_lib="$PROJECT_ROOT/scripts/lib/doctor.sh"
     local doctor_fix_lib="$PROJECT_ROOT/scripts/lib/doctor_fix.sh"
@@ -4360,30 +4224,6 @@ EOF
     run grep -F 'webhook_passwd_home_from_entry "$passwd_entry" 2>/dev/null || true' "$webhook_lib"
     assert_success
 
-    run grep -F '_agent_passwd_home_from_entry() {' "$agents_lib"
-    assert_success
-
-    run grep -F 'done < <(_agent_getent_passwd_entry 2>/dev/null || true)' "$agents_lib"
-    assert_success
-
-    run grep -F '_cli_passwd_home_from_entry() {' "$cli_tools_lib"
-    assert_success
-
-    run grep -F 'done < <(_cli_getent_passwd_entry 2>/dev/null || true)' "$cli_tools_lib"
-    assert_success
-
-    run grep -F '_lang_passwd_home_from_entry() {' "$languages_lib"
-    assert_success
-
-    run grep -F '_lang_passwd_home_from_entry "$passwd_entry" 2>/dev/null || true' "$languages_lib"
-    assert_success
-
-    run grep -F '_cloud_passwd_home_from_entry() {' "$cloud_db_lib"
-    assert_success
-
-    run grep -F '_cloud_passwd_home_from_entry "$passwd_entry" 2>/dev/null || true' "$cloud_db_lib"
-    assert_success
-
     run grep -F '_stack_passwd_home_from_entry() {' "$stack_lib"
     assert_success
 
@@ -4408,7 +4248,7 @@ EOF
     run grep -F 'user_passwd_home_from_entry "$passwd_entry" 2>/dev/null || true' "$user_lib"
     assert_success
 
-    run rg -n 'cut -d: -f6' "$support" "$status_lib" "$info" "$dashboard" "$export_config" "$cheatsheet" "$continue_lib" "$changelog_lib" "$notifications_lib" "$notify_lib" "$webhook_lib" "$agents_lib" "$cli_tools_lib" "$languages_lib" "$cloud_db_lib" "$stack_lib" "$doctor_lib" "$doctor_fix_lib" "$user_lib"
+    run rg -n 'cut -d: -f6' "$support" "$status_lib" "$info" "$dashboard" "$export_config" "$cheatsheet" "$continue_lib" "$changelog_lib" "$notifications_lib" "$notify_lib" "$webhook_lib" "$stack_lib" "$doctor_lib" "$doctor_fix_lib" "$user_lib"
     assert_failure
 
     run rg -n 'awk -F: -v u=|awk -F: -v user=' "$doctor_lib" "$doctor_fix_lib" "$user_lib"
@@ -6853,17 +6693,14 @@ install-early|$PROJECT_ROOT/install.sh|acfs_early_system_binary_path
 onboard|$PROJECT_ROOT/packages/onboard/onboard.sh|onboard_system_binary_path
 autofix|$PROJECT_ROOT/scripts/lib/autofix.sh|autofix_system_binary_path
 changelog|$PROJECT_ROOT/scripts/lib/changelog.sh|changelog_system_binary_path
-cli-tools|$PROJECT_ROOT/scripts/lib/cli_tools.sh|_cli_system_binary_path
 context|$PROJECT_ROOT/scripts/lib/context.sh|context_system_binary_path
 error-tracking|$PROJECT_ROOT/scripts/lib/error_tracking.sh|error_tracking_system_binary_path
 github-api|$PROJECT_ROOT/scripts/lib/github_api.sh|_github_api_system_binary_path
-languages|$PROJECT_ROOT/scripts/lib/languages.sh|_lang_system_binary_path
 nightly-update|$PROJECT_ROOT/scripts/lib/nightly_update.sh|system_binary_path
 os-detect|$PROJECT_ROOT/scripts/lib/os_detect.sh|os_detect_system_binary_path
 security|$PROJECT_ROOT/scripts/lib/security.sh|acfs_security_system_binary_path
 supabase-update|$PROJECT_ROOT/scripts/lib/update.sh|supabase_system_binary_path
 user|$PROJECT_ROOT/scripts/lib/user.sh|user_system_binary_path
-zsh|$PROJECT_ROOT/scripts/lib/zsh.sh|zsh_system_binary_path
 EOF
 }
 
@@ -6890,7 +6727,6 @@ install|$PROJECT_ROOT/install.sh|binary_path
 preflight|$PROJECT_ROOT/scripts/preflight.sh|preflight_binary_path
 services-setup|$PROJECT_ROOT/scripts/services-setup.sh|find_user_bin
 onboard|$PROJECT_ROOT/packages/onboard/onboard.sh|onboard_runtime_binary_path
-cli-tools|$PROJECT_ROOT/scripts/lib/cli_tools.sh|_cli_target_has_command
 stack|$PROJECT_ROOT/scripts/lib/stack.sh|_stack_target_command_path
 update|$PROJECT_ROOT/scripts/lib/update.sh|update_binary_path
 doctor|$PROJECT_ROOT/scripts/lib/doctor.sh|doctor_binary_path
@@ -6925,10 +6761,6 @@ install|$PROJECT_ROOT/install.sh|command_exists
 install-helpers|$PROJECT_ROOT/scripts/lib/install_helpers.sh|command_exists
 install-helpers-target|$PROJECT_ROOT/scripts/lib/install_helpers.sh|command_exists_as_target
 services-setup-target|$PROJECT_ROOT/scripts/services-setup.sh|user_command_exists
-agents|$PROJECT_ROOT/scripts/lib/agents.sh|_agent_command_exists
-cloud-db|$PROJECT_ROOT/scripts/lib/cloud_db.sh|_cloud_command_exists
-cli-tools|$PROJECT_ROOT/scripts/lib/cli_tools.sh|_cli_command_exists
-languages|$PROJECT_ROOT/scripts/lib/languages.sh|_lang_command_exists
 stack|$PROJECT_ROOT/scripts/lib/stack.sh|_stack_command_exists
 update|$PROJECT_ROOT/scripts/lib/update.sh|cmd_exists
 EOF
@@ -7325,45 +7157,8 @@ EOF_DASHBOARD_TRAP
     assert_output "$stale_home"
 }
 
-@test "run-as-user helper libs validate target context and preserve repaired env" {
-    local cli_tools="$PROJECT_ROOT/scripts/lib/cli_tools.sh"
-    local agents="$PROJECT_ROOT/scripts/lib/agents.sh"
-    local languages="$PROJECT_ROOT/scripts/lib/languages.sh"
-    local cloud_db="$PROJECT_ROOT/scripts/lib/cloud_db.sh"
+@test "stack run-as-user helper validates target context and preserves repaired env" {
     local stack="$PROJECT_ROOT/scripts/lib/stack.sh"
-
-    run grep -F '_cli_validate_target_user "$target_user" || return 1' "$cli_tools"
-    assert_success
-    run grep -F 'wrapped_cmd="export TARGET_USER=$target_user_q TARGET_HOME=$target_home_q HOME=$target_home_q;"' "$cli_tools"
-    assert_success
-    run grep -F 'wrapped_cmd+=" export PATH=$target_path_prefix_q:\$PATH; set -o pipefail; cd \"\$HOME\" || exit 1; $cmd"' "$cli_tools"
-    assert_success
-
-    run grep -F '_agent_validate_target_user "$target_user" || return 1' "$agents"
-    assert_success
-    run grep -F 'wrapped_cmd="export TARGET_USER=$target_user_q TARGET_HOME=$target_home_q HOME=$target_home_q;"' "$agents"
-    assert_success
-    run grep -F 'wrapped_cmd+=" export PATH=$target_path_prefix_q:\$PATH; set -o pipefail; cd \"\$HOME\" || exit 1; $cmd"' "$agents"
-    assert_success
-    # #388: bun global installs must land on the ~/.bun/bin this PATH advertises.
-    run grep -F 'wrapped_cmd+=" export BUN_INSTALL=$target_home_q/.bun;"' "$agents"
-    assert_success
-
-    run grep -F '_lang_validate_target_user "$target_user" || return 1' "$languages"
-    assert_success
-    run grep -F 'wrapped_cmd="export TARGET_USER=$target_user_q TARGET_HOME=$target_home_q HOME=$target_home_q;"' "$languages"
-    assert_success
-    run grep -F 'wrapped_cmd+=" export PATH=$target_path_prefix_q:\$PATH; set -o pipefail; cd \"\$HOME\" || exit 1; $cmd"' "$languages"
-    assert_success
-
-    run grep -F '_cloud_validate_target_user "$target_user" || return 1' "$cloud_db"
-    assert_success
-    run grep -F 'wrapped_cmd="export TARGET_USER=$target_user_q TARGET_HOME=$target_home_q HOME=$target_home_q;"' "$cloud_db"
-    assert_success
-    run grep -F 'wrapped_cmd+=" export PATH=$target_path_prefix_q:\$PATH; set -o pipefail; cd \"\$HOME\" || exit 1; $cmd"' "$cloud_db"
-    assert_success
-    run grep -F 'wrapped_cmd+=" export BUN_INSTALL=$target_home_q/.bun;"' "$cloud_db"
-    assert_success
 
     run grep -F '_stack_validate_target_user "$target_user" || return 1' "$stack"
     assert_success
@@ -7486,36 +7281,8 @@ EOF
     export TARGET_HOME="/home/tester"
     export ACFS_BIN_DIR="/home/tester/.local/bin"
 
-    source_lib "cli_tools"
-    spy_command "sudo"
-    run _cli_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_USER '../bad user'"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_cli_run_as_user should not invoke sudo for invalid TARGET_USER"
-
-    source_lib "agents"
-    : > "$STUB_DIR/sudo.log"
-    run _agent_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_USER '../bad user'"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_agent_run_as_user should not invoke sudo for invalid TARGET_USER"
-
-    source_lib "languages"
-    : > "$STUB_DIR/sudo.log"
-    run _lang_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_USER '../bad user'"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_lang_run_as_user should not invoke sudo for invalid TARGET_USER"
-
-    source_lib "cloud_db"
-    : > "$STUB_DIR/sudo.log"
-    run _cloud_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_USER '../bad user'"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_cloud_run_as_user should not invoke sudo for invalid TARGET_USER"
-
     source_lib "stack"
-    : > "$STUB_DIR/sudo.log"
+    spy_command "sudo"
     run _stack_run_as_user env
     assert_failure
     assert_output --partial "Invalid TARGET_USER '../bad user'"
@@ -7537,26 +7304,6 @@ EOF
     export TARGET_HOME="$stale_home"
     export HOME="$stale_home"
 
-    source_lib "cli_tools"
-    run _cli_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "agents"
-    run _agent_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "languages"
-    run _lang_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "cloud_db"
-    run _cloud_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
     source_lib "stack"
     run _stack_target_home "$current_user"
     assert_success
@@ -7575,46 +7322,18 @@ EOF
     export HOME="$current_home"
     unset ACFS_BIN_DIR ACFS_INITIAL_ENV_HOME _UPDATE_INITIAL_ENV_HOME SUDO_USER
 
-    source_lib "cli_tools"
-    _cli_resolve_current_user() { printf 'tester\n'; }
-    _cli_getent_passwd_entry() { return 2; }
-    run _cli_target_home "tester"
-    assert_success
-    assert_output "$target_home"
-
-    export TARGET_HOME="$current_home"
-    run _cli_target_home "tester"
-    assert_success
-    assert_output "$current_home"
-    export TARGET_HOME="$target_home"
-
-    source_lib "agents"
-    _agent_resolve_current_user() { printf 'tester\n'; }
-    _agent_getent_passwd_entry() { return 2; }
-    run _agent_target_home "tester"
-    assert_success
-    assert_output "$target_home"
-
-    source_lib "languages"
-    _lang_resolve_current_user() { printf 'tester\n'; }
-    _lang_getent_passwd_entry() { return 2; }
-    run _lang_target_home "tester"
-    assert_success
-    assert_output "$target_home"
-
-    source_lib "cloud_db"
-    _cloud_resolve_current_user() { printf 'tester\n'; }
-    _cloud_getent_passwd_entry() { return 2; }
-    run _cloud_target_home "tester"
-    assert_success
-    assert_output "$target_home"
-
     source_lib "stack"
     _stack_resolve_current_user() { printf 'tester\n'; }
     _stack_getent_passwd_entry() { return 2; }
     run _stack_target_home "tester"
     assert_success
     assert_output "$target_home"
+
+    export TARGET_HOME="$current_home"
+    run _stack_target_home "tester"
+    assert_success
+    assert_output "$current_home"
+    export TARGET_HOME="$target_home"
 
     source_lib "autofix"
     autofix_resolve_current_user() { printf 'tester\n'; }
@@ -7641,26 +7360,6 @@ EOF
     export HOME="$resolved_home"
     export ACFS_INITIAL_ENV_HOME="$stale_home"
     export ACFS_BIN_DIR="$stale_home/.local/bin"
-
-    source_lib "cli_tools"
-    run _cli_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "agents"
-    run _agent_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "languages"
-    run _lang_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "cloud_db"
-    run _cloud_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
 
     source_lib "stack"
     run _stack_target_home "$current_user"
@@ -7691,26 +7390,6 @@ EOF
     export TARGET_HOME="$stale_home"
     export HOME="$caller_home"
     export ACFS_BIN_DIR="$stale_home/.local/bin"
-
-    source_lib "cli_tools"
-    run _cli_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "agents"
-    run _agent_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "languages"
-    run _lang_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
-
-    source_lib "cloud_db"
-    run _cloud_target_home "$current_user"
-    assert_success
-    assert_output "$resolved_home"
 
     source_lib "stack"
     run _stack_target_home "$current_user"
@@ -7770,26 +7449,6 @@ EOF
     assert_success
     assert_output "/root"
 
-    source_lib "cli_tools"
-    run _cli_target_home "root"
-    assert_success
-    assert_output "/root"
-
-    source_lib "agents"
-    run _agent_target_home "root"
-    assert_success
-    assert_output "/root"
-
-    source_lib "languages"
-    run _lang_target_home "root"
-    assert_success
-    assert_output "/root"
-
-    source_lib "cloud_db"
-    run _cloud_target_home "root"
-    assert_success
-    assert_output "/root"
-
     source_lib "stack"
     run _stack_target_home "root"
     assert_success
@@ -7841,26 +7500,6 @@ EOF
         printf 'poisoned-user\n'
     }
 
-    source_lib "cli_tools"
-    run _cli_target_home "$current_user"
-    assert_success
-    assert_output "$current_home"
-
-    source_lib "agents"
-    run _agent_target_home "$current_user"
-    assert_success
-    assert_output "$current_home"
-
-    source_lib "languages"
-    run _lang_target_home "$current_user"
-    assert_success
-    assert_output "$current_home"
-
-    source_lib "cloud_db"
-    run _cloud_target_home "$current_user"
-    assert_success
-    assert_output "$current_home"
-
     source_lib "stack"
     run _stack_target_home "$current_user"
     assert_success
@@ -7886,36 +7525,8 @@ EOF
         printf 'poisoned-user\n'
     }
 
-    source_lib "cli_tools"
-    spy_command "sudo"
-    run _cli_run_as_user 'printf "%s\n" "$HOME"'
-    assert_success
-    assert_output "$current_home"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_cli_run_as_user should not invoke sudo for same-user fast path"
-
-    source_lib "agents"
-    : > "$STUB_DIR/sudo.log"
-    run _agent_run_as_user 'printf "%s\n" "$HOME"'
-    assert_success
-    assert_output "$current_home"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_agent_run_as_user should not invoke sudo for same-user fast path"
-
-    source_lib "languages"
-    : > "$STUB_DIR/sudo.log"
-    run _lang_run_as_user 'printf "%s\n" "$HOME"'
-    assert_success
-    assert_output "$current_home"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_lang_run_as_user should not invoke sudo for same-user fast path"
-
-    source_lib "cloud_db"
-    : > "$STUB_DIR/sudo.log"
-    run _cloud_run_as_user 'printf "%s\n" "$HOME"'
-    assert_success
-    assert_output "$current_home"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_cloud_run_as_user should not invoke sudo for same-user fast path"
-
     source_lib "stack"
-    : > "$STUB_DIR/sudo.log"
+    spy_command "sudo"
     run _stack_run_as_user 'printf "%s\n" "$HOME"'
     assert_success
     assert_output "$current_home"
@@ -7964,70 +7575,6 @@ EOF
         return 99
     }
 
-    source_lib "cli_tools"
-    _cli_resolve_current_user() { printf 'calleruser\n'; }
-    _cli_target_home() { printf '%s\n' "$TEST_PRIV_TARGET_HOME"; }
-    _cli_system_binary_path() {
-        case "${1:-}" in
-            bash) printf '%s\n' "$TEST_PRIV_BASH_BIN" ;;
-            sudo) printf '%s\n' "$TEST_PRIV_SAFE_SUDO" ;;
-            runuser|su) return 1 ;;
-            *) command -v -- "${1:-}" 2>/dev/null || return 1 ;;
-        esac
-    }
-    run _cli_run_as_user "printf ok"
-    assert_success
-    assert_output --partial "safe-sudo:-n -u acfsuser -H"
-    [[ ! -e "$marker" ]] || fail "_cli_run_as_user executed function-poisoned helper: $(<"$marker")"
-
-    source_lib "agents"
-    _agent_resolve_current_user() { printf 'calleruser\n'; }
-    _agent_target_home() { printf '%s\n' "$TEST_PRIV_TARGET_HOME"; }
-    _agent_system_binary_path() {
-        case "${1:-}" in
-            bash) printf '%s\n' "$TEST_PRIV_BASH_BIN" ;;
-            sudo) printf '%s\n' "$TEST_PRIV_SAFE_SUDO" ;;
-            runuser|su) return 1 ;;
-            *) command -v -- "${1:-}" 2>/dev/null || return 1 ;;
-        esac
-    }
-    run _agent_run_as_user "printf ok"
-    assert_success
-    assert_output --partial "safe-sudo:-n -u acfsuser -H"
-    [[ ! -e "$marker" ]] || fail "_agent_run_as_user executed function-poisoned helper: $(<"$marker")"
-
-    source_lib "languages"
-    _lang_resolve_current_user() { printf 'calleruser\n'; }
-    _lang_target_home() { printf '%s\n' "$TEST_PRIV_TARGET_HOME"; }
-    _lang_system_binary_path() {
-        case "${1:-}" in
-            bash) printf '%s\n' "$TEST_PRIV_BASH_BIN" ;;
-            sudo) printf '%s\n' "$TEST_PRIV_SAFE_SUDO" ;;
-            runuser|su) return 1 ;;
-            *) command -v -- "${1:-}" 2>/dev/null || return 1 ;;
-        esac
-    }
-    run _lang_run_as_user "printf ok"
-    assert_success
-    assert_output --partial "safe-sudo:-n -u acfsuser -H"
-    [[ ! -e "$marker" ]] || fail "_lang_run_as_user executed function-poisoned helper: $(<"$marker")"
-
-    source_lib "cloud_db"
-    _cloud_resolve_current_user() { printf 'calleruser\n'; }
-    _cloud_target_home() { printf '%s\n' "$TEST_PRIV_TARGET_HOME"; }
-    _cloud_system_binary_path() {
-        case "${1:-}" in
-            bash) printf '%s\n' "$TEST_PRIV_BASH_BIN" ;;
-            sudo) printf '%s\n' "$TEST_PRIV_SAFE_SUDO" ;;
-            runuser|su) return 1 ;;
-            *) command -v -- "${1:-}" 2>/dev/null || return 1 ;;
-        esac
-    }
-    run _cloud_run_as_user "printf ok"
-    assert_success
-    assert_output --partial "safe-sudo:-n -u acfsuser -H"
-    [[ ! -e "$marker" ]] || fail "_cloud_run_as_user executed function-poisoned helper: $(<"$marker")"
-
     source_lib "stack"
     _stack_resolve_current_user() { printf 'calleruser\n'; }
     _stack_target_home() { printf '%s\n' "$TEST_PRIV_TARGET_HOME"; }
@@ -8044,13 +7591,6 @@ EOF
     assert_success
     assert_output --partial "safe-sudo:-n -u acfsuser -H"
     [[ ! -e "$marker" ]] || fail "_stack_run_as_user executed function-poisoned helper: $(<"$marker")"
-}
-
-@test "cloud postgres helper uses noninteractive sudo fallback" {
-    local cloud_db="$PROJECT_ROOT/scripts/lib/cloud_db.sh"
-
-    run grep -F '"$sudo_bin" -n -u postgres -H "$bash_bin" -c "$wrapped_cmd"' "$cloud_db"
-    assert_success
 }
 
 @test "helper bin-dir selectors ignore function-poisoned getent passwd streams" {
@@ -8078,16 +7618,6 @@ EOF
         fi
         command getent "$@"
     }
-
-    source_lib "cli_tools"
-    run _cli_validate_bin_dir_for_home "$fake_bin_dir" ""
-    assert_success
-    assert_output "$fake_bin_dir"
-
-    source_lib "agents"
-    run _agent_validate_bin_dir_for_home "$fake_bin_dir" ""
-    assert_success
-    assert_output "$fake_bin_dir"
 
     source_lib "stack"
     run _stack_target_bin_dir "$current_user"
@@ -8979,47 +8509,12 @@ EOF
         return 2
     }
 
-    source_lib "cli_tools"
-    spy_command "sudo"
-    run _cli_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_HOME for 'missinguser': <empty>"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_cli_run_as_user should not invoke sudo for unresolved TARGET_HOME"
-
-    source_lib "agents"
-    : > "$STUB_DIR/sudo.log"
-    run _agent_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_HOME for 'missinguser': <empty>"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_agent_run_as_user should not invoke sudo for unresolved TARGET_HOME"
-
-    source_lib "languages"
-    : > "$STUB_DIR/sudo.log"
-    run _lang_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_HOME for 'missinguser': <empty>"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_lang_run_as_user should not invoke sudo for unresolved TARGET_HOME"
-
-    source_lib "cloud_db"
-    : > "$STUB_DIR/sudo.log"
-    run _cloud_run_as_user env
-    assert_failure
-    assert_output --partial "Invalid TARGET_HOME for 'missinguser': <empty>"
-    [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_cloud_run_as_user should not invoke sudo for unresolved TARGET_HOME"
-
     source_lib "stack"
-    : > "$STUB_DIR/sudo.log"
+    spy_command "sudo"
     run _stack_run_as_user env
     assert_failure
     assert_output --partial "Invalid TARGET_HOME for 'missinguser': <empty>"
     [[ ! -s "$STUB_DIR/sudo.log" ]] || fail "_stack_run_as_user should not invoke sudo for unresolved TARGET_HOME"
-}
-
-@test "cloud_db username validation accepts dotted target usernames" {
-    source_lib "cloud_db"
-
-    run _cloud_validate_username "john.doe"
-    assert_success
 }
 
 @test "github_api runtime home ignores stale TARGET_HOME and falls back to existing HOME" {
@@ -9123,64 +8618,16 @@ EOF
     assert_output --partial "CHECKSUMS_LOCAL=$target_home/.acfs/checksums.yaml"
 }
 
-@test "agent mail MCP path detection prefers target install over current-shell am" {
-    source_lib "agents"
-
-    local target_home="$BATS_TEST_TMPDIR/target-home"
-    local target_am="$target_home/mcp_agent_mail/am"
-    local global_bin="$BATS_TEST_TMPDIR/global-bin"
-    mkdir -p "$(dirname "$target_am")" "$global_bin"
-
-    cat > "$target_am" <<'EOF'
-#!/usr/bin/env bash
-printf 'mcp-agent-mail 0.2.19\n'
-EOF
-    chmod +x "$target_am"
-
-    cat > "$global_bin/am" <<'EOF'
-#!/usr/bin/env bash
-printf 'am 0.2.39\n'
-EOF
-    chmod +x "$global_bin/am"
-
-    export PATH="$global_bin:/usr/bin:/bin"
-
-    run _agent_detect_am_mcp_path "$target_home"
-    assert_success
-    assert_output "/api/"
-}
-
-@test "agent mail MCP path detection ignores current-shell-only am" {
-    source_lib "agents"
-
-    local target_home="$BATS_TEST_TMPDIR/target-home"
-    local global_bin="$BATS_TEST_TMPDIR/global-bin"
-    mkdir -p "$global_bin"
-
-    cat > "$global_bin/am" <<'EOF'
-#!/usr/bin/env bash
-printf 'mcp-agent-mail 0.2.19\n'
-EOF
-    chmod +x "$global_bin/am"
-
-    export PATH="$global_bin:/usr/bin:/bin"
-
-    run _agent_detect_am_mcp_path "$target_home"
-    assert_success
-    assert_output "/mcp/"
-}
-
 @test "agent mail resolvers avoid system am fallback" {
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
     local stack_lib="$PROJECT_ROOT/scripts/lib/stack.sh"
     local doctor_lib="$PROJECT_ROOT/scripts/lib/doctor.sh"
     local doctor_fix_lib="$PROJECT_ROOT/scripts/lib/doctor_fix.sh"
     local installer="$PROJECT_ROOT/install.sh"
 
-    run rg -n 'command -v am' "$agents_lib" "$stack_lib" "$doctor_lib" "$doctor_fix_lib" "$installer"
+    run rg -n 'command -v am' "$stack_lib" "$doctor_lib" "$doctor_fix_lib" "$installer"
     assert_failure
 
-    run rg -n '"/(usr/local/bin|usr/bin|bin|snap/bin)/am"' "$agents_lib" "$stack_lib" "$doctor_lib" "$doctor_fix_lib"
+    run rg -n '"/(usr/local/bin|usr/bin|bin|snap/bin)/am"' "$stack_lib" "$doctor_lib" "$doctor_fix_lib"
     assert_failure
 
     run grep -F 'resolve_target_am() {' "$installer"
@@ -9191,169 +8638,6 @@ EOF
 
     run grep -F 'doctor_fix_agent_mail_cli_path() {' "$doctor_fix_lib"
     assert_success
-}
-
-@test "configure_gemini_settings repairs stale agent mail url after migration" {
-    source_lib "agents"
-
-    local target_home="$BATS_TEST_TMPDIR/target-home"
-    local settings_dir="$target_home/.gemini"
-    local settings_file="$settings_dir/settings.json"
-    local target_am="$target_home/mcp_agent_mail/am"
-    mkdir -p "$settings_dir" "$(dirname "$target_am")"
-
-    cat > "$target_am" <<'EOF'
-#!/usr/bin/env bash
-printf 'am 0.2.39\n'
-EOF
-    chmod +x "$target_am"
-
-    cat > "$settings_file" <<'EOF'
-{
-  "selectedType": "gemini-api-key",
-  "tools": {
-    "shell": {
-      "enableInteractiveShell": true
-    }
-  },
-  "mcpServers": {
-    "mcp-agent-mail": {
-      "httpUrl": "http://127.0.0.1:8765/api/"
-    }
-  }
-}
-EOF
-
-    _agent_run_as_user() {
-        bash -c "$1"
-    }
-
-    run _configure_gemini_settings "$target_home"
-    assert_success
-
-    run jq -r '.selectedType' "$settings_file"
-    assert_success
-    assert_output 'oauth-personal'
-
-    run jq -r '.tools.shell.enableInteractiveShell' "$settings_file"
-    assert_success
-    assert_output 'false'
-
-    run jq -r '.mcpServers."mcp-agent-mail".httpUrl' "$settings_file"
-    assert_success
-    assert_output 'http://127.0.0.1:8765/mcp/'
-}
-
-@test "configure_gemini_settings preserves symlinks and uses exclusive staging" {
-    source_lib "agents"
-
-    local target_home="$BATS_TEST_TMPDIR/gemini-symlink-home"
-    local settings_dir="$target_home/.gemini"
-    local backing_dir="$target_home/dotfiles"
-    local backing_file="$backing_dir/gemini-settings.json"
-    local settings_file="$settings_dir/settings.json"
-    local target_am="$target_home/mcp_agent_mail/am"
-    local readlink_bin=""
-    mkdir -p "$settings_dir" "$backing_dir" "$(dirname "$target_am")"
-
-    readlink_bin="$(_agent_system_binary_path readlink 2>/dev/null || true)"
-    [[ -n "$readlink_bin" ]] || skip "trusted readlink required"
-
-    cat > "$target_am" <<'EOF'
-#!/usr/bin/env bash
-printf 'am 0.2.39\n'
-EOF
-    chmod +x "$target_am"
-
-    cat > "$backing_file" <<'EOF'
-{"selectedType":"gemini-api-key","tools":{"shell":{"enableInteractiveShell":true}},"mcpServers":{}}
-EOF
-    ln -s "$backing_file" "$settings_file"
-    "$readlink_bin" -f -- "$settings_file" >/dev/null 2>&1 || skip "readlink -f required by Ubuntu target contract"
-
-    _agent_run_as_user() {
-        bash -c "$1"
-    }
-
-    run _configure_gemini_settings "$target_home"
-    assert_success
-    [[ -L "$settings_file" ]] || fail "Gemini settings symlink was replaced"
-
-    run jq -e '.selectedType == "oauth-personal" and .tools.shell.enableInteractiveShell == false' "$backing_file"
-    assert_success
-
-    run grep -F '.settings.tmp.$$' "$PROJECT_ROOT/scripts/lib/agents.sh"
-    assert_failure
-    run grep -F 'mktemp_bin_q $tmp_template_q' "$PROJECT_ROOT/scripts/lib/agents.sh"
-    assert_success
-}
-
-@test "configure_gemini_settings ignores PATH-poisoned jq" {
-    source_lib "agents"
-
-    local system_jq=""
-    local candidate
-    for candidate in /usr/bin/jq /bin/jq /usr/local/bin/jq /usr/local/sbin/jq /usr/sbin/jq /sbin/jq; do
-        if [[ -x "$candidate" ]]; then
-            system_jq="$candidate"
-            break
-        fi
-    done
-    [[ -n "$system_jq" ]] || skip "system jq required for Gemini settings trust test"
-
-    local target_home="$BATS_TEST_TMPDIR/gemini-trust-home"
-    local settings_dir="$target_home/.gemini"
-    local settings_file="$settings_dir/settings.json"
-    local target_am="$target_home/mcp_agent_mail/am"
-    local fake_bin="$BATS_TEST_TMPDIR/gemini-fake-jq-bin"
-    local marker="$BATS_TEST_TMPDIR/gemini-fake-jq-used"
-    mkdir -p "$settings_dir" "$(dirname "$target_am")" "$fake_bin"
-
-    cat > "$target_am" <<'EOF'
-#!/usr/bin/env bash
-printf 'am 0.2.39\n'
-EOF
-    chmod +x "$target_am"
-
-    cat > "$settings_file" <<'EOF'
-{
-  "selectedType": "gemini-api-key",
-  "tools": {
-    "shell": {
-      "enableInteractiveShell": true
-    }
-  },
-  "mcpServers": {
-    "mcp-agent-mail": {
-      "httpUrl": "http://127.0.0.1:8765/api/"
-    }
-  }
-}
-EOF
-
-    cat > "$fake_bin/jq" <<EOF
-#!/usr/bin/env bash
-: > "$marker"
-exit 1
-EOF
-    cat > "$fake_bin/mv" <<EOF
-#!/usr/bin/env bash
-: > "$marker"
-exit 1
-EOF
-    chmod +x "$fake_bin/jq" "$fake_bin/mv"
-
-    _agent_run_as_user() {
-        PATH="$fake_bin:/usr/bin:/bin" bash -c "$1"
-    }
-
-    run _configure_gemini_settings "$target_home"
-    assert_success
-    [[ ! -e "$marker" ]] || fail "configure_gemini_settings used a PATH-poisoned helper"
-
-    run "$system_jq" -r '.selectedType' "$settings_file"
-    assert_success
-    assert_output 'oauth-personal'
 }
 
 @test "install and update deploy all acfs doctor-dispatched runtime scripts" {
@@ -11883,7 +11167,6 @@ EOF
 @test "shell auth helpers reject placeholder tokens" {
     local doctor_lib="$PROJECT_ROOT/scripts/lib/doctor.sh"
     local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
     local auth_file="$BATS_TEST_TMPDIR/auth.json"
     local env_file="$BATS_TEST_TMPDIR/auth.env"
 
@@ -11958,68 +11241,6 @@ JSON
     assert_failure
     run json_file_has_usable_string_key "$auth_file" "token"
     assert_success
-
-    # shellcheck disable=SC1090
-    eval "$(sed -n '/^_agent_normalize_config_value()/,/^}$/p' "$agents_lib")"
-    # shellcheck disable=SC1090
-    eval "$(sed -n '/^_agent_is_placeholder_secret()/,/^}$/p' "$agents_lib")"
-    # shellcheck disable=SC1090
-    eval "$(sed -n '/^_agent_has_usable_secret()/,/^}$/p' "$agents_lib")"
-    # shellcheck disable=SC1090
-    eval "$(sed -n '/^_agent_system_binary_path()/,/^}$/p' "$agents_lib")"
-    # shellcheck disable=SC1090
-    eval "$(sed -n '/^_agent_json_file_has_usable_jq_value()/,/^}$/p' "$agents_lib")"
-    # shellcheck disable=SC1090
-    eval "$(sed -n '/^_agent_json_file_has_usable_string_key()/,/^}$/p' "$agents_lib")"
-
-    run _agent_has_usable_secret "your_openai_api_key"
-    assert_failure
-    if _agent_system_binary_path jq >/dev/null 2>&1; then
-        run _agent_json_file_has_usable_jq_value "$auth_file" '[.token] | .[]? | strings'
-        assert_success
-    fi
-    run _agent_json_file_has_usable_string_key "$auth_file" "token"
-    assert_success
-}
-
-@test "agents JSON auth parser ignores PATH-poisoned jq" {
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
-    local auth_file="$BATS_TEST_TMPDIR/agents-auth.json"
-    local fake_bin="$BATS_TEST_TMPDIR/fake-agents-jq-bin"
-    local marker="$BATS_TEST_TMPDIR/fake-agents-jq-used"
-    local system_jq=""
-    local candidate
-
-    for candidate in /usr/bin/jq /bin/jq /usr/local/bin/jq /usr/local/sbin/jq /usr/sbin/jq /sbin/jq; do
-        if [[ -x "$candidate" ]]; then
-            system_jq="$candidate"
-            break
-        fi
-    done
-    [[ -n "$system_jq" ]] || skip "system jq required for agents auth parser trust test"
-
-    cat > "$auth_file" <<'JSON'
-{
-  "token": "your-token-here"
-}
-JSON
-    mkdir -p "$fake_bin"
-    cat > "$fake_bin/jq" <<EOF
-#!/usr/bin/env bash
-: > "$marker"
-printf '%s\n' 'real-token-from-fake-jq'
-EOF
-    chmod +x "$fake_bin/jq"
-
-    run env PATH="$fake_bin:/usr/bin:/bin" bash -s -- "$agents_lib" "$auth_file" <<'EOF_AUTH_PARSER_TRUSTED_JQ'
-set -euo pipefail
-agents_lib="$1"
-auth_file="$2"
-source "$agents_lib"
-! _agent_json_file_has_usable_jq_value "$auth_file" '[.token] | .[]? | strings'
-EOF_AUTH_PARSER_TRUSTED_JQ
-    assert_success
-    [[ ! -e "$marker" ]] || fail "agents auth parser used PATH-poisoned jq"
 }
 
 @test "doctor.sh cloud auth checks scan fallback files after placeholders" {
@@ -13214,19 +12435,6 @@ EOF
     assert_failure
 }
 
-@test "agents verified installer commands shell-quote dynamic command parts" {
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
-
-    run grep -F "source '\$AGENTS_SCRIPT_DIR/security.sh'; verify_checksum" "$agents_lib"
-    assert_failure
-
-    run grep -F "export PATH='\$node_bin_dir':" "$agents_lib"
-    assert_failure
-
-    run grep -F "printf -v security_lib_q '%q' \"\$AGENTS_SCRIPT_DIR/security.sh\"" "$agents_lib"
-    assert_success
-}
-
 @test "generated verified installer guards avoid PATH-dependent grep" {
     local generated_dir="$PROJECT_ROOT/scripts/generated"
 
@@ -13238,53 +12446,20 @@ EOF
 }
 
 @test "installer shell command builders quote dynamic paths and installer inputs" {
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
-    local languages_lib="$PROJECT_ROOT/scripts/lib/languages.sh"
-    local cli_tools_lib="$PROJECT_ROOT/scripts/lib/cli_tools.sh"
-    local cloud_db_lib="$PROJECT_ROOT/scripts/lib/cloud_db.sh"
     local stack_lib="$PROJECT_ROOT/scripts/lib/stack.sh"
-
-    run grep -F "_agent_run_as_user \"mkdir -p '\$target_home/.local/bin'\"" "$agents_lib"
-    assert_failure
-    run grep -F "cat > '\$settings_file'" "$agents_lib"
-    assert_failure
-    run grep -F "mv '\$tmp_file' '\$settings_file'" "$agents_lib"
-    assert_failure
-
-    run grep -F "_lang_run_as_user \"source '\$LANG_SCRIPT_DIR/security.sh'; verify_checksum '\$url' '\$expected_sha256'" "$languages_lib"
-    assert_failure
-    run grep -F "_lang_run_as_user \"\$bun_bin --version\"" "$languages_lib"
-    assert_failure
-
-    run grep -F "_cli_run_as_user \"source '\$CLI_TOOLS_SCRIPT_DIR/security.sh'; verify_checksum '\$url' '\$expected_sha256'" "$cli_tools_lib"
-    assert_failure
-    run grep -F "_cli_run_as_user \"\$cargo_bin install" "$cli_tools_lib"
-    assert_failure
-
-    run grep -F "_cloud_run_as_user \"\\\"\$bun_bin\\\" install -g \$cli@latest\"" "$cloud_db_lib"
-    assert_failure
 
     run grep -F "_stack_run_as_user \"mkdir -p '\$dir'" "$stack_lib"
     assert_failure
 
-    run grep -F "printf -v wrapper_path_q '%q' \"\$wrapper_path\"" "$agents_lib"
-    assert_success
-    run grep -F "printf -v security_lib_q '%q' \"\$LANG_SCRIPT_DIR/security.sh\"" "$languages_lib"
-    assert_success
-    run grep -F "printf -v security_lib_q '%q' \"\$CLI_TOOLS_SCRIPT_DIR/security.sh\"" "$cli_tools_lib"
-    assert_success
-    run grep -F "printf -v cli_package_q '%q' \"\$cli@latest\"" "$cloud_db_lib"
-    assert_success
     run grep -F "printf -v am_dest_q '%q' \"\$dir/am\"" "$stack_lib"
     assert_success
 }
 
 @test "installer recovery suggestions use stable module selectors" {
     local installer="$PROJECT_ROOT/install.sh"
-    local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
     local smoke_lib="$PROJECT_ROOT/scripts/lib/smoke_test.sh"
 
-    run grep -E '(Fix:|re-run:|Re-run:|Install bun first:).*--only-phase' "$installer" "$agents_lib" "$smoke_lib"
+    run grep -E '(Fix:|re-run:|Re-run:|Install bun first:).*--only-phase' "$installer" "$smoke_lib"
     assert_failure
 
     run grep -F 'acfs_smoke_install_fix_command lang.bun lang.uv lang.rust lang.go' "$installer"
@@ -13303,9 +12478,6 @@ EOF
     assert_success
 
     run grep -F -- '--force-reinstall --only stack.ntm' "$smoke_lib"
-    assert_success
-
-    run grep -F -- '--force-reinstall --only lang.bun' "$agents_lib"
     assert_success
 }
 

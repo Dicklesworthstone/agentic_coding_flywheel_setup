@@ -12,7 +12,7 @@ and the reboot destroyed the only evidence that mattered — the parent chain,
 the argv, and the fork rate. See issue #348.
 
 ACFS itself does not fan `ast-grep` out. The only two places it touches the
-tool are `cargo install ast-grep` (`update_cargo_tools`, `cli_tools.sh`) and a
+tool are `cargo install ast-grep` (`update_cargo_tools`, the `tools.ast_grep` module) and a
 single `timeout`-bounded `--version` probe in `doctor`. There is no `xargs`,
 no `xargs -P`, no `find -exec`, and no per-file loop anywhere in
 `scripts/lib/`. Overlapping runs can no longer stack in any case: `acfs
