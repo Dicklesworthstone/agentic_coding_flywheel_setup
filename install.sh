@@ -5907,6 +5907,8 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     local tmp_avail_kb=""
     local df_bin=""
     local awk_bin=""
+    local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    local acfs_tmpdir=""
     df_bin="$(acfs_early_system_binary_path df 2>/dev/null || true)"
     awk_bin="$(acfs_early_system_binary_path awk 2>/dev/null || true)"
     if [[ -z "$df_bin" || -z "$awk_bin" ]]; then
@@ -5923,8 +5925,6 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         return 1
     fi
     if [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
-        local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
-        local acfs_tmpdir=""
         local acfs_mkdir_bin=""
         local acfs_mktemp_bin=""
         acfs_mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
@@ -5991,6 +5991,23 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     fi
 
     _acfs_remove_temp_files "$staged_installer"
+    # Remove this run's low-space TMPDIR whatever the installer did. Only the
+    # exact mktemp result qualifies; it is re-checked and removed as the target
+    # user, and a cleanup problem only warns, so run_status is never masked.
+    if [[ -n "$acfs_tmpdir" ]]; then
+        local acfs_tmpdir_suffix="${acfs_tmpdir#"$acfs_tmpdir_parent/acfs."}"
+        local acfs_rm_bin=""
+        if [[ "$acfs_tmpdir" != "$acfs_tmpdir_parent/acfs."* || -z "$acfs_tmpdir_suffix" \
+            || "$acfs_tmpdir_suffix" == *[!A-Za-z0-9]* || -L "$acfs_tmpdir" ]] \
+            || _acfs_install_asset_has_symlink_component_under_prefix \
+                "$TARGET_HOME" "$acfs_tmpdir_parent"; then
+            log_warn "Leaving installer TMPDIR that no longer matches its template: $acfs_tmpdir"
+        elif ! acfs_rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null)" || [[ -z "$acfs_rm_bin" ]]; then
+            log_warn "Trusted rm not found; leaving installer TMPDIR: $acfs_tmpdir"
+        elif ! run_as_target "$acfs_rm_bin" -rf --one-file-system -- "$acfs_tmpdir" 2>/dev/null; then
+            log_warn "Failed to remove installer TMPDIR: $acfs_tmpdir"
+        fi
+    fi
     if [[ "$run_status" -ne 0 ]]; then
         : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
     fi

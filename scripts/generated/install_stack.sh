@@ -1919,6 +1919,7 @@ acfs_generated_install_stack_cass() {
             local verified_installer_tmpdir_prefix="${verified_installer_tmpdir_template%XXXXXX}"
             local verified_installer_tmpdir=""
             local verified_installer_tmpdir_suffix=""
+            local verified_installer_tmpdir_owned=false
             local verified_installer_mkdir_bin=""
             local verified_installer_mktemp_bin=""
             if [[ "$verified_installer_tmpdir_template" != *XXXXXX* ]]; then
@@ -1953,6 +1954,8 @@ acfs_generated_install_stack_cass() {
                 if [[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix" || "$verified_installer_tmpdir_suffix" == *[!A-Za-z0-9]* || ! -d "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir_parent" ]]; then
                     log_error "stack.cass: installer TMPDIR escaped its trusted template: $verified_installer_tmpdir"
                     verified_installer_env_ready=false
+                else
+                    verified_installer_tmpdir_owned=true
                 fi
             fi
 
@@ -2022,6 +2025,22 @@ acfs_generated_install_stack_cass() {
             if [[ -n "$verified_installer_file" ]]; then
                 _acfs_remove_temp_files "$verified_installer_file"
                 verified_installer_file=""
+            fi
+
+            # Remove this run's TMPDIR on every outcome. Only the exact directory mktemp
+            # returned, and the template check accepted, qualifies. It is re-checked here
+            # and removed as the target user; a cleanup problem only warns, so it can
+            # never change the install result or its failure reason.
+            if [[ "$verified_installer_tmpdir_owned" = "true" ]]; then
+                local verified_installer_rm_bin=""
+                if [[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix" || "$verified_installer_tmpdir_suffix" == *[!A-Za-z0-9]* || "$verified_installer_tmpdir" != "$verified_installer_tmpdir_parent/"* || "$verified_installer_tmpdir_parent" != "$TARGET_HOME/.cache/acfs/installer-tmp" || -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" || -L "$verified_installer_tmpdir" ]]; then
+                    log_warn "stack.cass: leaving installer TMPDIR that no longer matches its trusted template: $verified_installer_tmpdir"
+                elif ! verified_installer_rm_bin="$(acfs_generated_system_binary_path rm 2>/dev/null)"; then
+                    log_warn "stack.cass: trusted rm not found; leaving installer TMPDIR: $verified_installer_tmpdir"
+                elif ! run_as_target "$verified_installer_rm_bin" -rf --one-file-system -- "$verified_installer_tmpdir"; then
+                    log_warn "stack.cass: failed to remove installer TMPDIR: $verified_installer_tmpdir"
+                fi
+                verified_installer_tmpdir_owned=false
             fi
 
             # Verified install is required - no fallback

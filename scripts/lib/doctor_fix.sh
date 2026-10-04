@@ -1120,6 +1120,50 @@ doctor_fix_prepare_target_installer_tmpdir() {
     return 1
 }
 
+# Remove one per-run TMPDIR made by doctor_fix_prepare_target_installer_tmpdir.
+# Only "<runtime home>/.cache/acfs/installer-tmp/<tool>.<mktemp suffix>"
+# qualifies; anything else is left in place. Removal runs in the runtime
+# (target-user) context.
+doctor_fix_remove_target_installer_tmpdir() {
+    local tool="${1:-}"
+    local tmpdir="${2:-}"
+    local runtime_home=""
+    local tmpdir_parent=""
+    local tmpdir_suffix=""
+    local rm_bin=""
+
+    case "$tool" in
+        ""|.|..|*[!A-Za-z0-9._+-]*)
+            doctor_fix_log WARN "Invalid tool name for installer TMPDIR cleanup: $tool"
+            return 1
+            ;;
+    esac
+
+    runtime_home="$(doctor_fix_runtime_home 2>/dev/null || true)"
+    if [[ -z "$runtime_home" || "$runtime_home" != /* || "$runtime_home" == "/" ]]; then
+        doctor_fix_log WARN "Cannot clean installer TMPDIR without a valid runtime home: $tmpdir"
+        return 1
+    fi
+
+    tmpdir_parent="$runtime_home/.cache/acfs/installer-tmp"
+    tmpdir_suffix="${tmpdir#"$tmpdir_parent/$tool."}"
+    if [[ "$tmpdir" != "$tmpdir_parent/$tool."* || -z "$tmpdir_suffix" \
+        || "$tmpdir_suffix" == *[!A-Za-z0-9]* || -L "$tmpdir_parent" || -L "$tmpdir" ]]; then
+        doctor_fix_log WARN "Leaving installer TMPDIR that does not match its template: $tmpdir"
+        return 1
+    fi
+
+    rm_bin="$(doctor_fix_system_binary_path rm 2>/dev/null || true)"
+    if [[ -z "$rm_bin" ]]; then
+        doctor_fix_log WARN "Trusted rm not found; leaving installer TMPDIR: $tmpdir"
+        return 1
+    fi
+    if ! doctor_fix_run_in_runtime_context "" "$rm_bin" -rf --one-file-system -- "$tmpdir"; then
+        doctor_fix_log WARN "Failed to remove installer TMPDIR: $tmpdir"
+        return 1
+    fi
+}
+
 # ============================================================
 # Fixer: PATH Ordering (fix.path.ordering)
 # ============================================================
@@ -2094,18 +2138,23 @@ fix_verified_install_with_target_tmpdir() {
     local tool="$3"
     shift 3
     local installer_tmpdir=""
+    local fix_status=0
 
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
         installer_tmpdir="$(doctor_fix_runtime_home)/.cache/acfs/installer-tmp/${tool}.XXXXXX"
-    else
-        installer_tmpdir="$(doctor_fix_prepare_target_installer_tmpdir "$tool")" || {
-            doctor_fix_log ERROR "Failed to prepare installer TMPDIR for $binary_name"
-            FIX_FAILED=$((FIX_FAILED + 1))
-            return 1
-        }
+        fix_verified_install_with_env "$check_id" "$binary_name" "$tool" "TMPDIR=$installer_tmpdir" "$@"
+        return $?
     fi
 
-    fix_verified_install_with_env "$check_id" "$binary_name" "$tool" "TMPDIR=$installer_tmpdir" "$@"
+    installer_tmpdir="$(doctor_fix_prepare_target_installer_tmpdir "$tool")" || {
+        doctor_fix_log ERROR "Failed to prepare installer TMPDIR for $binary_name"
+        FIX_FAILED=$((FIX_FAILED + 1))
+        return 1
+    }
+
+    fix_verified_install_with_env "$check_id" "$binary_name" "$tool" "TMPDIR=$installer_tmpdir" "$@" || fix_status=$?
+    doctor_fix_remove_target_installer_tmpdir "$tool" "$installer_tmpdir" || true
+    return "$fix_status"
 }
 
 fix_verified_install() {

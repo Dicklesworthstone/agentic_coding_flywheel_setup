@@ -905,6 +905,50 @@ _stack_prepare_target_installer_tmpdir() {
     return 1
 }
 
+# Remove one per-run TMPDIR made by _stack_prepare_target_installer_tmpdir.
+# Only "$TARGET_HOME/.cache/acfs/installer-tmp/<tool>.<mktemp suffix>"
+# qualifies; anything else is left in place. Removal runs as the target user.
+_stack_remove_target_installer_tmpdir() {
+    local tool="${1:-}"
+    local tmpdir="${2:-}"
+    local tmpdir_parent=""
+    local tmpdir_suffix=""
+    local rm_bin=""
+    local rm_bin_q=""
+    local tmpdir_q=""
+
+    case "$tool" in
+        ""|.|..|*[!A-Za-z0-9._+-]*)
+            log_warn "Invalid tool name for installer TMPDIR cleanup: $tool"
+            return 1
+            ;;
+    esac
+    if [[ -z "${TARGET_HOME:-}" || "$TARGET_HOME" != /* || "$TARGET_HOME" == "/" ]]; then
+        log_warn "Cannot clean installer TMPDIR without a valid TARGET_HOME: $tmpdir"
+        return 1
+    fi
+
+    tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    tmpdir_suffix="${tmpdir#"$tmpdir_parent/$tool."}"
+    if [[ "$tmpdir" != "$tmpdir_parent/$tool."* || -z "$tmpdir_suffix" \
+        || "$tmpdir_suffix" == *[!A-Za-z0-9]* || -L "$tmpdir_parent" || -L "$tmpdir" ]]; then
+        log_warn "Leaving installer TMPDIR that does not match its template: $tmpdir"
+        return 1
+    fi
+
+    rm_bin="$(_stack_system_binary_path rm 2>/dev/null || true)"
+    if [[ -z "$rm_bin" ]]; then
+        log_warn "Trusted rm not found; leaving installer TMPDIR: $tmpdir"
+        return 1
+    fi
+    printf -v rm_bin_q '%q' "$rm_bin"
+    printf -v tmpdir_q '%q' "$tmpdir"
+    if ! _stack_run_as_user "$rm_bin_q -rf --one-file-system -- $tmpdir_q"; then
+        log_warn "Failed to remove installer TMPDIR: $tmpdir"
+        return 1
+    fi
+}
+
 _stack_run_verified_installer_with_target_tmpdir() {
     if [[ $# -lt 1 ]]; then
         log_warn "_stack_run_verified_installer_with_target_tmpdir requires a tool name"
@@ -914,9 +958,12 @@ _stack_run_verified_installer_with_target_tmpdir() {
     local tool="$1"
     shift
     local tmpdir=""
+    local run_status=0
 
     tmpdir="$(_stack_prepare_target_installer_tmpdir "$tool")" || return $?
-    _stack_run_verified_installer_with_env "$tool" "TMPDIR=$tmpdir" "$@"
+    _stack_run_verified_installer_with_env "$tool" "TMPDIR=$tmpdir" "$@" || run_status=$?
+    _stack_remove_target_installer_tmpdir "$tool" "$tmpdir" || true
+    return "$run_status"
 }
 
 _stack_fsfs_linux_target_triple() {
