@@ -77,7 +77,7 @@ fi
 #   "ubuntu_upgrade": {                       # Present only while upgrading Ubuntu
 #     "enabled": true,
 #     "original_version": "24.04",
-#     "target_version": "25.10",
+#     "target_version": "26.04",
 #     "current_stage": "upgrading"
 #   }
 # }
@@ -1338,14 +1338,14 @@ parse_resume_flags() {
 #   "ubuntu_upgrade": {
 #     "enabled": true,
 #     "started_at": "2025-01-15T10:00:00Z",
-#     "original_version": "24.04",
-#     "target_version": "25.10",
-#     "upgrade_path": ["25.04", "25.10"],
+#     "original_version": "22.04",
+#     "target_version": "26.04",
+#     "upgrade_path": ["24.04", "26.04"],
 #     "current_stage": "upgrading",
 #     "completed_upgrades": [
-#       {"from": "24.04", "to": "25.04", "completed_at": "..."}
+#       {"from": "22.04", "to": "24.04", "completed_at": "..."}
 #     ],
-#     "current_upgrade": {"from": "25.04", "to": "25.10", "started_at": "..."},
+#     "current_upgrade": {"from": "24.04", "to": "26.04", "started_at": "..."},
 #     "needs_reboot": false,
 #     "resume_after_reboot": true,
 #     "last_error": null
@@ -1357,7 +1357,7 @@ parse_resume_flags() {
 
 # Initialize upgrade state when starting an upgrade sequence
 # Usage: state_upgrade_init <original_version> <target_version> <upgrade_path_json>
-# Example: state_upgrade_init "24.04" "25.10" '["25.04", "25.10"]'
+# Example: state_upgrade_init "22.04" "26.04" '["24.04", "26.04"]'
 state_upgrade_init() {
     local original_version="$1"
     local target_version="$2"

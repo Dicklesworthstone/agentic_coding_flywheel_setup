@@ -21,6 +21,7 @@ import { formatSshTarget } from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { copyTextToClipboard, withCurrentSearch } from "@/lib/utils";
+import { ACFS_RECOMMENDED_UBUNTU } from "@/lib/vpsProviders";
 
 function WindowsTerminalSetupContent() {
   const router = useRouter();
@@ -279,7 +280,7 @@ function WindowsTerminalSetupContent() {
       <OutputPreview title="When you click your new profile:">
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">Connecting to {ubuntuTarget}...</p>
-          <p className="text-green">Welcome to Ubuntu 25.10</p>
+          <p className="text-green">Welcome to Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS</p>
           <p className="text-green">{effectiveUsername}@vps:~$</p>
         </div>
       </OutputPreview>

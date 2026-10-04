@@ -24,7 +24,7 @@ OFFLINE_PACK_TIMEOUT_SECONDS=60
 OFFLINE_PACK_EXPIRES_DAYS=30
 OFFLINE_PACK_MAX_ENTRYPOINT_BYTES=16777216
 OFFLINE_PACK_ARCH="${ACFS_OFFLINE_PACK_ARCH:-}"
-OFFLINE_PACK_UBUNTU_VERSION="${ACFS_OFFLINE_PACK_UBUNTU_VERSION:-25.10}"
+OFFLINE_PACK_UBUNTU_VERSION="${ACFS_OFFLINE_PACK_UBUNTU_VERSION:-}"
 OFFLINE_PACK_MODULE_ARGS=()
 OFFLINE_PACK_SELECTED_MODULES=()
 OFFLINE_PACK_ERRORS=()
@@ -68,7 +68,7 @@ Options:
   --manifest-file FILE Manifest YAML (default: SOURCE_ROOT/acfs.manifest.yaml)
   --checksums-file FILE checksums.yaml (default: SOURCE_ROOT/checksums.yaml)
   --arch ARCH          Target architecture (default: uname -m)
-  --ubuntu-version VER Target Ubuntu version metadata (default: 25.10)
+  --ubuntu-version VER Target Ubuntu version metadata (default: this host's Ubuntu VERSION_ID)
   --timeout SECONDS    Per-download timeout for HTTPS sources (default: 60; max: 3600)
   --expires-days DAYS  Expiry window recorded in manifest.json (default: 30; max: 3650)
   --help, -h           Show this help
@@ -318,6 +318,39 @@ offline_pack_uname() {
 
     uname_bin="$(offline_pack_required_binary_path uname)" || return $?
     "$uname_bin" "$@"
+}
+
+# Default the pack target to the building host, like --arch defaults to
+# uname -m. Consumers refuse a pack whose target is not their own release, so a
+# fixed default would make an unflagged build unusable on every other release.
+offline_pack_host_ubuntu_version() {
+    local os_release="/etc/os-release"
+    local line=""
+    local os_id=""
+    local version_id=""
+
+    if [[ "${ACFS_OFFLINE_PACK_TEST_MODE:-false}" == "true" && -n "${ACFS_OFFLINE_PACK_OS_RELEASE:-}" ]]; then
+        os_release="$ACFS_OFFLINE_PACK_OS_RELEASE"
+    fi
+    [[ -r "$os_release" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        case "$line" in
+            ID=*)
+                os_id="${line#ID=}"
+                os_id="${os_id%\"}"
+                os_id="${os_id#\"}"
+                ;;
+            VERSION_ID=*)
+                version_id="${line#VERSION_ID=}"
+                version_id="${version_id%\"}"
+                version_id="${version_id#\"}"
+                ;;
+        esac
+    done < "$os_release"
+
+    [[ "$os_id" == "ubuntu" && "$version_id" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+    printf '%s\n' "$version_id"
 }
 
 offline_pack_git() {
@@ -719,6 +752,14 @@ offline_pack_resolve_inputs() {
             return 1
             ;;
     esac
+
+    if [[ -z "$OFFLINE_PACK_UBUNTU_VERSION" ]]; then
+        OFFLINE_PACK_UBUNTU_VERSION="$(offline_pack_host_ubuntu_version)" || {
+            OFFLINE_PACK_UBUNTU_VERSION=""
+            offline_pack_add_error "pack_ubuntu_unsupported: this host is not Ubuntu; pass --ubuntu-version for the target release"
+            return 1
+        }
+    fi
 
     if [[ ! "$OFFLINE_PACK_UBUNTU_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
         offline_pack_add_error "pack_ubuntu_unsupported: --ubuntu-version must use MAJOR.MINOR digits"

@@ -13,11 +13,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-UBUNTU_VERSION="${ACFS_QEMU_UBUNTU_VERSION:-25.10}"
+UBUNTU_VERSION="${ACFS_QEMU_UBUNTU_VERSION:-24.04}"
 MODE="${ACFS_QEMU_MODE:-vibe}"
 REF="${ACFS_REF:-main}"
 TARGET_USERNAME="${ACFS_QEMU_TARGET_USERNAME:-ubuntu}"
-EXPECT_FINAL_UBUNTU_VERSION="${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION:-25.10}"
+EXPECT_FINAL_UBUNTU_VERSION="${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION:-24.04}"
 INSTALL_TIMEOUT_SECONDS="${ACFS_QEMU_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_QEMU_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
 BOOT_TIMEOUT_SECONDS="${ACFS_QEMU_BOOT_TIMEOUT_SECONDS:-900}"
@@ -48,7 +48,7 @@ Usage:
   tests/vm/test_factory_install_qemu.sh [options]
 
 Options:
-  --ubuntu <version>           Ubuntu release to boot (default: 25.10).
+  --ubuntu <version>           Ubuntu release to boot (default: 24.04).
   --ref <ref>                  ACFS ref to install (default: ACFS_REF or main).
   --mode <mode>                Install mode: vibe or safe (default: vibe).
   --target-username <name>     Expected non-root ACFS user (default: ubuntu).
@@ -266,7 +266,7 @@ fi
 
 if [[ -z "$IMAGE_URL" ]]; then
     case "$UBUNTU_VERSION" in
-        24.04|25.04|25.10)
+        22.04|24.04|25.04|25.10|26.04)
             IMAGE_URL="https://cloud-images.ubuntu.com/releases/server/${UBUNTU_VERSION}/release/ubuntu-${UBUNTU_VERSION}-server-cloudimg-amd64.img"
             ;;
         *)

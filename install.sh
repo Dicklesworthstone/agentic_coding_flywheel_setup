@@ -6546,7 +6546,7 @@ ensure_ubuntu() {
     fi
 
     if [[ "$VERSION_MAJOR" -lt 24 ]]; then
-        log_warn "Ubuntu $version_id detected. Recommended: Ubuntu 24.04+ or 25.x"
+        log_warn "Ubuntu $version_id detected. Recommended: Ubuntu 24.04 or 26.04 LTS"
     fi
 
     log_detail "OS: Ubuntu $version_id"

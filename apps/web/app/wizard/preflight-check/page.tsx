@@ -20,6 +20,7 @@ import { formatSshTarget } from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { normalizeGitRef, useACFSRef, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
+import { ACFS_RECOMMENDED_UBUNTU } from "@/lib/vpsProviders";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 
 const PREFLIGHT_SCRIPT_BASE_URL =
@@ -226,7 +227,7 @@ export default function PreflightCheckPage() {
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">ACFS Pre-Flight Check</p>
           <p className="text-muted-foreground">---------------------</p>
-          <p className="text-green">[✓] Operating System: Ubuntu 25.10 (or 24.04 before upgrade)</p>
+          <p className="text-green">[✓] Operating System: Ubuntu {ACFS_RECOMMENDED_UBUNTU}</p>
           <p className="text-green">[✓] Architecture: x86_64</p>
           <p className="text-green">[✓] Disk Space: 45GB free</p>
           <p className="text-amber">[!] Warning: Cannot reach https://claude.ai</p>

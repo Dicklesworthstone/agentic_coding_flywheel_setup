@@ -116,7 +116,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
     ],
     tips: [
       "Copy the IP address directly from your provider's dashboard to avoid typos.",
-      "Make sure you selected Ubuntu 22.04 or newer (the installer upgrades to 25.10), not Debian, when creating the VPS.",
+      "Make sure you selected Ubuntu 26.04 LTS when creating the VPS, not Debian or an end-of-life release such as 25.10.",
     ],
   },
 

@@ -104,14 +104,15 @@ brew install expect
 # Run focused fresh-root curl|bash regression
 ./tests/vm/test_fresh_root_bootstrap_regression.sh
 
-# Run authoritative factory-host E2E against a disposable fresh Ubuntu 25.10 VM/VPS
+# Run authoritative factory-host E2E against a disposable fresh Ubuntu 24.04 LTS VM/VPS
+# (an ordinary install preserves the host release)
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
 
-# Run local authoritative VM E2E with QEMU/KVM and the official Ubuntu cloud image
+# Run local authoritative VM E2E with QEMU/KVM and the official Ubuntu 24.04 cloud image
 ./tests/vm/test_factory_install_qemu.sh
 
-# Run slow real-host upgrade/resume E2E from fresh Ubuntu 24.04 to 25.10
-./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
+# The opt-in 24.04 -> 26.04 upgrade/resume path is not driven by the factory
+# harness (it does not forward --target-ubuntu); see the note below
 
 # Run real cross-agent resume matrix (requires authenticated CLI sessions)
 bash ./tests/e2e/test_cross_agent_resume_e2e.sh
@@ -125,13 +126,13 @@ By default it treats cross-CLI session isolation as expected behavior; strict mo
 
 #### Docker vs Factory-Host Installer E2E
 
-`tests/vm/test_install_ubuntu.sh` is the fast regression harness. It runs the installer in Ubuntu containers, including the full `24.04`, `25.04`, and `25.10` matrix when invoked with `--all`. It is appropriate for CI, checksum drift, module-install smoke coverage, and idempotency checks.
+`tests/vm/test_install_ubuntu.sh` is the fast regression harness. It runs the installer in Ubuntu containers, defaulting to `24.04` and covering the supported LTS matrix (`22.04`, `24.04`, `26.04`) when invoked with `--all`. It is appropriate for CI, checksum drift, module-install smoke coverage, and idempotency checks.
 
-`tests/vm/test_factory_install_ubuntu.sh` is the authoritative beginner-path harness. It requires SSH access to a freshly provisioned systemd-capable Ubuntu host, defaults to initial Ubuntu `25.10` and final Ubuntu `25.10`, runs the public `curl|bash` installer as root, and fails by default if the `ubuntu` user already exists before install. It then verifies user creation, SSH key merge/de-dupe behavior, passwordless sudo in vibe mode, `acfs doctor --json` with zero failures and zero warnings, core stack binaries, Agent Mail health, systemd user services, the nightly timer, and a second idempotent installer run.
+`tests/vm/test_factory_install_ubuntu.sh` is the authoritative beginner-path harness. It requires SSH access to a freshly provisioned systemd-capable Ubuntu host, defaults to initial Ubuntu `24.04` and final Ubuntu `24.04`, runs the public `curl|bash` installer as root, and fails by default if the `ubuntu` user already exists before install. It then verifies user creation, SSH key merge/de-dupe behavior, passwordless sudo in vibe mode, `acfs doctor --json` with zero failures and zero warnings, core stack binaries, Agent Mail health, systemd user services, the nightly timer, and a second idempotent installer run.
 
 `tests/vm/test_factory_install_qemu.sh` is the local no-Docker version of that same gate. It downloads and verifies the official Ubuntu cloud image, boots it under QEMU/KVM with cloud-init and root SSH, then calls `test_factory_install_ubuntu.sh` against the VM. Use it when you need realistic systemd, sshd, cloud-init, kernel, and filesystem behavior without provisioning a paid VPS.
 
-For the slower OS upgrade/resume path, provision a fresh Ubuntu `24.04` host and run with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`. The harness treats SSH disconnects during installer-driven reboots as expected, reconnects, waits for ACFS resume to finish, then runs the same post-install and idempotency assertions.
+The slower OS upgrade/resume path is opt-in: the installer upgrades only when `--target-ubuntu=26.04` is passed. The factory harness does not forward that flag, so `--expect-final-ubuntu 26.04 --allow-install-reboot` alone only changes what it verifies and how it tolerates reboots; it cannot qualify the upgrade. Run the explicit upgrade as root on a disposable, reboot-capable Ubuntu `24.04` host (`... | bash -s -- --yes --mode vibe --target-ubuntu=26.04`) and capture resume, final-OS, and tool-health evidence separately.
 
 The matching GitHub Actions workflow is `.github/workflows/installer-factory-e2e.yml`. Its scheduled/manual default backend is QEMU/KVM with the official Ubuntu cloud image, but that backend requires `/dev/kvm`; set `ACFS_FACTORY_RUNNER`, pass the manual `runner` input, or pass `client_payload.runner` to select a KVM-capable larger/self-hosted runner. Leave the manual/reusable `runner` input blank when you want the repository variable to apply. Reusable workflow callers may run the QEMU backend without SSH secrets. The workflow writes and uploads only run-specific artifact directories so repeated runs on a reused self-hosted workspace do not collide with, or upload, old QEMU overlay disks. The QEMU wrapper keeps its generated private SSH key outside the repository checkout, and the factory harness redacts installer logs plus the remote diagnostic archive before local upload. Use `backend=real-host` for a disposable provider VPS. Configure `ACFS_FACTORY_SSH_PRIVATE_KEY` and either pass `ssh_target` via the `acfs-factory-host-ready` repository dispatch payload or configure `ACFS_FACTORY_SSH_TARGET` as a fallback secret. If `backend=real-host` is requested without those credentials, the workflow fails instead of reporting a skipped green canary. Do not point the scheduled real-host sentinel at a reused server; the harness intentionally fails when `ubuntu` already exists before install.
 

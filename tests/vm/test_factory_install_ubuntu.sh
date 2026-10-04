@@ -23,8 +23,8 @@ SSH_PORT="${ACFS_FACTORY_SSH_PORT:-}"
 REF="${ACFS_REF:-main}"
 MODE="${ACFS_FACTORY_MODE:-vibe}"
 TARGET_USERNAME="${ACFS_FACTORY_TARGET_USERNAME:-ubuntu}"
-EXPECT_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:-25.10}"
-EXPECT_FINAL_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:-25.10}"
+EXPECT_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:-24.04}"
+EXPECT_FINAL_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:-24.04}"
 EXPECT_NO_TARGET_USER="${ACFS_FACTORY_EXPECT_NO_TARGET_USER:-true}"
 INSTALL_TIMEOUT_SECONDS="${ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
@@ -63,8 +63,8 @@ Options:
   --target-username <name>    Expected non-root ACFS user (default: ubuntu).
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>             Alias for --provisioning-packet.
-  --expect-ubuntu <version>   Required initial VERSION_ID from /etc/os-release (default: 25.10).
-  --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: 25.10).
+  --expect-ubuntu <version>   Required initial VERSION_ID from /etc/os-release (default: 24.04).
+  --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: 24.04).
   --allow-existing-target-user Do not fail if the target user exists before install.
   --allow-install-reboot      Treat SSH disconnects during install as expected and reconnect.
   --public-key-file <path>    Public key to seed into root authorized_keys before install.

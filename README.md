@@ -2746,7 +2746,7 @@ schedule: "30 7 * * *" # daily
 jobs:
   canary:
     - Run tests/vm/test_install_ubuntu.sh (vibe mode)
-    - Defaults to Ubuntu 25.10; --all covers 24.04, 25.04, and 25.10
+    - Defaults to Ubuntu 24.04; --all covers the supported LTS releases 22.04, 24.04, and 26.04
     - Uses ACFS_CHECKSUMS_REF=main for freshest hashes
 ```
 
@@ -3125,7 +3125,7 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 # Full Docker integration test on supported Ubuntu 24.04 LTS
 ./tests/vm/test_install_ubuntu.sh --ubuntu 24.04
 
-# Historical Docker integration matrix (includes interim-release images)
+# Docker integration matrix across the supported LTS releases (22.04, 24.04, 26.04)
 ./tests/vm/test_install_ubuntu.sh --all
 
 # Real factory-host integration test preserving Ubuntu 24.04 LTS

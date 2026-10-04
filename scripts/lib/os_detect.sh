@@ -148,7 +148,7 @@ validate_os() {
     fi
 
     if [[ "$OS_VERSION_MAJOR" -lt 24 ]]; then
-        log_warn "Ubuntu $OS_VERSION detected. Recommended: Ubuntu 24.04+ or 25.x"
+        log_warn "Ubuntu $OS_VERSION detected. Recommended: Ubuntu 24.04 or 26.04 LTS"
         log_warn "Some packages may not be available in older versions."
         return 1
     fi

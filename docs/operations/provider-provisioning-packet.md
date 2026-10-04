@@ -118,9 +118,9 @@ of provider:
   },
   "osImage": {
     "distribution": "ubuntu",
-    "version": "25.10",
+    "version": "26.04",
     "minimumVersion": "22.04",
-    "preferredVersions": ["25.10", "24.04"],
+    "preferredVersions": ["26.04"],
     "readinessStatus": "supported"
   }
 }

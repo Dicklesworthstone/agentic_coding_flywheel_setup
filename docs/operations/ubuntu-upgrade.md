@@ -1,11 +1,11 @@
-# Ubuntu Auto-Upgrade Developer Documentation
+# Ubuntu Upgrade Developer Documentation
 
-This document covers the internal architecture and debugging procedures for the ACFS Ubuntu auto-upgrade feature.
+This document covers the internal architecture and debugging procedures for the ACFS opt-in Ubuntu upgrade feature.
 
 ## Overview
 
-ACFS automatically upgrades Ubuntu to version 25.10 before running the main installation. The upgrade system handles:
-- Multi-hop upgrades (e.g., 24.04 → 25.04 → 25.10; EOL interim releases like 24.10 may be skipped)
+Ordinary installs keep supported Ubuntu 22.04/24.04 LTS hosts on their current release. ACFS upgrades Ubuntu only when `--target-ubuntu=26.04` (or another supported LTS target) is passed explicitly, and `--skip-ubuntu-upgrade` suppresses that request in either argument order. Ubuntu 25.10 reached end-of-life on 2026-07-09; it is accepted only as a recovery source on the way to 26.04, never as a destination. The upgrade system handles:
+- Reviewed LTS hops (22.04 → 24.04 → 26.04) and the 25.10 → 26.04 recovery hop, which first moves 25.10's archive URIs to old-releases
 - Automatic reboots after each upgrade
 - Resume via systemd service
 - State persistence across reboots
@@ -78,24 +78,24 @@ scripts/lib/
 ### Version Detection
 
 ```bash
-# Get version as comparable number (2404, 2510)
+# Get version as comparable number (2404, 2604)
 ubuntu_get_version_number  # Returns: 2404 for Ubuntu 24.04
 
-# Get version as string ("24.04", "25.10")
+# Get version as string ("24.04", "26.04")
 ubuntu_get_version_string  # Returns: "24.04"
 
 # Compare versions (expects NUMBERS, not strings)
-ubuntu_version_gte 2404 2510  # Returns: 1 (false, 24.04 < 25.10)
+ubuntu_version_gte 2404 2604  # Returns: 1 (false, 24.04 < 26.04)
 ```
 
 ### Upgrade Path Calculation
 
 ```bash
 # Calculate upgrade path (returns newline-separated list)
-ubuntu_calculate_upgrade_path 2510
-# Output (from Ubuntu 24.04):
-# 25.04
-# 25.10
+ubuntu_calculate_upgrade_path 2604
+# Output (from Ubuntu 22.04):
+# 24.04
+# 26.04
 ```
 
 ### State Management
@@ -105,13 +105,13 @@ ubuntu_calculate_upgrade_path 2510
 state_upgrade_set_stage "upgrading"
 
 # Record completed upgrade
-state_upgrade_complete_hop "25.04"
+state_upgrade_complete_hop "24.04"
 
 # Get current stage
 state_upgrade_get_stage  # Returns: upgrading, awaiting_reboot, etc.
 
 # Get next target version
-state_upgrade_get_next_target  # Returns: "25.10" or empty if done
+state_upgrade_get_next_target  # Returns: "26.04" or empty if done
 ```
 
 ## File Locations During Upgrade
@@ -268,15 +268,15 @@ curl -fsSL .../install.sh | bash -s -- --yes --mode vibe
 
 | Flag | Description |
 |------|-------------|
-| `--skip-ubuntu-upgrade` | Skip automatic Ubuntu upgrade entirely |
-| `--target-ubuntu=X.XX` | Set target version (default: 25.10) |
+| `--skip-ubuntu-upgrade` | Suppress an explicit upgrade request (wins in either argument order) |
+| `--target-ubuntu=X.XX` | Opt into an upgrade to a supported LTS target (22.04, 24.04, or 26.04); without it, no upgrade runs |
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `UBUNTU_TARGET_VERSION` | Target version string | "25.10" |
-| `UBUNTU_TARGET_VERSION_NUM` | Target version number | 2510 |
+| `UBUNTU_TARGET_VERSION` | Target version string | "26.04" |
+| `UBUNTU_TARGET_VERSION_NUM` | Target version number (derived) | 2604 |
 | `UBUNTU_UPGRADE_MIN_DISK_MB` | Minimum disk space for upgrade | 5000 |
 | `ACFS_RESUME_DIR` | State directory | /var/lib/acfs |
 | `ACFS_UPGRADE_LOCK` | Lock file path | /var/run/acfs-upgrade.lock |
