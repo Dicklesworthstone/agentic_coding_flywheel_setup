@@ -12732,8 +12732,13 @@ SECURITY
     run grep -F 'if agent_mail_endpoint_ready && ! systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; then' "$stack_lib"
     assert_failure
 
-    run grep -F 'systemctl --user reset-failed agent-mail.service >/dev/null 2>&1 || true' "$stack_lib"
-    assert_failure
+    # The removed healthy-external-runtime branch reset the failed unit and
+    # skipped the restart. reset-failed is legitimate only inside
+    # clear_runtime_mask (GH #328), after the runtime mask has been removed.
+    run bash -c 'grep -c -F "systemctl --user reset-failed agent-mail.service >/dev/null 2>&1 || true" "$1"' _ "$stack_lib"
+    assert_output "1"
+    run bash -c 'sed -n "/^clear_runtime_mask() {$/,/^}$/p" "$1" | grep -c -F "systemctl --user reset-failed agent-mail.service >/dev/null 2>&1 || true"' _ "$stack_lib"
+    assert_output "1"
 
     run grep -F 'healthy existing runtime detected; skipping managed service restart' "$stack_lib"
     assert_failure
