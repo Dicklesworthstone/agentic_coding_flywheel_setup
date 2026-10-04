@@ -1742,6 +1742,11 @@ acfs undo --all       # Undo all changes from the most recent fix session
 acfs undo --everything  # Undo every recorded change across all sessions
 ```
 
+Undo restores the whole-file backup taken just before the fix ran. Any edits you
+made to that file after the fix are reverted too, so copy them aside before undoing a
+fix to a file you have since changed. Tool installs performed by `--fix` record no
+automatic rollback; remove an unwanted tool manually.
+
 ---
 
 ## The Wizard Website
