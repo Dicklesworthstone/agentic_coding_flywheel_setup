@@ -38,6 +38,7 @@ REF_EXPLICIT=$([[ -n "${ACFS_REF+x}" ]] && printf true || printf false)
 MODE_EXPLICIT=$([[ -n "${ACFS_FACTORY_MODE+x}" ]] && printf true || printf false)
 TARGET_USERNAME_EXPLICIT=$([[ -n "${ACFS_FACTORY_TARGET_USERNAME+x}" ]] && printf true || printf false)
 EXPECT_UBUNTU_EXPLICIT=$([[ -n "${ACFS_FACTORY_EXPECT_UBUNTU_VERSION+x}" ]] && printf true || printf false)
+EXPECT_FINAL_UBUNTU_EXPLICIT=$([[ -n "${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION+x}" ]] && printf true || printf false)
 PACKET_PROFILE=""
 PACKET_ONLY_MODULES_CSV=""
 PACKET_ONLY_PHASES_CSV=""
@@ -64,7 +65,7 @@ Options:
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>             Alias for --provisioning-packet.
   --expect-ubuntu <version>   Required initial VERSION_ID from /etc/os-release (default: 24.04).
-  --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: 24.04).
+  --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: the initial version).
   --allow-existing-target-user Do not fail if the target user exists before install.
   --allow-install-reboot      Treat SSH disconnects during install as expected and reconnect.
   --public-key-file <path>    Public key to seed into root authorized_keys before install.
@@ -139,6 +140,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --expect-final-ubuntu)
             EXPECT_FINAL_UBUNTU_VERSION="${2:-}"
+            EXPECT_FINAL_UBUNTU_EXPLICIT=true
             shift 2
             ;;
         --allow-existing-target-user)
@@ -180,6 +182,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# An ordinary install keeps the host release, so unless a final release was
+# requested explicitly, expect the initial one (also re-synced to a packet's OS).
+if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
+    EXPECT_FINAL_UBUNTU_VERSION="$EXPECT_UBUNTU_VERSION"
+fi
 
 if [[ -z "$SSH_TARGET" ]]; then
     echo "ERROR: --ssh-target is required (for example: root@203.0.113.10)" >&2
@@ -455,6 +463,9 @@ validate_provisioning_packet() {
     MODE="$packet_mode"
     TARGET_USERNAME="$packet_username"
     EXPECT_UBUNTU_VERSION="$packet_init_os"
+    if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
+        EXPECT_FINAL_UBUNTU_VERSION="$EXPECT_UBUNTU_VERSION"
+    fi
     PACKET_PROFILE="$(jq -r '.install.moduleSelection.profile // empty' "$PROVISIONING_PACKET")"
     PACKET_ONLY_MODULES_CSV="$(jq -r '(.install.moduleSelection.onlyModules // []) | join(",")' "$PROVISIONING_PACKET")"
     PACKET_ONLY_PHASES_CSV="$(jq -r '(.install.moduleSelection.onlyPhases // []) | join(",")' "$PROVISIONING_PACKET")"

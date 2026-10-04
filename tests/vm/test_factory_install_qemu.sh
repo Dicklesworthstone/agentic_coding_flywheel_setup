@@ -36,6 +36,7 @@ PROVISIONING_PACKET="${ACFS_FACTORY_PROVISIONING_PACKET:-}"
 LEAVE_RUNNING=false
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 UBUNTU_EXPLICIT=$([[ -n "${ACFS_QEMU_UBUNTU_VERSION+x}" ]] && printf true || printf false)
+EXPECT_FINAL_UBUNTU_EXPLICIT=$([[ -n "${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION+x}" ]] && printf true || printf false)
 MODE_EXPLICIT=$([[ -n "${ACFS_QEMU_MODE+x}" ]] && printf true || printf false)
 REF_EXPLICIT=$([[ -n "${ACFS_REF+x}" ]] && printf true || printf false)
 TARGET_USERNAME_EXPLICIT=$([[ -n "${ACFS_QEMU_TARGET_USERNAME+x}" ]] && printf true || printf false)
@@ -54,7 +55,7 @@ Options:
   --target-username <name>     Expected non-root ACFS user (default: ubuntu).
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>              Alias for --provisioning-packet.
-  --expect-final-ubuntu <ver>  Required final VERSION_ID after install/resume.
+  --expect-final-ubuntu <ver>  Required final VERSION_ID after install/resume (default: the --ubuntu release).
   --install-url <url>          Override public install.sh URL.
   --image-url <url>            Override Ubuntu cloud image URL.
   --image-sha256sums-url <url> Override SHA256SUMS URL for the cloud image.
@@ -116,6 +117,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --expect-final-ubuntu)
             EXPECT_FINAL_UBUNTU_VERSION="${2:-}"
+            EXPECT_FINAL_UBUNTU_EXPLICIT=true
             shift 2
             ;;
         --install-url)
@@ -262,6 +264,12 @@ if [[ -n "$PROVISIONING_PACKET" ]]; then
     REF="$packet_ref"
     MODE="$packet_mode"
     TARGET_USERNAME="$packet_username"
+fi
+
+# An ordinary install keeps the booted release; expect it unless a final
+# release was requested explicitly.
+if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
+    EXPECT_FINAL_UBUNTU_VERSION="$UBUNTU_VERSION"
 fi
 
 if [[ -z "$IMAGE_URL" ]]; then

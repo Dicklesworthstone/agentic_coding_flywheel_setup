@@ -2066,6 +2066,30 @@ describe("agents.claude post-install link step", () => {
     });
   });
 
+  test("repoints a stale custom-bin link from the old layout to the native launcher", () => {
+    const home = nativeLayoutHome();
+    const legacy = resolve(home, ".claude/local/bin");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(resolve(legacy, "claude"), "#!/bin/sh\necho old\n");
+    chmodSync(resolve(legacy, "claude"), 0o755);
+    const binDir = resolve(home, "acfs-bin");
+    mkdirSync(binDir);
+    symlinkSync(resolve(legacy, "claude"), resolve(binDir, "claude"));
+    expect(runStep(home, binDir)).toEqual({
+      status: 0,
+      links: `${resolve(home, ".local/bin/claude")} claude\n`,
+    });
+  });
+
+  test("links the legacy layout into the default bin dir when no native launcher exists", () => {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
+    const legacy = resolve(home, ".claude/local/bin");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(resolve(legacy, "claude"), "#!/bin/sh\necho old\n");
+    chmodSync(resolve(legacy, "claude"), 0o755);
+    expect(runStep(home)).toEqual({ status: 0, links: `${resolve(legacy, "claude")} claude\n` });
+  });
+
   test("still fails when no runnable claude exists anywhere", () => {
     const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
     expect(runStep(home).status).not.toBe(0);

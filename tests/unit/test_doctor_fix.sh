@@ -2849,6 +2849,11 @@ test_fix_ssh_server_installs_openssh_with_pacman_on_arch() {
         cleanup_test_env
         return 1
     fi
+    if ! jq -e 'select(.description == "Installed and enabled openssh")' "$ACFS_CHANGES_FILE" >/dev/null 2>&1; then
+        echo "  fix_ssh_server did not record the Arch openssh install change"
+        cleanup_test_env
+        return 1
+    fi
 
     local hint=""
     hint="$(ACFS_DISTRO_FAMILY=arch _ACFS_DOCTOR_IS_ARCH_FAMILY="" doctor_fix_ssh_server_install_display "sudo ")"

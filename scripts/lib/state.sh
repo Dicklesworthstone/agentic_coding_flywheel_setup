@@ -126,6 +126,10 @@ readonly ACFS_PHASE_IDS=(
 # Human-readable phase names for display
 # Note: Must use -g for global scope when sourced from inside a function
 declare -gA ACFS_PHASE_NAMES=(
+    # Display-only: base dependencies run after confirmation and state_init,
+    # so a failure there is recorded as failed_phase=base_deps. It is not a
+    # checkpointed phase (not in ACFS_PHASE_IDS) and reruns on every resume.
+    [base_deps]="Base Dependencies"
     [user_setup]="User Normalization"
     [filesystem]="Filesystem Setup"
     [shell_setup]="Shell Setup"

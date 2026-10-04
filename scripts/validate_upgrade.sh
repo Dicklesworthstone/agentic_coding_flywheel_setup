@@ -127,6 +127,10 @@ check_upgrade_path() {
 
     local target="${TARGET_UBUNTU_VERSION:-26.04}"
     print_info "Target version: $target"
+    if [[ ! "$target" =~ ^[0-9]{2}\.(04|10)$ ]]; then
+        print_fail "TARGET_UBUNTU_VERSION must look like 26.04 (got: $target)"
+        return
+    fi
 
     # Test path from 24.04
     echo ""

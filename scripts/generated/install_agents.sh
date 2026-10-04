@@ -448,7 +448,7 @@ acfs_generated_install_agents_claude() {
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: if [[ ! -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/claude\" ]]; then (target_user)"
+        log_info "dry-run: install: for candidate in \"\$HOME/.local/bin/claude\" \"\$HOME/.claude/bin/claude\" \"\$HOME/.claude/local/bin/claude\" \"\$HOME/.bun/bin/claude\"; do (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_AGENTS_CLAUDE'
 # Generated helper functions used by this child shell.
@@ -610,28 +610,29 @@ acfs_install_executable_into_primary_bin() {
 }
 
 # The native installer's `claude install` publishes the launcher at
-# ~/.local/bin/claude (-> ~/.local/share/claude/versions/<ver>); link only
-# when the configured ACFS bin dir does not already run it.
-if [[ ! -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/claude" ]]; then
-  claude_candidate=""
-  for candidate in "$HOME/.local/bin/claude" "$HOME/.claude/bin/claude" "$HOME/.claude/local/bin/claude" "$HOME/.bun/bin/claude"; do
-    if [[ -x "$candidate" ]]; then
-      claude_candidate="$candidate"
-      break
-    fi
-  done
-  if [[ -z "$claude_candidate" ]] && [[ -d "$HOME/.claude" ]]; then
-    claude_candidate="$(find "$HOME/.claude" -maxdepth 4 -type f -name claude -perm -111 -print -quit 2>/dev/null || true)"
+# ~/.local/bin/claude (-> ~/.local/share/claude/versions/<ver>); prefer it.
+claude_candidate=""
+for candidate in "$HOME/.local/bin/claude" "$HOME/.claude/bin/claude" "$HOME/.claude/local/bin/claude" "$HOME/.bun/bin/claude"; do
+  if [[ -x "$candidate" ]]; then
+    claude_candidate="$candidate"
+    break
   fi
-  if [[ -z "$claude_candidate" ]] || [[ ! -x "$claude_candidate" ]]; then
-    echo "Claude Code: installed but no runnable claude binary found" >&2
-    exit 1
-  fi
+done
+if [[ -z "$claude_candidate" ]] && [[ -d "$HOME/.claude" ]]; then
+  claude_candidate="$(find "$HOME/.claude" -maxdepth 4 -type f -name claude -perm -111 -print -quit 2>/dev/null || true)"
+fi
+if [[ -z "$claude_candidate" ]] || [[ ! -x "$claude_candidate" ]]; then
+  echo "Claude Code: installed but no runnable claude binary found" >&2
+  exit 1
+fi
+# Already in the configured bin dir: linking it there would make
+# `ln -sf` replace the launcher with a symlink to itself.
+if [[ ! "${claude_candidate%/*}" -ef "${ACFS_BIN_DIR:-$HOME/.local/bin}" ]]; then
   acfs_link_primary_bin_command "$claude_candidate" "claude"
 fi
 INSTALL_AGENTS_CLAUDE
         then
-            log_error "agents.claude: install command failed: if [[ ! -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/claude\" ]]; then"
+            log_error "agents.claude: install command failed: for candidate in \"\$HOME/.local/bin/claude\" \"\$HOME/.claude/bin/claude\" \"\$HOME/.claude/local/bin/claude\" \"\$HOME/.bun/bin/claude\"; do"
             return 1
         fi
     fi

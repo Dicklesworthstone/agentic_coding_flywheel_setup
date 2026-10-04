@@ -322,6 +322,8 @@ EOF
         log_error() { echo "ERROR: $*" >&2; }
         log_detail() { echo "DETAIL: $*" >&2; }
 
+        # Defined just after the prelude, so extracted like the other helpers.
+        eval "$(awk '\''/^acfs_early_sudo_binary_path\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
         eval "$(awk '\''/^acfs_early_resolve_current_user\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
         eval "$(awk '\''/^acfs_early_getent_passwd_entry\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
         eval "$(awk '\''/^acfs_home_for_user\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
@@ -380,6 +382,8 @@ EOF
         log_error() { echo "ERROR: $*" >&2; }
         log_detail() { echo "DETAIL: $*" >&2; }
 
+        # Defined just after the prelude, so extracted like the other helpers.
+        eval "$(awk '\''/^acfs_early_sudo_binary_path\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
         eval "$(awk '\''/^acfs_early_resolve_current_user\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
         eval "$(awk '\''/^acfs_early_getent_passwd_entry\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"
         eval "$(awk '\''/^acfs_home_for_user\(\) \{/{flag=1} flag; /^}$/ && flag {flag=0; exit}'\'' install.sh)"

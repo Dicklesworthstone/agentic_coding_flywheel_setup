@@ -2235,15 +2235,17 @@ fix_ssh_server() {
     fi
 
     local package_manager_bin=""
+    local ssh_package="openssh-server"
     local -a install_argv=()
     env_bin="$(doctor_fix_system_binary_path env 2>/dev/null || true)"
     if doctor_fix_is_arch_family; then
+        ssh_package="openssh"
         package_manager_bin="$(doctor_fix_system_binary_path pacman 2>/dev/null || true)"
-        install_argv=("$package_manager_bin" -S --needed --noconfirm openssh)
+        install_argv=("$package_manager_bin" -S --needed --noconfirm "$ssh_package")
     else
         apt_get_bin="$(doctor_fix_system_binary_path apt-get 2>/dev/null || true)"
         package_manager_bin="$apt_get_bin"
-        install_argv=("$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y openssh-server)
+        install_argv=("$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y "$ssh_package")
     fi
     if [[ -z "$package_manager_bin" ]]; then
         doctor_fix_log ERROR "No supported package manager (apt-get/pacman) found; cannot install the SSH server"
@@ -2261,14 +2263,14 @@ fix_ssh_server() {
         return 1
     fi
     if ! doctor_fix_root_prefix root_cmd; then
-        doctor_fix_log ERROR "Cannot install openssh-server without root or passwordless sudo"
+        doctor_fix_log ERROR "Cannot install $ssh_package without root or passwordless sudo"
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
 
     if "${root_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "${install_argv[@]}" 2>/dev/null; then
         if ! ("${root_cmd[@]}" "$systemctl_bin" enable --now ssh 2>/dev/null || "${root_cmd[@]}" "$systemctl_bin" enable --now sshd 2>/dev/null); then
-            doctor_fix_log ERROR "Installed openssh-server but failed to enable/start SSH service"
+            doctor_fix_log ERROR "Installed $ssh_package but failed to enable/start SSH service"
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
@@ -2276,20 +2278,20 @@ fix_ssh_server() {
         if ! doctor_fix_record_change_or_rollback \
             "" \
             false \
-            "install" "Installed and enabled openssh-server" \
-            "# Manual rollback required: remove openssh-server if undesired" \
+            "install" "Installed and enabled $ssh_package" \
+            "# Manual rollback required: remove $ssh_package if undesired" \
             true "info" "[\"/etc/ssh/sshd_config\"]" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
 
-        doctor_fix_log INFO "Installed and enabled openssh-server"
-        FIXES_APPLIED+=("fix.ssh.server|Installed and enabled openssh-server")
+        doctor_fix_log INFO "Installed and enabled $ssh_package"
+        FIXES_APPLIED+=("fix.ssh.server|Installed and enabled $ssh_package")
         FIX_APPLIED=$((FIX_APPLIED + 1))
         return 0
     fi
 
-    doctor_fix_log ERROR "Failed to install openssh-server"
+    doctor_fix_log ERROR "Failed to install $ssh_package"
     FIX_FAILED=$((FIX_FAILED + 1))
     return 1
 }

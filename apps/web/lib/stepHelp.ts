@@ -8,6 +8,7 @@
  */
 
 import { getUserOS, getVPSIP } from "./userPreferences";
+import { ACFS_RECOMMENDED_UBUNTU } from "./vpsProviders";
 import { getCompletedSteps, TOTAL_STEPS } from "./wizardSteps";
 
 export interface StepIssue {
@@ -116,7 +117,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
     ],
     tips: [
       "Copy the IP address directly from your provider's dashboard to avoid typos.",
-      "Make sure you selected Ubuntu 26.04 LTS when creating the VPS, not Debian or an end-of-life release such as 25.10.",
+      `Make sure you selected Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS when creating the VPS, not Debian or an end-of-life release such as 25.10.`,
     ],
   },
 

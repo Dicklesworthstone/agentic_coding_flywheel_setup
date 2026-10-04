@@ -514,7 +514,7 @@ test_wait_timeout_never_kills_owner_or_unlinks_locks() {
 
     # Static backstop for the same invariant over the whole library.
     if grep -nE '(^|[^_[:alnum:]])(pkill|killall)([^_[:alnum:]]|$)|kill +-(9|KILL|s +KILL)' "$SCRIPT_DIR/autofix_unattended.sh" >/dev/null \
-        || grep -nE 'rm .*(APT_LOCK_FILES|\$lock)' "$SCRIPT_DIR/autofix_unattended.sh" >/dev/null; then
+        || grep -nE '((^|[^[:alnum:]_])rm[[:space:]]|rm_bin")[^#]*(APT_LOCK_FILES|\$lock)' "$SCRIPT_DIR/autofix_unattended.sh" >/dev/null; then
         cleanup_test_dir "$test_dir"
         test_fail "wait_timeout_never_kills_owner_or_unlinks_locks" "autofix_unattended.sh contains a kill or lock-unlink path"
         return
