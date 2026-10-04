@@ -9,7 +9,16 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1998,5 +2007,67 @@ describe("Web generation with current manifest (no web metadata)", () => {
     const entries = toolsContent.match(/moduleId: "/g);
     const entryCount = entries ? entries.length : 0;
     expect(entryCount).toBe(webVisibleCount);
+  });
+});
+
+describe("agents.claude post-install link step", () => {
+  function claudeLinkStep(): string {
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+    const step = parseResult.data.modules.find((module) => module.id === "agents.claude")
+      ?.install[0];
+    if (typeof step !== "string") throw new Error("agents.claude install step missing");
+    return step;
+  }
+
+  // Lay out what `claude install` (the native installer) publishes:
+  // ~/.local/bin/claude -> ~/.local/share/claude/versions/<ver>.
+  function nativeLayoutHome(): string {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
+    const versions = resolve(home, ".local/share/claude/versions");
+    mkdirSync(versions, { recursive: true });
+    mkdirSync(resolve(home, ".local/bin"), { recursive: true });
+    writeFileSync(resolve(versions, "9.9.9"), "#!/bin/sh\necho claude\n");
+    chmodSync(resolve(versions, "9.9.9"), 0o755);
+    symlinkSync(resolve(versions, "9.9.9"), resolve(home, ".local/bin/claude"));
+    return home;
+  }
+
+  function runStep(home: string, binDir?: string): { status: number | null; links: string } {
+    const linkLog = resolve(home, "link.log");
+    const script = [
+      `acfs_link_primary_bin_command() { printf '%s %s\\n' "$1" "$2" >> ${JSON.stringify(linkLog)}; }`,
+      claudeLinkStep(),
+    ].join("\n");
+    const result = spawnSync("bash", ["-euo", "pipefail", "-c", script], {
+      encoding: "utf8",
+      env: { PATH: "/usr/bin:/bin", HOME: home, ...(binDir ? { ACFS_BIN_DIR: binDir } : {}) },
+    });
+    return {
+      status: result.status,
+      links: existsSync(linkLog) ? readFileSync(linkLog, "utf8") : "",
+    };
+  }
+
+  test("accepts the native installer layout without relinking", () => {
+    const home = nativeLayoutHome();
+    expect(runStep(home)).toEqual({ status: 0, links: "" });
+  });
+
+  test("links a custom ACFS bin dir to the native launcher", () => {
+    const home = nativeLayoutHome();
+    const binDir = resolve(home, "acfs-bin");
+    mkdirSync(binDir);
+    expect(runStep(home, binDir)).toEqual({
+      status: 0,
+      links: `${resolve(home, ".local/bin/claude")} claude\n`,
+    });
+  });
+
+  test("still fails when no runnable claude exists anywhere", () => {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
+    expect(runStep(home).status).not.toBe(0);
   });
 });

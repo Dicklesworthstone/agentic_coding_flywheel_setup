@@ -906,21 +906,26 @@ modules:
       args: ["latest"]
     install:
       - |
-        claude_candidate=""
-        for candidate in "$HOME/.claude/bin/claude" "$HOME/.claude/local/bin/claude" "$HOME/.bun/bin/claude"; do
-          if [[ -x "$candidate" ]]; then
-            claude_candidate="$candidate"
-            break
+        # The native installer's `claude install` publishes the launcher at
+        # ~/.local/bin/claude (-> ~/.local/share/claude/versions/<ver>); link only
+        # when the configured ACFS bin dir does not already run it.
+        if [[ ! -x "${ACFS_BIN_DIR:-$HOME/.local/bin}/claude" ]]; then
+          claude_candidate=""
+          for candidate in "$HOME/.local/bin/claude" "$HOME/.claude/bin/claude" "$HOME/.claude/local/bin/claude" "$HOME/.bun/bin/claude"; do
+            if [[ -x "$candidate" ]]; then
+              claude_candidate="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$claude_candidate" ]] && [[ -d "$HOME/.claude" ]]; then
+            claude_candidate="$(find "$HOME/.claude" -maxdepth 4 -type f -name claude -perm -111 -print -quit 2>/dev/null || true)"
           fi
-        done
-        if [[ -z "$claude_candidate" ]] && [[ -d "$HOME/.claude" ]]; then
-          claude_candidate="$(find "$HOME/.claude" -maxdepth 4 -type f -name claude -perm -111 -print -quit 2>/dev/null || true)"
+          if [[ -z "$claude_candidate" ]] || [[ ! -x "$claude_candidate" ]]; then
+            echo "Claude Code: installed but no runnable claude binary found" >&2
+            exit 1
+          fi
+          acfs_link_primary_bin_command "$claude_candidate" "claude"
         fi
-        if [[ -z "$claude_candidate" ]] || [[ ! -x "$claude_candidate" ]]; then
-          echo "Claude Code: installed but no runnable claude binary found" >&2
-          exit 1
-        fi
-        acfs_link_primary_bin_command "$claude_candidate" "claude"
     verify:
       - |
         target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
