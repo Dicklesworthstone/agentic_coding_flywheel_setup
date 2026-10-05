@@ -34,8 +34,6 @@ Set up a VPS on OVHcloud for running ACFS and coding agents.
 2. Click "Sign up" or "Create an account"
 3. Complete identity verification
 
-![OVH Step 1: Create account](screenshots/ovh-step1-create-account.png)
-
 ---
 
 ## Step 2: Navigate to VPS Section
@@ -43,8 +41,6 @@ Set up a VPS on OVHcloud for running ACFS and coding agents.
 1. Log into the OVH Control Panel
 2. Click "Bare Metal Cloud" in the top menu
 3. Select "VPS" from the sidebar
-
-![OVH Step 2: Select VPS](screenshots/ovh-step2-select-vps.png)
 
 ---
 
@@ -60,16 +56,12 @@ recommendation: VPS-4 suits about 4-6 standard agents, and VPS-3 only trying ACF
 1-2 agents. Choose Contabo (Cloud VPS 12/16) for 48-64GB. "From" prices assume a 12-month
 term; month-to-month costs more. These figures mirror `apps/web/lib/vpsProviders.ts`.
 
-![OVH Step 3: Choose plan](screenshots/ovh-step3-choose-plan.png)
-
 ---
 
 ## Step 4: Select Operating System
 
 1. Choose **Ubuntu 26.04 LTS**
 2. Leave other options at defaults
-
-![OVH Step 4: Select Ubuntu](screenshots/ovh-step4-select-os.png)
 
 ---
 
@@ -84,8 +76,6 @@ For the ACFS beginner flow, use password authentication for the first login and 
 
 ACFS creates the `ubuntu` user after the first password login, then either sets up SSH key access automatically or prints the exact follow-up command to run.
 
-![OVH Step 5: Choose authentication](screenshots/ovh-step5-add-ssh-key.png)
-
 ---
 
 ## Step 6: Choose Data Center Location
@@ -95,8 +85,6 @@ Select a location closest to you:
 - **Canada**: good default for users in Canada
 - **EU**: good default for users in Europe
 - **Asia**: use only if it is close to you or your users
-
-![OVH Step 6: Select location](screenshots/ovh-step6-select-location.png)
 
 ---
 
@@ -108,8 +96,6 @@ Select a location closest to you:
 
 Your VPS will be provisioned within minutes.
 
-![OVH Step 7: Complete order](screenshots/ovh-step7-complete-order.png)
-
 ---
 
 ## Step 8: Find Your IP Address
@@ -119,8 +105,6 @@ After provisioning:
 1. Go to "Bare Metal Cloud" > "VPS"
 2. Click on your new VPS
 3. Copy the **IPv4 address**
-
-![OVH Step 8: Find IP](screenshots/ovh-step8-find-ip.png)
 
 ---
 
@@ -173,4 +157,6 @@ When the installer finishes, follow its reconnect command for the `ubuntu` user.
 
 ---
 
-*Screenshots are placeholders. Replace with actual screenshots from OVH control panel.*
+*This guide is text-only on purpose: provider consoles change often and screenshots go stale
+silently. If a button label differs from the one named above, look for the closest equivalent;
+the plan, Ubuntu 26.04 LTS image, and authentication choices are what matter.*

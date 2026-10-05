@@ -34,8 +34,6 @@ Set up a VPS on Contabo for running ACFS and coding agents.
 2. Click "Cloud VPS" in the menu
 3. Select a plan and click "Configure"
 
-![Contabo Step 1: Select VPS](screenshots/contabo-step1-select-vps.png)
-
 ---
 
 ## Step 2: Choose Your VPS Plan
@@ -51,8 +49,6 @@ Contabo offers exceptional specs for the price:
 
 USD prices are approximate conversions of Contabo's EUR list price (24-month introductory rate, incl. VAT). Month-to-month terms and US datacenters can cost more; the checkout page shows the final price. These figures mirror `apps/web/lib/vpsProviders.ts`, the single source the wizard renders from.
 
-![Contabo Step 2: Choose plan](screenshots/contabo-step2-choose-plan.png)
-
 ---
 
 ## Step 3: Select Data Center Region
@@ -62,16 +58,12 @@ Choose a location closest to you:
 - **EU**: good default for users in Europe
 - **Asia** or **AU**: use only if it is close to you or your users
 
-![Contabo Step 3: Select region](screenshots/contabo-step3-select-region.png)
-
 ---
 
 ## Step 4: Choose Operating System
 
 1. Under "Image", select **Ubuntu 26.04 LTS**
 2. Leave default storage type (SSD)
-
-![Contabo Step 4: Select Ubuntu](screenshots/contabo-step4-select-os.png)
 
 ---
 
@@ -81,8 +73,6 @@ Contabo requires a root password during setup.
 
 1. Enter a strong password (you'll change this later)
 2. Save this password temporarily
-
-![Contabo Step 5: Set password](screenshots/contabo-step5-set-password.png)
 
 ---
 
@@ -96,8 +86,6 @@ For the ACFS beginner flow, use Contabo's root password login first and let the 
 
 ACFS creates the `ubuntu` user after the first root-password login, then either sets up SSH key access automatically or prints the exact follow-up command to run.
 
-![Contabo Step 6: Review add-ons](screenshots/contabo-step6-add-ssh-key.png)
-
 ---
 
 ## Step 7: Complete the Order
@@ -106,10 +94,8 @@ ACFS creates the `ubuntu` user after the first root-password login, then either 
 2. Accept terms of service
 3. Complete payment
 
-**Note**: Contabo provisioning takes 1-3 hours (not instant).
+**Note**: Contabo activation is not instant: usually minutes, occasionally up to about an hour.
 You'll receive an email when your VPS is ready.
-
-![Contabo Step 7: Complete order](screenshots/contabo-step7-complete-order.png)
 
 ---
 
@@ -120,8 +106,6 @@ When you receive the "VPS Ready" email:
 1. Log into [my.contabo.com](https://my.contabo.com)
 2. Go to "Your services" > "VPS"
 3. Copy the **IP address**
-
-![Contabo Step 8: Find IP](screenshots/contabo-step8-find-ip.png)
 
 ---
 
@@ -168,7 +152,8 @@ cat ~/.ssh/acfs_ed25519.pub | ssh root@YOUR_IP_ADDRESS "read -r acfs_pubkey && t
 Contabo uses `root` by default. ACFS creates and configures the `ubuntu` user during Step 10.
 
 ### Provisioning Time
-Unlike other providers, Contabo takes 1-3 hours to provision. Be patient.
+Contabo activation is usually minutes but can take up to about an hour, slower than providers
+that create servers instantly. Wait for the "VPS ready" email before trying to connect.
 
 ### Firewall
 No firewall is enabled by default. Consider setting up UFW:
@@ -193,4 +178,6 @@ acfs doctor
 
 ---
 
-*Screenshots are placeholders. Replace with actual screenshots from Contabo control panel.*
+*This guide is text-only on purpose: provider consoles change often and screenshots go stale
+silently. If a button label differs from the one named above, look for the closest equivalent;
+the plan, Ubuntu 26.04 LTS image, and root-password choices are what matter.*

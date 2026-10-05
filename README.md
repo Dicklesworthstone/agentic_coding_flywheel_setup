@@ -2892,13 +2892,13 @@ ACFS includes detailed step-by-step guides for each supported provider in `scrip
 |----------|-------|--------------|
 | **Contabo** | `contabo.md` | Account creation, plan selection, data center choice, root password setup |
 | **OVH** | `ovh.md` | Control panel navigation, password authentication, instance configuration, networking |
-| **Hetzner** | `hetzner.md` | Project setup, firewall rules, console access |
+| **Hetzner** | `hetzner.md` | Server sizing, SSH-key login, cloud-init template, firewall rules |
 
 Each guide includes:
-- **Screenshots** for every step (in `scripts/providers/screenshots/`)
-- **Pricing breakdowns** with recommendations
+- **Text-only steps** (no screenshots: provider consoles change too often for them to stay accurate)
+- **Pricing or sizing guidance** (Contabo and OVH figures mirror the wizard's provider table)
 - **Region selection** guidance (latency, privacy)
-- Password-first login guidance and post-install SSH key recovery specific to that provider
+- First-login guidance for that provider (password-first or SSH key) and post-install SSH key recovery
 - **Troubleshooting** for common provisioning issues
 
 **Provider Comparison:**
@@ -2908,7 +2908,7 @@ Each guide includes:
 | Best For | Maximum value | EU data residency | German engineering |
 | Provisioning | Minutes to ~1 hour | 5-30 minutes | 2-10 minutes |
 | Support | Email only | Phone + chat | 24/7 ticket system |
-| Data Centers | EU, US, Asia | Global | EU only |
+| Data Centers | EU, US, Asia | Global | Germany, Finland, US, Singapore |
 | Payment | Monthly | Hourly or monthly | Hourly or monthly |
 
 **Recommendation Flow:**

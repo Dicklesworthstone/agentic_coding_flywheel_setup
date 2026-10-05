@@ -10,9 +10,8 @@ Set up a VPS on Hetzner Cloud for running ACFS and coding agents.
 
 | Aspect | Details |
 |--------|---------|
-| **Recommended Tier** | CX21 or CX31 (~$5-10/mo) |
-| **Minimum Specs** | 2 vCPU, 4GB RAM, 40GB SSD |
-| **Best For** | Developers who want a modern cloud experience |
+| **ACFS Target** | 48-64GB RAM for a multi-agent swarm (32GB is a tight minimum) |
+| **Best For** | Developers who want a modern cloud experience and instant provisioning |
 | **Signup** | [hetzner.com/cloud](https://www.hetzner.com/cloud/) |
 
 ### Pros
@@ -23,7 +22,10 @@ Set up a VPS on Hetzner Cloud for running ACFS and coding agents.
 - Terraform support
 
 ### Cons
-- Fewer global locations (EU + US only)
+- Fewer global locations (Germany, Finland, US, Singapore)
+- Plans with 32GB+ RAM cost noticeably more than Contabo or OVH; Hetzner raised Cloud prices on
+  15 June 2026 ([price adjustment](https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/))
+- Not in the wizard's priced provider table, so compare specs yourself
 - Requires identity verification for new accounts
 
 ---
@@ -34,8 +36,6 @@ Set up a VPS on Hetzner Cloud for running ACFS and coding agents.
 2. Click "Register" and create an account
 3. Complete identity verification (may require ID upload)
 
-![Hetzner Step 1: Create account](screenshots/hetzner-step1-create-account.png)
-
 ---
 
 ## Step 2: Access Hetzner Cloud Console
@@ -44,8 +44,6 @@ Set up a VPS on Hetzner Cloud for running ACFS and coding agents.
 2. Create a new project (if first time)
 3. Click "Add Server"
 
-![Hetzner Step 2: Cloud console](screenshots/hetzner-step2-console.png)
-
 ---
 
 ## Step 3: Choose Location
@@ -53,36 +51,31 @@ Set up a VPS on Hetzner Cloud for running ACFS and coding agents.
 Select a data center:
 - **Europe**: Nuremberg, Falkenstein, Helsinki
 - **Americas**: Ashburn (Virginia), Hillsboro (Oregon)
+- **Asia**: Singapore
 
 Pick the closest location to you for best latency.
-
-![Hetzner Step 3: Select location](screenshots/hetzner-step3-select-location.png)
 
 ---
 
 ## Step 4: Select Operating System
 
 1. Under "Image", click "Ubuntu"
-2. Select **Ubuntu 24.04**
-
-![Hetzner Step 4: Select Ubuntu](screenshots/hetzner-step4-select-os.png)
+2. Select **Ubuntu 26.04** (Hetzner's `ubuntu-26.04` image, available since May 2026)
 
 ---
 
 ## Step 5: Choose Server Type
 
-Hetzner offers shared and dedicated CPU options:
+Pick a server type by RAM, not by the cheapest price. Several coding agents, language servers and
+builds run at once, so:
 
-**Shared vCPU (Recommended for ACFS)**:
-| Type | vCPU | RAM | Storage | Price |
-|------|------|-----|---------|-------|
-| CX21 | 2 | 4GB | 40GB | ~$5/mo |
-| CX31 | 2 | 8GB | 80GB | ~$8/mo |
-| CX41 | 4 | 16GB | 160GB | ~$15/mo |
+- **32GB RAM** is a tight minimum (a few agents at a time)
+- **48-64GB RAM** is the ACFS target for a multi-agent swarm
+- **160GB+ SSD**; the installer refuses to start with less than 20GB free
 
-**Recommended**: CX21 or CX31
-
-![Hetzner Step 5: Select type](screenshots/hetzner-step5-select-type.png)
+Hetzner's shared-CPU lines top out around 32GB; larger sizes are on the dedicated-vCPU (CCX) line.
+Check current specs and prices on [hetzner.com/cloud](https://www.hetzner.com/cloud/) before
+buying; plan names and prices change.
 
 ---
 
@@ -94,13 +87,11 @@ This is the recommended way to access your server.
 2. Paste your public SSH key
 3. Give it a name
 
-If you don't have an SSH key yet:
+If you don't have the ACFS key yet (the wizard's "Generate SSH key" step creates the same one):
 ```bash
-ssh-keygen -t ed25519 -C "your-email@example.com"
-cat ~/.ssh/id_ed25519.pub
+ssh-keygen -t ed25519 -f ~/.ssh/acfs_ed25519 -C "acfs"
+cat ~/.ssh/acfs_ed25519.pub
 ```
-
-![Hetzner Step 6: Add SSH key](screenshots/hetzner-step6-add-ssh-key.png)
 
 ---
 
@@ -110,8 +101,6 @@ Leave defaults:
 - **Public IPv4**: Enabled
 - **Public IPv6**: Enabled
 - **Private Network**: Optional
-
-![Hetzner Step 7: Networking](screenshots/hetzner-step7-networking.png)
 
 ---
 
@@ -123,8 +112,6 @@ Leave defaults:
 
 Your server will be ready in under 1 minute!
 
-![Hetzner Step 8: Create server](screenshots/hetzner-step8-create-server.png)
-
 ---
 
 ## Step 9: Find Your IP Address
@@ -134,44 +121,33 @@ Once created:
 1. Click on your server in the dashboard
 2. Copy the **IPv4 address** from the overview
 
-![Hetzner Step 9: Find IP](screenshots/hetzner-step9-find-ip.png)
-
 ---
 
 ## Step 10: Connect via SSH
 
 ```bash
-ssh root@YOUR_IP_ADDRESS
+ssh -i ~/.ssh/acfs_ed25519 root@YOUR_IP_ADDRESS
 ```
 
-Hetzner uses `root` by default with SSH key authentication.
+Hetzner uses `root` by default with the SSH key you added in Step 6.
 
 ---
 
-## Step 11: Create Ubuntu User (Recommended)
+## Step 11: Run the ACFS Installer
 
-ACFS expects an `ubuntu` user. Create it:
+Do not create the `ubuntu` user manually. Run ACFS from the initial `root` session:
 
 ```bash
-# Create user with sudo
-adduser ubuntu
-usermod -aG sudo ubuntu
-
-# Set up SSH for the new user
-mkdir -p /home/ubuntu/.ssh
-cp ~/.ssh/authorized_keys /home/ubuntu/.ssh/
-chown -R ubuntu:ubuntu /home/ubuntu/.ssh
-chmod 700 /home/ubuntu/.ssh
-chmod 600 /home/ubuntu/.ssh/authorized_keys
-
-# Enable passwordless sudo
-echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ubuntu
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe
 ```
 
-Now reconnect as ubuntu:
+ACFS creates the `ubuntu` user, enables passwordless sudo for it in vibe mode, and copies the root
+SSH key from Step 6 into `/home/ubuntu/.ssh/authorized_keys`. When the installer finishes, read its
+final summary, then reconnect from your local machine:
+
 ```bash
 exit
-ssh ubuntu@YOUR_IP_ADDRESS
+ssh -i ~/.ssh/acfs_ed25519 ubuntu@YOUR_IP_ADDRESS
 ```
 
 ---
@@ -179,19 +155,21 @@ ssh ubuntu@YOUR_IP_ADDRESS
 ## Hetzner-Specific Notes
 
 ### Cloud-Init Template
-For automated server bootstrap, use the companion cloud-init template:
+For automated server bootstrap, use the companion cloud-init template. It installs ACFS on first
+boot and refuses any image other than Ubuntu 26.04 LTS (it never upgrades the OS):
 
 ```bash
+hcloud server-type list   # pick a type with at least 32GB RAM (see Step 5)
 hcloud server create \
   --name acfs-dev \
-  --type cpx31 \
-  --image ubuntu-24.04 \
+  --type YOUR_SERVER_TYPE \
+  --image ubuntu-26.04 \
   --ssh-key your-key-name \
   --user-data-from-file scripts/providers/hetzner-cloud-init.yml
 ```
 
 ### Default User
-Hetzner uses `root` by default. Create the `ubuntu` user manually (see Step 11).
+Hetzner uses `root` by default. The ACFS installer creates the `ubuntu` user (see Step 11).
 
 ### Firewall
 Hetzner Cloud has a built-in firewall feature (free). Consider creating rules:
@@ -227,12 +205,14 @@ Take snapshots before major changes:
 
 ## Next Step
 
-Once connected as `ubuntu`, run the ACFS installer:
+Once connected as `ubuntu`, run the ACFS doctor:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash
+acfs doctor
 ```
 
 ---
 
-*Screenshots are placeholders. Replace with actual screenshots from Hetzner Cloud console.*
+*This guide is text-only on purpose: provider consoles change often and screenshots go stale
+silently. If a button label differs from the one named above, look for the closest equivalent;
+the server size, Ubuntu 26.04 LTS image, and SSH key choices are what matter.*
