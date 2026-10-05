@@ -67,7 +67,8 @@ async function selectOS(page: Page, name: RegExp): Promise<void> {
  * "I ran this command" checkbox is ticked (it gates like the doctor step).
  */
 async function acknowledgeInstallerCommand(page: Page): Promise<void> {
-  const box = page.locator("#run-flywheel-installer");
+  // Same control lib/wizardSteps.ts focuses: the key is bound to the exact command.
+  const box = page.locator('[data-acfs-completion-key^="run-flywheel-installer-v2-"]');
   await box.scrollIntoViewIfNeeded();
   if ((await box.getAttribute("data-state")) !== "checked") {
     await box.click();
@@ -549,12 +550,20 @@ test.describe("Wizard Flow", () => {
 
     await providerSelect.selectOption("ovh");
     await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
-    await ubuntuSelect.selectOption("20.04");
+    // The picker only offers reviewed LTS images, so an unsafe image can only
+    // arrive as a saved selection (e.g. one stored before 20.04 was dropped).
+    await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key) ?? "{}");
+      localStorage.setItem(key, JSON.stringify({ ...saved, ubuntuVersion: "20.04" }));
+    }, VPS_READINESS_SELECTION_KEY);
+    await page.reload();
+    await expect(ubuntuSelect).toHaveValue("20.04");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
     await recordState(
       "unsafe",
-      "choose Ubuntu 24.04+ before checkout",
+      "choose Ubuntu 26.04 LTS before checkout",
       "Unsupported",
-      /Ubuntu 20\.04 is below the ACFS minimum/,
+      /Ubuntu 20\.04 is not a supported ACFS provisioning image/,
     );
 
     await writeFile(artifactPath, JSON.stringify(matrixLog, null, 2));
@@ -1348,9 +1357,9 @@ test.describe("Step 9: Run Installer Page", () => {
     // Click to expand
     await detailsToggle.click();
 
-    // Should show tool categories
-    await expect(page.locator('text="Shell & Terminal UX"')).toBeVisible();
-    await expect(page.locator('text="Coding Agents"')).toBeVisible();
+    // Should show the resolved module plan (full profile, dependency closure)
+    await expect(page.getByText(/\[Phase \d+\] shell\.omz/)).toBeVisible();
+    await expect(page.getByText(/\[Phase \d+\] agents\.claude/)).toBeVisible();
   });
 
   test("should navigate to reconnect-ubuntu on continue", async ({ page }) => {
@@ -1610,8 +1619,9 @@ test.describe("Step 12: Status Check Page", () => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
 
-    // Quick check commands should be visible
-    await expect(page.locator('text="cc --version"')).toBeVisible();
+    // Quick check commands should be visible (spot checks use the real binary
+    // name; the `cc` alias is a shell convenience, not proof of installation)
+    await expect(page.locator('text="claude --version"')).toBeVisible();
     await expect(page.locator('text="bun --version"')).toBeVisible();
     await expect(page.locator('text="which tmux"')).toBeVisible();
   });
@@ -1643,7 +1653,9 @@ test.describe("Step 12: Status Check Page", () => {
 
     await expect(page.getByText("Developer Tools")).toBeVisible();
     await expect(page.getByText("gh auth login")).toBeVisible();
-    await expect(page.getByText(/GitHub CLI and Claude Code/i)).toBeVisible();
+    // The "start with" list is derived from the selected modules (full profile here).
+    await expect(page.getByText("Start with the selected tools you need now:")).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: /^GitHub$/ })).toBeVisible();
     await expect(page.getByLabel("Recommended: I logged in to this tool").first()).toBeVisible();
     await expect(continueButton).toBeDisabled();
 
