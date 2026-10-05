@@ -26,12 +26,51 @@ import { useWizardInstallation } from "@/lib/wizardInstallation";
 export const DOCTOR_COMMAND = "acfs doctor";
 
 /**
+ * Live acknowledgement state for one opaque completion key. The acknowledging
+ * card unmounts on navigation, so revocations (localStorage.clear(), another
+ * tab, same-tab unchecking) must keep reaching Onboarding through listeners.
+ */
+export function useCommandAcknowledgement(completionKey: string | null) {
+  const queryClient = useQueryClient();
+  const { data, status } = useQuery({
+    queryKey: completionKey
+      ? commandCompletionKeys.completion(completionKey)
+      : ["doctor-checkpoint-pending"],
+    queryFn: () => (completionKey ? safeGetItem(completionKey) === "true" : false),
+    enabled: completionKey !== null,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  useEffect(() => {
+    if (!completionKey || typeof window === "undefined") return;
+    const key = commandCompletionKeys.completion(completionKey);
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === null || event.key === completionKey) {
+        queryClient.setQueryData(key, safeGetItem(completionKey) === "true");
+      }
+    };
+    const completionChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string; completed?: unknown }>).detail;
+      if (detail?.key === completionKey && typeof detail.completed === "boolean") {
+        queryClient.setQueryData(key, detail.completed);
+      }
+    };
+    window.addEventListener("storage", storageChanged);
+    window.addEventListener(COMMAND_COMPLETION_CHANGED_EVENT, completionChanged);
+    return () => {
+      window.removeEventListener("storage", storageChanged);
+      window.removeEventListener(COMMAND_COMPLETION_CHANGED_EVENT, completionChanged);
+    };
+  }, [completionKey, queryClient]);
+  return { acknowledged: completionKey !== null && data === true, status };
+}
+
+/**
  * Rebuild the same health context on Status Check and Onboarding. Only opaque
  * acknowledgement keys enter Query/storage; raw host/command/hash inputs and
  * asynchronous checkpoint results remain local component state.
  */
 export function useInstallationHealth() {
-  const queryClient = useQueryClient();
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
   const [installMode, , installModeLoaded] = useInstallMode();
@@ -108,38 +147,7 @@ export function useInstallationHealth() {
   const activeCheckpoint = doctorCheckpointMatches(checkpoint, checkpointInput) ? checkpoint : null;
   const hashFailed = Boolean(checkpointInput) && hashFailure === checkpointInput;
   const completionKey = activeCheckpoint ? `acfs-command-${activeCheckpoint.persistKey}` : null;
-  const { data: acknowledged = false, status: acknowledgementStatus } = useQuery({
-    queryKey: completionKey
-      ? commandCompletionKeys.completion(completionKey)
-      : ["doctor-checkpoint-pending"],
-    queryFn: () => (completionKey ? safeGetItem(completionKey) === "true" : false),
-    enabled: completionKey !== null,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-  // The acknowledging card unmounts on navigation. Keep revocations live on
-  // Onboarding too, including localStorage.clear() and same-tab unchecking.
-  useEffect(() => {
-    if (!completionKey || typeof window === "undefined") return;
-    const key = commandCompletionKeys.completion(completionKey);
-    const storageChanged = (event: StorageEvent) => {
-      if (event.key === null || event.key === completionKey) {
-        queryClient.setQueryData(key, safeGetItem(completionKey) === "true");
-      }
-    };
-    const completionChanged = (event: Event) => {
-      const detail = (event as CustomEvent<{ key?: string; completed?: unknown }>).detail;
-      if (detail?.key === completionKey && typeof detail.completed === "boolean") {
-        queryClient.setQueryData(key, detail.completed);
-      }
-    };
-    window.addEventListener("storage", storageChanged);
-    window.addEventListener(COMMAND_COMPLETION_CHANGED_EVENT, completionChanged);
-    return () => {
-      window.removeEventListener("storage", storageChanged);
-      window.removeEventListener(COMMAND_COMPLETION_CHANGED_EVENT, completionChanged);
-    };
-  }, [completionKey, queryClient]);
+  const { acknowledged, status: acknowledgementStatus } = useCommandAcknowledgement(completionKey);
   const doctorConfirmed =
     Boolean(activeCheckpoint) && acknowledgementStatus === "success" && acknowledged === true;
   const loading =

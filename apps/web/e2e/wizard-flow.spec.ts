@@ -75,6 +75,24 @@ async function acknowledgeInstallerCommand(page: Page): Promise<void> {
   await expect(box).toHaveAttribute("data-state", "checked");
 }
 
+/**
+ * Step 13 unlocks only for a doctor acknowledgement bound to this exact
+ * installation (c12e1784): status-check derives a flywheel-doctor-v2-<sha256>
+ * key from the install command, host and catalogue digests, so a seeded legacy
+ * "flywheel-doctor" flag no longer counts. Tick the real control instead of
+ * forging a storage key.
+ */
+async function acknowledgeDoctorRun(page: Page, { stay = false } = {}): Promise<void> {
+  // `stay` acknowledges on the current Status Check URL, keeping any query overlay.
+  if (!stay) await page.goto("/wizard/status-check");
+  const box = page.locator("#flywheel-doctor");
+  await expect(box).toBeEnabled({ timeout: TIMEOUTS.PAGE_LOAD });
+  if ((await box.getAttribute("data-state")) !== "checked") {
+    await box.click();
+  }
+  await expect(box).toHaveAttribute("data-state", "checked");
+}
+
 function urlPathWithOptionalQuery(pathname: string): RegExp {
   const escaped = pathname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`${escaped}(\\?.*)?$`);
@@ -1667,8 +1685,8 @@ test.describe("Step 13: Launch Onboarding Page", () => {
       os: "mac",
       ip: "192.168.1.100",
       completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
     });
+    await acknowledgeDoctorRun(page);
   });
 
   test("should load launch-onboarding page correctly", async ({ page }) => {
@@ -2268,8 +2286,8 @@ test.describe("Command Builder Panel", () => {
       os: "mac",
       ip: "192.168.1.100",
       completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
     });
+    await acknowledgeDoctorRun(page);
   });
 
   test("should display command builder on launch-onboarding page", async ({ page }) => {
@@ -2329,8 +2347,13 @@ test.describe("Command Builder Panel", () => {
     await copyInstaller.click();
     await expect(copyInstaller.locator("svg.text-green")).toBeVisible();
 
+    // Edits keep this visit's verified unlock, but a fresh load re-derives the
+    // context: the persisted profile no longer matches the doctor run, so the
+    // final step re-gates to Status Check for the exact minimal command.
     await page.reload();
-    await page.waitForLoadState("domcontentloaded");
+    await expect(page).toHaveURL(/\/wizard\/status-check(?:\?|$)/);
+    await acknowledgeDoctorRun(page);
+    await page.goto("/wizard/launch-onboarding");
     await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText(
       '--profile "minimal"',
     );
@@ -2440,9 +2463,23 @@ test.describe("Command Builder Panel", () => {
     await page.goto("/wizard/launch-onboarding?ip=10.20.30.40&mode=safe&user=admin&ref=v2.0.0");
     await page.waitForLoadState("domcontentloaded");
 
+    // The restored mode/user/ref differ from the verified doctor run, so the
+    // final step re-gates to Status Check for that exact command.
+    await expect(page).toHaveURL(/\/wizard\/status-check(?:\?|$)/);
     await expect(page).not.toHaveURL(/(?:\?|&)ip=/);
-    await expect(page.locator("code").filter({ hasText: "192.168.1.100" }).first()).toBeVisible();
-    await expect(page.locator("code").filter({ hasText: "--mode safe" }).first()).toBeVisible();
+    await expect(
+      page.locator("code").filter({ hasText: "admin@192.168.1.100" }).first(),
+    ).toBeVisible();
+
+    // Query state is a URL overlay, so continue through the wizard (which
+    // carries the search) instead of a bare goto that would drop it.
+    await acknowledgeDoctorRun(page, { stay: true });
+    await page.click('main button:has-text("Everything looks good!")');
+    await expect(page).toHaveURL(/\/wizard\/launch-onboarding(?:\?|$)/);
+    const installer = page.locator("code").filter({ hasText: "curl -fsSL" }).first();
+    await expect(installer).toContainText("--mode safe");
+    await expect(installer).toContainText('--ref "v2.0.0"');
+    await expect(page.locator("code").filter({ hasText: "10.20.30.40" })).toHaveCount(0);
   });
 
   test("should hard-navigate across the privacy zone without retaining router secrets", async ({
@@ -2456,6 +2493,10 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     const secret = "sk-proj-abcdefghijklmnopqrstuvwxyz012345";
+    // domcontentloaded precedes hydration. Pushing before the privacy guard's
+    // layout effect patches History exercises Next's handling of a forged
+    // router state (~30% of runs, sometimes a 404 that keeps it), not the guard.
+    await page.waitForFunction(() => !String(window.history.pushState).includes("[native code]"));
     await page
       .evaluate((value) => {
         window.history.pushState(
@@ -2469,9 +2510,10 @@ test.describe("Command Builder Panel", () => {
       });
     // The privacy guard (components/analytics-provider.tsx) answers a
     // zone-crossing pushState with an async window.location.assign() to the
-    // scrubbed URL. waitForLoadState alone resolves on the *old* document, so
-    // wait for the new document to commit before inspecting router state.
-    await page.waitForURL(/\/wizard\/launch-onboarding/);
+    // scrubbed URL. The pushed URL already matches the destination path, so
+    // wait for the secret-free document to commit before inspecting router
+    // state; a guard that never scrubs times out here.
+    await page.waitForURL((url) => url.pathname.startsWith("/wizard/") && !url.href.includes(secret));
     await page.waitForLoadState("domcontentloaded");
 
     expect(page.url()).not.toContain(secret);
@@ -2479,59 +2521,20 @@ test.describe("Command Builder Panel", () => {
     expect(consoleErrors.join("\n")).not.toContain("useInsertionEffect");
   });
 
-  test("should display IP input when no IP is stored", async ({ page }) => {
+  test("should route a final-step visit without a stored IP back to Create VPS", async ({
+    page,
+  }) => {
+    // The final step only unlocks for a doctor run bound to a host, so the
+    // panel's no-IP entry state is unreachable here. The wizard instead sends
+    // the user through Status Check back to the Create VPS IP field (whose
+    // validation is covered under "Form Validation - Error States").
     await setupWizardState(page, {
       os: "mac",
       completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
     });
     await page.goto("/wizard/launch-onboarding");
-    await page.waitForLoadState("domcontentloaded");
-
-    // IP input should be visible when no IP is stored
-    const ipInput = page.locator("#cb-ip");
-    await expect(ipInput).toBeVisible();
-
-    // Should show placeholder message
-    await expect(
-      page.locator('text="Enter your VPS IP to generate personalized commands."'),
-    ).toBeVisible();
-  });
-
-  test("should validate IP input and show error for invalid IP", async ({ page }) => {
-    await setupWizardState(page, {
-      os: "mac",
-      completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
-    });
-    await page.goto("/wizard/launch-onboarding");
-    await page.waitForLoadState("domcontentloaded");
-
-    // Enter invalid IP
-    const ipInput = page.locator("#cb-ip");
-    await ipInput.fill("not-an-ip");
-    await ipInput.blur();
-
-    // Error message should appear
-    await expect(page.locator('text="Enter a valid IP (e.g., 203.0.113.42)"')).toBeVisible();
-  });
-
-  test("should generate commands when valid IP is entered", async ({ page }) => {
-    await setupWizardState(page, {
-      os: "mac",
-      completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
-    });
-    await page.goto("/wizard/launch-onboarding");
-    await page.waitForLoadState("domcontentloaded");
-
-    // Enter valid IP
-    const ipInput = page.locator("#cb-ip");
-    await ipInput.fill("203.0.113.42");
-    await ipInput.blur();
-
-    // Commands should appear with the entered IP
-    await expect(page.locator('text="ssh root@203.0.113.42"')).toBeVisible();
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
+    await expect(page.locator("#cb-ip")).toHaveCount(0);
   });
 
   test("should generate bracketed SSH commands for IPv6 addresses", async ({ page }) => {
@@ -2539,8 +2542,8 @@ test.describe("Command Builder Panel", () => {
       os: "mac",
       ip: "2001:db8::99",
       completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
     });
+    await acknowledgeDoctorRun(page);
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");
 
@@ -2561,8 +2564,8 @@ test.describe("Command Builder Panel - Mobile", () => {
       os: "mac",
       ip: "192.168.1.100",
       completedSteps: FINAL_STEP_PREREQUISITES,
-      commandCompletions: ["flywheel-doctor"],
     });
+    await acknowledgeDoctorRun(page);
   });
 
   test("should display command builder on mobile", async ({ page }) => {

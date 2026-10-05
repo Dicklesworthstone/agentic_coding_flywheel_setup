@@ -859,6 +859,61 @@ test("changed target on onboarding removes unlocked content before the new hash 
   assert.equal(f.marked(), previous);
 });
 
+for (const field of ["username", "mode", "ref", "selection"]) {
+  test(`Command Builder ${field} edits keep the verified onboarding unlock until it is revoked`, async () => {
+    const f = fixture();
+    f.render();
+    await f.settle();
+    const card = f.acknowledge().doctor();
+    f.render().continue().props.onClick();
+    f.navigateToOnboarding();
+    await finishNavigation(f);
+    const previous = f.marked();
+    const builds = f.commandInputs.length;
+    if (field === "username") f.prefs.username = "another-user";
+    if (field === "mode") f.prefs.mode = "vibe";
+    if (field === "ref") f.prefs.ref = "other-ref";
+    if (field === "selection") f.prefs.selection = { onlyModules: ["agents.claude"] };
+    let view = f.render();
+    for (let i = 0; i < 20; i++) {
+      await new Promise((done) => setTimeout(done, 1));
+      view = f.render();
+    }
+    assert.notDeepEqual(
+      f.commandInputs.at(-1),
+      f.commandInputs[builds - 1],
+      "the edit must change the live install command",
+    );
+    assert.ok(view.cards.length > 0, "panel edits must not hide the verified onboarding");
+    assert.equal(f.redirects.length, 0);
+    assert.equal(f.marked(), previous);
+    f.dispatch({
+      type: "acfs:command-completion-changed",
+      detail: { key: `acfs-command-${card.props.persistKey}`, completed: false },
+    });
+    assert.equal(f.render().cards.length, 0);
+    assert.equal(f.redirects.at(-1), "/wizard/status-check");
+  });
+}
+
+test("a host change after a Command Builder edit still re-gates onboarding", async () => {
+  const f = fixture();
+  f.render();
+  await f.settle();
+  f.acknowledge().continue().props.onClick();
+  f.navigateToOnboarding();
+  await finishNavigation(f);
+  f.prefs.mode = "vibe";
+  assert.ok(f.render().cards.length > 0);
+  f.prefs.host = "203.0.113.90";
+  assert.equal(f.render().cards.length, 0);
+  for (let i = 0; i < 100 && !f.redirects.length; i++) {
+    await new Promise((done) => setTimeout(done, 1));
+    f.render();
+  }
+  assert.equal(f.redirects.at(-1), "/wizard/status-check");
+});
+
 for (const type of ["storage", "same-tab"]) {
   test(`${type} revocation remains live after leaving the acknowledging card`, async () => {
     const f = fixture();

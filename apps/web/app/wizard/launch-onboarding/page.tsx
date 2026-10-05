@@ -30,7 +30,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { trackConversion } from "@/lib/analytics";
 import { formatSshTarget } from "@/lib/commandBuilder";
-import { useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
+import {
+  useCommandAcknowledgement,
+  useInstallationHealth,
+} from "@/lib/hooks/useInstallationHealth";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { TOTAL_LESSONS } from "@/lib/lessons";
 import { withCurrentSearch } from "@/lib/utils";
@@ -112,7 +115,7 @@ function ConfettiParticle({
 
 export default function LaunchOnboardingStep() {
   const router = useRouter();
-  const [unlockedCheckpoint, setUnlockedCheckpoint] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState<{ key: string; host: string } | null>(null);
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -133,6 +136,18 @@ export default function LaunchOnboardingStep() {
     completionKey,
   } = useInstallationHealth();
   const ready = settingsReady && !loading;
+  // Entry needs the exact verified checkpoint. After that, the Command Builder
+  // below may change mode/user/ref/profile (and so the live checkpoint) without
+  // un-verifying the machine this visit unlocked; a changed host or a revoked
+  // acknowledgement still re-gates.
+  const { acknowledged: unlockedAcknowledged, status: unlockedStatus } =
+    useCommandAcknowledgement(unlocked?.key ?? null);
+  const retained =
+    settingsReady &&
+    unlocked !== null &&
+    unlocked.host === vpsIP &&
+    unlockedStatus === "success" &&
+    unlockedAcknowledged;
   const displayIP = vpsIP && vpsIP.trim() ? vpsIP : "YOUR_VPS_IP";
   const effectiveUsername = sshUsername.trim() || "ubuntu";
   const userTarget = formatSshTarget(effectiveUsername, displayIP);
@@ -142,17 +157,14 @@ export default function LaunchOnboardingStep() {
   // Only persist full completion when the user actually reached the final step
   // through the normal flow. A direct visit/bookmark should not unlock the wizard.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || retained) return;
 
     const completedSteps = getCompletedSteps();
     const highestCompleted = getHighestContiguousCompletedStep(completedSteps);
     const canAccess =
-      canAccessWizardStep(completedSteps, 13) &&
-      highestCompleted >= 12 &&
-      doctorConfirmed &&
-      completionKey !== null;
+      canAccessWizardStep(completedSteps, 13) && highestCompleted >= 12 && doctorConfirmed;
 
-    if (!canAccess) {
+    if (!canAccess || completionKey === null || !vpsIP) {
       router.replace(withCurrentSearch("/wizard/status-check"));
       return;
     }
@@ -163,11 +175,11 @@ export default function LaunchOnboardingStep() {
     setCompletedSteps(allSteps);
     // Use setTimeout to avoid the ESLint set-state-in-effect rule, since
     // this unlock is logically part of the navigation guard check above.
-    const timer = setTimeout(() => setUnlockedCheckpoint(completionKey), 0);
+    const timer = setTimeout(() => setUnlocked({ key: completionKey, host: vpsIP }), 0);
     return () => clearTimeout(timer);
-  }, [markComplete, ready, router, doctorConfirmed, completionKey]);
+  }, [markComplete, ready, retained, router, doctorConfirmed, completionKey, vpsIP]);
 
-  if (!ready || !doctorConfirmed || !completionKey || unlockedCheckpoint !== completionKey) {
+  if (!retained) {
     return (
       <div className="flex items-center justify-center py-12">
         <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
