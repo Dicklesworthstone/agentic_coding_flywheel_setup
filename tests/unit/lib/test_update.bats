@@ -6683,8 +6683,13 @@ EOF
 
     run grep -F 'redact_factory_artifacts()' "$harness"
     assert_success
-    run grep -F 'support_lib="/home/ubuntu/.acfs/scripts/lib/support.sh"' "$harness"
+    # Redaction reads the target user's installed library, whatever the username.
+    run grep -F 'local target_home="/home/$ACFS_FACTORY_TARGET_USERNAME"' "$harness"
     assert_success
+    run grep -F 'support_lib="$target_home/.acfs/scripts/lib/support.sh"' "$harness"
+    assert_success
+    run grep -F '/home/ubuntu/' "$harness"
+    assert_failure
     run grep -F 'tar -czf "$archive" -C "$FACTORY_REDACTED_ARTIFACT_DIR" .' "$harness"
     assert_success
     run grep -F 'redact_local_factory_artifacts()' "$harness"
@@ -6693,7 +6698,7 @@ EOF
     assert_success
     run grep -F -- '--exclude="$archive"' "$harness"
     assert_failure
-    run grep -F '/home/ubuntu/.acfs/logs' "$harness"
+    run grep -F '"$target_home/.acfs/logs/."' "$harness"
     assert_success
 }
 

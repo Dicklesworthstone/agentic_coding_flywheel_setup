@@ -334,11 +334,11 @@ print_summary() {
     echo -e "  ${GRAY}For authoritative real-host testing:${NC}"
     echo -e "  ${GRAY}1. Fresh Ubuntu 24.04 LTS factory install gate (release is preserved):${NC}"
     echo -e "  ${GRAY}   tests/vm/test_factory_install_ubuntu.sh --ssh-target root@HOST --expect-ubuntu 24.04 --expect-final-ubuntu 24.04${NC}"
-    echo -e "  ${GRAY}2. Separate slow opt-in upgrade gate (the factory harness does not forward --target-ubuntu):${NC}"
-    echo -e "  ${GRAY}   On a disposable, reboot-capable Ubuntu 24.04 host, run as root:${NC}"
-    echo -e "  ${GRAY}   curl -fsSL <install.sh URL> | bash -s -- --yes --mode vibe --target-ubuntu=26.04${NC}"
-    echo -e "  ${GRAY}3. Observe upgrade from 24.04 → 26.04 and post-reboot resume${NC}"
-    echo -e "  ${GRAY}4. Verify ACFS installation continues after upgrade and acfs doctor passes${NC}"
+    echo -e "  ${GRAY}2. Separate slow opt-in upgrade gate on a disposable, reboot-capable Ubuntu 24.04 host:${NC}"
+    echo -e "  ${GRAY}   tests/vm/test_factory_install_ubuntu.sh --ssh-target root@HOST --expect-ubuntu 24.04 --target-ubuntu 26.04 --allow-install-reboot${NC}"
+    echo -e "  ${GRAY}   (or tests/vm/test_factory_install_qemu.sh --ubuntu 24.04 --target-ubuntu 26.04 --allow-install-reboot)${NC}"
+    echo -e "  ${GRAY}3. It follows the 24.04 → 26.04 upgrade across reboots and resume${NC}"
+    echo -e "  ${GRAY}4. It verifies the final release, the ACFS install, and a warning-free acfs doctor${NC}"
     echo ""
 }
 

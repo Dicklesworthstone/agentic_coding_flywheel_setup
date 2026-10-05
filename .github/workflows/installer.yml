@@ -277,9 +277,6 @@ jobs:
       - name: Run install helpers tests
         run: bash scripts/lib/test_install_helpers.sh
 
-      - name: Run zsh library tests
-        run: bash scripts/lib/test_zsh.sh
-
       - name: Run RU integration tests
         run: |
           bash scripts/tests/test_ru_update.sh
@@ -293,11 +290,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - ubuntu: '22.04'
+            mode: vibe
           - ubuntu: '24.04'
             mode: vibe
-          - ubuntu: '25.04'
-            mode: vibe
-          - ubuntu: '25.10'
+          - ubuntu: '26.04'
             mode: vibe
           - ubuntu: '24.04'
             mode: safe

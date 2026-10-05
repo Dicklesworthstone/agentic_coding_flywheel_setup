@@ -111,8 +111,8 @@ brew install expect
 # Run local authoritative VM E2E with QEMU/KVM and the official Ubuntu 24.04 cloud image
 ./tests/vm/test_factory_install_qemu.sh
 
-# The opt-in 24.04 -> 26.04 upgrade/resume path is not driven by the factory
-# harness (it does not forward --target-ubuntu); see the note below
+# Opt-in 24.04 -> 26.04 upgrade/resume gate (the wizard's --target-ubuntu path)
+./tests/vm/test_factory_install_qemu.sh --ubuntu 24.04 --target-ubuntu 26.04 --allow-install-reboot
 
 # Run real cross-agent resume matrix (requires authenticated CLI sessions)
 bash ./tests/e2e/test_cross_agent_resume_e2e.sh
@@ -132,7 +132,7 @@ By default it treats cross-CLI session isolation as expected behavior; strict mo
 
 `tests/vm/test_factory_install_qemu.sh` is the local no-Docker version of that same gate. It downloads and verifies the official Ubuntu cloud image, boots it under QEMU/KVM with cloud-init and root SSH, then calls `test_factory_install_ubuntu.sh` against the VM. Use it when you need realistic systemd, sshd, cloud-init, kernel, and filesystem behavior without provisioning a paid VPS.
 
-The slower OS upgrade/resume path is opt-in: the installer upgrades only when `--target-ubuntu=26.04` is passed. The factory harness does not forward that flag, so `--expect-final-ubuntu 26.04 --allow-install-reboot` alone only changes what it verifies and how it tolerates reboots; it cannot qualify the upgrade. Run the explicit upgrade as root on a disposable, reboot-capable Ubuntu `24.04` host (`... | bash -s -- --yes --mode vibe --target-ubuntu=26.04`) and capture resume, final-OS, and tool-health evidence separately.
+The slower OS upgrade/resume path is opt-in: the installer upgrades only when `--target-ubuntu=26.04` is passed, as the wizard's command does. Both harnesses accept `--target-ubuntu <ver>` and pass it to the installer on the first and the idempotency run; a provisioning packet whose `install.command` carries `--target-ubuntu=VER` supplies it automatically. The expected final release then defaults to the target (an explicit `--expect-final-ubuntu` still wins), and an upgrade without `--allow-install-reboot` is refused before any SSH or VM boot, because the run would otherwise be reported as an installer failure at the first reboot.
 
 The matching GitHub Actions workflow is `.github/workflows/installer-factory-e2e.yml`. Its scheduled/manual default backend is QEMU/KVM with the official Ubuntu cloud image, but that backend requires `/dev/kvm`; set `ACFS_FACTORY_RUNNER`, pass the manual `runner` input, or pass `client_payload.runner` to select a KVM-capable larger/self-hosted runner. Leave the manual/reusable `runner` input blank when you want the repository variable to apply. Reusable workflow callers may run the QEMU backend without SSH secrets. The workflow writes and uploads only run-specific artifact directories so repeated runs on a reused self-hosted workspace do not collide with, or upload, old QEMU overlay disks. The QEMU wrapper keeps its generated private SSH key outside the repository checkout, and the factory harness redacts installer logs plus the remote diagnostic archive before local upload. Use `backend=real-host` for a disposable provider VPS. Configure `ACFS_FACTORY_SSH_PRIVATE_KEY` and either pass `ssh_target` via the `acfs-factory-host-ready` repository dispatch payload or configure `ACFS_FACTORY_SSH_TARGET` as a fallback secret. If `backend=real-host` is requested without those credentials, the workflow fails instead of reporting a skipped green canary. Do not point the scheduled real-host sentinel at a reused server; the harness intentionally fails when `ubuntu` already exists before install.
 

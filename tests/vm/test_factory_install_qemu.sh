@@ -17,7 +17,8 @@ UBUNTU_VERSION="${ACFS_QEMU_UBUNTU_VERSION:-24.04}"
 MODE="${ACFS_QEMU_MODE:-vibe}"
 REF="${ACFS_REF:-main}"
 TARGET_USERNAME="${ACFS_QEMU_TARGET_USERNAME:-ubuntu}"
-EXPECT_FINAL_UBUNTU_VERSION="${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION:-24.04}"
+EXPECT_FINAL_UBUNTU_VERSION="${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION:-}"
+TARGET_UBUNTU_VERSION="${ACFS_QEMU_TARGET_UBUNTU:-}"
 INSTALL_TIMEOUT_SECONDS="${ACFS_QEMU_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_QEMU_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
 BOOT_TIMEOUT_SECONDS="${ACFS_QEMU_BOOT_TIMEOUT_SECONDS:-900}"
@@ -55,7 +56,10 @@ Options:
   --target-username <name>     Expected non-root ACFS user (default: ubuntu).
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>              Alias for --provisioning-packet.
-  --expect-final-ubuntu <ver>  Required final VERSION_ID after install/resume (default: the --ubuntu release).
+  --target-ubuntu <version>    Pass --target-ubuntu=<version> to the installer (opt-in upgrade;
+                               needs --allow-install-reboot when it differs from --ubuntu).
+  --expect-final-ubuntu <ver>  Required final VERSION_ID after install/resume (default: the
+                               --target-ubuntu release, else the --ubuntu release).
   --install-url <url>          Override public install.sh URL.
   --image-url <url>            Override Ubuntu cloud image URL.
   --image-sha256sums-url <url> Override SHA256SUMS URL for the cloud image.
@@ -118,6 +122,10 @@ while [[ $# -gt 0 ]]; do
         --expect-final-ubuntu)
             EXPECT_FINAL_UBUNTU_VERSION="${2:-}"
             EXPECT_FINAL_UBUNTU_EXPLICIT=true
+            shift 2
+            ;;
+        --target-ubuntu)
+            TARGET_UBUNTU_VERSION="${2:-}"
             shift 2
             ;;
         --install-url)
@@ -266,10 +274,14 @@ if [[ -n "$PROVISIONING_PACKET" ]]; then
     TARGET_USERNAME="$packet_username"
 fi
 
-# An ordinary install keeps the booted release; expect it unless a final
-# release was requested explicitly.
-if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
-    EXPECT_FINAL_UBUNTU_VERSION="$UBUNTU_VERSION"
+# The final release is resolved by the factory harness (booted release, an
+# explicit or packet --target-ubuntu, or an explicit --expect-final-ubuntu), so
+# only explicit values are forwarded. Refuse an upgrade without reboot
+# handling here, before spending a VM boot on a run that cannot pass.
+if [[ -n "$TARGET_UBUNTU_VERSION" && "$TARGET_UBUNTU_VERSION" != "$UBUNTU_VERSION" \
+    && "$ALLOW_INSTALL_REBOOT" != "true" ]]; then
+    echo "ERROR: --target-ubuntu $TARGET_UBUNTU_VERSION upgrades from $UBUNTU_VERSION and reboots the VM; pass --allow-install-reboot" >&2
+    exit 2
 fi
 
 if [[ -z "$IMAGE_URL" ]]; then
@@ -545,12 +557,19 @@ run_factory_harness() {
         --mode "$MODE"
         --target-username "$TARGET_USERNAME"
         --expect-ubuntu "$UBUNTU_VERSION"
-        --expect-final-ubuntu "$EXPECT_FINAL_UBUNTU_VERSION"
         --public-key-file "${ssh_key}.pub"
         --install-timeout "$INSTALL_TIMEOUT_SECONDS"
         --post-reboot-timeout "$POST_REBOOT_TIMEOUT_SECONDS"
         --artifacts-dir "$ARTIFACTS_DIR/factory"
     )
+
+    if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" == "true" ]]; then
+        factory_args+=(--expect-final-ubuntu "$EXPECT_FINAL_UBUNTU_VERSION")
+    fi
+
+    if [[ -n "$TARGET_UBUNTU_VERSION" ]]; then
+        factory_args+=(--target-ubuntu "$TARGET_UBUNTU_VERSION")
+    fi
 
     if [[ "$ALLOW_INSTALL_REBOOT" == "true" ]]; then
         factory_args+=(--allow-install-reboot)

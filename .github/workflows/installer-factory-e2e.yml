@@ -35,12 +35,16 @@ on:
         required: false
       expect_ubuntu:
         description: "Expected Ubuntu VERSION_ID on the fresh host"
-        default: "25.10"
+        default: "24.04"
         required: true
+      target_ubuntu:
+        description: "Optional --target-ubuntu release to request (opt-in upgrade; needs allow_install_reboot when it differs)"
+        default: ""
+        required: false
       expect_final_ubuntu:
-        description: "Expected Ubuntu VERSION_ID after install/resume"
-        default: "25.10"
-        required: true
+        description: "Expected Ubuntu VERSION_ID after install/resume (blank: target_ubuntu, else expect_ubuntu)"
+        default: ""
+        required: false
       allow_existing_target_user:
         description: "Allow the target user to exist before install"
         default: false
@@ -95,12 +99,17 @@ on:
         type: string
       expect_ubuntu:
         description: "Expected Ubuntu VERSION_ID on the fresh host"
-        default: "25.10"
+        default: "24.04"
+        required: false
+        type: string
+      target_ubuntu:
+        description: "Optional --target-ubuntu release to request (opt-in upgrade; needs allow_install_reboot when it differs)"
+        default: ""
         required: false
         type: string
       expect_final_ubuntu:
-        description: "Expected Ubuntu VERSION_ID after install/resume"
-        default: "25.10"
+        description: "Expected Ubuntu VERSION_ID after install/resume (blank: target_ubuntu, else expect_ubuntu)"
+        default: ""
         required: false
         type: string
       allow_existing_target_user:
@@ -140,7 +149,7 @@ on:
 
 jobs:
   factory-e2e:
-    name: Fresh Ubuntu ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '25.10' }} factory install
+    name: Fresh Ubuntu ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '24.04' }} factory install
     runs-on: ${{ inputs.runner || github.event.client_payload.runner || vars.ACFS_FACTORY_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 360
     permissions:
@@ -249,19 +258,25 @@ jobs:
           INPUT_REF: ${{ inputs.ref || github.event.client_payload.ref || 'main' }}
           INPUT_MODE: ${{ inputs.mode || github.event.client_payload.mode || 'vibe' }}
           INPUT_TARGET_USERNAME: ${{ inputs.target_username || github.event.client_payload.target_username || 'ubuntu' }}
-          INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '25.10' }}
-          INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || github.event.client_payload.expect_final_ubuntu || '25.10' }}
+          INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '24.04' }}
+          INPUT_TARGET_UBUNTU: ${{ inputs.target_ubuntu || github.event.client_payload.target_ubuntu || '' }}
+          INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || github.event.client_payload.expect_final_ubuntu || '' }}
           INPUT_ALLOW_INSTALL_REBOOT: ${{ inputs.allow_install_reboot || github.event.client_payload.allow_install_reboot || false }}
           INPUT_TIMEOUT: ${{ inputs.install_timeout_seconds || github.event.client_payload.install_timeout_seconds || '14400' }}
           INPUT_POST_REBOOT_TIMEOUT: ${{ inputs.post_reboot_timeout_seconds || github.event.client_payload.post_reboot_timeout_seconds || '14400' }}
         run: |
           artifacts_dir="$GITHUB_WORKSPACE/tests/artifacts/qemu-factory-e2e-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           args=(
-            --expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU"
             --install-timeout "$INPUT_TIMEOUT"
             --post-reboot-timeout "$INPUT_POST_REBOOT_TIMEOUT"
             --artifacts-dir "$artifacts_dir"
           )
+          if [[ -n "$INPUT_EXPECT_FINAL_UBUNTU" ]]; then
+            args+=(--expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU")
+          fi
+          if [[ -n "$INPUT_TARGET_UBUNTU" ]]; then
+            args+=(--target-ubuntu "$INPUT_TARGET_UBUNTU")
+          fi
           if [[ -n "${{ steps.packet.outputs.path }}" ]]; then
             args+=(--provisioning-packet "${{ steps.packet.outputs.path }}")
           else
@@ -285,8 +300,9 @@ jobs:
           INPUT_REF: ${{ inputs.ref || github.event.client_payload.ref || 'main' }}
           INPUT_MODE: ${{ inputs.mode || github.event.client_payload.mode || 'vibe' }}
           INPUT_TARGET_USERNAME: ${{ inputs.target_username || github.event.client_payload.target_username || 'ubuntu' }}
-          INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '25.10' }}
-          INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || github.event.client_payload.expect_final_ubuntu || '25.10' }}
+          INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '24.04' }}
+          INPUT_TARGET_UBUNTU: ${{ inputs.target_ubuntu || github.event.client_payload.target_ubuntu || '' }}
+          INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || github.event.client_payload.expect_final_ubuntu || '' }}
           INPUT_ALLOW_EXISTING_TARGET_USER: ${{ inputs.allow_existing_target_user || github.event.client_payload.allow_existing_target_user || false }}
           INPUT_ALLOW_INSTALL_REBOOT: ${{ inputs.allow_install_reboot || github.event.client_payload.allow_install_reboot || false }}
           INPUT_TIMEOUT: ${{ inputs.install_timeout_seconds || github.event.client_payload.install_timeout_seconds || '14400' }}
@@ -296,11 +312,16 @@ jobs:
           args=(
             --ssh-target "$SSH_TARGET"
             --ssh-key "$RUNNER_TEMP/acfs-factory-e2e/id"
-            --expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU"
             --install-timeout "$INPUT_TIMEOUT"
             --post-reboot-timeout "$INPUT_POST_REBOOT_TIMEOUT"
             --artifacts-dir "$artifacts_dir"
           )
+          if [[ -n "$INPUT_EXPECT_FINAL_UBUNTU" ]]; then
+            args+=(--expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU")
+          fi
+          if [[ -n "$INPUT_TARGET_UBUNTU" ]]; then
+            args+=(--target-ubuntu "$INPUT_TARGET_UBUNTU")
+          fi
           if [[ -n "${{ steps.packet.outputs.path }}" ]]; then
             args+=(--provisioning-packet "${{ steps.packet.outputs.path }}")
           else

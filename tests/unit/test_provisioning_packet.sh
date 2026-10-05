@@ -643,6 +643,193 @@ test_factory_rejects_packet_install_url_override() {
     pass "factory_rejects_packet_install_url_override"
 }
 
+# A wizard packet: a 24.04 image whose command opts into the 26.04 upgrade.
+target_ubuntu_packet_fixture() {
+    local source_path="$1"
+    local target_spec="$2"
+    local target_path="$ARTIFACT_DIR/target-ubuntu-packet-${target_spec//[^A-Za-z0-9]/_}.json"
+    jq --arg spec "$target_spec" '
+      .osImage.version = "24.04" |
+      .install.command = (.install.command + " --target-ubuntu=" + $spec)
+    ' "$source_path" > "$target_path"
+    printf '%s\n' "$target_path"
+}
+
+test_factory_target_ubuntu_sets_final_release_and_is_recorded() {
+    local out_dir status
+    out_dir="$ARTIFACT_DIR/factory-target-ubuntu"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59996 \
+        --expect-ubuntu 24.04 \
+        --target-ubuntu 26.04 \
+        --allow-install-reboot \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .failureCategory == "ssh" and
+      .target.expectedInitialUbuntu == "24.04" and
+      .target.expectedFinalUbuntu == "26.04" and
+      .target.requestedTargetUbuntu == "26.04"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+    grep -Fq 'Requested --target-ubuntu**: 26.04' "$out_dir/factory-sentinel-summary.md" || return 1
+
+    # An explicit final expectation still wins over the requested target.
+    out_dir="$ARTIFACT_DIR/factory-target-ubuntu-explicit-final"
+    mkdir -p "$out_dir"
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59996 \
+        --expect-ubuntu 24.04 \
+        --target-ubuntu 26.04 \
+        --expect-final-ubuntu 24.04 \
+        --allow-install-reboot \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '.target.expectedFinalUbuntu == "24.04" and .target.requestedTargetUbuntu == "26.04"' \
+        "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    # Without a target the manifest records none and the release is kept.
+    out_dir="$ARTIFACT_DIR/factory-target-ubuntu-none"
+    mkdir -p "$out_dir"
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59996 \
+        --expect-ubuntu 24.04 \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '.target.expectedFinalUbuntu == "24.04" and .target.requestedTargetUbuntu == null' \
+        "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    pass "factory_target_ubuntu_sets_final_release_and_is_recorded"
+}
+
+test_factory_target_ubuntu_upgrade_requires_install_reboot() {
+    local out_dir status output
+    out_dir="$ARTIFACT_DIR/factory-target-ubuntu-no-reboot"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59996 \
+        --expect-ubuntu 24.04 \
+        --target-ubuntu 26.04 \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 2 ]] || return 1
+    jq -e '
+      .failureCategory == "provider_setup" and
+      .errorMessage == "release upgrade requested without --allow-install-reboot"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    # Targeting the release the host already runs needs no reboot.
+    out_dir="$ARTIFACT_DIR/factory-target-ubuntu-same-release"
+    mkdir -p "$out_dir"
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59996 \
+        --expect-ubuntu 26.04 \
+        --target-ubuntu 26.04 \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '.failureCategory == "ssh"' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    status=0
+    output="$("$FACTORY_INSTALL_SH" --ssh-target root@localhost --target-ubuntu latest \
+        --artifacts-dir "$ARTIFACT_DIR/factory-target-ubuntu-bad" 2>&1)" || status=$?
+    [[ "$status" -eq 1 && "$output" == *"--target-ubuntu must look like 26.04"* ]] || return 1
+
+    # The QEMU wrapper refuses before booting a VM.
+    status=0
+    output="$("$QEMU_FACTORY_INSTALL_SH" --ubuntu 24.04 --target-ubuntu 26.04 2>&1)" || status=$?
+    [[ "$status" -eq 2 && "$output" == *"pass --allow-install-reboot"* ]] || return 1
+
+    pass "factory_target_ubuntu_upgrade_requires_install_reboot"
+}
+
+test_factory_replays_packet_target_ubuntu() {
+    local packet target_packet out_dir status
+    packet="$(valid_packet_fixture)"
+    target_packet="$(target_ubuntu_packet_fixture "$packet" "26.04")"
+    out_dir="$ARTIFACT_DIR/factory-packet-target-ubuntu"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59996 \
+        --provisioning-packet "$target_packet" \
+        --allow-install-reboot \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .failureCategory == "ssh" and
+      .target.expectedInitialUbuntu == "24.04" and
+      .target.expectedFinalUbuntu == "26.04" and
+      .target.requestedTargetUbuntu == "26.04"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    out_dir="$ARTIFACT_DIR/factory-packet-target-ubuntu-conflict"
+    mkdir -p "$out_dir"
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --provisioning-packet "$target_packet" \
+        --target-ubuntu 24.04 \
+        --allow-install-reboot \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 2 ]] || return 1
+    jq -e '.errorMessage == "explicit factory arguments conflict with provisioning packet intent"' \
+        "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    out_dir="$ARTIFACT_DIR/factory-packet-target-ubuntu-no-reboot"
+    mkdir -p "$out_dir"
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --provisioning-packet "$target_packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 2 ]] || return 1
+    jq -e '.errorMessage == "release upgrade requested without --allow-install-reboot"' \
+        "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    pass "factory_replays_packet_target_ubuntu"
+}
+
+# The installer command the remote runner builds must carry the target exactly
+# once in the installer's own --target-ubuntu=VER form, and omit it otherwise.
+test_factory_install_script_forwards_target_ubuntu() {
+    local install_script stub_dir output
+    install_script="$ARTIFACT_DIR/factory-install-script.sh"
+    stub_dir="$ARTIFACT_DIR/factory-install-script-stub"
+    mkdir -p "$stub_dir"
+    awk '/<<'"'"'INSTALL_SCRIPT'"'"'$/{f=1; next} /^INSTALL_SCRIPT$/{f=0} f' "$FACTORY_INSTALL_SH" > "$install_script"
+    grep -q 'curl -fsSL "$install_url"' "$install_script" || return 1
+    cat > "$stub_dir/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'printf "ARG:%s\n" "$@"'
+EOF
+    chmod +x "$stub_dir/curl"
+
+    output="$(PATH="$stub_dir:$PATH" bash -s -- "https://example.invalid/install.sh" vibe main ubuntu \
+        "" "" "" "" false 26.04 < "$install_script")" || return 1
+    [[ "$(grep -c '^ARG:--target-ubuntu=26.04$' <<< "$output")" -eq 1 ]] || return 1
+    grep -q '^ARG:--yes$' <<< "$output" || return 1
+
+    output="$(PATH="$stub_dir:$PATH" bash -s -- "https://example.invalid/install.sh" vibe main ubuntu \
+        "" "" "" "" false "" < "$install_script")" || return 1
+    ! grep -q 'target-ubuntu' <<< "$output" || return 1
+
+    pass "factory_install_script_forwards_target_ubuntu"
+}
+
 test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens() {
     local packet out_dir status
     packet="$(valid_packet_fixture)"
@@ -689,6 +876,10 @@ run_all_tests() {
         test_factory_final_ubuntu_defaults_to_packet_release
         test_factory_rejects_explicit_packet_conflicts_before_ssh
         test_factory_rejects_packet_install_url_override
+        test_factory_target_ubuntu_sets_final_release_and_is_recorded
+        test_factory_target_ubuntu_upgrade_requires_install_reboot
+        test_factory_replays_packet_target_ubuntu
+        test_factory_install_script_forwards_target_ubuntu
     )
 
     for test_name in "${tests[@]}"; do

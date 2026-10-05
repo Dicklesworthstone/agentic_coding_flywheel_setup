@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       ubuntu:
-        description: "Ubuntu version: 24.04, 25.04, 25.10, or all"
-        default: "25.10"
+        description: "Ubuntu version: 22.04, 24.04, 26.04, or all"
+        default: "24.04"
         required: true
       mode:
         description: "Install mode: vibe or safe"
@@ -31,7 +31,7 @@ jobs:
         run: |
           chmod +x ./tests/vm/test_install_ubuntu.sh
 
-          UBUNTU="${INPUT_UBUNTU:-25.10}"
+          UBUNTU="${INPUT_UBUNTU:-24.04}"
           MODE="${INPUT_MODE:-vibe}"
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$UBUNTU" == "all" ]]; then

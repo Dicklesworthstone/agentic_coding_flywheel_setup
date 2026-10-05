@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       ubuntu:
-        description: "Ubuntu version: 24.04, 25.04, 25.10, or all"
+        description: "Ubuntu version: 22.04, 24.04, 26.04, or all"
         default: "all"
         required: true
       mode:
