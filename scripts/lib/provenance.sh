@@ -59,6 +59,8 @@ provenance_parse_args() {
 provenance_binary_path() {
     local name="${1:-}"
     local path_value=""
+    local base_home=""
+    local dir=""
 
     [[ -n "$name" ]] || return 1
     case "$name" in
@@ -66,8 +68,30 @@ provenance_binary_path() {
     esac
 
     path_value="$(command -v "$name" 2>/dev/null || true)"
-    [[ -n "$path_value" && -x "$path_value" ]] || return 1
-    printf '%s\n' "$path_value"
+    if [[ -n "$path_value" && -x "$path_value" ]]; then
+        printf '%s\n' "$path_value"
+        return 0
+    fi
+
+    # `acfs provenance` and `acfs support-bundle` run helpers with a minimal
+    # system PATH, so PATH alone reported every per-user tool missing. Look in
+    # the target user's standard ACFS bin dirs, as status.sh does. Never as
+    # root: this ledger executes `--version`, and root must not run
+    # target-user binaries.
+    [[ "${EUID:-0}" -ne 0 ]] || return 1
+    base_home="${TARGET_HOME:-${HOME:-}}"
+    base_home="${base_home%/}"
+    [[ "$base_home" == /* && "$base_home" != "/" ]] || return 1
+    for dir in "${ACFS_BIN_DIR:-}" "$base_home/.local/bin" "$base_home/.acfs/bin" \
+        "$base_home/.bun/bin" "$base_home/.cargo/bin" "$base_home/go/bin" \
+        "$base_home/.atuin/bin" "$base_home/bin"; do
+        [[ "$dir" == /* ]] || continue
+        if [[ -f "$dir/$name" && -x "$dir/$name" ]]; then
+            printf '%s\n' "$dir/$name"
+            return 0
+        fi
+    done
+    return 1
 }
 
 provenance_find_checksums_file() {

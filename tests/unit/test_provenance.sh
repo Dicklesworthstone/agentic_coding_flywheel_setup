@@ -187,6 +187,25 @@ test_support_capture_records_provenance_json() {
     pass "support_capture_records_provenance_json"
 }
 
+test_ledger_finds_user_tools_under_minimal_dispatch_path() {
+    # `acfs provenance` / `acfs support-bundle` run helpers with only the system
+    # PATH; per-user tools must still be found in the target home's bin dirs.
+    [[ "$EUID" -ne 0 ]] || { pass "ledger_finds_user_tools_under_minimal_dispatch_path (skipped as root)"; return 0; }
+    local fixture output home_dir bin_dir spec_file checksums_file
+    fixture="$(make_fixture minimal-path)"
+    IFS='|' read -r home_dir bin_dir spec_file checksums_file <<<"$fixture"
+    output="$(env -i \
+        HOME="$home_dir" \
+        PATH="/usr/sbin:/usr/bin:/sbin:/bin" \
+        ACFS_PROVENANCE_TOOLS_FILE="$spec_file" \
+        ACFS_PROVENANCE_CHECKSUMS_FILE="$checksums_file" \
+        bash "$PROVENANCE_SH" --json)"
+
+    jq -e '.summary.present == 3 and .summary.missing == 1' <<<"$output" >/dev/null || return 1
+
+    pass "ledger_finds_user_tools_under_minimal_dispatch_path"
+}
+
 run_test() {
     local name="$1"
 
@@ -201,6 +220,7 @@ main() {
     run_test test_ledger_redacts_paths_and_version_secrets
     run_test test_ledger_includes_installer_references
     run_test test_support_capture_records_provenance_json
+    run_test test_ledger_finds_user_tools_under_minimal_dispatch_path
 
     echo ""
     echo "Tests passed: $TESTS_PASSED"
