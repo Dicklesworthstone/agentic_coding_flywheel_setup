@@ -540,8 +540,14 @@ if [[ -z "${_SMOKE_TARGET_HOME:-}" ]]; then
     _SMOKE_TARGET_HOME="$(_smoke_sanitize_abs_nonroot_path "${TARGET_HOME:-}" 2>/dev/null || true)"
 fi
 if [[ -z "${_SMOKE_TARGET_HOME:-}" ]]; then
-    _SMOKE_TARGET_HOME="$(_smoke_read_state_string "$_SMOKE_BOOTSTRAP_STATE_FILE" "target_home" 2>/dev/null || true)"
-    _SMOKE_TARGET_HOME="$(_smoke_sanitize_abs_nonroot_path "${_SMOKE_TARGET_HOME:-}" 2>/dev/null || true)"
+    # The bootstrap state describes one install. Its home belongs to the user
+    # it names, so a caller who named a different TARGET_USER must not inherit it.
+    _smoke_state_target_user="$(_smoke_read_state_string "$_SMOKE_BOOTSTRAP_STATE_FILE" "target_user" 2>/dev/null || true)"
+    if [[ "$_SMOKE_TARGET_USER_DEFAULTED" == true || "$_smoke_state_target_user" == "$_SMOKE_TARGET_USER" ]]; then
+        _SMOKE_TARGET_HOME="$(_smoke_read_state_string "$_SMOKE_BOOTSTRAP_STATE_FILE" "target_home" 2>/dev/null || true)"
+        _SMOKE_TARGET_HOME="$(_smoke_sanitize_abs_nonroot_path "${_SMOKE_TARGET_HOME:-}" 2>/dev/null || true)"
+    fi
+    unset _smoke_state_target_user
 fi
 if [[ "${_SMOKE_TARGET_HOME:-}" != /* ]]; then
     if [[ "${_SMOKE_TARGET_USER}" == "root" ]]; then

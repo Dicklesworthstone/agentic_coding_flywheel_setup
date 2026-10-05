@@ -981,8 +981,11 @@ run_as_user() {
     return 0
 }
 
-setup_vercel </dev/null
-setup_wrangler </dev/null
+# The stubbed login stores no credentials, so each setup now (correctly)
+# reports failure afterwards; the sourced script's errexit must not stop the
+# run before both CLIs were invoked from the target home.
+setup_vercel </dev/null || true
+setup_wrangler </dev/null || true
 
 if [[ -f "$target_home/run.log" ]]; then
     cat "$target_home/run.log"
@@ -8209,24 +8212,14 @@ test_acfs_system_binary_resolvers_cover_usr_local() {
             printf -v failures '%s%s missing /usr/local system binary candidates in %s\n' "$failures" "$label" "$function_name"
         fi
     done <<EOF
-install|$REPO_ROOT/install.sh|acfs_early_system_binary_path|name
-preflight|$REPO_ROOT/scripts/preflight.sh|preflight_system_binary_path|name
 services-setup|$REPO_ROOT/scripts/services-setup.sh|services_setup_system_binary_path|name
 install-workflow|$REPO_ROOT/scripts/install-acfs-workflow.sh|workflow_system_binary_path|name
 acfs-update|$REPO_ROOT/scripts/acfs-update|system_binary_path|name
-acfs-global|$REPO_ROOT/scripts/acfs-global|system_binary_path|name
-onboard|$REPO_ROOT/packages/onboard/onboard.sh|onboard_system_binary_path|name
-install-helpers|$REPO_ROOT/scripts/lib/install_helpers.sh|_acfs_system_binary_path|name
-update-early-lib|$REPO_ROOT/scripts/lib/update.sh|_update_early_system_binary_path|name
-update-system-lib|$REPO_ROOT/scripts/lib/update.sh|update_system_binary_path|name
 stack-lib|$REPO_ROOT/scripts/lib/stack.sh|_stack_system_binary_path|name
-autofix-lib|$REPO_ROOT/scripts/lib/autofix.sh|autofix_system_binary_path|name
 changelog-lib|$REPO_ROOT/scripts/lib/changelog.sh|changelog_system_binary_path|name
 cheatsheet-lib|$REPO_ROOT/scripts/lib/cheatsheet.sh|cheatsheet_system_binary_path|name
 continue-lib|$REPO_ROOT/scripts/lib/continue.sh|continue_system_binary_path|name
 dashboard-lib|$REPO_ROOT/scripts/lib/dashboard.sh|dashboard_system_binary_path|name
-doctor-lib|$REPO_ROOT/scripts/lib/doctor.sh|_acfs_doctor_system_binary_path|name
-doctor-fix-lib|$REPO_ROOT/scripts/lib/doctor_fix.sh|doctor_fix_system_binary_path|name
 export-config-lib|$REPO_ROOT/scripts/lib/export-config.sh|export_system_binary_path|name
 github-api-lib|$REPO_ROOT/scripts/lib/github_api.sh|_github_api_system_binary_path|name
 info-lib|$REPO_ROOT/scripts/lib/info.sh|info_system_binary_path|name
@@ -8241,6 +8234,41 @@ support-lib|$REPO_ROOT/scripts/lib/support.sh|support_system_binary_path|name
 user-lib|$REPO_ROOT/scripts/lib/user.sh|user_system_binary_path|name
 webhook-lib|$REPO_ROOT/scripts/lib/webhook.sh|webhook_system_binary_path|name
 ubuntu-upgrade-lib|$REPO_ROOT/scripts/lib/ubuntu_upgrade.sh|ubuntu_system_binary_path|name
+EOF
+
+    # Privileged/bootstrap resolvers resolve only from OS-owned prefixes
+    # (17718afb, fe0d314b): /usr/local is locally managed and must never be able
+    # to shadow the tools these run, often as root. Pinned here so a later
+    # "align every resolver" sweep cannot quietly re-add it.
+    while IFS='|' read -r label script_path function_name variable_name; do
+        [[ -n "$label" ]] || continue
+        local function_body=""
+        function_body="$(
+            awk -v fn="$function_name" '
+                $0 ~ "^[[:space:]]*" fn "\\(\\)[[:space:]]*\\{" { in_function = 1 }
+                in_function { print }
+                in_function && $0 ~ "^[[:space:]]*}[[:space:]]*$" { exit }
+            ' "$script_path"
+        )"
+        if [[ -z "$function_body" ]]; then
+            printf -v failures '%s%s missing function %s\n' "$failures" "$label" "$function_name"
+            continue
+        fi
+        if ! grep -Fq "\"/usr/bin/\$$variable_name\"" <<< "$function_body" \
+            || grep -Fq '/usr/local/' <<< "$function_body"; then
+            printf -v failures '%s%s must resolve only from OS-owned prefixes in %s\n' "$failures" "$label" "$function_name"
+        fi
+    done <<EOF
+install|$REPO_ROOT/install.sh|acfs_early_system_binary_path|name
+preflight|$REPO_ROOT/scripts/preflight.sh|preflight_system_binary_path|name
+acfs-global|$REPO_ROOT/scripts/acfs-global|system_binary_path|name
+onboard|$REPO_ROOT/packages/onboard/onboard.sh|onboard_system_binary_path|name
+install-helpers|$REPO_ROOT/scripts/lib/install_helpers.sh|_acfs_system_binary_path|name
+update-early-lib|$REPO_ROOT/scripts/lib/update.sh|_update_early_system_binary_path|name
+update-system-lib|$REPO_ROOT/scripts/lib/update.sh|update_system_binary_path|name
+autofix-lib|$REPO_ROOT/scripts/lib/autofix.sh|autofix_system_binary_path|name
+doctor-lib|$REPO_ROOT/scripts/lib/doctor.sh|_acfs_doctor_system_binary_path|name
+doctor-fix-lib|$REPO_ROOT/scripts/lib/doctor_fix.sh|doctor_fix_system_binary_path|name
 generated-install-all|$REPO_ROOT/scripts/generated/install_all.sh|acfs_generated_system_binary_path|name
 generated-doctor-checks|$REPO_ROOT/scripts/generated/doctor_checks.sh|acfs_generated_system_binary_path|name
 EOF
@@ -8278,9 +8306,9 @@ onboard-target-lookup|$REPO_ROOT/packages/onboard/onboard.sh|onboard_runtime_bin
 EOF
 
     if [[ -z "$failures" ]]; then
-        harness_pass "acfs system binary resolvers cover /usr/local"
+        harness_pass "acfs system binary resolvers: /usr/local for user tools, OS-owned only for privileged ones"
     else
-        harness_fail "acfs system binary resolvers cover /usr/local" "$failures"
+        harness_fail "acfs system binary resolvers: /usr/local for user tools, OS-owned only for privileged ones" "$failures"
     fi
 }
 
