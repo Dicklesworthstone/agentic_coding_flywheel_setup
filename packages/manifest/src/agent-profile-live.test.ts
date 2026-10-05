@@ -24,7 +24,15 @@ const response = (challenge: string) => ({
   type: "result", subtype: "success", is_error: false, num_turns: 1,
   result: challenge, permission_denials: [],
 });
-const isLive = (request: ProbeRequest) => request.args.includes("--print");
+const isLive = (request: ProbeRequest) => request.args.includes("--print") || request.args.includes("--ephemeral");
+const codexEvents = (challenge: string): Record<string, unknown>[] => [
+  { type: "thread.started", thread_id: "0199a213-81c0-7800-8aa1-bbab2a035a53" },
+  { type: "turn.started" },
+  { type: "item.completed", item: { id: "item_0", type: "reasoning", text: "Return the token." } },
+  { type: "item.completed", item: { id: "item_1", type: "agent_message", text: challenge } },
+  { type: "turn.completed", usage: { input_tokens: 120, cached_input_tokens: 0, output_tokens: 24, reasoning_output_tokens: 0 } },
+];
+const jsonl = (events: Record<string, unknown>[]) => events.map((e) => JSON.stringify(e)).join("\n") + "\n";
 function harness(change?: (request: ProbeRequest, normal: ProbeResult, index: number) => ProbeResult | Promise<ProbeResult>) {
   const calls: ProbeRequest[] = [];
   const deps: RehearsalPorts = {
@@ -33,8 +41,9 @@ function harness(change?: (request: ProbeRequest, normal: ProbeResult, index: nu
     run: async (request) => {
       calls.push(request);
       const normal = request.args[0] === "profile" ? ok(status(request.args[2]!, request.args[3]!)) :
-        isLive(request) ? ok(JSON.stringify(response(request.args.at(-1)!))) :
-        request.args.includes("--version") ? ok("Claude 2.1.300\n") : ok('{"loggedIn":true}');
+        isLive(request) ? ok(request.args[1] === "codex" ? jsonl(codexEvents(request.args.at(-1)!)) : JSON.stringify(response(request.args.at(-1)!))) :
+        request.args.includes("--version") ? ok("CLI 2.1.300\n") :
+        request.args.includes("login") ? { ...ok(""), stderr: Buffer.from("Logged in using ChatGPT\n") } : ok('{"loggedIn":true}');
       return change ? change(request, normal, calls.length) : normal;
     },
   };
@@ -315,4 +324,173 @@ else process.exitCode=98;
   assert.notEqual(calls[2].cwd, "/");
   assert.equal(statSync(calls[2].cwd).mode & 0o077, 0);
   assert.ok(!result.stdout.includes("private@example.com") && !result.stdout.includes("sk-secret"));
+});
+
+test("Codex uses ephemeral read-only execution with explicit model and per-invocation restrictions", () => {
+  const args = liveModelArgs("codex", "gpt-test", TOKEN);
+  for (const flag of ["exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--json"])
+    assert.ok(args.includes(flag));
+  assert.equal(args[args.indexOf("--sandbox") + 1], "read-only");
+  assert.equal(args[args.indexOf("--model") + 1], "gpt-test");
+  assert.equal(args[args.indexOf("--color") + 1], "never");
+  for (const feature of ["shell_tool", "hooks", "plugins", "multi_agent", "apps", "memories", "shell_snapshot", "skill_mcp_dependency_install"])
+    assert.equal(args[args.indexOf(feature) - 1], "--disable");
+  for (const override of ['approval_policy="never"', 'web_search="disabled"', "mcp_servers={}", "project_doc_max_bytes=0"])
+    assert.equal(args[args.indexOf(override) - 1], "--config");
+  assert.equal(args.at(-1), TOKEN);
+  for (const flag of ["--dangerously-bypass-approvals-and-sandbox", "--full-auto", "--ignore-rules", "--oss", "--resume", "--output-last-message"])
+    assert.ok(!args.includes(flag));
+});
+
+test("Codex accepts one completed lifecycle with reasoning and matching final response", () => {
+  assert.equal(liveModelResponseMatches("codex", ok(jsonl(codexEvents(TOKEN))), TOKEN), true);
+  const streamed = [
+    ...codexEvents(TOKEN).slice(0, 2),
+    { type: "item.started", item: { id: "a", type: "agent_message", text: "" } },
+    { type: "item.updated", item: { id: "a", type: "agent_message", text: TOKEN.slice(0, 12) } },
+    { type: "item.completed", item: { id: "a", type: "agent_message", text: TOKEN } },
+    ...codexEvents(TOKEN).slice(-1),
+  ];
+  assert.equal(liveModelResponseMatches("codex", ok(jsonl(streamed).replace(/\n/g, "\r\n")), TOKEN), true);
+});
+
+test("Codex refuses incomplete, reordered, repeated or trailing lifecycles", () => {
+  const events = codexEvents(TOKEN);
+  for (const transcript of [events.slice(1), events.slice(0, -1), [events[1]!, events[0]!, ...events.slice(2)],
+    [...events.slice(0, 2), events[1]!, ...events.slice(2)], [...events, ...events],
+    [...events, { type: "error", message: "private failure" }],
+    [...events.slice(0, -1), { type: "turn.failed", error: { message: "bad" } }],
+    [events[0]!, events[1]!, events.at(-1)!]]) {
+    assert.equal(liveModelResponseMatches("codex", ok(jsonl(transcript)), TOKEN), false);
+  }
+  assert.equal(liveModelResponseMatches("codex", ok("banner\n" + jsonl(events)), TOKEN), false);
+  assert.equal(liveModelResponseMatches("codex", ok(jsonl(events) + "garbage"), TOKEN), false);
+  assert.equal(liveModelResponseMatches("codex", ok(TOKEN), TOKEN), false);
+});
+
+test("every tool or unknown item invalidates an otherwise successful Codex stream", () => {
+  for (const type of ["command_execution", "file_change", "mcp_tool_call", "collab_tool_call", "web_search", "todo_list", "error", "future_tool"]) {
+    const events = codexEvents(TOKEN);
+    events.splice(2, 0, { type: "item.completed", item: { id: "tool", type, text: "private payload", status: "completed" } });
+    assert.equal(liveModelResponseMatches("codex", ok(jsonl(events)), TOKEN), false, type);
+  }
+});
+
+test("Codex rejects duplicate item completion, type changes, unfinished items and multiple replies", () => {
+  for (const extra of [
+    { type: "item.completed", item: { id: "item_1", type: "agent_message", text: TOKEN } },
+    { type: "item.completed", item: { id: "reply2", type: "agent_message", text: TOKEN } },
+    { type: "item.started", item: { id: "never-completed", type: "reasoning", text: "pending" } },
+    { type: "item.updated", item: { id: "never-started", type: "reasoning", text: "bad" } },
+  ]) {
+    const events = codexEvents(TOKEN);
+    events.splice(-1, 0, extra);
+    assert.equal(liveModelResponseMatches("codex", ok(jsonl(events)), TOKEN), false);
+  }
+  const events = codexEvents(TOKEN);
+  events.splice(2, 0, { type: "item.started", item: { id: "item_1", type: "reasoning", text: "pending" } });
+  assert.equal(liveModelResponseMatches("codex", ok(jsonl(events)), TOKEN), false);
+  const wrong = codexEvents("ACFS_LIVE_" + "cd".repeat(16));
+  assert.equal(liveModelResponseMatches("codex", ok(jsonl(wrong)), TOKEN), false);
+});
+
+test("Codex requires bounded valid usage and rejects ambiguous JSON or malformed encodings", () => {
+  const usage = { input_tokens: 120, cached_input_tokens: 0, output_tokens: 24 };
+  for (const bad of [null, [], {}, { ...usage, input_tokens: -1 }, { ...usage, output_tokens: 0 },
+    { ...usage, cached_input_tokens: 121 }, { ...usage, output_tokens: true }, { ...usage, input_tokens: 0.5 },
+    { ...usage, reasoning_output_tokens: -1 }, { ...usage, cache_write_input_tokens: "10" },
+    { ...usage, output_tokens: 1e100 }]) {
+    const events = codexEvents(TOKEN); events[events.length - 1] = { type: "turn.completed", usage: bad };
+    assert.equal(liveModelResponseMatches("codex", ok(jsonl(events)), TOKEN), false);
+  }
+  const good = jsonl(codexEvents(TOKEN));
+  for (const text of [good.replace('"turn.completed"', '"turn.failed","type":"turn.completed"'),
+    good.replace('"output_tokens":24', '"output_tokens":0,"output_\\u0074okens":24'),
+    good.replace('"input_tokens":120', '"input_tokens":1e999'), good.replace('"thread_id":', '"thread_id":null,"thread_id":')]) {
+    assert.equal(liveModelResponseMatches("codex", ok(text), TOKEN), false);
+  }
+  assert.equal(liveModelResponseMatches("codex", { ...ok(good), stdout: Buffer.concat([Buffer.from(good), Buffer.from([255])]) }, TOKEN), false);
+  assert.equal(liveModelResponseMatches("codex", ok("\n".repeat(70000) + good), TOKEN), false);
+  for (const outcome of ["timeout", "cancelled", "lingering_processes", "exit_nonzero"] as const)
+    assert.equal(liveModelResponseMatches("codex", { ...ok(good), outcome }, TOKEN), false);
+});
+
+test("mixed Claude and Codex profiles complete their own challenges through one shared workflow", async () => {
+  const { deps, calls } = harness();
+  const report = await rehearseProfiles(buildRehearsalPlan(["codex:review", "claude:implementation"]), {
+    ...live, liveModels: ["claude:sonnet", "codex:gpt-test"], requireNativeAuth: true,
+  }, deps);
+  assert.equal(report.status, "pass");
+  assert.equal(report.liveModelPolicy?.responseVerified, true);
+  assert.deepEqual(report.profiles.map((p) => [p.provider, p.nativeAuth, p.liveModel?.status]), [
+    ["codex", "present", "verified"], ["claude", "present", "verified"],
+  ]);
+  const requests = calls.filter(isLive);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[0]!.args.slice(0, 4), ["exec", "codex", "review", "--"]);
+  assert.deepEqual(requests[1]!.args.slice(0, 4), ["exec", "claude", "implementation", "--"]);
+  assert.notEqual(requests[0]!.args.at(-1), requests[1]!.args.at(-1));
+  assert.equal(calls.length, 10);
+});
+
+test("a failed Codex result does not fall back to Claude or retry with relaxed restrictions", async () => {
+  const { deps, calls } = harness((request, normal) => isLive(request) ? ok(jsonl([
+    ...codexEvents(request.args.at(-1)!).slice(0, -1), { type: "turn.failed", error: { message: "private quota exhausted" } },
+  ])) : normal);
+  const report = await rehearseProfiles(buildRehearsalPlan(["codex:review", "claude:implementation"]), {
+    ...live, liveModels: ["codex:gpt-test", "claude:sonnet"],
+  }, deps);
+  assert.equal(report.status, "fail");
+  assert.equal(report.modelPromptSent, null);
+  assert.equal(calls.filter(isLive).length, 1);
+  assert.equal(report.profiles[1]!.liveModel?.status, "not_attempted");
+  assert.ok(!JSON.stringify(report).includes("quota exhausted"));
+});
+
+test("local-only all-provider rehearsals retain the original non-model sequence", async () => {
+  const { deps, calls } = harness();
+  const report = await rehearseProfiles(buildRehearsalPlan(["claude:one", "codex:two", "gemini:three", "agy:four"]), {
+    execute: true, env: ENV,
+  }, deps);
+  assert.equal(report.status, "pass");
+  assert.equal(report.modelPromptSent, false);
+  assert.equal(report.liveModelPolicy, undefined);
+  assert.equal(report.scope, "isolated-cli-startup-and-local-auth");
+  assert.equal(calls.length, 12);
+  assert.equal(calls.filter(isLive).length, 0);
+  assert.ok(calls.every((c) => c.cwd === undefined && c.requireQuiescence === undefined));
+});
+
+test("real Codex fixture CLI emits JSONL under an unprivileged isolated execution", () => {
+  const directory = mkdtempSync(join(ROOT, "codex-cli-"));
+  chmodSync(ROOT, 0o755); chmodSync(directory, 0o777);
+  const bin = join(directory, "bin"); mkdirSync(bin, { mode: 0o755 });
+  const record = join(directory, "calls.jsonl");
+  writeFileSync(join(bin, "caam"), `#!${process.execPath}
+const fs=require('fs'), args=process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(record)},JSON.stringify({args,uid:process.getuid(),cwd:process.cwd(),secret:!!process.env.OPENAI_API_KEY})+'\\n');
+if(args[0]==='profile') console.log('Profile: '+args[2]+'/'+args[3]+'\\n  Path: /private/profile\\n  Auth mode: oauth\\n  Logged in: true\\n  Locked: false');
+else if(args.includes('--version')) console.log('codex-cli 1.2.3');
+else if(args.includes('--ephemeral')) {
+  const events=${JSON.stringify(codexEvents("CHALLENGE"))};
+  events[3].item.text=args.at(-1);
+  for(const event of events) console.log(JSON.stringify(event));
+} else process.exitCode=98;
+`, { mode: 0o755 });
+  const result = spawnSync(process.execPath, [cli, "--profile", "codex:private@example.com", "--live-model", "codex:gpt-test", "--run", "--json"], {
+    encoding: "utf8", timeout: 5000,
+    ...(process.getuid?.() === 0 ? { uid: 65534, gid: 65534 } : {}),
+    env: { PATH: `${bin}:/usr/bin:/bin`, OPENAI_API_KEY: "sk-not-inherited" },
+  });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.liveModelPolicy.responseVerified, true);
+  assert.equal(report.profiles[0].liveModel.requestedModel, "gpt-test");
+  const calls = readFileSync(record, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(calls.length, 4);
+  assert.ok(calls.every((c) => c.uid !== 0 && !c.secret));
+  assert.notEqual(calls[2].cwd, "/");
+  assert.equal(calls[2].args[calls[2].args.indexOf("--sandbox") + 1], "read-only");
+  for (const value of ["private@example.com", "ACFS_LIVE_", "thread_id", "Return the token."])
+    assert.ok(!result.stdout.includes(value));
 });

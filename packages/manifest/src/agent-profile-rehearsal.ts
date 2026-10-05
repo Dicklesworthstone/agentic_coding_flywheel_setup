@@ -94,7 +94,7 @@ export function buildLiveModelPlan(plan: RehearsalPlan, selectors: readonly stri
   const models: Partial<Record<Provider, string>> = {};
   const selected = new Set(plan.selections.map((s) => s.provider));
   for (const selector of selectors) {
-    const match = typeof selector === "string" && /^(claude):([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(selector);
+    const match = typeof selector === "string" && /^(claude|codex):([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(selector);
     if (!match) return refuse("unsupported_or_invalid_live_model");
     const provider = match[1] as Provider;
     if (models[provider]) refuse("duplicate_live_model");
@@ -109,6 +109,20 @@ export function buildLiveModelPlan(plan: RehearsalPlan, selectors: readonly stri
 export function liveModelArgs(provider: Provider, model: string, challenge: string): string[] {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(model) || !/^ACFS_LIVE_[a-f0-9]{32}$/.test(challenge))
     refuse("invalid_live_probe_request");
+  if (provider === "codex") {
+    // Preserve CODEX_HOME authentication, not its user config. Restrictions are
+    // per-invocation and never written back to the user's settings. Read-only
+    // is still needed: disabling shell does not remove every built-in tool.
+    return ["--disable", "shell_tool", "--disable", "hooks", "--disable", "plugins",
+      "--disable", "multi_agent", "--disable", "apps", "--disable", "memories",
+      "--disable", "shell_snapshot", "--disable", "skill_mcp_dependency_install",
+      "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
+      "--sandbox", "read-only", "--json", "--color", "never", "--model", model,
+      "--config", 'approval_policy="never"', "--config", 'web_search="disabled"',
+      "--config", "mcp_servers={}", "--config", "project_doc_max_bytes=0",
+      "--config", 'developer_instructions="Return only the exact token in the user message. Do not use tools."',
+      challenge];
+  }
   if (provider !== "claude") refuse("unsupported_live_provider");
   // --bare deliberately is NOT used: it disables OAuth subscription login.
   // --safe-mode preserves authentication while suppressing custom context.
@@ -125,12 +139,70 @@ export function liveModelArgs(provider: Provider, model: string, challenge: stri
 
 /** Accept a completed turn with this invocation's challenge, never a banner. */
 export function liveModelResponseMatches(provider: Provider, result: ProbeResult, challenge: string): boolean {
-  if (provider !== "claude" || result.outcome !== "ok" || result.exitCode !== 0 ||
+  if (result.outcome !== "ok" || result.exitCode !== 0 ||
       !/^ACFS_LIVE_[a-f0-9]{32}$/.test(challenge) || result.stdout.length + result.stderr.length > MAX_BYTES) return false;
+  if (provider === "codex") return codexLiveResponseMatches(result.stdout, challenge);
+  if (provider !== "claude") return false;
   const value = uniqueJsonObject(result.stdout);
   return value?.type === "result" && value.subtype === "success" && value.is_error === false &&
     value.num_turns === 1 && typeof value.result === "string" && value.result.trim() === challenge &&
     Array.isArray(value.permission_denials) && value.permission_denials.length === 0;
+}
+
+/** A complete, single-turn JSONL lifecycle; tool activity is never a pass. */
+function codexLiveResponseMatches(bytes: Buffer, challenge: string): boolean {
+  let text: string;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return false; }
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 4 || lines.length > 256) return false;
+  let phase: "thread" | "turn" | "items" | "complete" = "thread";
+  let replies = 0;
+  const items = new Map<string, { type: string; complete: boolean }>();
+  for (const line of lines) {
+    const event = uniqueJsonObject(Buffer.from(line));
+    if (!event || phase === "complete") return false;
+    if (phase === "thread") {
+      if (event.type !== "thread.started" || typeof event.thread_id !== "string" ||
+          !/^[A-Za-z0-9_-]{1,128}$/.test(event.thread_id)) return false;
+      phase = "turn";
+      continue;
+    }
+    if (phase === "turn") {
+      if (event.type !== "turn.started") return false;
+      phase = "items";
+      continue;
+    }
+    if (event.type === "turn.completed") {
+      const usage = event.usage;
+      if (!usage || typeof usage !== "object" || Array.isArray(usage)) return false;
+      const counts = usage as Record<string, unknown>;
+      for (const key of ["input_tokens", "cached_input_tokens", "output_tokens"])
+        if (!Number.isSafeInteger(counts[key]) || (counts[key] as number) < 0) return false;
+      for (const key of ["cache_write_input_tokens", "reasoning_output_tokens"])
+        if (key in counts && (!Number.isSafeInteger(counts[key]) || (counts[key] as number) < 0)) return false;
+      if ((counts.output_tokens as number) < 1 || (counts.cached_input_tokens as number) > (counts.input_tokens as number) ||
+          replies !== 1 || [...items.values()].some((item) => !item.complete)) return false;
+      phase = "complete";
+      continue;
+    }
+    if (!["item.started", "item.updated", "item.completed"].includes(String(event.type))) return false;
+    const value = event.item;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const item = value as Record<string, unknown>;
+    // Command execution, file changes, MCP, web search, subagents, plan tools,
+    // errors, and unknown future item types all invalidate this narrow probe.
+    if (typeof item.id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(item.id) ||
+        (item.type !== "agent_message" && item.type !== "reasoning") || typeof item.text !== "string") return false;
+    const prior = items.get(item.id);
+    if (prior?.complete || (prior && prior.type !== item.type) ||
+        (event.type === "item.started" && prior) || (event.type === "item.updated" && !prior)) return false;
+    const complete = event.type === "item.completed";
+    if (complete && item.type === "agent_message") {
+      if (item.text.trim() !== challenge || ++replies !== 1) return false;
+    }
+    items.set(item.id, { type: item.type, complete });
+  }
+  return phase === "complete";
 }
 
 function liveWorkspace(): string {
@@ -571,11 +643,14 @@ not vault-only profiles from caam ls. Busy profiles are never unlocked.
 CAAM exec owns isolation and locks. No activate, login, refresh,
 quota rotation or task dispatch is requested. API-key environment overrides are
 removed. Local files/CLI startup do not prove live authentication or token validity.
---live-model claude:MODEL explicitly selects a live check (repeat per provider).
+--live-model PROVIDER:MODEL explicitly selects a live check (repeat per provider).
 Without --run it only previews. With --run it may consume quota/incur charges:
 one fixed random challenge per profile, no ACFS retries, fresh private workspace,
-tools/MCP/hooks disabled via CLI flags, and no session persistence requested.
-Every selected provider needs an explicit supported model. Live support: claude.
+provider-specific restrictions, and no session persistence requested.
+Every selected provider needs an explicit supported model. Live support: claude, codex.
+Claude disables tools/MCP/ordinary hooks. Codex uses read-only sandboxing, disables
+shell/hooks/plugins/subagents/apps/memories, ignores user config, and disables web
+search and project instruction loading. Any observed Codex tool event fails.
 --live-timeout SECONDS bounds each live attempt (1-120, default 60), independently
 of --timeout. Claude also receives a 1-turn limit and a $0.25 CLI budget guard;
 neither wall time nor the CLI's estimated budget is a guaranteed billing cap.
@@ -583,7 +658,10 @@ The first unconfirmed live attempt stops later profiles. Reports omit challenge
 and response text. Workspaces are retained; no provider files are deleted.
 Trusted CAAM/provider binaries and managed host policy remain part of the trust
 boundary. CLI restrictions are not an OS sandbox or proof of account identity.
-Use recent Claude Code with --safe-mode; unsupported flags fail without fallback.
+Codex has no dollar budget guard here. A single invocation can make multiple
+internal requests; the fixed challenge and timeout do not guarantee a cost cap.
+Use recent CLIs with Claude --safe-mode or Codex --ignore-user-config support;
+unsupported flags fail without fallback. Host-managed policy still applies.
 --native-auth adds Claude auth status / Codex login status through CAAM exec.
 --require-native-auth also rejects unsupported or unrecognized native status.
 These are LOCAL provider checks, not proof of server token validity or quota.

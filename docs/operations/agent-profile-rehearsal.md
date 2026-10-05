@@ -72,7 +72,7 @@ An installed CLI and parseable credentials cannot establish that a model request
 works. `--live-model PROVIDER:MODEL` adds that missing step. The model is explicit:
 ACFS does not pick a cheaper fallback, inherit an unreviewed default, or rotate
 to another account. All selected providers need one model selection, even when
-several profiles use the same provider. Live support currently covers Claude.
+several profiles use the same provider. Live support covers Claude and Codex.
 Unsupported providers, duplicate mappings and malformed model IDs are refused
 before any checks run.
 
@@ -90,9 +90,10 @@ bash scripts/agent-readiness-audit.sh --rehearse \
 A live attempt occurs only after the profile, recognizable version, and every
 requested native-auth check pass. Each profile receives a new random challenge
 in a new private temporary directory, not a repository. The prompt contains only
-that challenge. Success requires the CLI to exit zero and return a single
-successful JSON result with exactly one turn, no permission denials, and the
-matching challenge as its result. A banner, mere exit zero, stale response,
+that challenge. Claude must exit zero and return a single successful JSON result
+with exactly one turn, no permission denials, and the matching challenge as its
+result. Codex must exit zero and emit a complete single-turn JSONL lifecycle
+with a matching final agent message. A banner, mere exit zero, stale response,
 malformed/duplicate JSON, conflicting result, or wrong challenge cannot pass.
 The original profile is checked again after the attempt.
 
@@ -103,6 +104,43 @@ persistence. `--bare` is intentionally **not** used because it disables the
 subscription OAuth credentials this workflow is meant to exercise. Use a recent
 Claude CLI supporting these flags: an older CLI fails without a permissive
 fallback. Helper-based API-key settings are not imported into the live request.
+
+### Codex and mixed-provider checks
+
+Set `CODEX_MODEL` to an exact model ID available to the chosen profile, then
+preview a mixed-provider rehearsal:
+
+```bash
+bash scripts/agent-readiness-audit.sh --rehearse \
+  --profile claude:work --profile codex:review \
+  --live-model claude:sonnet --live-model "codex:$CODEX_MODEL" --json
+```
+
+Add `--run` only after reviewing the selection and the quota/cost warning.
+Codex runs through the same `caam exec` isolation with `--ignore-user-config`
+(authentication still uses the profile's `CODEX_HOME`), `--ephemeral`, a read-only
+sandbox, no approval escalation, disabled shell execution, hooks, plugins,
+subagents, apps, memories and shell snapshots. Web search and project instruction
+loading are disabled; no MCP servers are supplied. No persistent settings are
+changed. A recent Codex CLI supporting these options is required; unsupported
+flags fail without a relaxed retry. Mandatory managed host configuration remains
+part of the trusted environment.
+
+Read-only sandboxing is **not** equivalent to removing every Codex tool. The
+validator additionally rejects any observed command, file-change, MCP, web,
+subagent, plan-tool, error or unknown item. It accepts only well-formed reasoning
+and agent-message items between one `thread.started` / `turn.started` pair and
+one final `turn.completed` with valid usage. Exactly one completed agent message
+must match the fresh challenge. Missing completion, unfinished or duplicated
+items, inconsistent item types, multiple replies, duplicate JSON fields, and
+trailing events cannot be treated as successful model execution. Raw reasoning,
+thread IDs, messages, usage metadata and diagnostics are discarded, not reported.
+
+Codex has no dollar-budget guard in this path. Its wall-time/output limits and
+one ACFS invocation are not a billing cap or a guarantee of one underlying
+network request. A failed Codex attempt stops later Claude profiles too; ACFS
+does not fall back to another model, provider, or account. The result records
+each provider independently while preserving the original profile order.
 
 `--live-timeout` is separate from the local timeout (default 60 seconds, range
 1–120). Claude receives a one-turn limit and a $0.25 CLI budget guard. These are
@@ -219,5 +257,7 @@ not inferred from a successful `--version`:
 - Claude Code CLI reference: <https://code.claude.com/docs/en/cli-reference>
 - Claude print-mode results and bare-mode authentication: <https://code.claude.com/docs/en/headless>
 - Codex CLI reference: <https://developers.openai.com/codex/cli/reference>
+- Codex configuration restrictions: <https://developers.openai.com/codex/config-reference>
+- Codex JSONL event contract: <https://github.com/openai/codex/blob/7f892275e31002f0422477c6219189284560e689/codex-rs/exec/src/exec_events.rs>
 - Codex status implementation: <https://github.com/openai/codex/blob/44b857c00e5803adedbc5b2e94c4a33574a157fe/codex-rs/cli/src/login.rs>
 - CAAM isolated profile/exec commands: <https://github.com/Dicklesworthstone/coding_agent_account_manager/blob/1e0e8e3019d306b34554715f3270ecae3218f653/cmd/caam/cmd/root.go>
