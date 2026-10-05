@@ -4880,6 +4880,12 @@ EOF
 EOF
     cat > "$TEST_TARGET_HOME/.acfs/bin/acfs-update" <<'EOF'
 #!/usr/bin/env bash
+# Model a current acfs-update: nightly passes --no-self-update only when the
+# updater's --help advertises it (older updaters reject the unknown flag).
+if [[ "${1:-}" == "--help" ]]; then
+    printf 'Usage: acfs-update [--yes] [--quiet] [--no-self-update]\n'
+    exit 0
+fi
 printf 'LIVE_HOME=%s TARGET_HOME=%s ACFS_HOME=%s\n' "$HOME" "${TARGET_HOME:-}" "${ACFS_HOME:-}"
 EOF
     cat > "$TEST_TARGET_HOME/.acfs/bin/nproc" <<'EOF'
@@ -4925,6 +4931,12 @@ acfs_notify_update_failure() { :; }
 EOF
     cat > "$TEST_TARGET_HOME/.acfs/bin/acfs-update" <<'EOF'
 #!/usr/bin/env bash
+# Model a current acfs-update: nightly passes --no-self-update only when the
+# updater's --help advertises it (older updaters reject the unknown flag).
+if [[ "${1:-}" == "--help" ]]; then
+    printf 'Usage: acfs-update [--yes] [--quiet] [--no-self-update]\n'
+    exit 0
+fi
 printf 'LIVE_HOME=%s TARGET_HOME=%s ACFS_HOME=%s\n' "$HOME" "${TARGET_HOME:-}" "${ACFS_HOME:-}"
 EOF
     cat > "$TEST_TARGET_HOME/.acfs/bin/nproc" <<'EOF'
@@ -5003,9 +5015,20 @@ test_doctor_entrypoint_dispatches_helper_commands() {
     local changelog_output
     changelog_output=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" ACFS_REPO="$TEST_REPO" bash "$DOCTOR_SH" changelog --all --json)
 
+    # This test is about dispatch. doctor.sh resolves the invoking user's
+    # context from passwd rather than $HOME and refuses a TARGET_HOME for an
+    # unknown user (poisoned-context hardening, covered by other tests), so it
+    # cannot forward the fixture's "tester" context. Use a context-free module
+    # helper here so the module count proves the dispatch and helper wiring.
+    local dispatch_helpers="$TEST_HOME/dispatch_install_helpers.sh"
+    cat > "$dispatch_helpers" <<'EOF'
+acfs_module_is_installed() {
+    [[ "$1" == "alpha" || "$1" == 'module "beta" \\ path' ]]
+}
+EOF
     local export_output
     export_output=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" \
-        ACFS_INSTALL_HELPERS_SH="$TEST_INSTALL_HELPERS" \
+        ACFS_INSTALL_HELPERS_SH="$dispatch_helpers" \
         ACFS_MANIFEST_INDEX_SH="$TEST_MANIFEST_INDEX" \
         bash "$DOCTOR_SH" export-config --json)
 
@@ -5375,6 +5398,13 @@ test_status_repo_local_prefers_system_state_target_user_over_stale_installed_sta
 }
 EOF
 
+    # Core tools that exist only in tester's home. Status also searches system
+    # dirs, so host inventory must not decide the result: assert that these
+    # target-home tools are found, not an absolute tool count.
+    printf '#!/bin/sh\nexit 0\n' > "$TEST_TARGET_HOME/.cargo/bin/cargo"
+    printf '#!/bin/sh\nexit 0\n' > "$TEST_TARGET_HOME/.local/bin/claude"
+    chmod +x "$TEST_TARGET_HOME/.cargo/bin/cargo" "$TEST_TARGET_HOME/.local/bin/claude"
+
     local output=""
     output=$(HOME="$TEST_ROOT_HOME" ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" TEST_TARGET_HOME="$TEST_TARGET_HOME" \
         TEST_STATUS_SCRIPT="$STATUS_SH" PATH="/usr/bin:/bin" \
@@ -5391,9 +5421,8 @@ EOF
         ')
 
     if printf '%s\n' "$output" | jq -e '
-        .status == "warn" and
-        .tools == 12 and
-        (.warnings | sort) == ["missing: bun", "missing: cargo", "missing: claude"] and
+        (.status == "ok" or .status == "warn") and
+        (.warnings | index("missing: cargo") == null and index("missing: claude") == null) and
         (.errors | length == 0)
     ' >/dev/null 2>&1; then
         harness_pass "status repo-local prefers system-state target_user over stale installed state"
@@ -6855,6 +6884,31 @@ EOF
     cleanup_mock_env
 }
 
+# environment.json deliberately carries only placeholders for user/home/
+# acfs_home (no raw paths or users leave the host), so the bundle cannot show
+# which target context it resolved. Check the resolver directly by sourcing
+# the same script with the same environment, and check the bundle separately
+# for the redaction contract.
+# Usage: support_resolved_context <support.sh path> [VAR=value ...]
+support_resolved_context() {
+    local script="$1"
+    shift
+    env "$@" bash -c '
+        source "$1" >/dev/null 2>&1
+        support_initialize_context >/dev/null 2>&1
+        printf "%s|%s|%s\n" "${SUPPORT_TARGET_USER:-}" "${SUPPORT_TARGET_HOME:-}" "${_SUPPORT_ACFS_HOME:-}"
+    ' _ "$script"
+}
+
+# Usage: support_bundle_is_redacted <bundle_dir> — placeholders only, no raw target context.
+support_bundle_is_redacted() {
+    local bundle_dir="$1"
+    [[ -f "$bundle_dir/environment.json" ]] || return 1
+    jq -e '.user == "<REDACTED:user>" and .home == "<REDACTED:path>" and .acfs_home == "<REDACTED:path>"' \
+        "$bundle_dir/environment.json" >/dev/null 2>&1 || return 1
+    ! grep -qF "$TEST_TARGET_HOME" "$bundle_dir/environment.json"
+}
+
 test_support_bundle_uses_installed_layout_under_root_home() {
     setup_installed_layout_env
     setup_poisoned_acfs_home
@@ -6872,14 +6926,16 @@ test_support_bundle_uses_installed_layout_under_root_home() {
         bundle_dir="${bundle_dir%.tar.gz}"
     fi
 
-    if [[ -f "$bundle_dir/environment.json" ]] \
-        && [[ -f "$bundle_dir/state.json" ]] \
-        && jq -e --arg acfs_home "$TEST_INSTALLED_ACFS" --arg target_home "$TEST_TARGET_HOME" \
-            '.acfs_home == $acfs_home and .home == $target_home and .user == "tester"' \
-            "$bundle_dir/environment.json" >/dev/null 2>&1; then
+    local resolved=""
+    resolved="$(support_resolved_context "$TEST_INSTALLED_ACFS/scripts/lib/support.sh" \
+        HOME="$TEST_ROOT_HOME" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" ACFS_HOME="$TEST_POISONED_ACFS_HOME")"
+
+    if support_bundle_is_redacted "$bundle_dir" \
+        && jq -e '.mode == "safe"' "$bundle_dir/state.json" >/dev/null 2>&1 \
+        && [[ "$resolved" == "tester|$TEST_TARGET_HOME|$TEST_INSTALLED_ACFS" ]]; then
         harness_pass "support bundle uses installed-layout home and target user under root home"
     else
-        harness_fail "support bundle uses installed-layout home and target user under root home" "$archive_path"
+        harness_fail "support bundle uses installed-layout home and target user under root home" "$archive_path resolved=$resolved"
     fi
 
     cleanup_mock_env
@@ -6900,14 +6956,16 @@ test_support_bundle_uses_system_state_target_home_when_getent_unavailable() {
         bundle_dir="${bundle_dir%.tar.gz}"
     fi
 
-    if [[ -f "$bundle_dir/environment.json" ]] \
+    local resolved=""
+    resolved="$(support_resolved_context "$SUPPORT_SH" HOME="$TEST_ROOT_HOME" \
+        ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" PATH="$TEST_FAKE_BIN:/usr/bin:/bin")"
+
+    if support_bundle_is_redacted "$bundle_dir" \
         && [[ -f "$bundle_dir/state.json" ]] \
-        && jq -e --arg acfs_home "$TEST_INSTALLED_ACFS" --arg target_home "$TEST_TARGET_HOME" \
-            '.acfs_home == $acfs_home and .home == $target_home and .user == "tester"' \
-            "$bundle_dir/environment.json" >/dev/null 2>&1; then
+        && [[ "$resolved" == "tester|$TEST_TARGET_HOME|$TEST_TARGET_HOME/.acfs" ]]; then
         harness_pass "support bundle uses target_home from system state when getent is unavailable"
     else
-        harness_fail "support bundle uses target_home from system state when getent is unavailable" "$archive_path"
+        harness_fail "support bundle uses target_home from system state when getent is unavailable" "$archive_path resolved=$resolved"
     fi
 
     cleanup_mock_env
@@ -6932,13 +6990,15 @@ test_support_bundle_repo_local_prefers_system_state_target_user_over_stale_insta
         bundle_dir="${bundle_dir%.tar.gz}"
     fi
 
-    if [[ -f "$bundle_dir/environment.json" ]] \
-        && jq -e --arg target_home "$TEST_TARGET_HOME" \
-            '.user == "tester" and .home == $target_home' \
-            "$bundle_dir/environment.json" >/dev/null 2>&1; then
+    local resolved=""
+    resolved="$(support_resolved_context "$SUPPORT_SH" HOME="$TEST_ROOT_HOME" \
+        ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" PATH="$TEST_FAKE_BIN:/usr/bin:/bin")"
+
+    if support_bundle_is_redacted "$bundle_dir" \
+        && [[ "$resolved" == "tester|$TEST_TARGET_HOME|"* ]]; then
         harness_pass "support bundle repo-local prefers system-state target_user over stale installed state"
     else
-        harness_fail "support bundle repo-local prefers system-state target_user over stale installed state" "$archive_path"
+        harness_fail "support bundle repo-local prefers system-state target_user over stale installed state" "$archive_path resolved=$resolved"
     fi
 
     cleanup_mock_env
@@ -7006,14 +7066,17 @@ test_support_bundle_repo_local_ignores_poisoned_explicit_acfs_home() {
         bundle_dir="${bundle_dir%.tar.gz}"
     fi
 
-    if [[ -f "$bundle_dir/environment.json" ]] \
-        && [[ -f "$bundle_dir/state.json" ]] \
-        && jq -e --arg acfs_home "$TEST_INSTALLED_ACFS" --arg target_home "$TEST_TARGET_HOME" \
-            '.acfs_home == $acfs_home and .home == $target_home and .user == "tester"' \
-            "$bundle_dir/environment.json" >/dev/null 2>&1; then
+    local resolved=""
+    resolved="$(support_resolved_context "$SUPPORT_SH" HOME="$TEST_ROOT_HOME" \
+        ACFS_HOME="$TEST_POISONED_ACFS_HOME" ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
+        PATH="$TEST_FAKE_BIN:/usr/bin:/bin")"
+
+    if support_bundle_is_redacted "$bundle_dir" \
+        && jq -e '.mode != "poison"' "$bundle_dir/state.json" >/dev/null 2>&1 \
+        && [[ "$resolved" == "tester|$TEST_TARGET_HOME|$TEST_TARGET_HOME/.acfs" ]]; then
         harness_pass "support bundle repo-local script ignores poisoned explicit ACFS_HOME"
     else
-        harness_fail "support bundle repo-local script ignores poisoned explicit ACFS_HOME" "$archive_path"
+        harness_fail "support bundle repo-local script ignores poisoned explicit ACFS_HOME" "$archive_path resolved=$resolved"
     fi
 
     cleanup_mock_env
