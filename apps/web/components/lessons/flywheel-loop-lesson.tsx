@@ -618,7 +618,7 @@ function AnimatedFlywheel() {
             cy={CY}
             r={38}
             fill="none"
-            stroke="hsl(var(--primary))"
+            style={{ stroke: "var(--primary)" }}
             strokeOpacity="0.18"
             strokeWidth="2"
           >
@@ -634,9 +634,10 @@ function AnimatedFlywheel() {
             cx={CX}
             cy={CY}
             r={30}
-            fill="hsl(var(--primary))"
+            // --primary is an oklch() color: hsl(var(--primary)) is invalid and
+            // painted black. CSS variables resolve through style, not attributes.
+            style={{ fill: "var(--primary)", stroke: "var(--primary)" }}
             fillOpacity="0.08"
-            stroke="hsl(var(--primary))"
             strokeOpacity="0.3"
             strokeWidth="1.5"
           />
@@ -655,10 +656,10 @@ function AnimatedFlywheel() {
             x={CX}
             y={CY + 10}
             textAnchor="middle"
-            fill="hsl(var(--primary))"
-            fontSize="9"
+            style={{ fill: "var(--primary)" }}
+            fontSize="10"
             fontWeight="500"
-            opacity="0.7"
+            opacity="0.85"
           >
             Flywheel
           </text>
@@ -787,7 +788,7 @@ function AnimatedFlywheel() {
                       y={9}
                       textAnchor="middle"
                       fill={node.color}
-                      fontSize="8.5"
+                      fontSize="8"
                       fontWeight="500"
                       opacity="0.9"
                     >
