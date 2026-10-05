@@ -353,8 +353,35 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     ...common,
     "@/lib/vpsProviders": { VPS_UBUNTU_IMAGE_OPTIONS: ["26.04", "24.04", "22.04"] },
   });
+  // Since c12e1784 the status page derives its retry context through the real
+  // health hook; load it with the same doubles rather than bypassing it.
+  const health = load(new URL("../lib/hooks/useInstallationHealth.ts", import.meta.url), {
+    react,
+    "@tanstack/react-query": { useQuery, useQueryClient: () => queryClient },
+    "@/components/command-card": {
+      ...common["@/components/command-card"],
+      COMMAND_COMPLETION_CHANGED_EVENT: "acfs:command-completion-changed",
+    },
+    "@/lib/commandBuilder": commands,
+    "@/lib/generated/manifest-modules": catalogue,
+    "@/lib/inputValidation": inputValidation,
+    "@/lib/installerCheckpoint": load(new URL("../lib/installerCheckpoint.ts", import.meta.url), {}),
+    "@/lib/moduleSelection": {
+      resolveModuleSelection: () => ({
+        ok: true,
+        included: [],
+        errors: [],
+        warnings: [],
+        selectedCount: 1,
+      }),
+    },
+    "@/lib/userPreferences": preferences,
+    "@/lib/utils": { safeGetItem: () => null },
+    "@/lib/wizardInstallation": contextModule,
+  });
   const statusPage = load(new URL("../app/wizard/status-check/page.tsx", import.meta.url), {
     ...common,
+    "@/lib/hooks/useInstallationHealth": health,
     "@tanstack/react-query": { useQuery },
     "next/link": { default: "link" },
     "next/navigation": { useRouter: () => ({ push() {}, replace() {} }) },
