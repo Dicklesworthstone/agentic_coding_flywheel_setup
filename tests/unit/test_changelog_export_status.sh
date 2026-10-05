@@ -4321,6 +4321,36 @@ test_status_reports_last_updated_timestamp() {
     cleanup_mock_env
 }
 
+test_status_last_update_tracks_completed_update_runs() {
+    # state.json only records install/resume time, so a box updated every
+    # night reported "last update 115d ago". update.sh ends each run's log
+    # with a "Completed:" footer; the newest finished run wins, an unfinished
+    # (footerless) newer log is skipped, and an older run never beats state.
+    setup_mock_env
+
+    local updates_dir="$TEST_ACFS/logs/updates"
+    local newer="" older=""
+    mkdir -p "$updates_dir"
+    printf 'Updated: 3\nFailed:  0\n\nCompleted: 2026-09-30T04:12:32-04:00\n===\n' \
+        > "$updates_dir/2026-09-30-040000.log"
+    printf '[04:00:01] Updating apt...\n' > "$updates_dir/2026-10-01-040000.log"
+    newer=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" bash "$STATUS_SH" --json)
+
+    mv "$updates_dir/2026-09-30-040000.log" "$updates_dir/2026-01-01-040000.log"
+    printf 'Failed:  0\n\nCompleted: 2026-01-01T04:00:00Z\n===\n' > "$updates_dir/2026-01-01-040000.log"
+    older=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" bash "$STATUS_SH" --json)
+
+    if printf '%s\n' "$newer" | jq -e '.last_update == "2026-09-30T04:12:32-04:00"' >/dev/null 2>&1 \
+        && printf '%s\n' "$older" | jq -e '.last_update == "2026-03-10T12:34:56Z"' >/dev/null 2>&1; then
+        harness_pass "status last update reflects the newest completed update run"
+    else
+        harness_fail "status last update reflects the newest completed update run" \
+            "newer=$(printf '%s' "$newer" | jq -c '.last_update' 2>/dev/null) older=$(printf '%s' "$older" | jq -c '.last_update' 2>/dev/null)"
+    fi
+
+    cleanup_mock_env
+}
+
 test_status_errors_on_malformed_state_json() {
     setup_mock_env
     printf '{ invalid json\n' > "$TEST_ACFS/state.json"
@@ -11776,6 +11806,7 @@ main() {
     test_status_rejects_unknown_flags || true
     test_status_plain_output_avoids_ansi_when_not_tty || true
     test_status_reports_last_updated_timestamp || true
+    test_status_last_update_tracks_completed_update_runs || true
     test_status_errors_on_malformed_state_json || true
     test_status_uses_installed_layout_under_root_home || true
     test_status_uses_explicit_target_home_when_state_is_missing || true

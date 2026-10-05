@@ -1134,6 +1134,36 @@ _status_read_last_update_ts() {
     printf '%s\n' "$ts"
 }
 
+# update.sh ends every run's log with a "Completed: <ISO-8601>" footer. The
+# install state only records install/resume time, so without this a box
+# updated every night reported "last update 115d ago".
+_status_read_last_completed_update_ts() {
+    local updates_dir="$1"
+    local tail_bin=""
+    local line=""
+    local i=0
+    local -a logs=()
+
+    [[ -d "$updates_dir" ]] || return 1
+    tail_bin="$(_status_system_binary_path tail 2>/dev/null || true)"
+    [[ -n "$tail_bin" ]] || return 1
+
+    # Logs are named YYYY-MM-DD-HHMMSS.log, so glob order is time order. Look
+    # back past a few unfinished (footerless) runs, newest first.
+    logs=("$updates_dir"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].log)
+    for (( i = ${#logs[@]} - 1; i >= 0 && i >= ${#logs[@]} - 10; i-- )); do
+        [[ -f "${logs[i]}" && ! -L "${logs[i]}" ]] || continue
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^Completed:\ ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}([+-][0-9]{2}:?[0-9]{2}|Z)?)$ ]]; then
+                printf '%s\n' "${BASH_REMATCH[1]}"
+                return 0
+            fi
+        done < <("$tail_bin" -n 4 -- "${logs[i]}" 2>/dev/null)
+    done
+
+    return 1
+}
+
 # --- JSON escape helper (no jq dependency) ---
 _json_escape() {
     local s="$1"
@@ -1166,6 +1196,8 @@ status_main() {
     local -a _OPTIONAL_TOOLS=(codex agy gh uv fzf zoxide atuin bat lsd ntm bv br cass cm slb ubs dcg)
     local _tool_count=0
     local _last_update_ts=""
+    local _update_run_ts=""
+    local _update_run_epoch=0
     local _last_update_human=""
     local _update_available=""
     local _local_version=""
@@ -1228,6 +1260,16 @@ status_main() {
 
     if [[ -f "$_state_file" ]]; then
         _last_update_ts="$(_status_read_last_update_ts "$_state_file" 2>/dev/null || true)"
+    fi
+    _update_run_ts="$(_status_read_last_completed_update_ts "$_ACFS_HOME/logs/updates" 2>/dev/null || true)"
+    if [[ -n "$_update_run_ts" && -n "$_date_bin" ]]; then
+        _update_run_epoch=$("$_date_bin" -d "$_update_run_ts" +%s 2>/dev/null) || _update_run_epoch=0
+        if [[ -n "$_last_update_ts" ]]; then
+            _last_epoch=$("$_date_bin" -d "$_last_update_ts" +%s 2>/dev/null) || _last_epoch=0
+        fi
+        if [[ -z "$_last_update_ts" ]] || (( _update_run_epoch > _last_epoch )); then
+            _last_update_ts="$_update_run_ts"
+        fi
     fi
 
     if [[ -n "$_last_update_ts" && -n "$_date_bin" ]]; then
