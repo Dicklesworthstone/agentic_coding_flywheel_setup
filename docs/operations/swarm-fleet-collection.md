@@ -35,16 +35,21 @@ an interrupted launch separately before selecting it.
 
 ## Preview, then collect
 
-From a trusted checkout on the Linux controller:
+After an explicit [fleet runtime installation or upgrade](fleet-runtime.md),
+run on the Linux controller:
 
 ```bash
-python3 -I scripts/swarm-fleet-collect.py \
+acfs-fleet collect \
   --launch-state "$HOME/fleet-wave-1" \
   --bases fleet-bases.json \
   --known-hosts "$HOME/.ssh/known_hosts" \
   --identity-file "$HOME/.ssh/id_ed25519" \
   --output-dir "$HOME/fleet-results-wave-1"
 ```
+
+From a complete trusted checkout, `python3 -I scripts/swarm-fleet-collect.py`
+accepts the same arguments. Older v1/v2 installed runtimes do not have `collect`;
+use `acfs-fleet runtimes` to inspect capabilities rather than changing old files.
 
 This contacts the selected hosts but creates nothing. It reports their exact
 base/HEAD commits, object formats, commit counts and **net changed paths**. Paths
@@ -80,8 +85,12 @@ or independent completion verification.
 Integrity verification needs neither the original journal nor network access:
 
 ```bash
-python3 -I scripts/swarm-fleet-collect.py --verify "$HOME/fleet-results-wave-1"
+acfs-fleet collect --verify "$HOME/fleet-results-wave-1"
 ```
+
+Keep the original collector runtime ID with these artifacts. To use that exact
+retained verifier after an upgrade, put `--runtime ORIGINAL_RUNTIME_ID` before
+`collect`. This selects code, not additional collection or merge authority.
 
 This validates the complete manifest, exact member set, private file properties,
 artifact hashes, bundle headers and pack checksums. It does **not** validate all

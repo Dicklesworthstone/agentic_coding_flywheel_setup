@@ -1,7 +1,7 @@
 # Install the fleet controllers without retaining a checkout
 
 `acfs-fleet` provides one installed entrypoint for the existing fleet `launch`,
-`prepare`, `dispatch`, and read-only `status` controllers. Install it explicitly from a trusted,
+`prepare`, `dispatch`, `status`, and `collect` controllers. Install it explicitly from a trusted,
 complete ACFS checkout on a Linux controller with Python 3.9 or newer. It does
 not replace `acfs`, change the one-line installer, or install anything remotely.
 
@@ -15,14 +15,14 @@ python3 -I scripts/acfs-fleet.py install \
   --prefix "$HOME/.acfs/fleet" --bin-dir "$HOME/.local/bin"
 ```
 
-This reads and syntax-checks the frontend and four controller files, reports a content-derived
+This reads and syntax-checks the frontend and five controller files, reports a content-derived
 runtime ID and an installation plan digest, and creates nothing. Review the
 paths, files and previous launcher. Repeat the command with
 `--apply --accept-plan THE_RETURNED_DIGEST` to install, as the target user without
 sudo. Installation performs no network access and launches no agents or prompts.
 The source checkout is a code trust decision; hashes are not publisher signatures.
 
-The prefix contains `releases/RUNTIME_ID/`, holding the frontend, four complete
+The prefix contains `releases/RUNTIME_ID/`, holding the frontend, five complete
 controllers and a hash/size manifest. The release directory and entrypoint are
 mode 0500; remaining files are mode 0400. A symlink named `acfs-fleet` in the
 selected bin directory points to the completed release. Ensure that directory
@@ -36,18 +36,26 @@ acfs-fleet launch --help
 acfs-fleet prepare --help
 acfs-fleet dispatch --help
 acfs-fleet status --help
+acfs-fleet collect --help
 ```
 
 All options after the command are forwarded literally to the corresponding
 controller. Standard input, current directory, terminal and exit/signal status
 are preserved. There is no new approval parser or implicit `--launch`,
-`--prepare`, `--send`, or `--resume`. The launch/dispatch controllers' previews
+`--prepare`, `--send`, `--collect`, or `--resume`. The launch/dispatch controllers' previews
 can open SSH connections; preparation's preview stays local. Their normal
 explicit approvals, trust files, receipt rules and recovery limitations remain.
 The status observer opens read-only SSH queries against the original fleet; it
 cannot launch agents or send work. It keeps agent liveness, historical submission
 receipts, and exported Bead state separate. See [fleet status](swarm-fleet-status.md)
 and the existing fleet launch, preparation and dispatch operating guides.
+
+The [collector](swarm-fleet-collection.md) reads explicitly selected committed
+ranges from the original fleet repositories. Its preview opens SSH connections
+but creates nothing; `--collect --accept-plan SHA256` saves private incremental
+Git bundles. `acfs-fleet collect --verify DIRECTORY` checks a saved collection
+offline. It does not import, check out, merge, push, or run the collected code.
+Committed history is not redacted; review it before sharing any bundle.
 
 The frontend replaces itself with the selected Python controller in isolated
 mode. It verifies the complete cohort before doing so, including siblings that
@@ -92,7 +100,7 @@ unavailable. Partial or modified versions are not advertised as usable. The
 `current` field names the runtime executing the inventory, which may itself be
 a directly invoked pinned entrypoint rather than the PATH launcher.
 
-Put `--runtime ID` **before** `launch`, `prepare`, `dispatch`, or `status`, then supply the
+Put `--runtime ID` **before** `launch`, `prepare`, `dispatch`, `status`, or `collect`, then supply the
 original controller arguments, journal paths and approvals. The selector verifies
 that exact retained cohort and executes its original frontend as well as its
 controllers. It does not rewrite the active launcher or operation journals,
@@ -104,32 +112,38 @@ or download historical code. The runtime ID is not an operation approval digest.
 ACFS does not infer which version authored an old journal: preserve the original
 runtime ID or pinned entrypoint with your external operation records.
 
-### Upgrade from a four-file runtime
+### Upgrade from a retained runtime
 
-Observer-enabled releases use manifest schema `acfs.fleet-runtime.v2`: the
-frontend plus all four fixed controller roles are required. The new installer,
-inventory and selector also verify retained `acfs.fleet-runtime.v1` releases,
-which contain the frontend and the original three controllers. It never adds
-`status` to an old release, changes its runtime ID, or rewrites its manifest.
+Collection-enabled releases use manifest schema `acfs.fleet-runtime.v3`: the
+frontend plus all five fixed controller roles are required. The installer,
+inventory and selector also verify retained `acfs.fleet-runtime.v1` releases
+(frontend plus launch/prepare/dispatch) and `acfs.fleet-runtime.v2` releases
+(those four files plus status). It never adds a command to an old release,
+changes its runtime ID, or rewrites its manifest.
 Unknown layouts, missing roles, extra paths and malformed metadata are refused.
 
 Upgrade using the explicit preview/apply flow above. The new `version` and
 `runtimes` reports include a `commands` list for each verified runtime. Legacy
-releases do not advertise `status`; selecting it on a legacy release returns
+v1 releases do not advertise `status`; neither v1 nor v2 advertises `collect`.
+Selecting an unsupported command on a retained release returns
 `runtime_command_unavailable` before executing that frontend. There is no fallback
-to the current observer. Unavailable releases advertise no commands. Use the new
-frontend to inventory both generations; an old frontend cannot verify the new
-layout, but its pinned launch/prepare/dispatch operations remain unchanged.
+to the current controller. Unavailable releases advertise no commands. Use the new
+frontend to inventory all three generations; an old frontend cannot verify the new
+layout, but its pinned original operations remain unchanged.
 
 Selecting a legacy runtime still executes that release's original frontend and
 controllers. Observation of old compatible journals using a newer observer does
 not migrate them or establish that newer execution code may resume their work.
+Collection approval also binds the fixed remote collector policy. Keep the
+collector runtime ID with the artifact directory so local verification remains
+available if that policy changes in a later release.
 
 ## Validation
 
 ```bash
 python3 -B tests/unit/test_fleet_runtime.py -v
 python3 -B tests/unit/test_fleet_runtime_status.py -v
+python3 -B tests/unit/test_swarm_fleet_collect.py -v
 ```
 
 These tests run the actual frontend and installer with real private files and
@@ -147,3 +161,6 @@ capability-aware selection, and the actual installed status controller with its
 production launch/dispatch imports after the source checkout becomes unavailable.
 Its journal contains no attempted launch, so that integration test opens no SSH
 connections, starts no agents, and sends no work.
+Collection integration covers all three exact layouts, unavailable-command
+refusal and the actual installed collector verifying real Git bundle artifacts
+without its checkout. Other controller roles are inert peers in that case.

@@ -385,6 +385,34 @@ class CollectionTests(unittest.TestCase):
                            self.env, limit=collection.MAX_BUNDLE)
         self.assertLess(time.monotonic() - before, 2)
 
+    def test_collection_transport_keeps_strict_ssh_options_and_binary_limit(self):
+        observed = []
+        def runner(argv, timeout, env, *, limit):
+            observed.append((argv, timeout, env, limit))
+            # Execute only the fixed remote command via the real local shell;
+            # no network or substitute SSH implementation is under test here.
+            result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-p", "-c", argv[-1]],
+                                    capture_output=True, env=self.env, timeout=15, **self.credentials)
+            return result.returncode, result.stdout
+        invoke = collection.transport(self.known, self.key, 10, runner=runner, ssh=sys.executable)
+        host, base = self.hosts[0], self.bases["alpha"]
+        snapshot, _ = collection.observe(host, base, "preview", invoke)
+        _, raw = collection.observe(host, base, "collect", invoke, snapshot)
+        collection.validate_bundle(raw, snapshot)
+        self.assertEqual(len(observed), 2)
+        for argv, timeout, env, limit in observed:
+            self.assertEqual(argv[:4], [sys.executable, "-F", "/dev/null", "-T"])
+            self.assertIn("-n", argv)
+            self.assertEqual(argv[-2], host["host"])
+            for option in ("StrictHostKeyChecking=yes", "BatchMode=yes", "ForwardAgent=no", "IdentitiesOnly=yes",
+                           "ProxyCommand=none", "ProxyJump=none", "ClearAllForwardings=yes"):
+                self.assertIn(option, argv)
+            self.assertEqual(timeout, 10)
+            self.assertEqual(limit, collection.MAX_BUNDLE + fleet.LIMIT)
+            self.assertEqual(env["PATH"], "/usr/bin:/bin")
+            self.assertNotIn("BASH_ENV", env)
+            self.assertNotIn("PYTHONPATH", env)
+
 
 if __name__ == "__main__":
     unittest.main()

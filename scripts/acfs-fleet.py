@@ -17,15 +17,17 @@ import secrets
 import stat
 import sys
 
-SCHEMA = "acfs.fleet-runtime.v2"
+SCHEMA = "acfs.fleet-runtime.v3"
 LEGACY_SCHEMA = "acfs.fleet-runtime.v1"
+OBSERVER_SCHEMA = "acfs.fleet-runtime.v2"
 PLAN_SCHEMA = "acfs.fleet-runtime-install.v1"
-COMMANDS = {name: "swarm-fleet-" + name + ".py" for name in ("launch", "prepare", "dispatch", "status")}
+COMMANDS = {name: "swarm-fleet-" + name + ".py" for name in ("launch", "prepare", "dispatch", "status", "collect")}
 FILES = tuple(sorted(("acfs-fleet.py", *COMMANDS.values())))
 # Fixed role sets, not arbitrary paths or optional files from an untrusted
-# manifest. Retained v1 runtimes have no observer; never rewrite their contents.
+# manifest. Retained v1/v2 releases keep exactly their original capabilities.
 FILES_BY_SCHEMA = {
-    LEGACY_SCHEMA: tuple(name for name in FILES if name != COMMANDS["status"]),
+    LEGACY_SCHEMA: tuple(name for name in FILES if name not in (COMMANDS["status"], COMMANDS["collect"])),
+    OBSERVER_SCHEMA: tuple(name for name in FILES if name != COMMANDS["collect"]),
     SCHEMA: FILES,
 }
 LIMIT = 1024 * 1024
@@ -301,23 +303,26 @@ def install(prefix, bin_dir, approval=None):
             "network_access": False, "starts_agents": False, "sends_prompts": False}
 
 
-HELP = """Usage: acfs-fleet {launch|prepare|dispatch|status} [CONTROLLER OPTIONS...]
+HELP = """Usage: acfs-fleet {launch|prepare|dispatch|status|collect} [CONTROLLER OPTIONS...]
        acfs-fleet version
        acfs-fleet runtimes
-       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|status|version} [OPTIONS...]
+       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|status|collect|version} [OPTIONS...]
        python3 -I scripts/acfs-fleet.py install --prefix DIR --bin-dir DIR
            [--apply --accept-plan SHA256]
 
 Controller arguments pass through unchanged. Launch/dispatch previews may open
 SSH connections; only each controller's explicit approval can start agents or
 send work. Status only observes original agents, receipts and exported Bead states.
+Collect previews committed Git ranges and saves bundles only with explicit approval;
+it never checks out, imports, merges or executes the collected project code.
 Use COMMAND --help for the existing operation and recovery options.
 Installation is offline and preview-only by default, as the target user without
 sudo. Prefix and bin directory must already exist and be user-owned, not writable
 by others. Releases are retained; an update never deletes a previous runtime.
 --runtime selects an exact installed cohort without changing the active symlink.
 Use the original runtime for recovery; absent or damaged releases never fall back.
-Legacy four-file runtimes remain usable but do not provide the status command.
+Retained four/five-file runtimes stay usable but do not provide collect.
+The four-file runtime also lacks status; unsupported commands never fall back.
 """
 
 
