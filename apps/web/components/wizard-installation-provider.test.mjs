@@ -207,17 +207,18 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     queryCache.set(key, { data });
     return { data, status: loaded ? "success" : "pending" };
   };
+  const inputValidation = {
+    isValidIP: (value) => /^203\.0\.113\.\d+$/.test(value),
+    normalizeGitRef: (value) =>
+      typeof value === "string" && /^[a-zA-Z0-9/_.-]+$/.test(value.trim()) ? value.trim() : null,
+    normalizeSSHUsername: (value) =>
+      typeof value === "string" && /^[a-z][a-z0-9_-]*$/.test(value.trim()) ? value.trim() : null,
+  };
   const preferences = load(new URL("../lib/userPreferences.ts", import.meta.url), {
     react,
     "./wizardInstallation": contextModule,
     "@tanstack/react-query": { useQuery, useQueryClient: () => queryClient },
-    "./inputValidation": {
-      isValidIP: (value) => /^203\.0\.113\.\d+$/.test(value),
-      normalizeGitRef: (value) =>
-        typeof value === "string" && /^[a-zA-Z0-9/_.-]+$/.test(value.trim()) ? value.trim() : null,
-      normalizeSSHUsername: (value) =>
-        typeof value === "string" && /^[a-z][a-z0-9_-]*$/.test(value.trim()) ? value.trim() : null,
-    },
+    "./inputValidation": inputValidation,
     "./utils": {
       safeGetItem: (name) => local.get(name) ?? null,
       safeGetJSON: (name) => (local.has(name) ? JSON.parse(local.get(name)) : null),

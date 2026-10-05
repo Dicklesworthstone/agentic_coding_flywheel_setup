@@ -78,6 +78,8 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
   const [hydrated, setHydrated] = useState(false);
   const [active, setActive] = useState<Active | null>(null);
   const [reviewRequired, setReviewRequired] = useState(false);
+  // Latches once this document has seen evidence of a reviewed installation.
+  const [pendingSeen, setPendingSeen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [, refresh] = useState(0);
   const mounted = useRef(false);
@@ -127,6 +129,9 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
             ? "review_required"
             : "saved";
   const installation = status === "active" ? active!.installation : null;
+  if (!pendingSeen && (storedGuard === "review_required" || active !== null || reviewRequired)) {
+    setPendingSeen(true);
+  }
 
   const activate = useCallback(
     (review: TeamProfileFileReview, reviewed: TeamProfileReviewContext, confirmed: boolean) => {
@@ -202,7 +207,11 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
   // Public/non-wizard routes keep their original behavior. The root provider
   // still retains an in-memory installation for a later client-side return.
   if (!inWizard) return <>{children}</>;
-  const blocked = status === "review_required" || status === "unavailable";
+  // An unreadable guard blocks everything once this document has seen a pending
+  // or active review. Storage that was never readable here (cookies/site data
+  // blocked) carries no such evidence: render the setup steps, while every
+  // installation-command consumer still withholds on a non-saved status.
+  const blocked = status === "review_required" || (status === "unavailable" && pendingSeen);
   return (
     <WizardInstallationContext.Provider value={session}>
       {status === "loading" ? (
@@ -231,6 +240,19 @@ export function WizardInstallationProvider({ children }: { children: ReactNode }
         </main>
       ) : (
         <>
+          {status === "unavailable" && (
+            <aside
+              role="status"
+              className="mx-auto max-w-3xl space-y-1 border-b border-amber/30 p-4 text-sm"
+            >
+              <p className="font-semibold">Installation commands are hidden in this tab</p>
+              <p>
+                This browser blocks site storage, so the wizard cannot confirm that no reviewed
+                team installation is pending here. The setup steps still work. Allow site data for
+                this site and reload to see your installation commands.
+              </p>
+            </aside>
+          )}
           {installation && (
             <aside
               className="mx-auto max-w-3xl space-y-2 border-b border-primary/30 p-4"
