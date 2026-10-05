@@ -2465,7 +2465,103 @@ EOF
         return 1
     fi
 
+    local used_tmpdir=""
+    used_tmpdir="$(sed -n '2s/^TMPDIR=//p' "$installer_signal")"
+    if [[ "$used_tmpdir" != "$TARGET_HOME/.cache/acfs/installer-tmp/cass."* || -e "$used_tmpdir" ]]; then
+        echo "  stack.cass repair left its per-run TMPDIR behind: ${used_tmpdir:-<none>}"
+        eval "$original_doctor_fix_run_verified_installer_with_env"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ ! -d "$TARGET_HOME/.cache/acfs/installer-tmp" ]]; then
+        echo "  TMPDIR cleanup removed the shared installer-tmp parent"
+        eval "$original_doctor_fix_run_verified_installer_with_env"
+        cleanup_test_env
+        return 1
+    fi
+
     eval "$original_doctor_fix_run_verified_installer_with_env"
+    cleanup_test_env
+    return 0
+}
+
+test_cass_target_tmpdir_is_removed_after_failed_install() {
+    setup_test_env
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    local parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    local signal="$ACFS_STATE_DIR/cass-failed-installer.tmpdir"
+    mkdir -p "$TARGET_HOME/.local/bin" "$parent/cass.KEEP01"
+    : > "$parent/cass.KEEP01/other-run"
+
+    local original_fix_verified_install_with_env=""
+    original_fix_verified_install_with_env="$(declare -f fix_verified_install_with_env)"
+    fix_verified_install_with_env() {
+        local tmpdir="${4#TMPDIR=}"
+        printf '%s\n' "$tmpdir" > "$signal"
+        [[ -d "$tmpdir" ]] && : > "$tmpdir/build-artifact"
+        return 7
+    }
+
+    local status=0
+    fix_verified_install_with_target_tmpdir "stack.cass" "cass" "cass" --easy-mode --verify \
+        >/dev/null 2>&1 || status=$?
+    eval "$original_fix_verified_install_with_env"
+
+    local used_tmpdir=""
+    used_tmpdir="$(cat "$signal" 2>/dev/null || true)"
+    if [[ "$status" -ne 7 ]]; then
+        echo "  cleanup changed the failed install status (want 7, got $status)"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$used_tmpdir" != "$parent/cass."* || "$used_tmpdir" == "$parent/cass.KEEP01" || -e "$used_tmpdir" ]]; then
+        echo "  failed install left its per-run TMPDIR behind: ${used_tmpdir:-<none>}"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ ! -f "$parent/cass.KEEP01/other-run" ]]; then
+        echo "  cleanup touched a TMPDIR that belongs to another run"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_doctor_fix_tmpdir_cleanup_refuses_paths_outside_its_template() {
+    setup_test_env
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    local parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    mkdir -p "$parent/cass.ABC123" "$parent/other.ABC123" "$TARGET_HOME/victim"
+
+    local candidate=""
+    for candidate in \
+        "$parent" \
+        "$parent/other.ABC123" \
+        "$parent/cass." \
+        "$parent/cass.ABC123/.." \
+        "$TARGET_HOME/victim" \
+        ""; do
+        if doctor_fix_remove_target_installer_tmpdir "cass" "$candidate" >/dev/null 2>&1; then
+            echo "  cleanup accepted a path outside its template: ${candidate:-<empty>}"
+            cleanup_test_env
+            return 1
+        fi
+    done
+    if [[ ! -d "$parent/other.ABC123" || ! -d "$TARGET_HOME/victim" || ! -d "$parent/cass.ABC123" ]]; then
+        echo "  a refused cleanup still removed a directory"
+        cleanup_test_env
+        return 1
+    fi
+
+    if ! doctor_fix_remove_target_installer_tmpdir "cass" "$parent/cass.ABC123" >/dev/null 2>&1 \
+        || [[ -e "$parent/cass.ABC123" || ! -d "$parent" ]]; then
+        echo "  cleanup did not remove exactly the matching per-run TMPDIR"
+        cleanup_test_env
+        return 1
+    fi
+
     cleanup_test_env
     return 0
 }
@@ -4962,6 +5058,8 @@ main() {
     run_test test_fix_verified_install_uses_target_runtime_home
     run_test test_fix_verified_install_dry_run
     run_test test_dispatch_fix_routes_cass_with_target_tmpdir
+    run_test test_cass_target_tmpdir_is_removed_after_failed_install
+    run_test test_doctor_fix_tmpdir_cleanup_refuses_paths_outside_its_template
     run_test test_doctor_fix_build_runtime_env_args_accepts_allowlisted_env_assignments
     run_test test_doctor_fix_build_runtime_env_args_rejects_shell_startup_overrides
     run_test test_fix_verified_install_ignores_gcloud_bv_shadow

@@ -2749,7 +2749,9 @@ EOF
     local url="https://example.com/example/install.sh"
     local expected_sha="1111111111111111111111111111111111111111111111111111111111111111"
     local installer_body='verified staged installer bytes'
-    local staged_installer="$BATS_TEST_TMPDIR/staged-installer"
+    # Not named staged_installer: the wrapper's own local of that name would
+    # shadow it inside the acfs_stage_verified_installer stub.
+    local staged_installer_fixture="$BATS_TEST_TMPDIR/staged-installer"
     local stage_args_file="$BATS_TEST_TMPDIR/stage-args"
     local stage_cache_file="$BATS_TEST_TMPDIR/stage-cache"
     local runner_args_file="$BATS_TEST_TMPDIR/runner-args"
@@ -2762,6 +2764,8 @@ EOF
     local trusted_df_args_file="$BATS_TEST_TMPDIR/trusted-df-args"
     local trusted_awk_args_file="$BATS_TEST_TMPDIR/trusted-awk-args"
     local shell_function_marker="$BATS_TEST_TMPDIR/capacity-shell-function-called"
+    local tmpdir_seen_marker="$BATS_TEST_TMPDIR/tmpdir-existed-during-run"
+    local warn_file="$BATS_TEST_TMPDIR/wrapper-warnings"
     local target_tmpdir=""
     local -a stage_args=()
     local -a runner_args=()
@@ -2769,7 +2773,7 @@ EOF
     local -a trusted_df_args=()
     local -a trusted_awk_args=()
 
-    printf '%s' "$installer_body" > "$staged_installer"
+    printf '%s' "$installer_body" > "$staged_installer_fixture"
     mkdir -p "$HOME/explicit-installer-cache" "$trusted_tools_dir"
     export ACFS_VERIFIED_INSTALLER_CACHE="$HOME/explicit-installer-cache"
     export TEST_ACFS_TRUSTED_DF_ARGS_FILE="$trusted_df_args_file"
@@ -2813,6 +2817,7 @@ EOF
             awk) printf '%s\n' "$trusted_awk" ;;
             mkdir) printf '/bin/mkdir\n' ;;
             mktemp) printf '/usr/bin/mktemp\n' ;;
+            rm) printf '/usr/bin/rm\n' ;;
             *) return 1 ;;
         esac
     }
@@ -2823,7 +2828,7 @@ EOF
 
         printf '%s\0' "$@" > "$stage_args_file"
         printf '%s' "${ACFS_VERIFIED_INSTALLER_CACHE:-}" > "$stage_cache_file"
-        printf -v "$output_name" '%s' "$staged_installer"
+        printf -v "$output_name" '%s' "$staged_installer_fixture"
     }
     acfs_fetch_url_content() {
         printf 'acfs_fetch_url_content\n' >> "$live_fetch_marker"
@@ -2840,12 +2845,15 @@ EOF
     run_as_target_runner() {
         printf '%s\0' "$@" > "$runner_args_file"
         cat > "$ran_content"
+        [[ -d "${3#TMPDIR=}" ]] && : > "$tmpdir_seen_marker"
+        return "${TEST_RUNNER_STATUS:-0}"
     }
     _acfs_remove_temp_files() {
         printf '%s\0' "$@" > "$cleanup_args_file"
     }
     log_detail() { :; }
     log_error() { :; }
+    log_warn() { printf '%s\n' "$*" >> "$warn_file"; }
 
     run acfs_run_verified_upstream_script_as_target_with_env \
         example bash "CACHE_TOKEN=cache-token" --dest "$HOME/cache target" --yes
@@ -2866,7 +2874,11 @@ EOF
     assert_equal "${runner_args[1]}" "CACHE_TOKEN=cache-token"
     [[ "${runner_args[2]}" == "TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/acfs."* ]]
     target_tmpdir="${runner_args[2]#TMPDIR=}"
-    [[ -d "$target_tmpdir" ]]
+    # bd-uxt8q: the per-run TMPDIR exists for the installer and is gone after.
+    [[ -e "$tmpdir_seen_marker" ]]
+    [[ ! -e "$target_tmpdir" ]] || fail "low-space TMPDIR left behind: $target_tmpdir"
+    [[ -d "$TARGET_HOME/.cache/acfs/installer-tmp" ]]
+    [[ ! -e "$warn_file" ]] || fail "unexpected cleanup warning: $(<"$warn_file")"
     assert_equal "${runner_args[3]}" "bash"
     assert_equal "${runner_args[4]}" "-s"
     assert_equal "${runner_args[5]}" "--"
@@ -2877,7 +2889,7 @@ EOF
 
     mapfile -d '' -t cleanup_args < "$cleanup_args_file"
     assert_equal "${#cleanup_args[@]}" "1"
-    assert_equal "${cleanup_args[0]}" "$staged_installer"
+    assert_equal "${cleanup_args[0]}" "$staged_installer_fixture"
     [[ ! -e "$live_fetch_marker" ]]
     [[ ! -e "$shell_function_marker" ]]
 
@@ -2889,6 +2901,21 @@ EOF
     mapfile -d '' -t trusted_awk_args < "$trusted_awk_args_file"
     assert_equal "${#trusted_awk_args[@]}" "1"
     assert_equal "${trusted_awk_args[0]}" 'NR==2{print $4}'
+
+    # A failing installer keeps its status and reason; its TMPDIR still goes.
+    rm -f "$tmpdir_seen_marker"
+    TEST_RUNNER_STATUS=9
+    ACFS_LAST_MODULE_FAILURE_REASON=""
+    local failed_status=0
+    acfs_run_verified_upstream_script_as_target_with_env \
+        example bash "CACHE_TOKEN=cache-token" --yes || failed_status=$?
+    assert_equal "$failed_status" "9"
+    assert_equal "$ACFS_LAST_MODULE_FAILURE_REASON" "installer execution"
+    mapfile -d '' -t runner_args < "$runner_args_file"
+    target_tmpdir="${runner_args[2]#TMPDIR=}"
+    [[ -e "$tmpdir_seen_marker" ]]
+    [[ ! -e "$target_tmpdir" ]] || fail "failed run left its TMPDIR behind: $target_tmpdir"
+    [[ ! -e "$warn_file" ]] || fail "unexpected cleanup warning: $(<"$warn_file")"
 }
 
 @test "install.sh verified installer wrapper fails closed when cache staging fails" {
@@ -12143,11 +12170,14 @@ SECURITY
     assert_failure
 }
 
-@test "update verified installer with target tmpdir prepares target-owned TMPDIR" {
+_setup_update_target_tmpdir_stubs() {
     TEST_TARGET_HOME="$BATS_TEST_TMPDIR/target-home"
     TEST_PREPARED_FILE="$BATS_TEST_TMPDIR/prepared-tmpdir"
     TEST_MKTEMP_TEMPLATE="$BATS_TEST_TMPDIR/mktemp-template"
     TEST_INSTALLER_ARGS="$BATS_TEST_TMPDIR/installer-args"
+    TEST_RM_ARGS="$BATS_TEST_TMPDIR/rm-args"
+    TEST_MKTEMP_RESULT="$TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123"
+    TEST_INSTALLER_STATUS=0
     mkdir -p "$TEST_TARGET_HOME"
 
     update_target_user() { printf '%s\n' "tester"; }
@@ -12164,7 +12194,13 @@ SECURITY
                 [[ "${1:-}" == "" ]]
                 [[ "${3:-}" == "-d" ]]
                 printf '%s\n' "${4:-}" > "$TEST_MKTEMP_TEMPLATE"
-                printf '%s\n' "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123"
+                printf '%s\n' "$TEST_MKTEMP_RESULT"
+                return 0
+                ;;
+            /*/rm)
+                [[ "${1:-}" == "" ]]
+                shift 2
+                printf '%s\n' "$*" > "$TEST_RM_ARGS"
                 return 0
                 ;;
         esac
@@ -12172,8 +12208,12 @@ SECURITY
     }
     update_run_verified_installer_with_env() {
         printf '%s\n' "$*" > "$TEST_INSTALLER_ARGS"
-        return 0
+        return "$TEST_INSTALLER_STATUS"
     }
+}
+
+@test "update verified installer with target tmpdir prepares target-owned TMPDIR" {
+    _setup_update_target_tmpdir_stubs
 
     run update_run_verified_installer_with_target_tmpdir "cass" "--easy-mode" "--verify"
     assert_success
@@ -12183,6 +12223,94 @@ SECURITY
     [[ "$prepared_tmpdir" == "$TEST_TARGET_HOME/.cache/acfs/installer-tmp" ]]
     [[ "$(cat "$TEST_MKTEMP_TEMPLATE")" == "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXX" ]]
     [[ "$(cat "$TEST_INSTALLER_ARGS")" == "cass TMPDIR=$TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123 --easy-mode --verify" ]]
+    # bd-uxt8q: the exact per-run directory is removed as the target user.
+    [[ "$(cat "$TEST_RM_ARGS")" == "-rf --one-file-system -- $TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123" ]]
+}
+
+@test "update verified installer with target tmpdir removes TMPDIR without masking a failure" {
+    _setup_update_target_tmpdir_stubs
+    TEST_INSTALLER_STATUS=95
+
+    run update_run_verified_installer_with_target_tmpdir "cass" "--easy-mode" "--verify"
+    assert_failure 95
+    [[ "$(cat "$TEST_RM_ARGS")" == "-rf --one-file-system -- $TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123" ]]
+}
+
+_run_stack_cass_target_tmpdir() {
+    local installer_status="$1"
+    TARGET_HOME="$BATS_TEST_TMPDIR/stack-target-home"
+    TEST_STACK_SEEN="$BATS_TEST_TMPDIR/stack-seen-tmpdir"
+    TEST_STACK_INSTALLER_STATUS="$installer_status"
+    mkdir -p "$TARGET_HOME/.cache/acfs/installer-tmp/cass.KEEP01"
+    : > "$TARGET_HOME/.cache/acfs/installer-tmp/cass.KEEP01/other-run"
+
+    source_lib "stack"
+    _stack_run_as_user() { bash -c "$1"; }
+    _stack_run_verified_installer_with_env() {
+        local tmpdir="${2#TMPDIR=}"
+        printf '%s\n' "$tmpdir" > "$TEST_STACK_SEEN"
+        [[ -d "$tmpdir" ]] && : > "$tmpdir/build-artifact"
+        return "$TEST_STACK_INSTALLER_STATUS"
+    }
+
+    run _stack_run_verified_installer_with_target_tmpdir "cass" --easy-mode --verify
+}
+
+@test "stack cass target tmpdir is removed after a successful install" {
+    _run_stack_cass_target_tmpdir 0
+    assert_success
+
+    local seen
+    seen="$(cat "$TEST_STACK_SEEN")"
+    [[ "$seen" == "$TARGET_HOME/.cache/acfs/installer-tmp/cass."* && "$seen" != */cass.KEEP01 ]]
+    [[ ! -e "$seen" ]] || fail "per-run TMPDIR left behind: $seen"
+    [[ -f "$TARGET_HOME/.cache/acfs/installer-tmp/cass.KEEP01/other-run" ]]
+}
+
+@test "stack cass target tmpdir is removed after a failed install without masking status" {
+    _run_stack_cass_target_tmpdir 7
+    assert_failure 7
+
+    local seen
+    seen="$(cat "$TEST_STACK_SEEN")"
+    [[ "$seen" == "$TARGET_HOME/.cache/acfs/installer-tmp/cass."* && "$seen" != */cass.KEEP01 ]]
+    [[ ! -e "$seen" ]] || fail "per-run TMPDIR left behind: $seen"
+    [[ -f "$TARGET_HOME/.cache/acfs/installer-tmp/cass.KEEP01/other-run" ]]
+}
+
+@test "stack target tmpdir cleanup refuses paths outside its template" {
+    TARGET_HOME="$BATS_TEST_TMPDIR/stack-refuse-home"
+    local parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    mkdir -p "$parent/cass.ABC123" "$parent/other.ABC123" "$TARGET_HOME/victim"
+    source_lib "stack"
+    _stack_run_as_user() { bash -c "$1"; }
+
+    local candidate
+    for candidate in "$parent" "$parent/other.ABC123" "$parent/cass." "$parent/cass.ABC123/.." "$TARGET_HOME/victim" ""; do
+        run _stack_remove_target_installer_tmpdir "cass" "$candidate"
+        assert_failure
+    done
+    [[ -d "$parent/other.ABC123" && -d "$TARGET_HOME/victim" && -d "$parent/cass.ABC123" ]]
+
+    run _stack_remove_target_installer_tmpdir "cass" "$parent/cass.ABC123"
+    assert_success
+    [[ ! -e "$parent/cass.ABC123" && -d "$parent" ]]
+}
+
+@test "update verified installer with target tmpdir never removes a path outside its template" {
+    _setup_update_target_tmpdir_stubs
+    local escaped
+    for escaped in \
+        "$TEST_TARGET_HOME/.cache/acfs/installer-tmp" \
+        "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/other.ABC123" \
+        "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123/.." \
+        "$TEST_TARGET_HOME"; do
+        rm -f "$TEST_RM_ARGS"
+        TEST_MKTEMP_RESULT="$escaped"
+        run update_run_verified_installer_with_target_tmpdir "cass" "--easy-mode" "--verify"
+        assert_success
+        [[ ! -e "$TEST_RM_ARGS" ]] || fail "removed a path outside the TMPDIR template: $escaped"
+    done
 }
 
 @test "update verified installer with target tmpdir skips transient failure when existing cass is healthy" {
