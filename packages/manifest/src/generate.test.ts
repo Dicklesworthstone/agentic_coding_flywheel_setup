@@ -2113,7 +2113,18 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
     "run_as_target_shell() { cat >/dev/null; }",
     "log_error() { printf 'ERROR %s\\n' \"$*\" >&2; }",
     "log_warn() { printf 'WARN %s\\n' \"$*\" >&2; }",
-    'run_as_target() { "$@"; }',
+    // Record what mktemp hands back so every scenario can prove the exact
+    // directory existed and is gone, not merely that nothing is left.
+    "run_as_target() {",
+    '  if [[ "$1" == */mktemp ]]; then',
+    '    local made=""',
+    '    made="$("$@")" || return',
+    '    printf "%s\\n" "$made" > "$TARGET_HOME/made-tmpdir"',
+    '    printf "%s\\n" "$made"',
+    "    return 0",
+    "  fi",
+    '  "$@"',
+    "}",
     'acfs_security_init() { [[ "$SCENARIO" != "setup" ]]; }',
     "declare -A KNOWN_INSTALLERS=([cass]='https://example.invalid/cass.sh')",
     "get_checksum() { printf '%064d\\n' 0; }",
@@ -2151,56 +2162,70 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
       encoding: "utf8",
       env: { PATH: "/usr/bin:/bin", HOME: home, TARGET_HOME: home, SCENARIO: scenario },
     });
-    const seenFile = resolve(home, "seen-tmpdir");
-    const seen = existsSync(seenFile) ? readFileSync(seenFile, "utf8").trim() : "";
-    return { home, parent, sibling, seen, stdout: result.stdout, stderr: result.stderr };
+    const readMarker = (name: string) => {
+      const file = resolve(home, name);
+      return existsSync(file) ? readFileSync(file, "utf8").trim() : "";
+    };
+    return {
+      home,
+      parent,
+      sibling,
+      made: readMarker("made-tmpdir"),
+      seen: readMarker("seen-tmpdir"),
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
   }
 
   function expectOnlyThisRunRemoved(run: ReturnType<typeof runCass>) {
-    expect(run.seen.startsWith(`${run.parent}/cass.`)).toBe(true);
-    expect(existsSync(run.seen)).toBe(false);
-    expect(existsSync(run.parent)).toBe(true);
+    expect(run.made.startsWith(`${run.parent}/cass.`)).toBe(true);
+    expect(run.made).not.toBe(run.sibling);
+    expect(existsSync(run.made)).toBe(false);
+    expect(readdirSync(run.parent)).toEqual(["cass.KEEP01"]);
     expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
   }
 
   test("removes the run's TMPDIR after a successful install and keeps success", () => {
     const run = runCass("success");
-    expect(run.stdout).toContain("status=0 reason=");
+    expect(run.stdout).toMatch(/^status=0 reason=$/m);
+    expect(run.seen).toBe(run.made);
     expectOnlyThisRunRemoved(run);
   });
 
   test("removes the run's TMPDIR after a checksum failure and keeps the reason", () => {
     const run = runCass("checksum");
-    expect(run.stdout).toMatch(/status=[1-9]\d* reason=checksum/);
-    // The runner never ran, so record the directory from the mktemp result.
+    expect(run.stdout).toMatch(/^status=[1-9]\d* reason=checksum$/m);
     expect(run.seen).toBe("");
-    expect(readdirSync(run.parent).sort()).toEqual(["cass.KEEP01"]);
-    expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
+    expectOnlyThisRunRemoved(run);
   });
 
   test("removes the run's TMPDIR after an installer failure and keeps the reason", () => {
     const run = runCass("runner");
-    expect(run.stdout).toMatch(/status=[1-9]\d* reason=installer execution/);
+    expect(run.stdout).toMatch(/^status=[1-9]\d* reason=installer execution$/m);
+    expect(run.seen).toBe(run.made);
     expectOnlyThisRunRemoved(run);
   });
 
   test("removes the run's TMPDIR after a setup failure and keeps the reason", () => {
     const run = runCass("setup");
-    expect(run.stdout).toMatch(/status=[1-9]\d* reason=environment setup/);
-    expect(readdirSync(run.parent).sort()).toEqual(["cass.KEEP01"]);
+    expect(run.stdout).toMatch(/^status=[1-9]\d* reason=environment setup$/m);
+    expect(run.seen).toBe("");
+    expectOnlyThisRunRemoved(run);
   });
 
   test("never deletes a directory mktemp did not hand back inside the template", () => {
     const run = runCass("escape");
-    expect(run.stdout).toMatch(/status=[1-9]\d* reason=environment setup/);
+    expect(run.stdout).toMatch(/^status=[1-9]\d* reason=environment setup$/m);
+    expect(run.seen).toBe("");
     expect(existsSync(resolve(run.home, "victim"))).toBe(true);
     expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
   });
 
   test("a cleanup problem warns without changing the install result", () => {
     const run = runCass("rm-missing");
-    expect(run.stdout).toContain("status=0 reason=");
+    expect(run.stdout).toMatch(/^status=0 reason=$/m);
     expect(run.stderr).toContain("trusted rm not found; leaving installer TMPDIR");
-    expect(existsSync(resolve(run.seen, "build-artifact"))).toBe(true);
+    expect(run.seen).toBe(run.made);
+    expect(existsSync(resolve(run.made, "build-artifact"))).toBe(true);
   });
 });

@@ -2490,6 +2490,7 @@ test_cass_target_tmpdir_is_removed_after_failed_install() {
     export TARGET_HOME="$ACFS_STATE_DIR/target-home"
     local parent="$TARGET_HOME/.cache/acfs/installer-tmp"
     local signal="$ACFS_STATE_DIR/cass-failed-installer.tmpdir"
+    local existed_marker="$ACFS_STATE_DIR/cass-failed-installer.existed"
     mkdir -p "$TARGET_HOME/.local/bin" "$parent/cass.KEEP01"
     : > "$parent/cass.KEEP01/other-run"
 
@@ -2498,7 +2499,10 @@ test_cass_target_tmpdir_is_removed_after_failed_install() {
     fix_verified_install_with_env() {
         local tmpdir="${4#TMPDIR=}"
         printf '%s\n' "$tmpdir" > "$signal"
-        [[ -d "$tmpdir" ]] && : > "$tmpdir/build-artifact"
+        if [[ -d "$tmpdir" ]]; then
+            : > "$tmpdir/build-artifact"
+            : > "$existed_marker"
+        fi
         return 7
     }
 
@@ -2511,6 +2515,11 @@ test_cass_target_tmpdir_is_removed_after_failed_install() {
     used_tmpdir="$(cat "$signal" 2>/dev/null || true)"
     if [[ "$status" -ne 7 ]]; then
         echo "  cleanup changed the failed install status (want 7, got $status)"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ ! -e "$existed_marker" ]]; then
+        echo "  the installer never received a real per-run TMPDIR: ${used_tmpdir:-<none>}"
         cleanup_test_env
         return 1
     fi
@@ -2534,6 +2543,8 @@ test_doctor_fix_tmpdir_cleanup_refuses_paths_outside_its_template() {
     export TARGET_HOME="$ACFS_STATE_DIR/target-home"
     local parent="$TARGET_HOME/.cache/acfs/installer-tmp"
     mkdir -p "$parent/cass.ABC123" "$parent/other.ABC123" "$TARGET_HOME/victim"
+    : > "$TARGET_HOME/victim/keep"
+    ln -s "$TARGET_HOME/victim" "$parent/cass.LINK01"
 
     local candidate=""
     for candidate in \
@@ -2541,6 +2552,7 @@ test_doctor_fix_tmpdir_cleanup_refuses_paths_outside_its_template() {
         "$parent/other.ABC123" \
         "$parent/cass." \
         "$parent/cass.ABC123/.." \
+        "$parent/cass.LINK01" \
         "$TARGET_HOME/victim" \
         ""; do
         if doctor_fix_remove_target_installer_tmpdir "cass" "$candidate" >/dev/null 2>&1; then
@@ -2549,7 +2561,8 @@ test_doctor_fix_tmpdir_cleanup_refuses_paths_outside_its_template() {
             return 1
         fi
     done
-    if [[ ! -d "$parent/other.ABC123" || ! -d "$TARGET_HOME/victim" || ! -d "$parent/cass.ABC123" ]]; then
+    if [[ ! -d "$parent/other.ABC123" || ! -f "$TARGET_HOME/victim/keep" \
+        || ! -L "$parent/cass.LINK01" || ! -d "$parent/cass.ABC123" ]]; then
         echo "  a refused cleanup still removed a directory"
         cleanup_test_env
         return 1
