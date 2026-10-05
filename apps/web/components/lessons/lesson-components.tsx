@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Check, ChevronRight, Copy, Lightbulb, Sparkles, Zap } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { motion } from "@/components/motion";
 import {
   CodeBlock as SharedCodeBlock,
@@ -314,6 +314,38 @@ export function DiagramBox({
       {icon && <div className="text-white mb-2">{icon}</div>}
       <span className="font-bold text-white text-sm">{label}</span>
       {sublabel && <span className="text-xs text-white/50 mt-1">{sublabel}</span>}
+    </div>
+  );
+}
+
+/**
+ * Keeps a fixed-layout SVG diagram at desktop scale on phones. Below `sm` the
+ * diagram keeps `minWidth` (its viewBox width) inside a labelled,
+ * keyboard-focusable horizontal scroll region, instead of shrinking every
+ * label to a few pixels (bd-k3qa5).
+ */
+export function DiagramScroller({
+  label,
+  minWidth,
+  children,
+}: {
+  label: string;
+  minWidth: number;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="overflow-x-auto pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      tabIndex={0}
+      role="region"
+      aria-label={`${label} (scrolls sideways on small screens)`}
+    >
+      <div
+        className="min-w-[var(--diagram-min-width)] sm:min-w-0"
+        style={{ "--diagram-min-width": `${minWidth}px` } as CSSProperties}
+      >
+        {children}
+      </div>
     </div>
   );
 }

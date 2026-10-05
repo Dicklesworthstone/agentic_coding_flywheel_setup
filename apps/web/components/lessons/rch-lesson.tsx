@@ -28,6 +28,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -815,6 +816,7 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
           Network Topology
         </span>
       </div>
+      <DiagramScroller label="RCH network topology diagram" minWidth={400}>
       <svg viewBox="0 0 400 180" className="w-full" style={{ maxHeight: 180 }}>
         {/* Local machine */}
         <rect
@@ -829,15 +831,15 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
         />
         <text
           x="45"
-          y="85"
+          y="87"
           textAnchor="middle"
           fill="rgba(255,255,255,0.8)"
-          fontSize="8"
+          fontSize="11"
           fontWeight="600"
         >
           Local
         </text>
-        <text x="45" y="98" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="6">
+        <text x="45" y="102" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="9">
           Machine
         </text>
 
@@ -854,15 +856,15 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
         />
         <text
           x="175"
-          y="85"
+          y="87"
           textAnchor="middle"
           fill="rgba(255,255,255,0.8)"
-          fontSize="8"
+          fontSize="11"
           fontWeight="600"
         >
           RCH
         </text>
-        <text x="175" y="98" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="6">
+        <text x="175" y="102" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="9">
           Dispatcher
         </text>
 
@@ -957,20 +959,20 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
               />
               <text
                 x={wx}
-                y={wy + 14}
+                y={wy + 15}
                 textAnchor="middle"
                 fill={isOffline ? "rgba(239,68,68,0.6)" : "rgba(255,255,255,0.7)"}
-                fontSize="6"
+                fontSize="9"
                 fontWeight="600"
               >
                 W-{i + 1}
               </text>
               <text
                 x={wx}
-                y={wy + 24}
+                y={wy + 26}
                 textAnchor="middle"
-                fill="rgba(255,255,255,0.35)"
-                fontSize="5"
+                fill="rgba(255,255,255,0.5)"
+                fontSize="7.5"
               >
                 {w.cpuCores}c
               </text>
@@ -1004,6 +1006,7 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
           );
         })}
       </svg>
+      </DiagramScroller>
     </div>
   );
 }

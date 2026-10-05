@@ -25,6 +25,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -868,6 +869,7 @@ function ScenarioConnect({ active }: { active: boolean }) {
 
   return (
     <div className="space-y-3">
+      <DiagramScroller label="SSH connection diagram" minWidth={600}>
       <svg viewBox="0 0 600 260" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
         <LaptopIcon x={20} y={85} active={active} />
@@ -947,6 +949,7 @@ function ScenarioConnect({ active }: { active: boolean }) {
           active={active}
         />
       </svg>
+      </DiagramScroller>
 
       {/* Phase stepper */}
       <div className="flex items-center justify-between px-2">
@@ -1007,6 +1010,7 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
 
   return (
     <div className="space-y-3">
+      <DiagramScroller label="SSH key authentication diagram" minWidth={600}>
       <svg viewBox="0 0 600 280" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
         <LaptopIcon x={20} y={85} active={active} />
@@ -1148,6 +1152,7 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
         {/* Tunnel appears after match */}
         {matchPhase === 2 && <EncryptedTunnel encrypted={true} active={active} />}
       </svg>
+      </DiagramScroller>
 
       <div className="flex items-center justify-center gap-6 text-xs">
         <div className="flex items-center gap-1.5 text-violet-400">
@@ -1219,6 +1224,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
 
   return (
     <div className="space-y-3">
+      <DiagramScroller label="SSH port forwarding diagram" minWidth={600}>
       <svg viewBox="0 0 600 290" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
         <LaptopIcon x={20} y={85} active={active} />
@@ -1358,6 +1364,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
 
         <StatusBadge connected={true} latencyMs={38} encrypted={true} active={active} />
       </svg>
+      </DiagramScroller>
 
       <div className="flex items-center justify-center gap-6 text-xs">
         <div className="flex items-center gap-1.5 text-amber-400">
@@ -1467,6 +1474,7 @@ function ScenarioReconnect({ active }: { active: boolean }) {
 
   return (
     <div className="space-y-3">
+      <DiagramScroller label="SSH reconnect diagram" minWidth={600}>
       <svg viewBox="0 0 600 280" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
         <LaptopIcon x={20} y={85} active={active} />
@@ -1592,6 +1600,7 @@ function ScenarioReconnect({ active }: { active: boolean }) {
           active={active}
         />
       </svg>
+      </DiagramScroller>
 
       {/* Phase indicator */}
       <div className="flex items-center justify-between px-2">
@@ -1789,6 +1798,7 @@ function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
 
   return (
     <div className="space-y-3">
+      <DiagramScroller label="Unencrypted connection diagram" minWidth={600}>
       <svg viewBox="0 0 600 260" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={false} />
         <LaptopIcon x={20} y={85} active={active} />
@@ -1837,6 +1847,7 @@ function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
 
         <StatusBadge connected={true} latencyMs={42} encrypted={false} active={active} />
       </svg>
+      </DiagramScroller>
     </div>
   );
 }
