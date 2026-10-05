@@ -25,6 +25,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -554,6 +555,7 @@ function InteractiveSessionHandoffImpl() {
 
             {/* ========== SVG Pipeline Diagram ========== */}
             <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 overflow-hidden">
+              <DiagramScroller label="Session handoff pipeline diagram" minWidth={600}>
               <svg
                 viewBox="0 0 600 120"
                 className="w-full h-auto"
@@ -874,6 +876,7 @@ function InteractiveSessionHandoffImpl() {
                   fillOpacity="0.04"
                 />
               </svg>
+              </DiagramScroller>
             </div>
 
             {/* ========== Token Counter + Context Window ========== */}

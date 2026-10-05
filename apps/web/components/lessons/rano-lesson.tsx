@@ -27,6 +27,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -1319,9 +1320,11 @@ function InteractiveTrafficMonitor() {
                 ))}
               </div>
             </div>
-            <div className="p-2 aspect-[2/1]">
-              <WorldMapSvg regions={REGIONS} packets={packets} activeScenario={activeScenario} />
-            </div>
+            <DiagramScroller label="Network operations world map" minWidth={640}>
+              <div className="p-2 aspect-[2/1]">
+                <WorldMapSvg regions={REGIONS} packets={packets} activeScenario={activeScenario} />
+              </div>
+            </DiagramScroller>
           </div>
 
           {/* Right sidebar: Metrics + Threats */}

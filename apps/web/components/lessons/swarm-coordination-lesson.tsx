@@ -18,6 +18,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   GoalBanner,
   Highlight,
@@ -1283,6 +1284,7 @@ function InteractiveSwarmOrchestrator() {
 
       {/* SVG Hex Grid Visualization */}
       <div className="relative px-2 pb-1">
+        <DiagramScroller label="Swarm coordination diagram" minWidth={svgW}>
         <svg
           viewBox={`0 0 ${svgW} ${svgH}`}
           className="w-full"
@@ -1366,6 +1368,7 @@ function InteractiveSwarmOrchestrator() {
             );
           })}
         </svg>
+        </DiagramScroller>
       </div>
 
       {/* Progress bar */}

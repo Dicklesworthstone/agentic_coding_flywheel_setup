@@ -34,6 +34,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -1072,6 +1073,7 @@ function InteractiveGraphTriage() {
                 )}
               </AnimatePresence>
 
+              <DiagramScroller label="Beads dependency graph" minWidth={660}>
               <svg viewBox="0 0 660 470" className="w-full h-auto" style={{ minHeight: 300 }}>
                 <defs>
                   <marker
@@ -1515,6 +1517,7 @@ function InteractiveGraphTriage() {
                   );
                 })}
               </svg>
+              </DiagramScroller>
             </div>
 
             {/* Controls */}
