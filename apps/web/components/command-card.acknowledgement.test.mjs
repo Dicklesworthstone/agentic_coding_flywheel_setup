@@ -138,7 +138,7 @@ function fixture() {
     compiled.diagnostics?.filter((item) => item.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   const dispatch = (event) => {
     events.push(event);
     for (const listener of listeners.get(event.type) ?? []) listener(event);
@@ -146,8 +146,8 @@ function fixture() {
   runInNewContext(
     compiled.outputText,
     {
-      module,
-      exports: module.exports,
+      module: cjs,
+      exports: cjs.exports,
       require(name) {
         assert.ok(Object.hasOwn(dependencies, name), name);
         return dependencies[name];
@@ -197,7 +197,7 @@ function fixture() {
       nodes.push(node);
       visit(node.props.children);
     }
-    visit(module.exports.CommandCard(props));
+    visit(cjs.exports.CommandCard(props));
     effects.forEach((effect) => effect());
     return {
       nodes,

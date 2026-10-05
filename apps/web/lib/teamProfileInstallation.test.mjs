@@ -51,12 +51,12 @@ function fixture() {
     (compiled.diagnostics ?? []).filter((entry) => entry.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInNewContext(
     compiled.outputText,
     {
-      module,
-      exports: module.exports,
+      module: cjs,
+      exports: cjs.exports,
       TextDecoder,
       crypto: webcrypto,
       structuredClone,
@@ -89,7 +89,7 @@ function fixture() {
     },
     { timeout: 5000 },
   );
-  const api = module.exports;
+  const api = cjs.exports;
   const entries = new Map([["other-preference", "preserve"]]);
   const calls = [];
   const storage = {

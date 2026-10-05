@@ -346,9 +346,9 @@ function SavedCommandBuilderPanel() {
   const exclusionOptions = useMemo(() => {
     const categories = new Map<string, number>();
     const tags = new Map<string, number>();
-    for (const module of manifestModules) {
-      categories.set(module.category, (categories.get(module.category) ?? 0) + 1);
-      for (const tag of new Set(module.tags)) tags.set(tag, (tags.get(tag) ?? 0) + 1);
+    for (const manifestModule of manifestModules) {
+      categories.set(manifestModule.category, (categories.get(manifestModule.category) ?? 0) + 1);
+      for (const tag of new Set(manifestModule.tags)) tags.set(tag, (tags.get(tag) ?? 0) + 1);
     }
     const options = (counts: Map<string, number>) =>
       [...counts.keys()].sort().map((value) => ({ value, count: counts.get(value)! }));

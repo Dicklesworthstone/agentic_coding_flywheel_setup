@@ -26,7 +26,7 @@ function loadSource(url, dependencies = {}) {
     (compiled.diagnostics ?? []).filter((entry) => entry.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   const run = runInContext(
     `(function(require, module, exports) {\n${compiled.outputText}\n})`,
     context,
@@ -37,10 +37,10 @@ function loadSource(url, dependencies = {}) {
       assert.ok(Object.hasOwn(dependencies, name), `unexpected dependency ${name}`);
       return dependencies[name];
     },
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
-  return module.exports;
+  return cjs.exports;
 }
 const catalogue = loadSource(new URL("../lib/generated/manifest-modules.ts", import.meta.url));
 // The catalogue and resolver are the production source, not fixture metadata.

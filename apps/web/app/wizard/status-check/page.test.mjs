@@ -32,16 +32,16 @@ function load(path, dependencies, scope) {
     result.diagnostics?.filter((entry) => entry.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInContext(`(function(require,module,exports){${result.outputText}\n})`, scope)(
     (name) => {
       assert.ok(Object.hasOwn(dependencies, name), name);
       return dependencies[name];
     },
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
-  return module.exports;
+  return cjs.exports;
 }
 function fixture() {
   const prefs = {

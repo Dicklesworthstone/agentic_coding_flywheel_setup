@@ -18,13 +18,13 @@ function api(crypto = webcrypto) {
     (compiled.diagnostics ?? []).filter((item) => item.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInNewContext(
     compiled.outputText,
-    { module, exports: module.exports, TextDecoder, crypto },
+    { module: cjs, exports: cjs.exports, TextDecoder, crypto },
     { timeout: 5000 },
   );
-  return module.exports;
+  return cjs.exports;
 }
 const reader = api();
 const NOW = Date.parse("2026-09-18T12:00:00Z");

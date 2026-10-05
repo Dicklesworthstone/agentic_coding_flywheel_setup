@@ -153,7 +153,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       ),
       [],
     );
-    const module = { exports: {} };
+    const cjs = { exports: {} };
     const invoke = runInContext(
       `(function(require,module,exports){${compiled.outputText}\n})`,
       vm,
@@ -164,10 +164,10 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
         assert.ok(Object.hasOwn(dependencies, name), `Unexpected import ${name}`);
         return dependencies[name];
       },
-      module,
-      module.exports,
+      cjs,
+      cjs.exports,
     );
-    return module.exports;
+    return cjs.exports;
   }
   const catalogue = {
     manifestProvenance: { manifestSha256: "a".repeat(64), checksumsYamlSha256: "b".repeat(64) },

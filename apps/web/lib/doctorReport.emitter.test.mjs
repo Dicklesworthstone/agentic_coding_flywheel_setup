@@ -9,14 +9,14 @@ import { runInNewContext } from "node:vm";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
-const module = { exports: {} };
+const cjs = { exports: {} };
 runInNewContext(
   ts.transpileModule(readFileSync(new URL("./doctorReport.ts", import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText,
-  { module, exports: module.exports, crypto: webcrypto, TextDecoder },
+  { module: cjs, exports: cjs.exports, crypto: webcrypto, TextDecoder },
 );
-const reader = module.exports;
+const reader = cjs.exports;
 
 // The override is a test-only seam for running a fetched emitter snapshot in a
 // partial checkout. The default always reads the repository's real doctor.sh.

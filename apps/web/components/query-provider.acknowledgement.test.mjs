@@ -11,7 +11,7 @@ function fixture(storage) {
   const slots = [];
   let cursor = 0;
   const persisters = [];
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   const output = ts.transpileModule(
     readFileSync(new URL("./query-provider.tsx", import.meta.url), "utf8"),
     {
@@ -47,8 +47,8 @@ function fixture(storage) {
     "../lib/wizardSteps": { wizardStepsKeys: { completedSteps: ["wizardSteps", "completed"] } },
   };
   runInNewContext(output.outputText, {
-    module,
-    exports: module.exports,
+    module: cjs,
+    exports: cjs.exports,
     ...(storage ? { window: { localStorage: storage } } : {}),
     console: { warn: () => {} },
     require(name) {

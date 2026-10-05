@@ -31,16 +31,16 @@ function fixture() {
       code.diagnostics?.filter((item) => item.category === ts.DiagnosticCategory.Error),
       [],
     );
-    const module = { exports: {} };
+    const cjs = { exports: {} };
     runInContext(`(function(require,module,exports){${code.outputText}\n})`, scope)(
       (name) => {
         assert.ok(Object.hasOwn(dependencies, name), name);
         return dependencies[name];
       },
-      module,
-      module.exports,
+      cjs,
+      cjs.exports,
     );
-    return module.exports;
+    return cjs.exports;
   }
   const helper = load("./installerCheckpoint.ts", {});
   const steps = load("./wizardSteps.ts", {

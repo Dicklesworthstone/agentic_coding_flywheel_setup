@@ -360,8 +360,8 @@ export async function reviewDoctorReportFile(
     seen.add(check.id);
     const status = check.status as DoctorReportStatus;
     totals[status]++;
-    const module = owner(check.id, known);
-    const destination = module ? (modules.get(module) ?? outsideSelection) : unmapped;
+    const ownerModule = owner(check.id, known);
+    const destination = ownerModule ? (modules.get(ownerModule) ?? outsideSelection) : unmapped;
     destination[status]++;
   }
   // The producer counts timeouts as WARN, while this review displays them separately.

@@ -23,16 +23,16 @@ function load(url, dependencies, scope) {
     (compiled.diagnostics ?? []).filter((entry) => entry.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInContext(`(function(require,module,exports){${compiled.outputText}\n})`, scope)(
     (name) => {
       assert.ok(Object.hasOwn(dependencies, name), `Unexpected dependency: ${name}`);
       return dependencies[name];
     },
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
-  return module.exports;
+  return cjs.exports;
 }
 const text = (node) =>
   Array.isArray(node)
@@ -130,7 +130,7 @@ function fixture() {
       }
     },
   };
-  const module = load(
+  const panelModule = load(
     new URL("./doctor-report-panel.tsx", import.meta.url),
     {
       react,
@@ -190,7 +190,7 @@ function fixture() {
         nodes.push(node);
         visit(node.props.children, `${path}/children`);
       }
-      visit(jsx(module.DoctorReportPanel, {}), "root");
+      visit(jsx(panelModule.DoctorReportPanel, {}), "root");
       for (const [key, instance] of instances) {
         if (!instance.seen) {
           dispose(instance);

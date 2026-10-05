@@ -21,12 +21,12 @@ assert.deepEqual(
 );
 function load(crypto = webcrypto) {
   const context = createContext({ crypto, TextEncoder });
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInContext(`(function(module,exports){${compiled.outputText}\n})`, context)(
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
-  return module.exports;
+  return cjs.exports;
 }
 const api = load();
 const input = () => ({

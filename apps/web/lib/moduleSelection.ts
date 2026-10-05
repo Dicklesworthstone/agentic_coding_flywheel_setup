@@ -161,16 +161,16 @@ function validateModuleCatalogue(modules: ManifestModuleMetadata[]): string[] {
   }
   const indegree = new Map<string, number>();
   const dependents = new Map<string, string[]>();
-  for (const module of modules) {
-    indegree.set(module.id, new Set(module.dependencies).size);
-    for (const id of new Set(module.dependencies)) {
+  for (const manifestModule of modules) {
+    indegree.set(manifestModule.id, new Set(manifestModule.dependencies).size);
+    for (const id of new Set(manifestModule.dependencies)) {
       const dependency = byId.get(id);
-      if (!dependency) return [`Manifest error: ${module.id} depends on unknown module ${id}`];
-      if (dependency.phase > module.phase) {
-        return [`Manifest error: ${module.id} depends on later-phase module ${id}`];
+      if (!dependency) return [`Manifest error: ${manifestModule.id} depends on unknown module ${id}`];
+      if (dependency.phase > manifestModule.phase) {
+        return [`Manifest error: ${manifestModule.id} depends on later-phase module ${id}`];
       }
       const children = dependents.get(id) ?? [];
-      children.push(module.id);
+      children.push(manifestModule.id);
       dependents.set(id, children);
     }
   }
@@ -186,10 +186,10 @@ function validateModuleCatalogue(modules: ManifestModuleMetadata[]): string[] {
   }
   if (queue.length !== modules.length)
     return ["Manifest error: dependency cycle in module catalogue."];
-  for (const module of modules) {
-    for (const id of module.dependencies) {
-      if (position.get(id)! > position.get(module.id)!) {
-        return [`Manifest execution order puts ${module.id} before required ${id}`];
+  for (const manifestModule of modules) {
+    for (const id of manifestModule.dependencies) {
+      if (position.get(id)! > position.get(manifestModule.id)!) {
+        return [`Manifest execution order puts ${manifestModule.id} before required ${id}`];
       }
     }
   }
@@ -494,12 +494,12 @@ function quoteInstallArg(value: string): string {
 
 function exactSkippedModules(normalized: NormalizedSelection): string[] {
   const skipped = new Set(normalized.skipModules);
-  for (const module of manifestModules) {
+  for (const manifestModule of manifestModules) {
     if (
-      normalized.skipCategories.includes(module.category) ||
-      normalized.skipTags.some((tag) => module.tags.includes(tag))
+      normalized.skipCategories.includes(manifestModule.category) ||
+      normalized.skipTags.some((tag) => manifestModule.tags.includes(tag))
     ) {
-      skipped.add(module.id);
+      skipped.add(manifestModule.id);
     }
   }
   return [...skipped];

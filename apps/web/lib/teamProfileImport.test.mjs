@@ -71,17 +71,17 @@ function fixture() {
     },
   };
   const scope = createContext({ TextDecoder, TextEncoder, structuredClone, crypto: webcrypto });
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInContext(`(function(require,module,exports){${compiled.outputText}\n})`, scope)(
     (name) => {
       assert.ok(Object.hasOwn(dependencies, name), `unexpected dependency ${name}`);
       return dependencies[name];
     },
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
   return {
-    api: module.exports,
+    api: cjs.exports,
     calls,
     context,
     provenance,

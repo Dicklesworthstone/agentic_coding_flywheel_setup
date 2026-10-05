@@ -94,12 +94,12 @@ test("every real generated profile and every exact module resolves without widen
     assert.ok(plan.selectedCount > 0);
   }
   const byId = new Map(manifestModules.map((module) => [module.id, module]));
-  for (const module of manifestModules) {
-    const expected = new Set([module.id]);
+  for (const manifestModule of manifestModules) {
+    const expected = new Set([manifestModule.id]);
     for (const id of expected) {
       for (const dependency of byId.get(id)!.dependencies) expected.add(dependency);
     }
-    const plan = resolveModuleSelection({ onlyModules: [module.id] });
+    const plan = resolveModuleSelection({ onlyModules: [manifestModule.id] });
     assert.equal(plan.ok, true, JSON.stringify(plan.errors));
     assert.deepEqual(new Set(plan.included.map((entry) => entry.id)), expected);
   }

@@ -339,7 +339,7 @@ function fixture(initial = {}) {
     checkpointModule.exports,
   );
   deps["@/lib/installerCheckpoint"] = checkpointModule.exports;
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInContext(`(function(require,module,exports){${compiled.outputText}\n})`, context, {
     filename: fileURLToPath(pageUrl),
     timeout: 5000,
@@ -348,8 +348,8 @@ function fixture(initial = {}) {
       assert.ok(Object.hasOwn(deps, name), `Unexpected dependency: ${name}`);
       return deps[name];
     },
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
   function render() {
     cursor = 0;
@@ -363,7 +363,7 @@ function fixture(initial = {}) {
       nodes.push(node);
       visit(node.props.children);
     }
-    visit(module.exports.default());
+    visit(cjs.exports.default());
     const find = (predicate) => {
       const node = nodes.find(predicate);
       assert.ok(node, "Expected page control");

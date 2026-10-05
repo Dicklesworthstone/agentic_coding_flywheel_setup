@@ -9,7 +9,7 @@ import { runInNewContext } from "node:vm";
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
 function fixture(crypto = webcrypto) {
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   const output = ts.transpileModule(
     readFileSync(new URL("./installerCheckpoint.ts", import.meta.url), "utf8"),
     {
@@ -23,10 +23,10 @@ function fixture(crypto = webcrypto) {
   );
   runInNewContext(
     output.outputText,
-    { module, exports: module.exports, crypto, TextEncoder },
+    { module: cjs, exports: cjs.exports, crypto, TextEncoder },
     { timeout: 5000 },
   );
-  return module.exports;
+  return cjs.exports;
 }
 const input = () => ({
   command: "bash install.sh --only agents.claude",
