@@ -5056,17 +5056,25 @@ test_doctor_entrypoint_dispatches_zsh_only_commands() {
 
 test_doctor_subcommand_help_flags_exit_zero() {
     # `acfs undo --help` errored "Unknown option" and `acfs session --help`
-    # printed "Unknown session command" with exit 1.
-    local cmd="" output="" failures=""
+    # printed "Unknown session command" with exit 1. Installed as `acfs`,
+    # a bare `acfs --help` printed only doctor's flags instead of the command
+    # list that `acfs -h` and the zsh wrapper show.
+    local cmd="" output="" failures="" link_dir=""
     for cmd in "undo:Usage: acfs undo" "session:Usage: acfs session"; do
         if ! output="$(bash "$DOCTOR_SH" "${cmd%%:*}" --help 2>&1)" || [[ "$output" != *"${cmd#*:}"* ]]; then
             failures+=" ${cmd%%:*}"
         fi
     done
+    link_dir="$(mktemp -d)"
+    ln -s "$DOCTOR_SH" "$link_dir/acfs"
+    output="$(bash "$link_dir/acfs" --help 2>&1)" || failures+=" acfs--help(exit)"
+    [[ "$output" == *"Commands:"*"landing-plane"* ]] || failures+=" acfs--help"
+    output="$(bash "$link_dir/acfs" doctor --help 2>&1)" || failures+=" acfs-doctor--help(exit)"
+    [[ "$output" == "Usage: acfs doctor"* ]] || failures+=" acfs-doctor--help"
     if [[ -z "$failures" ]]; then
-        harness_pass "doctor undo/session --help print usage and exit 0"
+        harness_pass "acfs/undo/session --help print the right usage and exit 0"
     else
-        harness_fail "doctor undo/session --help print usage and exit 0" "failed:$failures"
+        harness_fail "acfs/undo/session --help print the right usage and exit 0" "failed:$failures"
     fi
 }
 

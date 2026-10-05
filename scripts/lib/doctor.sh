@@ -5830,7 +5830,9 @@ main() {
             print_acfs_help
             return 0
             ;;
-        "")
+        ""|--help)
+            # As `acfs`, both mean the command list (like `acfs -h` and the zsh
+            # wrapper); run directly as doctor.sh they stay doctor's own.
             if [[ "$invoked_as" == "acfs" ]]; then
                 print_acfs_help
                 return 0
