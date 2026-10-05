@@ -6,6 +6,19 @@ set -euo pipefail
 ARTIFACTS_DIR="/repo/tests/artifacts"
 mkdir -p "$ARTIFACTS_DIR"
 
+# /repo is the host checkout. Hand everything this root container writes there
+# back to the invoking host user on every exit, so Linux hosts are not left with
+# root-owned artifacts they cannot clean up (test_install_ubuntu.sh passes ids).
+return_host_artifacts() {
+    local dir
+    [[ "${ACFS_HOST_UID:-}" =~ ^[0-9]+$ && "${ACFS_HOST_GID:-}" =~ ^[0-9]+$ ]] || return 0
+    for dir in "$ARTIFACTS_DIR" /repo/tests/e2e/logs; do
+        [[ -d "$dir" && ! -L "$dir" ]] || continue
+        chown -R -P "$ACFS_HOST_UID:$ACFS_HOST_GID" "$dir" || echo "[WARN] could not return $dir to the host user" >&2
+    done
+}
+trap return_host_artifacts EXIT
+
 log() {
     echo "[TEST] $1"
 }

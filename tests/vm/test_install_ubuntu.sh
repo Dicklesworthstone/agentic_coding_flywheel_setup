@@ -119,6 +119,8 @@ run_one() {
     -e ACFS_TEST_STRICT="$STRICT" \
     -e ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-}" \
     -e ACFS_REF="${ACFS_REF:-}" \
+    -e ACFS_HOST_UID="$(id -u)" \
+    -e ACFS_HOST_GID="$(id -g)" \
     -v "${REPO_ROOT}:/repo:rw" \
     "$image" bash /repo/tests/vm/test_runner.sh
 }
