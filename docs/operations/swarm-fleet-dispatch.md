@@ -107,6 +107,67 @@ receipts, choose new operation IDs, or change the state path to force a retry.
 Inspect the native launch-aware dispatch on the affected host before recovery.
 No destructive cleanup, rollback or automatic retry occurs.
 
+## Reconcile and continue after interruption
+
+Use the same launch journal, batch mapping, SSH trust, timeout and dispatch state
+directory. Replace `--send --accept-plan ...` with `--reconcile` to query the
+recorded attempts without writing controller state or sending work:
+
+```bash
+python3 -I scripts/swarm-fleet-dispatch.py \
+  --launch-state "$HOME/fleet-wave-1" \
+  --batches fleet-batches.json \
+  --known-hosts "$HOME/.ssh/known_hosts" \
+  --identity-file "$HOME/.ssh/id_ed25519" \
+  --state-dir "$HOME/fleet-work-wave-1" --reconcile
+```
+
+For each attempted host, a fixed read-only Python program snapshots the original
+private per-delivery intent over SSH. It checks ownership, permissions, regular
+file type, hardlinks, symlink-free directories and a 1 MiB bound; it creates no
+remote files. The controller validates that intent against the approved packet
+request, then calls only `ntm --robot-send-receipt=OPERATION --robot-format=json`.
+Successful proof must match the exact operation, payload hash and byte count,
+session, recorded native target and completed submission admission. Raw receipt
+and NTM diagnostics are never copied into reports.
+
+This historical query does not need live panes or the original batch/packet
+files on the remote. It does need both the original native delivery intent and
+NTM's operation receipt. A missing, malformed, conflicting, partial or unavailable
+receipt remains `unconfirmed` even when a local result previously said submitted.
+No queried host can enter a preview or send path in this invocation. All
+attempted hosts are checked, so one failed query does not hide its peers.
+
+After reviewing the result, use `--resume --accept-plan ORIGINAL_DISPATCH_DIGEST`
+instead. Resume first confirms every delivery on every attempted host. Only
+then can it reconstruct a missing local result from the remote evidence, preview
+all untouched hosts again, require byte-identical approved work/targets, and send
+to those untouched hosts. A fully submitted fleet's resume only queries receipts;
+it neither writes files nor starts model work. Earlier local results are never
+replaced, and an attempted host is never sent its batch again by this controller.
+
+**Continuation is host-granular.** If only part of a host's batch was submitted,
+the missing per-delivery intents cannot prove those sends were never attempted.
+The fleet controller leaves that host unconfirmed and does not continue its
+batch. Inspect and, when justified, use the native launch-aware dispatcher on
+that host with the original unchanged packets and receipts. Once all its
+submissions have matching evidence, fleet reconciliation can confirm the host
+and resume can continue untouched hosts. Never remove a receipt to force replay.
+
+Malformed, truncated, non-prefix or mismatched local journals fail before SSH.
+Recovery locks both journals, checks their captured bytes and directory identity
+around remote operations, and refuses changed evidence. It does not adopt a
+replacement directory. A receipt removed during a query cannot become permission
+to send. These rules protect cooperative operations, not a malicious same-user process
+rewriting every source of evidence. Preserve the launch journal as well as the
+dispatch journal: its source evidence is part of the original approval.
+
+Reconciliation returns exit 0 only when every selected host is confirmed
+submitted. A healthy partial fleet returns `partial`/exit 1 with untouched hosts
+marked `not_attempted`; any unknown submission returns `unconfirmed`/exit 1.
+Resume requires the original digest; changing the batch or source evidence is
+not a recovery override. Local state errors return 2, without a send fallback.
+
 A native `submitted` result means matching NTM submission evidence, not task
 execution, task completion, or Agent Mail registration. Reports contain reviewed
 IDs and digests, never packet text or raw remote diagnostics. The private local
@@ -131,12 +192,17 @@ whether its remote request arrived.
 
 ```bash
 python3 -B tests/unit/test_swarm_fleet_dispatch.py -v
+python3 -B tests/unit/test_swarm_fleet_dispatch_recovery.py -v
 ```
 
 Tests execute the actual controller with real private launch/dispatch journals,
 locks, file changes and protocol peers. They check all-host barriers, exact
 binding, argument quoting, transport restrictions, immutable results, and failure
-stops. These tests are not real SSH/VPS/NTM or authenticated-provider acceptance.
+stops. Recovery tests kill an actual controller child after its durable attempt,
+then assert that its batch is queried rather than resent. The fixed remote
+receipt reader is exercised as an unprivileged user with real private files,
+symlinks, hardlinks, FIFOs, oversized input and literal shell arguments.
+These tests are not real SSH/VPS/NTM or authenticated-provider acceptance.
 The command requires Linux and system OpenSSH on the controller, a complete
 trusted ACFS checkout, and already installed native launchers on remote hosts.
 It is not a new installed `acfs` subcommand.
