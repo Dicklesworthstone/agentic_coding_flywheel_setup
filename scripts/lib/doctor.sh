@@ -2337,38 +2337,46 @@ check_shell() {
     blank_line
 }
 
-# Version-aware cosign check (#367): the Agent Mail installer's verifier
-# requires cosign >=v3.1.3 and <v4.0.0, so "installed" alone is not healthy.
+# cosign report. #367 made this version-aware because Agent Mail releases were
+# verified with cosign >=v3.1.3 <v4.0.0. Since v0.3.31 the upstream installer
+# verifies a minisign signature over SHA256SUMS instead and consults cosign only
+# for legacy releases (MINISIGN_TRUST_MIN_VERSION in mcp_agent_mail_rust's
+# install.sh); ACFS always installs the current release. Warning every Ubuntu
+# 26.04 host, whose cosign package is 2.6.2 with no version stamp ("devel"),
+# and advising a manual sudo download no longer protects anything. Report the
+# optional tool accurately instead.
 check_cosign_version() {
-    local cosign_fix="COSIGN_VERSION=v3.1.3 && curl -fsSL https://github.com/sigstore/cosign/releases/download/\${COSIGN_VERSION}/cosign-linux-amd64 -o /tmp/cosign && sudo install /tmp/cosign /usr/local/bin/cosign"
     local cosign_bin=""
     cosign_bin="$(doctor_binary_path cosign 2>/dev/null || true)"
 
     if [[ -z "$cosign_bin" ]]; then
-        check "tool.cosign" "cosign" "warn" "not found" "$cosign_fix"
+        check "tool.cosign" "cosign" "skip" "not installed (optional)"
         return 0
     fi
 
-    local cosign_ver=""
+    local cosign_ver="" source_note=""
     cosign_ver="$("$cosign_bin" version 2>/dev/null \
         | sed -n 's/^GitVersion:[[:space:]]*v\{0,1\}\([0-9][0-9A-Za-z.-]*\).*/\1/p' \
         | head -n1)"
-
     if [[ ! "$cosign_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-        check "tool.cosign" "cosign" "warn" \
-            "installed but its version could not be determined (Agent Mail verification requires >=v3.1.3 and <v4.0.0)" \
-            "$cosign_fix"
-        return 0
+        # Distro builds print "GitVersion: devel"; the package version is exact.
+        local dpkg_query_bin=""
+        dpkg_query_bin="$(doctor_binary_path dpkg-query 2>/dev/null || true)"
+        cosign_ver=""
+        if [[ -n "$dpkg_query_bin" ]]; then
+            cosign_ver="$("$dpkg_query_bin" -W -f='${Version}' cosign 2>/dev/null || true)"
+            cosign_ver="${cosign_ver#*:}"
+            cosign_ver="${cosign_ver%%-*}"
+        fi
+        [[ "$cosign_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && source_note=", distro package" || cosign_ver=""
     fi
 
-    local cosign_major="${cosign_ver%%.*}"
-    if printf '%s\n%s\n' "3.1.3" "$cosign_ver" | sort -V -C 2>/dev/null \
-        && [[ "$cosign_major" -lt 4 ]]; then
-        check "tool.cosign" "cosign (v$cosign_ver)" "pass" "installed, compatible with Agent Mail verification"
+    if [[ -n "$cosign_ver" ]]; then
+        check "tool.cosign" "cosign (v$cosign_ver)" "pass" \
+            "installed${source_note}; current Agent Mail releases verify with minisign, not cosign"
     else
-        check "tool.cosign" "cosign (v$cosign_ver)" "warn" \
-            "incompatible with Agent Mail verification (requires >=v3.1.3 and <v4.0.0)" \
-            "$cosign_fix"
+        check "tool.cosign" "cosign" "pass" \
+            "installed (version unknown); current Agent Mail releases verify with minisign, not cosign"
     fi
 }
 
