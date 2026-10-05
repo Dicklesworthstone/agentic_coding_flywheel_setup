@@ -229,6 +229,42 @@ def scopes_overlap(left, right):
     return left == right or left.startswith(right + "/") or right.startswith(left + "/")
 
 
+def validate_dependencies(beads, selected):
+    """An open label cannot override contradictory blocking graph evidence.
+
+    Inspect only the selected work's complete blocking closure. Unrelated graph
+    metadata and non-blocking relations are not scheduling prerequisites.
+    """
+    for root in sorted(selected):
+        pending, visiting, visited = [(root, False)], set(), set()
+        while pending:
+            node, exiting = pending.pop()
+            if exiting:
+                visiting.remove(node)
+                visited.add(node)
+                continue
+            require(node not in visiting, "cyclic_work_dependencies")
+            if node in visited:
+                continue
+            require(node in beads, "incomplete_work_dependency_snapshot")
+            if node != root:
+                require(node not in selected and beads[node].get("status") == "closed",
+                        "unfinished_work_prerequisite")
+            dependencies = beads[node].get("dependencies", [])
+            require(type(dependencies) is list and len(dependencies) <= 2048,
+                    "invalid_work_dependencies")
+            blocking = []
+            for dependency in dependencies:
+                require(type(dependency) is dict and type(dependency.get("type")) is str
+                        and fleet.matches(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", dependency.get("depends_on_id")),
+                        "invalid_work_dependency")
+                if dependency["type"] == "blocks":
+                    blocking.append(dependency["depends_on_id"])
+            visiting.add(node)
+            pending.append((node, True))
+            pending.extend((dep, False) for dep in reversed(blocking))
+
+
 def select_work(spec, launch, history):
     require(type(spec) is dict and set(spec) == {"schema", "hosts", "assignments", "beads"}
             and spec["schema"] == WORK_SCHEMA, "invalid_work_spec")
@@ -295,6 +331,7 @@ def select_work(spec, launch, history):
             "role": item["role"], "issue_type": bead.get("issue_type", "task"), "scope_source": "explicit",
             "reservation_surfaces": paths, "dependency_position": {"blocked_by": []}})
         entry["beads"].append(bead)
+    validate_dependencies(beads, tasks)
     result = []
     for host in launch["spec"]["hosts"]:
         if host["id"] not in selected:
