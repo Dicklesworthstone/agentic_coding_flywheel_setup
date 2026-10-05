@@ -2187,7 +2187,10 @@ Validates that required environment variables and functions exist before executi
 
 ### `smoke_test.sh`
 
-Post-install verification that runs automatically after installation:
+Standalone post-install verification. The installer itself runs its own inline
+`run_smoke_test` (8 critical checks, defined in `install.sh`) at the end of an
+install; `scripts/lib/smoke_test.sh` is the larger, separately tested version
+of the same checks and is not invoked by the installer:
 
 ```bash
 run_smoke_test                      # Execute all smoke tests
@@ -2688,7 +2691,7 @@ ACFS monitors upstream installers for changes and repairs generated-artifact che
 
 ```text
 scripts/checksum-monitor-local.sh      # the monitor
-scripts/systemd/acfs-checksum-monitor.* # timer + service templates
+scripts/templates/acfs-checksum-monitor.* # timer + service templates
 ```
 
 **How It Works:**

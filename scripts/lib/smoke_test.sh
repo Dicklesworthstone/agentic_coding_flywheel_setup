@@ -2,7 +2,8 @@
 # shellcheck disable=SC1091
 # ============================================================
 # ACFS Installer - Post-Install Smoke Test
-# Fast verification that runs at the end of install.sh
+# Standalone verification. install.sh runs its own inline run_smoke_test at
+# the end of an install; this library is not sourced by the installer.
 # ============================================================
 
 _SMOKE_WAS_SOURCED=false
