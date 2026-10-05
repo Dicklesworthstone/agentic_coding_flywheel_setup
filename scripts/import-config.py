@@ -284,15 +284,20 @@ def main(arguments=None):
                         help="Trusted local installer (default: this checkout's install.sh)")
     parser.add_argument("--mode", choices=("safe", "vibe"), default="safe",
                         help="Destination mode, never inherited from the export (default: safe)")
-    parser.add_argument("--apply", action="store_true", help="Run the installer after validating its plan")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--apply", action="store_true", help="Run the installer after validating its plan")
+    action.add_argument("--check", action="store_true",
+                        help="Compare inventory only; exit 1 for missing modules, 0 if present, 2 on error")
     parser.add_argument("--yes", action="store_true", help="Explicitly allow the installer's non-interactive mode")
     parser.add_argument("--resume", action="store_true", help="Pass --resume to the existing checkpointed installer")
-    parser.add_argument("--json", action="store_true", help="Emit the preview as JSON (not compatible with --apply)")
+    parser.add_argument("--json", action="store_true", help="Emit the preview or check as JSON (not compatible with --apply)")
     parser.add_argument("--plan-timeout", type=int, choices=range(1, 301), default=60, metavar="1..300",
                         help="Timeout in seconds for each destination-export or installer-plan probe (default: 60)")
     args = parser.parse_args(arguments)
     if args.apply and args.json:
         parser.error("--json is preview-only; installer output is not an import JSON report")
+    if args.check and args.against is None and not args.against_current:
+        parser.error("--check requires --against CURRENT_EXPORT or --against-current")
     if args.export == "-" and args.against == "-":
         parser.error("The desired and destination exports cannot both read stdin")
     if args.apply and "-" in (args.export, args.against) and not args.yes:
@@ -311,10 +316,18 @@ def main(arguments=None):
         comparison["basis"] = "current_export"
         install_modules = comparison["missing"]
     command, plan, diagnostics = [], "", ""
-    if install_modules:
+    # A check is inventory comparison, not an installation preview. In
+    # particular, saved-snapshot checks must work without any local installer
+    # and must not run the resolver even when modules are missing.
+    if install_modules and not args.check:
         command = installer_command({"modules": install_modules}, args)
         plan, diagnostics = installer_plan(command, args.plan_timeout)
-    report = {"schema": SCHEMA, "status": "preview" if command else "noop", **selection,
+    status = "preview" if command else "noop"
+    check_exit = 0
+    if args.check:
+        check_exit = 1 if install_modules else 0
+        status = "missing" if install_modules else "satisfied"
+    report = {"schema": SCHEMA, "status": status, **selection,
               "install_modules": install_modules, "comparison": comparison,
               "mode": args.mode, "upgrades_ubuntu": False, "restores_credentials": False,
               "pins_tool_versions": False, "uninstalls_extra_modules": False,
@@ -324,9 +337,12 @@ def main(arguments=None):
               "destination_diagnostics": exporter_diagnostics}
     if args.json:
         print(json.dumps(report, ensure_ascii=True, indent=2))
-        return 0
-    print("ACFS module restore: %d selected module(s); destination mode: %s" %
-          (len(install_modules), args.mode))
+        return check_exit
+    if args.check:
+        print("ACFS module inventory check: %d requested module(s)." % len(selection["modules"]))
+    else:
+        print("ACFS module restore: %d selected module(s); destination mode: %s" %
+              (len(install_modules), args.mode))
     if exporter_diagnostics:
         print(exporter_diagnostics, file=sys.stderr,
               end="" if exporter_diagnostics.endswith("\n") else "\n")
@@ -338,6 +354,13 @@ def main(arguments=None):
             print("It may include recorded state; module presence is not a health or version check.")
         else:
             print("This comparison trusts the supplied snapshot; it does not probe the destination host.")
+    if args.check:
+        if install_modules:
+            print("Missing modules: " + ", ".join(install_modules))
+        else:
+            print("All requested modules are present in the destination inventory.")
+        print("Inventory check only. No installer or dependency resolver was invoked.")
+        return check_exit
     if not command:
         print("No missing modules in the destination snapshot. No installer was invoked.")
         return 0
