@@ -63,15 +63,41 @@ produced those bytes. No absent evidence is promoted into a native/source-build
 support promise. The broader `bd-wqrgy` architecture certification work still
 needs per-release and real-host evidence.
 
+## Agent readiness integration
+
+The existing `bun run agent:readiness -- --json` command now uses the same
+inspector for native Linux Claude, Codex, Antigravity, and CAAM executables.
+Wrong-machine and malformed ELF files, missing loaders, and unreadable binaries
+are hard CLI failures before any version probe. `--no-version` skips execution,
+not this byte-level check. Script wrappers retain unknown architecture evidence
+and warning status even when their normal version probe succeeds.
+
+When version collection is enabled, nonzero exits, missing exit status, runner
+exceptions, and runner errors are failures; executable permission alone no
+longer leaves an unusable CLI marked pass. Successful empty version output is a
+warning. JSON includes `cli.architecture` when inspection is available and
+`cli.versionProbe` only when a probe was attempted. Failed-probe raw output and
+exception text are withheld. Repair guidance precedes login/profile guidance
+when the executable itself is broken.
+
+Unlike `architecture:audit`, readiness still executes its ordinary version
+probes unless `--no-version` is supplied. Inspection and subsequent execution
+are separate operations, not an atomic verified-execution boundary; use trusted
+host tools and do not replace executables during the audit. Virtual filesystem
+adapters can supply their own inspection method; absent binary bytes are never
+represented as architecture evidence. Non-Linux readiness behavior is retained.
+
 ## Regression tests
 
 ```bash
 cd packages/manifest
-bun test src/binary-architecture.test.ts src/architecture-audit.test.ts
+bun test src/binary-architecture.test.ts src/architecture-audit.test.ts src/agent-readiness-architecture.test.ts
 ```
 
 Tests cover both machine types, truncated and malformed ELF structures, bounded
 reads, interpreter handling, executable symlinks, inert wrappers, ambiguous
 catalogues, stable selection, path precedence, exit codes, and real system ELF
-inspection without launching it. These are parser/filesystem tests, not ARM64
-VM execution or full-installer certification.
+inspection without launching it. Readiness regressions exercise the real audit
+with temporary files, injected version runners, and an actual failing version
+process. These are parser/filesystem/process tests, not ARM64 VM execution or
+full-installer certification.
