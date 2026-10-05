@@ -31,16 +31,16 @@ function load(url, dependencies, scope) {
     (compiled.diagnostics ?? []).filter((item) => item.category === ts.DiagnosticCategory.Error),
     [],
   );
-  const module = { exports: {} };
+  const cjs = { exports: {} };
   runInContext(`(function(require,module,exports){${compiled.outputText}\n})`, scope)(
     (name) => {
       assert.ok(Object.hasOwn(dependencies, name), `unexpected dependency ${name}`);
       return dependencies[name];
     },
-    module,
-    module.exports,
+    cjs,
+    cjs.exports,
   );
-  return module.exports;
+  return cjs.exports;
 }
 function fixture() {
   const prefs = {
