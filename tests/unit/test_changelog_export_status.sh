@@ -5024,6 +5024,30 @@ test_doctor_entrypoint_dispatches_zsh_only_commands() {
     fi
 }
 
+test_doctor_dispatch_keeps_caller_path() {
+    # doctor.sh sources the generated doctor_checks.sh, whose header exports
+    # root's /usr/sbin:/usr/bin:/sbin:/bin. Leaked into the dispatcher, that
+    # PATH made every helper exec'd afterwards (swarm doctor/status, ...)
+    # report per-user tools such as am, br and ntm as unavailable.
+    local work="" fake_bin="" fake_status="" seen_path=""
+    work="$(mktemp -d)"
+    fake_bin="$work/user-bin"
+    fake_status="$work/fake_swarm_status.sh"
+    mkdir -p "$fake_bin"
+    cat > "$fake_status" <<EOF
+printf '%s\n' "\$PATH" > "$work/seen_path"
+printf '{}\n'
+EOF
+    PATH="$fake_bin:$PATH" ACFS_SWARM_STATUS_SCRIPT="$fake_status" \
+        bash "$DOCTOR_SH" swarm doctor --json >/dev/null 2>&1 || true
+    seen_path="$(cat "$work/seen_path" 2>/dev/null || true)"
+    if [[ ":$seen_path:" == *":$fake_bin:"* ]]; then
+        harness_pass "doctor dispatch keeps a non-root caller's PATH for helpers"
+    else
+        harness_fail "doctor dispatch keeps a non-root caller's PATH for helpers" "helper saw PATH=${seen_path:-<nothing recorded>}"
+    fi
+}
+
 test_doctor_entrypoint_dispatches_helper_commands() {
     setup_mock_env
 
@@ -11898,6 +11922,7 @@ main() {
     harness_section "Entrypoint Dispatch"
     test_doctor_entrypoint_dispatches_helper_commands || true
     test_doctor_entrypoint_dispatches_zsh_only_commands || true
+    test_doctor_dispatch_keeps_caller_path || true
     test_doctor_dispatches_installed_layout_under_root_home || true
     test_doctor_ignores_relative_home_state_trap || true
     test_doctor_uses_system_state_target_home_when_installed_state_is_stale || true

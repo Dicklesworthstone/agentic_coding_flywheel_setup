@@ -973,17 +973,23 @@ _MANIFEST_CHECKS_FILE=""
 _MANIFEST_CHECKS_FILE="$(_acfs_doctor_find_project_path "scripts/generated/doctor_checks.sh" 2>/dev/null || true)"
 
 if [[ -n "$_MANIFEST_CHECKS_FILE" ]]; then
-    # Save shell options before sourcing (doctor_checks.sh sets -euo pipefail)
+    # Save shell options and PATH before sourcing: doctor_checks.sh sets
+    # -euo pipefail, and its generated header exports root's PATH. Leaked here,
+    # that PATH hid every per-user tool from the helpers dispatched below
+    # (swarm doctor reported am/br/ntm unavailable). ensure_path already chose
+    # this process's PATH, the privileged one for root.
     _MANIFEST_SAVED_OPTS=$(set +o)
+    _MANIFEST_SAVED_PATH="$PATH"
 
     # shellcheck source=/dev/null
     if source "$_MANIFEST_CHECKS_FILE" 2>/dev/null; then
         MANIFEST_CHECKS_LOADED=true
     fi
 
-    # Restore original shell options
+    # Restore original shell options and PATH
     eval "$_MANIFEST_SAVED_OPTS" 2>/dev/null
-    unset _MANIFEST_SAVED_OPTS
+    export PATH="$_MANIFEST_SAVED_PATH"
+    unset _MANIFEST_SAVED_OPTS _MANIFEST_SAVED_PATH
 fi
 unset _MANIFEST_CHECKS_FILE
 
