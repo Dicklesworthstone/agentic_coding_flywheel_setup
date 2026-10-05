@@ -430,12 +430,14 @@ describe("progress persistence guards", () => {
         region: "retired-region",
       }),
     );
+    // Unknown plans and regions are never upgraded to the provider's
+    // recommended configuration, and a valid image is kept (cd75899a).
     expect(getVPSReadinessSelection()).toEqual({
       ...expectedSelection,
       providerId: "ovh",
-      planName: "VPS-4",
-      ubuntuVersion: "25.10",
-      region: "us-east",
+      planName: "custom plan",
+      ubuntuVersion: "26.04",
+      region: "not-listed",
     });
   });
 
