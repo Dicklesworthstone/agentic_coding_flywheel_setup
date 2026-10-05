@@ -598,7 +598,9 @@ test_base_filesystem_2_verify_runs_with_injected_helpers() {
 
     local temp_root=""
     temp_root="$(mktemp -d)"
-    mkdir -p "$temp_root/.acfs"
+    # The verify now also requires the workspace guide, not just ~/.acfs.
+    mkdir -p "$temp_root/.acfs/docs"
+    : > "$temp_root/.acfs/docs/AGENTS.workspace.md"
 
     # The generated doctor runner injects these helpers before manifest
     # commands that reference acfs_generated_* functions. Keep this harness
