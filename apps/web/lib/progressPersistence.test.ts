@@ -369,10 +369,11 @@ describe("progress persistence guards", () => {
         workloadId: "heavy",
       }),
     ).toBe(true);
+    // A missing image is never fabricated into a release (cd75899a).
     const expectedSelection = {
       providerId: "other",
       planName: "custom plan",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "unknown",
       region: "not-listed",
       targetAgents: 10,
       workloadId: "heavy",
