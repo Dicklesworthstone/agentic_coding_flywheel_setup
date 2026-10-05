@@ -1961,6 +1961,9 @@ _setup_stack_agent_mail_gate_fixture() {
         esac
         return 0
     }
+    # NTM runs first through this helper; keep it out of the way so the run
+    # reaches the Agent Mail installer failure under test.
+    update_run_verified_installer_or_existing_on_transient() { return 0; }
     update_run_verified_installer_with_env() { return 0; }
     update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
@@ -3049,8 +3052,10 @@ EOF
 }
 
 @test "update_atuin: falls back to reinstall after failed self-update" {
-    init_stub_dir
-    export PATH="$STUB_DIR:$PATH"
+    # The updater only trusts target-home installs (never a bare PATH entry),
+    # so the fake atuin lives where a real one would: ~/.atuin/bin.
+    local atuin_dir="$HOME/.atuin/bin"
+    mkdir -p "$atuin_dir"
     export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
     export ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
     QUIET=true
@@ -3063,7 +3068,7 @@ EOF
     FAIL_COUNT=0
     SKIP_COUNT=0
 
-    cat > "$STUB_DIR/atuin" <<'EOF'
+    cat > "$atuin_dir/atuin" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
   --help)
@@ -3081,7 +3086,7 @@ case "${1:-}" in
     ;;
 esac
 EOF
-    chmod +x "$STUB_DIR/atuin"
+    chmod +x "$atuin_dir/atuin"
 
     update_require_security() {
         return 0
@@ -4791,7 +4796,8 @@ EOF
     local smoke="$PROJECT_ROOT/scripts/lib/smoke_test.sh"
     local update="$PROJECT_ROOT/scripts/lib/update.sh"
 
-    run grep -F 'local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"' "$doctor"
+    # /usr/local/go/bin is where the official Go tarball lands (lang.go check).
+    run grep -F 'local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/local/go/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"' "$doctor"
     assert_success
     run grep -F 'local current_path="${PATH:-$system_path_prefix}"' "$doctor"
     assert_success
@@ -4811,7 +4817,7 @@ EOF
     assert_success
     run grep -F 'target_home="/home/$target_user"' "$doctor"
     assert_failure
-    run grep -F '"$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -o pipefail -c "$cmd"' "$doctor"
+    run grep -F '"$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix" "$bash_bin" -e -o pipefail -c "$cmd"' "$doctor"
     assert_success
     run grep -F 'export PATH="$prefix${current_path:+:$current_path}"' "$doctor"
     assert_success
@@ -7298,14 +7304,16 @@ EOF
     [[ -f "$target_home/.waited-agent-mail-health" ]]
 }
 
-@test "stack SLB installer checks active Go PATH lines only" {
+@test "stack SLB installer leaves the Go PATH to acfs.zshrc instead of editing ~/.zshrc" {
     local stack="$PROJECT_ROOT/scripts/lib/stack.sh"
 
-    run grep -F 'acfs_has_active_go_bin_path() {' "$stack"
+    # ef833d97 dropped the ~/.zshrc probe/append: acfs.zshrc already exports
+    # $HOME/go/bin, so stack.sh must not read or rewrite the user's ~/.zshrc.
+    run grep -F 'export PATH="$HOME/go/bin:$PATH"' "$PROJECT_ROOT/acfs/zsh/acfs.zshrc"
     assert_success
 
-    run grep -F 'if ! acfs_has_active_go_bin_path ~/.zshrc; then' "$stack"
-    assert_success
+    run grep -F 'zshrc' "$stack"
+    assert_failure
 
     run grep -F "grep -q 'export PATH=.*\$HOME/go/bin' ~/.zshrc" "$stack"
     assert_failure
@@ -9937,8 +9945,14 @@ EOF
         [[ "$output" -ge 2 ]] || fail "Expected $context_var in both target and root helper env allowlists"
     done
 
-    run grep -F 'export CHECKSUMS_FILE="${ACFS_CHECKSUMS_YAML:-${CHECKSUMS_FILE:-}}"' "$installer"
+    # fe0d314b: CHECKSUMS_FILE always comes from the process-owned source tree
+    # and is exported; an inherited caller value is never trusted as a fallback.
+    run grep -Fx '    CHECKSUMS_FILE="$ACFS_CHECKSUMS_YAML"' "$installer"
     assert_success
+    run grep -F 'export ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE' "$installer"
+    assert_success
+    run grep -F '${CHECKSUMS_FILE:-}}' "$installer"
+    assert_failure
 }
 
 @test "install.sh target-home contexts repair stale TARGET_HOME from passwd" {
@@ -10739,10 +10753,15 @@ EOF
     run grep -F '_ACFS_EXPLICIT_TARGET_HOME="\${TARGET_HOME:-}"' "$generator"
     assert_success
 
-    run grep -F '_ACFS_RESOLVED_TARGET_HOME="\$(_acfs_resolve_target_home "\${TARGET_USER}" "\$_ACFS_EXPLICIT_TARGET_HOME" || true)"' "$generator"
+    # In the TS template literal, `$_NAME` (no brace) is not interpolated, so the
+    # source carries it unescaped; the emitted bash is the same either way.
+    run grep -F '_ACFS_RESOLVED_TARGET_HOME="$(_acfs_resolve_target_home "\${TARGET_USER}" "$_ACFS_EXPLICIT_TARGET_HOME" || true)"' "$generator"
     assert_success
 
-    run grep -F '{ [[ -z "\$_ACFS_EXPLICIT_TARGET_HOME" ]] || [[ "\$_acfs_current_home" == "\$_ACFS_EXPLICIT_TARGET_HOME" ]]; }' "$generator"
+    run grep -F '{ [[ -z "$_ACFS_EXPLICIT_TARGET_HOME" ]] || [[ "$_acfs_current_home" == "$_ACFS_EXPLICIT_TARGET_HOME" ]]; }' "$generator"
+    assert_success
+
+    run grep -F '_ACFS_RESOLVED_TARGET_HOME="$(_acfs_resolve_target_home "${TARGET_USER}" "$_ACFS_EXPLICIT_TARGET_HOME" || true)"' "$PROJECT_ROOT/scripts/generated/install_stack.sh"
     assert_success
 
     run grep -F 'explicit_target_home="$target_home"' "$generator"
@@ -12032,7 +12051,8 @@ SECURITY
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
 
     update_require_security() { return 0; }
-    get_checksum() { printf '%s\n' "abc123"; }
+    # A well-formed digest: the updater refuses anything but 64 hex chars.
+    get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
     verify_checksum() {
         printf '%s\n' '#!/usr/bin/env bash'
         printf '%s\n' 'exit 0'
@@ -12055,7 +12075,7 @@ SECURITY
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
 
     update_require_security() { return 0; }
-    get_checksum() { printf '%s\n' "abc123"; }
+    get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
     verify_checksum() {
         printf '%s\n' '#!/usr/bin/env bash'
         printf '%s\n' 'exit 0'
@@ -12076,7 +12096,7 @@ SECURITY
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
 
     update_require_security() { return 0; }
-    get_checksum() { printf '%s\n' "abc123"; }
+    get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
 
     run update_run_verified_installer_with_env "test_tool" "TEST-ENV=value" "--flag"
     assert_failure
@@ -12092,7 +12112,7 @@ SECURITY
     export TMPDIR="$private_tmp"
 
     update_require_security() { return 0; }
-    get_checksum() { printf '%s\n' "abc123"; }
+    get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
     verify_checksum() {
         printf '%s\n' '#!/usr/bin/env bash'
         printf '%s\n' 'exit 0'
@@ -12136,7 +12156,7 @@ SECURITY
     export ACFS_UPDATE_TMPDIR="$override_tmp"
 
     update_require_security() { return 0; }
-    get_checksum() { printf '%s\n' "abc123"; }
+    get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
     verify_checksum() {
         printf '%s\n' '#!/usr/bin/env bash'
         printf '%s\n' 'exit 0'
