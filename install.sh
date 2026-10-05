@@ -3250,8 +3250,12 @@ run_autofix_checks() {
         fi
     fi
 
-    # Add more auto-fix checks here as they are implemented
-    # e.g., nvm/pyenv conflicts from bd-19y9.3.2
+    # Add more auto-fix checks here as they are implemented.
+    # Do NOT wire scripts/lib/autofix_version_managers.sh (bd-19y9.3.2) in here
+    # as-is: it treats any nvm installation as a conflict, but ACFS installs
+    # nvm itself (manifest module lang.nvm), so every idempotent re-run would
+    # try to dismantle ACFS's own Node toolchain. It needs an "ACFS-managed nvm
+    # is not a conflict" rule first.
 
     log_debug "Auto-fix pre-flight checks complete"
 }
