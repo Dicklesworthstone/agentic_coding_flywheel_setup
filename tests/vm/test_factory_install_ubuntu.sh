@@ -25,6 +25,7 @@ MODE="${ACFS_FACTORY_MODE:-vibe}"
 TARGET_USERNAME="${ACFS_FACTORY_TARGET_USERNAME:-ubuntu}"
 EXPECT_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:-24.04}"
 EXPECT_FINAL_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:-24.04}"
+TARGET_UBUNTU_VERSION="${ACFS_FACTORY_TARGET_UBUNTU:-}"
 EXPECT_NO_TARGET_USER="${ACFS_FACTORY_EXPECT_NO_TARGET_USER:-true}"
 INSTALL_TIMEOUT_SECONDS="${ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
@@ -39,6 +40,7 @@ MODE_EXPLICIT=$([[ -n "${ACFS_FACTORY_MODE+x}" ]] && printf true || printf false
 TARGET_USERNAME_EXPLICIT=$([[ -n "${ACFS_FACTORY_TARGET_USERNAME+x}" ]] && printf true || printf false)
 EXPECT_UBUNTU_EXPLICIT=$([[ -n "${ACFS_FACTORY_EXPECT_UBUNTU_VERSION+x}" ]] && printf true || printf false)
 EXPECT_FINAL_UBUNTU_EXPLICIT=$([[ -n "${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION+x}" ]] && printf true || printf false)
+TARGET_UBUNTU_EXPLICIT=$([[ -n "$TARGET_UBUNTU_VERSION" ]] && printf true || printf false)
 PACKET_PROFILE=""
 PACKET_ONLY_MODULES_CSV=""
 PACKET_ONLY_PHASES_CSV=""
@@ -65,7 +67,12 @@ Options:
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>             Alias for --provisioning-packet.
   --expect-ubuntu <version>   Required initial VERSION_ID from /etc/os-release (default: 24.04).
-  --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: the initial version).
+  --target-ubuntu <version>   Pass --target-ubuntu=<version> to the installer (opt-in release
+                              upgrade, as the wizard command does). A packet's install.command
+                              supplies this when it requests a target. An upgrade reboots the
+                              host, so it requires --allow-install-reboot.
+  --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: the
+                              --target-ubuntu release, else the initial version).
   --allow-existing-target-user Do not fail if the target user exists before install.
   --allow-install-reboot      Treat SSH disconnects during install as expected and reconnect.
   --public-key-file <path>    Public key to seed into root authorized_keys before install.
@@ -84,6 +91,7 @@ Environment equivalents:
   ACFS_FACTORY_PROVISIONING_PACKET
   ACFS_FACTORY_EXPECT_UBUNTU_VERSION
   ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION
+  ACFS_FACTORY_TARGET_UBUNTU
   ACFS_FACTORY_EXPECT_NO_TARGET_USER
   ACFS_FACTORY_ALLOW_INSTALL_REBOOT
   ACFS_FACTORY_PUBLIC_KEY_FILE
@@ -143,6 +151,11 @@ while [[ $# -gt 0 ]]; do
             EXPECT_FINAL_UBUNTU_EXPLICIT=true
             shift 2
             ;;
+        --target-ubuntu)
+            TARGET_UBUNTU_VERSION="${2:-}"
+            TARGET_UBUNTU_EXPLICIT=true
+            shift 2
+            ;;
         --allow-existing-target-user)
             EXPECT_NO_TARGET_USER=false
             shift
@@ -183,10 +196,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# An ordinary install keeps the host release, so unless a final release was
-# requested explicitly, expect the initial one (also re-synced to a packet's OS).
-if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
-    EXPECT_FINAL_UBUNTU_VERSION="$EXPECT_UBUNTU_VERSION"
+# An ordinary install keeps the host release; an opt-in --target-ubuntu run
+# ends on the target. An explicit --expect-final-ubuntu always wins. Re-applied
+# after a provisioning packet supplies the initial release and target.
+apply_final_ubuntu_default() {
+    if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
+        EXPECT_FINAL_UBUNTU_VERSION="${TARGET_UBUNTU_VERSION:-$EXPECT_UBUNTU_VERSION}"
+    fi
+}
+apply_final_ubuntu_default
+
+if [[ -n "$TARGET_UBUNTU_VERSION" && ! "$TARGET_UBUNTU_VERSION" =~ ^[0-9]{2}\.[0-9]{2}$ ]]; then
+    echo "ERROR: --target-ubuntu must look like 26.04 (got: $TARGET_UBUNTU_VERSION)" >&2
+    exit 1
 fi
 
 if [[ -z "$SSH_TARGET" ]]; then
@@ -348,6 +370,7 @@ write_factory_sentinel_artifacts() {
             --arg mode "$MODE" \
             --arg expect_ubuntu "$EXPECT_UBUNTU_VERSION" \
             --arg expect_final_ubuntu "$EXPECT_FINAL_UBUNTU_VERSION" \
+            --arg target_ubuntu "$TARGET_UBUNTU_VERSION" \
             --arg target_username "$TARGET_USERNAME" \
             --arg packet_projection_status "$packet_projection_status" \
             --argjson packet "$packet_json" \
@@ -364,7 +387,8 @@ write_factory_sentinel_artifacts() {
                     mode: $mode,
                     username: $target_username,
                     expectedInitialUbuntu: $expect_ubuntu,
-                    expectedFinalUbuntu: $expect_final_ubuntu
+                    expectedFinalUbuntu: $expect_final_ubuntu,
+                    requestedTargetUbuntu: (if $target_ubuntu != "" then $target_ubuntu else null end)
                 },
                 provisioningPacketProjection: {
                     status: $packet_projection_status,
@@ -391,6 +415,7 @@ write_factory_sentinel_artifacts() {
 - **Mode**: ${MODE}
 - **Target Username**: ${TARGET_USERNAME}
 - **Expected OS**: Ubuntu ${EXPECT_UBUNTU_VERSION} -> ${EXPECT_FINAL_UBUNTU_VERSION}
+- **Requested --target-ubuntu**: ${TARGET_UBUNTU_VERSION:-none}
 
 ## Failure Diagnostics
 $([[ -n "$sanitized_error_msg" ]] && echo "- **Error**: ${sanitized_error_msg}" || echo "None")
@@ -436,11 +461,26 @@ validate_provisioning_packet() {
     fi
 
     local packet_init_os packet_ref packet_mode packet_username packet_location
+    local packet_command packet_target=""
     packet_init_os="$(jq -er '.osImage.version' "$PROVISIONING_PACKET")"
     packet_ref="$(jq -er '.install.sourceRef' "$PROVISIONING_PACKET")"
     packet_mode="$(jq -er '.install.mode' "$PROVISIONING_PACKET")"
     packet_username="$(jq -er '.access.username' "$PROVISIONING_PACKET")"
     packet_location="$(jq -er '.install.commandRunLocation' "$PROVISIONING_PACKET")"
+    packet_command="$(jq -er '.install.command' "$PROVISIONING_PACKET")"
+
+    # The wizard's command opts into an upgrade with --target-ubuntu=VER; replay
+    # that request rather than silently installing on the image's release.
+    if [[ "$packet_command" == *--target-ubuntu* ]]; then
+        if [[ "$packet_command" =~ (^|[[:space:]])--target-ubuntu(=|[[:space:]]+)([0-9]{2}\.[0-9]{2})([[:space:]]|$) ]]; then
+            packet_target="${BASH_REMATCH[3]}"
+        else
+            echo "ERROR: provisioning packet install.command has an unparseable --target-ubuntu" >&2
+            write_factory_sentinel_artifacts "failed" "provider_setup" 2 "packet install.command has an unparseable --target-ubuntu"
+            redact_local_factory_artifacts
+            exit 2
+        fi
+    fi
 
     if [[ "$packet_location" != "vps-root-shell" ]]; then
         echo "ERROR: factory SSH execution requires install.commandRunLocation=vps-root-shell" >&2
@@ -452,7 +492,8 @@ validate_provisioning_packet() {
     if [[ "$REF_EXPLICIT" == "true" && "$REF" != "$packet_ref" ]] \
         || [[ "$MODE_EXPLICIT" == "true" && "$MODE" != "$packet_mode" ]] \
         || [[ "$TARGET_USERNAME_EXPLICIT" == "true" && "$TARGET_USERNAME" != "$packet_username" ]] \
-        || [[ "$EXPECT_UBUNTU_EXPLICIT" == "true" && "$EXPECT_UBUNTU_VERSION" != "$packet_init_os" ]]; then
+        || [[ "$EXPECT_UBUNTU_EXPLICIT" == "true" && "$EXPECT_UBUNTU_VERSION" != "$packet_init_os" ]] \
+        || [[ "$TARGET_UBUNTU_EXPLICIT" == "true" && "$TARGET_UBUNTU_VERSION" != "$packet_target" ]]; then
         echo "ERROR: explicit factory arguments conflict with the provisioning packet" >&2
         write_factory_sentinel_artifacts "failed" "provider_setup" 2 "explicit factory arguments conflict with provisioning packet intent"
         redact_local_factory_artifacts
@@ -463,9 +504,8 @@ validate_provisioning_packet() {
     MODE="$packet_mode"
     TARGET_USERNAME="$packet_username"
     EXPECT_UBUNTU_VERSION="$packet_init_os"
-    if [[ "$EXPECT_FINAL_UBUNTU_EXPLICIT" != "true" ]]; then
-        EXPECT_FINAL_UBUNTU_VERSION="$EXPECT_UBUNTU_VERSION"
-    fi
+    TARGET_UBUNTU_VERSION="$packet_target"
+    apply_final_ubuntu_default
     PACKET_PROFILE="$(jq -r '.install.moduleSelection.profile // empty' "$PROVISIONING_PACKET")"
     PACKET_ONLY_MODULES_CSV="$(jq -r '(.install.moduleSelection.onlyModules // []) | join(",")' "$PROVISIONING_PACKET")"
     PACKET_ONLY_PHASES_CSV="$(jq -r '(.install.moduleSelection.onlyPhases // []) | join(",")' "$PROVISIONING_PACKET")"
@@ -474,6 +514,16 @@ validate_provisioning_packet() {
 }
 
 validate_provisioning_packet
+
+# A release upgrade reboots the host mid-install; without reconnect handling the
+# run would be reported as an installer failure instead of being followed.
+if [[ -n "$TARGET_UBUNTU_VERSION" && "$TARGET_UBUNTU_VERSION" != "$EXPECT_UBUNTU_VERSION" \
+    && "$ALLOW_INSTALL_REBOOT" != "true" ]]; then
+    echo "ERROR: --target-ubuntu $TARGET_UBUNTU_VERSION upgrades from $EXPECT_UBUNTU_VERSION and reboots the host; pass --allow-install-reboot" >&2
+    write_factory_sentinel_artifacts "failed" "provider_setup" 2 "release upgrade requested without --allow-install-reboot"
+    redact_local_factory_artifacts
+    exit 2
+fi
 
 if [[ -z "$INSTALL_URL" ]]; then
     INSTALL_URL="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${REF}/install.sh?acfs_factory_e2e=${TIMESTAMP}"
@@ -488,6 +538,7 @@ echo "[factory-e2e] Ref: $REF" >&2
 echo "[factory-e2e] Mode: $MODE" >&2
 echo "[factory-e2e] Expected initial Ubuntu: $EXPECT_UBUNTU_VERSION" >&2
 echo "[factory-e2e] Expected final Ubuntu: $EXPECT_FINAL_UBUNTU_VERSION" >&2
+echo "[factory-e2e] Requested --target-ubuntu: ${TARGET_UBUNTU_VERSION:-none}" >&2
 echo "[factory-e2e] Allow install reboot: $ALLOW_INSTALL_REBOOT" >&2
 echo "[factory-e2e] Artifacts: $ARTIFACTS_DIR" >&2
 
@@ -519,6 +570,7 @@ set -euo pipefail
 : "${ACFS_FACTORY_ONLY_PHASES_CSV:=}"
 : "${ACFS_FACTORY_SKIP_MODULES_CSV:=}"
 : "${ACFS_FACTORY_NO_DEPS:=false}"
+: "${ACFS_FACTORY_TARGET_UBUNTU:=}"
 
 REMOTE_LOG="${ACFS_FACTORY_REMOTE_DIR}/factory-e2e.log"
 REMOTE_JSONL="${ACFS_FACTORY_REMOTE_DIR}/factory-e2e.jsonl"
@@ -642,7 +694,8 @@ run_install_once() {
         "$ACFS_FACTORY_ONLY_MODULES_CSV" \
         "$ACFS_FACTORY_ONLY_PHASES_CSV" \
         "$ACFS_FACTORY_SKIP_MODULES_CSV" \
-        "$ACFS_FACTORY_NO_DEPS" > "$log_file" 2>&1 <<'INSTALL_SCRIPT'
+        "$ACFS_FACTORY_NO_DEPS" \
+        "$ACFS_FACTORY_TARGET_UBUNTU" > "$log_file" 2>&1 <<'INSTALL_SCRIPT'
 set -euo pipefail
 install_url="$1"
 mode="$2"
@@ -653,7 +706,11 @@ only_modules_csv="$6"
 only_phases_csv="$7"
 skip_modules_csv="$8"
 no_deps="$9"
+target_ubuntu="${10}"
 installer_args=(--yes --mode "$mode" --ref "$ref")
+if [[ -n "$target_ubuntu" ]]; then
+    installer_args+=("--target-ubuntu=$target_ubuntu")
+fi
 if [[ -n "$profile" ]]; then
     installer_args+=(--profile "$profile")
 fi
@@ -946,6 +1003,7 @@ run_remote_runner() {
         "ACFS_FACTORY_ONLY_PHASES_CSV=$PACKET_ONLY_PHASES_CSV"
         "ACFS_FACTORY_SKIP_MODULES_CSV=$PACKET_SKIP_MODULES_CSV"
         "ACFS_FACTORY_NO_DEPS=$PACKET_NO_DEPS"
+        "ACFS_FACTORY_TARGET_UBUNTU=$TARGET_UBUNTU_VERSION"
         "ACFS_FACTORY_RUN_MODE=$run_mode"
         bash
         "$remote_runner"
