@@ -10,6 +10,7 @@ flock, timeout and exit-status handling run for real. The test runner itself nee
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -790,6 +791,41 @@ def check_upgrade_checkpoint_symlink(self):
     self.assertEqual(victim.read_text(), "{}")
     self.assertFalse((self.work / "executed").exists())
 CloudInitTest.test_symlinked_upgrade_checkpoint_refused = check_upgrade_checkpoint_symlink
+
+
+class ProviderGuideTest(unittest.TestCase):
+    """The provider guides are text-only by policy (scripts/providers/screenshots/README.md)."""
+
+    GUIDES = sorted((ROOT / "scripts/providers").glob("*.md"))
+
+    def test_guides_exist(self):
+        self.assertEqual([guide.name for guide in self.GUIDES], ["contabo.md", "hetzner.md", "ovh.md"])
+
+    def test_no_screenshot_placeholders(self):
+        placeholder = re.compile(
+            r"screenshots? (?:are|is) placeholder|placeholder screenshot|\]\(screenshots/", re.I
+        )
+        for guide in self.GUIDES:
+            for number, line in enumerate(guide.read_text().splitlines(), 1):
+                self.assertIsNone(placeholder.search(line), f"{guide.name}:{number}: {line}")
+
+    def test_relative_links_resolve(self):
+        for guide in self.GUIDES:
+            for target in re.findall(r"\]\(([^)\s]+)\)", guide.read_text()):
+                if re.match(r"(?:[a-z]+:|#)", target):
+                    continue
+                path = (guide.parent / target.split("#", 1)[0]).resolve()
+                self.assertTrue(path.exists(), f"{guide.name} links missing {target}")
+
+    def test_hetzner_hcloud_example_uses_an_image_the_template_accepts(self):
+        guide = (ROOT / "scripts/providers/hetzner.md").read_text()
+        images = re.findall(r"--image ubuntu-(\d\d\.\d\d)\b", guide)
+        self.assertEqual(len(images), 1, "expected exactly one hcloud --image example")
+        guard = f'"${{VERSION_ID:-}}" =~ ^{re.escape(images[0])}('
+        self.assertTrue(
+            guard in TEMPLATE.read_text(),
+            f"hetzner.md passes ubuntu-{images[0]}, which hetzner-cloud-init.yml refuses",
+        )
 
 
 if __name__ == "__main__":
