@@ -401,7 +401,7 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
       useWizardForwardNav: () => ({}),
       validateStep: () => ({ valid: true }),
     },
-    "@/lib/services": { SERVICES: [], CATEGORY_NAMES: {} },
+    "@/lib/services": load(new URL("../lib/services.ts", import.meta.url), {}),
     "@/lib/hooks/useWizardAnalytics": { useWizardAnalytics: () => ({ markComplete() {} }) },
   });
   const commandPanel = load(new URL("./command-builder-panel.tsx", import.meta.url), {
@@ -807,6 +807,24 @@ for (const failure of ["get", "write", "readback", "remove"]) {
     assert.ok(!text(f.render()).includes("PRIVATE"));
   });
 }
+
+test("storage blocked from the first read renders the steps but withholds installation commands", () => {
+  const f = fixture();
+  f.storage.getItem = () => {
+    throw new Error("PRIVATE");
+  };
+  const tree = f.render();
+  assert.equal(f.session().status, "unavailable");
+  assert.equal(f.hasChildren(), true, "setup steps must not be locked behind a dead-end review");
+  assert.match(text(tree), /Installation commands are hidden in this tab/);
+  assert.ok(!text(tree).includes("PRIVATE"));
+  const hooks = f.hooks();
+  for (const name of ["user", "mode", "ref", "profile"]) assert.equal(hooks[name][2], false, name);
+  assert.equal(hooks.selection[1], false);
+  const panel = f.commands();
+  assert.ok(!panel.nodes.some((node) => node.type === "code"), "no command may render");
+  assert.match(panel.text(), /before generating commands/);
+});
 
 test("an unresolved pathname cannot bypass hydration and render wizard commands", () => {
   const f = fixture(new Map(), null);
