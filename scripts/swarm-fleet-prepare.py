@@ -557,6 +557,131 @@ def prepare(plan, approval, invoke, guard):
     return report, 0
 
 
+def preparation_mapping(plan):
+    return {"schema": "acfs.swarm-fleet-batches.v1", "hosts": [
+        {"id": e["host"]["id"], "batch": e["output"] + "/bundle/batch.json"} for e in plan["hosts"]]}
+
+
+def read_preparation_history(fd, plan):
+    """A coherent prefix is evidence of attempts, never authority to repeat one."""
+    raw = fleet.read_at(fd, "intent.json")
+    require(encoded(decode(raw)) == encoded({"schema": SCHEMA, "plan": plan}), "preparation_intent_mismatch")
+    records = {"intent.json": raw}
+    history, pending_seen, incomplete_seen = [], False, False
+    for entry in plan["hosts"]:
+        name = entry["host"]["id"]
+        attempted = fleet.read_at(fd, name + ".attempt.json", optional=True)
+        result = fleet.read_at(fd, name + ".result.json", optional=True)
+        records[name + ".attempt.json"], records[name + ".result.json"] = attempted, result
+        require(attempted is not None or result is None, "preparation_result_without_attempt")
+        if attempted is None:
+            pending_seen = True
+            history.append((False, None))
+            continue
+        require(not pending_seen and not incomplete_seen, "nonprefix_preparation_history")
+        require(encoded(decode(attempted)) == encoded(attempt(plan, entry)), "preparation_attempt_mismatch")
+        saved = None
+        if result is not None:
+            saved = accept_result(entry, decode(result), "inspect")
+        else:
+            incomplete_seen = True
+        history.append((True, saved))
+    mapping = fleet.read_at(fd, "batches.json", optional=True)
+    records["batches.json"] = mapping
+    if mapping is not None:
+        require(all(attempted and result is not None for attempted, result in history), "premature_preparation_mapping")
+        require(encoded(decode(mapping)) == encoded(preparation_mapping(plan)), "preparation_mapping_mismatch")
+    require(set(os.listdir(fd)) == {k for k, v in records.items() if v is not None}, "unexpected_preparation_state_member")
+    return history, records
+
+
+def recover_preparation(plan, mode, approval, invoke, guard):
+    """Inspect existing bundles; resume can prepare only never-attempted hosts."""
+    global PREPARATION_ATTEMPTED
+    PREPARATION_ATTEMPTED = False
+    require(mode in ("reconcile", "resume"), "invalid_preparation_recovery_mode")
+    require(mode != "resume" or approval == digest(encoded(plan)), "approval_mismatch_preview_again")
+    report = report_for(plan)
+    report.update(operation=mode, status="partial")
+    path = Path(plan["state_directory"])
+    with fleet.directory_fd(path, private=True) as fd:
+        lock(fd)
+        history, records = read_preparation_history(fd, plan)
+        def stable():
+            guard()
+            fleet.state_unchanged(fd, plan, records)
+        def save(name, value):
+            stable()
+            fleet.publish(fd, name, value)
+            records[name] = encoded(value)
+            stable()
+        stable()
+        observed, blocked = {}, False
+        # Query all attempted hosts even if one is unconfirmed. Inspect performs
+        # no native command, requires immutable complete evidence, and works
+        # after the original agents exit. It cannot regenerate operation IDs.
+        for index, (attempted, saved) in enumerate(history):
+            if not attempted:
+                continue
+            entry = plan["hosts"][index]
+            stable()
+            try:
+                result = probe(entry, "inspect", invoke)
+                require(saved is None or encoded(saved) == encoded(result), "original_preparation_changed")
+                observed[index] = result
+                report["hosts"][index].update(status="prepared", files=result["files"], packets=result["packets"])
+            except (fleet.Refused, OSError, subprocess.SubprocessError):
+                blocked = True
+                report["hosts"][index].update(status="unconfirmed", code="preserve_remote_output")
+            stable()
+        if blocked:
+            report["status"] = "unconfirmed"
+            return report, 1
+        pending = [i for i, (attempted, _) in enumerate(history) if not attempted]
+        if mode == "reconcile":
+            report["status"] = "partial" if pending else "prepared"
+            report["mapping_published"] = records["batches.json"] is not None
+            if records["batches.json"] is not None:
+                report["batches_file"] = str(path / "batches.json")
+            return report, 1 if pending else 0
+        # The original remote complete marker can recover a lost local reply,
+        # but neither partial remote files nor absence permits regeneration.
+        for index, (attempted, saved) in enumerate(history):
+            if attempted and saved is None:
+                save(plan["hosts"][index]["host"]["id"] + ".result.json", observed[index])
+        blocked = False
+        for index in pending:
+            stable()
+            try:
+                probe(plan["hosts"][index], "check", invoke)
+            except (fleet.Refused, OSError, subprocess.SubprocessError):
+                blocked = True
+                report["hosts"][index].update(status="blocked", code="remote_preflight_failed")
+            stable()
+        if blocked:
+            report["status"] = "blocked"
+            return report, 1
+        for index in pending:
+            entry = plan["hosts"][index]
+            save(entry["host"]["id"] + ".attempt.json", attempt(plan, entry))
+            PREPARATION_ATTEMPTED = report["preparation_attempted"] = True
+            try:
+                result = probe(entry, "prepare", invoke)
+            except (fleet.Refused, OSError, subprocess.SubprocessError):
+                stable()
+                report["status"] = "unconfirmed"
+                report["hosts"][index].update(status="unconfirmed", code="preserve_remote_output")
+                return report, 1
+            stable()
+            save(entry["host"]["id"] + ".result.json", result)
+            report["hosts"][index].update(status="prepared", files=result["files"], packets=result["packets"])
+        if records["batches.json"] is None:
+            save("batches.json", preparation_mapping(plan))
+        stable()
+    report.update(status="prepared", batches_file=str(path / "batches.json"), mapping_published=True)
+    return report, 0
+
+
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--launch-state", required=True)
@@ -565,19 +690,25 @@ def main(arguments=None):
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--state-dir", required=True, help="New private preparation journal; separate from launch state")
     parser.add_argument("--timeout", type=int, default=360, help="Per SSH operation timeout, 1..600 seconds")
-    parser.add_argument("--prepare", action="store_true", help="Upload briefs and prepare remote bundles; never sends prompts")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--prepare", action="store_true", help="Upload briefs and prepare remote bundles; never sends prompts")
+    action.add_argument("--reconcile", action="store_true", help="Inspect previously attempted bundles; no preparation or writes")
+    action.add_argument("--resume", action="store_true", help="Inspect attempted bundles, then prepare only untouched hosts")
     parser.add_argument("--accept-plan")
     args = parser.parse_args(arguments)
-    require(args.prepare == (args.accept_plan is not None), "prepare_requires_exact_approval")
+    require((args.prepare or args.resume) == (args.accept_plan is not None), "prepare_or_resume_requires_exact_approval")
     known = fleet.read_input(args.known_hosts, private=False)
     identity = fleet.read_input(args.identity_file)
     work = decode(fleet.read_input(args.work))
     with launch_context(args.launch_state, known, identity) as (launch, history, records, guard):
         plan = build_plan(work, launch, history, records, args.state_dir, args.timeout)
-        fleet.state_preflight(plan)
-        if args.prepare:
+        if args.resume or args.reconcile:
+            report, code = recover_preparation(plan, "resume" if args.resume else "reconcile", args.accept_plan,
+                transport(known, identity, args.timeout), guard)
+        elif args.prepare:
             report, code = prepare(plan, args.accept_plan, transport(known, identity, args.timeout), guard)
         else:
+            fleet.state_preflight(plan)
             report, code = report_for(plan), 0
         print(encoded(report).decode(), end="")
         return code
