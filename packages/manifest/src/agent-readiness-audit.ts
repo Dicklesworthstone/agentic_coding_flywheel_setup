@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { accessSync, constants, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspectBinary, normalizeArchitecture, type BinaryArchitectureResult } from "./binary-architecture.js";
 
 export type ReadinessStatus = "pass" | "warn" | "fail" | "unknown";
 
@@ -38,6 +39,8 @@ export interface AgentReadinessFileSystem {
   stat(path: string): PathStatResult;
   readFile(path: string): ReadFileResult;
   readDir(path: string): ReadDirResult;
+  /** Optional for virtual filesystems; the real Linux adapter inspects ELF bytes. */
+  inspectExecutable?(path: string): BinaryArchitectureResult | undefined;
 }
 
 export interface CommandRunResult {
@@ -57,6 +60,8 @@ export interface CliCheckResult {
   path?: string;
   aliases: Record<string, string | undefined>;
   version?: string;
+  architecture?: BinaryArchitectureResult;
+  versionProbe?: { status: "passed" | "failed"; exitCode: number | null };
   detail: string;
 }
 
@@ -187,6 +192,11 @@ function directoryEntryKind(entry: {
 }
 
 class NodeReadinessFileSystem implements AgentReadinessFileSystem {
+  inspectExecutable(path: string): BinaryArchitectureResult | undefined {
+    const target = process.platform === "linux" ? normalizeArchitecture(process.arch) : undefined;
+    return target ? inspectBinary(path, { target, checkHostInterpreter: true }) : undefined;
+  }
+
   stat(path: string): PathStatResult {
     try {
       const stat = statSync(path);
@@ -243,6 +253,8 @@ class SpawnCommandRunner implements AgentReadinessCommandRunner {
     const result = spawnSync(commandPath, args, {
       encoding: "utf8",
       timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 1024 * 1024,
     });
     return {
@@ -529,12 +541,16 @@ function findExecutable(
     };
   }
 
+  const architecture = fs.inspectExecutable?.(commandPath);
+  const architectureBlocked = architecture && ["incompatible", "missing", "unreadable"].includes(architecture.status);
   return {
-    status: "pass",
+    status: architectureBlocked ? "fail" : architecture?.status === "unknown" ? "warn" : "pass",
     command,
     path: commandPath,
     aliases: aliasesFound,
-    detail: `${command} is executable at ${commandPath}`,
+    ...(architecture ? { architecture } : {}),
+    detail: `${command} found at ${commandPath}`
+      + (architecture ? `; ${architecture.code}: ${architecture.detail}` : ""),
   };
 }
 
@@ -543,13 +559,23 @@ function attachVersion(
   runner: AgentReadinessCommandRunner,
   collectVersions: boolean,
 ): CliCheckResult {
-  if (!collectVersions || !cli.path) return cli;
-  const result = runner.run(cli.path, ["--version"], 4000);
-  if (result.status === 0) {
+  // Incompatibility remains a hard failure even with --no-version. Never
+  // execute a candidate already rejected by the byte-level inspection.
+  if (!collectVersions || !cli.path || cli.status === "fail") return cli;
+  let result: CommandRunResult;
+  try {
+    result = runner.run(cli.path, ["--version"], 4000);
+  } catch {
+    return { ...cli, status: "fail", versionProbe: { status: "failed", exitCode: null },
+      detail: `${cli.detail}; version probe failed before completion (raw error withheld)` };
+  }
+  if (result.status === 0 && !result.error) {
     const version = firstOutputLine(result.stdout || result.stderr);
     return {
       ...cli,
+      status: version ? cli.status : statusMax([cli.status, "warn"]),
       version,
+      versionProbe: { status: "passed", exitCode: 0 },
       detail: version
         ? `${cli.detail}; version: ${version}`
         : `${cli.detail}; version command returned no output`,
@@ -557,7 +583,9 @@ function attachVersion(
   }
   return {
     ...cli,
-    detail: `${cli.detail}; version unavailable${result.error ? `: ${result.error}` : ""}`,
+    status: "fail",
+    versionProbe: { status: "failed", exitCode: result.status },
+    detail: `${cli.detail}; version probe failed (${result.status === null ? "no exit status" : `exit ${result.status}`}; raw output/error withheld)`,
   };
 }
 
@@ -733,7 +761,9 @@ function evaluateProvider(
   const auth = evaluateAuth(definition, context, fs);
   const config = evaluateConfig(definition, context, fs);
   const status = statusMax([cli.status, auth.status, config.status]);
-  const nextActions = isStatus(status, "pass") ? [] : definition.nextActions;
+  const nextActions = cli.status === "fail"
+    ? [`Repair/reinstall ${definition.command} for this host before attempting authentication; rerun the readiness audit.`, ...definition.nextActions]
+    : isStatus(status, "pass") ? [] : definition.nextActions;
 
   return {
     id: definition.id,
@@ -1008,6 +1038,9 @@ function evaluateCaam(
         "Run `caam profile ls <provider>` and `caam ls <provider>` to inspect stored profiles.",
         "Run `caam use <provider> <profile>` to repair stale or missing defaults.",
       ];
+  if (cli.status === "fail") {
+    nextActions.unshift("Repair/reinstall the CAAM executable for this host before changing account profiles; rerun the readiness audit.");
+  }
 
   return {
     id: "caam",
@@ -1117,7 +1150,7 @@ printing token values or auth file contents.
 Options:
   --json        Emit machine-readable JSON.
   --quiet       Suppress human output.
-  --no-version  Skip CLI --version probes.
+  --no-version  Skip CLI --version probes; Linux binary architecture checks still run.
   --home PATH   Audit a specific home directory.
   --path PATH   Override executable search PATH entries.
   --help, -h    Show this help.`);
