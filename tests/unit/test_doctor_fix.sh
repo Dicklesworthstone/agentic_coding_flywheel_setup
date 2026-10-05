@@ -1856,6 +1856,8 @@ test_dispatch_fix_config_copy_uses_target_home() {
 
     export TARGET_HOME="$ACFS_STATE_DIR/target-home"
     mkdir -p "$TARGET_HOME/.acfs"
+    # Warn-level fixes apply only with --yes; this test is about where they write.
+    DOCTOR_FIX_YES=true
 
     start_autofix_session >/dev/null || {
         echo "  Failed to start autofix session"
@@ -1889,6 +1891,8 @@ test_dispatch_fix_symlink_uses_target_home() {
     mkdir -p "$TARGET_HOME/.cargo/bin" "$TARGET_HOME/.local/bin"
     printf '#!/usr/bin/env bash\necho br\n' > "$TARGET_HOME/.cargo/bin/br"
     chmod +x "$TARGET_HOME/.cargo/bin/br"
+    # Warn-level fixes apply only with --yes; this test is about where they write.
+    DOCTOR_FIX_YES=true
 
     start_autofix_session >/dev/null || {
         echo "  Failed to start autofix session"
