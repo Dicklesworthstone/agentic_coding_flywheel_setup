@@ -1,14 +1,15 @@
 #!/usr/bin/env bun
 /** Opt-in isolated-profile startup checks. Never activates global credentials. */
 import { spawn } from "node:child_process";
-import { accessSync, constants, statSync, lstatSync, openSync, fstatSync, writeFileSync, fsyncSync, closeSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { accessSync, constants, statSync, lstatSync, openSync, fstatSync, writeFileSync, fsyncSync, closeSync, mkdtempSync, realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const PROVIDERS = ["claude", "codex", "gemini", "agy"] as const;
 export type Provider = (typeof PROVIDERS)[number];
-type Outcome = "ok" | "exit_nonzero" | "spawn_failed" | "timeout" | "output_limit" | "cancelled" | "signaled";
+type Outcome = "ok" | "exit_nonzero" | "spawn_failed" | "timeout" | "output_limit" | "cancelled" | "signaled" | "lingering_processes";
 export interface ProbeResult {
   outcome: Outcome;
   exitCode: number | null;
@@ -21,11 +22,13 @@ export interface ProbeRequest {
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
   signal?: AbortSignal;
+  cwd?: string;
+  requireQuiescence?: boolean;
 }
 export interface Selection { provider: Provider; name: string; ref: string }
 export interface RehearsalPlan { selections: readonly Selection[]; timeoutMs: number }
 export interface Check {
-  id: "profile_status" | "isolated_version" | "native_auth_status" | "profile_status_after";
+  id: "profile_status" | "isolated_version" | "native_auth_status" | "live_model" | "profile_status_after";
   status: "pass" | "fail" | "warn" | "skipped";
   code: string;
   exitCode: number | null;
@@ -37,6 +40,11 @@ export interface ProfileResult {
   localAuthPresent: boolean | null;
   version: string | null;
   nativeAuth: NativeAuthState;
+  liveModel?: {
+    requestedModel: string;
+    status: "planned" | "not_attempted" | "verified" | "unconfirmed";
+    attempts: number;
+  };
   checks: Check[];
   nextAction: string;
 }
@@ -45,10 +53,19 @@ export interface RehearsalReport {
   generatedAt: string;
   executed: boolean;
   status: "planned" | "pass" | "fail" | "warn" | "cancelled";
-  scope: "isolated-cli-startup-and-local-auth";
+  scope: "isolated-cli-startup-and-local-auth" | "isolated-cli-and-live-model";
+  // A CLI response cannot independently attest which account authenticated.
   liveAuthenticationVerified: false;
   globalActivationRequested: false;
-  modelPromptSent: false;
+  // null means an attempt occurred but delivery cannot be established.
+  modelPromptSent: boolean | null;
+  liveModelPolicy?: {
+    timeoutMs: number;
+    maximumCliAttempts: number;
+    automaticRetries: false;
+    mayIncurCharges: true;
+    responseVerified: boolean;
+  };
   nativeAuthRequested: boolean;
   nativeAuthRequired: boolean;
   profiles: ProfileResult[];
@@ -59,6 +76,73 @@ export class RehearsalError extends Error {
 }
 const refuse = (code: string): never => { throw new RehearsalError(code); };
 const MAX_BYTES = 64 * 1024;
+
+export interface LiveModelPlan {
+  models: Readonly<Partial<Record<Provider, string>>>;
+  timeoutMs: number;
+}
+
+/** Live checks are a separate opt-in: every selected provider needs a model. */
+export function buildLiveModelPlan(plan: RehearsalPlan, selectors: readonly string[] = [], timeoutSeconds?: number): LiveModelPlan | undefined {
+  if (!Array.isArray(selectors) || selectors.length > PROVIDERS.length) refuse("invalid_live_model_selection");
+  if (!selectors.length) {
+    if (timeoutSeconds !== undefined) refuse("live_timeout_requires_live_model");
+    return undefined;
+  }
+  const timeout = timeoutSeconds ?? 60;
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 120) refuse("live_timeout_must_be_1_to_120_seconds");
+  const models: Partial<Record<Provider, string>> = {};
+  const selected = new Set(plan.selections.map((s) => s.provider));
+  for (const selector of selectors) {
+    const match = typeof selector === "string" && /^(claude):([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(selector);
+    if (!match) return refuse("unsupported_or_invalid_live_model");
+    const provider = match[1] as Provider;
+    if (models[provider]) refuse("duplicate_live_model");
+    if (!selected.has(provider)) refuse("live_model_without_selected_profile");
+    models[provider] = match[2]!;
+  }
+  if ([...selected].some((provider) => !models[provider])) refuse("live_model_required_for_every_selected_provider");
+  return Object.freeze({ models: Object.freeze(models), timeoutMs: timeout * 1000 });
+}
+
+/** Fixed input only; never include a repository, profile name, or auth material. */
+export function liveModelArgs(provider: Provider, model: string, challenge: string): string[] {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(model) || !/^ACFS_LIVE_[a-f0-9]{32}$/.test(challenge))
+    refuse("invalid_live_probe_request");
+  if (provider !== "claude") refuse("unsupported_live_provider");
+  // --bare deliberately is NOT used: it disables OAuth subscription login.
+  // --safe-mode preserves authentication while suppressing custom context.
+  // The remaining flags explicitly disable tools, MCP and ordinary hooks.
+  return ["--print", "--safe-mode", "--output-format", "json", "--model", model,
+    "--max-turns", "1", "--max-budget-usd", "0.25", "--no-session-persistence",
+    "--tools", "", "--disallowedTools", "*", "--permission-mode", "dontAsk",
+    "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+    "--setting-sources", "", "--settings", '{"disableAllHooks":true}',
+    "--disable-slash-commands", "--system-prompt",
+    "This is a connectivity check. Return only the exact token in the user message. Do not use tools.",
+    challenge];
+}
+
+/** Accept a completed turn with this invocation's challenge, never a banner. */
+export function liveModelResponseMatches(provider: Provider, result: ProbeResult, challenge: string): boolean {
+  if (provider !== "claude" || result.outcome !== "ok" || result.exitCode !== 0 ||
+      !/^ACFS_LIVE_[a-f0-9]{32}$/.test(challenge) || result.stdout.length + result.stderr.length > MAX_BYTES) return false;
+  const value = uniqueJsonObject(result.stdout);
+  return value?.type === "result" && value.subtype === "success" && value.is_error === false &&
+    value.num_turns === 1 && typeof value.result === "string" && value.result.trim() === challenge &&
+    Array.isArray(value.permission_denials) && value.permission_denials.length === 0;
+}
+
+function liveWorkspace(): string {
+  // Do not use caller-controlled TMPDIR, HOME, cwd, or an existing project.
+  const root = realpathSync("/tmp");
+  const info = lstatSync(root);
+  if (!info.isDirectory() || info.uid !== 0 || ((info.mode & 0o022) !== 0 && (info.mode & 0o1000) === 0))
+    refuse("unsafe_live_workspace_parent");
+  // mkdtemp reserves a new mode-0700 directory. Retain it after an uncertain
+  // process outcome; never recursively delete files a provider may have made.
+  return mkdtempSync(join(root, "acfs-live-rehearsal-"));
+}
 
 export function buildRehearsalPlan(selectors: readonly string[], timeoutSeconds = 10): RehearsalPlan {
   if (!Array.isArray(selectors) || selectors.length < 1 || selectors.length > 8)
@@ -115,7 +199,7 @@ export function runBoundedProbe(request: ProbeRequest): Promise<ProbeResult> {
       return;
     }
     const child = spawn(request.binary, request.args, {
-      cwd: "/", env: request.env, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: false,
+      cwd: request.cwd ?? "/", env: request.env, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: false,
     });
     let outcome: Outcome | null = null;
     let exitCode: number | null = null;
@@ -160,6 +244,16 @@ export function runBoundedProbe(request: ProbeRequest): Promise<ProbeResult> {
     child.on("close", (code, signal) => {
       exitCode = code;
       if (signal && !outcome) outcome = "signaled";
+      if (request.requireQuiescence && child.pid) {
+        try {
+          process.kill(-child.pid, 0);
+          // Closing both pipes is not proof that a background child exited.
+          outcome ??= "lingering_processes";
+          try { process.kill(-child.pid, "SIGKILL"); } catch { /* Already gone. */ }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") outcome ??= "lingering_processes";
+        }
+      }
       finish();
     });
     const abort = (): void => stop("cancelled");
@@ -289,6 +383,8 @@ export interface RehearsalOptions {
   execute?: boolean;
   nativeAuth?: boolean;
   requireNativeAuth?: boolean;
+  liveModels?: readonly string[];
+  liveTimeoutSeconds?: number;
   signal?: AbortSignal;
   env?: NodeJS.ProcessEnv;
 }
@@ -309,15 +405,21 @@ const AUTH_GUIDANCE = "Inspect this isolated profile locally; sign in with the p
 export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOptions = {}, deps = ports): Promise<RehearsalReport> {
   // Revalidate caller-created plans as well as CLI-created plans.
   const checked = buildRehearsalPlan(plan.selections.map((s) => `${s.provider}:${s.name}`), plan.timeoutMs / 1000);
+  const live = buildLiveModelPlan(checked, options.liveModels, options.liveTimeoutSeconds);
   const report: RehearsalReport = {
     schema: "acfs.agent-profile-rehearsal.v1", generatedAt: new Date().toISOString(),
-    executed: options.execute === true, status: "planned", scope: "isolated-cli-startup-and-local-auth",
+    executed: options.execute === true, status: "planned", scope: live ? "isolated-cli-and-live-model" : "isolated-cli-startup-and-local-auth",
     liveAuthenticationVerified: false, globalActivationRequested: false, modelPromptSent: false,
     nativeAuthRequested: options.nativeAuth === true || options.requireNativeAuth === true,
     nativeAuthRequired: options.requireNativeAuth === true,
+    ...(live ? { liveModelPolicy: { timeoutMs: live.timeoutMs, maximumCliAttempts: checked.selections.length,
+      automaticRetries: false as const, mayIncurCharges: true as const, responseVerified: false } } : {}),
     profiles: checked.selections.map((s) => ({
       provider: s.provider, profileRef: s.ref, status: "planned", localAuthPresent: null,
-      version: null, nativeAuth: options.nativeAuth || options.requireNativeAuth ? "not_checked" : "not_requested", checks: [], nextAction: "Pass --run to execute these local checks; no model prompt will be sent.",
+      version: null, nativeAuth: options.nativeAuth || options.requireNativeAuth ? "not_checked" : "not_requested", checks: [],
+      ...(live ? { liveModel: { requestedModel: live.models[s.provider]!, status: "planned" as const, attempts: 0 } } : {}),
+      nextAction: live ? "Pass --run to permit one live model CLI attempt per profile. This may consume quota or incur charges." :
+        "Pass --run to execute these local checks; no model prompt will be sent.",
     })),
     redaction: { rawOutputIncluded: false, profileNamesIncluded: false },
   };
@@ -329,11 +431,18 @@ export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOp
   const env = rehearsalEnvironment(options.env ?? process.env, deps.home());
   const binary = deps.findCaam(env);
   let cancelled = false;
+  let liveStopped = false;
   for (let index = 0; index < checked.selections.length; index++) {
     const selection = checked.selections[index]!;
     const profile = report.profiles[index]!;
+    if (profile.liveModel) profile.liveModel.status = "not_attempted";
     if (cancelled || options.signal?.aborted) {
       cancelled = true; profile.status = "warn"; profile.nextAction = "Rehearsal cancelled; this profile was not checked.";
+      continue;
+    }
+    if (liveStopped) {
+      profile.status = "warn";
+      profile.nextAction = "A prior live check was unconfirmed. Later profiles were not run; inspect before making another paid attempt.";
       continue;
     }
     profile.status = "fail";
@@ -379,6 +488,41 @@ export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOp
         if (cancelled) continue;
       }
     }
+    if (live && profile.liveModel) {
+      // Do not turn an unknown/failed local check into paid authentication
+      // discovery. All requested local prerequisites must positively pass.
+      if (!profile.version || profile.checks.some((c) => c.status !== "pass")) {
+        profile.checks.push({ id: "live_model", status: "fail", code: "live_prerequisite_not_confirmed", exitCode: null });
+        liveStopped = true;
+      } else if (options.signal?.aborted) {
+        cancelled = true;
+        continue;
+      } else {
+        const challenge = `ACFS_LIVE_${randomBytes(16).toString("hex")}`;
+        const args = ["exec", selection.provider, selection.name, "--",
+          ...liveModelArgs(selection.provider, live.models[selection.provider]!, challenge)];
+        const cwd = liveWorkspace();
+        profile.liveModel.attempts = 1;
+        profile.liveModel.status = "unconfirmed";
+        if (report.modelPromptSent === false) report.modelPromptSent = null;
+        let result: ProbeResult;
+        try {
+          result = await deps.run({ binary, args, env, cwd, timeoutMs: live.timeoutMs,
+            signal: options.signal, requireQuiescence: true });
+        } catch {
+          result = { outcome: "spawn_failed", exitCode: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
+        }
+        cancelled ||= result.outcome === "cancelled" || options.signal?.aborted === true;
+        const verified = !cancelled && liveModelResponseMatches(selection.provider, result, challenge);
+        profile.liveModel.status = verified ? "verified" : "unconfirmed";
+        if (verified) report.modelPromptSent = true;
+        profile.checks.push({ id: "live_model", status: verified ? "pass" : "fail",
+          code: verified ? "live_response_verified" : result.outcome === "ok" ? "live_response_unrecognized" : `live_${result.outcome}`,
+          exitCode: result.exitCode });
+        liveStopped = !verified;
+        if (cancelled) continue;
+      }
+    }
     const after = await probe("profile_status_after", statusArgs);
     const finalState = parseProfileStatus(after, selection);
     if (!finalState || !finalState.loggedIn || finalState.locked) {
@@ -388,13 +532,18 @@ export async function rehearseProfiles(plan: RehearsalPlan, options: RehearsalOp
     }
     profile.status = profile.checks.some((c) => c.status === "fail") ? "fail" :
       profile.checks.some((c) => c.status === "warn") ? "warn" : "pass";
-    profile.nextAction = profile.nativeAuth === "missing" ? AUTH_GUIDANCE :
+    profile.nextAction = profile.liveModel?.status === "verified" ?
+      "The isolated CLI completed the live challenge. This is one response, not account identity, future quota, or sustained swarm-capacity certification." :
+      profile.liveModel ? "Live response not verified. Inspect local checks and provider access before retrying; ACFS did not retry or rotate accounts." :
+      profile.nativeAuth === "missing" ? AUTH_GUIDANCE :
       profile.nativeAuth === "unknown" ? "Native authentication status was not recognized. Inspect the provider locally; no login or retry was attempted." :
       profile.nativeAuth === "unsupported" && report.nativeAuthRequired ? "No verified native status protocol is available for this provider; the required check did not pass." :
       "Local profile and isolated CLI startup checked. Server-side authentication, token validity, quota, and model execution are NOT verified.";
   }
   report.status = cancelled ? "cancelled" : report.profiles.some((p) => p.status === "fail") ? "fail" :
     report.profiles.some((p) => p.status !== "pass") ? "warn" : "pass";
+  if (report.liveModelPolicy) report.liveModelPolicy.responseVerified = !cancelled &&
+    report.profiles.every((p) => p.liveModel?.status === "verified" && p.status === "pass");
   return report;
 }
 
@@ -403,10 +552,13 @@ export function formatRehearsal(report: RehearsalReport): string {
   for (const profile of report.profiles) {
     lines.push(`${profile.profileRef} (${profile.provider}): ${profile.status}`);
     if (report.nativeAuthRequested) lines.push(`  native authentication status: ${profile.nativeAuth}`);
+    if (profile.liveModel) lines.push(`  live model (${profile.liveModel.requestedModel}): ${profile.liveModel.status}; CLI attempts=${profile.liveModel.attempts}`);
     for (const check of profile.checks) lines.push(`  ${check.id}: ${check.status} (${check.code})`);
     lines.push(`  ${profile.nextAction}`);
   }
-  lines.push("No global activation or model prompt was requested. CAAM/provider commands may update their own local metadata.");
+  lines.push(report.liveModelPolicy ?
+    "Live checks may incur charges. No global activation was requested; raw responses are withheld. A timeout does not prove no request was billed." :
+    "No global activation or model prompt was requested. CAAM/provider commands may update their own local metadata.");
   return lines.join("\n");
 }
 export const REHEARSAL_HELP = `Usage: scripts/agent-readiness-audit.sh --rehearse --profile PROVIDER:NAME [--profile ...] [--run] [--native-auth] [--require-native-auth] [--output FILE] [--json] [--timeout SECONDS]
@@ -416,9 +568,22 @@ Default: plan only. --run explicitly permits local CAAM status and isolated CLI
 Providers: claude, codex, gemini, agy. Use ISOLATED profiles from caam profile ls,
 not vault-only profiles from caam ls. Busy profiles are never unlocked.
 
-CAAM exec owns isolation and locks. No activate, login, refresh, model prompt,
+CAAM exec owns isolation and locks. No activate, login, refresh,
 quota rotation or task dispatch is requested. API-key environment overrides are
 removed. Local files/CLI startup do not prove live authentication or token validity.
+--live-model claude:MODEL explicitly selects a live check (repeat per provider).
+Without --run it only previews. With --run it may consume quota/incur charges:
+one fixed random challenge per profile, no ACFS retries, fresh private workspace,
+tools/MCP/hooks disabled via CLI flags, and no session persistence requested.
+Every selected provider needs an explicit supported model. Live support: claude.
+--live-timeout SECONDS bounds each live attempt (1-120, default 60), independently
+of --timeout. Claude also receives a 1-turn limit and a $0.25 CLI budget guard;
+neither wall time nor the CLI's estimated budget is a guaranteed billing cap.
+The first unconfirmed live attempt stops later profiles. Reports omit challenge
+and response text. Workspaces are retained; no provider files are deleted.
+Trusted CAAM/provider binaries and managed host policy remain part of the trust
+boundary. CLI restrictions are not an OS sandbox or proof of account identity.
+Use recent Claude Code with --safe-mode; unsupported flags fail without fallback.
 --native-auth adds Claude auth status / Codex login status through CAAM exec.
 --require-native-auth also rejects unsupported or unrecognized native status.
 These are LOCAL provider checks, not proof of server token validity or quota.
@@ -435,6 +600,8 @@ export async function rehearsalMain(args: string[]): Promise<number> {
     let execute = false;
     let nativeAuth = false;
     let requireNativeAuth = false;
+    const liveModels: string[] = [];
+    let liveTimeoutSeconds: number | undefined;
     let output: string | undefined;
     let timeout = 10;
     const selections: string[] = [];
@@ -445,6 +612,12 @@ export async function rehearsalMain(args: string[]): Promise<number> {
         case "--run": execute = true; break;
         case "--native-auth": nativeAuth = true; break;
         case "--require-native-auth": nativeAuth = true; requireNativeAuth = true; break;
+        case "--live-model": liveModels.push(args[++i] ?? ""); break;
+        case "--live-timeout": {
+          const value = args[++i] ?? "";
+          if (liveTimeoutSeconds !== undefined || !/^[1-9][0-9]{0,2}$/.test(value)) refuse("live_timeout_must_be_1_to_120_seconds");
+          liveTimeoutSeconds = Number(value); break;
+        }
         case "--output":
           if (output !== undefined || !args[i + 1] || args[i + 1]!.startsWith("--")) refuse("invalid_evidence_path");
           output = args[++i]!; break;
@@ -458,12 +631,13 @@ export async function rehearsalMain(args: string[]): Promise<number> {
       }
     }
     const plan = buildRehearsalPlan(selections, timeout);
+    buildLiveModelPlan(plan, liveModels, liveTimeoutSeconds);
     if (output !== undefined) output = preflightEvidencePath(output);
     const controller = new AbortController();
     const stop = (): void => controller.abort();
     process.on("SIGINT", stop); process.on("SIGTERM", stop); process.on("SIGHUP", stop);
     try {
-      const report = await rehearseProfiles(plan, { execute, nativeAuth, requireNativeAuth, signal: controller.signal });
+      const report = await rehearseProfiles(plan, { execute, nativeAuth, requireNativeAuth, liveModels, liveTimeoutSeconds, signal: controller.signal });
       completed = report;
       if (output !== undefined) writeRehearsalEvidence(output, report);
       console.log(json ? JSON.stringify(report, null, 2) : formatRehearsal(report));
