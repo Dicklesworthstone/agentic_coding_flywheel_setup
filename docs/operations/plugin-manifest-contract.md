@@ -75,7 +75,7 @@ fixtures without YAML parser drift.
     "generatedAt": "2026-05-08T00:00:00Z",
     "sourceRef": "main",
     "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
-    "acfsManifestVersion": 1
+    "acfsManifestVersion": 2
   },
   "targets": [
     {
@@ -140,7 +140,8 @@ Every v1 plugin package must include:
 - `schema: "acfs.plugin-package.v1"` and `schemaVersion: 1`
 - `packageId`, `displayName`, `version`, `description`, `publisher`, `license`
 - `provenance.generatedAt`, `provenance.sourceRef`,
-  `provenance.sourceCommit`, and `provenance.acfsManifestVersion`
+  `provenance.sourceCommit`, and `provenance.acfsManifestVersion` (must equal
+  the top-level `version` of the `acfs.manifest.yaml` it targets, currently 2)
 - at least one `targets[]` entry with `os`, `versions`, `arch`, and `libc`
 - `capabilities.allowed`, `capabilities.reviewRequired`, and
   `capabilities.disallowed`

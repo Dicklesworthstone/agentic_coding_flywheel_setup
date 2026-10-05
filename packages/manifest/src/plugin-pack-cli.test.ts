@@ -303,6 +303,14 @@ test("published packages require a separately selected review with exact hash, t
 
 test("canonical publication validation uses actual manifest/checksum/schema integration", async () => {
   const item = fixture();
+  // Validated against the real acfs.manifest.yaml, so declare its version
+  // (as plugin-install.test.ts does) rather than a hard-coded one.
+  const { parse } = await import("yaml");
+  const canonical = parse(
+    readFileSync(new URL("../../../acfs.manifest.yaml", import.meta.url)).toString(),
+  );
+  item.manifest.provenance.acfsManifestVersion = canonical.version;
+  writeFileSync(join(item.source, "plugin.json"), JSON.stringify(item.manifest));
   const build = buildPluginArchive(item.source);
   const checked = await validatePluginArchiveForPublication(build, target);
   assert.equal(checked.valid, true, JSON.stringify(checked));

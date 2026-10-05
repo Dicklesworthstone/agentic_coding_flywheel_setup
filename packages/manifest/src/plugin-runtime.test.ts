@@ -370,7 +370,9 @@ test(
   },
 );
 
-test("enforces bounded runtime even when an installer ignores TERM", integration, async () => {
+// timeout 1s --kill-after=2s plus the 2s lingering-group grace runs ~5-6s by
+// design; the assertion below bounds it at 8s, so the harness limit must exceed that.
+test("enforces bounded runtime even when an installer ignores TERM", { ...integration, timeout: 15_000 }, async () => {
   const item = fixture(['trap "" TERM\nwhile :; do sleep 1; done']);
   const start = Date.now();
   await assert.rejects(

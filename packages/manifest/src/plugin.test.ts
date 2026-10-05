@@ -24,6 +24,7 @@ import {
   type PluginValidationOptions,
   validatePluginPackage,
 } from "./plugin.js";
+import { parseManifestFile } from "./parser.js";
 import { ModuleSchema } from "./schema.js";
 import type { Manifest } from "./types.js";
 
@@ -1643,23 +1644,30 @@ describe("Installer, doctor, and web metadata generation from validated plugins"
 });
 
 describe("Documentation plugin example fixtures", () => {
-  test("schema fixture validates only with explicit synthetic trust bindings", () => {
-    const docPath = resolve(__dirname, "../../../docs/operations/plugin-review-workflow.md");
+  // The contract's plugin.json is the example authors copy, so it must validate
+  // against the real ACFS manifest (its version and dependencies), not only a
+  // synthetic one. (The review-workflow doc stopped carrying a package fixture
+  // in f3a93457.)
+  test("plugin-manifest-contract example validates against the canonical manifest", () => {
+    const docPath = resolve(__dirname, "../../../docs/operations/plugin-manifest-contract.md");
     const docContent = readFileSync(docPath, "utf-8");
-
-    expect(docContent).toMatch(/does not\s+>\s*activate or install plugins/);
-    const jsonMatch = docContent.match(
-      /### Safe Plugin Schema Fixture[\s\S]*?```json\n([\s\S]*?)\n```/,
-    );
+    const jsonMatch = docContent.match(/## Manifest Schema[\s\S]*?```json\n([\s\S]*?)\n```/);
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![1]);
 
-    const result = validatePluginPackage(parsed, validationOptions());
+    const canonical = parseManifestFile(resolve(__dirname, "../../../acfs.manifest.yaml"));
+    expect(canonical.success).toBe(true);
+    const result = validatePluginPackage(
+      parsed,
+      validationOptions({
+        firstPartyManifest: canonical.data!,
+        target: { os: "ubuntu", version: "26.04", arch: "x86_64", libc: "glibc" },
+      }),
+    );
     if (!result.valid) {
       console.error("Doc example validation failed:", formatPluginDiagnostics(result));
     }
     expect(result.valid).toBe(true);
-    expect(result.manifestModules.length).toBe(1);
-    expect(result.manifestModules[0].id).toBe("plugin.example_tools.cli");
+    expect(result.manifestModules.map((module) => module.id)).toEqual(["plugin.example_tools.cli"]);
   });
 });

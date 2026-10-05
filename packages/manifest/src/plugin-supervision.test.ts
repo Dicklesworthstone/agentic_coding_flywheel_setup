@@ -221,7 +221,8 @@ test(
 
 test(
   "timeout cleans the full process group and preserves a failed receipt",
-  unprivileged,
+  // Timeout, --kill-after and the lingering-group grace take ~5-6s by design.
+  { ...unprivileged, timeout: 15_000 },
   async () => {
     const item = fixture('trap "" TERM\necho $$ > "$HOME/worker.pid"\nwhile :; do sleep 1; done\n');
     await assert.rejects(
