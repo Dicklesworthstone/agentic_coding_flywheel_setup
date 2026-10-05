@@ -787,7 +787,7 @@ function AnimatedFlywheel() {
                       y={9}
                       textAnchor="middle"
                       fill={node.color}
-                      fontSize="7.5"
+                      fontSize="8.5"
                       fontWeight="500"
                       opacity="0.9"
                     >
@@ -1411,12 +1411,12 @@ function StageNode({
       {/* Index number */}
       <text
         x={cx}
-        y={cy + 10}
+        y={cy + 12}
         textAnchor="middle"
         fill={stageColor}
-        fontSize="7"
+        fontSize="9"
         fontWeight="600"
-        opacity={0.7}
+        opacity={0.8}
       >
         {index + 1}/{STAGE_COUNT}
       </text>
@@ -1917,22 +1917,22 @@ function InteractiveFlywheelCycle() {
             </text>
             <text
               x={ringCx}
-              y={ringCy + 5}
+              y={ringCy + 7}
               textAnchor="middle"
               fill={lerpHexColor("#6366f1", "#f97316", warmth)}
-              fontSize="9"
+              fontSize="11"
               fontWeight="600"
-              opacity="0.7"
+              opacity="0.8"
             >
               {speedLabel}
             </text>
             <text
               x={ringCx}
-              y={ringCy + 20}
+              y={ringCy + 23}
               textAnchor="middle"
               fill="white"
-              fontSize="8"
-              opacity="0.35"
+              fontSize="10"
+              opacity="0.5"
             >
               {CYCLE_METRICS[cycle - 1]?.duration ?? ""}
             </text>
