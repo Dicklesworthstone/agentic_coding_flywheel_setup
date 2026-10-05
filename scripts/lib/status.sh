@@ -729,6 +729,15 @@ _status_resolve_target_user() {
             printf '%s\n' "$candidate_user"
             return 0
         fi
+        # A state-file user who no longer resolves to any home is stale install
+        # state; the system state's user wins when that user does resolve (as
+        # support.sh and doctor already do). Otherwise status probed tools in a
+        # nonexistent home and reported every per-user tool as missing.
+        if [[ -z "$candidate_home" ]] && [[ -n "$system_user" ]] && [[ "$system_user" != "$candidate_user" ]] \
+            && [[ -n "$(_status_home_for_user "$system_user" 2>/dev/null || true)" ]]; then
+            printf '%s\n' "$system_user"
+            return 0
+        fi
         if [[ -n "$state_home" ]] && [[ -z "$path_home" || "$state_home" == "$path_home" ]] && [[ "$candidate_home" == "$state_home" ]]; then
             printf '%s\n' "$candidate_user"
             return 0
