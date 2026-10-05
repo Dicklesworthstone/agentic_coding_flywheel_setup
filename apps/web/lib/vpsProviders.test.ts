@@ -291,12 +291,16 @@ describe("Ubuntu image lifecycle safety (bd-5ytb5)", () => {
     });
   }
 
-  for (const image of ["22.04", "Ubuntu 24.04.3 LTS"]) {
-    test(`warns about the legacy installer upgrade path for ${image}`, () => {
+  for (const [image, hops] of [
+    ["22.04", "22.04 → 24.04 → 26.04"],
+    ["Ubuntu 24.04.3 LTS", "24.04 → 26.04"],
+  ] as const) {
+    test(`describes the in-place LTS upgrade the wizard command performs for ${image}`, () => {
       const check = validateUbuntuImage(image);
       expect(check.status).toBe("borderline");
-      expect(check.message).toContain("legacy automatic upgrade path");
-      expect(check.message).toContain("26.04");
+      // scripts/lib/ubuntu_upgrade.sh only plans LTS-to-LTS hops to 26.04.
+      expect(check.message).toContain(`(${hops};`);
+      expect(check.message).not.toContain("end-of-life");
     });
   }
 
