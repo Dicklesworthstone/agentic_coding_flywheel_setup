@@ -2243,12 +2243,12 @@ test.describe("Accessibility", () => {
     await page.goto("/wizard/os-selection");
     await page.waitForLoadState("domcontentloaded");
 
-    // Should have exactly one h1
-    const h1Count = await page.locator("h1").count();
-    expect(h1Count).toBeGreaterThanOrEqual(1);
-
-    // h1 should be visible
+    // h1 should be visible. Wait for it before counting: count() is a one-shot
+    // snapshot and can land on the provider's loading state (no heading yet).
     await expect(page.locator("h1").first()).toBeVisible();
+
+    // Should have exactly one h1
+    expect(await page.locator("h1").count()).toBe(1);
   });
 
   test("should have accessible buttons", async ({ page }) => {
