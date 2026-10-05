@@ -521,6 +521,120 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(len(self.calls()), 2)
         self.assertEqual(self.calls()[1][-1], "--print-plan")
 
+    def test_check_missing_snapshot_is_read_only_even_without_installer(self):
+        current = self.directory / "destination.modules"
+        current.write_text("lang.bun\nagents.codex\n")
+        self.installer = self.directory / "nonexistent" / "install.sh"
+        result = self.run_cli("--check", "--against", str(current), "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "missing")
+        self.assertEqual(report["install_modules"], ["agents.claude"])
+        self.assertEqual(report["comparison"]["extra"], ["agents.codex"])
+        self.assertEqual(report["installer_argv"], [])
+        self.assertIsNone(report["installer_command"])
+        self.assertEqual(report["installer_plan"], "")
+        self.assertEqual(report["destination_exporter_argv"], [])
+        self.assertEqual(self.calls(), [])
+
+    def test_check_satisfied_snapshot_allows_extras_and_preserves_source_order(self):
+        current = self.directory / "destination.json"
+        current.write_text('{"modules": ["lang.bun", "agents.claude", "agents.codex"]}')
+        result = self.run_cli("--check", "--against", str(current), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "satisfied")
+        self.assertEqual(report["install_modules"], [])
+        self.assertEqual(report["comparison"]["already_present"], ["agents.claude", "lang.bun"])
+        self.assertEqual(report["comparison"]["extra"], ["agents.codex"])
+        self.assertEqual(self.calls(), [])
+
+    def test_check_requires_comparison_and_refuses_apply_before_probes(self):
+        self.make_exporter()
+        for options in (("--check",), ("--check", "--against-current", "--apply"),
+                        ("--apply", "--against-current", "--check")):
+            with self.subTest(options=options):
+                result = self.run_cli(*options)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(self.calls(), [])
+
+    def test_check_invalid_inventory_is_error_not_missing_or_satisfied(self):
+        current = self.directory / "invalid.json"
+        for text in ("{}", '{"modules": [null]}', "../lang.bun"):
+            with self.subTest(text=text):
+                current.write_text(text)
+                result = self.run_cli("--check", "--against", str(current), "--json")
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(self.calls(), [])
+
+    def test_check_empty_destination_reports_all_desired_missing_without_planning(self):
+        current = self.directory / "empty.yaml"
+        current.write_text("modules:\n\ntools:\n")
+        result = self.run_cli("--check", "--against", str(current), "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["comparison"]["missing"], ["agents.claude", "lang.bun"])
+        self.assertEqual(report["status"], "missing")
+        self.assertEqual(self.calls(), [])
+
+    def test_check_current_inventory_only_runs_exporter_for_missing_and_satisfied(self):
+        self.make_exporter()
+        for text, code, status in (("lang.bun\n", 1, "missing"),
+                                   ("lang.bun\nagents.claude\n", 0, "satisfied")):
+            with self.subTest(status=status):
+                result = self.run_cli("--check", "--against-current", "--json", EXPORT_CONTENT=text)
+                self.assertEqual(result.returncode, code, result.stderr)
+                report = json.loads(result.stdout)
+                self.assertEqual(report["status"], status)
+                self.assertEqual(report["comparison"]["basis"], "current_export")
+                self.assertEqual(report["installer_argv"], [])
+        self.assertEqual(self.calls(), [["export", "--minimal"]] * 2)
+
+    def test_check_exporter_failure_is_error_not_a_satisfied_check(self):
+        self.make_exporter()
+        result = self.run_cli("--check", "--against-current", "--json", EXPORT_EXIT="7",
+                              EXPORT_CONTENT="lang.bun\nagents.claude\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("Destination exporter failed", result.stderr)
+        self.assertEqual(self.calls(), [["export", "--minimal"]])
+
+    def test_check_text_output_explains_missing_and_satisfied_results(self):
+        current = self.directory / "destination.modules"
+        current.write_text("lang.bun\n")
+        result = self.run_cli("--check", "--against", str(current))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("Missing modules: agents.claude", result.stdout)
+        self.assertIn("No installer or dependency resolver was invoked", result.stdout)
+        self.assertNotIn("No missing modules", result.stdout)
+        current.write_text("lang.bun\nagents.claude\n")
+        result = self.run_cli("--check", "--against", str(current))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("All requested modules are present", result.stdout)
+        self.assertEqual(self.calls(), [])
+
+    def test_check_stdin_is_supported_without_noninteractive_install_authority(self):
+        result = self.run_cli("--check", "--against", "-", "--json", data="lang.bun\n")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        current = self.directory / "destination.modules"
+        current.write_text("lang.bun\n")
+        self.export = "-"
+        result = self.run_cli("--check", "--against", str(current), "--json", data="lang.bun\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.run_cli("--check", "--against", "-", "--json", data="lang.bun\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.calls(), [])
+
+    def test_check_does_not_claim_catalogue_validation_or_inherit_source_commands(self):
+        current = self.directory / "destination.modules"
+        current.write_text("invalid.module\n")
+        self.export.write_text('{"modules": ["invalid.module"], "commands": ["exit 0"]}')
+        result = self.run_cli("--check", "--against", str(current), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "satisfied")
+        self.assertEqual(self.calls(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

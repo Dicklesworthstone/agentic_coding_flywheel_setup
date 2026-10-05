@@ -130,6 +130,35 @@ nonempty source selection, never an implicit default install. `--against` and
 `--against-current` are mutually exclusive. Apply still requires its ordinary
 installer plan to succeed, even after the destination export succeeds.
 
+## Check module drift without planning an installation
+
+`--check` compares module inventories only. It **never invokes the installer or
+its dependency resolver**, including when modules are missing:
+
+```bash
+# Offline comparison; no local installer is required.
+python3 scripts/import-config.py source-export.yaml --against destination.modules --check --json
+
+# Capture the destination first, then check without planning or applying.
+python3 scripts/import-config.py source-export.yaml --against-current --check --json
+```
+
+Exit **0** means every requested module is present in the destination inventory;
+exit **1** means at least one requested module is missing; exit **2** means an
+input, usage or exporter error. Extra destination modules do not fail the check.
+JSON uses `status: "satisfied"` or `status: "missing"`, retains the ordered
+comparison lists, and leaves installer argv and plan empty. Errors go to stderr,
+not a misleading successful JSON report. Without `--json`, the helper names
+missing modules and explicitly reports that it did not invoke the installer.
+
+The mode requires `--against` or `--against-current` and cannot be combined with
+`--apply`. A stdin input is supported without `--yes`, because checks cannot
+install anything. An empty desired selection is still rejected. A successful
+check is **not** catalogue/dependency validation, functional health, version
+verification or credential readiness; two inventories can agree about a module
+that the current catalogue no longer supports. Use ordinary preview to resolve
+missing modules, and `acfs doctor` separately for health checks.
+
 ## What is deliberately not restored
 
 The helper does not restore credentials, SSH keys, API tokens, source-host paths,
@@ -148,6 +177,7 @@ python3 -m unittest discover -s tests/unit -p test_import_config.py -v
 Tests use real files, pipes and subprocesses with an inert installer fixture.
 They verify parsing, safe defaults, exact argv, resolver refusal, timeout cleanup,
 startup-hook isolation, stdin handling, YAML handling, snapshot deltas, no-op
-restores, current-destination capture, exporter refusal/limits and
+restores, current-destination capture, exporter refusal/limits, read-only drift
+checks (including missing/satisfied/error exit codes and absent installers), and
 exit-status/signal propagation. They do not
 perform a privileged installation or claim a fresh Ubuntu VM end-to-end result.
