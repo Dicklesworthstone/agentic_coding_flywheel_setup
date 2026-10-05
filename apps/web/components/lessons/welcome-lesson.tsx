@@ -442,7 +442,7 @@ const archLayers: ArchLayer[] = [
         shortName: "Reset",
         description:
           "If everything goes wrong, you can nuke the VPS and re-run the installer. Your code lives in Git, so nothing is ever truly lost.",
-        commands: ["acfs reinstall", "install.sh"],
+        commands: ["install.sh", "acfs doctor"],
         dependencies: ["ubuntu"],
         status: "standby",
       },

@@ -48,14 +48,14 @@ export function AcfsDoctorLesson() {
             />
             <FeatureCard
               icon={<Clock className="h-5 w-5" />}
-              title="acfs nightly"
-              description="Automated updates while you sleep"
+              title="Nightly updates"
+              description="A user timer runs acfs update while you sleep"
               gradient="from-indigo-500/20 to-violet-500/20"
             />
             <FeatureCard
               icon={<LayoutDashboard className="h-5 w-5" />}
-              title="acfs workspace"
-              description="Agent-ready tmux sessions"
+              title="Workspace"
+              description="/data/projects plus NTM sessions that survive disconnects"
               gradient="from-primary/20 to-violet-500/20"
             />
             <FeatureCard
@@ -103,10 +103,11 @@ acfs doctor --fix
 # JSON output for programmatic use
 acfs doctor --format json
 
-# Check a specific category
-acfs doctor --category agents
-acfs doctor --category tools
-acfs doctor --category shell`}
+# Preview fixes without applying them
+acfs doctor --fix --dry-run
+
+# Deeper functional checks (agent auth, service connections)
+acfs doctor --deep`}
             showLineNumbers
           />
         </div>
@@ -124,34 +125,33 @@ acfs doctor --category shell`}
       {/* Section 3: Nightly Auto-Updates */}
       <Section title="Nightly Auto-Updates" icon={<Clock className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          A systemd timer runs updates automatically every night. It updates tool binaries, pulls
-          latest configs, and runs doctor afterward to verify everything is still healthy.
+          A per-user systemd timer runs <Highlight>acfs update</Highlight> every night (around
+          4am). It first skips the run if the machine is overloaded or nearly out of disk, then
+          updates your tools. ACFS&apos;s own scripts are not self-updated unless you opt in.
         </Paragraph>
 
         <div className="mt-6">
           <CodeBlock
-            code={`# Check nightly update status
-systemctl status acfs-nightly.timer
+            code={`# Check nightly update status (a user timer: note --user, no sudo)
+systemctl --user status acfs-nightly-update.timer
 
-# View last update log
-journalctl -u acfs-nightly.service --since yesterday
+# View the most recent nightly log
+ls -t ~/.acfs/logs/updates/nightly-*.log | head -1 | xargs tail -n 50
 
 # Trigger a manual update now
 acfs update
 
-# What the nightly update does:
-# 1. Pull latest ACFS configs
-# 2. Update Agent Flywheel stack tools (cargo install)
-# 3. Update global Bun packages
-# 4. Update Go binaries
-# 5. Run acfs doctor to verify
-# 6. Log results to journal
+# What the nightly run does:
+# 1. Skips if load is too high or disk is critically low (<2GB)
+# 2. Low-risk cleanup if disk is tight (<5GB)
+# 3. Runs acfs-update --yes --quiet (ACFS self-update off by default)
+# 4. Logs to ~/.acfs/logs/updates/
 
 # Disable nightly updates (not recommended)
-sudo systemctl disable acfs-nightly.timer
+systemctl --user disable --now acfs-nightly-update.timer
 
 # Re-enable
-sudo systemctl enable --now acfs-nightly.timer`}
+systemctl --user enable --now acfs-nightly-update.timer`}
             showLineNumbers
           />
         </div>
@@ -169,29 +169,26 @@ sudo systemctl enable --now acfs-nightly.timer`}
       {/* Section 4: Workspace Setup */}
       <Section title="Workspace Setup" icon={<LayoutDashboard className="h-5 w-5" />} delay={0.25}>
         <Paragraph>
-          ACFS creates a ready-to-use workspace with a tmux session and project folder structure.
-          Everything is configured so you can SSH in and immediately start working.
+          ACFS sets up a project folder and tmux/NTM so your agent sessions keep running when SSH
+          disconnects. You can SSH back in and pick up exactly where you left off.
         </Paragraph>
 
         <div className="mt-6">
           <CodeBlock
-            code={`# The workspace is created during installation:
-# ~/workspace/          — Default project directory
-# ~/.acfs/              — ACFS configuration
-# ~/.acfs/tmux.conf     — Tmux configuration
-# ~/.acfs/zshrc         — Shell configuration
+            code={`# Where things live after installation:
+# /data/projects/          — Your projects (NTM's projects_base)
+# ~/.acfs/                 — ACFS scripts, state and logs
+# ~/.acfs/tmux/tmux.conf   — Tmux configuration
+# ~/.acfs/zsh/acfs.zshrc   — Shell configuration
 
-# The default tmux session structure:
-# Session "main":
-#   Window 0: "editor"  — Your primary workspace
-#   Window 1: "agents"  — Agent terminals
-#   Window 2: "logs"    — Log monitoring
+# Create a project (in /data/projects/myproject)
+acfs newproj myproject
 
-# Reconnect to workspace after SSH
-tmux attach -t main
+# Start agents in a named session (session name = project folder)
+ntm spawn myproject --cc=1 --cod=1
 
-# Or use NTM for named sessions (session name = project dir under projects_base)
-ntm spawn myproject --cc=1 --cod=1`}
+# Reconnect after SSH drops
+ntm attach myproject`}
             showLineNumbers
           />
         </div>
@@ -199,8 +196,9 @@ ntm spawn myproject --cc=1 --cod=1`}
         <div className="mt-6">
           <TipBox variant="tip">
             The workspace is designed so you can SSH in, run{" "}
-            <code className="text-amber-300">tmux attach</code>, and immediately start working.
-            Everything persists across disconnections.
+            <code className="text-amber-300">ntm attach myproject</code> (or{" "}
+            <code className="text-amber-300">tmux attach</code>), and immediately start working.
+            Agent sessions persist across disconnections.
           </TipBox>
         </div>
       </Section>
