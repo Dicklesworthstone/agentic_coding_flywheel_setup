@@ -12282,15 +12282,19 @@ _run_stack_cass_target_tmpdir() {
     TARGET_HOME="$BATS_TEST_TMPDIR/stack-refuse-home"
     local parent="$TARGET_HOME/.cache/acfs/installer-tmp"
     mkdir -p "$parent/cass.ABC123" "$parent/other.ABC123" "$TARGET_HOME/victim"
+    : > "$TARGET_HOME/victim/keep"
+    ln -s "$TARGET_HOME/victim" "$parent/cass.LINK01"
     source_lib "stack"
     _stack_run_as_user() { bash -c "$1"; }
 
     local candidate
-    for candidate in "$parent" "$parent/other.ABC123" "$parent/cass." "$parent/cass.ABC123/.." "$TARGET_HOME/victim" ""; do
+    for candidate in "$parent" "$parent/other.ABC123" "$parent/cass." "$parent/cass.ABC123/.." \
+        "$parent/cass.LINK01" "$TARGET_HOME/victim" ""; do
         run _stack_remove_target_installer_tmpdir "cass" "$candidate"
         assert_failure
     done
-    [[ -d "$parent/other.ABC123" && -d "$TARGET_HOME/victim" && -d "$parent/cass.ABC123" ]]
+    [[ -d "$parent/other.ABC123" && -d "$parent/cass.ABC123" ]]
+    [[ -L "$parent/cass.LINK01" && -f "$TARGET_HOME/victim/keep" ]]
 
     run _stack_remove_target_installer_tmpdir "cass" "$parent/cass.ABC123"
     assert_success
@@ -12299,13 +12303,20 @@ _run_stack_cass_target_tmpdir() {
 
 @test "update verified installer with target tmpdir never removes a path outside its template" {
     _setup_update_target_tmpdir_stubs
+    local parent="$TEST_TARGET_HOME/.cache/acfs/installer-tmp"
+    mkdir -p "$parent" "$TEST_TARGET_HOME/victim"
+    ln -s "$TEST_TARGET_HOME/victim" "$parent/cass.LINK01"
+
     local escaped
+    local attempt=0
     for escaped in \
-        "$TEST_TARGET_HOME/.cache/acfs/installer-tmp" \
-        "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/other.ABC123" \
-        "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123/.." \
+        "$parent" \
+        "$parent/other.ABC123" \
+        "$parent/cass.ABC123/.." \
+        "$parent/cass.LINK01" \
         "$TEST_TARGET_HOME"; do
-        rm -f "$TEST_RM_ARGS"
+        attempt=$((attempt + 1))
+        TEST_RM_ARGS="$BATS_TEST_TMPDIR/rm-args-$attempt"
         TEST_MKTEMP_RESULT="$escaped"
         run update_run_verified_installer_with_target_tmpdir "cass" "--easy-mode" "--verify"
         assert_success
