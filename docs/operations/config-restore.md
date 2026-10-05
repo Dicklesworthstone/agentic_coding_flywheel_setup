@@ -69,8 +69,9 @@ second dependency graph or bypass dependencies with `--no-deps`.
 `--json` emits a preview document with schema `acfs.config-import.v1`, the
 normalized module list, destination mode, installer argv and resolved plan.
 It cannot be combined with `--apply`, whose terminal belongs to the installer.
-`--plan-timeout` bounds planning (default 60 seconds, maximum 300), not the actual
-installation. `--installer /trusted/checkout/install.sh` selects another local
+`--plan-timeout` bounds each destination-export and installer-plan probe (default
+60 seconds, maximum 300), not the actual installation. Each probe also has a
+1 MiB combined stdout/stderr limit. `--installer /trusted/checkout/install.sh` selects another local
 installer explicitly; this is an executable trust decision, not an export field.
 
 ## Install only the missing modules
@@ -99,6 +100,36 @@ applying. Credentials and versions are not compared. The JSON report retains
 all desired `modules` and separately records the reduced `install_modules`.
 Only one input may be stdin; either stdin input requires `--yes` when applying.
 
+### Capture the destination automatically
+
+Run on the destination to avoid manually creating or accidentally reusing an
+old comparison file:
+
+```bash
+python3 scripts/import-config.py source-export.yaml --against-current --json
+python3 scripts/import-config.py source-export.yaml --against-current --apply
+```
+
+`--against-current` invokes `scripts/lib/export-config.sh --minimal` from the
+**same trusted checkout** selected by `--installer`. It does not discover an
+exporter on PATH or accept an executable from the source export. A system Bash
+runs the companion script with shell startup hooks disabled. The exporter owns
+destination-user resolution and installed-module detection; `--minimal` avoids
+the unrelated tool-version inventory probes. Use the same destination user and
+context for preview and apply that you would use with `acfs export-config`.
+
+The JSON comparison has `basis: "current_export"`, and includes
+`destination_exporter_argv` and `destination_diagnostics`. This is a newly
+captured inventory, **not health verification**: the exporter may fall back to
+recorded installation state, and presence does not verify versions, credentials
+or tool functionality. Capture and apply are not a transactional host lock.
+
+An exporter failure, invalid output, timeout or exceeded output limit prevents
+both planning and installation. A successful empty inventory selects the entire
+nonempty source selection, never an implicit default install. `--against` and
+`--against-current` are mutually exclusive. Apply still requires its ordinary
+installer plan to succeed, even after the destination export succeeds.
+
 ## What is deliberately not restored
 
 The helper does not restore credentials, SSH keys, API tokens, source-host paths,
@@ -117,5 +148,6 @@ python3 -m unittest discover -s tests/unit -p test_import_config.py -v
 Tests use real files, pipes and subprocesses with an inert installer fixture.
 They verify parsing, safe defaults, exact argv, resolver refusal, timeout cleanup,
 startup-hook isolation, stdin handling, YAML handling, snapshot deltas, no-op
-restores and exit-status/signal propagation. They do not
+restores, current-destination capture, exporter refusal/limits and
+exit-status/signal propagation. They do not
 perform a privileged installation or claim a fresh Ubuntu VM end-to-end result.
