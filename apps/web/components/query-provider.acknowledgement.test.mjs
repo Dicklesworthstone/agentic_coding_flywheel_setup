@@ -60,7 +60,7 @@ function fixture(storage) {
     persisters,
     render() {
       cursor = 0;
-      return module.exports.QueryProvider({ children: "page" });
+      return cjs.exports.QueryProvider({ children: "page" });
     },
   };
 }
