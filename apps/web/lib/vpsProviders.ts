@@ -32,6 +32,8 @@ export interface VPSPlan {
   priceUSD: number;
   /** How priceUSD was derived: currency conversion, commitment term, etc. */
   priceNote?: string;
+  /** Months of commitment priceUSD assumes; month-to-month billing costs more */
+  commitmentMonths?: number;
   /** Caveat shown next to the plan, e.g. when it is below the ACFS RAM recommendation */
   note?: string;
 }
@@ -118,13 +120,18 @@ export interface EvaluatedProviderPlan {
 
 export type VPSReadinessStatus = "supported" | "borderline" | "unsupported" | "unknown";
 
-export type VPSReadinessCheckId = "provider" | "plan" | "os" | "region" | "capacity";
+export type VPSReadinessCheckId = "provider" | "plan" | "os" | "region" | "capacity" | "cost";
+
+/** Stable IDs for the cost guardrails, for logs, packets and tests. */
+export type VPSCostWarning = "cost_unknown" | "commitment_term" | "oversized";
 
 export interface VPSReadinessCheck {
   id: VPSReadinessCheckId;
   label: string;
   status: VPSReadinessStatus;
   message: string;
+  /** Cost check only: which guardrails fired. */
+  warnings?: VPSCostWarning[];
 }
 
 export interface VPSReadinessInput {
@@ -191,6 +198,7 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       storageGB: 500,
       priceUSD: 43,
       priceNote: "approx.; Contabo lists EUR 37/mo (24-month intro rate)",
+      commitmentMonths: 24,
     },
     budget: {
       name: "Cloud VPS 12",
@@ -199,6 +207,7 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       storageGB: 400,
       priceUSD: 29,
       priceNote: "approx.; Contabo lists EUR 25/mo (24-month intro rate)",
+      commitmentMonths: 24,
     },
     activationTime: "Minutes (up to ~1 hr)",
     bestFor: "Best value overall",
@@ -254,6 +263,7 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       storageGB: 200,
       priceUSD: 24,
       priceNote: "OVH lists from $23.37/mo with a 12-month term; monthly is higher",
+      commitmentMonths: 12,
       note: "Largest OVH VPS; 24 GB is below the 48 GB ACFS recommendation",
     },
     budget: {
@@ -263,6 +273,7 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       storageGB: 100,
       priceUSD: 13,
       priceNote: "OVH lists from $12.32/mo with a 12-month term; monthly is higher",
+      commitmentMonths: 12,
       note: "12 GB is far below the 48 GB ACFS recommendation; only for trying ACFS with 1-2 agents",
     },
     activationTime: "Minutes",
@@ -465,6 +476,53 @@ export function getProviderPlan(provider: VPSProvider, planName: string): VPSPla
   );
 }
 
+/**
+ * Billing guardrails for the selected plan. A commitment term or a cheaper plan
+ * that is still enough is information, not a readiness failure, so those stay
+ * "supported"; only a cost the table cannot state is "unknown". A cheaper plan
+ * is only suggested when it also meets the ACFS RAM recommendation.
+ */
+export function evaluatePlanCost(
+  provider: VPSProvider | null,
+  plan: VPSPlan | null,
+  workload: WorkloadProfile,
+  targetAgents: number,
+): VPSReadinessCheck {
+  const base = { id: "cost", label: "Monthly cost" } as const;
+  if (!provider || !plan) {
+    return {
+      ...base,
+      status: "unknown",
+      warnings: ["cost_unknown"],
+      message:
+        "This plan's cost is not in the ACFS table. Before paying, confirm the monthly price, the billing term (low prices often require a 12-24 month commitment), setup fees, and traffic limits.",
+    };
+  }
+
+  const warnings: VPSCostWarning[] = [];
+  let message = `About $${plan.priceUSD}/month`;
+  if (plan.commitmentMonths) {
+    warnings.push("commitment_term");
+    message += ` with a ${plan.commitmentMonths}-month commitment; month-to-month billing costs more, so check the term at checkout`;
+  }
+  message += ".";
+
+  const cheaper = [provider.budget, provider.recommended].find(
+    (candidate) =>
+      candidate.priceUSD < plan.priceUSD &&
+      !isBelowRamRecommendation(candidate) &&
+      evaluatePlan(candidate, workload, targetAgents).status === "pass",
+  );
+  if (cheaper) {
+    warnings.push("oversized");
+    message += ` For ${targetAgents} ${workload.label.toLowerCase()} agent${
+      targetAgents === 1 ? "" : "s"
+    }, ${cheaper.name} (about $${cheaper.priceUSD}/month) is enough.`;
+  }
+
+  return { ...base, status: "supported", warnings, message };
+}
+
 export function validateVPSReadiness(input: VPSReadinessInput): VPSReadinessResult {
   const provider =
     VPS_PROVIDERS.find((entry) => normalizeText(entry.id) === normalizeText(input.providerId)) ??
@@ -489,6 +547,7 @@ export function validateVPSReadiness(input: VPSReadinessInput): VPSReadinessResu
       message:
         "Plan capacity is unknown. Compare RAM, vCPU, and NVMe storage against the recommended host size before purchase.",
     });
+    checks.push(evaluatePlanCost(null, null, workload, targetAgents));
     checks.push(validateUbuntuImage(input.ubuntuVersion));
     checks.push({
       id: "region",
@@ -553,6 +612,7 @@ export function validateVPSReadiness(input: VPSReadinessInput): VPSReadinessResu
             : `Undersized: safe ceiling is about ${capacity.safeAgents} ${workload.label.toLowerCase()} agents.`,
     });
   }
+  checks.push(evaluatePlanCost(provider, plan, workload, targetAgents));
 
   checks.push(validateUbuntuImage(input.ubuntuVersion));
 

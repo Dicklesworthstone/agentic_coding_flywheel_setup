@@ -284,6 +284,74 @@ describe("validateVPSReadiness", () => {
   });
 });
 
+describe("cost guardrails (bd-nvw6u)", () => {
+  const readiness = (input: Partial<VPSReadinessInput>) =>
+    validateVPSReadiness({
+      providerId: "contabo",
+      planName: "Cloud VPS 16",
+      ubuntuVersion: "26.04",
+      region: "us",
+      targetAgents: 10,
+      workloadId: "standard",
+      ...input,
+    });
+  const cost = (result: VPSReadinessResult) =>
+    result.checks.find((check) => check.id === "cost");
+
+  test("every listed plan states the commitment its price assumes", () => {
+    for (const provider of VPS_PROVIDERS) {
+      for (const plan of [provider.budget, provider.recommended]) {
+        expect(plan.commitmentMonths).toBeGreaterThan(0);
+        expect(plan.priceNote ?? provider.note ?? "").toContain(`${plan.commitmentMonths}-month`);
+      }
+    }
+  });
+
+  test("a well-sized plan reports its price and commitment without changing readiness", () => {
+    const result = readiness({});
+    expect(result.status).toBe("supported");
+    expect(cost(result)?.status).toBe("supported");
+    expect(cost(result)?.warnings).toEqual(["commitment_term"]);
+    expect(cost(result)?.message).toContain("About $43/month with a 24-month commitment");
+  });
+
+  test("an oversized plan names the cheaper plan that is still enough", () => {
+    const result = readiness({ targetAgents: 3, workloadId: "light" });
+    expect(cost(result)?.warnings).toEqual(["commitment_term", "oversized"]);
+    expect(cost(result)?.message).toContain("Cloud VPS 12 (about $29/month) is enough");
+    expect(result.status).toBe("supported");
+  });
+
+  test("never suggests a cheaper plan below the ACFS RAM recommendation", () => {
+    const result = readiness({
+      providerId: "ovh",
+      planName: "VPS-4",
+      region: "us-east",
+      targetAgents: 1,
+      workloadId: "light",
+    });
+    expect(cost(result)?.warnings).toEqual(["commitment_term"]);
+    expect(cost(result)?.message).not.toContain("VPS-3");
+  });
+
+  test("the cheapest plan is never called oversized", () => {
+    const result = readiness({ planName: "Cloud VPS 12", targetAgents: 1, workloadId: "light" });
+    expect(cost(result)?.warnings).toEqual(["commitment_term"]);
+  });
+
+  test("unknown providers and plans make the cost explicitly unknown", () => {
+    for (const input of [
+      { providerId: "other", planName: "custom" },
+      { planName: "Cloud VPS 99" },
+    ]) {
+      const check = cost(readiness(input));
+      expect(check?.status).toBe("unknown");
+      expect(check?.warnings).toEqual(["cost_unknown"]);
+      expect(check?.message).toContain("billing term");
+    }
+  });
+});
+
 describe("Ubuntu image lifecycle safety (bd-5ytb5)", () => {
   for (const image of ["26.04", "26.04.1", "Ubuntu 26.04 LTS", " ubuntu 26.04.1 lts "]) {
     test(`accepts the supported LTS image label ${JSON.stringify(image)}`, () => {

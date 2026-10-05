@@ -539,6 +539,10 @@ test.describe("Wizard Flow", () => {
       "Supported",
       "Ready for the selected target.",
     );
+    // Cost guardrail (bd-nvw6u): price and its commitment term, without
+    // degrading an otherwise ready plan.
+    await expect(readiness).toContainText("Monthly cost");
+    await expect(readiness).toContainText("About $43/month with a 24-month commitment");
 
     await providerSelect.selectOption("other");
     await recordState(
@@ -547,6 +551,7 @@ test.describe("Wizard Flow", () => {
       "Unknown",
       "Not in the ACFS provider table; compare the specs manually.",
     );
+    await expect(readiness).toContainText("This plan's cost is not in the ACFS table");
 
     await providerSelect.selectOption("ovh");
     await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
