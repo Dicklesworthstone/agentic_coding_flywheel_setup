@@ -293,12 +293,15 @@ describe("progress persistence guards", () => {
     );
     expect(successBrowser.dispatchCalls).toHaveLength(1);
 
+    // Blocked storage keeps the wizard usable in memory (6fb5ad51): the write
+    // reports success and notifies, but nothing reaches localStorage.
     const failingBrowser = installMockBrowser({
       failSetItemForKey: CREATE_VPS_CHECKLIST_KEY,
     });
-    expect(setCreateVPSChecklist(["ubuntu"])).toBe(false);
+    expect(setCreateVPSChecklist(["ubuntu"])).toBe(true);
     expect(failingBrowser.getStoredValue(CREATE_VPS_CHECKLIST_KEY)).toBeNull();
-    expect(failingBrowser.dispatchCalls).toHaveLength(0);
+    expect(getCreateVPSChecklist()).toEqual(["ubuntu"]);
+    expect(failingBrowser.dispatchCalls).toHaveLength(1);
   });
 
   test("create-vps checklist completion requires all wizard items", () => {
@@ -323,12 +326,14 @@ describe("progress persistence guards", () => {
     );
     expect(successBrowser.dispatchCalls).toHaveLength(1);
 
+    // Blocked storage keeps the wizard usable in memory (6fb5ad51).
     const failingBrowser = installMockBrowser({
       failSetItemForKey: CHECKED_SERVICES_TEST_KEY,
     });
-    expect(setCheckedServices(["github"])).toBe(false);
+    expect(setCheckedServices(["github"])).toBe(true);
     expect(failingBrowser.getStoredValue(CHECKED_SERVICES_TEST_KEY)).toBeNull();
-    expect(failingBrowser.dispatchCalls).toHaveLength(0);
+    expect(getCheckedServices()).toEqual(["github"]);
+    expect(failingBrowser.dispatchCalls).toHaveLength(1);
   });
 
   test("VPS readiness selection persistence normalizes wizard inputs", () => {

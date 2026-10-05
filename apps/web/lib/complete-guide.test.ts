@@ -52,7 +52,8 @@ describe("complete guide derived claims", () => {
   test("intentional current-model exceptions remain explicit", () => {
     expect(COMPLETE_GUIDE_MODELS.antigravity).toBe("Gemini 3.8 Flash (High)");
     expect(COMPLETE_GUIDE_MODELS.restrictedPreview).toBe("Claude Mythos Preview");
-    expect(pageSource).toContain("is not generally available");
+    // JSX prose may be re-wrapped by the formatter; compare rendered spacing.
+    expect(pageSource.replace(/\s+/g, " ")).toContain("is not generally available");
     expect(pageSource).not.toContain("Grok Heavy");
     expect(pageSource).not.toContain("Claude Code (Opus)");
     expect(planEvolutionSource).toContain("COMPLETE_GUIDE_MODELS");

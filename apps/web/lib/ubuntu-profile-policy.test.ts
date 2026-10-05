@@ -235,14 +235,18 @@ test("provider defaults cannot name an unsupported release even if compatibility
 });
 
 test("profile review revalidates selectors without throwing or printing a runnable command", () => {
-  const profile = buildTeamProfile({
-    ...inputs("26.04"),
-    moduleSelection: { onlyModules: ["not.real"] },
-  });
+  // Export refuses invalid selectors outright (lowerModuleSelectionGroups)...
+  assert.throws(
+    () => buildTeamProfile({ ...inputs("26.04"), moduleSelection: { onlyModules: ["not.real"] } }),
+    /Cannot export an invalid module selection/,
+  );
+  // ...so they can only arrive in an edited file whose cached plan still claims ready.
+  const profile = buildTeamProfile(inputs("26.04"));
+  profile.install.modules.only = ["not.real"];
+  assert.equal(profile.install.modulePlan.ok, true);
   const review = formatTeamProfileReviewMarkdown(profile);
   assert.ok(review.includes(blockedText));
   assert.ok(!review.includes("curl -fsSL"));
-  assert.equal(profile.install.modulePlan.ok, false);
 });
 
 test("profile review refuses stale checksum provenance even if the cached module plan says ready", () => {
