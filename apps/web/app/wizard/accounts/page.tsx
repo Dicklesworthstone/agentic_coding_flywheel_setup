@@ -326,7 +326,12 @@ export default function AccountsPage() {
       {/* Google SSO tip - uses getGoogleSsoServices() to show count */}
       <AlertCard variant="tip" icon={Sparkles} title="Quick signup with Google">
         {getGoogleSsoServices().length} of {SERVICES.length} services support Google SSO. Use the
-        same Google account for all of them to streamline your setup.
+        same Google account for all of them to streamline your setup. That makes that one account
+        worth protecting:{" "}
+        <Link href="/docs/security" className="font-medium text-primary hover:underline">
+          how to secure it, and what to do if it is compromised
+        </Link>
+        .
       </AlertCard>
 
       {/* Progress indicator */}

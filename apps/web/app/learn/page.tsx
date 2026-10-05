@@ -13,6 +13,7 @@ import {
   Play,
   Sparkles,
   Terminal,
+  Wrench,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -74,6 +75,13 @@ const QUICK_REFERENCE_ITEMS: QuickReferenceItem[] = [
     title: "Glossary",
     desc: "Definitions for all jargon terms",
     gradient: "from-amber-500/10 to-amber-500/5",
+  },
+  {
+    href: "/troubleshooting",
+    icon: Wrench,
+    title: "Troubleshooting",
+    desc: "Fixes for SSH, installer, disk and agent problems",
+    gradient: "from-rose-500/10 to-rose-500/5",
   },
 ];
 

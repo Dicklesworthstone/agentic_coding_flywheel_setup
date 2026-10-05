@@ -10,6 +10,7 @@
  */
 
 import { Check, ChevronRight, Copy, HelpCircle, Lightbulb, X } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getDebugInfo, STEP_HELP, type StepHelp } from "@/lib/stepHelp";
@@ -180,6 +181,14 @@ export function HelpPanel({ currentStep, title }: HelpPanelProps) {
                   </ul>
                 </section>
               )}
+
+              <p className="text-sm text-muted-foreground">
+                Still stuck? The{" "}
+                <Link href="/troubleshooting" className="font-medium text-primary hover:underline">
+                  troubleshooting guide
+                </Link>{" "}
+                covers SSH, installer, disk-space and agent sign-in problems step by step.
+              </p>
 
               {/* Debug Info */}
               <section className="rounded-lg border border-border/50 bg-muted/20 p-4">
