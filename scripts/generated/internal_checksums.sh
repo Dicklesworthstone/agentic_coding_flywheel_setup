@@ -10,14 +10,14 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="dcdf7bb695595162d53da7309ee4b7a1113605f519685de9a12f963162cab3b7"
+  [install.sh]="f0ed7e259fda0b2ff3e3383f3c9c0a0cc88649bfc805dfc343aee50d43998491"
   [checksums.yaml]="caefd9bb675305a4e22ee60f2537d700df3b703f4dd36d2c202c73af2e29012e"
   [scripts/preflight.sh]="460660782979764c74653faf46fb6b928ac50516fbe298ba85f7db218707c60a"
   [scripts/lib/security.sh]="94df4b2189ea9225ec9c95cf742a7be43b8926b09559f88fdf8eed84c9ba43dd"
   [scripts/lib/holds.sh]="7aca60222e56ce4034739b92ed3332c7118d918526d60ce189f59c595a930015"
   [scripts/lib/github_api.sh]="80699922df2e924694f5682457e614dedf9181d7c071472cc8a6db4f17373d3d"
   [scripts/lib/contract.sh]="22c148f44ddbaccd559196196ef903f26f65fc77e3b1b6b4efc62b77d3b97aa3"
-  [scripts/lib/update.sh]="5448c914a5fdcb014ec509ba2055540e171586d9b4f78017bb59827721f0838a"
+  [scripts/lib/update.sh]="0a8e0f7a292278af5f6b59523d5029b7b921a2083b2d41527e95328086c6eb2f"
   [scripts/lib/doctor.sh]="7c17fff8cf71ca89eb67deab708ce60a1541289184ded64d2acae4d4366e9deb"
   [scripts/lib/acfs-services.sh]="01e543d418c0ca5c45d42acb81510fce03150ff98e8bfd05438c863708daf359"
   [scripts/lib/doctor_fix.sh]="529f3683641c24c2b2f404ff1b6b057ec9e6e9afe45c55aec12e7740481a72f7"
@@ -71,7 +71,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/changelog.sh]="a27decc0b84b50dc2a0b95fa521c25ab9dcfc40aea30a5d83f18bc5e441c5251"
   [scripts/lib/cheatsheet.sh]="bcf55768c6a4b07325a052b570b8d281402bdb1fe2a294241298bc3d17848ed2"
   [scripts/lib/continue.sh]="f68db2feb1ffad85e34fcff97889fc9d39d3a834b7fb01f53e412086049c0601"
-  [scripts/lib/credential_preflight.sh]="0f0449a3723159711e63dd5e2f37f35fbfd135b5713a625fa3fd7fb4dbf8c900"
+  [scripts/lib/credential_preflight.sh]="1b89c44fabf9e3bdc66d88f0a2c93aedb479bc3ed67aae85b0a91dbc58b942fe"
   [scripts/lib/dashboard.sh]="6906bcceff5742a69e536ed5ca140803ff2633e01fed9b07a5d6140331891fec"
   [scripts/lib/info.sh]="6c276614f30dc5276bdb2ac46c8da776b25b1cfb3fa2f9c5c2d28ccf2bb6b70a"
   [scripts/lib/landing_plane.sh]="7c353f5940dd0f4e49bfd1af395970306ad78d60771351610edd6311e80d1a09"

@@ -3521,6 +3521,7 @@ sync_acfs_deployed() {
         "acfs/zsh/acfs.zshrc:zsh/acfs.zshrc"
         "acfs/zsh/p10k.zsh:zsh/p10k.zsh"
         "VERSION:VERSION"
+        "CHANGELOG.md:CHANGELOG.md"
     )
 
     for pair in "${file_pairs[@]}"; do

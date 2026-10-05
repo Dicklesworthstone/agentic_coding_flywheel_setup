@@ -4176,6 +4176,17 @@ bootstrap_repo_archive() {
         "$rm_bin" -f "$ACFS_TMP_ARCHIVE"
         return 1
     fi
+    # CHANGELOG.md only feeds `acfs changelog`. Archives built from the runtime
+    # subset may omit it, and GNU tar fails on an unmatched member, so it gets
+    # its own best-effort pass (top level only: `*` must not match `/`).
+    (umask 077; "$env_bin" -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+        TAR_OPTIONS= GZIP= BZIP= BZIP2= XZ_OPT= \
+        "$tar_bin" --no-same-owner --no-same-permissions --delay-directory-restore \
+        --no-xattrs --no-acls --no-selinux -xzf "$ACFS_TMP_ARCHIVE" \
+        -C "$tmp_dir" --strip-components=1 \
+        --wildcards --no-wildcards-match-slash \
+        "*/CHANGELOG.md") >/dev/null 2>&1 || true
     "$rm_bin" -f "$ACFS_TMP_ARCHIVE"
 
     local unsafe_archive_object=""
@@ -4625,6 +4636,12 @@ _acfs_internal_asset_is_rendered_data() {
             lesson_name="${rel_path#acfs/onboard/lessons/}"
             [[ -n "$lesson_name" && "$lesson_name" != */* && "$lesson_name" != "." && "$lesson_name" != ".." ]]
             ;;
+        CHANGELOG.md)
+            # Inert Markdown that `acfs changelog` parses with shell builtins.
+            # Kept out of the ledger so a changelog edit cannot break bootstrap
+            # verification.
+            return 0
+            ;;
         *)
             return 1
             ;;
@@ -4663,9 +4680,9 @@ install_asset() {
     fi
 
     # Select one already-verified source tree and bind every consumed runtime
-    # asset back to it. Lessons are rendered as inert Markdown and are the only
-    # explicit non-ledger data exception; executable/config/policy assets must
-    # remain members of the closed internal checksum set.
+    # asset back to it. Lessons and CHANGELOG.md are rendered as inert Markdown
+    # and are the only explicit non-ledger data exceptions; executable/config/
+    # policy assets must remain members of the closed internal checksum set.
     local source_root=""
     local trusted_source_root="${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}"
     if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
@@ -10916,6 +10933,12 @@ finalize() {
     try_step "Installing VERSION" install_asset "VERSION" "$ACFS_HOME/VERSION" || return 1
     try_step "Setting metadata ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" \
         "$ACFS_HOME/acfs.manifest.yaml" "$ACFS_HOME/checksums.yaml" "$ACFS_HOME/VERSION" || true
+    # `acfs changelog` reads it from here. Documentation only, and archives
+    # built from the runtime subset may omit it, so never fatal.
+    if [[ -f "${ACFS_BOOTSTRAP_DIR:-${SCRIPT_DIR:-}}/CHANGELOG.md" ]]; then
+        try_step "Installing CHANGELOG.md" install_asset "CHANGELOG.md" "$ACFS_HOME/CHANGELOG.md" || true
+        $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/CHANGELOG.md" 2>/dev/null || true
+    fi
 
     # Legacy: Install doctor as acfs binary (for backwards compat)
     try_step "Installing acfs CLI" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs" || return 1
@@ -12222,6 +12245,10 @@ main() {
                 log_detail "Ensuring VERSION is up to date"
                 install_asset "VERSION" "$ACFS_HOME/VERSION" || true
                 $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/VERSION" 2>/dev/null || true
+            fi
+            if [[ -f "$metadata_source_root/CHANGELOG.md" ]]; then
+                install_asset "CHANGELOG.md" "$ACFS_HOME/CHANGELOG.md" || true
+                $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/CHANGELOG.md" 2>/dev/null || true
             fi
             if [[ -f "$metadata_source_root/acfs.manifest.yaml" ]]; then
                 log_detail "Ensuring acfs.manifest.yaml is up to date"

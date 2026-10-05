@@ -349,6 +349,9 @@ credential_preflight_value_is_placeholder() {
     lower="${value,,}"
     [[ -z "$lower" ]] && return 0
     [[ "$lower" =~ ^[0-9]+$ ]] && return 0
+    # Shell/env references ($VAR, ${VAR...}, $(cmd)) are the secret-reference
+    # form the remediation asks for, not literals. "$ecret@99" stays a literal.
+    [[ "$lower" =~ ^\$\{[a-z_][a-z0-9_]* || "$lower" == '$('* || "$lower" =~ ^\$[a-z_][a-z0-9_]*$ ]] && return 0
     [[ "$lower" == *"<redacted"* ||
        "$lower" == *"redacted"* ||
        "$lower" == *"example"* ||

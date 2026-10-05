@@ -281,6 +281,33 @@ test_detects_secret_pair_after_specific_pattern_on_same_line() {
     pass "detects_secret_pair_after_specific_pattern_on_same_line"
 }
 
+test_shell_references_are_not_literal_secrets() {
+    # The deployed acfs.manifest.yaml assigns passwd_entry="$(...)", which
+    # flagged every install. A reference is what the remediation asks for.
+    local fixture="$ARTIFACT_DIR/references/setup.sh"
+    local output="$ARTIFACT_DIR/references.json"
+    local literal_fixture="$ARTIFACT_DIR/references-literal/.env"
+    local literal_output="$ARTIFACT_DIR/references-literal.json"
+    local secret='$ecretValue@99'
+
+    write_fixture "$fixture" 'passwd_entry="$(acfs_generated_getent_passwd_entry "$current_user")"
+DB_PASSWORD=${DB_PASSWORD:-}
+api_token=$API_TOKEN'
+
+    bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output" || return 1
+    jq -e '.status == "pass" and .summary.findings == 0' "$output" >/dev/null || return 1
+
+    # A literal that merely starts with "$" is still a literal.
+    write_fixture "$literal_fixture" "ADMIN_PASSWORD=$secret"
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$literal_fixture" > "$literal_output"; then
+        return 1
+    fi
+    assert_category_present "$literal_output" "password" || return 1
+    assert_no_raw_secret "$literal_output" "$secret" || return 1
+
+    pass "shell_references_are_not_literal_secrets"
+}
+
 test_password_keys_keep_password_category_after_placeholder_checks() {
     local fixture="$ARTIFACT_DIR/password-category/.env"
     local output="$ARTIFACT_DIR/password-category.json"
@@ -382,6 +409,7 @@ main() {
     run_test test_detects_later_secret_pairs_on_same_line
     run_test test_detects_secret_pair_after_specific_pattern_on_same_line
     run_test test_password_keys_keep_password_category_after_placeholder_checks
+    run_test test_shell_references_are_not_literal_secrets
     run_test test_binary_and_unreadable_files_are_skipped
     run_test test_excluded_paths_are_opted_out
     run_test test_default_scan_covers_shell_history_and_acfs_state

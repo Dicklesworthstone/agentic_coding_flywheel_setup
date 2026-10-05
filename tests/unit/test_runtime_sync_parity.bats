@@ -87,3 +87,18 @@ _update_lib_sources() {
     _install_lib_sources | grep -Fxq "scripts/lib/security.sh"
     _update_lib_sources | grep -Fxq "scripts/lib/security.sh"
 }
+
+@test "install.sh admits CHANGELOG.md as inert data and deploys it for acfs changelog" {
+    # install_asset refuses anything outside the internal checksum ledger
+    # unless it is declared inert rendered data; CHANGELOG.md is deliberately
+    # outside the ledger so a changelog edit cannot break bootstrap.
+    eval "$(sed -n '/^_acfs_internal_asset_is_rendered_data()/,/^}$/p' "$INSTALL_SH")"
+    _acfs_internal_asset_is_rendered_data "CHANGELOG.md"
+    _acfs_internal_asset_is_rendered_data "acfs/onboard/lessons/00_welcome.md"
+    run _acfs_internal_asset_is_rendered_data "packages/x/CHANGELOG.md"
+    [ "$status" -ne 0 ]
+    run _acfs_internal_asset_is_rendered_data "scripts/lib/doctor.sh"
+    [ "$status" -ne 0 ]
+    grep -Fq 'install_asset "CHANGELOG.md" "$ACFS_HOME/CHANGELOG.md"' "$INSTALL_SH"
+    grep -Fq '"CHANGELOG.md:CHANGELOG.md"' "$UPDATE_SH"
+}

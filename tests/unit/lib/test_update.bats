@@ -9484,6 +9484,58 @@ EOF
     assert_success
 }
 
+@test "self-update deploys CHANGELOG.md where acfs changelog reads it" {
+    local temp_root
+    local seed_repo
+    local origin_repo
+    local work_repo
+    local deployed_home
+    local log_file
+
+    temp_root="$(create_temp_dir)"
+    seed_repo="$temp_root/seed"
+    origin_repo="$temp_root/origin.git"
+    work_repo="$temp_root/work"
+    deployed_home="$temp_root/deployed-acfs"
+    log_file="$temp_root/update.log"
+
+    # Neither install.sh nor update.sh used to deploy it, so `acfs changelog`
+    # failed with "CHANGELOG.md not found" on every install.
+    mkdir -p "$seed_repo" "$deployed_home"
+    git -C "$seed_repo" init -b main >/dev/null
+    git -C "$seed_repo" config user.email test@example.invalid
+    git -C "$seed_repo" config user.name "ACFS Test"
+    printf '# Changelog\n\n## [0.0.1] - 2026-01-01\n' > "$seed_repo/CHANGELOG.md"
+    git -C "$seed_repo" add CHANGELOG.md
+    git -C "$seed_repo" commit -m base >/dev/null
+
+    git clone --bare "$seed_repo" "$origin_repo" >/dev/null 2>&1
+    git clone "$origin_repo" "$work_repo" >/dev/null 2>&1
+
+    ACFS_REPO_ROOT="$work_repo"
+    ACFS_HOME="$deployed_home"
+    UPDATE_LOG_FILE="$log_file"
+    UPDATE_SELF=true
+    ACFS_SELF_UPDATE_DONE=false
+    DRY_RUN=false
+    BOOTSTRAP_SELF_UPDATE=false
+    ACFS_VERSION_DISPLAY="vtest"
+    NO_COLOR=1
+    RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
+
+    is_expected_acfs_origin_url() { return 0; }
+    update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+    update_refresh_installed_security() { :; }
+    log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
+
+    run update_acfs_self
+    assert_success
+    run cmp -s "$seed_repo/CHANGELOG.md" "$deployed_home/CHANGELOG.md"
+    assert_success
+    run grep -F "Synced CHANGELOG.md -> $deployed_home/CHANGELOG.md" "$log_file"
+    assert_success
+}
+
 @test "self-update dirty skip syncs deployed scripts from fetched remote" {
     local temp_root
     local seed_repo
