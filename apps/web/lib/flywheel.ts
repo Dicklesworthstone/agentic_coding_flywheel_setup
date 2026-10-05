@@ -1464,7 +1464,7 @@ Key capabilities:
 - Gemini share link conversion
 - Clean Markdown with preserved code blocks
 - Static HTML with syntax highlighting
-- Batch processing of multiple links`,
+- Stable, slug-based output filenames`,
     connectsTo: ["cass", "cm"],
     connectionDescriptions: {
       cass: "Archived conversations become searchable in CASS",
@@ -1477,12 +1477,12 @@ Key capabilities:
       "Gemini share link support",
       "Clean Markdown output",
       "Static HTML with syntax highlighting",
-      "Batch processing support",
+      "Stable slug-based filenames",
     ],
     cliCommands: ['csctf "https://chatgpt.com/share/..."', "csctf --md-only", "csctf --help"],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh | bash",
-    language: "Rust",
+    language: "TypeScript",
   },
   {
     id: "tru",
@@ -1887,7 +1887,7 @@ from Antigravity on a Claude session, CASR handles the conversion. It normalizes
 into a canonical model, then generates provider-specific resume contexts.
 
 Supports 14+ providers: Claude Code, Codex CLI, Antigravity CLI, Cursor, Aider, Cline, and more.
-Session diff and merge allow combining insights from parallel agent sessions.
+'casr list' and 'casr info <session-id>' show which sessions exist and what they hold before you convert one.
 
 The conversion preserves tool calls, file edits, and reasoning chains in a format each
 target provider understands. Quality depends on what was captured — inspect the generated
@@ -1903,7 +1903,7 @@ conversion with 'casr resume <target> <session-id> --dry-run' before trusting it
       "Cross-provider session conversion",
       "Canonical session model",
       "14+ provider support",
-      "Session diff and merge",
+      "Session listing and inspection",
       "Preview before commit",
     ],
     cliCommands: [

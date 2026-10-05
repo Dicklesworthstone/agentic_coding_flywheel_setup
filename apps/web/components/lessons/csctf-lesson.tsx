@@ -132,7 +132,10 @@ csctf "https://claude.ai/share/xyz789"
         <CommandList
           commands={[
             { command: 'csctf "<share-url>"', description: "Convert a single conversation" },
-            { command: 'csctf -o ~/archive "<url>"', description: "Save to specific directory" },
+            {
+              command: 'csctf "<url>" --outfile ~/archive/chat.md',
+              description: "Choose the output path (the .html twin shares the base name)",
+            },
             { command: 'csctf --md-only "<url>"', description: "Output Markdown only" },
             { command: 'csctf --html-only "<url>"', description: "Output HTML only" },
           ]}
@@ -146,21 +149,25 @@ csctf "https://claude.ai/share/xyz789"
 
       <Divider />
 
-      {/* Section 4: Batch Processing */}
-      <Section title="Batch Processing" icon={<Zap className="h-5 w-5" />} delay={0.25}>
-        <Paragraph>Archive multiple conversations at once by passing a file of URLs.</Paragraph>
+      {/* Section 4: Archiving many links */}
+      <Section title="Archiving Many Links" icon={<Zap className="h-5 w-5" />} delay={0.25}>
+        <Paragraph>
+          CSCTF converts one share link per run. To archive a list, loop over a file of URLs; each
+          transcript gets its own stable, slug-based filename in the current directory.
+        </Paragraph>
 
         <CodeBlock
           code={`# Create a file with one URL per line
-cat > urls.txt << 'EOF'
+cat > ~/urls.txt << 'EOF'
 https://chatgpt.com/share/abc123
 https://claude.ai/share/xyz789
 https://gemini.google.com/share/def456
 EOF
 
-# Process all URLs
-csctf --batch urls.txt -o ~/ai-archive/`}
-          filename="Batch Mode"
+# Convert each link into ~/ai-archive
+mkdir -p ~/ai-archive && cd ~/ai-archive
+while IFS= read -r url; do csctf "$url" --quiet; done < ~/urls.txt`}
+          filename="Archive a list"
         />
       </Section>
 

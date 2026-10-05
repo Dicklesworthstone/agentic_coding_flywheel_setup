@@ -1437,6 +1437,500 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "Identifying expensive operations",
     ],
   },
+  {
+    id: "fsfs",
+    name: "FrankenSearch",
+    shortName: "FSFS",
+    href: "https://github.com/Dicklesworthstone/frankensearch",
+    icon: "Search",
+    color: "from-purple-500 to-violet-600",
+    category: "supporting",
+    whatItDoes:
+      "Two-tier hybrid local search, shipped as a Rust library and the standalone fsfs CLI. Each query runs BM25 lexical search alongside a fast semantic tier and fuses them with Reciprocal Rank Fusion for an immediate answer, then refines the top candidates with a higher-quality embedding model.",
+    whyItsUseful:
+      "grep only finds exact text; fsfs adds intent-level recall without a remote service. Indexing and search run on your machine (network is only needed for model downloads, update checks, and opt-in query expansion), and agents get streaming jsonl or TOON output plus fsfs explain to see why a hit ranked where it did.",
+    implementationHighlights: [
+      "Progressive phases: Initial (fast tier + BM25 fused via RRF), then Refined or RefinementFailed",
+      "Fast tier potion-128M, quality tier MiniLM, blended at a default 0.7 quality weight",
+      "Native pure-Rust Quill BM25 engine, with Tantivy kept as the conformance oracle",
+      "FSVI vector files: memory-mapped, f16 by default, portable SIMD top-k",
+      "Async built on asupersync and Cx rather than Tokio",
+    ],
+    synergies: [
+      {
+        toolId: "ee",
+        description: "EE's hybrid memory retrieval runs on Frankensearch's TwoTierSearcher",
+      },
+      {
+        toolId: "cass",
+        description: "Opt-in cass-compat build reads the CASS tool's schema-v8 Tantivy index",
+      },
+      {
+        toolId: "dsr",
+        description: "The release quality gate runs as dsr quality --tool frankensearch",
+      },
+    ],
+    techStack: ["Rust", "Quill BM25", "Model2Vec", "MiniLM", "asupersync"],
+    keyFeatures: [
+      "Fast first results, then quality refinement",
+      "BM25 + semantic fusion via RRF",
+      "table, json, jsonl, toon, and csv output",
+      "Watch mode for incremental indexing",
+      "Opt-in cross-encoder reranking (--rerank)",
+    ],
+    useCases: [
+      "Searching a code or docs tree by intent, not just keywords",
+      "Streaming ranked results to AI agents",
+      "Embedding hybrid search in a Rust app as a library",
+    ],
+  },
+  {
+    id: "ee",
+    name: "Eidetic Engine",
+    shortName: "EE",
+    href: "https://github.com/Dicklesworthstone/eidetic_engine_cli",
+    icon: "Brain",
+    color: "from-violet-500 to-purple-600",
+    category: "supporting",
+    whatItDoes:
+      "A Rust CLI that gives coding agents a durable, local memory layer. It stores facts, decisions, procedural rules, anti-patterns, and session evidence, indexes them with lexical and semantic search, and emits token-budgeted context packs where every item carries provenance and a score breakdown.",
+    whyItsUseful:
+      "Fresh agent sessions re-discover conventions and walk into traps another agent already hit. EE gives the harness somewhere to look: ee remember captures a lesson, ee pack pulls relevant memory before a task, and ee why explains a suspicious ranking. No cloud service or paid LLM API is required.",
+    implementationHighlights: [
+      "Hybrid BM25 + local vector retrieval via Frankensearch, with a Model2Vec embedder and hash fallback",
+      "Procedural rules decay; harmful feedback demotes faster than helpful feedback promotes",
+      "Deterministic: same DB, indexes, config, and query yield an identical pack hash",
+      "Graph analytics over memories: PageRank, HITS, personalized PageRank, causal paths",
+      "Versioned JSON on every machine-facing command; no daemon required",
+    ],
+    synergies: [
+      {
+        toolId: "cass",
+        description: "Imports your CASS session corpus as searchable evidence for context packs",
+      },
+      {
+        toolId: "fsfs",
+        description: "All lexical and semantic retrieval runs on Frankensearch",
+      },
+      {
+        toolId: "cm",
+        description: "Its procedural-memory concepts come from the CASS Memory System",
+      },
+      {
+        toolId: "mail",
+        description: "ee swarm brief can fold Agent Mail and Beads state into one coordination brief",
+      },
+    ],
+    techStack: ["Rust", "asupersync", "FrankenSQLite", "Frankensearch", "Model2Vec"],
+    keyFeatures: [
+      "Token-budgeted context packs with provenance",
+      "Explainable scores via ee why",
+      "CASS session import",
+      "Advisory preflight risk lookup that never blocks",
+      "Claude Code and Codex hook installers",
+    ],
+    useCases: [
+      "Priming a cold agent session with project memory",
+      "Capturing hard-won rules so the next agent doesn't relearn them",
+      "Checking risk history before a destructive command",
+    ],
+  },
+  {
+    id: "sbh",
+    name: "Storage Ballast Helper",
+    shortName: "SBH",
+    href: "https://github.com/Dicklesworthstone/storage_ballast_helper",
+    icon: "HardDrive",
+    color: "from-emerald-500 to-teal-600",
+    category: "supporting",
+    whatItDoes:
+      "Disk-pressure defense for AI coding workloads on Linux and macOS. It monitors free space, predicts exhaustion, and reclaims space in layers: pre-allocated ballast files it can release instantly, scored cleanup of stale build artifacts, and a zero-write emergency mode for disks that are already full.",
+    whyItsUseful:
+      "A dozen agents running builds can fill a disk between cron runs, and at 100% builds fail mid-compile, SQLite databases can corrupt, and even cleanup tools can't write temp files. SBH reacts before that point, never touches protected or in-use paths, and records why it removed or kept every candidate.",
+    implementationHighlights: [
+      "EWMA + PID controller decides when and how much to reclaim",
+      "Hard vetoes: .git, .sbh-protect markers, too-recent files, open file handles",
+      "Evidence ledger: sbh explain shows why; sbh undo restores quarantined entries",
+      "Shadow, canary, and enforce rollout modes with automatic fallback",
+      "#![forbid(unsafe_code)] and no async runtime: OS threads with crossbeam channels",
+    ],
+    synergies: [
+      {
+        toolId: "rch",
+        description: "Finds stale rch* build target dirs by structure rather than by name",
+      },
+      {
+        toolId: "br",
+        description: "Keeps trash-looking dirs that hold .beads/ or beads.db state instead of deleting them",
+      },
+    ],
+    techStack: ["Rust", "SQLite", "systemd", "launchd"],
+    keyFeatures: [
+      "Predictive pressure monitoring",
+      "Per-volume ballast pools",
+      "Zero-write emergency mode",
+      "Explainable cleanup decisions",
+      "TUI dashboard with activity-log replay",
+    ],
+    useCases: [
+      "Keeping multi-agent build boxes off 100% disk",
+      "Recovering a machine whose disk is already full",
+      "Auditing why a build artifact was or wasn't removed",
+    ],
+  },
+  {
+    id: "casr",
+    name: "Cross-Agent Session Resumer",
+    shortName: "CASR",
+    href: "https://github.com/Dicklesworthstone/cross_agent_session_resumer",
+    icon: "Repeat",
+    color: "from-pink-500 to-fuchsia-600",
+    category: "supporting",
+    whatItDoes:
+      "Resumes a coding session created in one agent inside a different one. CASR finds the session across installed providers, reads it into a canonical session model, writes a native session file for the target (Claude Code, Codex, Gemini CLI, and more), re-reads it to verify fidelity, and prints the exact resume command.",
+    whyItsUseful:
+      "Sessions are siloed by provider: a useful Codex session can't be resumed in Claude Code, and vice versa. CASR lets you switch models mid-task, or route around a provider outage or rate limit, without rebuilding context from scratch.",
+    implementationHighlights: [
+      "Canonical IR: one session/message model normalizes every provider format",
+      "Atomic temp, fsync, rename writes; --force keeps a .bak backup",
+      "Read-back verification catches writer bugs before you resume",
+      "Auto-detects the owning provider from a bare session ID",
+      "--json output and --dry-run for scripting",
+    ],
+    synergies: [
+      {
+        toolId: "cass",
+        description: "Session readers are adapted from CASS connectors and parity-tested, with no runtime dependency",
+      },
+      {
+        toolId: "pi",
+        description: "Pi Agent is a supported read and write provider (alias pi)",
+      },
+      {
+        toolId: "caam",
+        description: "CAAM swaps accounts on a rate limit; CASR moves the session to another provider",
+      },
+    ],
+    techStack: ["Rust", "JSONL", "SQLite"],
+    keyFeatures: [
+      "Cross-provider session conversion",
+      "Native-format writers, not export-only",
+      "Claude Code, Codex, Gemini CLI, Cursor, Aider, Amp, and more",
+      "Provider auto-detection",
+    ],
+    useCases: [
+      "Continuing a Codex session in Claude Code, or the reverse",
+      "Recovering from a provider outage or rate limit mid-task",
+      "Moving a session to the agent best suited to the next step",
+    ],
+  },
+  {
+    id: "dsr",
+    name: "Doodlestein Self-Releaser",
+    shortName: "DSR",
+    href: "https://github.com/Dicklesworthstone/doodlestein_self_releaser",
+    icon: "Package",
+    color: "from-orange-500 to-amber-600",
+    category: "supporting",
+    whatItDoes:
+      "Fallback release infrastructure for when GitHub Actions is throttled. DSR watches Actions queue times and, past the threshold (10 minutes by default), runs your existing release workflow locally via nektos/act, builds macOS and Windows targets natively over SSH, and uploads the artifacts to GitHub Releases.",
+    whyItsUseful:
+      "Peak-time Actions queues can hold a release for 20+ minutes. DSR reuses your .github/workflows/release.yml instead of a parallel build system, so you ship the same artifacts without the queue, signed with minisign and accompanied by an SBOM.",
+    implementationHighlights: [
+      "Linux builds via act + Docker; macOS and Windows native builds over SSH",
+      "Minisign signatures and syft SBOM generation",
+      "dsr watch --auto-fallback triggers fallback when a queue is throttled",
+      "dsr canary runs an installer in a clean container and probes --version/--help",
+      "Structured exit codes (0-8) and JSON output for scripting",
+    ],
+    synergies: [
+      {
+        toolId: "fsfs",
+        description: "Frankensearch's release gate runs as dsr quality --tool frankensearch",
+      },
+      {
+        toolId: "pi",
+        description: "Pi Agent's quality checks, builds, and releases all run through DSR",
+      },
+      {
+        toolId: "fmd",
+        description: "Franken Markdown's release builds and publication are orchestrated by DSR",
+      },
+    ],
+    techStack: ["Bash", "nektos/act", "Docker", "GitHub CLI", "minisign"],
+    keyFeatures: [
+      "Actions queue-time throttle detection",
+      "Reuses existing workflow YAML",
+      "Linux, macOS, and Windows builds",
+      "Minisign signing + SBOM",
+      "Installer canary tests",
+    ],
+    useCases: [
+      "Shipping a release while Actions is backed up",
+      "Cross-platform builds on your own machines",
+      "Canary-testing an installer before announcing a release",
+    ],
+  },
+  {
+    id: "asb",
+    name: "Agent Settings Backup",
+    shortName: "ASB",
+    href: "https://github.com/Dicklesworthstone/agent_settings_backup_script",
+    icon: "Save",
+    color: "from-sky-500 to-blue-600",
+    category: "supporting",
+    whatItDoes:
+      "Backs up AI coding agent configuration folders (~/.claude, ~/.codex, ~/.cursor, ~/.gemini, and more), giving each agent its own git repository. Every backup is a commit, so you get full history, diffs since the last backup, and restores to any commit or named tag.",
+    whyItsUseful:
+      "Agent configs accumulate settings, hooks, and customizations that are painful to rebuild after a bad experiment or a reinstall. ASB versions them: preview a restore before applying it, export an archive to move to another machine, and schedule backups with cron or a systemd timer.",
+    implementationHighlights: [
+      "One git repo per agent under ~/.agent_settings_backups",
+      "rsync for incremental syncing",
+      "Dry-run mode plus restore preview and confirmation",
+      "Pre/post hooks around backup and restore",
+      "asb discover finds new agents; --json and --format toon output",
+    ],
+    synergies: [
+      {
+        toolId: "acfs",
+        description: "The ACFS installer seeds a first backup and enables daily cron backups if none are scheduled",
+      },
+      {
+        toolId: "tru",
+        description: "--format toon output is produced through toon_rust (tru)",
+      },
+      {
+        toolId: "pcr",
+        description: "Keeps versioned history of the ~/.claude/settings.json that PCR edits",
+      },
+    ],
+    techStack: ["Bash", "Git", "rsync"],
+    keyFeatures: [
+      "Per-agent git repositories",
+      "Restore by commit or tag",
+      "Export/import archives",
+      "Scheduled backups (cron or systemd)",
+      "13 built-in agents plus auto-discovery",
+    ],
+    useCases: [
+      "Snapshotting Claude Code settings before an experiment",
+      "Restoring agent configs after a reinstall",
+      "Moving agent configs to a new machine",
+    ],
+  },
+  {
+    id: "pcr",
+    name: "Post-Compact Reminder",
+    shortName: "PCR",
+    href: "https://github.com/Dicklesworthstone/post_compact_reminder",
+    icon: "ShieldAlert",
+    color: "from-red-500 to-rose-600",
+    category: "supporting",
+    whatItDoes:
+      "A Claude Code hook that fires after context compaction and injects a reminder telling Claude to re-read AGENTS.md before doing anything else. It is a single SessionStart hook with a compact matcher, installed globally into ~/.local/bin and ~/.claude/settings.json.",
+    whyItsUseful:
+      "Compaction drops the AGENTS.md rules Claude read at the start: forbidden commands, conventions, coordination rules. PCR puts them back in front of the model at exactly that moment, in every project, with nothing to maintain.",
+    implementationHighlights: [
+      "SessionStart hook with matcher \"compact\": fires after compaction, not on normal startups",
+      "Atomic settings.json edits with a .bak backup before every change",
+      "Four built-in reminder templates plus custom messages",
+      "--status (with --json), --doctor self-tests, --repair, and --restore",
+      "Idempotent installer with --dry-run and self-update",
+    ],
+    synergies: [
+      {
+        toolId: "dcg",
+        description: "Both are Claude Code hooks: PCR restores the rules, DCG blocks destructive commands",
+      },
+      {
+        toolId: "asb",
+        description: "ASB keeps versioned history of the settings.json PCR edits",
+      },
+    ],
+    techStack: ["Bash", "jq", "Python 3", "Claude Code hooks"],
+    keyFeatures: [
+      "Fires only on compaction events",
+      "Global install, works in every project",
+      "Customizable reminder templates",
+      "JSON health check",
+    ],
+    useCases: [
+      "Preventing rule amnesia after compaction",
+      "Keeping long sessions within project conventions",
+    ],
+  },
+  {
+    id: "fmd",
+    name: "Franken Markdown",
+    shortName: "FMD",
+    href: "https://github.com/Dicklesworthstone/franken_markdown",
+    icon: "FileText",
+    color: "from-amber-500 to-orange-600",
+    category: "supporting",
+    whatItDoes:
+      "A clean-room Rust Markdown renderer and fmd CLI that turns Markdown into self-contained HTML, compact tagged PDF, and browser/WASM output from one parsed AST. The engine library has zero third-party dependencies; the default build adds only clap for the CLI.",
+    whyItsUseful:
+      "Getting both a portable HTML page and a polished PDF from the same Markdown usually means a browser, LaTeX, or a Python or Node stack. fmd is one binary: fmd README.md --out README.html gives a single-file preview, and --to pdf gives a deterministic PDF with selectable text.",
+    implementationHighlights: [
+      "PDF typography: Knuth-Plass line breaking, TeX hyphenation, kerning, ligatures, embedded font subsets",
+      "Self-contained HTML: inlined CSS and fonts, data-URI images, dark mode",
+      "Deterministic output; SOURCE_DATE_EPOCH controls PDF dates",
+      "Shared clean-room syntax highlighter; SVG drawn as native PDF vectors",
+      "Agent contract: capabilities --json, doctor --json, robot-docs guide, stable exit codes",
+    ],
+    synergies: [
+      {
+        toolId: "dsr",
+        description: "Release builds and publication are orchestrated through DSR",
+      },
+      {
+        toolId: "csctf",
+        description: "Renders CSCTF's Markdown transcripts to tagged PDF",
+      },
+    ],
+    techStack: ["Rust", "WASM", "clap", "asupersync (batch mode)"],
+    keyFeatures: [
+      "Markdown to self-contained HTML",
+      "Markdown to tagged PDF",
+      "One AST for HTML, PDF, and WASM",
+      "Deterministic renders",
+    ],
+    useCases: [
+      "Rendering a README to a single shareable HTML file",
+      "Producing reproducible PDF documentation",
+      "Rendering docs in CI with JSON status output",
+    ],
+  },
+  {
+    id: "pi",
+    name: "Pi Agent (Rust)",
+    shortName: "PI",
+    href: "https://github.com/Dicklesworthstone/pi_agent_rust",
+    icon: "Bot",
+    color: "from-cyan-500 to-blue-600",
+    category: "supporting",
+    whatItDoes:
+      "A from-scratch Rust port of Mario Zechner's Pi coding agent, installed as the single pi binary. It streams responses with inline extended thinking, ships 36 built-in tools, and runs in interactive TUI, print (pi -p), RPC, and Agent Client Protocol modes.",
+    whyItsUseful:
+      "A native single binary avoids managed-runtime startup overhead, and the ollama, llama.cpp, and mistral.rs providers need no API key. Extensions are capability-gated with dangerous shell commands blocked before spawn, and print mode never silently auto-approves tool calls.",
+    implementationHighlights: [
+      "Structured concurrency on asupersync; terminal output via rich_rust",
+      "Two-stage extension exec guard: capability gate, then command mediation",
+      "JS/TS extensions run in embedded QuickJS, without Node or Bun",
+      "Opt-in subagent tool with Markdown-defined agents, run in parallel or chained",
+      "JSONL sessions with branching, compaction, and a v2 sidecar store for faster resume",
+    ],
+    synergies: [
+      {
+        toolId: "casr",
+        description: "CASR reads and writes Pi sessions, so work can move between pi and other agents",
+      },
+      {
+        toolId: "dcg",
+        description: "Extension exec mediation draws on DCG/heredoc AST signals",
+      },
+      {
+        toolId: "dsr",
+        description: "Quality checks, builds, and releases run through DSR",
+      },
+    ],
+    techStack: ["Rust", "asupersync", "rich_rust", "QuickJS"],
+    keyFeatures: [
+      "Streaming with extended thinking",
+      "36 built-in tools",
+      "Local models without API keys",
+      "Interactive, print, RPC, and ACP modes",
+      "Capability-gated extensions",
+    ],
+    useCases: [
+      "Running a coding agent against local models",
+      "Scripted single-shot runs in pipelines",
+      "Driving an agent from an editor over RPC or ACP",
+    ],
+  },
+  {
+    id: "pfr",
+    name: "Power Failure Resumer",
+    shortName: "PFR",
+    href: "https://github.com/Dicklesworthstone/power_failure_resumer",
+    icon: "Power",
+    color: "from-red-500 to-orange-600",
+    category: "supporting",
+    whatItDoes:
+      "Recovers crashed coding-agent sessions after a hard power cut. PFR uses pre-boot mtime crash-cluster detection to find the sessions that died, freezes them into a recovery plan, reopens each with a model-matched resume command for Codex or Claude Code, and verifies the result against ps.",
+    whyItsUseful:
+      "A blackout kills every agent session on the machine at once. PFR makes bringing the fleet back a repeatable procedure: discovery is frozen into a plan, pfr --dry-run previews it, and you can reopen every session or just a chosen subset.",
+    implementationHighlights: [
+      "Pre-boot mtime crash-cluster detection with scored confidence",
+      "Frozen recovery plans, so discovery and reopening are repeatable",
+      "Model-matched resume commands for Codex and Claude Code",
+      "Post-open verification against ps with a JSON report",
+    ],
+    synergies: [
+      {
+        toolId: "casr",
+        description: "PFR reopens a session in its own agent; CASR can convert it to continue in another",
+      },
+      {
+        toolId: "ee",
+        description: "ee resume gives a reopened agent its where-was-I report",
+      },
+    ],
+    techStack: ["Bash", "Python", "JSON plans"],
+    keyFeatures: [
+      "Crash-cluster detection with confidence scores",
+      "Frozen, replayable recovery plans",
+      "Codex and Claude Code resume commands",
+      "JSON verification report",
+    ],
+    useCases: [
+      "Reopening every crashed agent session after a blackout",
+      "Restoring a subset of sessions from a saved plan",
+      "Pre-flighting recovery readiness before you need it",
+    ],
+  },
+  {
+    id: "csctf",
+    name: "Chat Shared Conversation to File",
+    shortName: "CSCTF",
+    href: "https://github.com/Dicklesworthstone/chat_shared_conversation_to_file",
+    icon: "FileText",
+    color: "from-indigo-500 to-blue-600",
+    category: "supporting",
+    whatItDoes:
+      "A single-file Bun CLI that turns public ChatGPT, Gemini, Grok, and Claude share links into clean Markdown plus a static, zero-JavaScript HTML twin. Code fences keep their language tags, citation pills are stripped, and filenames are deterministic slugs that never clobber existing files.",
+    whyItsUseful:
+      "Copy-pasting from a share page breaks fenced code blocks, loses language hints, and leaves messy filenames. CSCTF archives a conversation in one command, and --publish-to-gh-pages can push it to a GitHub Pages microsite with a regenerated index.",
+    implementationHighlights: [
+      "Headless Playwright Chromium with provider-specific selectors and fallback chains",
+      "Claude.ai shares via your installed Chrome over DevTools, using a temporary cookie copy",
+      "Custom Turndown rule emits fenced code blocks with the detected language",
+      "Atomic temp+rename writes; collisions get _2, _3 suffixes",
+      "HTML via markdown-it + highlight.js: TOC, light/dark/print CSS, no scripts",
+    ],
+    synergies: [
+      {
+        toolId: "fmd",
+        description: "Render a CSCTF Markdown transcript to tagged PDF with fmd",
+      },
+      {
+        toolId: "fsfs",
+        description: "Index a folder of transcripts with fsfs for keyword + semantic search",
+      },
+    ],
+    techStack: ["Bun", "TypeScript", "Playwright", "Turndown", "markdown-it"],
+    keyFeatures: [
+      "ChatGPT, Gemini, Grok, and Claude share links",
+      "Markdown + zero-JS HTML output",
+      "Language-preserving code fences",
+      "One-command GitHub Pages publishing",
+    ],
+    useCases: [
+      "Archiving an AI conversation with its code intact",
+      "Publishing transcripts to a shareable microsite",
+      "Keeping a local Markdown record of useful chats",
+    ],
+  },
 ];
 
 // Merge basic metadata from manifest (source of truth for names, shortNames,
@@ -1553,7 +2047,7 @@ export const tldrPageData = {
   coreDescription:
     "The core flywheel tools form the backbone: Agent Mail for coordination, BV for graph-based prioritization, CASS for instant session search, CM for persistent memory, UBS for bug detection, MS for skill management with MCP integration, plus session management, safety guards, and automated setup.",
   supportingDescription:
-    "Supporting tools extend the ecosystem: GIIL for remote image debugging, SRPS for system responsiveness under heavy load, XF for searching your X archive, S2P for crafting prompts from source code, APR for spec refinement, JFP for curated prompt discovery, PT for process triage, TRU for token-optimized notation, RANO for network observation, MDWB for website-to-Markdown conversion, AADC for ASCII diagram correction, and CAUT for usage tracking.",
+    "Supporting tools extend the ecosystem: GIIL for remote image debugging, SRPS for system responsiveness under heavy load, XF for searching your X archive, S2P for crafting prompts from source code, APR for spec refinement, JFP for curated prompt discovery, PT for process triage, TRU for token-optimized notation, RANO for network observation, MDWB for website-to-Markdown conversion, AADC for ASCII diagram correction, CAUT for usage tracking, FSFS for hybrid local search, EE for durable agent memory, SBH for disk-pressure defense, CASR for resuming sessions across agents, DSR for local releases when CI is throttled, ASB for versioned agent config backups, PCR for post-compaction rule reminders, FMD for Markdown-to-HTML/PDF rendering, PI for a native Rust coding agent, PFR for recovering sessions after a power cut, and CSCTF for archiving AI chat share links.",
   flywheelExplanation: {
     title: "Why a Flywheel?",
     paragraphs: [

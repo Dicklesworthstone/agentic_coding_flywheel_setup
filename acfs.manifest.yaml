@@ -3067,7 +3067,7 @@ modules:
         - "Cross-provider session conversion"
         - "Canonical session model"
         - "14+ provider support"
-        - "Session diff and merge"
+        - "Session listing and inspection (casr list, casr info)"
       tech_stack: ["Rust", "SQLite", "JSONL"]
       use_cases:
         - "Resuming a Claude session in Codex"
@@ -3594,13 +3594,13 @@ modules:
         - "Multi-provider support (ChatGPT, Claude, Gemini, Grok)"
         - "Dual Markdown + HTML output"
         - "Code block preservation"
-        - "Batch URL processing"
-      tech_stack: ["Rust"]
+        - "Stable slug-based output filenames"
+      tech_stack: ["Bun", "TypeScript"]
       use_cases:
         - "Archiving important AI conversations"
         - "Preserving code solutions from chat"
         - "Building a local knowledge base from AI interactions"
-      language: "Rust"
+      language: "TypeScript"
       stars: 156
       cli_name: "csctf"
     dependencies:

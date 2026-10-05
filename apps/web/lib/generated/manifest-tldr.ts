@@ -272,7 +272,7 @@ export const manifestTldrTools: ManifestTldrTool[] = [
       "Cross-provider session conversion",
       "Canonical session model",
       "14+ provider support",
-      "Session diff and merge",
+      "Session listing and inspection (casr list, casr info)",
     ],
     techStack: [
       "Rust",
@@ -941,17 +941,18 @@ export const manifestTldrTools: ManifestTldrTool[] = [
       "Multi-provider support (ChatGPT, Claude, Gemini, Grok)",
       "Dual Markdown + HTML output",
       "Code block preservation",
-      "Batch URL processing",
+      "Stable slug-based output filenames",
     ],
     techStack: [
-      "Rust",
+      "Bun",
+      "TypeScript",
     ],
     useCases: [
       "Archiving important AI conversations",
       "Preserving code solutions from chat",
       "Building a local knowledge base from AI interactions",
     ],
-    language: "Rust",
+    language: "TypeScript",
     stars: 156,
   },
   {
