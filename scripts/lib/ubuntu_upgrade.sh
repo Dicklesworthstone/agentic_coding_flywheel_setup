@@ -694,7 +694,9 @@ def validate_with_apt(candidates):
                 stream.write(data)
         try:
             result = subprocess.run([
-                "/usr/bin/apt-get",
+                # indextargets takes no dpkg lock; the timeout keeps every
+                # apt-get call in this file under the same lock contract.
+                "/usr/bin/apt-get", "-o", "DPkg::Lock::Timeout=120",
                 "-o", "Dir::Etc::sourcelist=-",
                 "-o", "Dir::Etc::sourceparts=" + parts,
                 "-o", "Dir::State::lists=" + lists,
