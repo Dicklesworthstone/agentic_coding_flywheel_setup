@@ -15,6 +15,22 @@ python3 -I scripts/swarm-fleet-status.py \
   --identity-file "$HOME/.ssh/id_ed25519"
 ```
 
+After an explicit [fleet runtime installation or upgrade](fleet-runtime.md), the
+same command is available without retaining the checkout:
+
+```bash
+acfs-fleet status \
+  --launch-state "$HOME/fleet-wave-1" \
+  --dispatch-state "$HOME/fleet-work-wave-1" \
+  --known-hosts "$HOME/.ssh/known_hosts" \
+  --identity-file "$HOME/.ssh/id_ed25519"
+```
+
+Use `acfs-fleet runtimes` to see which retained versions provide `status`. Legacy
+four-file runtimes remain available for their original recovery workflows but do
+not provide this observer; selecting their `status` command never falls back to
+new code.
+
 Omit `--dispatch-state` to inspect only the original launched agents. The command
 reads the original host selection from the launch journal; a new spec, batch
 mapping, or arbitrary host override is not accepted. Use the original SSH trust

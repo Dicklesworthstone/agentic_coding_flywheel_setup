@@ -17,10 +17,17 @@ import secrets
 import stat
 import sys
 
-SCHEMA = "acfs.fleet-runtime.v1"
+SCHEMA = "acfs.fleet-runtime.v2"
+LEGACY_SCHEMA = "acfs.fleet-runtime.v1"
 PLAN_SCHEMA = "acfs.fleet-runtime-install.v1"
-COMMANDS = {name: "swarm-fleet-" + name + ".py" for name in ("launch", "prepare", "dispatch")}
+COMMANDS = {name: "swarm-fleet-" + name + ".py" for name in ("launch", "prepare", "dispatch", "status")}
 FILES = tuple(sorted(("acfs-fleet.py", *COMMANDS.values())))
+# Fixed role sets, not arbitrary paths or optional files from an untrusted
+# manifest. Retained v1 runtimes have no observer; never rewrite their contents.
+FILES_BY_SCHEMA = {
+    LEGACY_SCHEMA: tuple(name for name in FILES if name != COMMANDS["status"]),
+    SCHEMA: FILES,
+}
 LIMIT = 1024 * 1024
 MANIFEST = "runtime.json"
 ENTRY = Path(__file__).resolve(strict=True)
@@ -99,25 +106,50 @@ def read_file(fd, name, installed=False):
         return raw
 
 
-def snapshot(root, installed=False):
+def snapshot(root, installed=False, schema=SCHEMA):
     with directory(root, private=installed) as fd:
-        data = {name: read_file(fd, name, installed) for name in FILES}
+        data = {name: read_file(fd, name, installed) for name in FILES_BY_SCHEMA[schema]}
         for name, raw in data.items():
             try:
                 ast.parse(raw.decode("utf-8"), filename=name)
             except (SyntaxError, UnicodeError, ValueError, RecursionError):
                 raise Refused("invalid_controller_source") from None
-    manifest = {"schema": SCHEMA, "files": {name: {"sha256": sha(raw), "bytes": len(raw)}
+    manifest = {"schema": schema, "files": {name: {"sha256": sha(raw), "bytes": len(raw)}
                                             for name, raw in data.items()}}
     return data, manifest, sha(encode(manifest))
 
 
+def manifest_layout(manifest):
+    require(type(manifest) is dict and set(manifest) == {"schema", "files"}
+            and type(manifest["schema"]) is str and manifest["schema"] in FILES_BY_SCHEMA,
+            "unsupported_runtime_manifest")
+    files = FILES_BY_SCHEMA[manifest["schema"]]
+    require(type(manifest["files"]) is dict and set(manifest["files"]) == set(files),
+            "runtime_role_mismatch")
+    for entry in manifest["files"].values():
+        require(type(entry) is dict and set(entry) == {"sha256", "bytes"}
+                and type(entry["sha256"]) is str and re.fullmatch(r"[a-f0-9]{64}", entry["sha256"])
+                and type(entry["bytes"]) is int and 0 < entry["bytes"] <= LIMIT,
+                "invalid_runtime_file_metadata")
+    return files
+
+
+def runtime_commands(manifest):
+    return [command for command, name in COMMANDS.items() if name in manifest["files"]]
+
+
 def verify(root):
     root = path_arg(str(root))
-    data, manifest, release = snapshot(root, installed=True)
     with directory(root, private=True) as fd:
-        require(set(os.listdir(fd)) == set(FILES) | {MANIFEST}, "unexpected_runtime_members")
-        require(decode(read_file(fd, MANIFEST, True)) == manifest, "runtime_integrity_mismatch")
+        raw = read_file(fd, MANIFEST, True)
+        saved = decode(raw)
+        files = manifest_layout(saved)
+        data, manifest, release = snapshot(root, installed=True, schema=saved["schema"])
+        with directory(root, private=True) as current:
+            require(os.path.samestat(os.fstat(fd), os.fstat(current)), "runtime_directory_changed")
+        require(set(os.listdir(fd)) == set(files) | {MANIFEST}, "unexpected_runtime_members")
+        require(read_file(fd, MANIFEST, True) == raw and encode(saved) == encode(manifest),
+                "runtime_integrity_mismatch")
     require(root.name == release and root.parent.name == "releases", "runtime_release_mismatch")
     return data, manifest, release
 
@@ -146,9 +178,10 @@ def list_runtimes():
             # Do not read unrelated members or follow links into other stores.
             if re.fullmatch(r"[a-f0-9]{64}", name) is None:
                 raise Refused("unexpected_release_member")
-            row = {"runtime": name, "current": name == ENTRY.parent.name, "status": "verified"}
+            row = {"runtime": name, "current": name == ENTRY.parent.name, "status": "verified", "commands": []}
             try:
-                verify(releases / name)
+                _, manifest, _ = verify(releases / name)
+                row["commands"] = runtime_commands(manifest)
             except (Refused, OSError):
                 row["status"] = "unavailable"
             result.append(row)
@@ -161,7 +194,8 @@ def select_runtime(args):
     require(args[2] in COMMANDS or args[2] == "version", "runtime_selection_is_execution_only")
     releases = installed_releases()
     selected = releases / args[1]
-    verify(selected)
+    _, manifest, _ = verify(selected)
+    require(args[2] == "version" or args[2] in runtime_commands(manifest), "runtime_command_unavailable")
     # Use the retained frontend too, not just a subset of old controller files.
     # No symlink or journal is updated and no fallback runtime is selected.
     os.execv(sys.executable, [sys.executable, "-I", str(selected / "acfs-fleet.py"), *args[2:]])
@@ -267,21 +301,23 @@ def install(prefix, bin_dir, approval=None):
             "network_access": False, "starts_agents": False, "sends_prompts": False}
 
 
-HELP = """Usage: acfs-fleet {launch|prepare|dispatch} [CONTROLLER OPTIONS...]
+HELP = """Usage: acfs-fleet {launch|prepare|dispatch|status} [CONTROLLER OPTIONS...]
        acfs-fleet version
        acfs-fleet runtimes
-       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|version} [OPTIONS...]
+       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|status|version} [OPTIONS...]
        python3 -I scripts/acfs-fleet.py install --prefix DIR --bin-dir DIR
            [--apply --accept-plan SHA256]
 
 Controller arguments pass through unchanged. Launch/dispatch previews may open
 SSH connections; only each controller's explicit approval can start agents or
-send work. Use COMMAND --help for the existing operation and recovery options.
+send work. Status only observes original agents, receipts and exported Bead states.
+Use COMMAND --help for the existing operation and recovery options.
 Installation is offline and preview-only by default, as the target user without
 sudo. Prefix and bin directory must already exist and be user-owned, not writable
 by others. Releases are retained; an update never deletes a previous runtime.
 --runtime selects an exact installed cohort without changing the active symlink.
 Use the original runtime for recovery; absent or damaged releases never fall back.
+Legacy four-file runtimes remain usable but do not provide the status command.
 """
 
 
@@ -310,11 +346,13 @@ def main(args=None):
         print(encode(report).decode(), end="")
         return 0
     require(command in COMMANDS or command == "version", "unknown_fleet_command")
-    _, _, release = source_snapshot()
+    _, manifest, release = source_snapshot()
     if command == "version":
         require(not rest, "unexpected_version_arguments")
-        print(encode({"schema": SCHEMA, "runtime": release, "directory": str(ENTRY.parent)}).decode(), end="")
+        print(encode({"schema": manifest["schema"], "runtime": release, "directory": str(ENTRY.parent),
+                      "commands": runtime_commands(manifest)}).decode(), end="")
         return 0
+    require(command in runtime_commands(manifest), "runtime_command_unavailable")
     # Process replacement preserves stdin, terminal, signals and exact status;
     # there is no second parser for approval flags and no shell/PATH fallback.
     os.execv(sys.executable, [sys.executable, "-I", str(ENTRY.parent / COMMANDS[command]), *rest])
