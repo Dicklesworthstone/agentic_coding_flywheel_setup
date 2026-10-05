@@ -74,6 +74,32 @@ The install result includes `pinned_launcher`, an absolute entrypoint for that
 exact retained cohort. Invoke it directly to use the original code after an
 update. Do not edit or rehash an old journal to bypass a changed-policy refusal.
 
+### Select the original runtime without changing the active version
+
+```bash
+acfs-fleet runtimes
+acfs-fleet --runtime ORIGINAL_RUNTIME_ID version
+acfs-fleet --runtime ORIGINAL_RUNTIME_ID prepare --help
+```
+
+`runtimes` is a read-only integrity inventory of this installation. Exit 0 means
+all listed releases verified; exit 1 means at least one retained release is
+unavailable. Partial or modified versions are not advertised as usable. The
+`current` field names the runtime executing the inventory, which may itself be
+a directly invoked pinned entrypoint rather than the PATH launcher.
+
+Put `--runtime ID` **before** `launch`, `prepare`, or `dispatch`, then supply the
+original controller arguments, journal paths and approvals. The selector verifies
+that exact retained cohort and executes its original frontend as well as its
+controllers. It does not rewrite the active launcher or operation journals,
+install a version, choose a substitute, or grant permission to retry work. An
+unknown, incomplete or damaged runtime fails before controller execution.
+
+Selection requires an installed runtime; it does not search arbitrary checkouts
+or download historical code. The runtime ID is not an operation approval digest.
+ACFS does not infer which version authored an old journal: preserve the original
+runtime ID or pinned entrypoint with your external operation records.
+
 ## Validation
 
 ```bash
@@ -84,5 +110,8 @@ These tests run the actual frontend and installer with real private files and
 unprivileged child processes. Controller peers record arguments and perform no
 SSH, provider request, agent launch, or work dispatch. Tests cover installation
 without the checkout, upgrades, retained releases, literal arguments, stdin,
-exit/signals, damaged/partial releases and refusal boundaries. They do not replace
+exit/signals, explicit old-runtime selection, directory locking, damaged/partial
+releases and refusal boundaries. An actual SIGKILL during release publication
+checks that the old active command remains usable and the partial new release is
+retained rather than activated or silently repaired. They do not replace
 full acceptance against installed ACFS hosts and authenticated providers.

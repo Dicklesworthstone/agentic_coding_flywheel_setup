@@ -130,6 +130,43 @@ def source_snapshot():
     return snapshot(root)
 
 
+def installed_releases():
+    require(ENTRY.parent.parent.name == "releases", "installed_runtime_required")
+    verify(ENTRY.parent)
+    return ENTRY.parent.parent
+
+
+def list_runtimes():
+    releases = installed_releases()
+    result = []
+    with directory(releases, owned=True, private=True) as fd:
+        names = sorted(os.listdir(fd))
+        require(len(names) <= 1024, "runtime_inventory_limit")
+        for name in names:
+            # Do not read unrelated members or follow links into other stores.
+            if re.fullmatch(r"[a-f0-9]{64}", name) is None:
+                raise Refused("unexpected_release_member")
+            row = {"runtime": name, "current": name == ENTRY.parent.name, "status": "verified"}
+            try:
+                verify(releases / name)
+            except (Refused, OSError):
+                row["status"] = "unavailable"
+            result.append(row)
+    return {"schema": SCHEMA, "runtimes": result}
+
+
+def select_runtime(args):
+    require(len(args) >= 3 and re.fullmatch(r"[a-f0-9]{64}", args[1]) is not None,
+            "explicit_runtime_id_and_command_required")
+    require(args[2] in COMMANDS or args[2] == "version", "runtime_selection_is_execution_only")
+    releases = installed_releases()
+    selected = releases / args[1]
+    verify(selected)
+    # Use the retained frontend too, not just a subset of old controller files.
+    # No symlink or journal is updated and no fallback runtime is selected.
+    os.execv(sys.executable, [sys.executable, "-I", str(selected / "acfs-fleet.py"), *args[2:]])
+
+
 def current_link(bin_fd, prefix):
     try:
         info = os.stat("acfs-fleet", dir_fd=bin_fd, follow_symlinks=False)
@@ -232,6 +269,8 @@ def install(prefix, bin_dir, approval=None):
 
 HELP = """Usage: acfs-fleet {launch|prepare|dispatch} [CONTROLLER OPTIONS...]
        acfs-fleet version
+       acfs-fleet runtimes
+       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|version} [OPTIONS...]
        python3 -I scripts/acfs-fleet.py install --prefix DIR --bin-dir DIR
            [--apply --accept-plan SHA256]
 
@@ -241,6 +280,8 @@ send work. Use COMMAND --help for the existing operation and recovery options.
 Installation is offline and preview-only by default, as the target user without
 sudo. Prefix and bin directory must already exist and be user-owned, not writable
 by others. Releases are retained; an update never deletes a previous runtime.
+--runtime selects an exact installed cohort without changing the active symlink.
+Use the original runtime for recovery; absent or damaged releases never fall back.
 """
 
 
@@ -249,7 +290,14 @@ def main(args=None):
     if not args or args[0] in ("--help", "-h"):
         print(HELP)
         return 0
+    if args[0] == "--runtime":
+        return select_runtime(args)
     command, rest = args[0], args[1:]
+    if command == "runtimes":
+        require(not rest, "unexpected_runtime_inventory_arguments")
+        report = list_runtimes()
+        print(encode(report).decode(), end="")
+        return int(any(row["status"] != "verified" for row in report["runtimes"]))
     if command == "install":
         parser = argparse.ArgumentParser(description="Install a private, complete fleet runtime", allow_abbrev=False)
         parser.add_argument("--prefix", required=True)

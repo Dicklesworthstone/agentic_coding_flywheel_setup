@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the real frontend and installer; controller peers never contact hosts."""
-import hashlib
+import fcntl
 import importlib.util
 import json
 import os
@@ -258,6 +258,103 @@ if "--exit" in sys.argv: sys.exit(23)
         result = self.run_cli(["version"], installed=True)
         self.assertEqual(result.returncode, 2)
         self.assertIn("duplicate_manifest_key", result.stderr)
+
+    def test_select_old_runtime_preserves_current_pointer_and_uses_old_code(self):
+        source = self.checkout / "swarm-fleet-prepare.py"
+        source.write_text(self.peer + "print('original controller')\n")
+        first = self.install()
+        source.write_text(self.peer + "print('updated controller')\n")
+        second = self.install()
+        before = self.members(self.prefix)
+        result = self.run_cli(["--runtime", first["runtime"], "prepare", "--resume",
+                               "--accept-plan", "a" * 64], installed=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[-1], "original controller")
+        self.assertEqual(json.loads(lines[0])["argv"], ["--resume", "--accept-plan", "a" * 64])
+        self.assertEqual(self.members(self.prefix), before)
+        self.assertEqual(os.readlink(self.bin_dir / "acfs-fleet"), second["pinned_launcher"])
+
+    def test_runtime_inventory_reports_all_retained_versions_without_writes(self):
+        first = self.install()
+        (self.checkout / "swarm-fleet-launch.py").write_text(self.peer + "# another cohort\n")
+        second = self.install()
+        before = self.members(self.home)
+        result = self.run_cli(["runtimes"], installed=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = json.loads(result.stdout)["runtimes"]
+        self.assertEqual({row["runtime"] for row in rows}, {first["runtime"], second["runtime"]})
+        self.assertEqual([row["runtime"] for row in rows if row["current"]], [second["runtime"]])
+        self.assertTrue(all(row["status"] == "verified" for row in rows))
+        self.assertEqual(self.members(self.home), before)
+
+    def test_unknown_or_unsafe_runtime_selection_never_falls_back(self):
+        self.install()
+        for args in (["--runtime", "0" * 64, "launch"], ["--runtime", "../../other", "launch"],
+                     ["--runtime", "0" * 64], ["--runtime", "0" * 64, "install"]):
+            result = self.run_cli(args, installed=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stdout, "")
+        self.assertEqual(self.run_cli(["runtimes"]).returncode, 2)
+
+    def test_damaged_old_runtime_is_reported_and_never_executed(self):
+        first = self.install()
+        (self.checkout / "swarm-fleet-prepare.py").write_text(self.peer + "# new\n")
+        self.install()
+        source = Path(first["pinned_launcher"]).parent / "swarm-fleet-launch.py"
+        source.chmod(0o600)
+        source.write_text("raise SystemExit('WRONG CODE')\n")
+        source.chmod(0o400)
+        result = self.run_cli(["runtimes"], installed=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(next(r["status"] for r in json.loads(result.stdout)["runtimes"]
+                              if r["runtime"] == first["runtime"]), "unavailable")
+        result = self.run_cli(["--runtime", first["runtime"], "launch"], installed=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("WRONG CODE", result.stdout + result.stderr)
+
+    def test_exclusive_lock_prevents_competing_installation(self):
+        preview = self.preview()
+        fd = os.open(self.prefix, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self.run_cli([*self.options(), "--apply", "--accept-plan", preview["plan_sha256"]])
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("runtime_installation_in_progress", result.stderr)
+            self.assertFalse((self.prefix / "releases").exists())
+        finally:
+            os.close(fd)
+
+    def test_sigkill_mid_update_retains_old_active_runtime_and_partial_evidence(self):
+        first = self.install()
+        (self.checkout / "swarm-fleet-prepare.py").write_text(self.peer + "# update to interrupt\n")
+        preview = self.preview()
+        source = self.checkout / "acfs-fleet.py"
+        program = f'''import importlib.util, os, signal
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("r", {str(source)!r})
+r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
+original = r.publish
+def crash(fd, name, raw, mode):
+    original(fd, name, raw, mode)
+    if name == "swarm-fleet-launch.py": os.kill(os.getpid(), signal.SIGKILL)
+r.publish = crash
+r.install(Path({str(self.prefix)!r}), Path({str(self.bin_dir)!r}), {preview['plan_sha256']!r})
+'''
+        killed = subprocess.run([sys.executable, "-I", "-c", program], capture_output=True, text=True,
+                                timeout=10, env=self.env, **self.credentials)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+        self.assertEqual(os.readlink(self.bin_dir / "acfs-fleet"), first["pinned_launcher"])
+        partial = self.prefix / "releases" / preview["plan"]["runtime"]
+        self.assertTrue((partial / "swarm-fleet-launch.py").exists())
+        self.assertFalse((partial / runtime.MANIFEST).exists())
+        version = self.run_cli(["version"], installed=True)
+        self.assertEqual(version.returncode, 0, version.stderr)
+        self.assertEqual(json.loads(version.stdout)["runtime"], first["runtime"])
+        before = self.members(self.home)
+        retry = self.run_cli([*self.options(), "--apply", "--accept-plan", preview["plan_sha256"]])
+        self.assertEqual(retry.returncode, 2)
+        self.assertEqual(self.members(self.home), before)
 
 
 if __name__ == "__main__":
