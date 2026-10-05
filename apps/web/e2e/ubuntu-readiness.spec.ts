@@ -90,7 +90,7 @@ test.describe("Ubuntu lifecycle readiness", () => {
     await expect(image).toHaveValue("24.04");
     await expect(image.locator("option:checked")).toContainText("upgrade review required");
     await expect(page.getByTestId("provider-readiness-check")).toContainText(
-      "legacy automatic upgrade path",
+      "upgrades it in place to Ubuntu 26.04 LTS (24.04 → 26.04;",
     );
     await expect.poll(() => storedImage(page)).toBe("24.04");
   });

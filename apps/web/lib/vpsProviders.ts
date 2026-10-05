@@ -368,7 +368,7 @@ export function validateUbuntuImage(value: string): VPSReadinessCheck {
     return {
       ...base,
       status: "borderline",
-      message: `Ubuntu ${version} LTS is still supported, but the installer's legacy automatic upgrade path targets end-of-life releases. Choose a fresh Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS image or complete a supported LTS upgrade before running ACFS.`,
+      message: `Ubuntu ${version} LTS is supported. The wizard's install command upgrades it in place to Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS (${version === "22.04" ? "22.04 → 24.04 → 26.04" : "24.04 → 26.04"}; roughly 30–60 minutes and a reboot per hop). A fresh Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS image skips that wait.`,
     };
   }
   if (version && version < ACFS_RECOMMENDED_UBUNTU) {
