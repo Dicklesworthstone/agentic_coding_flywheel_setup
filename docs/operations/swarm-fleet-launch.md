@@ -153,6 +153,66 @@ still alive when the last host finishes. Use the ordinary launch-aware scoped
 packet preparation and reviewed dispatch on each remote; this controller sends
 no work prompts, claims no Beads, and acquires no file reservations.
 
+## Reconcile and continue an interrupted fleet
+
+Use the **same spec, trust files, timeout and state directory** as the original
+operation. Add `--reconcile` instead of `--launch` to inspect it without starting
+anything:
+
+```bash
+python3 -I scripts/swarm-fleet-launch.py \
+  --spec fleet-launch.json \
+  --known-hosts "$HOME/.ssh/known_hosts" \
+  --identity-file "$HOME/.ssh/id_ed25519" \
+  --state-dir "$HOME/fleet-wave-1" --reconcile
+```
+
+This calls only `acfs swarm launch --reconcile --receipt ...` on hosts with a
+recorded local attempt. Untouched hosts are not contacted. An attempted host
+**never enters a preview or launch path**, even when its remote intent/result
+is missing or an SSH response was lost. Missing evidence is unconfirmed, not
+permission to start another session. All known attempts are queried so a failed
+host does not hide the status of its already-started peers.
+
+Reconciliation writes no controller files. It returns `ready`/exit 0 only when
+all hosts have original verified sessions; an otherwise healthy partial fleet
+returns `partial`/exit 1 while leaving untouched hosts marked `not_attempted`.
+A changed original pane/process/session, wrong request, malformed response or
+failed query returns `unconfirmed`/exit 1. Manually adopted remote results retain
+weaker provenance and are not automatically promoted to original-launch proof;
+inspect/manage those sessions separately. No remote recovery/adoption is invoked.
+
+After reviewing the partial result, use `--resume --accept-plan ORIGINAL_DIGEST`
+in place of `--reconcile`. Resume requires the original approval, revalidates
+all private evidence and queries every attempted host first. If all are
+confirmed, it can reconstruct a **missing local result record** from the exact
+remote native receipt. Existing local records are never overwritten; observed
+targets must match them exactly.
+
+Only then does resume preview **all untouched hosts** again. If every remaining
+host is admitted, it starts those hosts sequentially with new durable attempt
+records. Another uncertain launch stops continuation, and subsequent resumes
+query that newly recorded attempt instead of replaying it. A fully launched
+fleet's `--resume` is just reconciliation: it creates no files and starts no
+agents. No host is automatically replaced, scaled up, killed, or reassigned.
+
+The controller checks the journal as a coherent prefix of its original host
+order. A result without an attempt, an attempted host after an untouched one,
+a missing earlier result before a later attempt, extra files, unsafe permissions,
+changed plan or truncated JSON stop recovery before SSH. It holds an exclusive
+kernel directory lock through reconciliation/continuation and checks the state
+path, membership and captured receipt bytes around remote calls. Moving or
+replacing a local receipt during a query cannot cause a launch retry. This
+protects cooperative operations and detects changes, not a malicious same-user
+process modifying both controller and remote evidence. Keep both sets of receipts.
+
+A controller killed after its local attempt but before receiving a remote reply
+can recover when the original remote intent **and result** exist and the native
+launcher confirms the original live targets. If the remote result was never
+published, or the request never reached the remote, the controller remains
+unconfirmed rather than guessing. Native inspection and explicitly reviewed
+recovery on that host remain separate operations.
+
 ## SSH, reporting and verification boundary
 
 Host keys must already be independently verified. Unknown/changed keys fail;
@@ -182,15 +242,16 @@ A network disconnect cannot prove that remote execution stopped. Starting agents
 may consume provider resources; no live launch was used to validate this feature.
 
 Exit 0 means a fully admitted preview or all requested native sessions ready;
-1 means blocked admission or unconfirmed/partial launch; 2 means input, approval,
+1 means blocked admission or unconfirmed/partial launch/reconciliation; 2 means input, approval,
 state or local execution error. Signals return 128 plus the signal number.
 
 ```bash
-python3 -B -m unittest discover -s tests/unit -p test_swarm_fleet_launch.py -v
+python3 -B -m unittest discover -s tests/unit -p 'test_swarm_fleet_*.py' -v
 ```
 
 Tests exercise orchestration against the existing native JSON contract, real
 private-file publication, no-clobber races, SSH argument/snapshot construction,
-and actual bounded child processes. They do not replace live OpenSSH/VPS/NTM or
+actual bounded child processes, abrupt controller SIGKILL/recovery, directory
+locking and unprivileged remote-shell argument transport. They do not replace live OpenSSH/VPS/NTM or
 authenticated-provider acceptance. The controller never downloads a replacement
 launcher or relaxes its policies when a remote installation is missing/stale.

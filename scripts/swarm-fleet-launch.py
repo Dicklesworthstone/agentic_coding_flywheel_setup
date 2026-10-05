@@ -32,6 +32,7 @@ LIMIT = 1024 * 1024
 POLICY = "explicit-new-sessions-strict-ssh-native-admission-v1"
 PROFILES = ("balanced", "codex-heavy", "review-heavy", "docs-heavy")
 WORKLOADS = ("light", "standard", "heavy")
+NEW_LAUNCH_ATTEMPTED = False
 
 
 class Refused(Exception):
@@ -240,7 +241,7 @@ def ssh_argv(host, mode, known_fd, identity_fd, ssh="/usr/bin/ssh"):
     launcher = '"$HOME/.acfs/scripts/lib/swarm_launch.sh"'
     # The remote installed launcher is fixed. Never execute a command returned
     # by a preview or permit a spec to supply an executable/SSH option.
-    command = ('test "$(/usr/bin/id -u)" != 0 && test -f ' + launcher +
+    command = ('test "$(/usr/bin/id -u)" -gt 0 && test -f ' + launcher +
                ' && test ! -L ' + launcher + ' && exec /bin/bash --noprofile --norc -p ' +
                launcher + " " + shlex.join(native_argv(host["request"], mode)))
     options = ["BatchMode=yes", "StrictHostKeyChecking=yes", "GlobalKnownHostsFile=/dev/null",
@@ -333,11 +334,14 @@ def remote_result(host, mode, invoke):
     """Project only validated evidence; never copy raw remote diagnostics."""
     row = {"id": host["id"], "status": "unconfirmed", "code": "remote_unconfirmed"}
     try:
+        global NEW_LAUNCH_ATTEMPTED
+        if mode == "launch":
+            NEW_LAUNCH_ATTEMPTED = True
         code, raw = invoke(host, mode)
         require(type(code) is int and type(raw) is bytes, "invalid_transport_result")
         value = decode(raw)
         req = host["request"]
-        require(type(value) is dict and value.get("schema") == NATIVE_SCHEMA and value.get("request") == req
+        require(type(value) is dict and value.get("schema") == NATIVE_SCHEMA and encoded(value.get("request")) == encoded(req)
                 and value.get("work_dispatched") is False and value.get("authentication_verified") is False
                 and value.get("agent_mail_registered") is False, "native_response_invalid")
         if mode == "preview":
@@ -398,7 +402,153 @@ def host_intent(plan, host):
             "request_sha256": native_hash(host["request"])}
 
 
+def validate_plan(plan):
+    keys = {"schema", "policy", "spec", "known_hosts_sha256", "identity_sha256", "state_directory", "timeout_seconds"}
+    require(type(plan) is dict and set(plan) == keys and plan["schema"] == SCHEMA
+            and plan["policy"] == POLICY, "invalid_fleet_plan")
+    validate_spec(plan["spec"])
+    absolute_path(plan["state_directory"])
+    require(type(plan["timeout_seconds"]) is int and 1 <= plan["timeout_seconds"] <= 600
+            and all(matches(r"[0-9a-f]{64}", plan[k]) for k in ("known_hosts_sha256", "identity_sha256")),
+            "invalid_fleet_plan")
+
+
+def read_history(fd, plan):
+    """Accept only a coherent prefix of our durable sequential launch journal."""
+    expected = {"schema": STATE_SCHEMA, "plan": plan}
+    raw = read_at(fd, "intent.json")
+    require(encoded(decode(raw)) == encoded(expected), "fleet_intent_mismatch")
+    records = {"intent.json": raw}
+    history, pending_seen, incomplete_seen = [], False, False
+    for host in plan["spec"]["hosts"]:
+        attempt_name, result_name = (host["id"] + suffix for suffix in (".attempt.json", ".result.json"))
+        attempt = read_at(fd, attempt_name, optional=True)
+        result = read_at(fd, result_name, optional=True)
+        records[attempt_name], records[result_name] = attempt, result
+        require(attempt is not None or result is None, "result_without_attempt")
+        if attempt is None:
+            pending_seen = True
+            history.append((False, None))
+            continue
+        require(not pending_seen and not incomplete_seen, "nonprefix_launch_history")
+        expected = host_intent(plan, host)
+        require(encoded(decode(attempt)) == encoded(expected), "host_intent_mismatch")
+        targets = None
+        if result is not None:
+            saved = decode(result)
+            require(type(saved) is dict and set(saved) == set(expected) | {"targets"}, "host_result_invalid")
+            targets = valid_targets(saved["targets"], host["request"])
+            require(encoded(saved) == encoded({**expected, "targets": targets}), "host_result_mismatch")
+        else:
+            incomplete_seen = True
+        history.append((True, targets))
+    require(set(os.listdir(fd)) == {name for name, data in records.items() if data is not None},
+            "unexpected_state_member")
+    return history, records
+
+
+def state_unchanged(fd, plan, records):
+    # Reopen the public path through the no-follow walker, so retaining an old
+    # directory descriptor cannot silently mask a replaced state-directory path.
+    with directory_fd(plan["state_directory"], private=True) as current:
+        require(os.path.samestat(os.fstat(fd), os.fstat(current)), "state_directory_changed")
+    require(set(os.listdir(fd)) == {name for name, raw in records.items() if raw is not None},
+            "state_changed_during_operation")
+    for name, expected in records.items():
+        require(read_at(fd, name, optional=True) == expected, "state_changed_during_operation")
+
+
+def recover_fleet(plan, mode, approval, invoke):
+    """A known attempt has only a reconciliation path, never a launch retry."""
+    validate_plan(plan)
+    require(mode in ("reconcile", "resume"), "invalid_recovery_operation")
+    plan_sha = digest(encoded(plan))
+    require(mode != "resume" or approval == plan_sha, "approval_mismatch_preview_again")
+    hosts = plan["spec"]["hosts"]
+    report = {"schema": SCHEMA, "operation": mode, "plan_sha256": plan_sha, "status": "partial",
+              "starts_agents": False, "work_dispatched": False, "authentication_verified": False,
+              "allocation_semantics": "explicit_new_dedicated_sessions",
+              "requested_new_agents": sum(len(h["request"]["agents"]) for h in hosts),
+              "hosts": [{"id": h["id"], "status": "not_attempted", "code": "no_local_attempt"} for h in hosts]}
+    with directory_fd(plan["state_directory"], private=True) as fd:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refused("fleet_operation_in_progress") from None
+        history, records = read_history(fd, plan)
+        state_unchanged(fd, plan, records)
+        # Reconcile all existing attempts for visibility. None can enter the
+        # preview/spawn path, even if a peer subsequently moves a receipt.
+        for index, (attempted, saved_targets) in enumerate(history):
+            if not attempted:
+                continue
+            host = hosts[index]
+            state_unchanged(fd, plan, records)
+            result = remote_result(host, "reconcile", invoke)
+            state_unchanged(fd, plan, records)
+            if result["status"] == "ready" and saved_targets is not None and result["targets"] != saved_targets:
+                result = {"id": host["id"], "status": "unconfirmed", "code": "original_targets_changed"}
+            report["hosts"][index] = result
+        if any(attempted and report["hosts"][i]["status"] != "ready" for i, (attempted, _) in enumerate(history)):
+            report["status"] = "unconfirmed"
+            return report, 1
+        pending = [i for i, (attempted, _) in enumerate(history) if not attempted]
+        if mode == "reconcile":
+            report["status"] = "partial" if pending else "ready"
+            return report, 1 if pending else 0
+        # Freshly confirmed responses recover only missing local result records.
+        # Existing evidence is immutable and cannot be replaced by a new pane.
+        for index, (attempted, saved_targets) in enumerate(history):
+            if attempted and saved_targets is None:
+                state_unchanged(fd, plan, records)
+                host = hosts[index]
+                name = host["id"] + ".result.json"
+                result = {**host_intent(plan, host), "targets": report["hosts"][index]["targets"]}
+                publish(fd, name, result)
+                records[name] = encoded(result)
+        # All remaining hosts must pass live admission before the first new
+        # attempt. Saved capacity and a previously passed preview are not reused.
+        blocked = False
+        for index in pending:
+            state_unchanged(fd, plan, records)
+            result = remote_result(hosts[index], "preview", invoke)
+            state_unchanged(fd, plan, records)
+            if result["status"] != "admitted":
+                blocked = True
+                report["hosts"][index]["code"] = result["code"]
+        if blocked:
+            report["status"] = "blocked"
+            return report, 1
+        for index in pending:
+            host = hosts[index]
+            state_unchanged(fd, plan, records)
+            name = host["id"] + ".attempt.json"
+            attempt = host_intent(plan, host)
+            publish(fd, name, attempt)
+            records[name] = encoded(attempt)
+            state_unchanged(fd, plan, records)
+            report["starts_agents"] = True
+            result = remote_result(host, "launch", invoke)
+            state_unchanged(fd, plan, records)
+            report["hosts"][index] = result
+            if result["status"] != "ready":
+                report["status"] = "unconfirmed"
+                return report, 1
+            name = host["id"] + ".result.json"
+            result = {**host_intent(plan, host), "targets": result["targets"]}
+            publish(fd, name, result)
+            records[name] = encoded(result)
+        state_unchanged(fd, plan, records)
+    report["status"] = "ready"
+    return report, 0
+
+
 def execute(plan, mode, approval, invoke):
+    global NEW_LAUNCH_ATTEMPTED
+    NEW_LAUNCH_ATTEMPTED = False
+    validate_plan(plan)
+    if mode in ("reconcile", "resume"):
+        return recover_fleet(plan, mode, approval, invoke)
     require(mode in ("preview", "launch"), "invalid_fleet_operation")
     plan_sha = digest(encoded(plan))
     require(mode != "launch" or approval == plan_sha, "approval_mismatch_preview_again")
@@ -415,18 +565,29 @@ def execute(plan, mode, approval, invoke):
         report["status"] = "preview"
         return report, 0
     with new_state(plan) as fd:
+        _, records = read_history(fd, plan)
         report["hosts"] = [{"id": h["id"], "status": "not_attempted", "code": "prior_host_not_confirmed"} for h in hosts]
         for index, host in enumerate(hosts):
             # Both local and remote durable intents precede their respective
             # lifecycle boundary. A transport loss is never proof of no spawn.
-            publish(fd, host["id"] + ".attempt.json", host_intent(plan, host))
+            state_unchanged(fd, plan, records)
+            name = host["id"] + ".attempt.json"
+            attempt = host_intent(plan, host)
+            publish(fd, name, attempt)
+            records[name] = encoded(attempt)
+            state_unchanged(fd, plan, records)
             report["starts_agents"] = True
             result = remote_result(host, "launch", invoke)
+            state_unchanged(fd, plan, records)
             report["hosts"][index] = result
             if result["status"] != "ready":
                 report["status"] = "unconfirmed"
                 return report, 1
-            publish(fd, host["id"] + ".result.json", {**host_intent(plan, host), "targets": result["targets"]})
+            name = host["id"] + ".result.json"
+            saved = {**host_intent(plan, host), "targets": result["targets"]}
+            publish(fd, name, saved)
+            records[name] = encoded(saved)
+        state_unchanged(fd, plan, records)
     report["status"] = "ready"
     return report, 0
 
@@ -438,11 +599,14 @@ def main(arguments=None):
     parser.add_argument("--identity-file", required=True, help="Private SSH identity; may use its matching key in the local agent")
     parser.add_argument("--state-dir", required=True, help="New private directory under an existing user-owned parent")
     parser.add_argument("--timeout", type=int, default=360, help="Per SSH operation deadline, 1..600 seconds (default 360)")
-    parser.add_argument("--launch", action="store_true", help="Start agents; default is live remote admission preview")
-    parser.add_argument("--accept-plan", help="Exact digest from preview; required for --launch")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--launch", action="store_true", help="Start agents; default is live remote admission preview")
+    action.add_argument("--reconcile", action="store_true", help="Read-only verification of attempted hosts; never launches")
+    action.add_argument("--resume", action="store_true", help="Reconcile attempted hosts, then launch only untouched hosts")
+    parser.add_argument("--accept-plan", help="Original plan digest; required for --launch and --resume")
     args = parser.parse_args(arguments)
-    mode = "launch" if args.launch else "preview"
-    require((args.accept_plan is not None) == args.launch, "launch_requires_exact_approval")
+    mode = "resume" if args.resume else "reconcile" if args.reconcile else "launch" if args.launch else "preview"
+    require((args.accept_plan is not None) == (args.launch or args.resume), "launch_or_resume_requires_exact_approval")
     known = read_input(args.known_hosts, private=False)
     identity = read_input(args.identity_file)
     plan = build_plan(decode(read_input(args.spec)), known, identity, args.state_dir, args.timeout)
@@ -461,11 +625,11 @@ def cli():
         return main()
     except Interrupted as exc:
         print(encoded({"schema": SCHEMA, "status": "interrupted", "code": "preserve_state_and_remote_receipts",
-                       "launch_may_have_occurred": True}).decode(), end="")
+                       "new_launch_attempted": NEW_LAUNCH_ATTEMPTED}).decode(), end="")
         return 128 + exc.signum
     except (Refused, OSError, subprocess.SubprocessError) as exc:
         print(encoded({"schema": SCHEMA, "status": "error", "code": str(exc) if isinstance(exc, Refused)
-                       else "local_io_or_process_failure", "launch_may_have_occurred": True}).decode(), end="")
+                       else "local_io_or_process_failure", "new_launch_attempted": NEW_LAUNCH_ATTEMPTED}).decode(), end="")
         return 2
 
 
