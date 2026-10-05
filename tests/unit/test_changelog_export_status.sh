@@ -5054,6 +5054,22 @@ test_doctor_entrypoint_dispatches_zsh_only_commands() {
     fi
 }
 
+test_doctor_subcommand_help_flags_exit_zero() {
+    # `acfs undo --help` errored "Unknown option" and `acfs session --help`
+    # printed "Unknown session command" with exit 1.
+    local cmd="" output="" failures=""
+    for cmd in "undo:Usage: acfs undo" "session:Usage: acfs session"; do
+        if ! output="$(bash "$DOCTOR_SH" "${cmd%%:*}" --help 2>&1)" || [[ "$output" != *"${cmd#*:}"* ]]; then
+            failures+=" ${cmd%%:*}"
+        fi
+    done
+    if [[ -z "$failures" ]]; then
+        harness_pass "doctor undo/session --help print usage and exit 0"
+    else
+        harness_fail "doctor undo/session --help print usage and exit 0" "failed:$failures"
+    fi
+}
+
 test_doctor_dispatch_keeps_caller_path() {
     # doctor.sh sources the generated doctor_checks.sh, whose header exports
     # root's /usr/sbin:/usr/bin:/sbin:/bin. Leaked into the dispatcher, that
@@ -11954,6 +11970,7 @@ main() {
     test_doctor_entrypoint_dispatches_helper_commands || true
     test_doctor_entrypoint_dispatches_zsh_only_commands || true
     test_doctor_dispatch_keeps_caller_path || true
+    test_doctor_subcommand_help_flags_exit_zero || true
     test_doctor_dispatches_installed_layout_under_root_home || true
     test_doctor_ignores_relative_home_state_trap || true
     test_doctor_uses_system_state_target_home_when_installed_state_is_stale || true

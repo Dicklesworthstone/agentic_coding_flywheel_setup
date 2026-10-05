@@ -2805,6 +2805,26 @@ acfs_undo_command() {
             --everything) all=true; everything=true; shift ;;
             --list) list_only=true; shift ;;
             --verify) verify_only=true; shift ;;
+            -h|--help)
+                cat <<'EOF'
+Usage: acfs undo [options] [<change_id>...]
+
+Revert changes recorded by `acfs doctor --fix`.
+
+Options:
+  --list             List recorded changes and their undo status
+  --dry-run          Show what would be reverted without changing anything
+  --all              Undo every change from the most recent fix session
+  --everything       Like --all, but include earlier fix sessions too
+  --category NAME    Undo the changes of one category (e.g. nvm)
+  --verify           Check the undo journal's integrity and exit
+  --force            Override the check that refuses to clobber later edits
+  -h, --help         Show this help
+
+Change IDs look like chg_1234567890 (see --list).
+EOF
+                return 0
+                ;;
             --category)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     log_error "--category requires a value"

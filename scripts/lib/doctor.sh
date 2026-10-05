@@ -1216,7 +1216,7 @@ acfs_session_main() {
 
     local subcmd="${1:-}"
     case "$subcmd" in
-        help|-h|"")
+        help|-h|--help|"")
             print_session_help
             return 0
             ;;
