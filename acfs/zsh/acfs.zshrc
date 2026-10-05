@@ -584,6 +584,12 @@ acfs() {
       fi
       ;;
     help|-h|--help)
+      # The binary's help is the complete, canonical list (rescue, capacity,
+      # swarm, hold, undo, ...); this static copy is only a fallback.
+      if [[ -x "$acfs_bin" ]]; then
+        "$acfs_bin" help
+        return
+      fi
       echo "ACFS - Agentic Coding Flywheel Setup"
       echo ""
       echo "Usage: acfs <command>"
