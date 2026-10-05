@@ -6472,7 +6472,11 @@ capture_env_summary "$bundle_dir"
 jq -r '.user' "$bundle_dir/environment.json"
 EOF_SUPPORT_ENV
     assert_success
-    assert_output "$current_user"
+    # 182507fe: the summary never collects the username, so a PATH-poisoned
+    # whoami result cannot reach the bundle in any field.
+    assert_output "<REDACTED:user>"
+    run grep -F 'poisoned-user' "$bundle_dir/environment.json"
+    assert_failure
 }
 
 @test "dashboard serve banner ignores PATH-poisoned whoami fallback" {
@@ -13317,7 +13321,7 @@ EOF
     PATH=""
     ensure_path
 
-    expected_path="$test_home/.local/bin:$test_home/.acfs/bin:$test_home/google-cloud-sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+    expected_path="$test_home/.local/bin:$test_home/.acfs/bin:$test_home/google-cloud-sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/local/go/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
     [ "$PATH" = "$expected_path" ]
 }
 
@@ -15285,7 +15289,11 @@ _svc_fixture() {
     mkdir -p "$dir"
     export ACFS_SVC_TEST_SOCKET="acfs-bats-$$-${BATS_TEST_NUMBER:-0}"
     export ACFS_SVC_TEST_TMUX="$tmux_bin"
-    printf '#!/usr/bin/env bash\nexec %q -L %q "$@"\n' "$tmux_bin" "$ACFS_SVC_TEST_SOCKET" > "$dir/tmux"
+    # Pin the panes' shell and skip any user tmux.conf: with the developer's
+    # SHELL=zsh and the test's empty HOME, zsh-newuser-install reads one
+    # keystroke and eats the first byte of the command typed into the pane.
+    printf '#!/usr/bin/env bash\nexec env SHELL=/bin/bash %q -f /dev/null -L %q "$@"\n' \
+        "$tmux_bin" "$ACFS_SVC_TEST_SOCKET" > "$dir/tmux"
     chmod +x "$dir/tmux"
 
     for name in am cm cass; do
