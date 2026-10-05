@@ -1064,6 +1064,7 @@ print_acfs_help() {
     echo "  swarm convergence   Epic success-criteria convergence audit"
     echo "  swarm calibration   Artifact-backed capacity calibration report"
     echo "  swarm inventory     Host inventory, placement, and approved fleet probes"
+    echo "  swarm packet        Render per-agent startup packets"
     echo "  provisioning-packet Validate/render provider provisioning packet JSON"
     echo "  installer-cache     Build a verified installer entrypoint cache"
     echo "  coordinate doctor   Alias for swarm doctor"
@@ -1071,7 +1072,10 @@ print_acfs_help() {
     echo "  changelog [options] Show recent project changes"
     echo "  export-config       Export config for backup/migration"
     echo "  continue [options]  View installation/upgrade progress"
-    echo "  dashboard <command> Generate/view a static HTML dashboard"
+    echo "  dashboard <command> Generate/view a static HTML dashboard (alias: dash)"
+    echo "  landing-plane       Read-only end-of-session closeout checklist (alias: land)"
+    echo "  provenance          Read-only installed-tool provenance ledger (JSON)"
+    echo "  notifications <cmd> Push notifications: enable|disable|test|status|topic|set-server"
     echo "  newproj <name>      Create new project with git, br, claude settings"
     echo "  agents <command>    Manage the flywheel agent guide (ACFS-owned)"
     echo "    update            Regenerate ~/.acfs/docs/flywheel-agent-guide.md"
@@ -1079,6 +1083,7 @@ print_acfs_help() {
     echo "                      --codex-global | --workspace | --root |"
     echo "                      --project DIR | --to PATH"
     echo "    path              Print the canonical guide path"
+    echo "  undo [--list|ID]    Revert a change recorded by doctor --fix"
     echo "  update [options]    Update ACFS tools to latest versions"
     echo "  hold <tool> --reason \"why\" [--version X] [--expiry DATE]"
     echo "                      Pin one tool out of updates (owner/reason/expiry recorded)"
@@ -5557,7 +5562,7 @@ main() {
             echo "Error: swarm_doctor.sh not found" >&2
             return 1
             ;;
-        dashboard)
+        dashboard|dash)
             shift
             local dashboard_script=""
             dashboard_script="$(_acfs_doctor_find_lib_script "dashboard.sh" 2>/dev/null || true)"
@@ -5750,6 +5755,46 @@ main() {
             fi
 
             echo "Error: provisioning_packet.sh not found" >&2
+            return 1
+            ;;
+        # These were reachable only through the interactive zsh `acfs` function,
+        # so bash, /usr/local/bin/acfs, agents and doctor's own fix hints
+        # ("acfs notifications enable") hit "unknown option". The scripts are
+        # installed and synced like every other lib helper.
+        landing-plane|land|closeout)
+            shift
+            local landing_plane_script=""
+            landing_plane_script="$(_acfs_doctor_find_lib_script "landing_plane.sh" 2>/dev/null || true)"
+
+            if [[ -n "$landing_plane_script" ]]; then
+                _acfs_doctor_exec_bash_script "$landing_plane_script" "$@"
+            fi
+
+            echo "Error: landing_plane.sh not found" >&2
+            return 1
+            ;;
+        provenance|prov)
+            shift
+            local provenance_script=""
+            provenance_script="$(_acfs_doctor_find_lib_script "provenance.sh" 2>/dev/null || true)"
+
+            if [[ -n "$provenance_script" ]]; then
+                _acfs_doctor_exec_bash_script "$provenance_script" "$@"
+            fi
+
+            echo "Error: provenance.sh not found" >&2
+            return 1
+            ;;
+        notifications|notify)
+            shift
+            local notifications_script=""
+            notifications_script="$(_acfs_doctor_find_lib_script "notifications.sh" 2>/dev/null || true)"
+
+            if [[ -n "$notifications_script" ]]; then
+                _acfs_doctor_exec_bash_script "$notifications_script" "$@"
+            fi
+
+            echo "Error: notifications.sh not found" >&2
             return 1
             ;;
         installer-cache)

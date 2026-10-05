@@ -5006,6 +5006,24 @@ test_cheatsheet_can_be_sourced_without_running_main() {
     cleanup_mock_env
 }
 
+test_doctor_entrypoint_dispatches_zsh_only_commands() {
+    # These used to exist only in the interactive zsh `acfs` function, so bash,
+    # /usr/local/bin/acfs and doctor's own "acfs notifications enable" hint
+    # failed with "unknown option".
+    local cmd="" output="" failures=""
+    for cmd in "landing-plane:Usage: acfs landing-plane" "land:Usage: acfs landing-plane" \
+        "provenance:Usage: acfs provenance" "notifications:ACFS Notifications" \
+        "notify:ACFS Notifications" "dash:Usage: acfs dashboard"; do
+        output="$(bash "$DOCTOR_SH" "${cmd%%:*}" --help 2>&1 | head -n 3)"
+        [[ "$output" == *"${cmd#*:}"* ]] || failures+=" ${cmd%%:*}"
+    done
+    if [[ -z "$failures" ]] && bash "$DOCTOR_SH" help 2>&1 | grep -q 'landing-plane'; then
+        harness_pass "doctor entrypoint dispatches landing-plane, provenance, notifications and dash"
+    else
+        harness_fail "doctor entrypoint dispatches landing-plane, provenance, notifications and dash" "failed:$failures"
+    fi
+}
+
 test_doctor_entrypoint_dispatches_helper_commands() {
     setup_mock_env
 
@@ -11879,6 +11897,7 @@ main() {
 
     harness_section "Entrypoint Dispatch"
     test_doctor_entrypoint_dispatches_helper_commands || true
+    test_doctor_entrypoint_dispatches_zsh_only_commands || true
     test_doctor_dispatches_installed_layout_under_root_home || true
     test_doctor_ignores_relative_home_state_trap || true
     test_doctor_uses_system_state_target_home_when_installed_state_is_stale || true
