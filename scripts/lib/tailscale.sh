@@ -112,8 +112,14 @@ install_tailscale() {
 
     if [[ "$distro_family" == "arch" ]]; then
         log_detail "  Installing tailscale package (pacman)..."
-        if ! $sudo_cmd pacman -S --needed --noconfirm tailscale; then
-            log_error "Failed to install tailscale package"
+        if declare -F acfs_arch_pkg_install >/dev/null 2>&1; then
+            # Inside install.sh: one full -Syu per run, never a partial upgrade.
+            if ! acfs_arch_pkg_install tailscale; then
+                log_error "Failed to install tailscale package"
+                return 1
+            fi
+        elif ! $sudo_cmd pacman -S --needed --noconfirm tailscale; then
+            log_error "Failed to install tailscale package (if pacman reported missing files, run 'sudo pacman -Syu' and retry)"
             return 1
         fi
     else

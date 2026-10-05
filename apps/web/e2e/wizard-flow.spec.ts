@@ -403,6 +403,41 @@ test.describe("Wizard Flow", () => {
     expect(persistedSelection).toEqual(savedSelection);
   });
 
+  test("should persist the default VPS readiness choice when none is saved", async ({ page }) => {
+    // setupWizardState clears localStorage, so nothing is saved for this step.
+    await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
+
+    await page.goto("/wizard/rent-vps");
+    const calculator = page.getByTestId("vps-plan-calculator");
+    const readiness = page.getByTestId("provider-readiness-check");
+
+    await expect(calculator.getByLabel("Target agent count")).toHaveValue("10");
+    await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("26.04");
+    const providerId = await readiness.getByLabel("Provider").inputValue();
+    const planName = await readiness.getByLabel("Plan").inputValue();
+    const region = await readiness.getByLabel("Region").inputValue();
+
+    // The defaults the controls show are exactly what gets persisted.
+    await expect
+      .poll(async () =>
+        page.evaluate((key) => {
+          const value = localStorage.getItem(key);
+          return value ? JSON.parse(value) : null;
+        }, VPS_READINESS_SELECTION_KEY),
+      )
+      .toEqual({
+        providerId,
+        planName,
+        ubuntuVersion: "26.04",
+        region,
+        targetAgents: 10,
+        workloadId: "standard",
+      });
+  });
+
+  // Canonicalizes provider ID and agent count, but (since cd75899a) never upgrades
+  // an unknown plan or region to the provider's recommendation: they become
+  // explicit "not listed" choices, and a recognized image is kept as saved.
   test("should repair stale VPS readiness choices during hydration", async ({ page }) => {
     const staleSelection = {
       providerId: "OVH",
@@ -424,9 +459,9 @@ test.describe("Wizard Flow", () => {
 
     await expect(calculator.getByLabel("Target agent count")).toHaveValue("15");
     await expect(readiness.getByLabel("Provider")).toHaveValue("ovh");
-    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
-    await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("25.10");
-    await expect(readiness.getByLabel("Region")).toHaveValue("us-east");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("custom plan");
+    await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("26.04");
+    await expect(readiness.getByLabel("Region")).toHaveValue("not-listed");
 
     await expect
       .poll(async () =>
@@ -437,9 +472,9 @@ test.describe("Wizard Flow", () => {
       )
       .toEqual({
         providerId: "ovh",
-        planName: "VPS-4",
-        ubuntuVersion: "25.10",
-        region: "us-east",
+        planName: "custom plan",
+        ubuntuVersion: "26.04",
+        region: "not-listed",
         targetAgents: 15,
         workloadId: "heavy",
       });

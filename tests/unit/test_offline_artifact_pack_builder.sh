@@ -276,8 +276,10 @@ test_build_writes_manifest_and_verified_artifact() {
     local builder_env_sha source_index_sha
     source_root="$(write_fixture_source build valid)"
     output_dir="$ARTIFACT_DIR/build/output"
+    write_os_release build-host ubuntu 26.04
 
-    output="$(run_pack build build --json --source-root "$source_root" --output "$output_dir" --module stack.rch --expires-days 7)"
+    output="$(ACFS_OFFLINE_PACK_OS_RELEASE="$ARTIFACT_DIR/os-release.build-host" \
+        run_pack build build --json --source-root "$source_root" --output "$output_dir" --module stack.rch --expires-days 7)"
     status="$(cat "$ARTIFACT_DIR/build.exit")"
     manifest="$output_dir/acfs-installer-cache/manifest.json"
     artifact_path="$output_dir/acfs-installer-cache/artifacts/stack.rch/rch-install.sh"
@@ -300,7 +302,7 @@ test_build_writes_manifest_and_verified_artifact() {
       .packScope == "verified_installer_entrypoints" and
       (.targets | length) == 1 and
       .targets[0].os == "ubuntu" and
-      .targets[0].version == "25.10" and
+      .targets[0].version == "26.04" and
       (.targets[0].architecture == "x86_64" or .targets[0].architecture == "aarch64") and
       .policy.executionNetworkMode == "required" and
       .policy.transitiveClosure == "not_bundled" and
@@ -741,6 +743,59 @@ test_invalid_ubuntu_target_is_refused_before_publication() {
     pass "invalid_ubuntu_target_is_refused_before_publication"
 }
 
+write_os_release() {
+    local name="$1" os_id="$2" version_id="$3"
+
+    printf 'PRETTY_NAME="fixture"\nID=%s\nVERSION_ID="%s"\n' "$os_id" "$version_id" \
+        > "$ARTIFACT_DIR/os-release.$name"
+}
+
+test_ubuntu_target_defaults_to_build_host_release() {
+    local source_root output status version
+    source_root="$(write_fixture_source host-default valid)"
+
+    for version in 22.04 24.04 26.04; do
+        write_os_release "host-$version" ubuntu "$version"
+        output="$(ACFS_OFFLINE_PACK_OS_RELEASE="$ARTIFACT_DIR/os-release.host-$version" \
+            run_pack "host-default-$version" build --dry-run --json --source-root "$source_root" --module stack.rch)"
+        status="$(cat "$ARTIFACT_DIR/host-default-$version.exit")"
+
+        [[ "$status" -eq 0 ]] || return 1
+        jq -e --arg version "$version" '
+          .status == "pass" and
+          .pack.targets[0].os == "ubuntu" and
+          .pack.targets[0].version == $version
+        ' <<<"$output" >/dev/null || return 1
+    done
+
+    pass "ubuntu_target_defaults_to_build_host_release"
+}
+
+test_non_ubuntu_build_host_requires_explicit_target() {
+    local source_root output status
+    source_root="$(write_fixture_source non-ubuntu-host valid)"
+    write_os_release debian-host debian 13
+
+    output="$(ACFS_OFFLINE_PACK_OS_RELEASE="$ARTIFACT_DIR/os-release.debian-host" \
+        run_pack non-ubuntu-host build --dry-run --json --source-root "$source_root" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/non-ubuntu-host.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_ubuntu_unsupported") and contains("--ubuntu-version"))
+    ' <<<"$output" >/dev/null || return 1
+
+    output="$(ACFS_OFFLINE_PACK_OS_RELEASE="$ARTIFACT_DIR/os-release.debian-host" \
+        run_pack non-ubuntu-host-explicit build --dry-run --json --source-root "$source_root" --module stack.rch --ubuntu-version 24.04)"
+    status="$(cat "$ARTIFACT_DIR/non-ubuntu-host-explicit.exit")"
+
+    [[ "$status" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and .pack.targets[0].version == "24.04"' <<<"$output" >/dev/null || return 1
+
+    pass "non_ubuntu_build_host_requires_explicit_target"
+}
+
 test_uncreatable_output_emits_structured_refusal() {
     local source_root blocker output status
     source_root="$(write_fixture_source output-unwritable valid)"
@@ -832,6 +887,8 @@ run_all_tests() {
         test_best_effort_records_download_failure
         test_timeout_option_is_validated_and_recorded
         test_invalid_ubuntu_target_is_refused_before_publication
+        test_ubuntu_target_defaults_to_build_host_release
+        test_non_ubuntu_build_host_requires_explicit_target
         test_uncreatable_output_emits_structured_refusal
         test_supported_no_target_directory_failure_never_uses_weaker_fallback
         test_bsd_publish_race_is_detected_after_nested_move

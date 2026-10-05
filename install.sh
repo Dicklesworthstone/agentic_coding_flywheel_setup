@@ -135,7 +135,7 @@ export DEBCONF_NONINTERACTIVE_SEEN=true
 # ============================================================
 # Configuration
 # ============================================================
-ACFS_VERSION="0.9.0"
+ACFS_VERSION="0.10.0"
 
 # ------------------------------------------------------------
 # Best-effort failure tracking (record-and-continue abort paths).
@@ -1673,6 +1673,20 @@ acfs_install_run_has_failures() {
     [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]] \
         || [[ ${#ACFS_PHASE_FAILURES[@]} -gt 0 ]] \
         || [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]
+}
+
+# Terminal exit status of a finished run (returned, not exited): 0 when clean;
+# 2 when the only thing that went wrong is that SOME (not all) of the
+# explicitly requested --only modules failed, so callers can tell a partial
+# result from a total failure (#357/#373); 1 for every other failure.
+acfs_install_terminal_exit_status() {
+    acfs_install_run_has_failures || return 0
+    if [[ "${ACFS_INSTALL_PARTIAL_FAILURE:-0}" == "1" ]] \
+        && [[ "${SMOKE_TEST_FAILED:-false}" != "true" ]] \
+        && [[ ${#ACFS_PHASE_FAILURES[@]} -le 1 ]]; then
+        return 2
+    fi
+    return 1
 }
 
 # Emit success-only UI and integrations behind one terminal-status gate.
@@ -3774,7 +3788,6 @@ acfs_load_internal_checksums_data() {
         scripts/lib/holds.sh
         scripts/lib/github_api.sh
         scripts/lib/contract.sh
-        scripts/lib/agents.sh
         scripts/lib/update.sh
         scripts/lib/doctor.sh
         scripts/lib/acfs-services.sh
@@ -5894,6 +5907,8 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     local tmp_avail_kb=""
     local df_bin=""
     local awk_bin=""
+    local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    local acfs_tmpdir=""
     df_bin="$(acfs_early_system_binary_path df 2>/dev/null || true)"
     awk_bin="$(acfs_early_system_binary_path awk 2>/dev/null || true)"
     if [[ -z "$df_bin" || -z "$awk_bin" ]]; then
@@ -5910,8 +5925,6 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         return 1
     fi
     if [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
-        local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
-        local acfs_tmpdir=""
         local acfs_mkdir_bin=""
         local acfs_mktemp_bin=""
         acfs_mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
@@ -5978,6 +5991,23 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     fi
 
     _acfs_remove_temp_files "$staged_installer"
+    # Remove this run's low-space TMPDIR whatever the installer did. Only the
+    # exact mktemp result qualifies; it is re-checked and removed as the target
+    # user, and a cleanup problem only warns, so run_status is never masked.
+    if [[ -n "$acfs_tmpdir" ]]; then
+        local acfs_tmpdir_suffix="${acfs_tmpdir#"$acfs_tmpdir_parent/acfs."}"
+        local acfs_rm_bin=""
+        if [[ "$acfs_tmpdir" != "$acfs_tmpdir_parent/acfs."* || -z "$acfs_tmpdir_suffix" \
+            || "$acfs_tmpdir_suffix" == *[!A-Za-z0-9]* || -L "$acfs_tmpdir" ]] \
+            || _acfs_install_asset_has_symlink_component_under_prefix \
+                "$TARGET_HOME" "$acfs_tmpdir_parent"; then
+            log_warn "Leaving installer TMPDIR that no longer matches its template: $acfs_tmpdir"
+        elif ! acfs_rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null)" || [[ -z "$acfs_rm_bin" ]]; then
+            log_warn "Trusted rm not found; leaving installer TMPDIR: $acfs_tmpdir"
+        elif ! run_as_target "$acfs_rm_bin" -rf --one-file-system -- "$acfs_tmpdir" 2>/dev/null; then
+            log_warn "Failed to remove installer TMPDIR: $acfs_tmpdir"
+        fi
+    fi
     if [[ "$run_status" -ne 0 ]]; then
         : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
     fi
@@ -6546,7 +6576,7 @@ ensure_ubuntu() {
     fi
 
     if [[ "$VERSION_MAJOR" -lt 24 ]]; then
-        log_warn "Ubuntu $version_id detected. Recommended: Ubuntu 24.04+ or 25.x"
+        log_warn "Ubuntu $version_id detected. Recommended: Ubuntu 24.04 or 26.04 LTS"
     fi
 
     log_detail "OS: Ubuntu $version_id"
@@ -7177,33 +7207,6 @@ acfs_arch_aur_helper() {
     return 1
 }
 
-# Look up binaries.<name>.{url,sha256} in checksums.yaml.
-# Prints "<url> <sha256>" when a pinned generic Linux binary is published.
-acfs_pinned_binary_info() {
-    local name="$1"
-    local yaml_file="${SCRIPT_DIR:-}/checksums.yaml"
-    if [[ -z "${SCRIPT_DIR:-}" ]] || [[ ! -f "$yaml_file" ]]; then
-        return 1
-    fi
-
-    local info=""
-    info="$(awk -v want="$name" '
-        BEGIN { top = ""; found = 0; url = ""; sha = "" }
-        /^[A-Za-z0-9_-]+:$/ { sub(/:$/, ""); top = $0; found = 0; next }
-        top == "binaries" && !found && $0 ~ ("^  " want ":$") { found = 1; next }
-        found && $0 ~ /^  [A-Za-z0-9_-]+:$/ { exit }
-        found && /^[^ #]/ { exit }
-        found && $1 == "url:" { url = $2; gsub(/"/, "", url); next }
-        found && $1 == "sha256:" { sha = $2; gsub(/"/, "", sha); next }
-        END { if (url != "" && sha != "") print url, sha }
-    ' "$yaml_file" 2>/dev/null)" || true
-    if [[ -n "$info" ]]; then
-        printf '%s\n' "$info"
-        return 0
-    fi
-    return 1
-}
-
 
 ensure_base_deps() {
     set_phase "base_deps" "Base Dependencies" 1
@@ -7223,11 +7226,11 @@ ensure_base_deps() {
             log_detail "dry-run: would install (pacman): curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf"
             return 0
         fi
-        # This runs before the user has confirmed the install. On Arch the
-        # first pacman call triggers a full 'pacman -Syu', so only touch pacman
+        # On Arch the first pacman call triggers a full 'pacman -Syu' (main()
+        # only calls this after the install is confirmed), so only touch pacman
         # here when a base dependency is actually missing; on Omarchy they are
-        # all present already and the system upgrade then waits until after
-        # confirmation, at the first real package install.
+        # all present already and the system upgrade then waits for the first
+        # real package install.
         local -a arch_base_missing=()
         local arch_base_pkg=""
         local pacman_bin=""
@@ -9101,25 +9104,9 @@ acfs_arch_install_vault() {
     if acfs_arch_pkg_install vault && binary_installed "vault"; then
         return 0
     fi
-    log_detail "Vault: pacman install unavailable; trying pinned binary / AUR fallbacks"
-
-    local pinned="" pin_url="" pin_sha256=""
-    if pinned="$(acfs_pinned_binary_info vault)"; then
-        pin_url="${pinned%% *}"
-        pin_sha256="${pinned##* }"
-        local tmp_dir=""
-        tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-vault.XXXXXX" 2>/dev/null)" || tmp_dir=""
-        if [[ -n "$tmp_dir" ]]; then
-            if acfs_download_file_and_verify_sha256 "$pin_url" "$tmp_dir/vault.zip" "$pin_sha256" "Vault (generic Linux)" &&
-               unzip -o -q "$tmp_dir/vault.zip" vault -d "$tmp_dir" && \
-               $SUDO install -m 0755 "$tmp_dir/vault" /usr/local/bin/vault; then
-                rm -rf "$tmp_dir"
-                return 0
-            fi
-            rm -rf "$tmp_dir"
-            log_warn "Vault: pinned binary install failed; falling back to AUR"
-        fi
-    fi
+    # checksums.yaml pins installer scripts only (no generic binaries), so the
+    # remaining fallback is the AUR vault-bin package when a helper is present.
+    log_detail "Vault: pacman install unavailable; trying the AUR fallback"
 
     local aur_helper=""
     if aur_helper="$(acfs_arch_aur_helper)"; then
@@ -9130,7 +9117,7 @@ acfs_arch_install_vault() {
         return 1
     fi
 
-    log_warn "Vault: no pinned binary in checksums.yaml and no AUR helper found (skipping)"
+    log_warn "Vault: not available from pacman and no AUR helper (yay/paru) found (skipping; install vault manually if needed)"
     return 1
 }
 
@@ -9469,52 +9456,6 @@ WRANGLER_SHIM
                                 fi
                             fi
                         fi
-                    else
-                        acfs_warn_bun_global_binary_missing "$cli" "${cli}@latest" "$bun_bin"
-                    fi
-                else
-                    log_warn "$cli installation failed (optional)"
-                fi
-            done
-        fi
-    fi
-}
-
-install_cloud_db_legacy() {
-    # Cloud CLIs (bun global installs)
-    if [[ "$SKIP_CLOUD" == "true" ]]; then
-        log_detail "Skipping cloud CLIs (--skip-cloud)"
-    else
-        local bun_bin="$TARGET_HOME/.bun/bin/bun"
-        if [[ ! -x "$bun_bin" ]]; then
-            log_warn "Cloud CLIs: bun not found at $bun_bin (skipping)"
-        else
-            local cli
-            for cli in wrangler supabase vercel; do
-                if [[ "$cli" == "supabase" ]]; then
-                    if [[ -x "$ACFS_BIN_DIR/supabase" ]] || [[ -x "$TARGET_HOME/.bun/bin/supabase" ]]; then
-                        log_detail "supabase already installed"
-                        continue
-                    fi
-
-                    log_detail "Installing supabase (direct binary)"
-                    if try_step "Installing supabase" install_supabase_cli_release; then
-                        log_success "supabase installed"
-                    else
-                        log_warn "supabase installation failed (optional)"
-                    fi
-                    continue
-                fi
-
-                if [[ -x "$TARGET_HOME/.bun/bin/$cli" ]]; then
-                    log_detail "$cli already installed"
-                    continue
-                fi
-
-                log_detail "Installing $cli via bun"
-                if try_step "Installing $cli via bun" run_as_target "$bun_bin" install -g --trust "${cli}@latest"; then
-                    if [[ -x "$TARGET_HOME/.bun/bin/$cli" ]]; then
-                        log_success "$cli installed"
                     else
                         acfs_warn_bun_global_binary_missing "$cli" "${cli}@latest" "$bun_bin"
                     fi
@@ -12143,10 +12084,6 @@ main() {
     disable_needrestart_apt_hook  # Prevent apt hangs on Ubuntu 22.04+ (issue #70)
     acfs_log_init   # Start capturing stderr to log file (uses ACFS_HOME/logs)
 
-    # Normal ACFS dependencies belong after the OS upgrade decision. The upgrade
-    # phase installs its own minimal requirements under its own lock.
-    ensure_base_deps
-
     # ============================================================
     # State Management and Resume Logic (mjt.5.8)
     # ============================================================
@@ -12188,6 +12125,13 @@ main() {
         # Fallback: use original confirm_or_exit
         confirm_or_exit
     fi
+
+    # Normal ACFS dependencies belong after the OS upgrade decision (the
+    # upgrade phase installs its own minimal requirements under its own lock)
+    # and after the user's go-ahead: on Arch the first package install is a
+    # full `pacman -Syu`, which must not upgrade the whole system before an
+    # interactive user has answered the confirmation prompt.
+    ensure_base_deps
 
     # From here on the user has confirmed a real install: the cleanup() EXIT
     # trap's best-effort skills/summary fallback is only allowed to engage
@@ -12307,17 +12251,10 @@ main() {
     ACFS_SKILLS_AND_SUMMARY_DONE=1
     print_summary
 
-    if acfs_install_run_has_failures; then
-        # Partial-failure exit semantics (#357/#373): when the only thing
-        # that went wrong is that SOME (not all) of the explicitly requested
-        # --only modules failed, exit 2 so callers can tell a partial result
-        # from a total failure.
-        if [[ "${ACFS_INSTALL_PARTIAL_FAILURE:-0}" == "1" ]] \
-            && [[ "${SMOKE_TEST_FAILED:-false}" != "true" ]] \
-            && [[ ${#ACFS_PHASE_FAILURES[@]} -le 1 ]]; then
-            exit 2
-        fi
-        exit 1
+    local terminal_exit_status=0
+    acfs_install_terminal_exit_status || terminal_exit_status=$?
+    if [[ "$terminal_exit_status" -ne 0 ]]; then
+        exit "$terminal_exit_status"
     fi
 }
 

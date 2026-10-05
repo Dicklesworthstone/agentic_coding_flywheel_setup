@@ -165,6 +165,33 @@ confirm_resume() { trace normal_install_ready; exit 0; }
                 self.assertLess(events.index('upgrade'), events.index(event), events)
         self.assertIn('normal_install_ready', events)
 
+    def test_declined_fresh_install_never_reaches_base_dependencies(self):
+        # On Arch, ensure_base_deps' first package install is a full
+        # `pacman -Syu`; an interactive user who declines must not get it.
+        for family in ('debian', 'arch'):
+            with self.subTest(family=family):
+                result, events, _ = self.run_main(
+                    overrides={'YES_MODE': 'false', 'ACFS_DISTRO_FAMILY': family},
+                    extra='confirm_resume() { trace fresh_install; return 1; }\n'
+                          'confirm_or_exit() { trace confirm_declined; exit 0; }')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('confirm_declined', events)
+                self.assertNotIn('mut:base', events)
+
+    def test_base_dependencies_follow_confirmation(self):
+        for resume_status, gate in (('1', 'confirm_accepted'), ('0', 'resume_accepted')):
+            with self.subTest(gate=gate):
+                result, events, _ = self.run_main(
+                    overrides={'YES_MODE': 'false', 'ACFS_DISTRO_FAMILY': 'arch'},
+                    extra=f'confirm_resume() {{ trace resume_prompt; '
+                          f'[[ {resume_status} == 0 ]] && trace resume_accepted; return {resume_status}; }}\n'
+                          'confirm_or_exit() { trace confirm_accepted; }\n'
+                          'state_init() { trace state_init; }\n'
+                          'ensure_base_deps() { trace mut:base; exit 0; }')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('mut:base', events)
+                self.assertLess(events.index(gate), events.index('mut:base'), events)
+
     def test_failed_upgrade_never_reaches_package_helpers(self):
         for code in ('1', '2', '17'):
             with self.subTest(code=code):

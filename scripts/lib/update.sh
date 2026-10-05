@@ -3449,6 +3449,7 @@ sync_acfs_deployed() {
         "scripts/lib/info.sh:scripts/lib/info.sh"
         "scripts/lib/status.sh:scripts/lib/status.sh"
         "scripts/lib/rescue.sh:scripts/lib/rescue.sh"
+        "scripts/lib/errors.sh:scripts/lib/errors.sh"
         "scripts/lib/changelog.sh:scripts/lib/changelog.sh"
         "scripts/lib/export-config.sh:scripts/lib/export-config.sh"
         "scripts/lib/continue.sh:scripts/lib/continue.sh"
@@ -5262,6 +5263,52 @@ update_prepare_target_installer_tmpdir() {
     printf '%s\n' "$tmpdir"
 }
 
+# Remove one per-run TMPDIR made by update_prepare_target_installer_tmpdir.
+# Only "<target home>/.cache/acfs/installer-tmp/<tool>.<mktemp suffix>"
+# qualifies; anything else is left in place. Removal runs as the target user.
+update_remove_target_installer_tmpdir() {
+    local tool="${1:-}"
+    local tmpdir="${2:-}"
+    local target_user=""
+    local target_home=""
+    local tmpdir_parent=""
+    local tmpdir_suffix=""
+    local rm_bin=""
+
+    case "$tool" in
+        ""|.|..|*[!A-Za-z0-9._+-]*)
+            echo "Invalid tool name for installer TMPDIR cleanup: $tool" >&2
+            return 1
+            ;;
+    esac
+
+    target_user="$(update_target_user 2>/dev/null || true)"
+    update_validate_target_user "$target_user" || return 1
+    target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
+    if [[ -z "$target_home" || "$target_home" != /* || "$target_home" == "/" ]]; then
+        echo "Unable to resolve TARGET_HOME for '$target_user'; leaving installer TMPDIR: $tmpdir" >&2
+        return 1
+    fi
+
+    tmpdir_parent="$target_home/.cache/acfs/installer-tmp"
+    tmpdir_suffix="${tmpdir#"$tmpdir_parent/$tool."}"
+    if [[ "$tmpdir" != "$tmpdir_parent/$tool."* || -z "$tmpdir_suffix" \
+        || "$tmpdir_suffix" == *[!A-Za-z0-9]* || -L "$tmpdir_parent" || -L "$tmpdir" ]]; then
+        echo "Leaving installer TMPDIR that does not match its template: $tmpdir" >&2
+        return 1
+    fi
+
+    rm_bin="$(update_system_binary_path rm 2>/dev/null || true)"
+    if [[ -z "$rm_bin" ]]; then
+        echo "Trusted rm not found; leaving installer TMPDIR: $tmpdir" >&2
+        return 1
+    fi
+    if ! update_run_in_target_context "" "$rm_bin" -rf --one-file-system -- "$tmpdir"; then
+        echo "Failed to remove installer TMPDIR: $tmpdir" >&2
+        return 1
+    fi
+}
+
 update_run_verified_installer_with_target_tmpdir() {
     if [[ $# -lt 1 ]]; then
         echo "update_run_verified_installer_with_target_tmpdir requires a tool name" >&2
@@ -5271,9 +5318,12 @@ update_run_verified_installer_with_target_tmpdir() {
     local tool="$1"
     shift
     local tmpdir=""
+    local run_status=0
 
     tmpdir="$(update_prepare_target_installer_tmpdir "$tool")" || return $?
-    update_run_verified_installer_with_env "$tool" "TMPDIR=$tmpdir" "$@"
+    update_run_verified_installer_with_env "$tool" "TMPDIR=$tmpdir" "$@" || run_status=$?
+    update_remove_target_installer_tmpdir "$tool" "$tmpdir" || true
+    return "$run_status"
 }
 
 update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() {

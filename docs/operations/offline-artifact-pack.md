@@ -103,7 +103,7 @@ The current manifest is JSON with these fixed identity and policy values:
   "packMode": "entrypoint-cache",
   "packScope": "verified_installer_entrypoints",
   "targets": [
-    {"os": "ubuntu", "version": "25.10", "architecture": "x86_64"}
+    {"os": "ubuntu", "version": "26.04", "architecture": "x86_64"}
   ],
   "failures": [],
   "policy": {
@@ -303,7 +303,7 @@ manifest entries, or files not represented in `manifest.json`.
   "targets": [
     {
       "os": "ubuntu",
-      "versions": ["25.10", "24.04"],
+      "versions": ["26.04", "24.04"],
       "arch": "x86_64",
       "libc": "glibc"
     }

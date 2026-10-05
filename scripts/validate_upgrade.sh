@@ -125,18 +125,22 @@ check_ubuntu_version() {
 check_upgrade_path() {
     print_section "2. Upgrade Path Calculation"
 
-    local target="${TARGET_UBUNTU_VERSION:-25.10}"
+    local target="${TARGET_UBUNTU_VERSION:-26.04}"
     print_info "Target version: $target"
+    if [[ ! "$target" =~ ^[0-9]{2}\.(04|10)$ ]]; then
+        print_fail "TARGET_UBUNTU_VERSION must look like 26.04 (got: $target)"
+        return
+    fi
 
     # Test path from 24.04
     echo ""
     echo -e "  ${GRAY}From 24.04 to $target:${NC}"
     local path_2404=""
     local current=2404
-    local target_num=2510
+    local target_num="${target/./}"
     while [[ $current -lt $target_num ]]; do
         local next
-        next=$(ubuntu_get_next_version_hardcoded "$current" || true)
+        next=$(ubuntu_get_next_version_hardcoded "$current" "$target_num" || true)
         if [[ -z "$next" ]]; then
             break
         fi
@@ -151,18 +155,22 @@ check_upgrade_path() {
     echo ""
     echo -e "  ${GRAY}From 22.04 to $target (LTS hop):${NC}"
     local next_from_2204
-    next_from_2204=$(ubuntu_get_next_version_hardcoded 2204)
-    print_ok "22.04 → $next_from_2204 (LTS hop)"
-
-    # Test path from 25.10 (no upgrade)
-    echo ""
-    echo -e "  ${GRAY}From 25.10 to $target:${NC}"
-    local next_from_2510
-    next_from_2510=$(ubuntu_get_next_version_hardcoded 2510 || true)
-    if [[ -z "$next_from_2510" ]]; then
-        print_ok "25.10 is already at target (no upgrade needed)"
+    next_from_2204=$(ubuntu_get_next_version_hardcoded 2204 "$target_num" || true)
+    if [[ -n "$next_from_2204" ]]; then
+        print_ok "22.04 → $next_from_2204 (LTS hop)"
     else
-        print_info "Next: $next_from_2510"
+        print_fail "No reviewed hop from 22.04 toward $target"
+    fi
+
+    # 25.10 is end-of-life: it is only a recovery source on the way to 26.04
+    echo ""
+    echo -e "  ${GRAY}From 25.10 (EOL recovery source) to $target:${NC}"
+    local next_from_2510
+    next_from_2510=$(ubuntu_get_next_version_hardcoded 2510 "$target_num" || true)
+    if [[ -n "$next_from_2510" ]]; then
+        print_ok "25.10 → $next_from_2510 (EOL recovery hop)"
+    else
+        print_info "No recovery hop from 25.10 toward $target (only 26.04 is a recovery destination)"
     fi
 }
 
@@ -324,12 +332,12 @@ print_summary() {
     echo -e "  ${GREEN}Validation complete.${NC}"
     echo ""
     echo -e "  ${GRAY}For authoritative real-host testing:${NC}"
-    echo -e "  ${GRAY}1. Fresh 25.10 factory install gate:${NC}"
-    echo -e "  ${GRAY}   tests/vm/test_factory_install_ubuntu.sh --ssh-target root@HOST${NC}"
-    echo -e "  ${GRAY}2. Separate slow upgrade gate:${NC}"
-    echo -e "  ${GRAY}   Provision fresh Ubuntu 24.04 VPS and run:${NC}"
-    echo -e "  ${GRAY}   tests/vm/test_factory_install_ubuntu.sh --ssh-target root@HOST --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot${NC}"
-    echo -e "  ${GRAY}3. Observe upgrade from 24.04 → 25.10 and post-reboot resume${NC}"
+    echo -e "  ${GRAY}1. Fresh Ubuntu 24.04 LTS factory install gate (release is preserved):${NC}"
+    echo -e "  ${GRAY}   tests/vm/test_factory_install_ubuntu.sh --ssh-target root@HOST --expect-ubuntu 24.04 --expect-final-ubuntu 24.04${NC}"
+    echo -e "  ${GRAY}2. Separate slow opt-in upgrade gate (the factory harness does not forward --target-ubuntu):${NC}"
+    echo -e "  ${GRAY}   On a disposable, reboot-capable Ubuntu 24.04 host, run as root:${NC}"
+    echo -e "  ${GRAY}   curl -fsSL <install.sh URL> | bash -s -- --yes --mode vibe --target-ubuntu=26.04${NC}"
+    echo -e "  ${GRAY}3. Observe upgrade from 24.04 → 26.04 and post-reboot resume${NC}"
     echo -e "  ${GRAY}4. Verify ACFS installation continues after upgrade and acfs doctor passes${NC}"
     echo ""
 }

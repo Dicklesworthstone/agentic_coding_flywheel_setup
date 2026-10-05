@@ -214,6 +214,28 @@ JSON
     pass "triage_metadata_enriches_ready_payload"
 }
 
+# bv writes "labels": null (and may write "blocked_by": null) for unlabeled
+# beads; that is real bv output, not invalid input.
+test_null_triage_arrays_are_accepted() {
+    local ready triage output
+    ready="$(ready_without_labels_fixture)"
+    triage="$(write_fixture triage_null_labels <<'JSON'
+{
+  "triage": {
+    "recommendations": [
+      {"id":"bd-0g01c","title":"Unlabeled bead","type":"task","priority":2,"labels":null,"blocked_by":null,"score":0.40,"unblocks":0}
+    ]
+  }
+}
+JSON
+)"
+    output="$(run_assign_json triage_null_labels --ready-file "$ready" --triage-file "$triage" --agents 1)"
+    [[ "$(cat "$ARTIFACT_DIR/triage_null_labels.exit")" == 0 ]] || return 1
+    jq -e '.assignments | length == 1' <<< "$output" >/dev/null || return 1
+
+    pass "null_triage_arrays_are_accepted"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -234,6 +256,7 @@ main() {
     run_test test_mixed_labels_match_roles
     run_test test_blocked_issues_excluded
     run_test test_triage_metadata_enriches_ready_payload
+    run_test test_null_triage_arrays_are_accepted
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

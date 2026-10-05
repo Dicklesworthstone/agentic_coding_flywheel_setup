@@ -1,10 +1,10 @@
-# checksums.yaml - Auto-generated 2026-09-28T19:15:17+00:00
+# checksums.yaml - Auto-generated 2026-10-04T21:15:31+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
   antigravity:
     url: "https://antigravity.google/cli/install.sh"
-    sha256: "ee1ea43ce4e9e56356c4ab6dad907ef357ae4bdfcaadb682735909fb57c9c640"
+    sha256: "62966c07365423bd4dc209355060744058fb30d60f5323e2d360e39de64e5042"
 
   apr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/automated_plan_reviser_pro/main/install.sh"
@@ -32,11 +32,11 @@ installers:
 
   bv:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh"
-    sha256: "669ef7ccfaa1b862da3afbb38102429a5cf635e5f5dca3550dd4b9b8e99bff69"
+    sha256: "03f521bde89e24f615905eaaf31ec0c9820823a90610e804401cd6d71f3f5df7"
 
   caam:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh"
-    sha256: "435450ab29f2d21aaf4d2b7e4962cc945f58c784a45635a7c4b8d3ac19a6c8b3"
+    sha256: "b15a445cbec6471bb15453fefaf48e8d1740eb60342ad0aa5ef789868ffaba0d"
 
   casr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
@@ -60,11 +60,11 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "9c26dd7fae887b2d8125a887892fc05f14a0decef951584e4275c7b51d997c11"
+    sha256: "4ca4193a7f5d1b4cf553e48dbdb67a7cf62caffa8107b7f6cbe31da4ece9a111"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
-    sha256: "aaf8cad08ff3f67b15871293be5718b1217080d1cc8ea2c7eea8d083b0147939"
+    sha256: "cd1de09094f36e47e0dfe568221465ba5eb1300aa4e2bfcff03b4e46143bae1b"
 
   ee:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
@@ -76,7 +76,7 @@ installers:
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"
-    sha256: "8bdb543b307af6b376f0d4b6bb672a66866b07ed2f60d71dee815e4371ac8817"
+    sha256: "b2a766dd083757648cc3bf6c5efc6a7ae48199130522a09f35cf3bfe33354ed4"
 
   gemini_patch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh"
@@ -140,7 +140,7 @@ installers:
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
-    sha256: "4132be06a9722dab24231e434cec07b977f359929af132b25fe6cd19ae3d5c1e"
+    sha256: "1fed5ea13dbc9718a4b04a645cb9e43c2ce941f4c4ac07754db599fd76cba432"
 
   rano:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh"
@@ -176,15 +176,15 @@ installers:
 
   tru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
-    sha256: "8cf88d66be8be01228dde13aae85a639156df66e477543571743a015f1253609"
+    sha256: "c8f4cb532af93f10763950f183de061668dee5308bbb4068ff00fd1ec6d7e841"
 
   ubs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh"
-    sha256: "f221a797df6055f7c9e52e69c1511a3310b2dd61d2a034bd1656fa760e914055"
+    sha256: "7e1a66edb879e5f7b3cb03234660c4bb44fd46d4ebf28dee95cd2fdcb046b2d1"
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "61b349611f1b6e1ba33645f30c36da5287df2609dd7af8605d96a031435eb35b"
+    sha256: "b8e6c43099ee9f9a550984d3ad56948457c689e7a99c090b35377234ac241491"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"

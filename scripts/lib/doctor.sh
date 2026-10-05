@@ -5843,28 +5843,15 @@ main() {
                 FIX_ARGS+=("--yes")
                 shift
                 ;;
-            --prompt)
-                FIX_ARGS+=("--prompt")
-                shift
-                ;;
-            --only)
-                if [[ -z "${2:-}" || "$2" == -* ]]; then
-                    echo "Error: --only requires a comma-separated category list" >&2
-                    return 2
-                fi
-                FIX_ARGS+=("--only" "$2")
-                shift 2
-                ;;
-            --only=*)
-                if [[ -z "${1#*=}" ]]; then
-                    echo "Error: --only requires a comma-separated category list" >&2
-                    return 2
-                fi
-                FIX_ARGS+=("--only" "${1#*=}")
-                shift
+            # run_doctor_fix does not implement per-fix prompting or category
+            # scoping yet. Accepting these flags made `--fix --yes --only X`
+            # apply every fix, so refuse them until they do what they say.
+            --prompt|--only|--only=*)
+                echo "Error: acfs doctor ${1%%=*} is not supported yet; use --fix --dry-run to preview every fix first" >&2
+                return 2
                 ;;
             --help|-h)
-                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes] [--only <categories>]"
+                echo "Usage: acfs doctor [--json] [--format <fmt>] [--stats] [--deep] [--no-cache] [--fix] [--dry-run] [--yes]"
                 echo ""
                 echo "Options:"
                 echo "  --json           Output results as JSON"
@@ -5876,8 +5863,6 @@ main() {
                 echo "  --fix       Automatically apply safe fixes for failed checks"
                 echo "  --dry-run   Preview fixes without applying (use with --fix)"
                 echo "  --yes, -y   Also apply fixes for warning-level checks (use with --fix)"
-                echo "  --prompt    Ask before each fix (use with --fix)"
-                echo "  --only <c>  Only fix the listed categories, comma-separated (use with --fix)"
                 echo "  --quiet, -q Exit code only (0=healthy, 1=issues); suppresses all output"
                 echo ""
                 echo "By default, doctor runs quick existence checks only."

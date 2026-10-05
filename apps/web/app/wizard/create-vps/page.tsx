@@ -36,6 +36,7 @@ import {
 import { cn, withCurrentSearch } from "@/lib/utils";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
+  ACFS_RECOMMENDED_UBUNTU,
   describePlan,
   VPS_PROVIDERS,
   VPS_TOP_PICK,
@@ -85,7 +86,7 @@ function ScreenshotFigure({ file, alt, caption }: ScreenshotSpec) {
 }
 
 const CHECKLIST_ITEMS = [
-  { id: "ubuntu", label: "Selected Ubuntu (22.04 or newer; 25.10 preferred)" },
+  { id: "ubuntu", label: `Selected Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS` },
   { id: "region", label: "Picked a region close to me" },
   { id: "password", label: "Set a root password (or received one via email)" },
   { id: "created", label: "Created the VPS and waited for it to start" },
@@ -160,7 +161,7 @@ const PROVIDER_GUIDES = [
     steps: [
       `Go to contabo.com/en-us/vps and select ${describePlan(CONTABO.recommended)} or ${describePlan(CONTABO.budget)} (USD approximate; Contabo lists EUR)`,
       'Click "Configure" and select your preferred region (US recommended for best latency)',
-      'Under "Image", select Ubuntu 25.10 (or newest available; 24.04 LTS is fine too)',
+      `Under "Image", select Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS`,
       "Leave add-ons at their free/default values unless you specifically want them: no private networking, no object storage, unmanaged server, monitoring none",
       'In "Login & password for your server", keep Username as root, enter a strong root password, and save it - you\'ll need it once',
       "Complete checkout (servers activate within minutes, occasionally up to 1 hour)",
@@ -178,7 +179,7 @@ const PROVIDER_GUIDES = [
     name: "OVH",
     steps: [
       `Click "Order" on ${describePlan(OVH.recommended)} - the largest VPS OVH sells, below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target; use Contabo if you want 48-64GB`,
-      'Under "Image", select Ubuntu 25.10 (or latest available)',
+      `Under "Image", select Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS`,
       "Pick the data center/region closest to you (US-East, US-West, or EU)",
       'Choose "Password" authentication (skip SSH key section for now)',
       "Set a strong root password and save it somewhere safe",
@@ -644,11 +645,13 @@ export default function CreateVPSPage() {
                   You&apos;ll see a list of &quot;images&quot; or &quot;operating systems&quot;.
                   <br />
                   <br />
-                  <strong>Look for:</strong> Ubuntu 25.10 (or newest available)
+                  <strong>Look for:</strong> Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS
                   <br />
                   <em className="text-xs">
-                    If only Ubuntu 24.04 LTS is offered, that&apos;s fine. The installer
-                    automatically upgrades to 25.10 before ACFS installs.
+                    If your provider or region only offers Ubuntu 24.04 or 22.04 LTS,
+                    complete a supported LTS upgrade to {ACFS_RECOMMENDED_UBUNTU} first rather
+                    than relying on ACFS&apos;s automatic upgrade path. Avoid non-LTS images
+                    such as 25.10, which no longer get security updates.
                   </em>
                 </GuideStep>
 

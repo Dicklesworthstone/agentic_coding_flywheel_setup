@@ -8,7 +8,9 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ---
 
-## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.9.0...HEAD)
+## [Unreleased](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.10.0...HEAD)
+
+## [v0.10.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/compare/v0.9.0...v0.10.0) -- 2026-10-02
 
 - Ordinary installs preserve supported Ubuntu 22.04/24.04 LTS releases. An OS
   release upgrade requires an explicit `--target-ubuntu=26.04` (or another
@@ -22,6 +24,28 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 - Real CLI, orchestration, and root-only checkpoint regressions cover the new
   default, explicit upgrade ordering, skip precedence, and preserved evidence.
   README recipes distinguish LTS retention from opt-in upgrade qualification.
+- Qualification limits are tracked in [#426](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/426).
+  The complete web suite reports 803 passes and 48 failures: 43 stop at an
+  incomplete test import allowlist, and five are fixture or expectation
+  mismatches. Affected behavior remains unqualified by those tests. The manifest
+  suite reports 959 passes, four failures, and five skips under a normal user
+  with umask 0022;
+  the remaining failures concern non-default plugin publication/schema fixtures
+  and two process timeout assertions. These suites are not fully green.
+  Existing resume harnesses also need updated checkpoint schemas and helper
+  extraction. External installer checksum changes remain subject to explicit
+  authorization; this release does not authorize new upstream bytes.
+- A real Ubuntu 24.04 factory qualification retained 24.04 and passed all eight
+  critical smoke checks, but the full installer exited 1 because the UV and DCG
+  checksum guards refused changed upstream installers. The guest-local published
+  checker passed `validate`, `list`, and `check --dry-run --local`. Repeat-install,
+  zero-warning doctor, and subsequent service assertions were not reached;
+  opt-in Ubuntu 26.04 upgrade remains unqualified. See
+  [#427](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/427).
+  The exact v0.9.0 and current stock checksum guards both reject today's same
+  upstream bytes and current pinned checksums. This component comparison does
+  not establish full-factory parity: the v0.9.0 factory run disconnected during
+  its guest kernel reboot before reaching those installers.
 
 ## [v0.9.0](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/tag/v0.9.0) -- 2026-09-04
 

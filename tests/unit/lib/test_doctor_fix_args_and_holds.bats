@@ -48,22 +48,22 @@ load_doctor_functions() {
     assert_output --partial "unknown option '--yess'"
 }
 
-@test "doctor --only requires a value" {
-    run bash "$DOCTOR_SH" --fix --only
-    assert_failure 2
-    assert_output --partial "--only requires"
-
-    run bash "$DOCTOR_SH" --fix --only=
-    assert_failure 2
-    assert_output --partial "--only requires"
+@test "doctor refuses --only and --prompt until run_doctor_fix implements them" {
+    # Accepting them made `--fix --yes --only path` apply every fix.
+    for args in "--only path" "--only=path" "--prompt"; do
+        # shellcheck disable=SC2086
+        run bash "$DOCTOR_SH" --fix --dry-run $args
+        assert_failure 2
+        assert_output --partial "is not supported yet"
+    done
 }
 
-@test "doctor --help documents --yes, --prompt and --only" {
+@test "doctor --help documents --yes but not unimplemented scoping flags" {
     run bash "$DOCTOR_SH" --help
     assert_success
     assert_output --partial "--yes, -y"
-    assert_output --partial "--prompt"
-    assert_output --partial "--only <c>"
+    refute_output --partial "--prompt"
+    refute_output --partial "--only <c>"
     assert_output --partial "acfs doctor --fix --yes"
 }
 

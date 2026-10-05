@@ -326,6 +326,27 @@ describe("validatePluginPackage", () => {
     expect(formatPluginDiagnostics(result)).not.toContain(PACKAGE_CHECKSUM);
   });
 
+  test("rejects a malformed actual archive hash without echoing it", () => {
+    const malformedHash = "z".repeat(64);
+    const result = validatePluginPackage(
+      validPlugin(),
+      validationOptions({ packageSha256: malformedHash }),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "plugin_package_hash_mismatch",
+        context: {
+          packageSha256Prefix: "<invalid>",
+          expectedPackageSha256Prefix: PACKAGE_CHECKSUM.slice(0, 12),
+        },
+      }),
+    );
+    expect(formatPluginDiagnostics(result)).not.toContain(malformedHash);
+    expect(result.manifestModules).toHaveLength(0);
+  });
+
   test("detects duplicate plugin module IDs", () => {
     const plugin = validPlugin();
     const modules = plugin.modules as Record<string, unknown>[];
@@ -555,6 +576,37 @@ describe("validatePluginPackage", () => {
     };
 
     expect(diagnosticCodes(plugin)).toContain("plugin_capability_undeclared");
+  });
+
+  test("rejects verification commands when doctor_check is declared but disallowed", () => {
+    const plugin = validPlugin();
+    plugin.capabilities = {
+      allowed: ["verified_installer"],
+      reviewRequired: ["root_run_as", "cross_plugin_dependency", "default_enabled_module"],
+      disallowed: ["arbitrary_shell", "secret_values", "doctor_check"],
+    };
+
+    const codes = diagnosticCodes(plugin);
+    expect(codes).toContain("plugin_disallowed_behavior");
+    expect(codes).not.toContain("plugin_capability_undeclared");
+  });
+
+  test("rejects web metadata when web_metadata is declared but disallowed", () => {
+    const plugin = validPlugin();
+    plugin.capabilities = {
+      allowed: ["verified_installer", "doctor_check"],
+      reviewRequired: ["root_run_as", "cross_plugin_dependency", "default_enabled_module"],
+      disallowed: ["arbitrary_shell", "secret_values", "web_metadata"],
+    };
+    const modules = plugin.modules as Record<string, unknown>[];
+    modules[0] = {
+      ...modules[0],
+      web: { display_name: "Example CLI" },
+    };
+
+    const codes = diagnosticCodes(plugin);
+    expect(codes).toContain("plugin_disallowed_behavior");
+    expect(codes).not.toContain("plugin_capability_undeclared");
   });
 
   test("rejects dependency on missing modules", () => {

@@ -70,12 +70,18 @@ head -n "$((total_lines - 1))" "$INSTALL_SH" > "$SOURCEABLE"
 bash -n "$SOURCEABLE" || { echo "FATAL: sourceable copy of install.sh fails bash -n"; exit 2; }
 
 # BASH_SOURCE[0]-relative resolution (SCRIPT_DIR, ACFS_LIB_DIR, etc.) needs
-# scripts/, acfs/, checksums.yaml, acfs.manifest.yaml next to the sourceable
-# copy — real symlinks to the real files, not copies.
+# scripts/ and acfs/ next to the sourceable copy (symlinks to the real dirs).
 ln -sfn "$REPO_ROOT/scripts" "$TMPROOT/scripts"
 ln -sfn "$REPO_ROOT/acfs" "$TMPROOT/acfs"
-ln -sfn "$REPO_ROOT/checksums.yaml" "$TMPROOT/checksums.yaml"
-ln -sfn "$REPO_ROOT/acfs.manifest.yaml" "$TMPROOT/acfs.manifest.yaml"
+# detect_environment verifies the internal checksum ledger, which requires
+# these top-level files as regular, non-symlink files with ledger-matching
+# bytes. Byte-identical copies satisfy it. install.sh is the real, unmodified
+# installer (what the ledger hashes); the code under test is still sourced
+# from $SOURCEABLE, which differs only by the trailing `main "$@"`.
+mkdir -p "$TMPROOT/packages/onboard"
+for ledger_file in install.sh VERSION checksums.yaml acfs.manifest.yaml packages/onboard/onboard.sh; do
+    cp -p "$REPO_ROOT/$ledger_file" "$TMPROOT/$ledger_file"
+done
 
 # ============================================================
 # Test 1: module failure does not stop later modules or the summary
@@ -89,8 +95,14 @@ run_test_1() {
     MODE="vibe"
     HAS_GUM=false
     YES_MODE=true
+    # Sourcing install.sh removes every pre-existing shell function (its
+    # BASH_ENV-injection scrub), including this harness's own helpers and the
+    # later run_test_N functions main() still has to call. Snapshot and restore.
+    local harness_functions=""
+    harness_functions="$(declare -f assert run_test_2 run_test_3)"
     # shellcheck disable=SC1090
     source "$SOURCEABLE"
+    eval "$harness_functions"
 
     detect_environment
     source_generated_installers
@@ -342,6 +354,48 @@ run_test_3() {
     local finalize_body=""
     finalize_body="$(declare -f finalize)"
     assert "D9. finalize does not emit an overall success claim before terminal status is known" "$([[ "$finalize_body" != *'Installation complete!'* && "$finalize_body" == *'Finalization complete'* ]] && echo true || echo false)"
+
+    # Phases 6, 8 and 9 aggregate across several generated categories too: an
+    # early category failure must not skip the later ones, and must still fail
+    # the phase.
+    local failing_category=""
+    acfs_run_generated_category_phase() {
+        generated_categories+="${generated_categories:+ }$1"
+        [[ "$1" != "$failing_category" ]]
+    }
+    acfs_stack_phase_selection_verdict() { :; }
+    local phase_rc=0
+    generated_categories=""; failing_category="lang"; phase_rc=0
+    install_languages || phase_rc=$?
+    assert "D10. generated lang failure fails phase 6 but still runs its tools category" "$([[ $phase_rc -ne 0 && "$generated_categories" == "lang tools" ]] && echo true || echo false)"
+    generated_categories=""; failing_category="db"; phase_rc=0
+    install_cloud_db || phase_rc=$?
+    assert "D11. generated db failure fails phase 8 but still runs tools and cloud" "$([[ $phase_rc -ne 0 && "$generated_categories" == "db tools cloud" ]] && echo true || echo false)"
+    generated_categories=""; failing_category="tools"; phase_rc=0
+    install_stack_phase || phase_rc=$?
+    assert "D12. generated tools failure fails phase 9 but still runs the stack category" "$([[ $phase_rc -ne 0 && "$generated_categories" == "tools stack" ]] && echo true || echo false)"
+
+    # Terminal exit status: a generated module failure yields 1; only a
+    # partial --only result yields 2; a clean run yields 0.
+    local exit_status=0
+    ACFS_PHASE_FAILURES=("8/9 Stack")
+    ACFS_MODULE_FAILURES=("stack.ntm (installer)")
+    SMOKE_TEST_FAILED=false
+    ACFS_INSTALL_PARTIAL_FAILURE=0
+    exit_status=0; acfs_install_terminal_exit_status || exit_status=$?
+    assert "D13. a generated module failure makes the installer exit 1" "$([[ $exit_status -eq 1 ]] && echo true || echo false)"
+    ACFS_INSTALL_PARTIAL_FAILURE=1
+    exit_status=0; acfs_install_terminal_exit_status || exit_status=$?
+    assert "D14. a partial --only failure exits 2" "$([[ $exit_status -eq 2 ]] && echo true || echo false)"
+    SMOKE_TEST_FAILED=true
+    exit_status=0; acfs_install_terminal_exit_status || exit_status=$?
+    assert "D15. a smoke-test failure overrides the partial exit and exits 1" "$([[ $exit_status -eq 1 ]] && echo true || echo false)"
+    ACFS_PHASE_FAILURES=()
+    ACFS_MODULE_FAILURES=()
+    SMOKE_TEST_FAILED=false
+    ACFS_INSTALL_PARTIAL_FAILURE=0
+    exit_status=0; acfs_install_terminal_exit_status || exit_status=$?
+    assert "D16. a clean run exits 0" "$([[ $exit_status -eq 0 ]] && echo true || echo false)"
 
     ONLY_MODULES=()
     ONLY_PHASES=()

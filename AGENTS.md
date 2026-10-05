@@ -74,7 +74,7 @@ success** — one line, revert, next lever, no retraction narrative.
 The installer and scripting layer uses **Bash** (POSIX-compatible where possible).
 
 - **Linting:** `shellcheck` for all `.sh` files
-- **Target OS:** Ubuntu 25.10 (installer auto-upgrades from 22.04+)
+- **Target OS:** Ubuntu LTS (22.04/24.04 kept as-is; 26.04 recommended for fresh images; upgrades are opt-in via `--target-ubuntu=26.04`)
 - **Idempotent:** Installer is safe to re-run; phases resume on failure
 - **One-liner:** `curl -fsSL ... | bash -s -- --yes --mode vibe`
 
@@ -335,10 +335,10 @@ scripts/generated/          # ALL files in this directory
 
 ### Installer Architecture
 
-- **Auto-Upgrade:** Older Ubuntu versions are automatically upgraded to 25.10 before ACFS install
-  - Upgrade path: 22.04 -> 24.04 -> 25.04 -> 25.10 (EOL interim releases like 24.10 may be skipped)
+- **Opt-in Ubuntu Upgrade:** Ordinary installs keep supported 22.04/24.04 LTS hosts on their release; `--target-ubuntu=26.04` requests an upgrade (the wizard's generated command passes it)
+  - Upgrade path: 22.04 -> 24.04 -> 26.04; EOL 25.10 is accepted only as a recovery source on the way to 26.04
   - Takes 30-60 minutes per version hop; multiple reboots handled via systemd resume service
-  - Skip with `--skip-ubuntu-upgrade` flag
+  - `--skip-ubuntu-upgrade` suppresses an explicit request in either argument order
 - **One-liner:** `curl -fsSL ... | bash -s -- --yes --mode vibe`
 - **Idempotent:** Safe to re-run
 - **Checkpointed:** Phases resume on failure
@@ -364,7 +364,7 @@ Rules:
 
 These are installed on target VPS (not development machine).
 
-> **OS Requirement:** Ubuntu 25.10 (installer auto-upgrades from 22.04+)
+> **OS Requirement:** Ubuntu 22.04+ LTS (26.04 recommended for fresh images) or Arch-family
 
 **Shell & Terminal UX:**
 - **zsh** + **oh-my-zsh** + **powerlevel10k**

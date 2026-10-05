@@ -67,19 +67,25 @@ write_files:
       reboot_required=/run/reboot-required
 
       # State and logs are root-owned. Do not follow links or open a shared path
-      # when a retry finds pre-existing files. Only root-owned sticky ancestors
-      # (for example /tmp in tests) may be writable; final directories may not.
+      # when a retry finds pre-existing files. Writable ancestors must be sticky
+      # (for example /tmp in tests) or writable only by a system group (Ubuntu's
+      # /var/log is root:syslog 0775); final directories may not be writable.
       safe_directory() {
           local path="$1" parent="$1" owner bits
           [[ "$path" == /* && "$path" != *'/../'* && "$path" != */.. ]] || return 1
           while [[ -n "$parent" && "$parent" != / ]]; do
               if [[ -e "$parent" || -L "$parent" ]]; then
                   [[ -d "$parent" && ! -L "$parent" ]] || return 1
-                  read -r owner bits < <(stat -c '%u %a' -- "$parent") || return 1
+                  read -r owner group bits < <(stat -c '%u %g %a' -- "$parent") || return 1
                   [[ "$owner" == 0 || "$owner" == "$EUID" ]] || return 1
-                  [[ "$bits" =~ ^[0-7]{3,4}$ ]] || return 1
+                  [[ "$group" =~ ^[0-9]+$ && "$bits" =~ ^[0-7]{3,4}$ ]] || return 1
+                  # Ancestors may also be group-writable by a system group
+                  # without world write: Ubuntu's /var/log is root:syslog 0775.
                   if (( (8#$bits & 8#022) != 0 )); then
-                      [[ "$parent" != "$path" ]] && (( (8#$bits & 8#1000) != 0 )) || return 1
+                      [[ "$parent" != "$path" ]] || return 1
+                      if (( (8#$bits & 8#1000) == 0 )); then
+                          (( (8#$bits & 8#002) == 0 && group < 1000 )) || return 1
+                      fi
                   fi
               fi
               parent="${parent%/*}"

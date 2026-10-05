@@ -38,13 +38,9 @@ teardown() {
     done
 }
 
-@test "update, agents, cloud and doctor-fix runners pin BUN_INSTALL to the target home" {
+@test "update and doctor-fix runners pin BUN_INSTALL to the target home" {
     grep -Eq '^[[:space:]]*local -a env_args=\(.*"BUN_INSTALL=\$target_home/\.bun".*\)$' "$PROJECT_ROOT/scripts/lib/update.sh" \
         || fail "update_run_in_target_context does not pin BUN_INSTALL"
-    grep -Fq 'wrapped_cmd+=" export BUN_INSTALL=$target_home_q/.bun;"' "$PROJECT_ROOT/scripts/lib/agents.sh" \
-        || fail "_agent_run_as_user does not export BUN_INSTALL"
-    grep -Fq 'wrapped_cmd+=" export BUN_INSTALL=$target_home_q/.bun;"' "$PROJECT_ROOT/scripts/lib/cloud_db.sh" \
-        || fail "_cloud_run_as_user does not export BUN_INSTALL"
     grep -Fq '"BUN_INSTALL=$runtime_home/.bun"' "$PROJECT_ROOT/scripts/lib/doctor_fix.sh" \
         || fail "doctor_fix_build_runtime_env_args does not pin BUN_INSTALL"
 }

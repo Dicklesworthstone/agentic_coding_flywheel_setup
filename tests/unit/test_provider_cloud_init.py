@@ -423,6 +423,19 @@ class CloudInitTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertFalse((self.work / "curl.jsonl").exists())
 
+    @unittest.skipUnless(os.geteuid() == 0, "system-group ancestors need root to chgrp")
+    def test_system_group_writable_ancestor_is_accepted(self):
+        # Ubuntu ships /var/log as root:syslog 0775; the log and state
+        # directories below such an ancestor must still be usable, while a
+        # non-system group stays refused.
+        os.chown(self.work, 0, 4)
+        self.work.chmod(0o775)
+        result, log = self.run_driver()
+        self.assertEqual(result.returncode, 0, result.stderr + log)
+        os.chown(self.work, 0, 65534)
+        result, _ = self.run_driver()
+        self.assertEqual(result.returncode, 2)
+
     def test_symlinked_state_directory_is_refused(self):
         target = self.work / "elsewhere"
         target.mkdir()

@@ -454,6 +454,122 @@ test_live_package_owner_fails_closed_without_mutation() {
     test_pass "live_package_owner_fails_closed_without_mutation"
 }
 
+# Unlike the test above, this runs the REAL wait loop against an owner that
+# never exits: when the timeout expires, nothing may kill the owner or unlink
+# a lock file, whether it does so via a builtin, a function or a resolved binary.
+test_wait_timeout_never_kills_owner_or_unlinks_locks() {
+    local test_dir="/tmp/test_autofix_unattended_wait_timeout_$$"
+    local state_dir="$test_dir/state"
+    local destructive_marker="$test_dir/destructive"
+    local mutation_sentinel="$test_dir/mutated"
+    local marker_shim="$test_dir/marker-shim"
+    mkdir -p "$test_dir"
+    setup_autofix_state_dir "$state_dir"
+    printf '#!/bin/bash\nprintf "%%s %%s\\n" "$0" "$*" >> %q\n' "$destructive_marker" > "$marker_shim"
+    chmod +x "$marker_shim"
+
+    local fix_rc=0
+    (
+        sudo() { "$@"; }
+        kill() { printf 'kill %s\n' "$*" >> "$destructive_marker"; }
+        pkill() { printf 'pkill %s\n' "$*" >> "$destructive_marker"; }
+        killall() { printf 'killall %s\n' "$*" >> "$destructive_marker"; }
+        rm() {
+            case "$*" in
+                */var/lib/dpkg/*|*/var/lib/apt/*|*/var/cache/apt/*) printf 'rm %s\n' "$*" >> "$destructive_marker"; return 0 ;;
+            esac
+            command rm "$@"
+        }
+        _autofix_unattended_binary_path() {
+            case "${1:-}" in
+                sleep) printf '/bin/true\n' ;;
+                kill|pkill|killall|rm|unlink) printf '%s\n' "$marker_shim" ;;
+                *) autofix_system_binary_path "${1:-}" ;;
+            esac
+        }
+        autofix_unattended_upgrades_check() {
+            jq -n '{status: "processes_running", details: "test fixture", held_locks: [], apt_pids: "123"}'
+        }
+        _autofix_package_owner_running() { return 0; }
+        _autofix_stop_unattended_service() { return 0; }
+        autofix_unattended_upgrades_restore() { return 0; }
+        _autofix_reconfigure_dpkg() { : > "$mutation_sentinel"; }
+        _autofix_update_apt() { : > "$mutation_sentinel"; }
+
+        autofix_unattended_upgrades_fix "fix"
+    ) >/dev/null 2>&1 || fix_rc=$?
+
+    if [[ $fix_rc -eq 0 ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "wait_timeout_never_kills_owner_or_unlinks_locks" "repair succeeded although the owner never exited"
+        return
+    fi
+    if [[ -s "$destructive_marker" || -e "$mutation_sentinel" ]]; then
+        local evidence=""
+        evidence="$(cat "$destructive_marker" 2>/dev/null || true)"
+        cleanup_test_dir "$test_dir"
+        test_fail "wait_timeout_never_kills_owner_or_unlinks_locks" "destructive action after wait timeout: ${evidence:-package mutation}"
+        return
+    fi
+
+    # Static backstop for the same invariant over the whole library.
+    if grep -nE '(^|[^_[:alnum:]])(pkill|killall)([^_[:alnum:]]|$)|kill +-(9|KILL|s +KILL)' "$SCRIPT_DIR/autofix_unattended.sh" >/dev/null \
+        || grep -nE '((^|[^[:alnum:]_])rm[[:space:]]|rm_bin")[^#]*(APT_LOCK_FILES|\$lock)' "$SCRIPT_DIR/autofix_unattended.sh" >/dev/null; then
+        cleanup_test_dir "$test_dir"
+        test_fail "wait_timeout_never_kills_owner_or_unlinks_locks" "autofix_unattended.sh contains a kill or lock-unlink path"
+        return
+    fi
+
+    cleanup_test_dir "$test_dir"
+    test_pass "wait_timeout_never_kills_owner_or_unlinks_locks"
+}
+
+# install.sh's non-interactive pre-flight must only warn about a live package
+# owner; it must never route into the destructive repair.
+test_installer_preflight_warns_without_repair() {
+    local test_dir="/tmp/test_autofix_unattended_preflight_$$"
+    local repair_marker="$test_dir/repair"
+    local output=""
+    mkdir -p "$test_dir"
+
+    output="$(
+        eval "$(sed -n '/^run_autofix_checks() {$/,/^}$/p' "$SCRIPT_DIR/../../install.sh")"
+        declare -F run_autofix_checks >/dev/null || { echo "MISSING run_autofix_checks"; exit 0; }
+        ACFS_AUTOFIX_LOADED=1
+        AUTO_FIX_MODE="yes"
+        YES_MODE=true
+        ONLY_MODULES=()
+        ONLY_PHASES=()
+        log_info() { :; }
+        log_debug() { :; }
+        log_warn() { printf 'WARN %s\n' "$*"; }
+        autofix_existing_acfs_needs_handling() { return 1; }
+        autofix_unattended_upgrades_needs_fix() { return 0; }
+        autofix_unattended_upgrades_fix() { : > "$repair_marker"; }
+        handle_autofix() { : > "$repair_marker"; }
+        run_autofix_checks
+    )"
+
+    if [[ "$output" == *"MISSING run_autofix_checks"* ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "installer_preflight_warns_without_repair" "could not extract run_autofix_checks from install.sh"
+        return
+    fi
+    if [[ -e "$repair_marker" ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "installer_preflight_warns_without_repair" "pre-flight invoked the unattended-upgrades repair"
+        return
+    fi
+    if [[ "$output" != *"WARN [PRE-FLIGHT] apt/dpkg activity detected"* ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "installer_preflight_warns_without_repair" "pre-flight did not warn about the live package owner: $output"
+        return
+    fi
+
+    cleanup_test_dir "$test_dir"
+    test_pass "installer_preflight_warns_without_repair"
+}
+
 test_service_stop_failure_blocks_package_mutation() {
     local mutation_sentinel="/tmp/test_autofix_unattended_stop_failure_$$"
 
@@ -692,6 +808,8 @@ main() {
     test_restore_fails_closed_on_unresolved_session_marker
     test_stop_service_rolls_back_when_record_change_fails
     test_live_package_owner_fails_closed_without_mutation
+    test_wait_timeout_never_kills_owner_or_unlinks_locks
+    test_installer_preflight_warns_without_repair
     test_service_stop_failure_blocks_package_mutation
     test_package_owner_detection_includes_aptitude_and_lock_holders
     test_package_owner_detection_fails_closed_without_probes

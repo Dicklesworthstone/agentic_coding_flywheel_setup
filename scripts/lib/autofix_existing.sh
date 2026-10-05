@@ -256,13 +256,15 @@ autofix_existing_cleanup_created_local_bin_dirs() {
     fi
 }
 
+# Usage: autofix_existing_restore_from_backup BACKUP_JSON [TARGET_PATH] [BACKUP_ROOT]
 autofix_existing_restore_from_backup() {
     local backup_json="$1"
     local target_path="${2:-}"
+    local backup_root="${3:-}"
     local restore_command=""
     local restored_path=""
 
-    restore_command="$(autofix_backup_restore_command "$backup_json" 2>/dev/null || true)"
+    restore_command="$(autofix_backup_restore_command "$backup_json" "$backup_root" 2>/dev/null || true)"
     if [[ -z "$restore_command" ]]; then
         log_error "[RESTORE] Missing restore command${target_path:+ for $target_path}"
         return 1
@@ -1606,9 +1608,11 @@ autofix_existing_restore_installation_backup() {
     backup_manifest="$backup_dir/manifest.json"
     [[ -f "$backup_manifest" ]] || return 1
 
+    # Installation backups live in this clean reinstall's own backup directory,
+    # not in the autofix journal's ACFS_BACKUPS_DIR, so that is their trust root.
     while IFS= read -r backup_item; do
         [[ -n "$backup_item" ]] || continue
-        if ! autofix_existing_restore_from_backup "$backup_item"; then
+        if ! autofix_existing_restore_from_backup "$backup_item" "" "$backup_dir"; then
             log_error "[CLEAN] Failed to restore backed-up artifact during clean reinstall recovery"
             restore_failed=1
         fi

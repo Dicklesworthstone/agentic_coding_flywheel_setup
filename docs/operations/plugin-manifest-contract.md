@@ -80,7 +80,7 @@ fixtures without YAML parser drift.
   "targets": [
     {
       "os": "ubuntu",
-      "versions": ["25.10"],
+      "versions": ["26.04"],
       "arch": ["x86_64", "aarch64"],
       "libc": ["glibc"]
     }

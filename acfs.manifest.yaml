@@ -906,8 +906,10 @@ modules:
       args: ["latest"]
     install:
       - |
+        # The native installer's `claude install` publishes the launcher at
+        # ~/.local/bin/claude (-> ~/.local/share/claude/versions/<ver>); prefer it.
         claude_candidate=""
-        for candidate in "$HOME/.claude/bin/claude" "$HOME/.claude/local/bin/claude" "$HOME/.bun/bin/claude"; do
+        for candidate in "$HOME/.local/bin/claude" "$HOME/.claude/bin/claude" "$HOME/.claude/local/bin/claude" "$HOME/.bun/bin/claude"; do
           if [[ -x "$candidate" ]]; then
             claude_candidate="$candidate"
             break
@@ -920,7 +922,11 @@ modules:
           echo "Claude Code: installed but no runnable claude binary found" >&2
           exit 1
         fi
-        acfs_link_primary_bin_command "$claude_candidate" "claude"
+        # Already in the configured bin dir: linking it there would make
+        # `ln -sf` replace the launcher with a symlink to itself.
+        if [[ ! "${claude_candidate%/*}" -ef "${ACFS_BIN_DIR:-$HOME/.local/bin}" ]]; then
+          acfs_link_primary_bin_command "$claude_candidate" "claude"
+        fi
     verify:
       - |
         target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"

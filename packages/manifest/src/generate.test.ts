@@ -9,7 +9,17 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1277,7 +1287,7 @@ describe("Generated script headers", () => {
     expect(countMatch).not.toBeNull();
     expect(rawEntries.length).toBe(checksums.size);
     expect(Number(countMatch?.[1])).toBe(checksums.size);
-    expect(checksums.size).toBe(117);
+    expect(checksums.size).toBe(116);
 
     const mandatoryPaths = [
       "install.sh",
@@ -1287,7 +1297,6 @@ describe("Generated script headers", () => {
       "scripts/lib/holds.sh",
       "scripts/lib/github_api.sh",
       "scripts/lib/contract.sh",
-      "scripts/lib/agents.sh",
       "scripts/lib/update.sh",
       "scripts/lib/doctor.sh",
       "scripts/lib/acfs-services.sh",
@@ -1998,5 +2007,200 @@ describe("Web generation with current manifest (no web metadata)", () => {
     const entries = toolsContent.match(/moduleId: "/g);
     const entryCount = entries ? entries.length : 0;
     expect(entryCount).toBe(webVisibleCount);
+  });
+});
+
+describe("agents.claude post-install link step", () => {
+  function claudeLinkStep(): string {
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+    const step = parseResult.data.modules.find((module) => module.id === "agents.claude")
+      ?.install[0];
+    if (typeof step !== "string") throw new Error("agents.claude install step missing");
+    return step;
+  }
+
+  // Lay out what `claude install` (the native installer) publishes:
+  // ~/.local/bin/claude -> ~/.local/share/claude/versions/<ver>.
+  function nativeLayoutHome(): string {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
+    const versions = resolve(home, ".local/share/claude/versions");
+    mkdirSync(versions, { recursive: true });
+    mkdirSync(resolve(home, ".local/bin"), { recursive: true });
+    writeFileSync(resolve(versions, "9.9.9"), "#!/bin/sh\necho claude\n");
+    chmodSync(resolve(versions, "9.9.9"), 0o755);
+    symlinkSync(resolve(versions, "9.9.9"), resolve(home, ".local/bin/claude"));
+    return home;
+  }
+
+  function runStep(home: string, binDir?: string): { status: number | null; links: string } {
+    const linkLog = resolve(home, "link.log");
+    const script = [
+      `acfs_link_primary_bin_command() { printf '%s %s\\n' "$1" "$2" >> ${JSON.stringify(linkLog)}; }`,
+      claudeLinkStep(),
+    ].join("\n");
+    const result = spawnSync("bash", ["-euo", "pipefail", "-c", script], {
+      encoding: "utf8",
+      env: { PATH: "/usr/bin:/bin", HOME: home, ...(binDir ? { ACFS_BIN_DIR: binDir } : {}) },
+    });
+    return {
+      status: result.status,
+      links: existsSync(linkLog) ? readFileSync(linkLog, "utf8") : "",
+    };
+  }
+
+  test("accepts the native installer layout without relinking", () => {
+    const home = nativeLayoutHome();
+    expect(runStep(home)).toEqual({ status: 0, links: "" });
+  });
+
+  test("links a custom ACFS bin dir to the native launcher", () => {
+    const home = nativeLayoutHome();
+    const binDir = resolve(home, "acfs-bin");
+    mkdirSync(binDir);
+    expect(runStep(home, binDir)).toEqual({
+      status: 0,
+      links: `${resolve(home, ".local/bin/claude")} claude\n`,
+    });
+  });
+
+  test("repoints a stale custom-bin link from the old layout to the native launcher", () => {
+    const home = nativeLayoutHome();
+    const legacy = resolve(home, ".claude/local/bin");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(resolve(legacy, "claude"), "#!/bin/sh\necho old\n");
+    chmodSync(resolve(legacy, "claude"), 0o755);
+    const binDir = resolve(home, "acfs-bin");
+    mkdirSync(binDir);
+    symlinkSync(resolve(legacy, "claude"), resolve(binDir, "claude"));
+    expect(runStep(home, binDir)).toEqual({
+      status: 0,
+      links: `${resolve(home, ".local/bin/claude")} claude\n`,
+    });
+  });
+
+  test("links the legacy layout into the default bin dir when no native launcher exists", () => {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
+    const legacy = resolve(home, ".claude/local/bin");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(resolve(legacy, "claude"), "#!/bin/sh\necho old\n");
+    chmodSync(resolve(legacy, "claude"), 0o755);
+    expect(runStep(home)).toEqual({ status: 0, links: `${resolve(legacy, "claude")} claude\n` });
+  });
+
+  test("still fails when no runnable claude exists anywhere", () => {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-claude-link-"));
+    expect(runStep(home).status).not.toBe(0);
+  });
+});
+
+describe("stack.cass per-run installer TMPDIR cleanup", () => {
+  // Runs the real generated module function with its collaborators stubbed,
+  // so mkdir/mktemp/rm act on a throwaway TARGET_HOME.
+  const harness = [
+    "set -uo pipefail",
+    'gen="$1"',
+    `eval "$(sed -n '/^acfs_generated_system_binary_path()/,/^}$/p' "$gen")"`,
+    `eval "$(sed -n '/^acfs_generated_install_stack_cass()/,/^}$/p' "$gen")"`,
+    "acfs_require_contract() { return 0; }",
+    "acfs_generated_ensure_selection() { return 0; }",
+    "should_run_module() { return 0; }",
+    "log_step() { :; }",
+    "log_info() { :; }",
+    "log_success() { :; }",
+    "run_as_target_shell() { cat >/dev/null; }",
+    "log_error() { printf 'ERROR %s\\n' \"$*\" >&2; }",
+    "log_warn() { printf 'WARN %s\\n' \"$*\" >&2; }",
+    'run_as_target() { "$@"; }',
+    'acfs_security_init() { [[ "$SCENARIO" != "setup" ]]; }',
+    "declare -A KNOWN_INSTALLERS=([cass]='https://example.invalid/cass.sh')",
+    "get_checksum() { printf '%064d\\n' 0; }",
+    'verify_checksum() { [[ "$SCENARIO" != "checksum" ]] || return 1; printf "#!/bin/bash\\n"; }',
+    'acfs_security_mktemp() { mktemp "$TARGET_HOME/staged.XXXXXX"; }',
+    '_acfs_remove_temp_files() { rm -f -- "$@"; }',
+    "run_as_target_runner() {",
+    '  local tmp="${2#TMPDIR=}"',
+    '  printf "%s\\n" "$tmp" > "$TARGET_HOME/seen-tmpdir"',
+    '  [[ -d "$tmp" ]] && : > "$tmp/build-artifact"',
+    '  [[ "$SCENARIO" != "runner" ]] || return 7',
+    "}",
+    'if [[ "$SCENARIO" == "escape" ]]; then',
+    "  run_as_target() {",
+    '    if [[ "$1" == */mktemp ]]; then mkdir -p "$TARGET_HOME/victim"; printf "%s\\n" "$TARGET_HOME/victim"; return 0; fi',
+    '    "$@"',
+    "  }",
+    "fi",
+    'if [[ "$SCENARIO" == "rm-missing" ]]; then',
+    "  eval \"real_$(declare -f acfs_generated_system_binary_path)\"",
+    '  acfs_generated_system_binary_path() { [[ "$1" != "rm" ]] || return 1; real_acfs_generated_system_binary_path "$@"; }',
+    "fi",
+    "status=0",
+    "acfs_generated_install_stack_cass || status=$?",
+    'printf "status=%s reason=%s\\n" "$status" "${ACFS_LAST_MODULE_FAILURE_REASON:-}"',
+  ].join("\n");
+
+  function runCass(scenario: string) {
+    const home = mkdtempSync(resolve(tmpdir(), "acfs-cass-tmpdir-"));
+    const parent = resolve(home, ".cache/acfs/installer-tmp");
+    const sibling = resolve(parent, "cass.KEEP01");
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(resolve(sibling, "other-run"), "x");
+    const result = spawnSync("bash", ["-c", harness, "_", resolve(GENERATED_DIR, "install_stack.sh")], {
+      encoding: "utf8",
+      env: { PATH: "/usr/bin:/bin", HOME: home, TARGET_HOME: home, SCENARIO: scenario },
+    });
+    const seenFile = resolve(home, "seen-tmpdir");
+    const seen = existsSync(seenFile) ? readFileSync(seenFile, "utf8").trim() : "";
+    return { home, parent, sibling, seen, stdout: result.stdout, stderr: result.stderr };
+  }
+
+  function expectOnlyThisRunRemoved(run: ReturnType<typeof runCass>) {
+    expect(run.seen.startsWith(`${run.parent}/cass.`)).toBe(true);
+    expect(existsSync(run.seen)).toBe(false);
+    expect(existsSync(run.parent)).toBe(true);
+    expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
+  }
+
+  test("removes the run's TMPDIR after a successful install and keeps success", () => {
+    const run = runCass("success");
+    expect(run.stdout).toContain("status=0 reason=");
+    expectOnlyThisRunRemoved(run);
+  });
+
+  test("removes the run's TMPDIR after a checksum failure and keeps the reason", () => {
+    const run = runCass("checksum");
+    expect(run.stdout).toMatch(/status=[1-9]\d* reason=checksum/);
+    // The runner never ran, so record the directory from the mktemp result.
+    expect(run.seen).toBe("");
+    expect(readdirSync(run.parent).sort()).toEqual(["cass.KEEP01"]);
+    expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
+  });
+
+  test("removes the run's TMPDIR after an installer failure and keeps the reason", () => {
+    const run = runCass("runner");
+    expect(run.stdout).toMatch(/status=[1-9]\d* reason=installer execution/);
+    expectOnlyThisRunRemoved(run);
+  });
+
+  test("removes the run's TMPDIR after a setup failure and keeps the reason", () => {
+    const run = runCass("setup");
+    expect(run.stdout).toMatch(/status=[1-9]\d* reason=environment setup/);
+    expect(readdirSync(run.parent).sort()).toEqual(["cass.KEEP01"]);
+  });
+
+  test("never deletes a directory mktemp did not hand back inside the template", () => {
+    const run = runCass("escape");
+    expect(run.stdout).toMatch(/status=[1-9]\d* reason=environment setup/);
+    expect(existsSync(resolve(run.home, "victim"))).toBe(true);
+    expect(existsSync(resolve(run.sibling, "other-run"))).toBe(true);
+  });
+
+  test("a cleanup problem warns without changing the install result", () => {
+    const run = runCass("rm-missing");
+    expect(run.stdout).toContain("status=0 reason=");
+    expect(run.stderr).toContain("trusted rm not found; leaving installer TMPDIR");
+    expect(existsSync(resolve(run.seen, "build-artifact"))).toBe(true);
   });
 });

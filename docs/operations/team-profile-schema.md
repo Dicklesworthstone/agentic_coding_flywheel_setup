@@ -56,7 +56,7 @@ but the profile JSON remains the trust boundary and must validate by itself.
   "compatibility": {
     "minAcfsVersion": "0.7.0",
     "schemaVersions": [1],
-    "targetUbuntuVersions": ["25.10"],
+    "targetUbuntuVersions": ["26.04"],
     "architectures": ["x86_64", "aarch64"],
     "installerRefPolicy": "prefer_pinned_ref",
     "checksumsRefPolicy": "current_acfs_default"
@@ -65,7 +65,7 @@ but the profile JSON remains the trust boundary and must validate by itself.
     "provider": "contabo",
     "region": "us-east",
     "planClass": "standard-vps",
-    "operatingSystem": "ubuntu-25.10",
+    "operatingSystem": "ubuntu-26.04",
     "architecture": "x86_64",
     "sshUser": "ubuntu",
     "sshPort": 22

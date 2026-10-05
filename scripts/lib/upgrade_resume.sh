@@ -78,19 +78,25 @@ fi
 umask 077
 
 # Validate the entire root-owned path before creating logs or sourcing saved
-# executable context. A sticky ancestor such as /tmp is allowed for fixtures,
-# never as the controlled directory itself. No environment path override exists.
+# executable context. The controlled directory itself may never be group- or
+# world-writable. An ancestor may be sticky (such as /tmp, for fixtures) or
+# group-writable by a system group without world write: stock Ubuntu ships
+# /var/log as root:syslog 0775, and refusing it stranded every resume after
+# the release-upgrade reboot. No environment path override exists.
 resume_recovery_directory_safe() {
-    local path="${1:-}" parent owner mode
+    local path="${1:-}" parent owner group mode
     [[ "$path" == /* && "$path" != / && "$path" != */ && "$path" != *//* ]] || return 1
     [[ "$path" != *'/./'* && "$path" != */. && "$path" != *'/../'* && "$path" != */.. ]] || return 1
     parent="$path"
     while [[ -n "$parent" && "$parent" != / ]]; do
         [[ -d "$parent" && ! -L "$parent" ]] || return 1
-        read -r owner mode < <(/usr/bin/stat -c '%u %a' -- "$parent") || return 1
-        [[ "$owner" == 0 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+        read -r owner group mode < <(/usr/bin/stat -c '%u %g %a' -- "$parent") || return 1
+        [[ "$owner" == 0 && "$group" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
         if (( (8#$mode & 8#022) != 0 )); then
-            (( (8#$mode & 8#1000) != 0 )) && [[ "$parent" != "$path" ]] || return 1
+            [[ "$parent" != "$path" ]] || return 1
+            if (( (8#$mode & 8#1000) == 0 )); then
+                (( (8#$mode & 8#002) == 0 && group < 1000 )) || return 1
+            fi
         fi
         parent="${parent%/*}"
     done

@@ -566,6 +566,32 @@ test_factory_maps_canonical_packet_before_building_url() {
     pass "factory_maps_canonical_packet_before_building_url"
 }
 
+test_factory_final_ubuntu_defaults_to_packet_release() {
+    local packet lts_packet out_dir status
+    packet="$(distinct_factory_packet_fixture "$(valid_packet_fixture)")"
+    lts_packet="$ARTIFACT_DIR/factory-packet-2604.json"
+    jq '.osImage.version = "26.04"' "$packet" > "$lts_packet"
+    out_dir="$ARTIFACT_DIR/factory-final-default"
+    mkdir -p "$out_dir"
+
+    # An ordinary install keeps the host release, so without
+    # --expect-final-ubuntu the final expectation follows the packet's OS.
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59997 \
+        --provisioning-packet "$lts_packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .target.expectedInitialUbuntu == "26.04" and
+      .target.expectedFinalUbuntu == "26.04"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    pass "factory_final_ubuntu_defaults_to_packet_release"
+}
+
 test_factory_rejects_explicit_packet_conflicts_before_ssh() {
     local packet distinct_packet out_dir status
     packet="$(valid_packet_fixture)"
@@ -660,6 +686,7 @@ run_all_tests() {
         test_factory_sentinel_rejects_unreachable_ssh_with_ssh_category
         test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens
         test_factory_maps_canonical_packet_before_building_url
+        test_factory_final_ubuntu_defaults_to_packet_release
         test_factory_rejects_explicit_packet_conflicts_before_ssh
         test_factory_rejects_packet_install_url_override
     )

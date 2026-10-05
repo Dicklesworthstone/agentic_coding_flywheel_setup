@@ -1742,6 +1742,11 @@ acfs undo --all       # Undo all changes from the most recent fix session
 acfs undo --everything  # Undo every recorded change across all sessions
 ```
 
+Undo restores the whole-file backup taken just before the fix ran. Any edits you
+made to that file after the fix are reverted too, so copy them aside before undoing a
+fix to a file you have since changed. Tool installs performed by `--fix` record no
+automatic rollback; remove an unwanted tool manually.
+
 ---
 
 ## The Wizard Website
@@ -2746,7 +2751,7 @@ schedule: "30 7 * * *" # daily
 jobs:
   canary:
     - Run tests/vm/test_install_ubuntu.sh (vibe mode)
-    - Defaults to Ubuntu 25.10; --all covers 24.04, 25.04, and 25.10
+    - Defaults to Ubuntu 24.04; --all covers the supported LTS releases 22.04, 24.04, and 26.04
     - Uses ACFS_CHECKSUMS_REF=main for freshest hashes
 ```
 
@@ -2960,10 +2965,9 @@ agentic_coding_flywheel_setup/
 │   │   ├── security.sh           # HTTPS + checksum verification
 │   │   ├── os_detect.sh          # OS detection
 │   │   ├── user.sh               # User management
-│   │   ├── zsh.sh                # Shell setup
 │   │   ├── update.sh             # Update command logic
 │   │   ├── gum_ui.sh             # Enhanced UI
-│   │   ├── cli_tools.sh          # Tool installation
+│   │   ├── stack.sh              # Flywheel stack helpers
 │   │   └── doctor.sh             # Health checks
 │   ├── generated/                # Auto-generated from manifest
 │   │   ├── install_<category>.sh # 13 source-only category libraries
@@ -3125,7 +3129,7 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 # Full Docker integration test on supported Ubuntu 24.04 LTS
 ./tests/vm/test_install_ubuntu.sh --ubuntu 24.04
 
-# Historical Docker integration matrix (includes interim-release images)
+# Docker integration matrix across the supported LTS releases (22.04, 24.04, 26.04)
 ./tests/vm/test_install_ubuntu.sh --all
 
 # Real factory-host integration test preserving Ubuntu 24.04 LTS

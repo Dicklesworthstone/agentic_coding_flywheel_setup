@@ -119,14 +119,10 @@ EOF
     run bash -c '
         grep "apt-get" \
             scripts/lib/autofix_unattended.sh \
-            scripts/lib/cli_tools.sh \
-            scripts/lib/cloud_db.sh \
             scripts/lib/doctor_fix.sh \
             scripts/lib/gum_ui.sh \
-            scripts/lib/languages.sh \
             scripts/lib/tailscale.sh \
-            scripts/lib/ubuntu_upgrade.sh \
-            scripts/lib/zsh.sh | \
+            scripts/lib/ubuntu_upgrade.sh | \
             grep -v "^[^:]*:[[:space:]]*#" | \
             grep -v "log_" | \
             grep -v "doctor_fix_log" | \

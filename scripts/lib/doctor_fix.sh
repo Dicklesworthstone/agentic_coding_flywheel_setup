@@ -73,6 +73,27 @@ doctor_fix_is_valid_username() {
     [[ "$username" =~ ^[a-z_][a-z0-9._-]*$ ]]
 }
 
+# Arch-family hosts repair packages with pacman, not apt. doctor.sh owns the
+# detection (installer verdict, then /etc/os-release); when this file is sourced
+# on its own, only the installer's exported verdict is consulted.
+doctor_fix_is_arch_family() {
+    if declare -F _acfs_doctor_is_arch_family >/dev/null 2>&1; then
+        _acfs_doctor_is_arch_family
+        return
+    fi
+    [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]
+}
+
+# Display form of the SSH server install command for dry-run and manual hints.
+doctor_fix_ssh_server_install_display() {
+    local root_display="$1"
+    if doctor_fix_is_arch_family; then
+        printf '%spacman -S --needed --noconfirm openssh' "$root_display"
+    else
+        printf '%sapt-get -o DPkg::Lock::Timeout=120 install -y openssh-server' "$root_display"
+    fi
+}
+
 doctor_fix_system_binary_path() {
     local name="${1:-}"
     local candidate=""
@@ -1099,6 +1120,50 @@ doctor_fix_prepare_target_installer_tmpdir() {
     return 1
 }
 
+# Remove one per-run TMPDIR made by doctor_fix_prepare_target_installer_tmpdir.
+# Only "<runtime home>/.cache/acfs/installer-tmp/<tool>.<mktemp suffix>"
+# qualifies; anything else is left in place. Removal runs in the runtime
+# (target-user) context.
+doctor_fix_remove_target_installer_tmpdir() {
+    local tool="${1:-}"
+    local tmpdir="${2:-}"
+    local runtime_home=""
+    local tmpdir_parent=""
+    local tmpdir_suffix=""
+    local rm_bin=""
+
+    case "$tool" in
+        ""|.|..|*[!A-Za-z0-9._+-]*)
+            doctor_fix_log WARN "Invalid tool name for installer TMPDIR cleanup: $tool"
+            return 1
+            ;;
+    esac
+
+    runtime_home="$(doctor_fix_runtime_home 2>/dev/null || true)"
+    if [[ -z "$runtime_home" || "$runtime_home" != /* || "$runtime_home" == "/" ]]; then
+        doctor_fix_log WARN "Cannot clean installer TMPDIR without a valid runtime home: $tmpdir"
+        return 1
+    fi
+
+    tmpdir_parent="$runtime_home/.cache/acfs/installer-tmp"
+    tmpdir_suffix="${tmpdir#"$tmpdir_parent/$tool."}"
+    if [[ "$tmpdir" != "$tmpdir_parent/$tool."* || -z "$tmpdir_suffix" \
+        || "$tmpdir_suffix" == *[!A-Za-z0-9]* || -L "$tmpdir_parent" || -L "$tmpdir" ]]; then
+        doctor_fix_log WARN "Leaving installer TMPDIR that does not match its template: $tmpdir"
+        return 1
+    fi
+
+    rm_bin="$(doctor_fix_system_binary_path rm 2>/dev/null || true)"
+    if [[ -z "$rm_bin" ]]; then
+        doctor_fix_log WARN "Trusted rm not found; leaving installer TMPDIR: $tmpdir"
+        return 1
+    fi
+    if ! doctor_fix_run_in_runtime_context "" "$rm_bin" -rf --one-file-system -- "$tmpdir"; then
+        doctor_fix_log WARN "Failed to remove installer TMPDIR: $tmpdir"
+        return 1
+    fi
+}
+
 # ============================================================
 # Fixer: PATH Ordering (fix.path.ordering)
 # ============================================================
@@ -2073,18 +2138,23 @@ fix_verified_install_with_target_tmpdir() {
     local tool="$3"
     shift 3
     local installer_tmpdir=""
+    local fix_status=0
 
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
         installer_tmpdir="$(doctor_fix_runtime_home)/.cache/acfs/installer-tmp/${tool}.XXXXXX"
-    else
-        installer_tmpdir="$(doctor_fix_prepare_target_installer_tmpdir "$tool")" || {
-            doctor_fix_log ERROR "Failed to prepare installer TMPDIR for $binary_name"
-            FIX_FAILED=$((FIX_FAILED + 1))
-            return 1
-        }
+        fix_verified_install_with_env "$check_id" "$binary_name" "$tool" "TMPDIR=$installer_tmpdir" "$@"
+        return $?
     fi
 
-    fix_verified_install_with_env "$check_id" "$binary_name" "$tool" "TMPDIR=$installer_tmpdir" "$@"
+    installer_tmpdir="$(doctor_fix_prepare_target_installer_tmpdir "$tool")" || {
+        doctor_fix_log ERROR "Failed to prepare installer TMPDIR for $binary_name"
+        FIX_FAILED=$((FIX_FAILED + 1))
+        return 1
+    }
+
+    fix_verified_install_with_env "$check_id" "$binary_name" "$tool" "TMPDIR=$installer_tmpdir" "$@" || fix_status=$?
+    doctor_fix_remove_target_installer_tmpdir "$tool" "$installer_tmpdir" || true
+    return "$fix_status"
 }
 
 fix_verified_install() {
@@ -2153,6 +2223,7 @@ fix_ssh_server() {
     local root_display=""
     local sshd_bin=""
     local systemctl_bin=""
+    local sshd_config="${DOCTOR_FIX_SSHD_CONFIG:-/etc/ssh/sshd_config}"
     local -a root_cmd=()
 
     root_display="$(doctor_fix_root_display_prefix)"
@@ -2160,7 +2231,7 @@ fix_ssh_server() {
     systemctl_bin="$(doctor_fix_system_binary_path systemctl 2>/dev/null || true)"
 
     # Guard: Check if already installed
-    if [[ -n "$sshd_bin" ]] || [[ -f /etc/ssh/sshd_config ]]; then
+    if [[ -n "$sshd_bin" ]] || [[ -f "$sshd_config" ]]; then
         # Check if running
         if [[ -n "$systemctl_bin" && -d /run/systemd/system ]]; then
             if "$systemctl_bin" is-active --quiet ssh 2>/dev/null || "$systemctl_bin" is-active --quiet sshd 2>/dev/null; then
@@ -2207,15 +2278,26 @@ fix_ssh_server() {
 
     # Not installed - install it
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-        FIXES_DRY_RUN+=("fix.ssh.server|Install openssh-server|/etc/ssh/sshd_config|${root_display}apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server")
+        FIXES_DRY_RUN+=("fix.ssh.server|Install openssh-server|/etc/ssh/sshd_config|$(doctor_fix_ssh_server_install_display "$root_display")")
         doctor_fix_log DRY "Install openssh-server"
         return 0
     fi
 
-    apt_get_bin="$(doctor_fix_system_binary_path apt-get 2>/dev/null || true)"
+    local package_manager_bin=""
+    local ssh_package="openssh-server"
+    local -a install_argv=()
     env_bin="$(doctor_fix_system_binary_path env 2>/dev/null || true)"
-    if [[ -z "$apt_get_bin" ]]; then
-        doctor_fix_log ERROR "apt-get not found; cannot install openssh-server"
+    if doctor_fix_is_arch_family; then
+        ssh_package="openssh"
+        package_manager_bin="$(doctor_fix_system_binary_path pacman 2>/dev/null || true)"
+        install_argv=("$package_manager_bin" -S --needed --noconfirm "$ssh_package")
+    else
+        apt_get_bin="$(doctor_fix_system_binary_path apt-get 2>/dev/null || true)"
+        package_manager_bin="$apt_get_bin"
+        install_argv=("$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y "$ssh_package")
+    fi
+    if [[ -z "$package_manager_bin" ]]; then
+        doctor_fix_log ERROR "No supported package manager (apt-get/pacman) found; cannot install the SSH server"
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -2230,14 +2312,14 @@ fix_ssh_server() {
         return 1
     fi
     if ! doctor_fix_root_prefix root_cmd; then
-        doctor_fix_log ERROR "Cannot install openssh-server without root or passwordless sudo"
+        doctor_fix_log ERROR "Cannot install $ssh_package without root or passwordless sudo"
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
 
-    if "${root_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y openssh-server 2>/dev/null; then
+    if "${root_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "${install_argv[@]}" 2>/dev/null; then
         if ! ("${root_cmd[@]}" "$systemctl_bin" enable --now ssh 2>/dev/null || "${root_cmd[@]}" "$systemctl_bin" enable --now sshd 2>/dev/null); then
-            doctor_fix_log ERROR "Installed openssh-server but failed to enable/start SSH service"
+            doctor_fix_log ERROR "Installed $ssh_package but failed to enable/start SSH service"
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
@@ -2245,20 +2327,20 @@ fix_ssh_server() {
         if ! doctor_fix_record_change_or_rollback \
             "" \
             false \
-            "install" "Installed and enabled openssh-server" \
-            "# Manual rollback required: remove openssh-server if undesired" \
+            "install" "Installed and enabled $ssh_package" \
+            "# Manual rollback required: remove $ssh_package if undesired" \
             true "info" "[\"/etc/ssh/sshd_config\"]" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
 
-        doctor_fix_log INFO "Installed and enabled openssh-server"
-        FIXES_APPLIED+=("fix.ssh.server|Installed and enabled openssh-server")
+        doctor_fix_log INFO "Installed and enabled $ssh_package"
+        FIXES_APPLIED+=("fix.ssh.server|Installed and enabled $ssh_package")
         FIX_APPLIED=$((FIX_APPLIED + 1))
         return 0
     fi
 
-    doctor_fix_log ERROR "Failed to install openssh-server"
+    doctor_fix_log ERROR "Failed to install $ssh_package"
     FIX_FAILED=$((FIX_FAILED + 1))
     return 1
 }
@@ -2485,7 +2567,7 @@ fix_ssh_keepalive() {
     # Guard: sshd_config must exist
     if [[ ! -f "$sshd_config" ]]; then
         doctor_fix_log WARN "sshd_config not found, install openssh-server first"
-        FIXES_MANUAL+=("$check_id|Install openssh-server first|${root_display}apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server")
+        FIXES_MANUAL+=("$check_id|Install openssh-server first|$(doctor_fix_ssh_server_install_display "$root_display")")
         FIX_MANUAL=$((FIX_MANUAL + 1))
         return 1
     fi

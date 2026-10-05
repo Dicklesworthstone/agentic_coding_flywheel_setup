@@ -736,7 +736,7 @@ swarm_packet_main() {
 # Delivery is an explicitly separate execution path. Ordinary generation stays read-only.
 swarm_packet_deliver() {
     command -v python3 >/dev/null 2>&1 || { echo 'Error: python3 is required for packet delivery' >&2; return 2; }
-    python3 - "${BASH_SOURCE[0]}" "$@" <<'PY_ACFS_PACKET_DELIVERY'
+    python3 -I - "${BASH_SOURCE[0]}" "$@" <<'PY_ACFS_PACKET_DELIVERY'
 """Opt-in packet delivery through NTM's durable robot-send protocol."""
 import argparse
 import hashlib
