@@ -6,6 +6,9 @@ setup() {
     common_setup
     
     unset TARGET_USER TARGET_HOME ACFS_BIN_DIR ACFS_STATE_FILE ACFS_HOME
+    # A developer shell's nvm/XDG locations would otherwise point the nvm
+    # probes at the real ~/.nvm instead of the per-test HOME.
+    unset NVM_DIR XDG_CONFIG_HOME
 
     # update.sh logic relies on being sourced or executed
     # We source it.
@@ -8992,7 +8995,8 @@ EOF
     [[ "$config_merge_helper" == *'acfs_early_system_binary_path mktemp'* ]]
     [[ "$config_merge_helper" == *'run_as_target "$mktemp_bin" "${write_path}.tmp.XXXXXX"'* ]]
     [[ "$config_merge_helper" == *'run_as_target "$mv_bin" -f -- "$temp_path" "$write_path"'* ]]
-    [[ "$config_merge_helper" != *'.tmp.$$'* ]]
+    # Code, not the comment that names the anti-pattern, must avoid .tmp.$$.
+    [[ "$(grep -v '^[[:space:]]*#' <<< "$config_merge_helper")" != *'.tmp.$$'* ]]
     run grep -F 'readlink -f "$claude_settings_file" 2>/dev/null || printf' "$installer"
     assert_failure
     run grep -F 'tmp_settings="${claude_settings_write_path}.tmp.$$"' "$installer"
@@ -11872,12 +11876,14 @@ EOF_DCG_CONFIG_TRUSTED_HELPERS
     assert_success
     assert_output --partial "TEST_ENV=ok\\;touch\\ /tmp/acfs-pwned"
     refute_output --partial "TEST_ENV=ok;touch /tmp/acfs-pwned"
-    assert_output --partial "set -o pipefail; source /tmp/acfs\\ stack\\'s\\ dir/security.sh"
-    assert_output --partial "bash -s -- --flag"
+    assert_output --partial "source /tmp/acfs\\ stack\\'s\\ dir/security.sh; "
+    # The verified bytes are staged and run from a file (ea1489f5), never piped.
+    assert_output --partial "fetch_and_run_with_runner bash https://example.test/install.sh abc123 test_tool --flag"
+    refute_output --partial "| bash"
 
     run _stack_run_verified_installer_with_env "test_tool" $'FIRST_ENV=one\nSECOND_ENV=two words' "--flag"
     assert_success
-    assert_output --partial "FIRST_ENV=one SECOND_ENV=two\\ words bash -s -- --flag"
+    assert_output --partial "FIRST_ENV=one SECOND_ENV=two\\ words fetch_and_run_with_runner bash"
 }
 
 @test "stack verified installer command fails when checksum verifier fails" {
@@ -11938,7 +11944,8 @@ SECURITY
     run grep -F 'ExecStartPre=${am_bin_exec} migrate' "$stack_lib"
     assert_failure
 
-    run grep -F -- '--takeover' "$stack_lib"
+    # Only the comment explaining the ban may name --takeover; code must not use it.
+    run bash -c 'grep -v "^[[:space:]]*#" "$1" | grep -F -- "--takeover"' _ "$stack_lib"
     assert_failure
 }
 
@@ -14388,7 +14395,10 @@ EOF
     run grep -F '{ exec {ACFS_LOG_ORIGINAL_STDERR_FD}>&-; } 2>/dev/null || true' "$PROJECT_ROOT/scripts/lib/logging.sh"
     assert_success
 
-    run grep -F '{ exec {lock_fd}>&-; } 2>/dev/null || true' "$PROJECT_ROOT/packages/onboard/onboard.sh"
+    run grep -F '{ exec {fd}>&-; } 2>/dev/null || true' "$PROJECT_ROOT/packages/onboard/onboard.sh"
+    assert_success
+
+    run grep -F '{ exec {lock_handle}>&-; } 2>/dev/null || true' "$PROJECT_ROOT/packages/onboard/onboard.sh"
     assert_success
 }
 

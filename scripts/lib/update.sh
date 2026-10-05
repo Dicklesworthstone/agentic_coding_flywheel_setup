@@ -8488,7 +8488,7 @@ update_procwatch_loop() {
         fi
     done
 
-    if (( have_fifo )); then exec 8>&- 2>/dev/null || true; fi
+    if (( have_fifo )); then { exec 8>&-; } 2>/dev/null || true; fi
     return 0
 }
 
@@ -8541,7 +8541,7 @@ update_procwatch_start() {
     # it never runs the stop handler against itself.
     (
         trap - EXIT
-        exec 9>&- 2>/dev/null || true
+        { exec 9>&-; } 2>/dev/null || true
         update_procwatch_loop "$procroot" "$dumpdir" "$interval" \
             "$comm_threshold" "$total_threshold" "$max_dumps" "$tick_fifo"
     ) &
