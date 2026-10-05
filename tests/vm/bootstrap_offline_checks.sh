@@ -58,6 +58,8 @@ create_archive() {
   cp -R "$REPO_ROOT/packages/onboard" "$stage_dir/acfs-offline/packages/onboard"
 
   cp -R "$REPO_ROOT/acfs" "$stage_dir/acfs-offline/acfs"
+  # Bootstrap extracts and requires */install.sh alongside the runtime (fe0d314b).
+  cp "$REPO_ROOT/install.sh" "$stage_dir/acfs-offline/install.sh"
   cp "$REPO_ROOT/checksums.yaml" "$stage_dir/acfs-offline/checksums.yaml"
   cp "$REPO_ROOT/acfs.manifest.yaml" "$stage_dir/acfs-offline/acfs.manifest.yaml"
   cp "$REPO_ROOT/VERSION" "$stage_dir/acfs-offline/VERSION"
