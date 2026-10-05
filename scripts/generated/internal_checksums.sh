@@ -10,18 +10,19 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="fe52579315d4cfd9f705bc5c0cc0adbdcc14087d54ccb733b1f2d3bebb712e3d"
+  [install.sh]="e2e9eb7ba8b0190e17f09e274f805364dd1ea1b3c42a74afb47fde290cd11dff"
   [checksums.yaml]="caefd9bb675305a4e22ee60f2537d700df3b703f4dd36d2c202c73af2e29012e"
   [scripts/preflight.sh]="460660782979764c74653faf46fb6b928ac50516fbe298ba85f7db218707c60a"
   [scripts/lib/security.sh]="94df4b2189ea9225ec9c95cf742a7be43b8926b09559f88fdf8eed84c9ba43dd"
   [scripts/lib/holds.sh]="7aca60222e56ce4034739b92ed3332c7118d918526d60ce189f59c595a930015"
   [scripts/lib/github_api.sh]="80699922df2e924694f5682457e614dedf9181d7c071472cc8a6db4f17373d3d"
   [scripts/lib/contract.sh]="22c148f44ddbaccd559196196ef903f26f65fc77e3b1b6b4efc62b77d3b97aa3"
-  [scripts/lib/update.sh]="446908e3e04ec37ba65b9b70b6580fd8c423b1a79188cecbaf7fa6e3a4c5b990"
+  [scripts/lib/update.sh]="5448c914a5fdcb014ec509ba2055540e171586d9b4f78017bb59827721f0838a"
   [scripts/lib/doctor.sh]="4640b3231e01b961a4f1aa37884bc7ade3092e890ce03aee0cf5d46dd0826933"
   [scripts/lib/acfs-services.sh]="01e543d418c0ca5c45d42acb81510fce03150ff98e8bfd05438c863708daf359"
   [scripts/lib/doctor_fix.sh]="529f3683641c24c2b2f404ff1b6b057ec9e6e9afe45c55aec12e7740481a72f7"
   [scripts/lib/offline_artifact_pack.sh]="123d0bffad48fdc501f456e2cf06907d4ad66821492b8d112327c66269efd38d"
+  [scripts/lib/provisioning_packet.sh]="8d706655119ceebd8e802e059966bbd4d35621d33db1d5246e9721720e51814a"
   [scripts/lib/autofix.sh]="24c6d214e17a4e43ff42d718c23231cba3d9df1cd7ce8ea3d2bf169d46f33a17"
   [scripts/lib/autofix_existing.sh]="79b2dd3d1d7edc46f90d04cfa8fe3e5c1b26e771bbaea303ccaaac54206d903b"
   [scripts/lib/autofix_unattended.sh]="848f5744f75503eebe422a9d2418ed6b1341cfd6452004ee0a4e902d04f5d94a"
@@ -128,4 +129,4 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/generated/install_acfs.sh]="4dcf07c126639499cf5b5cd9c3a2580ad343f675ce293c0157a800886b3d5925"
 )
 
-ACFS_INTERNAL_CHECKSUMS_COUNT=116
+ACFS_INTERNAL_CHECKSUMS_COUNT=117

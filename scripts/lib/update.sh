@@ -3475,6 +3475,7 @@ sync_acfs_deployed() {
         "scripts/lib/capacity.sh:scripts/lib/capacity.sh"
         "scripts/lib/provenance.sh:scripts/lib/provenance.sh"
         "scripts/lib/offline_artifact_pack.sh:scripts/lib/offline_artifact_pack.sh"
+        "scripts/lib/provisioning_packet.sh:scripts/lib/provisioning_packet.sh"
         "scripts/lib/update.sh:scripts/lib/update.sh"
         "scripts/lib/logging.sh:scripts/lib/logging.sh"
         "scripts/lib/output.sh:scripts/lib/output.sh"

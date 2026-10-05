@@ -38,7 +38,8 @@ _update_lib_sources() {
     [[ "$status" -eq 0 ]]
     # install_asset refuses anything outside the internal checksum ledger, so
     # the file must be a ledger member in every enumeration of that set.
-    grep -Fq "'scripts/lib/holds.sh'," "$GENERATE_TS"
+    # Either quote style: the generator is formatted with double quotes now.
+    grep -Eq "[\"']scripts/lib/holds\\.sh[\"']," "$GENERATE_TS"
     grep -Eq '^        scripts/lib/holds\.sh$' "$INSTALL_SH"
     grep -Eq '^    scripts/lib/holds\.sh$' "$DRIFT_SH"
     grep -Fq '[scripts/lib/holds.sh]=' "$PROJECT_ROOT/scripts/generated/internal_checksums.sh"

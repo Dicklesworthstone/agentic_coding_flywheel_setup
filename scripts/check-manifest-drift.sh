@@ -122,6 +122,7 @@ INTERNAL_CHECKSUM_REQUIRED_PATHS=(
     scripts/lib/acfs-services.sh
     scripts/lib/doctor_fix.sh
     scripts/lib/offline_artifact_pack.sh
+    scripts/lib/provisioning_packet.sh
     scripts/lib/autofix.sh
     scripts/lib/autofix_existing.sh
     scripts/lib/autofix_unattended.sh

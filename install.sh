@@ -3793,6 +3793,7 @@ acfs_load_internal_checksums_data() {
         scripts/lib/acfs-services.sh
         scripts/lib/doctor_fix.sh
         scripts/lib/offline_artifact_pack.sh
+        scripts/lib/provisioning_packet.sh
         scripts/lib/autofix.sh
         scripts/lib/autofix_existing.sh
         scripts/lib/autofix_unattended.sh
@@ -10810,6 +10811,7 @@ finalize() {
     try_step "Installing landing_plane.sh" install_asset "scripts/lib/landing_plane.sh" "$ACFS_HOME/scripts/lib/landing_plane.sh" || return 1
     try_step "Installing provenance.sh" install_asset "scripts/lib/provenance.sh" "$ACFS_HOME/scripts/lib/provenance.sh" || return 1
     try_step "Installing offline_artifact_pack.sh" install_asset "scripts/lib/offline_artifact_pack.sh" "$ACFS_HOME/scripts/lib/offline_artifact_pack.sh" || return 1
+    try_step "Installing provisioning_packet.sh" install_asset "scripts/lib/provisioning_packet.sh" "$ACFS_HOME/scripts/lib/provisioning_packet.sh" || return 1
     try_step "Installing changelog.sh" install_asset "scripts/lib/changelog.sh" "$ACFS_HOME/scripts/lib/changelog.sh" || return 1
     try_step "Installing export-config.sh" install_asset "scripts/lib/export-config.sh" "$ACFS_HOME/scripts/lib/export-config.sh" || return 1
     try_step "Installing cheatsheet.sh" install_asset "scripts/lib/cheatsheet.sh" "$ACFS_HOME/scripts/lib/cheatsheet.sh" || return 1
