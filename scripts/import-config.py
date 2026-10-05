@@ -38,6 +38,11 @@ def read_export(filename):
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise ImportConfigError("The export must be a regular file or stdin (-).")
             raw = stream.read(LIMIT + 1)
+    return decode_export(raw)
+
+
+def decode_export(raw):
+    """Apply identical limits to saved exports and a captured destination export."""
     if len(raw) > LIMIT:
         raise ImportConfigError("The export exceeds the 1 MiB limit.")
     try:
@@ -178,16 +183,22 @@ def installer_environment():
             and not key.startswith("BASH_FUNC_")}
 
 
-def installer_command(selection, args):
-    installer = Path(args.installer).expanduser().absolute()
-    if installer.is_symlink() or not installer.is_file():
-        raise ImportConfigError("Select a regular install.sh from a trusted ACFS checkout with --installer.")
+def trusted_script_command(filename, error_message):
+    script = Path(filename).expanduser().absolute()
+    if script.is_symlink() or not script.is_file():
+        raise ImportConfigError(error_message)
     bash = next((path for path in ("/bin/bash", "/usr/bin/bash")
                  if os.access(path, os.X_OK)), None)
     if bash is None:
         raise ImportConfigError("A system Bash installation is required.")
-    command = [bash, "--noprofile", "--norc", "-p", str(installer), "--mode", args.mode,
-               "--skip-ubuntu-upgrade"]
+    return [bash, "--noprofile", "--norc", "-p", str(script)]
+
+
+def installer_command(selection, args):
+    command = trusted_script_command(
+        args.installer,
+        "Select a regular install.sh from a trusted ACFS checkout with --installer.",
+    ) + ["--mode", args.mode, "--skip-ubuntu-upgrade"]
     if args.yes:
         command.append("--yes")
     if args.resume:
@@ -197,29 +208,30 @@ def installer_command(selection, args):
     return command
 
 
-def installer_plan(command, timeout):
-    """Use the existing resolver; never duplicate its dependency graph here."""
+def capture_probe(command, timeout, *, label, failure_message):
+    """Bound read-only helpers, including their stderr and descendant processes."""
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
-        process = subprocess.Popen(command + ["--print-plan"], stdin=subprocess.DEVNULL,
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
                                    stdout=out, stderr=err, env=installer_environment(),
                                    start_new_session=True)
         try:
             deadline = time.monotonic() + timeout
             while process.poll() is None:
                 if time.monotonic() >= deadline:
-                    raise ImportConfigError("Installer plan timed out; no installation was started.")
+                    raise ImportConfigError(label + " timed out; no installation was started.")
                 if os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size > LIMIT:
-                    raise ImportConfigError("Installer plan output exceeds 1 MiB.")
+                    raise ImportConfigError(label + " output exceeds 1 MiB.")
                 time.sleep(0.02)
             out.seek(0)
             err.seek(0)
             stdout, stderr = out.read(LIMIT + 1), err.read(LIMIT + 1)
             if len(stdout) + len(stderr) > LIMIT:
-                raise ImportConfigError("Installer plan output exceeds 1 MiB.")
+                raise ImportConfigError(label + " output exceeds 1 MiB.")
             if process.returncode:
-                raise ImportConfigError("Installer refused the module selection (exit %s).\n%s" %
-                                        (process.returncode, (stderr or stdout).decode("utf-8", "replace")))
-            return stdout.decode("utf-8", "replace"), stderr.decode("utf-8", "replace")
+                raise ImportConfigError("%s (exit %s).\n%s" %
+                                        (failure_message, process.returncode,
+                                         (stderr or stdout).decode("utf-8", "replace")))
+            return stdout, stderr
         finally:
             # Planning must not leave a timed-out downloader or helper running.
             try:
@@ -229,11 +241,45 @@ def installer_plan(command, timeout):
             process.wait()
 
 
+def installer_plan(command, timeout):
+    """Use the existing resolver; never duplicate its dependency graph here."""
+    stdout, stderr = capture_probe(
+        command + ["--print-plan"], timeout, label="Installer plan",
+        failure_message="Installer refused the module selection",
+    )
+    return stdout.decode("utf-8", "replace"), stderr.decode("utf-8", "replace")
+
+
+def current_export(args):
+    """Capture the companion exporter's destination context, not a PATH command.
+
+    The exporter owns installed-module detection and its state-file fallback.
+    This is a newly captured inventory, not an independent health verification.
+    --minimal avoids running the unrelated tool-version inventory commands.
+    """
+    installer = Path(args.installer).expanduser().absolute()
+    exporter = installer.parent / "scripts" / "lib" / "export-config.sh"
+    command = trusted_script_command(
+        exporter,
+        "--against-current requires scripts/lib/export-config.sh from the trusted "
+        "checkout selected by --installer (a regular, non-symlink file).",
+    ) + ["--minimal"]
+    stdout, stderr = capture_probe(
+        command, args.plan_timeout, label="Destination export",
+        failure_message="Destination exporter failed",
+    )
+    selection = parse_export(decode_export(stdout), allow_empty=True)
+    return selection, command, stderr.decode("utf-8", "replace")
+
+
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("export", help="YAML, JSON or minimal acfs export-config output; - reads stdin")
-    parser.add_argument("--against", metavar="CURRENT_EXPORT",
-                        help="Install only modules absent from this destination-host export; never remove extras")
+    destination = parser.add_mutually_exclusive_group()
+    destination.add_argument("--against", metavar="CURRENT_EXPORT",
+                             help="Install only modules absent from this destination-host export; never remove extras")
+    destination.add_argument("--against-current", action="store_true",
+                             help="Capture the trusted checkout's destination export and install only missing modules")
     parser.add_argument("--installer", default=str(Path(__file__).resolve().parent.parent / "install.sh"),
                         help="Trusted local installer (default: this checkout's install.sh)")
     parser.add_argument("--mode", choices=("safe", "vibe"), default="safe",
@@ -242,7 +288,8 @@ def main(arguments=None):
     parser.add_argument("--yes", action="store_true", help="Explicitly allow the installer's non-interactive mode")
     parser.add_argument("--resume", action="store_true", help="Pass --resume to the existing checkpointed installer")
     parser.add_argument("--json", action="store_true", help="Emit the preview as JSON (not compatible with --apply)")
-    parser.add_argument("--plan-timeout", type=int, choices=range(1, 301), default=60, metavar="1..300")
+    parser.add_argument("--plan-timeout", type=int, choices=range(1, 301), default=60, metavar="1..300",
+                        help="Timeout in seconds for each destination-export or installer-plan probe (default: 60)")
     args = parser.parse_args(arguments)
     if args.apply and args.json:
         parser.error("--json is preview-only; installer output is not an import JSON report")
@@ -252,10 +299,16 @@ def main(arguments=None):
         parser.error("--apply with stdin requires --yes, or save the export to a file for an interactive install")
     selection = parse_export(read_export(args.export))
     comparison = None
+    exporter_command, exporter_diagnostics = [], ""
     install_modules = selection["modules"]
     if args.against is not None:
         current = parse_export(read_export(args.against), allow_empty=True)
         comparison = compare_modules(selection["modules"], current["modules"])
+        install_modules = comparison["missing"]
+    elif args.against_current:
+        current, exporter_command, exporter_diagnostics = current_export(args)
+        comparison = compare_modules(selection["modules"], current["modules"])
+        comparison["basis"] = "current_export"
         install_modules = comparison["missing"]
     command, plan, diagnostics = [], "", ""
     if install_modules:
@@ -266,18 +319,27 @@ def main(arguments=None):
               "mode": args.mode, "upgrades_ubuntu": False, "restores_credentials": False,
               "pins_tool_versions": False, "uninstalls_extra_modules": False,
               "installer_argv": command, "installer_command": shlex.join(command) if command else None,
-              "installer_plan": plan, "installer_diagnostics": diagnostics}
+              "installer_plan": plan, "installer_diagnostics": diagnostics,
+              "destination_exporter_argv": exporter_command,
+              "destination_diagnostics": exporter_diagnostics}
     if args.json:
         print(json.dumps(report, ensure_ascii=True, indent=2))
         return 0
     print("ACFS module restore: %d selected module(s); destination mode: %s" %
           (len(install_modules), args.mode))
+    if exporter_diagnostics:
+        print(exporter_diagnostics, file=sys.stderr,
+              end="" if exporter_diagnostics.endswith("\n") else "\n")
     if comparison is not None:
         print("Destination snapshot: %d already present; %d missing; %d extras left untouched." %
               (len(comparison["already_present"]), len(comparison["missing"]), len(comparison["extra"])))
-        print("This comparison trusts the supplied snapshot; it does not probe the destination host.")
+        if args.against_current:
+            print("The destination inventory was captured now using the companion exporter.")
+            print("It may include recorded state; module presence is not a health or version check.")
+        else:
+            print("This comparison trusts the supplied snapshot; it does not probe the destination host.")
     if not command:
-        print("No missing modules in the supplied snapshot. No installer was invoked.")
+        print("No missing modules in the destination snapshot. No installer was invoked.")
         return 0
     print("Credentials, source-host paths and recorded tool versions are not restored.")
     print("Ubuntu upgrades are disabled. Dependencies are resolved by the existing installer.")
