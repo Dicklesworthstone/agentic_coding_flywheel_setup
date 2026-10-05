@@ -5907,7 +5907,7 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     local tmp_avail_kb=""
     local df_bin=""
     local awk_bin=""
-    local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+    local acfs_tmpdir_parent=""
     local acfs_tmpdir=""
     df_bin="$(acfs_early_system_binary_path df 2>/dev/null || true)"
     awk_bin="$(acfs_early_system_binary_path awk 2>/dev/null || true)"
@@ -5925,6 +5925,7 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         return 1
     fi
     if [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
+        acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
         local acfs_mkdir_bin=""
         local acfs_mktemp_bin=""
         acfs_mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
