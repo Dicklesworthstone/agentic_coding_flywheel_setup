@@ -32,7 +32,10 @@ require_cmd mktemp
 # This test exercises install.sh's archive bootstrap which uses GNU tar flags
 # like --wildcards/--strip-components/--wildcards-match-slash.
 # On macOS (BSD tar), these flags are not available; skip locally.
-if ! tar --help 2>/dev/null | grep -q -- '--wildcards'; then
+# Capture first: under pipefail, `tar --help | grep -q` fails whenever grep exits
+# early and tar takes SIGPIPE, which silently skipped this whole check.
+tar_help="$(tar --help 2>/dev/null || true)"
+if [[ "$tar_help" != *--wildcards* ]]; then
   log "Skipping offline bootstrap checks: GNU tar required (missing --wildcards)"
   exit 0
 fi
@@ -45,16 +48,13 @@ create_archive() {
   local stage_dir
   stage_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-offline-stage.XXXXXX")"
 
-  mkdir -p "$stage_dir/acfs-offline/scripts" "$stage_dir/acfs-offline/packages"
+  mkdir -p "$stage_dir/acfs-offline/packages"
 
-  cp -R "$REPO_ROOT/scripts/lib" "$stage_dir/acfs-offline/scripts/"
-  cp -R "$REPO_ROOT/scripts/generated" "$stage_dir/acfs-offline/scripts/"
-  cp "$REPO_ROOT/scripts/preflight.sh" "$stage_dir/acfs-offline/scripts/preflight.sh"
-  # acfs-global and acfs-update are tracked in scripts/generated/internal_checksums.sh
-  # (ACFS_INTERNAL_CHECKSUMS), so install.sh's integrity check will treat them as
-  # "missing" and fail unless they're in the bootstrap archive.
-  cp "$REPO_ROOT/scripts/acfs-global" "$stage_dir/acfs-offline/scripts/acfs-global"
-  cp "$REPO_ROOT/scripts/acfs-update" "$stage_dir/acfs-offline/scripts/acfs-update"
+  # Mirror the real release tarball, which the bootstrap filters to */scripts/**:
+  # every file in scripts/generated/internal_checksums.sh (templates, completions,
+  # services-setup.sh, ...) must be present or the integrity contract refuses it.
+  # A hand-picked subset silently drifted each time the ledger grew.
+  cp -R "$REPO_ROOT/scripts" "$stage_dir/acfs-offline/scripts"
   cp -R "$REPO_ROOT/packages/onboard" "$stage_dir/acfs-offline/packages/onboard"
 
   cp -R "$REPO_ROOT/acfs" "$stage_dir/acfs-offline/acfs"
@@ -98,7 +98,10 @@ run_bootstrap() {
       exit 1
     fi
 
-    echo "$output" | grep -q "Bootstrap mismatch" || {
+    # The tampered manifest must be refused by name. The internal-checksum ledger
+    # (which covers acfs.manifest.yaml) now runs before the manifest-index check,
+    # so either refusal is the manifest being rejected, not some unrelated error.
+    grep -qE "INTEGRITY: acfs\.manifest\.yaml checksum mismatch|Bootstrap mismatch: manifest and manifest index disagree" <<<"$output" || {
       echo "$output" >&2
       echo "ERROR: expected bootstrap mismatch message for $label" >&2
       exit 1
