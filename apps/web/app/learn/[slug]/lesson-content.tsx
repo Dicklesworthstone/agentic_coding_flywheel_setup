@@ -951,8 +951,8 @@ export function LessonContent({ lesson }: Props) {
         </main>
       </div>
 
-      {/* Premium mobile navigation */}
-      <div className="fixed inset-x-0 bottom-0 z-30 xl:hidden pb-safe">
+      {/* Premium mobile navigation (a landmark: it sits outside <main>) */}
+      <nav aria-label="Lesson navigation" className="fixed inset-x-0 bottom-0 z-30 xl:hidden pb-safe">
         <div className="relative">
           {/* Glow backdrop */}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/95 to-transparent backdrop-blur-2xl" />
@@ -1026,7 +1026,7 @@ export function LessonContent({ lesson }: Props) {
             </Button>
           </div>
         </div>
-      </div>
+      </nav>
     </div>
   );
 }
