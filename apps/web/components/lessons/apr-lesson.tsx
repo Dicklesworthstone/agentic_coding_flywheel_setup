@@ -1383,6 +1383,8 @@ function InteractiveRefinementLoop() {
             <motion.button
               type="button"
               onClick={toggleComments}
+              aria-label="Comments"
+              aria-pressed={showComments}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -1516,6 +1518,7 @@ function InteractiveRefinementLoop() {
                   <button
                     key={tab.key}
                     type="button"
+                    aria-pressed={activeTab === tab.key}
                     onClick={() => setActiveTab(tab.key)}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[10px] font-medium transition-colors border-b-2 ${
                       activeTab === tab.key
@@ -1524,7 +1527,9 @@ function InteractiveRefinementLoop() {
                     }`}
                   >
                     {tab.icon}
-                    <span className="hidden sm:inline">{tab.label}</span>
+                    {/* Visually hidden (not removed) below sm, so the tab keeps
+                        its name on phones without an aria-label override. */}
+                    <span className="sr-only sm:not-sr-only">{tab.label}</span>
                     {tab.badge && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40">
                         {tab.badge}

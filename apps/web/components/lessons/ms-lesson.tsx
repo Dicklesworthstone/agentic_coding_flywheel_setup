@@ -993,6 +993,9 @@ function InteractiveSkillBrowser() {
             {viewModes.map((mode) => (
               <button
                 key={mode.id}
+                type="button"
+                aria-label={mode.label}
+                aria-pressed={viewMode === mode.id}
                 onClick={() => setViewMode(mode.id)}
                 className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
                   viewMode === mode.id

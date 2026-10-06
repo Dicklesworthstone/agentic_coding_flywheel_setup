@@ -1209,6 +1209,8 @@ function InteractiveTerminalObserver() {
             <button
               key={tab.key}
               type="button"
+              aria-label={tab.label}
+              aria-pressed={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition ${
                 activeTab === tab.key

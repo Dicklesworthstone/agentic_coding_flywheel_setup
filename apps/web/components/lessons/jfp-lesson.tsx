@@ -1529,6 +1529,9 @@ function InteractivePromptGallery() {
           {TAB_CONFIG.map((tab) => (
             <button
               key={tab.id}
+              type="button"
+              aria-label={tab.label}
+              aria-pressed={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition flex-1 justify-center ${
                 activeTab === tab.id ? "text-primary" : "text-white/40 hover:text-white/60"

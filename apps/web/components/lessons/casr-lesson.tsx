@@ -471,7 +471,14 @@ function InteractiveSessionHandoffImpl() {
               const isActive = i === currentStep;
               const isCompleted = i < currentStep;
               return (
-                <button key={s.id} onClick={() => goToStep(i)} className="flex-1 group relative">
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => goToStep(i)}
+                  aria-label={`${s.shortLabel}: step ${i + 1}`}
+                  aria-current={isActive ? "step" : undefined}
+                  className="flex-1 group relative"
+                >
                   <div className="flex flex-col items-center gap-1.5">
                     <motion.div
                       animate={{

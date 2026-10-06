@@ -1657,6 +1657,9 @@ function InteractiveSSHTunnel() {
           return (
             <button
               key={key}
+              type="button"
+              aria-label={s.label}
+              aria-pressed={active}
               onClick={() => {
                 setScenario(key);
                 setShowUnencrypted(false);
@@ -1676,6 +1679,8 @@ function InteractiveSSHTunnel() {
         {/* Encryption toggle (connect scenario only) */}
         {scenario === "connect" && (
           <button
+            type="button"
+            aria-label={`Traffic view: ${showUnencrypted ? "Unencrypted" : "Encrypted"}`}
             onClick={() => setShowUnencrypted((v) => !v)}
             className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition duration-300 border whitespace-nowrap ${
               showUnencrypted

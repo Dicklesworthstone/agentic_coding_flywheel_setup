@@ -1076,6 +1076,9 @@ function InteractivePaletteBrowser() {
                 {PALETTE_GROUPS.map((group) => (
                   <button
                     key={group.name}
+                    type="button"
+                    aria-label={group.name}
+                    aria-pressed={activeCategoryFilter === group.name}
                     onClick={() => {
                       setActiveCategoryFilter(
                         activeCategoryFilter === group.name ? null : group.name,
