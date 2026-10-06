@@ -731,8 +731,9 @@ export default function WorkflowPage() {
   const prefersReducedMotion = useReducedMotion();
 
   return (
-    <div
-      role="main"
+    // A real <main> (not role="main" on a div), so the page <header> below is
+    // scoped to it instead of becoming a second, nested banner landmark.
+    <main
       id="main-content"
       tabIndex={-1}
       className="dark relative min-h-screen bg-background text-foreground overflow-hidden"
@@ -1813,6 +1814,6 @@ export default function WorkflowPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

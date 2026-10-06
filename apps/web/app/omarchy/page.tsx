@@ -1047,7 +1047,7 @@ export default function OmarchyPage() {
                 time; it skips whatever is already installed.
               </p>
               <div className="mb-8 w-full max-w-xl">
-                <CopyCommand command={INSTALL_COMMAND} />
+                <CopyCommand command={INSTALL_COMMAND} label="Install command (repeated)" />
               </div>
               <div className="flex flex-col items-center gap-3 sm:flex-row">
                 <Button

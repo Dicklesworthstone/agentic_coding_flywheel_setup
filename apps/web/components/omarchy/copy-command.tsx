@@ -16,9 +16,12 @@ import { copyTextToClipboard } from "@/lib/utils";
 export default function CopyCommand({
   command,
   prompt = "omarchy ~",
+  label,
 }: {
   command: string;
   prompt?: string;
+  /** Region name; must differ when the same command appears twice on a page. */
+  label?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,7 +61,7 @@ export default function CopyCommand({
           <code
             tabIndex={0}
             role="region"
-            aria-label="Install command"
+            aria-label={label ?? `Command: ${command}`}
             className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60"
           >
             {command}

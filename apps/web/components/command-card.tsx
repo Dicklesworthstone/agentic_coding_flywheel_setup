@@ -249,7 +249,9 @@ export function CommandCard({
             className="flex items-center overflow-x-auto px-4 py-3 scrollbar-hide outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             tabIndex={0}
             role="region"
-            aria-label="Command text"
+            // Unique per card: several cards on a page each make a region
+            // landmark, and identical names made them indistinguishable.
+            aria-label={`Command: ${displayCommand}`}
           >
             <code ref={codeRef} className="whitespace-nowrap font-mono text-sm text-foreground">
               {displayCommand}
