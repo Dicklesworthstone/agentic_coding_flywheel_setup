@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Collect reviewed commit ranges from the original fleet repositories.
+"""Collect reviewed commit ranges and explicitly import them into local review refs.
 
 Preview contacts the selected hosts but writes nothing. --collect saves private
 incremental Git bundles; it never commits, fetches, checks out, merges or pushes
-in a project. Uncommitted files are deliberately not included.
+in a project. A separate offline --import preview/apply flow creates new review
+refs without changing existing refs, HEAD, the index or the working tree.
+Uncommitted files are deliberately not included.
 """
 import argparse
 from contextlib import contextmanager
@@ -12,11 +14,14 @@ import hashlib
 import importlib.util
 import os
 from pathlib import Path
+import selectors
 import shlex
 import signal
 import stat
 import subprocess
 import sys
+import tempfile
+import time
 
 sys.dont_write_bytecode = True
 _helper = Path(__file__).absolute().with_name("swarm-fleet-launch.py")
@@ -29,6 +34,8 @@ require, encoded, decode, digest = fleet.require, fleet.encoded, fleet.decode, f
 SCHEMA = "acfs.swarm-fleet-collection.v1"
 SPEC_SCHEMA = "acfs.swarm-fleet-collection-spec.v1"
 MAX_BUNDLE = 16 * 1024 * 1024
+IMPORT_SCHEMA = "acfs.swarm-fleet-import.v1"
+IMPORT_STARTED = False
 
 # Fixed read-only program. No executable, ref expression, command or environment
 # is supplied by the selection. Git configuration that could start network or
@@ -421,13 +428,245 @@ def execute(launch_path, selection, known, identity, output_dir, timeout, approv
             return report, 0
 
 
+class LocalGit:
+    """Bounded local plumbing, with no inherited Git environment or project hooks."""
+
+    def __init__(self, repository, timeout):
+        self.repository = repository
+        self.deadline = time.monotonic() + timeout
+        self.env = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "HOME": "/nonexistent",
+                    "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+                    "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0",
+                    "GIT_NO_REPLACE_OBJECTS": "1", "GIT_GRAFT_FILE": "/dev/null",
+                    "GIT_NO_LAZY_FETCH": "1", "GIT_ALLOW_PROTOCOL": ""}
+
+    def run(self, args, data=b"", allowed=(0,)):
+        require(time.monotonic() < self.deadline, "import_git_deadline")
+        options = ["core.hooksPath=/dev/null", "core.fsmonitor=false", "core.attributesFile=/dev/null",
+                   "diff.external=", "maintenance.auto=false", "gc.auto=0", "pack.threads=1",
+                   "core.logAllRefUpdates=false"]
+        argv = ["/usr/bin/git", "--no-pager", "-C", str(self.repository)]
+        for option in options:
+            argv += ["-c", option]
+        # Anonymous input avoids shell interpolation, pipe deadlocks, and a
+        # second pathname read of a bundle after its integrity was checked.
+        with tempfile.TemporaryFile() as source:
+            source.write(data)
+            source.seek(0)
+            process = subprocess.Popen([*argv, *args], env=self.env, stdin=source,
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                       start_new_session=True)
+            output = bytearray()
+            try:
+                with selectors.DefaultSelector() as poll:
+                    os.set_blocking(process.stdout.fileno(), False)
+                    poll.register(process.stdout, selectors.EVENT_READ)
+                    while poll.get_map() or process.poll() is None:
+                        remaining = self.deadline - time.monotonic()
+                        require(remaining > 0, "import_git_deadline")
+                        for key, _ in poll.select(min(remaining, 0.05)):
+                            chunk = os.read(key.fd, 65536)
+                            if not chunk:
+                                poll.unregister(key.fileobj)
+                            require(len(output) + len(chunk) <= fleet.LIMIT, "import_git_output_limit")
+                            output.extend(chunk)
+                        if not poll.get_map() and process.poll() is None:
+                            time.sleep(0.01)
+                require(process.returncode in allowed, "local_git_refused")
+                return process.returncode, bytes(output)
+            finally:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=5)
+                process.stdout.close()
+
+    def text(self, args):
+        return self.run(args)[1].decode("utf-8", "strict").rstrip("\n")
+
+    def verify_bundle(self, raw):
+        # Give Git a seekable snapshot with independent stdin. Some Git versions
+        # feed the remainder of a stdin bundle into their prerequisite walk.
+        with tempfile.TemporaryFile() as snapshot:
+            snapshot.write(raw)
+            snapshot.flush()
+            self.run(["bundle", "verify", f"/proc/{os.getpid()}/fd/{snapshot.fileno()}"])
+
+
+@contextmanager
+def import_source(path):
+    """Keep the verified artifact bytes and recheck the complete collection."""
+    with fleet.directory_fd(path, private=True) as fd:
+        lock(fd)
+        metadata = {name: fleet.read_at(fd, name) for name in ("intent.json", "manifest.json")}
+        verified = verify_at(fd)
+        bundles = {}
+        for artifact in verified["artifacts"]:
+            if artifact["file"] is not None:
+                raw = read_bundle(fd, artifact["file"])
+                require(len(raw) == artifact["bytes"] and digest(raw) == artifact["sha256"],
+                        "collection_changed_during_import")
+                bundles[artifact["file"]] = raw
+        def guard():
+            with fleet.directory_fd(path, private=True) as current:
+                require(os.path.samestat(os.fstat(fd), os.fstat(current)), "collection_directory_changed")
+            require(set(os.listdir(fd)) == set(metadata) | set(bundles), "collection_changed_during_import")
+            for name, raw in metadata.items():
+                require(fleet.read_at(fd, name) == raw, "collection_changed_during_import")
+            for name, raw in bundles.items():
+                require(read_bundle(fd, name) == raw, "collection_changed_during_import")
+        guard()
+        yield verified, bundles, digest(encoded({k: digest(v) for k, v in metadata.items()})), guard
+        guard()
+
+
+def destination_state(git):
+    require(git.text(["rev-parse", "--show-toplevel"]) == str(git.repository), "destination_root_mismatch")
+    require(git.text(["rev-parse", "--is-shallow-repository"]) == "false", "destination_history_incomplete")
+    # No network-on-demand objects or configured relaxations of object checks.
+    for key in ("extensions.partialclone", r"^remote\..*\.promisor$", r"^fsck\."):
+        code, raw = git.run(["config", "--get-regexp", key], allowed=(0, 1))
+        require(code == 1 and not raw, "destination_configuration_not_supported")
+    paths = {"repository": str(git.repository),
+             "git_directory": git.text(["rev-parse", "--absolute-git-dir"]),
+             "common_directory": git.text(["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+             "object_directory": git.text(["rev-parse", "--path-format=absolute", "--git-path", "objects"])}
+    result = {}
+    for name, path in paths.items():
+        fleet.absolute_path(path)
+        with fleet.directory_fd(path) as fd:
+            info = os.fstat(fd)
+            result[name] = {"path": path, "identity": [info.st_dev, info.st_ino]}
+    require(not os.path.lexists(Path(paths["object_directory"]) / "info/alternates"),
+            "borrowed_destination_objects_not_supported")
+    result["object_format"] = git.text(["rev-parse", "--show-object-format"])
+    require(result["object_format"] in ("sha1", "sha256"), "unsupported_destination_object_format")
+    return result
+
+
+def require_new_ref(git, ref):
+    # A dangling symbolic ref is occupied too. Never follow it to a user ref.
+    code, _ = git.run(["symbolic-ref", "--quiet", ref], allowed=(0, 1))
+    require(code == 1, "review_ref_already_exists")
+    code, _ = git.run(["show-ref", "--verify", "--quiet", ref], allowed=(0, 1))
+    require(code == 1, "review_ref_already_exists")
+    _, head = git.run(["symbolic-ref", "--quiet", "HEAD"], allowed=(0, 1))
+    require(head.rstrip(b"\n") != ref.encode(), "review_ref_is_current_head")
+
+
+def check_imported_history(git, entry):
+    snap = entry["snapshot"]
+    base, head = snap["base_commit"], snap["head_commit"]
+    require(git.text(["cat-file", "-t", head]) == "commit", "imported_head_not_commit")
+    git.run(["merge-base", "--is-ancestor", base, head])
+    require(git.text(["rev-list", "--count", base + ".." + head, "--"]) == str(snap["commit_count"]),
+            "imported_commit_count_mismatch")
+    raw = git.run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z",
+                   base, head, "--"])[1]
+    expected = b"".join(p.encode() + b"\0" for p in snap["net_changed_paths"])
+    require(raw == expected, "imported_changed_paths_mismatch")
+    # Walk all reachable objects, not just commits/trees appearing in a net diff.
+    git.run(["rev-list", "--objects", "--quiet", "--missing=error", head, "--"])
+
+
+def import_collection(path, repository, name, hosts, timeout, approval=None):
+    global IMPORT_STARTED
+    IMPORT_STARTED = False
+    require(sys.platform == "linux" and os.geteuid() != 0 and os.getuid() == os.geteuid()
+            and not os.environ.get("SUDO_USER"), "import_as_repository_owner_without_sudo")
+    require(type(timeout) is int and 1 <= timeout <= 600, "invalid_import_timeout")
+    require(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", name), "invalid_review_name")
+    require(approval is None or fleet.matches(r"[0-9a-f]{64}", approval), "invalid_import_approval")
+    require(type(hosts) is list and len(set(hosts)) == len(hosts)
+            and all(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", h) for h in hosts), "invalid_import_hosts")
+    path, repository = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (path, repository))
+    with import_source(path) as (source, bundles, evidence, guard), fleet.directory_fd(repository):
+        git = LocalGit(repository, timeout)
+        destination = destination_state(git)
+        entries = [e for e in source["hosts"] if not hosts or e["id"] in hosts]
+        require(entries and (not hosts or len(entries) == len(hosts)), "unknown_import_host")
+        artifacts = {a["id"]: a for a in source["artifacts"]}
+        refs = [{"id": e["id"], "ref": "refs/acfs/fleet/" + name + "/" + e["id"],
+                 "head_commit": e["snapshot"]["head_commit"]}
+                for e in entries if e["snapshot"]["commit_count"]]
+        plan = {"schema": IMPORT_SCHEMA, "policy": "new-review-refs-strict-git-v1",
+                "collection_directory": str(path), "collection_evidence_sha256": evidence,
+                "collection_plan_sha256": source["plan_sha256"], "destination": destination,
+                "name": name, "hosts": entries, "artifacts": [artifacts[e["id"]] for e in entries],
+                "refs": refs, "timeout_seconds": timeout}
+        plan_sha = digest(encoded(plan))
+        require(approval is None or approval == plan_sha, "import_approval_mismatch")
+        # Lock the shared Git directory, so linked worktrees cooperate too.
+        with fleet.directory_fd(destination["common_directory"]["path"]) as dest:
+            lock(dest)
+            require(destination_state(git) == destination, "destination_changed")
+            for row in refs:
+                require_new_ref(git, row["ref"])
+            for entry in entries:
+                snap, artifact = entry["snapshot"], artifacts[entry["id"]]
+                require(snap["object_format"] == destination["object_format"], "import_object_format_mismatch")
+                require(git.text(["cat-file", "-t", snap["base_commit"]]) == "commit", "destination_base_missing")
+                if artifact["file"]:
+                    # Verify every bundle prerequisite before writing any pack.
+                    git.verify_bundle(bundles[artifact["file"]])
+            guard()
+            report = {"schema": IMPORT_SCHEMA, "status": "preview", "plan": plan, "plan_sha256": plan_sha,
+                      "network_access": False, "changes_checkout": False, "runs_project_code": False,
+                      "task_completion_verified": False, "import_started": False}
+            if approval is None:
+                return report
+            for entry in entries:
+                guard()
+                require(destination_state(git) == destination, "destination_changed")
+                artifact = artifacts[entry["id"]]
+                if artifact["file"]:
+                    IMPORT_STARTED = report["import_started"] = True
+                    pack = bundles[artifact["file"]].partition(b"\n\n")[2]
+                    git.run(["index-pack", "--stdin", "--fix-thin", "--strict", "--threads=1",
+                             "--max-input-size=" + str(MAX_BUNDLE), "--keep=acfs-fleet-import:" + plan_sha], pack)
+                check_imported_history(git, entry)
+            guard()
+            require(destination_state(git) == destination, "destination_changed")
+            for row in refs:
+                require_new_ref(git, row["ref"])
+            if refs:
+                # No existing refs are updated, and symbolic refs cannot redirect
+                # a creation. The transaction prepares the whole set together.
+                transaction = "start\n" + "".join("create " + r["ref"] + " " + r["head_commit"] + "\n" for r in refs)
+                git.run(["update-ref", "--no-deref", "--stdin"], (transaction + "prepare\ncommit\n").encode())
+            report["status"] = "imported" if refs else "noop"
+            return report
+
+
+def import_main(args):
+    parser = argparse.ArgumentParser(description="Import an offline collection into new review refs; never checkout or merge",
+                                     allow_abbrev=False)
+    parser.add_argument("--import", dest="collection", required=True)
+    parser.add_argument("--repository", required=True, help="Trusted existing local worktree containing the base history")
+    parser.add_argument("--name", required=True, help="New review namespace: refs/acfs/fleet/NAME/HOST")
+    parser.add_argument("--host", action="append", default=[], help="Select host IDs; default all, original order retained")
+    parser.add_argument("--timeout", type=int, default=90, help="Combined Git subprocess budget, 1..600 seconds")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--accept-plan")
+    options = parser.parse_args(args)
+    require(options.apply == (options.accept_plan is not None), "import_requires_exact_approval")
+    report = import_collection(options.collection, options.repository, options.name, options.host,
+                               options.timeout, options.accept_plan)
+    print(encoded(report).decode(), end="")
+    return 0
+
+
 def main(arguments=None):
     args = list(sys.argv[1:] if arguments is None else arguments)
+    if "--import" in args:
+        return import_main(args)
     if args[:1] == ["--verify"]:
         require(len(args) == 2, "verify_requires_only_collection_directory")
         print(encoded(verify(args[1])).decode(), end="")
         return 0
-    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
+                                     epilog="Offline review import: --import COLLECTION --repository DIR --name NAME [--apply --accept-plan SHA256]")
     parser.add_argument("--launch-state", required=True)
     parser.add_argument("--bases", required=True, help="Private host-ID to full base-commit selection")
     parser.add_argument("--known-hosts", required=True)
@@ -456,6 +695,7 @@ def cli():
         return main()
     except (fleet.Refused, OSError, ValueError, subprocess.SubprocessError, fleet.Interrupted) as exc:
         print(encoded({"schema": SCHEMA, "status": "error", "remote_read_only": True,
+                       "import_started": IMPORT_STARTED,
                        "code": str(exc) if isinstance(exc, fleet.Refused) else "collection_io_or_process_failure"}).decode(), end="")
         return 128 + exc.signum if isinstance(exc, fleet.Interrupted) else 2
 
