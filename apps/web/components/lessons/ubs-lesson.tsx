@@ -347,7 +347,7 @@ function SeverityCard({
           {icon}
         </div>
         <div className="flex-1">
-          <h4 className="font-bold text-white text-lg mb-3">{level}</h4>
+          <h3 className="font-bold text-white text-lg mb-3">{level}</h3>
           <ul className="space-y-2 mb-4">
             {examples.map((ex, i) => (
               <li key={i} className="text-sm text-white/70 flex items-center gap-2">

@@ -253,9 +253,9 @@ function CommandSection({
       whileHover={{ x: 4 }}
       className="group space-y-4 p-4 -mx-4 rounded-xl transition duration-300 hover:bg-white/[0.02]"
     >
-      <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
+      <h3 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
         {title}
-      </h4>
+      </h3>
       {code && <CodeBlock code={code} />}
       {keyCombo && (
         <div className="flex items-center gap-2">
@@ -336,7 +336,7 @@ function WhyItMattersCard() {
           <Bot className="h-7 w-7 text-white" />
         </div>
         <div>
-          <h4 className="text-lg font-bold text-white mb-2">Your Agents Run in tmux</h4>
+          <h3 className="text-lg font-bold text-white mb-2">Your Agents Run in tmux</h3>
           <p className="text-white/60">
             Your coding agents (Claude, Codex, Antigravity) run in tmux panes. If SSH drops, they
             keep running. When you reconnect and reattach, they&apos;re still there!

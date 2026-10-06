@@ -410,9 +410,9 @@ function LoginStep({
       whileHover={{ y: -2, scale: 1.01 }}
       className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
-      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
+      <h3 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
         {agent}
-      </h4>
+      </h3>
       <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden group-hover:bg-black/40 transition-colors">
         <pre className="p-3 text-sm font-mono text-emerald-400">
           <span className="text-white/50">$ </span>
@@ -437,9 +437,9 @@ function CodexLoginSection() {
       whileHover={{ y: -2, scale: 1.01 }}
       className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]"
     >
-      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
+      <h3 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
         Codex CLI
-      </h4>
+      </h3>
 
       <p className="text-sm text-white/60 mb-4">
         <strong className="text-amber-400">On a headless VPS</strong>, Codex requires special
@@ -1544,7 +1544,7 @@ function OpenAIAccountWarning() {
         {/* Account type comparison */}
         <div className="grid gap-4 md:grid-cols-2 mb-4">
           <div className="p-4 rounded-xl bg-black/20 border border-white/[0.06]">
-            <h5 className="font-bold text-white mb-2">ChatGPT (Pro/Plus/Team)</h5>
+            <h4 className="font-bold text-white mb-2">ChatGPT (Pro/Plus/Team)</h4>
             <ul className="space-y-1 text-xs text-white/60">
               <li>• For Codex CLI, ChatGPT web</li>
               <li>
@@ -1556,7 +1556,7 @@ function OpenAIAccountWarning() {
             </ul>
           </div>
           <div className="p-4 rounded-xl bg-black/20 border border-white/[0.06]">
-            <h5 className="font-bold text-white mb-2">API (pay-as-you-go)</h5>
+            <h4 className="font-bold text-white mb-2">API (pay-as-you-go)</h4>
             <ul className="space-y-1 text-xs text-white/60">
               <li>• For OpenAI API, libraries</li>
               <li>• Uses OPENAI_API_KEY env var</li>

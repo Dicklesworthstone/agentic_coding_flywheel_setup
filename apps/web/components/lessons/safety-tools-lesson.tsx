@@ -333,10 +333,10 @@ $ claude "continue the project"
         <div className="grid gap-6 md:grid-cols-3">
           {/* SLB Best Practices */}
           <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
-            <h4 className="font-bold text-white flex items-center gap-2 mb-4">
+            <h3 className="font-bold text-white flex items-center gap-2 mb-4">
               <Users className="h-5 w-5 text-red-400" />
               SLB Best Practices
-            </h4>
+            </h3>
             <div className="space-y-3">
               <BestPractice text="Never bypass approval requirements" />
               <BestPractice text="Review commands before approving" />
@@ -347,10 +347,10 @@ $ claude "continue the project"
 
           {/* DCG Best Practices */}
           <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
-            <h4 className="font-bold text-white flex items-center gap-2 mb-4">
+            <h3 className="font-bold text-white flex items-center gap-2 mb-4">
               <ShieldAlert className="h-5 w-5 text-rose-400" />
               DCG Best Practices
-            </h4>
+            </h3>
             <div className="space-y-3">
               <BestPractice text="Read the block explanation before acting" />
               <BestPractice text="Prefer safer alternatives over allow-once" />
@@ -361,10 +361,10 @@ $ claude "continue the project"
 
           {/* CAAM Best Practices */}
           <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5">
-            <h4 className="font-bold text-white flex items-center gap-2 mb-4">
+            <h3 className="font-bold text-white flex items-center gap-2 mb-4">
               <Key className="h-5 w-5 text-primary" />
               CAAM Best Practices
-            </h4>
+            </h3>
             <div className="space-y-3">
               <BestPractice text="Backup profiles before switching" />
               <BestPractice text="Use email as profile identifier" />
@@ -1072,9 +1072,9 @@ function CaamFeature({
         {icon}
       </div>
       <div>
-        <h4 className="font-semibold text-white group-hover:text-primary transition-colors">
+        <h3 className="font-semibold text-white group-hover:text-primary transition-colors">
           {title}
-        </h4>
+        </h3>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
     </motion.div>
@@ -1147,7 +1147,7 @@ function QuickRefCard({
       {/* Decorative glow */}
       <div className="absolute -top-8 -right-8 w-24 h-24 bg-white/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-      <h4 className="relative font-bold text-white mb-4 text-lg">{title}</h4>
+      <h3 className="relative font-bold text-white mb-4 text-lg">{title}</h3>
       <div className="relative space-y-2">
         {commands.map((cmd) => (
           <code

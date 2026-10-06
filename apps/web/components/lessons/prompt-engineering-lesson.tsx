@@ -546,9 +546,9 @@ function ScopeCard({ direction, phrases }: { direction: "expand" | "deepen"; phr
           : "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40"
       }`}
     >
-      <h4 className={`font-bold mb-3 ${isExpand ? "text-emerald-400" : "text-blue-400"}`}>
+      <h3 className={`font-bold mb-3 ${isExpand ? "text-emerald-400" : "text-blue-400"}`}>
         {isExpand ? "Breadth" : "Depth"}
-      </h4>
+      </h3>
       <ul className="space-y-2">
         {phrases.map((phrase) => (
           <li key={phrase} className="text-sm text-white/60 font-mono">
@@ -603,7 +603,7 @@ function FreshEyesCard({
     >
       <div className="flex items-center gap-3 mb-3">
         <Eye className="h-5 w-5 text-violet-400" />
-        <h4 className="font-bold text-violet-300">{technique}</h4>
+        <h3 className="font-bold text-violet-300">{technique}</h3>
       </div>
       <code className="text-sm text-white/70 font-mono">{example}</code>
       <p className="text-sm text-white/50 mt-2">{mechanism}</p>
@@ -1021,7 +1021,7 @@ function InteractivePromptLab() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/30 to-violet-500/30 border border-primary/20">
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
-          <h4 className="font-bold text-white text-lg">Interactive Prompt Engineering Lab</h4>
+          <h3 className="font-bold text-white text-lg">Interactive Prompt Engineering Lab</h3>
         </div>
         <p className="text-sm text-white/50 mt-1 mb-4">
           Toggle techniques, watch prompts build layer by layer, and compare agent output quality.
@@ -1503,9 +1503,9 @@ function AnatomyPanel({
 
       {/* Prompt anatomy diagram */}
       <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
-        <h5 className="text-xs text-white/50 uppercase tracking-wider font-semibold mb-3">
+        <h4 className="text-xs text-white/50 uppercase tracking-wider font-semibold mb-3">
           Prompt Anatomy
-        </h5>
+        </h4>
         <div className="space-y-1.5">
           {techniques.map((t, idx) => {
             const isEnabled = enabledTechniques.has(t.id);
@@ -1575,9 +1575,9 @@ function AnatomyPanel({
 
       {/* Effectiveness bars per technique */}
       <div className="space-y-2">
-        <h5 className="text-xs text-white/40 uppercase tracking-wider font-medium">
+        <h4 className="text-xs text-white/40 uppercase tracking-wider font-medium">
           Technique Effectiveness
-        </h5>
+        </h4>
         {techniques.map((t, idx) => {
           const isEnabled = enabledTechniques.has(t.id);
           return (

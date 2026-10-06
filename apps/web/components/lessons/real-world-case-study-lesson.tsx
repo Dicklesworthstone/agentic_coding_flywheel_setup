@@ -200,10 +200,10 @@ Write it to PLAN_FOR_CASS_MEMORY_SYSTEM.md"`}
 
         {/* Document Structure */}
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Layers className="h-5 w-5 text-violet-400" />
             Document Structure: 11 Major Sections
-          </h4>
+          </h3>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <PlanSectionCard
               number={1}
@@ -276,10 +276,10 @@ Write it to PLAN_FOR_CASS_MEMORY_SYSTEM.md"`}
 
         {/* Key Patterns */}
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Lightbulb className="h-5 w-5 text-amber-400" />
             Patterns That Make Plans Effective
-          </h4>
+          </h3>
           <div className="space-y-4">
             <PlanPatternCard
               title="Theory-First Approach"
@@ -311,10 +311,10 @@ Write it to PLAN_FOR_CASS_MEMORY_SYSTEM.md"`}
 
         {/* Distinctive Innovations */}
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Shield className="h-5 w-5 text-emerald-400" />
             Distinctive Innovations in This Plan
-          </h4>
+          </h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <InnovationCard
               title="Confidence Decay Half-Life"
@@ -709,7 +709,7 @@ function ResultsCard() {
       <div className="relative">
         <div className="flex items-center gap-3 mb-4">
           <Rocket className="h-6 w-6 text-emerald-400" />
-          <h4 className="text-lg font-bold text-white">Day 1 Results</h4>
+          <h3 className="text-lg font-bold text-white">Day 1 Results</h3>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -761,7 +761,7 @@ function PhaseCard({
           {phase}
         </div>
         <div>
-          <h4 className="font-bold text-white">{title}</h4>
+          <h3 className="font-bold text-white">{title}</h3>
           <p className="text-sm text-white/50">{description}</p>
         </div>
       </div>
@@ -801,10 +801,10 @@ function SynthesisResultCard() {
       whileHover={{ y: -2, scale: 1.01 }}
       className="group relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-violet-500/50"
     >
-      <h4 className="font-bold text-white mb-3 flex items-center gap-2">
+      <h3 className="font-bold text-white mb-3 flex items-center gap-2">
         <FileText className="h-5 w-5 text-violet-400" />
         PLAN_FOR_CASS_MEMORY_SYSTEM.md
-      </h4>
+      </h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="text-sm text-white/70">
           <span className="text-violet-400 font-semibold">5,600+</span> lines
@@ -836,7 +836,7 @@ function BeadsTransformationCard() {
     >
       <div className="flex items-center gap-3 mb-4">
         <LayoutDashboard className="h-5 w-5 text-sky-400" />
-        <h4 className="font-bold text-white">Beads Structure</h4>
+        <h3 className="font-bold text-white">Beads Structure</h3>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -874,7 +874,7 @@ function SwarmSetupCard() {
     >
       <div className="flex items-center gap-3 mb-4">
         <Users className="h-5 w-5 text-amber-400" />
-        <h4 className="font-bold text-white">The Agent Swarm</h4>
+        <h3 className="font-bold text-white">The Agent Swarm</h3>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -923,7 +923,7 @@ function CommitStatsCard() {
     >
       <div className="flex items-center gap-3 mb-4">
         <GitBranch className="h-5 w-5 text-rose-400" />
-        <h4 className="font-bold text-white">Commit Statistics</h4>
+        <h3 className="font-bold text-white">Commit Statistics</h3>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -994,9 +994,9 @@ function PlanSectionCard({
         </div>
         <div className="text-violet-400 group-hover:scale-110 transition-transform">{icon}</div>
       </div>
-      <h5 className="font-semibold text-white text-sm mb-1 group-hover:text-violet-300 transition-colors">
+      <h4 className="font-semibold text-white text-sm mb-1 group-hover:text-violet-300 transition-colors">
         {title}
-      </h5>
+      </h4>
       <p className="text-xs text-white/50 group-hover:text-white/70 transition-colors">
         {description}
       </p>
@@ -1023,9 +1023,9 @@ function PlanPatternCard({
       whileHover={{ x: 4, scale: 1.01 }}
       className={`group relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
-      <h5 className="font-semibold text-white mb-2 group-hover:text-white/90 transition-colors">
+      <h4 className="font-semibold text-white mb-2 group-hover:text-white/90 transition-colors">
         {title}
-      </h5>
+      </h4>
       <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">
         {description}
       </p>
@@ -1046,9 +1046,9 @@ function InnovationCard({ title, description }: { title: string; description: st
     >
       <div className="flex items-center gap-2 mb-2">
         <Lightbulb className="h-4 w-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-        <h5 className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
+        <h4 className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
           {title}
-        </h5>
+        </h4>
       </div>
       <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">
         {description}
@@ -1898,10 +1898,10 @@ function InteractiveSwarmTimeline() {
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 pb-0">
-        <h4 className="text-lg font-bold text-white flex items-center gap-2">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Rocket className="h-5 w-5 text-primary" />
           Swarm Replay: Zero to 85% in 5 Hours
-        </h4>
+        </h3>
         <div className="flex items-center gap-2">
           <button
             onClick={handlePlayPause}
@@ -2127,11 +2127,11 @@ function SwarmTimelineView({
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h5
+                    <h4
                       className={`font-semibold text-sm ${reached ? "text-white" : "text-white/40"}`}
                     >
                       {evt.title}
-                    </h5>
+                    </h4>
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         reached ? "bg-white/10 text-white/60" : "bg-white/[0.03] text-white/20"
@@ -2542,10 +2542,10 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
       {/* Agent cards by platform */}
       {platformGroups.map((group) => (
         <div key={group.label}>
-          <h5 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3 flex items-center gap-2">
             <Bot className="h-3.5 w-3.5" />
             {group.label}
-          </h5>
+          </h4>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {group.agents.map((ag, idx) => {
               const ganttRow = GANTT_DATA.find((g) => g.agentId === ag.id);
@@ -2696,10 +2696,10 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
 
       {/* Leaderboard */}
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-        <h5 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3 flex items-center gap-2">
+        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3 flex items-center gap-2">
           <Trophy className="h-3.5 w-3.5 text-amber-400" />
           Agent Leaderboard (by beads closed)
-        </h5>
+        </h4>
         <div className="space-y-1.5">
           {[...AGENT_ACCOMPLISHMENTS]
             .sort((a, b) => b.beadsClosed - a.beadsClosed)
@@ -2890,11 +2890,11 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
               {step.icon}
             </div>
             <div>
-              <h5
+              <h4
                 className={`text-sm font-semibold ${step.reached ? "text-white" : "text-white/30"}`}
               >
                 {step.label}
-              </h5>
+              </h4>
               <span className="text-[10px] font-mono text-white/30">{step.time}</span>
             </div>
             {step.reached && i === steps.length - 1 && (
@@ -2988,10 +2988,10 @@ function MetricsDashboardView({ playheadMin }: { playheadMin: number }) {
 
       {/* Throughput chart */}
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-        <h5 className="text-xs font-semibold text-white/60 mb-3 flex items-center gap-2">
+        <h4 className="text-xs font-semibold text-white/60 mb-3 flex items-center gap-2">
           <Hash className="h-3.5 w-3.5 text-white/40" />
           Commits Per Hour
-        </h5>
+        </h4>
         <div className="flex items-end gap-1 h-20">
           {[18, 34, 52, 68, 62, 48].map((val, i) => {
             const hourReached = i * 60 <= playheadMin;
@@ -3029,10 +3029,10 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
       <div className="grid gap-3 sm:grid-cols-2">
         {/* Before */}
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-          <h5 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-white/20" />
             Before (0h)
-          </h5>
+          </h4>
           <div className="space-y-2">
             {COMPARISONS.map((c) => (
               <div
@@ -3048,10 +3048,10 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
 
         {/* After */}
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-          <h5 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             After (5h)
-          </h5>
+          </h4>
           <div className="space-y-2">
             {COMPARISONS.map((c) => {
               const afterNum = parseFloat(c.after.replace(/[^0-9.]/g, ""));
@@ -3085,7 +3085,7 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
 
       {/* Visual diff */}
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-        <h5 className="text-xs font-semibold text-white/60 mb-3">Project Structure Growth</h5>
+        <h4 className="text-xs font-semibold text-white/60 mb-3">Project Structure Growth</h4>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <span className="text-[10px] text-white/30 uppercase tracking-wider">T=0h</span>

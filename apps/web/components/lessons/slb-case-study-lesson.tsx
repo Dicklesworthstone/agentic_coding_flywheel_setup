@@ -447,7 +447,7 @@ function IdeaCard() {
           <Lightbulb className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h4 className="font-bold text-white mb-2">The WarGames Insight</h4>
+          <h3 className="font-bold text-white mb-2">The WarGames Insight</h3>
           <p className="text-white/70 text-sm italic">
             &quot;You know how in movies like WarGames they show how the two guys have to turn the
             keys at the same time to arm the nuclear warheads? I want to make something like that
@@ -483,10 +483,10 @@ function TimelineCard() {
       whileHover={{ y: -2 }}
       className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]"
     >
-      <h4 className="font-bold text-white mb-4 flex items-center gap-2">
+      <h3 className="font-bold text-white mb-4 flex items-center gap-2">
         <Clock className="h-5 w-5 text-primary" />
         December 13, 2025 Timeline
-      </h4>
+      </h3>
 
       <div className="space-y-4">
         {steps.map((step, i) => (
@@ -548,7 +548,7 @@ function BeadsResultCard() {
     >
       <div className="flex items-center gap-3 mb-4">
         <LayoutDashboard className="h-5 w-5 text-sky-400" />
-        <h4 className="font-bold text-white">Final Beads Structure</h4>
+        <h3 className="font-bold text-white">Final Beads Structure</h3>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -653,7 +653,7 @@ function ResultsCard() {
     >
       <div className="flex items-center gap-3 mb-4">
         <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-        <h4 className="font-bold text-white">Implementation Results</h4>
+        <h3 className="font-bold text-white">Implementation Results</h3>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -693,9 +693,9 @@ function ComparisonCard({
       whileHover={{ y: -4, scale: 1.02 }}
       className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
-      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
+      <h3 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
         {title}
-      </h4>
+      </h3>
       <ul className="space-y-2">
         {items.map((item, i) => (
           <li

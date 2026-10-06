@@ -84,7 +84,7 @@ export function SSHBasicsLesson() {
 
         {/* Command Breakdown */}
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4">Breaking down the command:</h4>
+          <h3 className="text-lg font-semibold text-white mb-4">Breaking down the command:</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <CommandPart label="ssh" description="The command" />
             <CommandPart label="-i ~/.ssh/acfs_ed25519" description="Your private key" />
@@ -1884,9 +1884,9 @@ function StageCard({
             {number}
           </div>
           <div>
-            <h4 className="font-bold text-white group-hover:text-primary transition-colors">
+            <h3 className="font-bold text-white group-hover:text-primary transition-colors">
               {title}
-            </h4>
+            </h3>
             <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">
               {subtitle}
             </span>

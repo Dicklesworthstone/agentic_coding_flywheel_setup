@@ -205,7 +205,7 @@ wa robot send 43 "Start next task"`}
             transition={{ delay: 0.4 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">WA + NTM</h4>
+            <h3 className="font-semibold text-primary mb-2">WA + NTM</h3>
             <p className="text-muted-foreground text-sm">
               WA automatically observes agents spawned by NTM. Use NTM to spawn agents and WA to
               monitor their state.
@@ -217,7 +217,7 @@ wa robot send 43 "Start next task"`}
             transition={{ delay: 0.45 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">WA + Agent Mail</h4>
+            <h3 className="font-semibold text-primary mb-2">WA + Agent Mail</h3>
             <p className="text-muted-foreground text-sm">
               State changes detected by WA can trigger Agent Mail notifications. Coordinate agent
               handoffs through mail threads.
@@ -229,7 +229,7 @@ wa robot send 43 "Start next task"`}
             transition={{ delay: 0.5 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">WA + Beads</h4>
+            <h3 className="font-semibold text-primary mb-2">WA + Beads</h3>
             <p className="text-muted-foreground text-sm">
               When WA detects task completion, it can update bead status. Track agent progress
               through your issue tracker.
