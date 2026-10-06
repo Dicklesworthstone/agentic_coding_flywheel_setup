@@ -708,9 +708,14 @@ teardown() {
     render_progress_screen() { :; }
     try_br_init() { return 2; }
 
-    execute_step init_br
+    run execute_step init_br
+    assert_success
+    # No ENXIO noise from probing /dev/tty without a controlling terminal.
+    [[ "$output" != *"/dev/tty"* ]]
 
-    [[ "${STEP_STATUS[init_br]}" == "pending" ]]
+    execute_step init_br 2>/dev/null
+    # Visibly skipped (GH #315), never success and never silently pending.
+    [[ "${STEP_STATUS[init_br]}" == "skipped" ]]
 }
 
 # ============================================================

@@ -186,7 +186,10 @@ render_progress_screen() {
 }
 
 render_progress_screen_best_effort() {
-    if [[ -w /dev/tty ]]; then
+    # [[ -w /dev/tty ]] is true even without a controlling terminal (cron, CI,
+    # nohup), where opening it fails with ENXIO and prints an error; probe by
+    # actually opening it.
+    if { : > /dev/tty; } 2>/dev/null; then
         render_progress_screen > /dev/tty 2>/dev/null || true
     else
         render_progress_screen >/dev/null 2>&1 || true
