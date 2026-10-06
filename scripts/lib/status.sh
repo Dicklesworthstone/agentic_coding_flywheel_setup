@@ -1134,13 +1134,18 @@ _status_read_last_update_ts() {
     printf '%s\n' "$ts"
 }
 
-# update.sh ends every run's log with a "Completed: <ISO-8601>" footer. The
-# install state only records install/resume time, so without this a box
-# updated every night reported "last update 115d ago".
+# update.sh ends every run's log with a summary footer (Updated/Failed counts,
+# then "Completed: <ISO-8601>"). The install state only records install/resume
+# time, so without this a box updated every night reported "last update 115d
+# ago". A run that updated nothing and failed is not an update: it is skipped,
+# so a broken nightly cannot keep the status looking fresh.
 _status_read_last_completed_update_ts() {
     local updates_dir="$1"
     local tail_bin=""
     local line=""
+    local completed=""
+    local updated=""
+    local failed=""
     local i=0
     local -a logs=()
 
@@ -1149,16 +1154,26 @@ _status_read_last_completed_update_ts() {
     [[ -n "$tail_bin" ]] || return 1
 
     # Logs are named YYYY-MM-DD-HHMMSS.log, so glob order is time order. Look
-    # back past a few unfinished (footerless) runs, newest first.
+    # back past a few unfinished (footerless) or failed runs, newest first.
     logs=("$updates_dir"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].log)
     for (( i = ${#logs[@]} - 1; i >= 0 && i >= ${#logs[@]} - 10; i-- )); do
         [[ -f "${logs[i]}" && ! -L "${logs[i]}" ]] || continue
+        completed="" updated="" failed=""
         while IFS= read -r line; do
-            if [[ "$line" =~ ^Completed:\ ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}([+-][0-9]{2}:?[0-9]{2}|Z)?)$ ]]; then
-                printf '%s\n' "${BASH_REMATCH[1]}"
-                return 0
+            if [[ "$line" =~ ^Updated:\ +([0-9]+)$ ]]; then
+                updated="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^Failed:\ +([0-9]+)$ ]]; then
+                failed="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^Completed:\ ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}([+-][0-9]{2}:?[0-9]{2}|Z)?)$ ]]; then
+                completed="${BASH_REMATCH[1]}"
             fi
-        done < <("$tail_bin" -n 4 -- "${logs[i]}" 2>/dev/null)
+        done < <("$tail_bin" -n 12 -- "${logs[i]}" 2>/dev/null)
+        [[ -n "$completed" ]] || continue
+        if [[ "$updated" == "0" && -n "$failed" && "$failed" != "0" ]]; then
+            continue
+        fi
+        printf '%s\n' "$completed"
+        return 0
     done
 
     return 1

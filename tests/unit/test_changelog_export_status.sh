@@ -4325,7 +4325,8 @@ test_status_last_update_tracks_completed_update_runs() {
     # state.json only records install/resume time, so a box updated every
     # night reported "last update 115d ago". update.sh ends each run's log
     # with a "Completed:" footer; the newest finished run wins, an unfinished
-    # (footerless) newer log is skipped, and an older run never beats state.
+    # (footerless) newer log and a newer run that updated nothing and failed
+    # are skipped, and an older run never beats state.
     setup_mock_env
 
     local updates_dir="$TEST_ACFS/logs/updates"
@@ -4334,6 +4335,8 @@ test_status_last_update_tracks_completed_update_runs() {
     printf 'Updated: 3\nFailed:  0\n\nCompleted: 2026-09-30T04:12:32-04:00\n===\n' \
         > "$updates_dir/2026-09-30-040000.log"
     printf '[04:00:01] Updating apt...\n' > "$updates_dir/2026-10-01-040000.log"
+    printf 'Updated: 0\nSkipped: 1\nFailed:  3\n\nCompleted: 2026-10-02T04:09:00-04:00\n===\n' \
+        > "$updates_dir/2026-10-02-040000.log"
     newer=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" bash "$STATUS_SH" --json)
 
     mv "$updates_dir/2026-09-30-040000.log" "$updates_dir/2026-01-01-040000.log"
@@ -5065,7 +5068,9 @@ test_doctor_subcommand_help_flags_exit_zero() {
             failures+=" ${cmd%%:*}"
         fi
     done
-    link_dir="$(mktemp -d)"
+    setup_mock_env
+    link_dir="$TEST_HOME/bin"
+    mkdir -p "$link_dir"
     ln -s "$DOCTOR_SH" "$link_dir/acfs"
     output="$(bash "$link_dir/acfs" --help 2>&1)" || failures+=" acfs--help(exit)"
     [[ "$output" == *"Commands:"*"landing-plane"* ]] || failures+=" acfs--help"
@@ -5076,6 +5081,8 @@ test_doctor_subcommand_help_flags_exit_zero() {
     else
         harness_fail "acfs/undo/session --help print the right usage and exit 0" "failed:$failures"
     fi
+
+    cleanup_mock_env
 }
 
 test_doctor_dispatch_keeps_caller_path() {
@@ -5084,7 +5091,8 @@ test_doctor_dispatch_keeps_caller_path() {
     # PATH made every helper exec'd afterwards (swarm doctor/status, ...)
     # report per-user tools such as am, br and ntm as unavailable.
     local work="" fake_bin="" fake_status="" seen_path=""
-    work="$(mktemp -d)"
+    setup_mock_env
+    work="$TEST_HOME"
     fake_bin="$work/user-bin"
     fake_status="$work/fake_swarm_status.sh"
     mkdir -p "$fake_bin"
@@ -5100,6 +5108,8 @@ EOF
     else
         harness_fail "doctor dispatch keeps a non-root caller's PATH for helpers" "helper saw PATH=${seen_path:-<nothing recorded>}"
     fi
+
+    cleanup_mock_env
 }
 
 test_doctor_entrypoint_dispatches_helper_commands() {
