@@ -556,11 +556,13 @@ export function OperatingRhythmViz() {
           {STEPS.map((step, i) => (
             <div key={step.id}>
               {/* Step node + card combined as a clickable row */}
+              {/* A disclosure: the button holds only the node + header (its
+                  visible name); the expanded detail is rendered after it. */}
               <button
                 type="button"
                 onClick={() => handleSelect(i)}
-                aria-pressed={activeIndex === i}
-                aria-label={`Step ${i + 1}: ${step.label}`}
+                aria-expanded={activeIndex === i}
+                aria-controls={activeIndex === i ? `rhythm-detail-${step.id}` : undefined}
                 className="w-full flex items-start gap-4 text-left rounded-xl p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50"
               >
                 {/* Vertical connector + node */}
@@ -602,7 +604,7 @@ export function OperatingRhythmViz() {
                     <span
                       className="text-[0.55rem] font-bold uppercase tracking-widest"
                       style={{
-                        color: activeIndex === i ? step.color : "rgba(255,255,255,0.2)",
+                        color: activeIndex === i ? step.color : "rgba(255,255,255,0.6)",
                       }}
                     >
                       Step {i + 1}
@@ -611,17 +613,21 @@ export function OperatingRhythmViz() {
                       className="text-sm font-bold tracking-tight transition-colors duration-300"
                       style={{
                         color:
-                          activeIndex === i ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.35)",
+                          activeIndex === i ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
                       }}
                     >
                       {step.label}
                     </span>
                   </div>
+                </div>
+              </button>
 
-                  {/* Expandable detail */}
+                  {/* Expandable detail (indented to the content column:
+                      button p-2 + 40px node + gap-4) */}
                   <AnimatePresence>
                     {activeIndex === i && (
                       <motion.div
+                        id={`rhythm-detail-${step.id}`}
                         initial={reducedMotion ? false : { height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
@@ -630,7 +636,7 @@ export function OperatingRhythmViz() {
                           stiffness: 300,
                           damping: 28,
                         }}
-                        className="overflow-hidden"
+                        className="overflow-hidden pl-[4.5rem] pr-2 pb-2"
                       >
                         <div
                           className="mt-2 rounded-xl border p-4 space-y-3"
@@ -674,8 +680,6 @@ export function OperatingRhythmViz() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </div>
-              </button>
 
               {/* Vertical connector line */}
               {i < STEP_COUNT - 1 && (
