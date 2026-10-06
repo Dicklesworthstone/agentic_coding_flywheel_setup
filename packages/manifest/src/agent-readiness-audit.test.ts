@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -226,12 +226,11 @@ function createCliFixture() {
 
   mkdirSync(home, { recursive: true });
   mkdirSync(bin, { recursive: true });
+  // A ready agent must be a host-native executable: script launchers grade as
+  // unverified (warn) on Linux. The running Bun binary is native on every host,
+  // and the CLI runs below pass --no-version, so these are never executed.
   for (const command of ["claude", "codex", "agy", "caam"]) {
-    writeRealFile(
-      join(bin, command),
-      `#!/usr/bin/env bash\nprintf '%s 1.2.3\\n' '${command}'\n`,
-      true,
-    );
+    symlinkSync(process.execPath, join(bin, command));
   }
 
   writeRealFile(
