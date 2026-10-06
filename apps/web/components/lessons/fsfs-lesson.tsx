@@ -615,6 +615,7 @@ function ScenarioStepper({
       <motion.button
         type="button"
         onClick={onPrev}
+        aria-label="Previous scenario"
         disabled={disabled}
         whileHover={disabled ? {} : { scale: 1.1 }}
         whileTap={disabled ? {} : { scale: 0.9 }}
@@ -630,6 +631,8 @@ function ScenarioStepper({
             key={s.id}
             type="button"
             onClick={() => onSelect(idx)}
+            aria-label={`Scenario ${idx + 1}: ${s.label}`}
+            aria-current={idx === activeIndex ? "step" : undefined}
             disabled={disabled}
             whileHover={disabled ? {} : { scale: 1.2 }}
             whileTap={disabled ? {} : { scale: 0.9 }}
@@ -655,6 +658,7 @@ function ScenarioStepper({
       <motion.button
         type="button"
         onClick={onNext}
+        aria-label="Next scenario"
         disabled={disabled}
         whileHover={disabled ? {} : { scale: 1.1 }}
         whileTap={disabled ? {} : { scale: 0.9 }}

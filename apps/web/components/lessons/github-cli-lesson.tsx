@@ -855,6 +855,7 @@ function InteractiveGitHubWorkflow() {
           <button
             type="button"
             onClick={goPrev}
+            aria-label="Previous stage"
             disabled={activeStage <= 0}
             className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl text-white/60 transition hover:border-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           >
@@ -864,6 +865,7 @@ function InteractiveGitHubWorkflow() {
           <button
             type="button"
             onClick={togglePlay}
+            aria-label={isPlaying ? "Pause" : "Play"}
             className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
@@ -872,6 +874,7 @@ function InteractiveGitHubWorkflow() {
           <button
             type="button"
             onClick={goNext}
+            aria-label="Next stage"
             disabled={activeStage >= totalStages - 1}
             className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl text-white/60 transition hover:border-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           >
@@ -885,6 +888,8 @@ function InteractiveGitHubWorkflow() {
             <button
               type="button"
               key={s.id}
+              aria-label={`Go to stage ${i + 1}: ${s.label}`}
+              aria-current={i === activeStage ? "step" : undefined}
               onClick={() => {
                 resetCiJobs();
                 setActiveStage(i);
