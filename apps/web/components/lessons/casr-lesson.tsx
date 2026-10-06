@@ -1218,9 +1218,12 @@ function InteractiveSessionHandoffImpl() {
           </motion.button>
 
           <div className="flex items-center gap-1.5">
-            {SCENARIO_STEPS.map((_, i) => (
+            {SCENARIO_STEPS.map((s, i) => (
               <button
-                key={i}
+                key={s.id}
+                type="button"
+                aria-label={`Step ${i + 1}: ${s.label}`}
+                aria-current={i === currentStep ? "step" : undefined}
                 onClick={() => goToStep(i)}
                 className={`h-1.5 rounded-full transition-[width,background-color] duration-300 ${
                   i === currentStep

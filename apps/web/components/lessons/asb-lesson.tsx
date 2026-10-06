@@ -1268,9 +1268,12 @@ function InteractiveBackupRestoreImpl() {
 
           {/* Progress indicator */}
           <div className="flex items-center gap-1.5">
-            {SCENARIOS.map((_, i) => (
+            {SCENARIOS.map((s, i) => (
               <button
                 key={snapshotIds[i]}
+                type="button"
+                aria-label={`Scenario ${i + 1}: ${s.label}`}
+                aria-current={i === scenarioIndex ? "step" : undefined}
                 onClick={() => switchScenario(i)}
                 className={`h-1.5 rounded-full transition-[width,background-color] ${
                   i === scenarioIndex ? "w-5 bg-white/40" : "w-1.5 bg-white/15 hover:bg-white/25"

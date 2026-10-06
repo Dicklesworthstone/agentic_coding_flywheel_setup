@@ -1226,6 +1226,8 @@ function InteractiveTrafficMonitor() {
             <button
               key={s.id}
               type="button"
+              aria-label={`Scenario ${i + 1}: ${s.title}`}
+              aria-current={i === stepIndex ? "step" : undefined}
               onClick={() => {
                 setStepIndex(i);
                 setPackets([]);
