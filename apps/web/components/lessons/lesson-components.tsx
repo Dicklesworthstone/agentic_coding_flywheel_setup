@@ -228,15 +228,20 @@ export function CommandList({ commands }: CommandListProps) {
           <button
             type="button"
             onClick={() => handleCopy(cmd.command, i)}
-            aria-label="Copy command"
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/40 border border-white/[0.08] font-mono text-sm text-emerald-400 transition duration-300 hover:bg-black/60 hover:border-emerald-500/30"
           >
+            {/* Named "Copy command: $ <command>": a bare aria-label hid which
+                command each button copies and dropped the visible text. */}
+            <span className="sr-only">{copiedIndex === i ? "Copied: " : "Copy command: "}</span>
             <span className="text-white/50">$</span>
             <span>{cmd.command}</span>
             {copiedIndex === i ? (
-              <Check className="h-4 w-4 text-emerald-400" />
+              <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
             ) : (
-              <Copy className="h-4 w-4 text-white/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Copy
+                className="h-4 w-4 text-white/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-hidden="true"
+              />
             )}
           </button>
           <span className="text-white/50 text-sm">{cmd.description}</span>
