@@ -576,9 +576,12 @@ function AnimatedFlywheel() {
       `}</style>
 
       <div className="relative flex flex-col items-center p-4 sm:p-8">
+        {/* The ring (radius 160, nodes 34, hover scale 1.2) never leaves 50..450,
+            so the viewBox is cropped to it: on a ~308px phone the labels are
+            ~19% larger than with the old 500-unit box (bd-k3qa5). */}
         <svg
           ref={svgRef}
-          viewBox="0 0 500 500"
+          viewBox="40 40 420 420"
           className="w-full max-w-[500px] aspect-square"
           onClick={handleBackgroundClick}
         >
@@ -646,7 +649,7 @@ function AnimatedFlywheel() {
             y={CY - 6}
             textAnchor="middle"
             fill="white"
-            fontSize="11"
+            fontSize="13"
             fontWeight="700"
             opacity="0.9"
           >
@@ -654,10 +657,10 @@ function AnimatedFlywheel() {
           </text>
           <text
             x={CX}
-            y={CY + 10}
+            y={CY + 11}
             textAnchor="middle"
             style={{ fill: "var(--primary)" }}
-            fontSize="10"
+            fontSize="11"
             fontWeight="500"
             opacity="0.85"
           >
@@ -755,7 +758,7 @@ function AnimatedFlywheel() {
                   <circle
                     cx={0}
                     cy={0}
-                    r={28}
+                    r={34}
                     fill={node.color}
                     fillOpacity={0.15}
                     stroke={node.color}
@@ -766,7 +769,7 @@ function AnimatedFlywheel() {
                   <circle
                     cx={0}
                     cy={0}
-                    r={20}
+                    r={25}
                     fill={node.color}
                     fillOpacity={isActive ? 0.3 : 0.1}
                   />
@@ -778,17 +781,17 @@ function AnimatedFlywheel() {
                       y={-3}
                       textAnchor="middle"
                       fill="white"
-                      fontSize="10"
+                      fontSize="12"
                       fontWeight="700"
                     >
                       {node.label}
                     </text>
                     <text
                       x={0}
-                      y={9}
+                      y={11}
                       textAnchor="middle"
                       fill={node.color}
-                      fontSize="8"
+                      fontSize="10"
                       fontWeight="500"
                       opacity="0.9"
                     >
@@ -1351,7 +1354,9 @@ function StageNode({
   cy: number;
   onClick: () => void;
 }) {
-  const nodeRadius = isActive ? 28 : isHighlighted ? 26 : 24;
+  // Adjacent stages sit 130 units apart on the 170-unit ring, so nodes can be
+  // this large; the diagram renders at ~0.6x on phones (bd-k3qa5).
+  const nodeRadius = isActive ? 34 : isHighlighted ? 32 : 30;
 
   return (
     <g
@@ -1398,12 +1403,12 @@ function StageNode({
       {/* Icon - rendered as text placeholder since SVG can't use React components inline */}
       <text
         x={cx}
-        y={cy - 4}
+        y={cy - 5}
         textAnchor="middle"
         fill="white"
-        fontSize="11"
+        fontSize="13"
         fontWeight="700"
-        opacity={isActive ? 1 : 0.7}
+        opacity={isActive ? 1 : 0.8}
         dominantBaseline="central"
       >
         {stage.shortLabel.slice(0, 3)}
@@ -1412,12 +1417,12 @@ function StageNode({
       {/* Index number */}
       <text
         x={cx}
-        y={cy + 12}
+        y={cy + 15}
         textAnchor="middle"
         fill={stageColor}
-        fontSize="9"
+        fontSize="11"
         fontWeight="600"
-        opacity={0.8}
+        opacity={0.85}
       >
         {index + 1}/{STAGE_COUNT}
       </text>
@@ -1905,12 +1910,14 @@ function InteractiveFlywheelCycle() {
             />
 
             {/* Center text */}
+            {/* "Building momentum" (~105 units at 12) bounds the middle line to
+                the 110-unit hub; the other two lines can be larger. */}
             <text
               x={ringCx}
-              y={ringCy - 12}
+              y={ringCy - 13}
               textAnchor="middle"
               fill="white"
-              fontSize="14"
+              fontSize="16"
               fontWeight="800"
               opacity="0.9"
             >
@@ -1921,19 +1928,19 @@ function InteractiveFlywheelCycle() {
               y={ringCy + 7}
               textAnchor="middle"
               fill={lerpHexColor("#6366f1", "#f97316", warmth)}
-              fontSize="11"
+              fontSize="12"
               fontWeight="600"
-              opacity="0.8"
+              opacity="0.85"
             >
               {speedLabel}
             </text>
             <text
               x={ringCx}
-              y={ringCy + 23}
+              y={ringCy + 25}
               textAnchor="middle"
               fill="white"
-              fontSize="10"
-              opacity="0.5"
+              fontSize="12"
+              opacity="0.65"
             >
               {CYCLE_METRICS[cycle - 1]?.duration ?? ""}
             </text>
