@@ -51,7 +51,7 @@ test.describe
         });
 
         await test.step("mentions the pinned Gemini 3.8 Flash model + agy command", async () => {
-          await expect(page.getByText(/Gemini 3\.1 Pro/i).first()).toBeVisible();
+          await expect(page.getByText(/Gemini 3\.8 Flash/i).first()).toBeVisible();
         });
 
         expect(errors).toEqual([]);

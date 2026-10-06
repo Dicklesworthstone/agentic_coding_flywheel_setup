@@ -92,8 +92,8 @@ function StepItem({
           </>
         ) : (
           <span className="font-mono text-xs">
-            <span className="sr-only">Step </span>
-            {step.id}
+            <span className="sr-only">{`Step ${step.id}`}</span>
+            <span aria-hidden="true">{step.id}</span>
           </span>
         )}
       </div>

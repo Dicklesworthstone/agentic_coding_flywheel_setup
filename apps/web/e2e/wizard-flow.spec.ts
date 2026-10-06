@@ -154,6 +154,23 @@ async function setupWizardState(
   );
 }
 
+// The create-vps checklist renders on the client after it reads storage, so a bare
+// count() right after navigation can see zero boxes and silently tick nothing.
+const CREATE_VPS_CHECKLIST_SIZE = 4;
+
+function createVpsCheckboxes(page: Page) {
+  return page.locator('button[role="checkbox"]');
+}
+
+async function checkAllCreateVpsItems(page: Page) {
+  const checkboxes = createVpsCheckboxes(page);
+  await expect(checkboxes).toHaveCount(CREATE_VPS_CHECKLIST_SIZE);
+  for (let i = 0; i < CREATE_VPS_CHECKLIST_SIZE; i++) {
+    await checkboxes.nth(i).click();
+    await expect(checkboxes.nth(i)).toHaveAttribute("aria-checked", "true");
+  }
+}
+
 /**
  * Agent Flywheel Wizard Flow E2E Tests
  *
@@ -598,11 +615,7 @@ test.describe("Wizard Flow", () => {
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
 
     // Check all checklist items
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
 
     // Enter IP address (use type() + blur() for cross-browser reliability)
     const ipInput = page.locator("[data-vps-ip-input]");
@@ -788,11 +801,7 @@ test.describe("State Persistence", () => {
     await page.goto("/wizard/create-vps");
 
     // Check all checklist items
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
 
     // Enter IP address (use type() + blur() for cross-browser reliability)
     const ipInput = page.locator("[data-vps-ip-input]");
@@ -1032,11 +1041,7 @@ test.describe("Complete Wizard Flow Integration", () => {
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
 
     // Step 5: Create VPS
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
     // Users often paste IPs with surrounding whitespace - test that trimming works
     // Use type() + blur() for cross-browser reliability
     const ipInput = page.locator("[data-vps-ip-input]");
@@ -1171,11 +1176,7 @@ test.describe("No localStorage (query-only resilience)", () => {
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
 
     // Step 5 -> Step 6 (IP retained in memory, never stored in the URL)
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
 
     const ipInput = page.locator("[data-vps-ip-input]");
     await ipInput.clear();
@@ -1832,8 +1833,10 @@ test.describe("Create VPS - Button Disabled States", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Check only the first checkbox
-    const checkboxes = page.locator('button[role="checkbox"]');
+    const checkboxes = createVpsCheckboxes(page);
+    await expect(checkboxes).toHaveCount(CREATE_VPS_CHECKLIST_SIZE);
     await checkboxes.first().click();
+    await expect(checkboxes.first()).toHaveAttribute("aria-checked", "true");
 
     // Enter valid IP - button should still be disabled (not all checkboxes checked)
     const ipInput = page.locator("[data-vps-ip-input]");
@@ -1853,11 +1856,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Check all checkboxes
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
 
     // Don't enter IP - button should be disabled
     const continueButton = page.locator('main button:has-text("Continue to SSH")');
@@ -1869,11 +1868,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Check all checkboxes
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
 
     // Enter invalid IP
     const ipInput = page.locator("[data-vps-ip-input]");
@@ -1896,11 +1891,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Check all checkboxes
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      await checkboxes.nth(i).click();
-    }
+    await checkAllCreateVpsItems(page);
 
     // Enter valid IP
     const ipInput = page.locator("[data-vps-ip-input]");
@@ -1920,11 +1911,8 @@ test.describe("Create VPS - Button Disabled States", () => {
     await page.goto("/wizard/create-vps");
     await page.waitForLoadState("domcontentloaded");
 
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-
     // Should have 4 checklist items as defined in CHECKLIST_ITEMS
-    expect(count).toBe(4);
+    await expect(createVpsCheckboxes(page)).toHaveCount(4);
   });
 });
 
@@ -2284,9 +2272,8 @@ test.describe("Accessibility", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Checkboxes should have proper role
-    const checkboxes = page.locator('button[role="checkbox"]');
-    const count = await checkboxes.count();
-    expect(count).toBeGreaterThan(0);
+    const checkboxes = createVpsCheckboxes(page);
+    await expect(checkboxes).toHaveCount(CREATE_VPS_CHECKLIST_SIZE);
 
     // First checkbox should be clickable
     await checkboxes.first().click();
