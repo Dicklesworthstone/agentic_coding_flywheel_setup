@@ -43,15 +43,10 @@ function StepItem({
   onClick,
 }: StepItemProps) {
   const showCompletedState = isCompleted && !isActive;
-  const state = isActive
-    ? "current step"
-    : showCompletedState
-      ? isSkipped
-        ? "skipped, not needed on Linux"
-        : "completed"
-      : isClickable
-        ? "available"
-        : "locked";
+  // The accessible name is the visible text plus screen-reader-only context
+  // (no aria-label), so speech-input users can say what they see (WCAG 2.5.3).
+  // Active/completed steps show their state; pending ones only get it here.
+  const hiddenState = !isActive && !showCompletedState ? (isClickable ? ", available" : ", locked") : "";
 
   return (
     // Locked steps use aria-disabled rather than `disabled` so they stay in
@@ -69,7 +64,6 @@ function StepItem({
         !isClickable && "cursor-not-allowed opacity-60",
       )}
       aria-current={isActive ? "step" : undefined}
-      aria-label={`Step ${step.id}: ${step.title}, ${state}`}
     >
       {/* Connection line to next step */}
       {showConnector && (
@@ -87,11 +81,20 @@ function StepItem({
         )}
       >
         {showCompletedState ? (
-          <Check className="h-4 w-4" strokeWidth={2.5} />
+          <>
+            <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+            <span className="sr-only">Step {step.id}:</span>
+          </>
         ) : isActive ? (
-          <Circle className="h-3 w-3 fill-current" />
+          <>
+            <Circle className="h-3 w-3 fill-current" aria-hidden="true" />
+            <span className="sr-only">Step {step.id}:</span>
+          </>
         ) : (
-          <span className="font-mono text-xs">{step.id}</span>
+          <span className="font-mono text-xs">
+            <span className="sr-only">Step </span>
+            {step.id}
+          </span>
         )}
       </div>
 
@@ -106,6 +109,7 @@ function StepItem({
           )}
         >
           {step.title}
+          {hiddenState && <span className="sr-only">{hiddenState}</span>}
         </div>
         {isActive && <div className="mt-0.5 text-xs text-primary">In progress</div>}
         {showCompletedState && (
