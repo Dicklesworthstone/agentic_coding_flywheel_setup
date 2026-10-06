@@ -93,7 +93,7 @@ export default function SecurityDocsPage() {
   }, [persist]);
 
   return (
-    <div className="relative mx-auto max-w-3xl space-y-10 px-6 py-12">
+    <main id="main-content" tabIndex={-1} className="relative mx-auto max-w-3xl space-y-10 px-6 py-12">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-cosmic opacity-35" />
 
       {/* Header */}
@@ -359,6 +359,6 @@ export default function SecurityDocsPage() {
           you’ve secured your Google account.
         </div>
       </Card>
-    </div>
+    </main>
   );
 }

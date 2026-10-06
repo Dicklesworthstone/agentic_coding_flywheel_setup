@@ -114,7 +114,6 @@ function StepNode({
       type="button"
       onClick={onClick}
       aria-pressed={isActive}
-      aria-label={`Step ${index + 1}: ${step.label}`}
       className="group relative flex flex-col items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/50 rounded-xl"
     >
       {/* Glow ring behind active node */}
@@ -146,7 +145,7 @@ function StepNode({
             : { duration: 0.2 }
         }
       >
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5" aria-hidden="true">
           <Icon
             className="h-5 w-5 transition-colors duration-300"
             style={{ color: isActive ? step.color : "rgba(255,255,255,0.35)" }}
@@ -177,15 +176,17 @@ function StepNode({
         <span
           className="text-[0.55rem] font-bold uppercase tracking-widest transition-colors duration-300"
           style={{
-            color: isActive ? step.color : "rgba(255,255,255,0.2)",
+            // Inactive text at 60% white clears 4.5:1 on this near-black.
+            color: isActive ? step.color : "rgba(255,255,255,0.6)",
           }}
         >
+          <span className="sr-only">Step </span>
           {index + 1}
         </span>
         <span
           className="text-[0.7rem] font-bold tracking-wide transition-colors duration-300 whitespace-nowrap"
           style={{
-            color: isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.3)",
+            color: isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
           }}
         >
           {step.label}

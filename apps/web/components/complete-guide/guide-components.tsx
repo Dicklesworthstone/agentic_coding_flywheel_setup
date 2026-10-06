@@ -87,7 +87,10 @@ export function GuideSection({ id, number, title, icon, children }: GuideSection
     >
       {/* Subtle Side Label for desktop */}
       {typeof number === "string" && number !== "" && (
-        <div className="absolute -left-32 top-0 hidden xl:flex items-center justify-end w-24 pointer-events-none select-none">
+        <div
+          className="absolute -left-32 top-0 hidden xl:flex items-center justify-end w-24 pointer-events-none select-none"
+          aria-hidden="true"
+        >
           <span className="text-[8rem] font-black text-white/[0.015] leading-none tracking-tighter">
             {number.padStart(2, "0")}
           </span>

@@ -390,7 +390,8 @@ function DesktopToolNode({
         onClick={onSelect}
         onMouseEnter={() => onHover(true)}
         onMouseLeave={() => onHover(false)}
-        aria-label={`${tool.name}: ${tool.tagline}`}
+        // Named by its visible short name + star count, with the full name and
+        // tagline added for screen readers (no aria-label override: WCAG 2.5.3).
         aria-pressed={isSelected}
         className={cn(
           "group relative flex h-full w-full flex-col items-center justify-center gap-1.5 rounded-2xl border p-2",
@@ -455,7 +456,7 @@ function DesktopToolNode({
               boxShadow: `0 4px 16px ${color}40`,
             }}
           >
-            <Icon className={cn("text-white drop-shadow-sm", iconSize)} />
+            <Icon className={cn("text-white drop-shadow-sm", iconSize)} aria-hidden="true" />
           </div>
         </div>
 
@@ -468,6 +469,9 @@ function DesktopToolNode({
         >
           {tool.shortName}
         </span>
+        <span className="sr-only">
+          : {tool.name}, {tool.tagline}
+        </span>
 
         {/* Star badge with glow */}
         {tool.stars && tool.stars >= 50 && (
@@ -475,8 +479,9 @@ function DesktopToolNode({
             className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-full bg-amber-500/30 px-1.5 py-0.5 text-[8px] font-bold text-amber-300 backdrop-blur-sm border border-amber-400/30"
             style={{ boxShadow: "0 2px 8px rgba(251,191,36,0.3)" }}
           >
-            <Star className="h-2 w-2 fill-current" />
+            <Star className="h-2 w-2 fill-current" aria-hidden="true" />
             {tool.stars >= 1000 ? `${(tool.stars / 1000).toFixed(0)}K` : tool.stars}
+            <span className="sr-only"> GitHub stars</span>
           </div>
         )}
       </button>

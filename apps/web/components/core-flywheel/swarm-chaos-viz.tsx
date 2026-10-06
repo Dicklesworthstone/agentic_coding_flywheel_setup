@@ -672,9 +672,11 @@ export function SwarmChaosViz() {
           onClick={play}
           disabled={isPlaying}
           className="flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ background: "#FF5500" }}
+          // #CC4400, not the brand #FF5500: white 14px bold text needs 4.5:1
+          // (#FF5500 gives 3.2:1, #CC4400 about 4.8:1).
+          style={{ background: "#CC4400" }}
         >
-          <Play size={14} />
+          <Play size={14} aria-hidden="true" />
           {isDone ? "Replay Simulation" : "Start Simulation"}
         </button>
         <button
