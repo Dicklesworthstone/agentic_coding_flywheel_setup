@@ -148,6 +148,12 @@ test.describe
         })
         .toBeLessThanOrEqual(2);
 
+      // The shortcut is inert until lesson progress loads; the footer link to the
+      // next lesson renders on exactly the condition the shortcut checks.
+      await expect(
+        page.getByRole("main").locator('a[href="/learn/context-mastery"]', { hasText: "Next" }),
+      ).toBeVisible();
+
       // Navigate to the next lesson via the keyboard shortcut.
       await page.keyboard.press("ArrowRight");
       await expect(page).toHaveURL(/\/learn\/context-mastery$/);

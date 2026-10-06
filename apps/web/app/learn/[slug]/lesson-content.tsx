@@ -142,7 +142,6 @@ function LessonSidebar({
     }
 
     let pendingFrame: number | null = null;
-    const persist = () => saveSidebarScrollTop(nav.scrollTop);
     const schedulePersist = () => {
       if (pendingFrame !== null) return;
       pendingFrame = window.requestAnimationFrame(() => {
