@@ -667,7 +667,8 @@ export function LessonContent({ lesson }: Props) {
       <div className="relative flex xl:pl-80">
         <LessonSidebar completedLessons={completedLessons} currentLessonId={lesson.id} />
 
-        <main className="flex-1 min-w-0">
+        {/* id="main-content" is the target of the layout's skip link. */}
+        <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
           {/* Mobile header - ultra premium */}
           <div className="sticky top-0 z-20 xl:hidden">
             <div className="relative border-b border-white/[0.08]">
