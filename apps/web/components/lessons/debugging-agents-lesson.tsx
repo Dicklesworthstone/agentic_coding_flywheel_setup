@@ -1138,15 +1138,17 @@ function AgentStatusSVG({ scenario, animated }: { scenario: DebugScenario; anima
         transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
       />
       {/* Center text */}
+      {/* The gauge renders ~80px wide, so units here are ~0.67px: keep the
+          center text large enough to stay legible (bd-k3qa5). */}
       <text
         x="60"
-        y="55"
+        y="58"
         textAnchor="middle"
-        className="fill-white/80 text-[14px] font-bold font-mono"
+        className="fill-white/80 text-[18px] font-bold font-mono"
       >
         {animated ? scenario.conversationTurns : "--"}
       </text>
-      <text x="60" y="70" textAnchor="middle" className="fill-white/40 text-[8px]">
+      <text x="60" y="76" textAnchor="middle" className="fill-white/55 text-[12px]">
         turns
       </text>
     </svg>

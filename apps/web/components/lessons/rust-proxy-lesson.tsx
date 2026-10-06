@@ -28,6 +28,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -604,6 +605,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
 
   return (
     <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 overflow-hidden">
+      <DiagramScroller label="Request flow diagram" minWidth={500}>
       <svg viewBox="0 0 500 100" className="w-full h-auto" aria-label="Request flow diagram">
         {/* Connection lines */}
         <line
@@ -883,6 +885,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           {scenario.statusCode} {scenario.statusText.split(" ")[0]}
         </text>
       </svg>
+      </DiagramScroller>
     </div>
   );
 }

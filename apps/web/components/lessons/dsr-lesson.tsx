@@ -34,6 +34,7 @@ import { copyTextToClipboard } from "@/lib/utils";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -830,6 +831,7 @@ function ArtifactFlowDiagram({
         </span>
       </div>
 
+      <DiagramScroller label="Release pipeline artifact flow diagram" minWidth={500}>
       <svg
         viewBox="0 0 500 180"
         className="w-full"
@@ -1097,6 +1099,7 @@ function ArtifactFlowDiagram({
           {phase === "done" && "Release complete!"}
         </text>
       </svg>
+      </DiagramScroller>
     </div>
   );
 }

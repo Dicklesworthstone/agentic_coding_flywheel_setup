@@ -25,6 +25,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -391,6 +392,7 @@ function VpsStateDiagram({
   const flowing = inView && phase === "running";
 
   return (
+    <DiagramScroller label="Snapshot flow diagram" minWidth={480}>
     <svg ref={rootRef} viewBox="0 0 480 140" className="w-full h-auto" aria-hidden="true">
       {/* VPS Box */}
       <motion.rect
@@ -555,6 +557,7 @@ function VpsStateDiagram({
         </motion.g>
       )}
     </svg>
+    </DiagramScroller>
   );
 }
 
