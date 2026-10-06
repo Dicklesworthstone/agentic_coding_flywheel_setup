@@ -31,6 +31,7 @@ import {
 } from "@/components/simpler-guide";
 import { TrackedLink } from "@/components/tracked-link";
 import { Button } from "@/components/ui/button";
+import { InstallerOutputDrill } from "@/components/wizard/InstallerOutputDrill";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   buildHandoffRunbook,
@@ -824,6 +825,9 @@ export default function RunInstallerPage() {
           </p>
         </div>
       </AlertCard>
+
+      {/* Optional drill on reading real installer output (bd-hjbld) */}
+      <InstallerOutputDrill />
 
       {/* Transparency & trust */}
       <div className="flex gap-3 rounded-xl border border-green/25 bg-green/5 p-3 sm:p-4">
