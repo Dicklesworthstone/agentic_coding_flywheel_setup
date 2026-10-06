@@ -280,6 +280,12 @@ SENSITIVE DATA:
   - Full paths containing usernames (sanitized to ~/)
   - Environment-specific secrets
 
+RESTORE ON ANOTHER HOST:
+  From a trusted ACFS checkout on the destination (any of the formats above):
+    python3 scripts/import-config.py backup.yaml           # preview the plan
+    python3 scripts/import-config.py backup.yaml --apply   # install it
+  Details: docs/operations/config-restore.md
+
 EOF
 }
 
