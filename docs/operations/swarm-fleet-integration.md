@@ -48,7 +48,46 @@ digest. A conflict returns exit 1, no candidate and no approval digest. Processi
 stops at that host: later histories are not merged on top of conflict-marker
 content. Git's exit status decides whether there is a conflict, even when its
 conflicted-file list is empty. Conflict paths are JSON data, not shell commands.
-This initial mode only previews; it does not publish a candidate ref.
+Preview does not publish a candidate ref. It needs no previous `--import`
+operation: the selected histories are read from the collection, not mutable
+review refs or branch names.
+
+## Publish the exact reviewed candidate
+
+Repeat the original integration command with
+`--apply --accept-plan THE_INTEGRATION_DIGEST`. The collection, destination,
+selection, exact target and combined candidate are recomputed and must match the
+reviewed plan. Collection and review-import digests do not approve integration.
+A conflict cannot be approved; changed inputs require another preview.
+
+Apply copies the selected histories and synthesized merge objects into the
+destination, using strict Git pack/object checks. It then checks the candidate's
+exact tree, reachable objects, input ancestry and net changed paths. Only after
+these checks does one create-only Git transaction publish
+`refs/acfs/integrations/NAME`. Direct or symbolic refs already at that name are
+never adopted or overwritten, including refs created by a competing writer.
+
+`HEAD`, existing branches/review refs, `FETCH_HEAD`, staged/unstaged files,
+untracked files and the destination index remain untouched. No checkout, push,
+project hooks, provider request or test execution is performed. An all-contained
+selection whose candidate equals the chosen target is a true destination no-op:
+no packs or candidate ref are written. The target is an exact commit, not a
+promise that a moving development branch still points there.
+
+Successful publication reports `status: "integrated"` and `candidate_published:
+true`; the no-op reports `status: "noop"`. Neither outcome certifies correctness.
+Review the new ref's complete history and tree before choosing a separate
+worktree for tests or merging into a development branch.
+
+Failure or interruption after indexing starts can leave objects and retained
+`.keep` markers containing the integration digest, even if no ref was published.
+`integration_writes_started` on an error means destination writes may have
+happened, not that publication completed. A lost terminal response can occur
+after publication; do not infer that it is safe to repeat the operation.
+No automatic deletion, reset, repair or forced retry is performed. Ref creation
+does not promise an all-or-nothing filesystem state across process death or power
+loss. Preserve the original collection, target, runtime and integration digest
+outside the collection's strict artifact directory.
 
 ## Isolation and limits
 
@@ -78,11 +117,14 @@ trusted; this is not a sandbox against a malicious same-user process.
 seconds), excluding local artifact checks and bounded cleanup. Existing collection
 limits apply; local Git output is bounded to 1 MiB normally and 16 MiB for attribute
 inspection. Scratch disk usage and decompressed Git objects can exceed compressed
-bundle sizes. Use a controller with adequate scratch space. Git must support
+bundle sizes. Each copied source pack and the combined synthesized-object pack
+is limited to 16 MiB; an oversized generated pack refuses publication. Apply can
+retain earlier indexed source packs in that case. Use a controller with adequate
+scratch and destination space. Git must support
 `merge-tree --write-tree` (Git 2.38 or newer); unsupported Git fails closed.
 
 Exit 0 means a clean candidate was computed, not that tests passed or tasks were
-completed. Exit 1 means a merge conflict; exit 2 means invalid inputs or a local
+completed; apply also returns 0 for publication or no-op. Exit 1 means a merge conflict; exit 2 means invalid inputs or a local
 failure. A syntactically clean merge can still be semantically wrong. Review the
 full history and run appropriate checks in a separately chosen worktree before
 any merge into a development branch or push.
@@ -96,5 +138,8 @@ python3 -B tests/unit/test_swarm_fleet_integrate.py -v
 Tests use real Git objects, bundles, plumbing and unprivileged processes, covering
 independent edits, same-file disjoint hunks, rename/edit, binary and modify/delete
 conflicts, repeated histories, SHA-256, dirty linked worktrees, attribute macros,
-collection tampering and occupied refs. Fixtures are retained. These tests do not
+collection tampering and occupied refs. Publication tests additionally exercise
+dirty-checkout preservation, real competing direct/symbolic ref creation,
+strict object transfer, collection changes during apply, and hook isolation.
+Fixtures are retained. These tests do not
 claim live SSH, authenticated agents or full installer/VM acceptance.

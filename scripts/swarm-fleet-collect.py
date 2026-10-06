@@ -38,6 +38,7 @@ IMPORT_SCHEMA = "acfs.swarm-fleet-import.v1"
 IMPORT_STARTED = False
 INTEGRATION_SCHEMA = "acfs.swarm-fleet-integration.v1"
 INTEGRATION_SCRATCH = None
+INTEGRATION_WRITES_STARTED = False
 
 # Fixed read-only program. No executable, ref expression, command or environment
 # is supplied by the selection. Git configuration that could start network or
@@ -797,14 +798,75 @@ def merge_candidate(git, entries, onto, evidence):
             "candidate_tree": tree, "net_changed_paths": paths}
 
 
-def integrate_collection(path, repository, onto, name, hosts, timeout):
-    global INTEGRATION_SCRATCH
+def verify_candidate_history(git, plan):
+    result = plan["result"]
+    candidate = result["candidate_commit"]
+    require(git.text(["cat-file", "-t", candidate]) == "commit", "integration_candidate_not_commit")
+    require(git.text(["rev-parse", "--verify", candidate + "^{tree}"]) == result["candidate_tree"],
+            "integration_candidate_tree_mismatch")
+    git.run(["rev-list", "--objects", "--quiet", "--missing=error", candidate, "--"])
+    for parent in [plan["onto_commit"], *(e["snapshot"]["head_commit"] for e in plan["hosts"])]:
+        git.run(["merge-base", "--is-ancestor", parent, candidate])
+    paths = integration_paths(git.run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames",
+                                       "--name-only", "-z", plan["onto_commit"], candidate, "--"])[1])
+    require(paths == result["net_changed_paths"], "integration_candidate_paths_mismatch")
+
+
+def publish_integration(git, scratch, plan, bundles, artifacts, guard):
+    """Copy approved objects, then create only the new candidate ref.
+
+    No source review ref is followed: input heads come from the verified
+    collection. Failures may leave objects, but never authorize overwriting refs.
+    """
+    global INTEGRATION_WRITES_STARTED
+    candidate = plan["result"]["candidate_commit"]
+    if candidate == plan["onto_commit"]:
+        return False
+    guard()
+    require_new_ref(git, plan["ref"])
+    keep = "--keep=acfs-fleet-integration:" + digest(encoded(plan))
+    # Preserve the collection's bounded per-host packs. Combining every source
+    # history into one giant transfer would multiply the existing bundle limit.
+    for entry in plan["hosts"]:
+        artifact = artifacts[entry["id"]]
+        guard()
+        if artifact["file"]:
+            INTEGRATION_WRITES_STARTED = True
+            pack = bundles[artifact["file"]].partition(b"\n\n")[2]
+            git.run(["index-pack", "--stdin", "--fix-thin", "--strict", "--threads=1",
+                     "--max-input-size=" + str(MAX_BUNDLE), keep], pack)
+        check_imported_history(git, entry)
+    if any(step["status"] == "merged" for step in plan["result"]["steps"]):
+        # Transfer only synthesized merge objects after all source objects exist.
+        revisions = candidate + "\n^" + plan["onto_commit"] + "\n"
+        revisions += "".join("^" + e["snapshot"]["head_commit"] + "\n" for e in plan["hosts"])
+        pack = scratch.run(["pack-objects", "--stdout", "--revs", "--thin", "--delta-base-offset"],
+                           revisions.encode(), limit=MAX_BUNDLE)[1]
+        guard()
+        INTEGRATION_WRITES_STARTED = True
+        git.run(["index-pack", "--stdin", "--fix-thin", "--strict", "--threads=1",
+                 "--max-input-size=" + str(MAX_BUNDLE), keep], pack)
+    guard()
+    verify_candidate_history(git, plan)
+    require_new_ref(git, plan["ref"])
+    transaction = ("start\ncreate " + plan["ref"] + " " + candidate + "\nprepare\ncommit\n").encode()
+    INTEGRATION_WRITES_STARTED = True
+    git.run(["update-ref", "--no-deref", "--stdin"], transaction)
+    guard()
+    require(review_ref_value(git, plan["ref"]) == candidate, "integration_candidate_changed_after_publication")
+    return True
+
+
+def integrate_collection(path, repository, onto, name, hosts, timeout, approval=None):
+    global INTEGRATION_SCRATCH, INTEGRATION_WRITES_STARTED
     INTEGRATION_SCRATCH = None
+    INTEGRATION_WRITES_STARTED = False
     require(sys.platform == "linux" and os.geteuid() != 0 and os.getuid() == os.geteuid()
             and not os.environ.get("SUDO_USER"), "integrate_as_repository_owner_without_sudo")
     require(oid(onto), "integration_requires_full_onto_commit")
     require(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", name), "invalid_integration_name")
     require(type(timeout) is int and 1 <= timeout <= 600, "invalid_integration_timeout")
+    require(approval is None or fleet.matches(r"[0-9a-f]{64}", approval), "invalid_integration_approval")
     require(type(hosts) is list and all(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", h) for h in hosts)
             and len(set(hosts)) == len(hosts), "invalid_integration_hosts")
     path, repository = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (path, repository))
@@ -859,11 +921,21 @@ def integrate_collection(path, repository, onto, name, hosts, timeout):
                     "git_version": scratch.text(["--version"]), "onto_commit": onto, "ref": reference,
                     "hosts": entries, "timeout_seconds": timeout, "result": result}
             require(len(encoded(plan)) <= fleet.LIMIT, "integration_plan_size_limit")
-            return {"schema": INTEGRATION_SCHEMA, "status": "preview" if result["status"] == "clean" else "conflict",
+            report = {"schema": INTEGRATION_SCHEMA, "status": "preview" if result["status"] == "clean" else "conflict",
                     "plan": plan, "plan_sha256": digest(encoded(plan)) if result["status"] == "clean" else None,
                     "scratch_directory": str(root), "destination_writes_started": False,
                     "network_access": False, "changes_checkout": False, "runs_project_code": False,
-                    "task_completion_verified": False}
+                    "task_completion_verified": False, "candidate_published": False}
+            if approval is None:
+                return report
+            require(result["status"] == "clean" and approval == report["plan_sha256"], "integration_approval_mismatch")
+            def destination_guard():
+                guard()
+                require(destination_state(git) == destination, "destination_changed")
+            published = publish_integration(git, scratch, plan, bundles, artifacts, destination_guard)
+            report.update(status="integrated" if published else "noop", candidate_published=published,
+                          destination_writes_started=INTEGRATION_WRITES_STARTED)
+            return report
 
 
 def integration_main(args):
@@ -875,9 +947,12 @@ def integration_main(args):
     parser.add_argument("--name", required=True, help="New candidate namespace: refs/acfs/integrations/NAME")
     parser.add_argument("--host", action="append", default=[])
     parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument("--apply", action="store_true", help="Publish the approved clean candidate; never update HEAD or existing refs")
+    parser.add_argument("--accept-plan", help="Exact integration plan digest, not collection or import approval")
     options = parser.parse_args(args)
+    require(options.apply == (options.accept_plan is not None), "integration_requires_exact_approval")
     report = integrate_collection(options.collection, options.repository, options.onto,
-                                  options.name, options.host, options.timeout)
+                                  options.name, options.host, options.timeout, options.accept_plan)
     print(encoded(report).decode(), end="")
     return 1 if report["status"] == "conflict" else 0
 
@@ -924,6 +999,7 @@ def cli():
         print(encoded({"schema": SCHEMA, "status": "error", "remote_read_only": True,
                        "import_started": IMPORT_STARTED,
                        "integration_scratch": INTEGRATION_SCRATCH,
+                       "integration_writes_started": INTEGRATION_WRITES_STARTED,
                        "code": str(exc) if isinstance(exc, fleet.Refused) else "collection_io_or_process_failure"}).decode(), end="")
         return 128 + exc.signum if isinstance(exc, fleet.Interrupted) else 2
 

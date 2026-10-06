@@ -3,6 +3,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -303,6 +304,191 @@ class IntegrationTests(unittest.TestCase):
                 result = fx.cli(*args)
                 self.assertEqual(result.returncode, 2)
         self.assertEqual(fx.contents(fx.repo), before)
+
+
+class CandidatePublicationTests(unittest.TestCase):
+    def branches(self, **options):
+        return IntegrationTests().branches(**options)
+
+    def apply(self, fx, **options):
+        preview = fx.preview(**options)
+        return fx.preview(approval=preview["plan_sha256"], **options)
+
+    def test_publishes_exact_candidate_and_preserves_dirty_checkout_and_existing_refs(self):
+        fx = self.branches()
+        (fx.repo / "file.txt").write_text("staged\n")
+        fx.git(fx.repo, "add", "file.txt")
+        (fx.repo / "file.txt").write_text("unstaged\n")
+        (fx.repo / "untracked").write_text("keep private\n")
+        before = fx.contents(fx.repo)
+        refs = fx.text(fx.repo, "show-ref").splitlines()
+        preview = fx.preview()
+        result = fx.preview(approval=preview["plan_sha256"])
+        self.assertEqual(result["status"], "integrated")
+        self.assertTrue(result["candidate_published"])
+        self.assertTrue(result["destination_writes_started"])
+        ref = preview["plan"]["ref"]
+        candidate = fx.text(fx.repo, "rev-parse", ref)
+        self.assertEqual(candidate, preview["plan"]["result"]["candidate_commit"])
+        self.assertEqual(fx.text(fx.repo, "rev-parse", ref + "^{tree}"),
+                         preview["plan"]["result"]["candidate_tree"])
+        self.assertEqual(fx.git(fx.repo, "show", ref + ":left"), b"left\n")
+        self.assertIn("100755", fx.text(fx.repo, "ls-tree", ref, "right"))
+        self.assertEqual(len(fx.text(fx.repo, "show", "-s", "--format=%P", ref).split()), 2)
+        self.assertTrue(set(refs) <= set(fx.text(fx.repo, "show-ref").splitlines()))
+        after = fx.contents(fx.repo)
+        for name, value in before.items():
+            self.assertEqual(after[name], value, name)
+        self.assertFalse((fx.repo / ".git/FETCH_HEAD").exists())
+        self.assertTrue(list((fx.repo / ".git/objects/pack").glob("*.keep")))
+
+    def test_applies_without_prior_import_refs(self):
+        fx = self.branches()
+        self.assertEqual(fx.text(fx.repo, "for-each-ref", "--format=%(refname)"), "refs/heads/main")
+        self.assertEqual(self.apply(fx)["status"], "integrated")
+        refs = fx.text(fx.repo, "for-each-ref", "--format=%(refname)").splitlines()
+        self.assertEqual(set(refs), {"refs/heads/main", "refs/acfs/integrations/wave1"})
+
+    def test_fast_forward_publishes_collected_tip_without_synthetic_commit(self):
+        fx = self.branches(changes=[{"new": ("100644", b"one\n")}])
+        result = self.apply(fx)
+        self.assertEqual(result["status"], "integrated")
+        self.assertEqual(fx.text(fx.repo, "rev-parse", result["plan"]["ref"]),
+                         fx.entries[0][0]["snapshot"]["head_commit"])
+        self.assertEqual(result["plan"]["result"]["steps"][0]["status"], "fast_forward")
+
+    def test_unchanged_collection_creates_no_ref_or_destination_object(self):
+        fx = Fixture()
+        fx.add_host("empty", fx.base)
+        fx.seal()
+        before = fx.contents(fx.repo)
+        result = self.apply(fx)
+        self.assertEqual(result["status"], "noop")
+        self.assertFalse(result["candidate_published"])
+        self.assertFalse(result["destination_writes_started"])
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_wrong_approval_or_changed_selection_never_writes_destination(self):
+        fx = self.branches()
+        preview = fx.preview()
+        before = fx.contents(fx.repo)
+        for approval, options in (("0" * 64, {}), (preview["plan_sha256"], {"hosts": ["host0"]}),
+                                  (preview["plan_sha256"], {"name": "other"})):
+            with self.assertRaisesRegex(collect.fleet.Refused, "integration_approval_mismatch"):
+                fx.preview(approval=approval, **options)
+        self.assertFalse(collect.INTEGRATION_WRITES_STARTED)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_conflicting_history_cannot_be_approved(self):
+        fx = self.branches(changes=[{"file.txt": ("100644", b"left\n")},
+                                   {"file.txt": ("100644", b"right\n")}])
+        before = fx.contents(fx.repo)
+        with self.assertRaisesRegex(collect.fleet.Refused, "integration_approval_mismatch"):
+            fx.preview(approval="0" * 64)
+        self.assertFalse(collect.INTEGRATION_WRITES_STARTED)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_existing_identical_candidate_is_not_adopted_or_overwritten(self):
+        fx = self.branches()
+        result = self.apply(fx)
+        before = fx.contents(fx.repo)
+        with self.assertRaisesRegex(collect.fleet.Refused, "review_ref_already_exists"):
+            fx.preview(approval=result["plan_sha256"])
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_real_competing_candidate_creation_is_preserved(self):
+        self.race(False)
+
+    def test_real_symbolic_candidate_race_cannot_redirect_main(self):
+        self.race(True)
+
+    def race(self, symbolic):
+        fx = self.branches()
+        preview = fx.preview()
+        ref = preview["plan"]["ref"]
+        original = collect.LocalGit.run
+        def racing(instance, args, *rest, **options):
+            if instance.repository == fx.repo and args[:1] == ["update-ref"]:
+                if symbolic:
+                    fx.git(fx.repo, "symbolic-ref", ref, "refs/heads/main")
+                else:
+                    fx.git(fx.repo, "update-ref", ref, fx.base)
+            return original(instance, args, *rest, **options)
+        collect.LocalGit.run = racing
+        try:
+            with self.assertRaises(collect.fleet.Refused):
+                fx.preview(approval=preview["plan_sha256"])
+        finally:
+            collect.LocalGit.run = original
+        self.assertEqual(fx.text(fx.repo, "rev-parse", "HEAD"), fx.base)
+        self.assertEqual(fx.text(fx.repo, "rev-parse", ref), fx.base)
+        if symbolic:
+            self.assertEqual(fx.text(fx.repo, "symbolic-ref", ref), "refs/heads/main")
+
+    def test_source_change_after_object_indexing_does_not_publish_candidate(self):
+        fx = self.branches()
+        preview = fx.preview()
+        original = collect.LocalGit.run
+        def changing(instance, args, *rest, **options):
+            result = original(instance, args, *rest, **options)
+            if instance.repository == fx.repo and args[:1] == ["index-pack"]:
+                with (fx.collection / "manifest.json").open("ab") as out:
+                    out.write(b" ")
+            return result
+        collect.LocalGit.run = changing
+        try:
+            with self.assertRaisesRegex(collect.fleet.Refused, "collection_changed"):
+                fx.preview(approval=preview["plan_sha256"])
+        finally:
+            collect.LocalGit.run = original
+        self.assertTrue(collect.INTEGRATION_WRITES_STARTED)
+        self.assertIsNone(collect.review_ref_value(collect.LocalGit(fx.repo, 10), preview["plan"]["ref"]))
+
+    def test_project_hooks_are_not_executed(self):
+        fx = self.branches()
+        hooks = fx.repo / ".git/hooks"
+        hooks.mkdir()
+        marker = fx.root / "HOOK_RAN"
+        hook = hooks / "reference-transaction"
+        hook.write_text("#!/bin/sh\nprintf bad > " + str(marker) + "\n")
+        hook.chmod(0o755)
+        result = self.apply(fx)
+        self.assertEqual(result["status"], "integrated")
+        self.assertFalse(marker.exists())
+
+    def test_sha256_candidate_is_published_with_full_topology(self):
+        fx = self.branches(fmt="sha256")
+        result = self.apply(fx)
+        candidate = fx.text(fx.repo, "rev-parse", result["plan"]["ref"])
+        self.assertEqual(len(candidate), 64)
+        for entry, _ in fx.entries:
+            fx.git(fx.repo, "merge-base", "--is-ancestor", entry["snapshot"]["head_commit"], candidate)
+        self.assertEqual(fx.text(fx.repo, "rev-parse", "HEAD"), fx.base)
+
+    def test_linked_worktree_index_and_files_are_preserved_on_apply(self):
+        fx = self.branches()
+        linked = fx.root / "linked"
+        fx.git(fx.repo, "worktree", "add", "--detach", str(linked), fx.base)
+        (linked / "file.txt").write_text("staged\n")
+        fx.git(linked, "add", "file.txt")
+        (linked / "file.txt").write_text("unstaged\n")
+        before = fx.contents(linked)
+        index = fx.repo / ".git/worktrees/linked/index"
+        index_before = index.read_bytes()
+        self.assertEqual(self.apply(fx, repository=linked)["status"], "integrated")
+        self.assertEqual(fx.contents(linked), before)
+        self.assertEqual(index.read_bytes(), index_before)
+        self.assertEqual(fx.text(fx.repo, "rev-parse", "HEAD"), fx.base)
+
+    def test_cli_requires_separate_integration_approval(self):
+        fx = self.branches()
+        result = fx.cli("--apply", "--accept-plan", "0" * 64)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertFalse(collect.decode(result.stdout.encode())["integration_writes_started"])
+        preview = collect.decode(fx.cli().stdout.encode())
+        result = fx.cli("--apply", "--accept-plan", preview["plan_sha256"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(collect.decode(result.stdout.encode())["status"], "integrated")
 
 
 if __name__ == "__main__":
