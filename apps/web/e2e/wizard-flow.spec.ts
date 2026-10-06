@@ -2614,3 +2614,84 @@ test.describe("Command Builder Panel - Mobile", () => {
     );
   });
 });
+
+test.describe("SSH Login Rehearsal", () => {
+  const ip = "10.0.0.50";
+  const passwordPrompt = `root@${ip}'s password:`;
+
+  test.beforeEach(async ({ page }) => {
+    await setupWizardState(page, { os: "mac", ip, completedSteps: [1, 2, 3, 4, 5] });
+    await page.goto("/wizard/ssh-connect");
+  });
+
+  test("rehearses the whole first login without ever showing the password", async ({ page }) => {
+    const toggle = page.getByRole("button", { name: "Practice this login first" });
+    await toggle.click();
+    await expect(page.getByRole("button", { name: "Hide the practice terminal" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const log = page.getByRole("log", { name: "Practice terminal output" });
+
+    await page.getByRole("button", { name: "Paste the ssh command" }).click();
+    const local = page.getByRole("textbox", { name: "you@laptop ~ %" });
+    await expect(local).toHaveValue(`ssh root@${ip}`);
+    await local.press("Enter");
+    await expect(log).toContainText(`The authenticity of host '${ip} (${ip})'`);
+
+    const hostKey = page.getByRole("textbox", {
+      name: "Are you sure you want to continue connecting (yes/no/[fingerprint])?",
+    });
+    await hostKey.fill("y");
+    await hostKey.press("Enter");
+    await expect(log).toContainText('SSH needs the whole word "yes"');
+    const retry = page.getByRole("textbox", { name: "Please type 'yes', 'no' or the fingerprint:" });
+    await retry.fill("yes");
+    await retry.press("Enter");
+
+    const password = page.getByLabel(passwordPrompt);
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(password).toHaveAttribute("autocomplete", "off");
+    const typed = "blind-typing-sample";
+    await password.fill(typed);
+    // Nothing visible as you type, like a real terminal.
+    expect(await password.evaluate((el) => getComputedStyle(el).color)).toBe("rgba(0, 0, 0, 0)");
+    await page.getByRole("button", { name: "Enter", exact: true }).click();
+    await expect(log).toContainText("Welcome to Ubuntu");
+    await expect(log).not.toContainText(typed);
+
+    const remote = page.getByRole("textbox", { name: "root@vps-12345:~#" });
+    await remote.fill("hostname");
+    await remote.press("Enter");
+    await expect(log).toContainText("That's the VPS's name, not your laptop's.");
+    await remote.fill("exit");
+    await remote.press("Enter");
+    await expect(log).toContainText(`Connection to ${ip} closed.`);
+    await expect(log).toContainText("That's the whole first login.");
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("is operable from the keyboard alone", async ({ page }) => {
+    const toggle = page.getByRole("button", { name: "Practice this login first" });
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+
+    const log = page.getByRole("log", { name: "Practice terminal output" });
+    await page.keyboard.press("Tab");
+    await expect(log).toBeFocused();
+    await page.keyboard.press("Tab");
+    const local = page.getByRole("textbox", { name: "you@laptop ~ %" });
+    await expect(local).toBeFocused();
+
+    await page.keyboard.type(`ssh root@${ip}`);
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("no");
+    await page.keyboard.press("Enter");
+    await expect(log).toContainText("Host key verification failed.");
+    await expect(local).toBeFocused();
+  });
+});
