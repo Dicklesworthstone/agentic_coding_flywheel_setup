@@ -175,7 +175,7 @@ function LessonCard({
               ? "bg-[oklch(0.72_0.19_145/0.2)] text-[oklch(0.72_0.19_145)]"
               : status === "current"
                 ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
-                : "bg-white/[0.04] text-muted-foreground/80"
+                : "bg-white/[0.04] text-muted-foreground"
           } group-hover:bg-primary/20 group-hover:text-primary`}
         >
           {lesson.id + 1}
@@ -189,12 +189,12 @@ function LessonCard({
         </h3>
 
         {/* Description */}
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground/80">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
           {lesson.description}
         </p>
 
         {/* Duration with icon */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5" />
           <span>{lesson.duration}</span>
         </div>
@@ -203,7 +203,7 @@ function LessonCard({
         {!isAccessible && lockHint && (
           <p
             id={lockHintId}
-            className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground/80"
+            className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"
           >
             <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
             <span>{lockHint}</span>
@@ -364,7 +364,7 @@ export default function LearnDashboard() {
           </Link>
 
           <div className="flex items-center gap-3 sm:gap-4">
-            <span className="hidden text-xs text-muted-foreground/80 lg:block">
+            <span className="hidden text-xs text-muted-foreground lg:block">
               <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">
                 j
               </kbd>
@@ -412,7 +412,7 @@ export default function LearnDashboard() {
           <h1 className="mb-4 bg-gradient-to-b from-white via-white to-white/60 bg-clip-text font-mono text-3xl font-bold tracking-tight text-transparent sm:text-4xl lg:text-5xl">
             Learning Hub
           </h1>
-          <p className="mx-auto max-w-2xl text-base text-muted-foreground/80 sm:text-lg">
+          <p className="mx-auto max-w-2xl text-base text-muted-foreground sm:text-lg">
             Master your agentic coding environment with hands-on lessons.
             <span className="hidden sm:inline">
               {" "}
@@ -442,7 +442,7 @@ export default function LearnDashboard() {
                   </div>
                   <h2 className="text-lg font-semibold">Your Progress</h2>
                 </div>
-                <p className="text-sm text-muted-foreground/80 sm:text-base">
+                <p className="text-sm text-muted-foreground sm:text-base">
                   {!hasLoaded
                     ? "Loading your saved progress..."
                     : completedLessons.length === TOTAL_LESSONS
@@ -512,7 +512,7 @@ export default function LearnDashboard() {
                   >
                     {hasLoaded ? `${completedLessons.length}/${TOTAL_LESSONS}` : "--"}
                   </motion.div>
-                  <div className="text-sm text-muted-foreground/80">lessons complete</div>
+                  <div className="text-sm text-muted-foreground">lessons complete</div>
                 </div>
               </div>
             </div>
@@ -654,7 +654,7 @@ export default function LearnDashboard() {
                       </div>
                       <div
                         id={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
-                        className="truncate text-sm text-muted-foreground/80"
+                        className="truncate text-sm text-muted-foreground"
                       >
                         {isLockedReference ? lockHint : item.desc}
                       </div>
@@ -697,7 +697,7 @@ export default function LearnDashboard() {
 
         {/* Footer */}
         <motion.footer
-          className="mt-10 pb-28 text-center text-sm text-muted-foreground/80 sm:pb-0 lg:mt-14"
+          className="mt-10 pb-28 text-center text-sm text-muted-foreground sm:pb-0 lg:mt-14"
           initial={prefersReducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.8 }}

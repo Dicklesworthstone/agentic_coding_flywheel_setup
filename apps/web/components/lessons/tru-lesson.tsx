@@ -805,7 +805,6 @@ function InteractiveTokenCompressorImpl() {
                 key={s.id}
                 type="button"
                 onClick={() => handleSelectSample(i)}
-                aria-label={s.label}
                 aria-pressed={selectedSample === i}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -817,8 +816,11 @@ function InteractiveTokenCompressorImpl() {
                 }`}
               >
                 {s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
-                <span className="sm:hidden">{s.lang}</span>
+                {/* Label is visually hidden (not removed) below sm, where the
+                    short format tag shows, so the name always includes what is
+                    visible. */}
+                <span className="sr-only sm:not-sr-only">{s.label}</span>
+                <span className="sm:hidden"> {s.lang}</span>
               </motion.button>
             ))}
           </div>
