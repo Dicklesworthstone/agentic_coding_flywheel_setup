@@ -89,6 +89,48 @@ does not promise an all-or-nothing filesystem state across process death or powe
 loss. Preserve the original collection, target, runtime and integration digest
 outside the collection's strict artifact directory.
 
+## Check an interrupted publication without retrying
+
+Use the same collection, target, name, selected hosts and timeout with the
+original integration digest:
+
+```bash
+acfs-fleet collect --integrate "$HOME/fleet-results-wave-1" \
+  --repository /path/to/project --onto FULL_TARGET_COMMIT_ID --name wave1 \
+  --check --accept-plan ORIGINAL_INTEGRATION_DIGEST
+```
+
+Check mode recomputes the candidate in private scratch, then compares the exact
+destination ref. It does not index destination packs or create, update or repair
+refs. `--check` and `--apply` are mutually exclusive; a check digest identifies the
+expected operation, not permission to write.
+
+The `candidate.status` is `matched`, `missing`, `different`, `symbolic`,
+`unchanged` or `unconfirmed`. The candidate commit's actual bytes must hash to its
+reviewed object ID; trusting a loose object's pathname is insufficient. A
+matching direct ref also needs the expected tree, complete reachable history,
+input ancestry, commit/path counts and net changes. This is not a full repository
+`fsck` of every pre-existing object.
+An all-contained no-op is `unchanged` only while the candidate ref remains absent.
+An unrelated ref at that name is not hidden by the no-op. A ref changed during
+inspection makes the result unconfirmed. No status authorizes an automatic retry.
+
+Exit **0** (`matched`) means the expected candidate or no-op is established;
+exit **1** (`attention`) means it is not; exit **2** means invalid input, approval,
+collection or execution context. `destination_read_only` is true on check
+reports, but scratch is still written and retained as described below. The
+collection, original Git version and destination identities must match the
+reviewed plan. This is not a journal migration or a fallback to a different
+runtime.
+
+After interruption, Git objects may exist while the candidate ref is still
+missing, or the ref may already be published. Both outcomes are inspectable
+without re-importing. Matching objects/refs do not prove which process published
+them or that a prior invocation finished every check;
+`integration_provenance_verified` and `task_completion_verified` are false.
+Cooperating ACFS operations hold the common Git-directory lock, but other Git
+writers are not blocked, so observations are not an atomic repository snapshot.
+
 ## Isolation and limits
 
 Preview writes a new private bare repository under `/tmp/acfs-fleet-integration-*`.
@@ -117,8 +159,9 @@ trusted; this is not a sandbox against a malicious same-user process.
 seconds), excluding local artifact checks and bounded cleanup. Existing collection
 limits apply; local Git output is bounded to 1 MiB normally and 16 MiB for attribute
 inspection. Scratch disk usage and decompressed Git objects can exceed compressed
-bundle sizes. Each copied source pack and the combined synthesized-object pack
-is limited to 16 MiB; an oversized generated pack refuses publication. Apply can
+bundle sizes. Each copied source pack, the combined synthesized-object pack and
+the candidate commit body read for hash verification is limited to 16 MiB;
+an oversized generated pack refuses publication. Apply can
 retain earlier indexed source packs in that case. Use a controller with adequate
 scratch and destination space. Git must support
 `merge-tree --write-tree` (Git 2.38 or newer); unsupported Git fails closed.
@@ -141,5 +184,11 @@ conflicts, repeated histories, SHA-256, dirty linked worktrees, attribute macros
 collection tampering and occupied refs. Publication tests additionally exercise
 dirty-checkout preservation, real competing direct/symbolic ref creation,
 strict object transfer, collection changes during apply, and hook isolation.
+Recovery tests send SIGKILL to actual child processes after real destination
+pack indexing and after real ref publication, then verify both states without
+destination writes. They also exercise SHA-256 checks, changed/symbolic refs,
+approval mismatches, locks, and real ref changes during observation.
+They reject a real corrupt loose candidate object even when its pathname, tree
+and parent links still match the expected commit.
 Fixtures are retained. These tests do not
 claim live SSH, authenticated agents or full installer/VM acceptance.

@@ -491,6 +491,214 @@ class CandidatePublicationTests(unittest.TestCase):
         self.assertEqual(collect.decode(result.stdout.encode())["status"], "integrated")
 
 
+class IntegrationRecoveryTests(unittest.TestCase):
+    def fixture(self, **options):
+        return IntegrationTests().branches(**options)
+
+    def check(self, fx, preview, **options):
+        return fx.preview(check=True, approval=preview["plan_sha256"], **options)
+
+    def test_corrupt_loose_candidate_bytes_cannot_match_by_pathname(self):
+        import zlib
+        fx = self.fixture()
+        preview = fx.preview()
+        fx.preview(approval=preview["plan_sha256"])
+        candidate = preview["plan"]["result"]["candidate_commit"]
+        original = fx.git(fx.repo, "cat-file", "commit", candidate)
+        # Git may prefer indexed packs to a same-OID loose file. Preserve the
+        # fixture's packs elsewhere and unpack every object before corruption.
+        pack_dir = fx.repo / ".git/objects/pack"
+        packs = [p.read_bytes() for p in pack_dir.glob("*.pack")]
+        retained = fx.root / "retained-packs"
+        retained.mkdir(mode=0o700)
+        for item in pack_dir.iterdir():
+            item.rename(retained / item.name)
+        for pack in packs:
+            fx.git(fx.repo, "unpack-objects", data=pack)
+        self.assertEqual(fx.git(fx.repo, "cat-file", "commit", candidate), original)
+        # Keep tree and parents intact but change the actual commit bytes.
+        changed = original + b"\ncorrupted candidate message\n"
+        raw = b"commit " + str(len(changed)).encode() + b"\0" + changed
+        self.assertNotEqual(collect.hashlib.new(fx.fmt, raw).hexdigest(), candidate)
+        path = fx.repo / ".git/objects" / candidate[:2] / candidate[2:]
+        path.chmod(0o600)
+        with path.open("wb") as stream:
+            stream.write(zlib.compress(raw))
+        self.assertEqual(fx.git(fx.repo, "cat-file", "commit", candidate), changed)
+        before = fx.contents(fx.repo)
+        result = collect.inspect_integration(collect.LocalGit(fx.repo, 30), preview["plan"])
+        self.assertEqual(result["status"], "unconfirmed")
+        self.assertEqual(result["code"], "integration_candidate_object_mismatch")
+        # Full reconstruction can refuse the corrupt alternate before reaching
+        # inspection; either refusal path must remain unsuccessful and read-only.
+        checked = fx.cli("--check", "--accept-plan", preview["plan_sha256"])
+        self.assertIn(checked.returncode, (1, 2), checked.stdout + checked.stderr)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_missing_before_apply_and_matched_after_apply_without_destination_writes(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        before = fx.contents(fx.repo)
+        missing = self.check(fx, preview)
+        self.assertEqual(missing["status"], "attention")
+        self.assertEqual(missing["candidate"]["status"], "missing")
+        self.assertEqual(fx.contents(fx.repo), before)
+        fx.preview(approval=preview["plan_sha256"])
+        before = fx.contents(fx.repo)
+        matched = self.check(fx, preview)
+        self.assertEqual(matched["status"], "matched")
+        self.assertEqual(matched["candidate"]["status"], "matched")
+        self.assertTrue(matched["destination_read_only"])
+        self.assertFalse(matched["destination_writes_started"])
+        self.assertFalse(matched["candidate_published"])
+        self.assertFalse(matched["integration_provenance_verified"])
+        self.assertFalse(matched["task_completion_verified"])
+        self.assertEqual(matched["plan_sha256"], preview["plan_sha256"])
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_different_and_symbolic_candidates_are_not_repaired(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        ref = preview["plan"]["ref"]
+        fx.git(fx.repo, "update-ref", ref, fx.base)
+        before = fx.contents(fx.repo)
+        result = self.check(fx, preview)
+        self.assertEqual(result["candidate"]["status"], "different")
+        self.assertEqual(result["status"], "attention")
+        self.assertEqual(fx.contents(fx.repo), before)
+        fx.git(fx.repo, "symbolic-ref", ref, "refs/heads/main")
+        before = fx.contents(fx.repo)
+        self.assertEqual(self.check(fx, preview)["candidate"]["status"], "symbolic")
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_unchanged_selection_checks_absence_and_rejects_unexpected_ref(self):
+        fx = Fixture()
+        fx.add_host("empty", fx.base)
+        fx.seal()
+        preview = fx.preview()
+        result = self.check(fx, preview)
+        self.assertEqual((result["status"], result["candidate"]["status"]), ("matched", "unchanged"))
+        self.assertIsNone(result["candidate"]["expected_commit"])
+        fx.git(fx.repo, "update-ref", preview["plan"]["ref"], fx.base)
+        before = fx.contents(fx.repo)
+        self.assertEqual(self.check(fx, preview)["candidate"]["status"], "different")
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_real_ref_change_during_check_is_unconfirmed(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        fx.preview(approval=preview["plan_sha256"])
+        original = collect.LocalGit.run
+        candidate = preview["plan"]["result"]["candidate_commit"]
+        def changing(instance, args, *rest, **options):
+            result = original(instance, args, *rest, **options)
+            if instance.repository == fx.repo and args == ["cat-file", "-t", candidate]:
+                fx.git(fx.repo, "update-ref", preview["plan"]["ref"], fx.base)
+            return result
+        collect.LocalGit.run = changing
+        try:
+            result = self.check(fx, preview)
+        finally:
+            collect.LocalGit.run = original
+        self.assertEqual(result["status"], "attention")
+        self.assertEqual(result["candidate"]["status"], "unconfirmed")
+        self.assertEqual(fx.text(fx.repo, "rev-parse", preview["plan"]["ref"]), fx.base)
+
+    def test_check_requires_exact_original_digest_and_selection(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        before = fx.contents(fx.repo)
+        for options in ({"check": True}, {"check": True, "approval": "0" * 64},
+                        {"check": True, "approval": preview["plan_sha256"], "name": "changed"},
+                        {"check": True, "approval": preview["plan_sha256"], "hosts": ["host0"]}):
+            with self.subTest(options=options), self.assertRaises(collect.fleet.Refused):
+                fx.preview(**options)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_corrupt_collection_prevents_successful_check(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        fx.preview(approval=preview["plan_sha256"])
+        (fx.collection / "host1.bundle").write_bytes(b"corrupt retained evidence")
+        before = fx.contents(fx.repo)
+        with self.assertRaises(collect.fleet.Refused):
+            self.check(fx, preview)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_sha256_publication_and_check(self):
+        fx = self.fixture(fmt="sha256")
+        preview = fx.preview()
+        fx.preview(approval=preview["plan_sha256"])
+        before = fx.contents(fx.repo)
+        result = self.check(fx, preview)
+        self.assertEqual(result["status"], "matched")
+        self.assertEqual(len(result["candidate"]["expected_commit"]), 64)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_common_directory_lock_excludes_cooperating_check(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        before = fx.contents(fx.repo)
+        with collect.fleet.directory_fd(fx.repo / ".git") as fd:
+            collect.lock(fd)
+            with self.assertRaisesRegex(collect.fleet.Refused, "fleet_operation_in_progress"):
+                self.check(fx, preview)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_sigkill_after_real_pack_indexing_leaves_missing_candidate_and_retained_objects(self):
+        self.crash_after("index-pack", "missing")
+
+    def test_sigkill_after_real_ref_publication_is_matched_without_retry(self):
+        self.crash_after("update-ref", "matched")
+
+    def crash_after(self, operation, expected):
+        fx = self.fixture()
+        preview = fx.preview()
+        program = f"""
+import importlib.util, os, signal
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("actual_collector", {str(SCRIPT)!r})
+c = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(c)
+original = c.LocalGit.run
+def interrupt(instance, args, *rest, **options):
+    result = original(instance, args, *rest, **options)
+    if str(instance.repository) == {str(fx.repo)!r} and args[:1] == [{operation!r}]:
+        os.kill(os.getpid(), signal.SIGKILL)
+    return result
+c.LocalGit.run = interrupt
+c.integrate_collection(Path({str(fx.collection)!r}), Path({str(fx.repo)!r}), {fx.base!r},
+                       "wave1", [], 90, {preview['plan_sha256']!r})
+"""
+        killed = subprocess.run([sys.executable, "-I", "-B", "-c", program], capture_output=True,
+                                text=True, env=fx.env, timeout=30)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+        self.assertTrue(list((fx.repo / ".git/objects/pack").glob("*.keep")))
+        before = fx.contents(fx.repo)
+        result = self.check(fx, preview)
+        self.assertEqual(result["candidate"]["status"], expected)
+        self.assertEqual(result["status"], "matched" if expected == "matched" else "attention")
+        self.assertFalse(result["destination_writes_started"])
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_cli_check_is_exclusive_read_only_and_has_distinct_exit_codes(self):
+        fx = self.fixture()
+        preview = fx.preview()
+        before = fx.contents(fx.repo)
+        for args in (("--check",), ("--check", "--apply", "--accept-plan", preview["plan_sha256"])):
+            self.assertEqual(fx.cli(*args).returncode, 2)
+        missing = fx.cli("--check", "--accept-plan", preview["plan_sha256"])
+        self.assertEqual(missing.returncode, 1, missing.stderr)
+        self.assertEqual(collect.decode(missing.stdout.encode())["candidate"]["status"], "missing")
+        self.assertEqual(fx.contents(fx.repo), before)
+        fx.preview(approval=preview["plan_sha256"])
+        before = fx.contents(fx.repo)
+        matched = fx.cli("--check", "--accept-plan", preview["plan_sha256"])
+        self.assertEqual(matched.returncode, 0, matched.stderr)
+        self.assertEqual(collect.decode(matched.stdout.encode())["candidate"]["status"], "matched")
+        self.assertEqual(fx.contents(fx.repo), before)
+
+
 if __name__ == "__main__":
     if os.geteuid() == 0:
         os.setgroups([])

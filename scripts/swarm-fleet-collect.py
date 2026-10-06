@@ -802,6 +802,12 @@ def verify_candidate_history(git, plan):
     result = plan["result"]
     candidate = result["candidate_commit"]
     require(git.text(["cat-file", "-t", candidate]) == "commit", "integration_candidate_not_commit")
+    # Check the actual object bytes, not just the advertised ref/OID or the
+    # pathname of an existing loose object. This is not a full repository fsck.
+    raw = git.run(["cat-file", "commit", candidate], limit=MAX_BUNDLE)[1]
+    object_bytes = b"commit " + str(len(raw)).encode() + b"\0" + raw
+    require(hashlib.new(plan["destination"]["object_format"], object_bytes).hexdigest() == candidate,
+            "integration_candidate_object_mismatch")
     require(git.text(["rev-parse", "--verify", candidate + "^{tree}"]) == result["candidate_tree"],
             "integration_candidate_tree_mismatch")
     git.run(["rev-list", "--objects", "--quiet", "--missing=error", candidate, "--"])
@@ -857,7 +863,32 @@ def publish_integration(git, scratch, plan, bundles, artifacts, guard):
     return True
 
 
-def integrate_collection(path, repository, onto, name, hosts, timeout, approval=None):
+def inspect_integration(git, plan):
+    """Observe the expected result, without repairing refs or importing objects."""
+    reference = plan["ref"]
+    candidate = plan["result"]["candidate_commit"]
+    noop = candidate == plan["onto_commit"]
+    row = {"ref": reference, "expected_commit": None if noop else candidate, "status": "unconfirmed"}
+    try:
+        value = review_ref_value(git, reference)
+        if value is None:
+            row["status"] = "unchanged" if noop else "missing"
+        elif value == "symbolic":
+            row["status"] = "symbolic"
+        else:
+            row["observed_commit"] = value
+            row["status"] = "matched" if not noop and value == candidate else "different"
+        if row["status"] in ("matched", "unchanged"):
+            for entry in plan["hosts"]:
+                check_imported_history(git, entry)
+            verify_candidate_history(git, plan)
+        require(review_ref_value(git, reference) == value, "integration_ref_changed_during_check")
+    except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+        row.update(status="unconfirmed", code=str(exc) if isinstance(exc, fleet.Refused) else "local_git_unavailable")
+    return row
+
+
+def integrate_collection(path, repository, onto, name, hosts, timeout, approval=None, *, check=False):
     global INTEGRATION_SCRATCH, INTEGRATION_WRITES_STARTED
     INTEGRATION_SCRATCH = None
     INTEGRATION_WRITES_STARTED = False
@@ -867,6 +898,7 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
     require(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", name), "invalid_integration_name")
     require(type(timeout) is int and 1 <= timeout <= 600, "invalid_integration_timeout")
     require(approval is None or fleet.matches(r"[0-9a-f]{64}", approval), "invalid_integration_approval")
+    require(type(check) is bool and (not check or approval is not None), "integration_check_requires_original_digest")
     require(type(hosts) is list and all(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", h) for h in hosts)
             and len(set(hosts)) == len(hosts), "invalid_integration_hosts")
     path, repository = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (path, repository))
@@ -879,7 +911,8 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
             entries = [e for e in source["hosts"] if not hosts or e["id"] in hosts]
             require(entries and (not hosts or len(entries) == len(hosts)), "unknown_integration_host")
             reference = "refs/acfs/integrations/" + name
-            require_new_ref(git, reference)
+            if not check:
+                require_new_ref(git, reference)
             require(git.text(["cat-file", "-t", onto]) == "commit", "integration_target_not_commit")
             artifacts = {a["id"]: a for a in source["artifacts"]}
             for entry in entries:
@@ -914,7 +947,8 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
             result = merge_candidate(scratch, entries, onto, evidence)
             guard()
             require(destination_state(git) == destination, "destination_changed")
-            require_new_ref(git, reference)
+            if not check:
+                require_new_ref(git, reference)
             plan = {"schema": INTEGRATION_SCHEMA, "policy": "builtin-sequential-merge-tree-v1",
                     "collection_directory": str(path), "collection_evidence_sha256": evidence,
                     "collection_plan_sha256": source["plan_sha256"], "destination": destination,
@@ -932,6 +966,12 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
             def destination_guard():
                 guard()
                 require(destination_state(git) == destination, "destination_changed")
+            if check:
+                candidate = inspect_integration(git, plan)
+                destination_guard()
+                report.update(status="matched" if candidate["status"] in ("matched", "unchanged") else "attention",
+                              candidate=candidate, destination_read_only=True, integration_provenance_verified=False)
+                return report
             published = publish_integration(git, scratch, plan, bundles, artifacts, destination_guard)
             report.update(status="integrated" if published else "noop", candidate_published=published,
                           destination_writes_started=INTEGRATION_WRITES_STARTED)
@@ -947,14 +987,16 @@ def integration_main(args):
     parser.add_argument("--name", required=True, help="New candidate namespace: refs/acfs/integrations/NAME")
     parser.add_argument("--host", action="append", default=[])
     parser.add_argument("--timeout", type=int, default=90)
-    parser.add_argument("--apply", action="store_true", help="Publish the approved clean candidate; never update HEAD or existing refs")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--apply", action="store_true", help="Publish the approved clean candidate; never update HEAD or existing refs")
+    action.add_argument("--check", action="store_true", help="Check the original candidate without writing destination objects or refs")
     parser.add_argument("--accept-plan", help="Exact integration plan digest, not collection or import approval")
     options = parser.parse_args(args)
-    require(options.apply == (options.accept_plan is not None), "integration_requires_exact_approval")
+    require((options.apply or options.check) == (options.accept_plan is not None), "integration_requires_exact_approval")
     report = integrate_collection(options.collection, options.repository, options.onto,
-                                  options.name, options.host, options.timeout, options.accept_plan)
+                                  options.name, options.host, options.timeout, options.accept_plan, check=options.check)
     print(encoded(report).decode(), end="")
-    return 1 if report["status"] == "conflict" else 0
+    return 1 if report["status"] in ("conflict", "attention") else 0
 
 
 def main(arguments=None):
