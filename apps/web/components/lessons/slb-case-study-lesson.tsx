@@ -1528,10 +1528,10 @@ function KeyTurnSVG({
         {/* Label */}
         <text
           x="40"
-          y="72"
+          y="74"
           textAnchor="middle"
-          fill="rgba(255,255,255,0.4)"
-          fontSize="8"
+          fill="rgba(255,255,255,0.6)"
+          fontSize="10"
           fontFamily="monospace"
         >
           KEY A
@@ -1572,10 +1572,10 @@ function KeyTurnSVG({
         </motion.g>
         <text
           x="120"
-          y="72"
+          y="74"
           textAnchor="middle"
-          fill="rgba(255,255,255,0.4)"
-          fontSize="8"
+          fill="rgba(255,255,255,0.6)"
+          fontSize="10"
           fontFamily="monospace"
         >
           KEY B
