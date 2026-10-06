@@ -785,6 +785,7 @@ function InteractiveTokenCompressorImpl() {
           <motion.button
             type="button"
             onClick={handlePrev}
+            aria-label="Previous sample"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -799,6 +800,8 @@ function InteractiveTokenCompressorImpl() {
                 key={s.id}
                 type="button"
                 onClick={() => handleSelectSample(i)}
+                aria-label={s.label}
+                aria-pressed={selectedSample === i}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -818,6 +821,7 @@ function InteractiveTokenCompressorImpl() {
           <motion.button
             type="button"
             onClick={handleNext}
+            aria-label="Next sample"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -1208,10 +1212,12 @@ function InteractiveTokenCompressorImpl() {
 
         {/* Step counter */}
         <div className="flex items-center justify-center gap-1.5">
-          {CODE_SAMPLES.map((_, i) => (
+          {CODE_SAMPLES.map((s, i) => (
             <button
-              key={i}
+              key={s.id}
               type="button"
+              aria-label={`Sample ${i + 1}: ${s.label}`}
+              aria-current={i === selectedSample ? "step" : undefined}
               onClick={() => handleSelectSample(i)}
               className={`w-1.5 h-1.5 rounded-full transition-colors ${
                 i === selectedSample ? "bg-white/60" : "bg-white/15 hover:bg-white/25"
