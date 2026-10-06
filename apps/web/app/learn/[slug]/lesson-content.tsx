@@ -667,8 +667,10 @@ export function LessonContent({ lesson }: Props) {
       <div className="relative flex xl:pl-80">
         <LessonSidebar completedLessons={completedLessons} currentLessonId={lesson.id} />
 
-        {/* id="main-content" is the target of the layout's skip link. */}
-        <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
+        {/* id="main-content" is the target of the layout's skip link.
+            text-aa-floor lifts the lessons' text-white/20-/50 labels to the
+            AA floor, as it already does on /learn and the guides. */}
+        <main id="main-content" tabIndex={-1} className="text-aa-floor flex-1 min-w-0">
           {/* Mobile header - ultra premium */}
           <div className="sticky top-0 z-20 xl:hidden">
             <div className="relative border-b border-white/[0.08]">
