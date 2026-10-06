@@ -245,7 +245,7 @@ git@github.com:owner/repo.git as myrepo`}
             transition={{ delay: 0.35 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">RU + NTM</h4>
+            <h3 className="font-semibold text-primary mb-2">RU + NTM</h3>
             <p className="text-muted-foreground text-sm">
               <code className="text-primary">ru review --mode=ntm</code> drives its Claude sessions
               through NTM. NTM manages the tmux panes, RU orchestrates the review workflow.
@@ -257,7 +257,7 @@ git@github.com:owner/repo.git as myrepo`}
             transition={{ delay: 0.4 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">RU + BV</h4>
+            <h3 className="font-semibold text-primary mb-2">RU + BV</h3>
             <p className="text-muted-foreground text-sm">
               After syncing repos, use BV to check beads across all projects. Combine{" "}
               <code className="text-primary">ru status</code> with{" "}
@@ -270,7 +270,7 @@ git@github.com:owner/repo.git as myrepo`}
             transition={{ delay: 0.45 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">RU + Mail</h4>
+            <h3 className="font-semibold text-primary mb-2">RU + Mail</h3>
             <p className="text-muted-foreground text-sm">
               Agents can claim repos via Mail to prevent conflicts during parallel{" "}
               <code className="text-primary">ru review</code> sessions.

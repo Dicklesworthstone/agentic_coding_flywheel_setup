@@ -1132,7 +1132,7 @@ function KillDialog({
             <Skull className="h-5 w-5 text-red-400" />
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-red-300">Kill Process?</h4>
+            <h3 className="text-sm font-semibold text-red-300">Kill Process?</h3>
             <p className="text-xs text-white/40">This action cannot be undone</p>
           </div>
         </div>

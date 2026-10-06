@@ -823,10 +823,10 @@ function AnimatedFlywheel() {
                   className="h-3 w-3 rounded-full"
                   style={{ backgroundColor: activeNode.color }}
                 />
-                <h4 className="font-bold text-white text-sm">
+                <h3 className="font-bold text-white text-sm">
                   {activeNode.label}{" "}
                   <span className="font-normal text-white/50">({activeNode.sublabel})</span>
-                </h4>
+                </h3>
               </div>
               <code className="inline-block px-2 py-1 rounded bg-black/30 border border-white/[0.08] text-xs font-mono text-primary mb-3">
                 {activeNode.command}
@@ -893,9 +893,9 @@ function ToolCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <h4 className="font-bold text-white">
+            <h3 className="font-bold text-white">
               {number}. {name}
-            </h4>
+            </h3>
             <span className="text-xs text-white/60">- {subtitle}</span>
           </div>
           <code className="inline-block px-2 py-1 rounded bg-black/30 border border-white/[0.08] text-xs font-mono text-primary mb-3">
@@ -2093,7 +2093,7 @@ function InteractiveFlywheelCycle() {
                   })()}
                 </div>
                 <div>
-                  <h4 className="font-bold text-white text-sm">{displayStage.label}</h4>
+                  <h3 className="font-bold text-white text-sm">{displayStage.label}</h3>
                   <span className="text-[10px] text-white/30">
                     Stage {displayStageIdx + 1} of {STAGE_COUNT}
                   </span>
@@ -2151,7 +2151,7 @@ function InteractiveFlywheelCycle() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Clock className="h-4 w-4 text-white/40" />
-                <h4 className="text-sm font-bold text-white">Velocity Over Cycles</h4>
+                <h3 className="text-sm font-bold text-white">Velocity Over Cycles</h3>
                 <span className="ml-auto text-[10px] text-white/30">Time per iteration</span>
               </div>
               <div className="space-y-2">
@@ -2191,7 +2191,7 @@ function InteractiveFlywheelCycle() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <Users className="h-4 w-4 text-white/40" />
-                <h4 className="text-sm font-bold text-white">Agent Assignment</h4>
+                <h3 className="text-sm font-bold text-white">Agent Assignment</h3>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {FLYWHEEL_STAGES_V2.map((stage, i) => {

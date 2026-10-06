@@ -855,7 +855,7 @@ function PromptEvolutionTab() {
           className="space-y-4"
         >
           <div>
-            <h4 className="text-sm font-semibold text-white">{evo.title}</h4>
+            <h3 className="text-sm font-semibold text-white">{evo.title}</h3>
             <p className="text-xs text-white/40 mt-0.5">{evo.description}</p>
           </div>
 

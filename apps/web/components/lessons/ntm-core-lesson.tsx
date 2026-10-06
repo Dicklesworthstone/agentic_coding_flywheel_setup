@@ -1269,9 +1269,9 @@ function CommandSection({
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition">
           {icon}
         </div>
-        <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
+        <h3 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
           {title}
-        </h4>
+        </h3>
       </div>
       <CodeBlock code={code} />
       <p className="text-white/60">{description}</p>
@@ -1347,7 +1347,7 @@ function AgentRatioCard() {
       whileHover={{ y: -2 }}
       className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]"
     >
-      <h4 className="font-bold text-white mb-4">Why this ratio?</h4>
+      <h3 className="font-bold text-white mb-4">Why this ratio?</h3>
       <div className="space-y-3">
         <RatioItem
           count="2"

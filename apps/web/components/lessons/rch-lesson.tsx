@@ -243,7 +243,7 @@ rch update --fleet`}
             transition={{ delay: 0.45 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">RCH + NTM</h4>
+            <h3 className="font-semibold text-primary mb-2">RCH + NTM</h3>
             <p className="text-muted-foreground text-sm">
               Agents spawned by NTM automatically use RCH for their builds. Multiple agents can
               compile in parallel without overwhelming local CPU.
@@ -255,7 +255,7 @@ rch update --fleet`}
             transition={{ delay: 0.5 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">RCH + RU</h4>
+            <h3 className="font-semibold text-primary mb-2">RCH + RU</h3>
             <p className="text-muted-foreground text-sm">
               RU syncs repos that RCH then builds remotely. Use{" "}
               <code className="text-primary">ru sync</code> to update sources, then build with
@@ -268,7 +268,7 @@ rch update --fleet`}
             transition={{ delay: 0.55 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">RCH + Beads</h4>
+            <h3 className="font-semibold text-primary mb-2">RCH + Beads</h3>
             <p className="text-muted-foreground text-sm">
               Track build-related tasks via beads. Create issues for build failures or optimization
               opportunities.

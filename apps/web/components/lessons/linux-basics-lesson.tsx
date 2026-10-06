@@ -76,7 +76,7 @@ export function LinuxBasicsLesson() {
         </Paragraph>
 
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4">Try these variations:</h4>
+          <h3 className="text-lg font-semibold text-white mb-4">Try these variations:</h3>
           <CommandList
             commands={[
               { command: "ll", description: "Long format with details" },
@@ -1977,9 +1977,9 @@ function VerificationCard() {
           <CheckCircle2 className="h-7 w-7 text-white" />
         </div>
         <div>
-          <h4 className="text-lg font-bold text-white group-hover:text-emerald-300 transition-colors">
+          <h3 className="text-lg font-bold text-white group-hover:text-emerald-300 transition-colors">
             All Commands Work?
-          </h4>
+          </h3>
           <p className="text-emerald-300/80 group-hover:text-emerald-200 transition-colors">
             You&apos;re ready for the next lesson!
           </p>

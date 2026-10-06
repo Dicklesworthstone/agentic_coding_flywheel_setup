@@ -285,7 +285,7 @@ function CategoryCard({
     >
       <div className="flex items-center gap-3 mb-4">
         <div className="text-white">{icon}</div>
-        <h4 className="font-bold text-white">{title}</h4>
+        <h3 className="font-bold text-white">{title}</h3>
       </div>
       <ul className="space-y-2">
         {items.map((item, i) => (
@@ -324,9 +324,9 @@ function UsageOption({
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold shadow-lg shadow-primary/20 group-hover:shadow-primary/40 group-hover:scale-110 transition duration-300">
           {number}
         </div>
-        <h4 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
+        <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
           {title}
-        </h4>
+        </h3>
       </div>
 
       {steps.length > 0 && (
@@ -368,7 +368,7 @@ function ExamplePrompt({
       className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} overflow-hidden transition duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
     >
       <div className="p-4 border-b border-white/[0.08] bg-black/20 group-hover:bg-black/30 transition-colors">
-        <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
+        <h3 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h3>
       </div>
       <div className="p-4">
         <pre className="text-sm text-white/80 whitespace-pre-wrap font-mono group-hover:text-white/90 transition-colors">

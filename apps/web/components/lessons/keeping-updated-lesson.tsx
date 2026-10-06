@@ -269,7 +269,7 @@ function UpdateBenefitsCard() {
       whileHover={{ y: -2 }}
       className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-emerald-500/30"
     >
-      <h4 className="font-bold text-white mb-4">Keeping things updated means:</h4>
+      <h3 className="font-bold text-white mb-4">Keeping things updated means:</h3>
       <div className="space-y-3">
         <BenefitRow icon={<CheckCircle2 />} text="Fewer mysterious errors" />
         <BenefitRow icon={<CheckCircle2 />} text="Better security" />
@@ -344,7 +344,7 @@ function UpdatePattern({
       whileHover={{ x: 4 }}
       className="group space-y-3 p-4 -mx-4 rounded-xl transition duration-300 hover:bg-white/[0.02]"
     >
-      <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
+      <h3 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h3>
       <p className="text-white/60">{description}</p>
       <CodeBlock code={command} />
     </motion.div>
@@ -370,7 +370,7 @@ function TroubleshootingCard({
       whileHover={{ y: -2, scale: 1.01 }}
       className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl transition duration-300 hover:border-amber-500/50"
     >
-      <h4 className="font-bold text-amber-400 mb-2">{title}</h4>
+      <h3 className="font-bold text-amber-400 mb-2">{title}</h3>
       <p className="text-white/60 mb-4">{description}</p>
       <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
         <pre className="p-4 text-sm font-mono text-white/80 overflow-x-auto whitespace-pre-wrap">
