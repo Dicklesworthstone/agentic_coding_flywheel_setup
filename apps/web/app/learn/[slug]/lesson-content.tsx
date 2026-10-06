@@ -122,8 +122,13 @@ function LessonSidebar({
     const nav = navRef.current;
     if (!nav) return;
 
+    const persist = () => saveSidebarScrollTop(nav.scrollTop);
     const savedScrollTop = readSidebarScrollTop();
-    if (savedScrollTop !== null) {
+    if (nav.scrollTop > 0) {
+      // The reader already scrolled the server-rendered list before hydration
+      // attached the listener below; keep their place instead of yanking it.
+      persist();
+    } else if (savedScrollTop !== null) {
       nav.scrollTop = savedScrollTop;
     } else {
       // First visit in this tab: reveal the current lesson instead of showing
