@@ -1094,7 +1094,9 @@ function InteractiveAgentComparison() {
           {/* Playback controls */}
           <div className="flex items-center gap-2">
             <motion.button
+              type="button"
               onClick={handlePrev}
+              aria-label="Previous scenario"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={springs.snappy}
@@ -1103,7 +1105,9 @@ function InteractiveAgentComparison() {
               <SkipBack className="h-3.5 w-3.5" />
             </motion.button>
             <motion.button
+              type="button"
               onClick={handlePlay}
+              aria-label={isPlaying ? "Pause scenario" : "Play scenario"}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={springs.snappy}
@@ -1116,7 +1120,9 @@ function InteractiveAgentComparison() {
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
             </motion.button>
             <motion.button
+              type="button"
               onClick={handleNext}
+              aria-label="Next scenario"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={springs.snappy}
@@ -1128,138 +1134,30 @@ function InteractiveAgentComparison() {
         </div>
       </div>
 
-      {/* SVG connection visualization */}
+      {/* SVG connection visualization. Below md the terminal panels stack, so
+          the strip need not line up with three columns: a 300-wide geometry
+          keeps its labels ~9-10px on phones instead of ~3.5px (bd-k3qa5). */}
       <div className="relative px-6 pb-2">
-        <svg viewBox="0 0 600 80" className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
-          {/* Central auth server */}
-          <rect
-            x="262"
-            y="8"
-            width="76"
-            height="32"
-            rx="8"
-            className="fill-white/[0.04] stroke-white/[0.12]"
-            strokeWidth="1"
+        <div className="md:hidden">
+          <AuthFlowSvg
+            compact
+            scenario={scenario}
+            agentDone={agentDone}
+            isPlaying={isPlaying}
+            particles={particles}
           />
-          <text x="300" y="22" textAnchor="middle" className="fill-white/60 text-[8px] font-bold">
-            AUTH
-          </text>
-          <text x="300" y="33" textAnchor="middle" className="fill-white/40 text-[7px]">
-            SERVER
-          </text>
-
-          {/* Connection lines with animation */}
-          {AGENT_KEYS.map((agentKey) => {
-            const startX = AGENT_START_X[agentKey];
-            const isDone = agentDone[agentKey];
-            const isSuccess = isDone && scenario.agents[agentKey].result === "success";
-            const isFail = isDone && scenario.agents[agentKey].result === "fail";
-            let color = "rgba(255,255,255,0.08)";
-            if (isSuccess) {
-              color = AGENT_COLORS[agentKey].hex;
-            } else if (isFail) {
-              color = "#ef4444";
-            }
-
-            return (
-              <g key={agentKey}>
-                {/* Line from agent to server */}
-                <line
-                  x1={startX}
-                  y1={68}
-                  x2={300}
-                  y2={40}
-                  stroke={color}
-                  strokeWidth={isDone ? 2 : 1}
-                  strokeDasharray={isDone ? "none" : "4 4"}
-                  opacity={isDone ? 0.8 : 0.3}
-                >
-                  {isPlaying && !isDone && (
-                    <animate
-                      attributeName="stroke-dashoffset"
-                      from="8"
-                      to="0"
-                      dur="0.6s"
-                      repeatCount="indefinite"
-                    />
-                  )}
-                </line>
-
-                {/* Data flow pulse dot */}
-                {isPlaying && !isDone && (
-                  <circle r="3" fill={AGENT_COLORS[agentKey].hex} opacity="0.6">
-                    <animateMotion
-                      dur="1.5s"
-                      repeatCount="indefinite"
-                      path={`M${startX},68 L300,40`}
-                    />
-                  </circle>
-                )}
-
-                {/* Success/fail indicator at agent */}
-                {isDone && (
-                  <circle
-                    cx={startX}
-                    cy={68}
-                    r="5"
-                    fill={isSuccess ? "#22c55e" : "#ef4444"}
-                    opacity="0.8"
-                  >
-                    <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite" />
-                  </circle>
-                )}
-
-                {/* Agent label */}
-                <text
-                  x={startX}
-                  y={78}
-                  textAnchor="middle"
-                  className={`text-[7px] font-medium`}
-                  fill={AGENT_COLORS[agentKey].hex}
-                  opacity={0.7}
-                >
-                  {agentKey === "claude"
-                    ? "Claude"
-                    : agentKey === "codex"
-                      ? "Codex"
-                      : "Antigravity"}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Particle effects */}
-          {particles.map((p) => (
-            <circle
-              key={p.id}
-              cx={`${p.x}%`}
-              cy={`${p.y}%`}
-              r="2"
-              fill={p.color}
-              opacity={p.life * 0.8}
-            >
-              <animate
-                attributeName="cx"
-                from={`${p.x}%`}
-                to={`${p.x + Math.cos(p.angle) * p.speed * 8}%`}
-                dur="1s"
-                fill="freeze"
-              />
-              <animate
-                attributeName="cy"
-                from={`${p.y}%`}
-                to={`${p.y + Math.sin(p.angle) * p.speed * 8}%`}
-                dur="1s"
-                fill="freeze"
-              />
-              <animate attributeName="opacity" from="0.8" to="0" dur="1s" fill="freeze" />
-              <animate attributeName="r" from="3" to="0" dur="1s" fill="freeze" />
-            </circle>
-          ))}
-        </svg>
+        </div>
+        <div className="hidden md:block">
+          <AuthFlowSvg
+            compact={false}
+            scenario={scenario}
+            agentDone={agentDone}
+            isPlaying={isPlaying}
+            particles={particles}
+          />
+        </div>
       </div>
 
-      {/* Terminal panels */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-0 md:gap-px bg-white/[0.04]">
         {AGENT_KEYS.map((agentKey) => (
           <AgentTerminalPanel
@@ -1275,9 +1173,12 @@ function InteractiveAgentComparison() {
 
       {/* Scenario progress dots */}
       <div className="flex items-center justify-center gap-2 py-4 bg-black/20">
-        {SCENARIOS.map((_, i) => (
+        {SCENARIOS.map((sc, i) => (
           <motion.button
-            key={i}
+            key={sc.id}
+            type="button"
+            aria-label={`Scenario ${i + 1}: ${sc.title}`}
+            aria-current={i === scenarioIndex ? "step" : undefined}
             onClick={() => {
               resetState();
               setScenarioIndex(i);
@@ -1291,6 +1192,172 @@ function InteractiveAgentComparison() {
         ))}
       </div>
     </div>
+  );
+}
+
+// =============================================================================
+// AUTH FLOW SVG - Agents connecting to the auth server. `compact` is a 300-wide
+// geometry with larger type for phones; the 600-wide one lines up with the
+// three terminal columns at md+. Particles are positioned in percentages, so
+// they fit either geometry.
+// =============================================================================
+function AuthFlowSvg({
+  compact,
+  scenario,
+  agentDone,
+  isPlaying,
+  particles,
+}: {
+  compact: boolean;
+  scenario: Scenario;
+  agentDone: Record<AgentId, boolean>;
+  isPlaying: boolean;
+  particles: Particle[];
+}) {
+  const width = compact ? 300 : 600;
+  const hubX = width / 2;
+  const serverW = compact ? 84 : 76;
+  const titleSize = compact ? "text-[10px]" : "text-[8px]";
+  const subtitleSize = compact ? "text-[9.5px]" : "text-[7px]";
+  const labelSize = compact ? "text-[10px]" : "text-[7px]";
+  // Compact labels need room for descenders below the agent endpoint.
+  const agentY = compact ? 58 : 68;
+  const labelY = compact ? 76 : 78;
+
+  return (
+    <svg viewBox={`0 0 ${width} 80`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+      {/* Central auth server */}
+      <rect
+        x={hubX - serverW / 2}
+        y={compact ? 4 : 8}
+        width={serverW}
+        height={compact ? 36 : 32}
+        rx="8"
+        className="fill-white/[0.04] stroke-white/[0.12]"
+        strokeWidth="1"
+      />
+      <text
+        x={hubX}
+        y={compact ? 20 : 22}
+        textAnchor="middle"
+        className={`fill-white/60 ${titleSize} font-bold`}
+      >
+        AUTH
+      </text>
+      <text
+        x={hubX}
+        y={33}
+        textAnchor="middle"
+        className={`fill-white/50 ${subtitleSize}`}
+      >
+        SERVER
+      </text>
+
+      {/* Connection lines with animation */}
+      {AGENT_KEYS.map((agentKey) => {
+        const startX = AGENT_START_X[agentKey] * (width / 600);
+        const isDone = agentDone[agentKey];
+        const isSuccess = isDone && scenario.agents[agentKey].result === "success";
+        const isFail = isDone && scenario.agents[agentKey].result === "fail";
+        let color = "rgba(255,255,255,0.08)";
+        if (isSuccess) {
+          color = AGENT_COLORS[agentKey].hex;
+        } else if (isFail) {
+          color = "#ef4444";
+        }
+
+        return (
+          <g key={agentKey}>
+            {/* Line from agent to server */}
+            <line
+              x1={startX}
+              y1={agentY}
+              x2={hubX}
+              y2={40}
+              stroke={color}
+              strokeWidth={isDone ? 2 : 1}
+              strokeDasharray={isDone ? "none" : "4 4"}
+              opacity={isDone ? 0.8 : 0.3}
+            >
+              {isPlaying && !isDone && (
+                <animate
+                  attributeName="stroke-dashoffset"
+                  from="8"
+                  to="0"
+                  dur="0.6s"
+                  repeatCount="indefinite"
+                />
+              )}
+            </line>
+
+            {/* Data flow pulse dot */}
+            {isPlaying && !isDone && (
+              <circle r="3" fill={AGENT_COLORS[agentKey].hex} opacity="0.6">
+                <animateMotion
+                  dur="1.5s"
+                  repeatCount="indefinite"
+                  path={`M${startX},${agentY} L${hubX},40`}
+                />
+              </circle>
+            )}
+
+            {/* Success/fail indicator at agent */}
+            {isDone && (
+              <circle
+                cx={startX}
+                cy={agentY}
+                r="5"
+                fill={isSuccess ? "#22c55e" : "#ef4444"}
+                opacity="0.8"
+              >
+                <animate attributeName="r" values="5;7;5" dur="1.5s" repeatCount="indefinite" />
+              </circle>
+            )}
+
+            {/* Agent label */}
+            <text
+              x={startX}
+              y={labelY}
+              textAnchor="middle"
+              className={`${labelSize} font-medium`}
+              fill={AGENT_COLORS[agentKey].hex}
+              opacity={0.8}
+            >
+              {agentKey === "claude" ? "Claude" : agentKey === "codex" ? "Codex" : "Antigravity"}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Particle effects */}
+      {particles.map((p) => (
+        <circle
+          key={p.id}
+          cx={`${p.x}%`}
+          cy={`${p.y}%`}
+          r="2"
+          fill={p.color}
+          opacity={p.life * 0.8}
+        >
+          <animate
+            attributeName="cx"
+            from={`${p.x}%`}
+            to={`${p.x + Math.cos(p.angle) * p.speed * 8}%`}
+            dur="1s"
+            fill="freeze"
+          />
+          <animate
+            attributeName="cy"
+            from={`${p.y}%`}
+            to={`${p.y + Math.sin(p.angle) * p.speed * 8}%`}
+            dur="1s"
+            fill="freeze"
+          />
+          <animate attributeName="opacity" from="0.8" to="0" dur="1s" fill="freeze" />
+          <animate attributeName="r" from="3" to="0" dur="1s" fill="freeze" />
+        </circle>
+      ))}
+    </svg>
   );
 }
 
