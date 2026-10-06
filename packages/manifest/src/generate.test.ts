@@ -1427,9 +1427,19 @@ describe("Generated script headers", () => {
     expect(literalInstallAssets.length).toBeGreaterThan(0);
     expect(literalInstallAssets).toContain("scripts/lib/swarm_launch.sh");
     expect(literalInstallAssets).toContain("scripts/lib/swarm_fleet_probe.sh");
-    for (const path of literalInstallAssets) {
-      expect(checksums.has(path)).toBe(true);
+    // install.sh admits exactly these inert Markdown assets outside the ledger
+    // (_acfs_internal_asset_is_rendered_data); every other literal asset must
+    // be a ledger member.
+    const renderedDataAssets = new Set(["CHANGELOG.md"]);
+    const renderedDataBody =
+      installer.match(/_acfs_internal_asset_is_rendered_data\(\) \{\n([\s\S]*?)\n\}\n/)?.[1] ?? "";
+    for (const path of renderedDataAssets) {
+      expect(renderedDataBody).toContain(`        ${path})\n`);
+      expect(checksums.has(path)).toBe(false);
     }
+    expect(
+      literalInstallAssets.filter((path) => !checksums.has(path) && !renderedDataAssets.has(path)),
+    ).toEqual([]);
     expect(installer).toContain("if (( line_count > 256 ))");
     expect(installer).toContain(
       "install_asset: Source asset is outside the internal checksum contract:",
