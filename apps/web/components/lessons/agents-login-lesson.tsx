@@ -374,7 +374,14 @@ function AliasCard({
       </div>
 
       <div className="mb-4 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
-        <pre className="p-4 text-xs font-mono text-white/80 overflow-x-auto">{code}</pre>
+        <pre
+          className="p-4 text-xs font-mono text-white/80 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          tabIndex={0}
+          role="region"
+          aria-label={`${alias} alias definition (scrollable)`}
+        >
+          {code}
+        </pre>
       </div>
 
       <ul className="space-y-2">
@@ -414,7 +421,12 @@ function LoginStep({
         {agent}
       </h3>
       <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden group-hover:bg-black/40 transition-colors">
-        <pre className="p-3 text-sm font-mono text-emerald-400">
+        <pre
+          className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          tabIndex={0}
+          role="region"
+          aria-label={`${agent} login command (scrollable)`}
+        >
           <span className="text-white/50">$ </span>
           {command}
         </pre>
@@ -466,7 +478,12 @@ function CodexLoginSection() {
           <li>Then run the command below</li>
         </ol>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
-          <pre className="p-3 text-sm font-mono text-emerald-400">
+          <pre
+            className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            tabIndex={0}
+            role="region"
+            aria-label="Device auth command (scrollable)"
+          >
             <span className="text-white/50">$ </span>codex login --device-auth
           </pre>
         </div>
@@ -483,7 +500,12 @@ function CodexLoginSection() {
           </li>
         </ol>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
-          <pre className="p-3 text-xs font-mono text-emerald-400 overflow-x-auto">
+          <pre
+            className="p-3 text-xs font-mono text-emerald-400 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            tabIndex={0}
+            role="region"
+            aria-label="SSH tunnel commands (scrollable)"
+          >
             <span className="text-white/50"># On laptop:</span>
             {"\n"}
             <span className="text-white/50">$ </span>ssh -L 1455:localhost:1455 ubuntu@YOUR_VPS_IP
@@ -501,7 +523,12 @@ function CodexLoginSection() {
           Option 3: Standard localhost callback (if you&apos;re not on a headless VPS)
         </p>
         <div className="rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
-          <pre className="p-3 text-sm font-mono text-emerald-400">
+          <pre
+            className="p-3 text-sm font-mono text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            tabIndex={0}
+            role="region"
+            aria-label="Standard login command (scrollable)"
+          >
             <span className="text-white/50">$ </span>codex login
           </pre>
         </div>

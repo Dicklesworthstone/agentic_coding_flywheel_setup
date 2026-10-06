@@ -792,7 +792,12 @@ function LiveLog({ lines }: { lines: string[] }) {
           className="h-1.5 w-1.5 rounded-full bg-emerald-500 ml-auto"
         />
       </div>
-      <div className="p-3 space-y-0.5 max-h-32 overflow-y-auto">
+      <div
+        className="p-3 space-y-0.5 max-h-32 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Terminal output (scrollable)"
+      >
         <AnimatePresence mode="popLayout">
           {lines.map((line, idx) => (
             <motion.div
