@@ -410,7 +410,10 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
           the progress strip, not the whole dock: with the gesture on the
           container, touch taps on the Back/Next buttons were consumed by the
           gesture layer and never became clicks (Mobile Chrome e2e). */}
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/50 bg-background/95 px-4 pt-4 backdrop-blur-md bottom-nav-safe md:hidden">
+        <nav
+          aria-label="Wizard step navigation"
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-border/50 bg-background/95 px-4 pt-4 backdrop-blur-md bottom-nav-safe md:hidden"
+        >
           {!hideSharedStepChrome && (
             <div
               {...bindDockSwipe()}
@@ -464,7 +467,7 @@ export default function WizardLayout({ children }: { children: React.ReactNode }
               )}
             </div>
           )}
-        </div>
+        </nav>
       </div>
     </WizardForwardNavContext.Provider>
   );
