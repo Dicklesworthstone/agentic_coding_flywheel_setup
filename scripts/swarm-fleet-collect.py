@@ -36,6 +36,8 @@ SPEC_SCHEMA = "acfs.swarm-fleet-collection-spec.v1"
 MAX_BUNDLE = 16 * 1024 * 1024
 IMPORT_SCHEMA = "acfs.swarm-fleet-import.v1"
 IMPORT_STARTED = False
+INTEGRATION_SCHEMA = "acfs.swarm-fleet-integration.v1"
+INTEGRATION_SCRATCH = None
 
 # Fixed read-only program. No executable, ref expression, command or environment
 # is supplied by the selection. Git configuration that could start network or
@@ -440,7 +442,8 @@ class LocalGit:
                     "GIT_NO_REPLACE_OBJECTS": "1", "GIT_GRAFT_FILE": "/dev/null",
                     "GIT_NO_LAZY_FETCH": "1", "GIT_ALLOW_PROTOCOL": ""}
 
-    def run(self, args, data=b"", allowed=(0,)):
+    def run(self, args, data=b"", allowed=(0,), *, limit=fleet.LIMIT):
+        require(type(limit) is int and 1 <= limit <= MAX_BUNDLE, "invalid_local_git_output_limit")
         require(time.monotonic() < self.deadline, "import_git_deadline")
         options = ["core.hooksPath=/dev/null", "core.fsmonitor=false", "core.attributesFile=/dev/null",
                    "diff.external=", "maintenance.auto=false", "gc.auto=0", "pack.threads=1",
@@ -468,7 +471,7 @@ class LocalGit:
                             chunk = os.read(key.fd, 65536)
                             if not chunk:
                                 poll.unregister(key.fileobj)
-                            require(len(output) + len(chunk) <= fleet.LIMIT, "import_git_output_limit")
+                            require(len(output) + len(chunk) <= limit, "import_git_output_limit")
                             output.extend(chunk)
                         if not poll.get_map() and process.poll() is None:
                             time.sleep(0.01)
@@ -722,8 +725,167 @@ def import_main(args):
     return 1 if report["status"] == "attention" else 0
 
 
+def integration_paths(raw):
+    require(not raw or raw.endswith(b"\0"), "invalid_integration_paths")
+    paths = [p.decode("utf-8", "strict") for p in raw[:-1].split(b"\0")] if raw else []
+    require(len(paths) <= 4096 and len(set(paths)) == len(paths)
+            and all(0 < len(p) <= 4096 and not p.startswith("/")
+                    and all(c not in ("", ".", "..") for c in p.split("/")) for p in paths),
+            "integration_path_limit_or_invalid_path")
+    return paths
+
+
+def builtin_merge_attributes(git, commit):
+    """Resolve attribute macros with Git, not a home-grown .gitattributes parser.
+
+    Only the disposable bare repository's index is used. No project checkout,
+    destination index, global attributes or configured external driver is read.
+    """
+    git.run(["read-tree", commit])
+    paths = git.run(["ls-files", "-z"])[1]
+    raw = git.run(["check-attr", "--cached", "-z", "--stdin", "merge"], paths, limit=MAX_BUNDLE)[1]
+    fields = raw.split(b"\0")
+    require(fields[-1] == b"" and (len(fields) - 1) % 3 == 0, "invalid_merge_attributes")
+    require(all(fields[i + 1] == b"merge" and fields[i + 2] in
+                (b"set", b"unset", b"unspecified", b"text", b"binary", b"union")
+                for i in range(0, len(fields) - 1, 3)), "external_merge_driver_not_supported")
+
+
+def merge_candidate(git, entries, onto, evidence):
+    """Merge in original host order; never use a conflicted tree as a parent."""
+    current = onto
+    rows = [{"id": e["id"], "head_commit": e["snapshot"]["head_commit"], "status": "not_attempted"}
+            for e in entries]
+    for row, entry in zip(rows, entries):
+        head = entry["snapshot"]["head_commit"]
+        row["previous_commit"] = current
+        if entry["snapshot"]["commit_count"] == 0:
+            row.update(status="unchanged", result_commit=current)
+            continue
+        if git.run(["merge-base", "--is-ancestor", head, current], allowed=(0, 1))[0] == 0:
+            row.update(status="already_contained", result_commit=current)
+            continue
+        if git.run(["merge-base", "--is-ancestor", current, head], allowed=(0, 1))[0] == 0:
+            current = head
+            row.update(status="fast_forward", result_commit=current)
+            continue
+        code, raw = git.run(["merge-tree", "--write-tree", "--name-only", "-z", "--no-messages",
+                             current, head], allowed=(0, 1))
+        tree, separator, conflicts = raw.partition(b"\0")
+        require(separator and oid(tree.decode("ascii", "strict")), "invalid_merge_tree_response")
+        paths = integration_paths(conflicts)
+        if code == 1:
+            # Some logical conflicts have no unmerged file entries. The exit
+            # status is authoritative; an empty path list is NOT a clean merge.
+            row.update(status="conflict", conflicted_paths=paths)
+            return {"status": "conflict", "steps": rows, "candidate_commit": None, "candidate_tree": None}
+        require(not paths, "contradictory_merge_tree_response")
+        dates = [git.text(["show", "--no-patch", "--format=%ct", parent]) for parent in (current, head)]
+        require(all(fleet.matches(r"[0-9]{1,12}", d) for d in dates), "unsupported_parent_timestamp")
+        timestamp = str(max(int(d) for d in dates) + 1) + " +0000"
+        git.env.update(GIT_AUTHOR_NAME="ACFS Fleet Integration", GIT_COMMITTER_NAME="ACFS Fleet Integration",
+                       GIT_AUTHOR_EMAIL="acfs-fleet@localhost", GIT_COMMITTER_EMAIL="acfs-fleet@localhost",
+                       GIT_AUTHOR_DATE=timestamp, GIT_COMMITTER_DATE=timestamp)
+        message = ("ACFS fleet integration: " + entry["id"] + "\n\nCollection evidence: " + evidence + "\n").encode()
+        current = git.run(["commit-tree", tree.decode(), "-p", current, "-p", head], message)[1].decode().strip()
+        require(oid(current), "invalid_integration_commit")
+        row.update(status="merged", result_commit=current)
+    tree = git.text(["rev-parse", "--verify", current + "^{tree}"])
+    paths = integration_paths(git.run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames",
+                                       "--name-only", "-z", onto, current, "--"])[1])
+    return {"status": "clean", "steps": rows, "candidate_commit": current,
+            "candidate_tree": tree, "net_changed_paths": paths}
+
+
+def integrate_collection(path, repository, onto, name, hosts, timeout):
+    global INTEGRATION_SCRATCH
+    INTEGRATION_SCRATCH = None
+    require(sys.platform == "linux" and os.geteuid() != 0 and os.getuid() == os.geteuid()
+            and not os.environ.get("SUDO_USER"), "integrate_as_repository_owner_without_sudo")
+    require(oid(onto), "integration_requires_full_onto_commit")
+    require(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", name), "invalid_integration_name")
+    require(type(timeout) is int and 1 <= timeout <= 600, "invalid_integration_timeout")
+    require(type(hosts) is list and all(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", h) for h in hosts)
+            and len(set(hosts)) == len(hosts), "invalid_integration_hosts")
+    path, repository = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (path, repository))
+    with import_source(path) as (source, bundles, evidence, guard), fleet.directory_fd(repository):
+        git = LocalGit(repository, timeout)
+        destination = destination_state(git)
+        with fleet.directory_fd(destination["common_directory"]["path"]) as dest:
+            lock(dest)
+            require(destination_state(git) == destination, "destination_changed")
+            entries = [e for e in source["hosts"] if not hosts or e["id"] in hosts]
+            require(entries and (not hosts or len(entries) == len(hosts)), "unknown_integration_host")
+            reference = "refs/acfs/integrations/" + name
+            require_new_ref(git, reference)
+            require(git.text(["cat-file", "-t", onto]) == "commit", "integration_target_not_commit")
+            artifacts = {a["id"]: a for a in source["artifacts"]}
+            for entry in entries:
+                snap = entry["snapshot"]
+                require(snap["object_format"] == destination["object_format"], "integration_object_format_mismatch")
+                git.run(["merge-base", "--is-ancestor", snap["base_commit"], onto])
+                artifact = artifacts[entry["id"]]
+                if artifact["file"]:
+                    git.verify_bundle(bundles[artifact["file"]])
+            guard()
+            # All writes before approval are confined to a new private scratch
+            # repository. Retain it for inspection, including on interruption.
+            root = Path(tempfile.mkdtemp(prefix="acfs-fleet-integration-", dir="/tmp"))
+            INTEGRATION_SCRATCH = str(root)
+            scratch = LocalGit(root, timeout)
+            scratch.deadline = git.deadline
+            scratch.env["GIT_ATTR_NOSYSTEM"] = "1"
+            scratch.run(["init", "--bare", "--template=", "--initial-branch=acfs-scratch",
+                         "--object-format=" + destination["object_format"]])
+            with fleet.directory_fd(root / "objects/info") as info:
+                publish_bundle(info, "alternates", (destination["object_directory"]["path"] + "\n").encode())
+            for entry in entries:
+                artifact = artifacts[entry["id"]]
+                if artifact["file"]:
+                    pack = bundles[artifact["file"]].partition(b"\n\n")[2]
+                    scratch.run(["index-pack", "--stdin", "--fix-thin", "--strict", "--threads=1",
+                                 "--max-input-size=" + str(MAX_BUNDLE)], pack)
+                check_imported_history(scratch, entry)
+            for commit in dict.fromkeys([onto, *[e["snapshot"]["head_commit"] for e in entries]]):
+                builtin_merge_attributes(scratch, commit)
+            scratch.run(["read-tree", "--empty"])
+            result = merge_candidate(scratch, entries, onto, evidence)
+            guard()
+            require(destination_state(git) == destination, "destination_changed")
+            require_new_ref(git, reference)
+            plan = {"schema": INTEGRATION_SCHEMA, "policy": "builtin-sequential-merge-tree-v1",
+                    "collection_directory": str(path), "collection_evidence_sha256": evidence,
+                    "collection_plan_sha256": source["plan_sha256"], "destination": destination,
+                    "git_version": scratch.text(["--version"]), "onto_commit": onto, "ref": reference,
+                    "hosts": entries, "timeout_seconds": timeout, "result": result}
+            require(len(encoded(plan)) <= fleet.LIMIT, "integration_plan_size_limit")
+            return {"schema": INTEGRATION_SCHEMA, "status": "preview" if result["status"] == "clean" else "conflict",
+                    "plan": plan, "plan_sha256": digest(encoded(plan)) if result["status"] == "clean" else None,
+                    "scratch_directory": str(root), "destination_writes_started": False,
+                    "network_access": False, "changes_checkout": False, "runs_project_code": False,
+                    "task_completion_verified": False}
+
+
+def integration_main(args):
+    parser = argparse.ArgumentParser(description="Assess an offline collection as a combined integration candidate",
+                                     allow_abbrev=False)
+    parser.add_argument("--integrate", dest="collection", required=True)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--onto", required=True, help="Exact full target commit ID; never a moving branch name")
+    parser.add_argument("--name", required=True, help="New candidate namespace: refs/acfs/integrations/NAME")
+    parser.add_argument("--host", action="append", default=[])
+    parser.add_argument("--timeout", type=int, default=90)
+    options = parser.parse_args(args)
+    report = integrate_collection(options.collection, options.repository, options.onto,
+                                  options.name, options.host, options.timeout)
+    print(encoded(report).decode(), end="")
+    return 1 if report["status"] == "conflict" else 0
+
+
 def main(arguments=None):
     args = list(sys.argv[1:] if arguments is None else arguments)
+    if "--integrate" in args:
+        return integration_main(args)
     if "--import" in args:
         return import_main(args)
     if args[:1] == ["--verify"]:
@@ -761,6 +923,7 @@ def cli():
     except (fleet.Refused, OSError, ValueError, subprocess.SubprocessError, fleet.Interrupted) as exc:
         print(encoded({"schema": SCHEMA, "status": "error", "remote_read_only": True,
                        "import_started": IMPORT_STARTED,
+                       "integration_scratch": INTEGRATION_SCRATCH,
                        "code": str(exc) if isinstance(exc, fleet.Refused) else "collection_io_or_process_failure"}).decode(), end="")
         return 128 + exc.signum if isinstance(exc, fleet.Interrupted) else 2
 
