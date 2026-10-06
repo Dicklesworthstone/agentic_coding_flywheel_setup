@@ -2695,3 +2695,58 @@ test.describe("SSH Login Rehearsal", () => {
     await expect(local).toBeFocused();
   });
 });
+
+test.describe("Installer Output Drill", () => {
+  test.beforeEach(async ({ page }) => {
+    await setupWizardState(page, {
+      os: "mac",
+      ip: "10.0.0.50",
+      completedSteps: [1, 2, 3, 4, 5, 6, 7, 8],
+    });
+    await page.goto("/wizard/run-installer");
+  });
+
+  test("grades each real installer snippet and locks answers", async ({ page }) => {
+    await page.getByRole("button", { name: "Practice reading installer output" }).click();
+    const output = page.getByRole("group", { name: "Installer output" });
+    const wait = page.getByRole("button", { name: "Keep waiting" });
+    const act = page.getByRole("button", { name: "I need to act" });
+    const next = page.getByRole("button", { name: /^(Next question|See my result)$/ });
+
+    // Q1 normal progress: right answer.
+    await expect(page.getByText("Question 1 of 6")).toBeVisible();
+    await expect(output).toContainText("[4/9] Installing CLI tools...");
+    await wait.click();
+    await expect(page.getByText("Right.", { exact: true })).toBeVisible();
+    await expect(wait).toHaveAttribute("aria-pressed", "true");
+    await expect(next).toBeFocused();
+    // Answers lock once given: announced as disabled, and a forced click is ignored.
+    await expect(act).toHaveAttribute("aria-disabled", "true");
+    await act.click({ force: true });
+    await expect(act).toHaveAttribute("aria-pressed", "false");
+    await next.press("Enter");
+
+    // Q2 a continuing warning: wrong answer gets the correction.
+    await expect(output).toContainText("⚠ SSH key prompt failed or was skipped; continuing");
+    await act.click();
+    await expect(page.getByText("Not quite: keep waiting.")).toBeVisible();
+    await next.click();
+
+    for (const [snippet, choice] of [
+      ["[5/9] Installing language runtimes...", wait],
+      ["✖ ACFS installation failed!", act],
+      ["client_loop: send disconnect: Broken pipe", act],
+      ["Connection to 203.0.113.42 closed by remote host.", wait],
+    ] as const) {
+      await expect(output).toContainText(snippet);
+      await choice.click();
+      await next.click();
+    }
+
+    await expect(page.getByText("You got 4 of 6 right.")).toBeVisible();
+    const startOver = page.getByRole("button", { name: "Start over" });
+    await expect(startOver).toBeFocused();
+    await startOver.click();
+    await expect(page.getByText("Question 1 of 6")).toBeVisible();
+  });
+});
