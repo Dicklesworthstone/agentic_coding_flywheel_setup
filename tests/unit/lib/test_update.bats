@@ -13994,6 +13994,53 @@ EOF
     [[ "$(cat "$HOME/codex-update-attempts")" == "3" ]]
 }
 
+setup_missing_bun_update_fixture() {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    FORCE_MODE=false
+    ABORT_ON_FAILURE=false
+    UPDATE_AGENTS=true
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    update_target_user() { printf 'tester\n'; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_binary_path() { return 1; }
+    get_version() { printf 'unknown\n'; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_run_in_target_context() {
+        printf '%s\n' "$*" >> "$HOME/agent-update-calls"
+    }
+}
+
+@test "update_agents: missing Bun without Codex is one Codex skip line" {
+    setup_missing_bun_update_fixture
+    update_binary_exists() { return 1; }
+
+    run update_agents
+
+    [[ "$(grep -c 'Bun not installed' "$HOME/update.log")" == "1" ]]
+    [[ "$(grep -c 'Codex CLI' "$HOME/update.log")" == "1" ]]
+    grep -q '\[skip\] Codex CLI - not installed; Bun not installed either' "$HOME/update.log"
+    ! grep -q '\[fail\]' "$HOME/update.log"
+}
+
+@test "update_agents: missing Bun with Codex installed is one Codex failure line" {
+    setup_missing_bun_update_fixture
+    update_binary_exists() { [[ "${1:-}" == "codex" ]]; }
+
+    run update_agents
+
+    [[ "$(grep -c 'Bun not installed' "$HOME/update.log")" == "1" ]]
+    [[ "$(grep -c 'Codex CLI' "$HOME/update.log")" == "1" ]]
+    grep -q '\[fail\] Codex CLI - Bun not installed (required for Codex updates)' "$HOME/update.log"
+    [[ ! -f "$HOME/agent-update-calls" ]] || ! grep -q 'codex' "$HOME/agent-update-calls"
+}
+
 setup_opencode_update_fixture() {
     QUIET=true
     VERBOSE=false
