@@ -997,7 +997,12 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <div className="w-2 h-2 rounded-full bg-emerald-500/60" />
         <span className="ml-2 text-[10px] text-white/30 font-mono">caam</span>
       </div>
-      <div className="p-3 font-mono text-[10px] leading-relaxed space-y-0.5 max-h-[180px] overflow-y-auto">
+      <div
+        className="p-3 font-mono text-[10px] leading-relaxed space-y-0.5 max-h-[180px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Terminal output (scrollable)"
+      >
         {lines.map((line, i) => {
           const isCommand = line.startsWith("$");
           const isWarning = line.startsWith("!");

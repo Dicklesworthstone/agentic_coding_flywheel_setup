@@ -1085,7 +1085,12 @@ function PlanDocument({
       </div>
 
       {/* Plan content with diff markers */}
-      <div className="max-h-[320px] overflow-y-auto">
+      <div
+        className="max-h-[320px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Plan content (scrollable)"
+      >
         {lines.map((line, i) => {
           const prefix = getLinePrefix(line.status);
           const lineComments = showComments ? commentsByLine[i] || [] : [];
@@ -1180,7 +1185,12 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
         </div>
         <span className="text-[10px] font-mono text-white/30">terminal</span>
       </div>
-      <div className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto">
+      <div
+        className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Terminal output (scrollable)"
+      >
         {lines.map((line, i) => {
           const isCommand = line.startsWith("$");
           const isPass = line.includes("[PASS]");

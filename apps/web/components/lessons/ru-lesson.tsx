@@ -1066,13 +1066,19 @@ function InteractiveRepoSync() {
           {SCENARIOS.map((s) => (
             <button
               key={s.id}
+              type="button"
+              aria-label={s.label}
+              aria-pressed={activeScenario === s.id}
               onClick={() => {
                 if (!isRunning) {
                   setActiveScenario(s.id);
                   resetAll();
                 }
               }}
-              disabled={isRunning}
+              // aria-disabled, not disabled: the click handler already ignores
+              // clicks mid-run, and the chips must stay focusable so keyboard
+              // users can still reach (and scroll) the strip.
+              aria-disabled={isRunning || undefined}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition duration-200 ${
                 activeScenario === s.id
                   ? "bg-white/[0.1] text-white border border-white/[0.15] shadow-sm shadow-white/5"
@@ -1198,7 +1204,10 @@ function InteractiveRepoSync() {
             </div>
             <div
               ref={terminalRef}
-              className="flex-1 p-3 overflow-y-auto max-h-64 lg:max-h-80 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10"
+              className="flex-1 p-3 overflow-y-auto max-h-64 lg:max-h-80 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              tabIndex={0}
+              role="region"
+              aria-label="Command output (scrollable)"
             >
               <div className="space-y-0.5 font-mono text-[11px]">
                 <AnimatePresence>

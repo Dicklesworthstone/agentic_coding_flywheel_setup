@@ -940,7 +940,10 @@ function MiniTerminal({ phase, lineCount }: { phase: ResearchPhase; lineCount: n
       </div>
       <div
         ref={terminalRef}
-        className="p-3 font-mono text-xs space-y-0.5 h-[154px] overflow-y-auto"
+        className="p-3 font-mono text-xs space-y-0.5 h-[154px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Terminal output (scrollable)"
       >
         <AnimatePresence mode="popLayout">
           {visibleLines.map((line, i) => {

@@ -661,7 +661,12 @@ function CategoryLegend({ categories }: { categories: DiskCategory[] }) {
 /** Alert ticker */
 function AlertTicker({ alerts }: { alerts: AlertEntry[] }) {
   return (
-    <div className="space-y-1 max-h-[120px] overflow-y-auto">
+    <div
+      className="space-y-1 max-h-[120px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      tabIndex={0}
+      role="region"
+      aria-label="Alerts (scrollable)"
+    >
       {alerts.map((alert, i) => (
         <motion.div
           key={`${alert.time}-${i}`}
@@ -701,7 +706,12 @@ function MiniTerminal({ lines }: { lines: string[] }) {
           Terminal
         </span>
       </div>
-      <div className="p-3 space-y-0.5 overflow-y-auto max-h-[220px]">
+      <div
+        className="p-3 space-y-0.5 overflow-y-auto max-h-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Terminal output (scrollable)"
+      >
         {lines.map((line, i) => (
           <motion.div
             key={i}

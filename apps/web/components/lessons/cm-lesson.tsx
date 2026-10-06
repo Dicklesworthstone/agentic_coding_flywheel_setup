@@ -1043,7 +1043,12 @@ function MemoryRuleBank({
         <span className="ml-auto text-[10px] text-white/30 font-mono">{rules.length} rules</span>
       </div>
 
-      <div className="cm-scroll-area overflow-y-auto max-h-[280px] p-2 space-y-2">
+      <div
+        className="cm-scroll-area overflow-y-auto max-h-[280px] p-2 space-y-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        tabIndex={0}
+        role="region"
+        aria-label="Memory bank rules (scrollable)"
+      >
         {categories.map((cat) => {
           const meta = CATEGORY_META[cat];
           const catRules = rules.filter((r) => r.category === cat);

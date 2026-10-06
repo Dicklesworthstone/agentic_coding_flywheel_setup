@@ -848,7 +848,12 @@ function InteractiveWebToMarkdown() {
             </div>
 
             {/* HTML element list */}
-            <div className="flex-1 p-2 space-y-1 overflow-y-auto max-h-[260px]">
+            <div
+              className="flex-1 p-2 space-y-1 overflow-y-auto max-h-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              tabIndex={0}
+              role="region"
+              aria-label="HTML elements (scrollable)"
+            >
               {page.elements.map((el, i) => {
                 const isHighlighted = highlightedElement === i;
                 const isStripped =
@@ -944,7 +949,12 @@ function InteractiveWebToMarkdown() {
             </div>
 
             {/* Markdown content */}
-            <div className="flex-1 p-3 overflow-y-auto max-h-[260px]">
+            <div
+              className="flex-1 p-3 overflow-y-auto max-h-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              tabIndex={0}
+              role="region"
+              aria-label="Markdown output (scrollable)"
+            >
               <AnimatePresence mode="popLayout">
                 {stage === "idle" ? (
                   <motion.div
