@@ -122,19 +122,20 @@ teardown() {
     log_pass "SrpsLesson imported"
 }
 
-@test "lessons/index.tsx has srps case" {
-    log_info "Checking lesson index for srps case..."
+@test "lessons/index.tsx maps the srps slug to the SRPS lesson" {
+    log_info "Checking lesson index maps srps..."
 
-    run grep -l 'case "srps"' "$WEB_DIR/components/lessons/index.tsx"
+    run grep -A1 '^    "srps",$' "$WEB_DIR/components/lessons/index.tsx"
 
     assert_success
-    log_pass "srps case found"
+    assert_output --partial 'import("./srps-lesson").then((m) => ({ default: m.SrpsLesson }))'
+    log_pass "srps slug mapped"
 }
 
-@test "lessons/index.tsx exports SrpsLesson" {
-    log_info "Checking lesson index exports SrpsLesson..."
+@test "srps-lesson.tsx exports SrpsLesson" {
+    log_info "Checking srps-lesson exports SrpsLesson..."
 
-    run grep -l 'SrpsLesson,' "$WEB_DIR/components/lessons/index.tsx"
+    run grep -l '^export function SrpsLesson()' "$WEB_DIR/components/lessons/srps-lesson.tsx"
 
     assert_success
     log_pass "SrpsLesson exported"

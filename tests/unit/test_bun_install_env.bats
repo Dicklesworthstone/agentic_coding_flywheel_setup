@@ -196,8 +196,9 @@ load_install_bun_helpers() {
 }
 
 @test "install.sh routes every bun global-install miss through the location-aware warning" {
+    # One call site since ce5f8d8a removed the uncalled install_cloud_db_legacy copy.
     run grep -c 'acfs_warn_bun_global_binary_missing "$cli" "${cli}@latest" "$bun_bin"' "$INSTALL_SH"
-    [[ "$output" -eq 2 ]]
+    [[ "$output" -eq 1 ]]
     run grep -E 'log_warn "\$cli: install finished but binary not found"$' "$INSTALL_SH"
     [[ "$status" -ne 0 ]]
     grep -Fq 'acfs_note_bun_global_bin_mismatch "codex" "@openai/codex@latest" "$bun_bin"' "$INSTALL_SH"

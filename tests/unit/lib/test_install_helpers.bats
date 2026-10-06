@@ -476,7 +476,7 @@ EOF
 
         export LD_TRACE_LOADED_OBJECTS=1
         if ! output="$(
-            printf '\''printf "%s|%s|%s\\n" runner-ok "$TARGET_USER" "$TARGET_HOME"\n'\'' |
+            printf '\''%s\n'\'' '\''printf "%s|%s|%s\\n" runner-ok "$TARGET_USER" "$TARGET_HOME"'\'' |
                 run_as_target_runner bash -s -- 2>&1
         )"; then
             unset LD_TRACE_LOADED_OBJECTS
@@ -548,17 +548,20 @@ EOF
     assert_success
 }
 
-@test "installer upgrade setup uses noninteractive sudo fallbacks" {
+@test "installer upgrade setup requires root instead of prompting for sudo" {
     local installer="$PROJECT_ROOT/install.sh"
+    local phase
 
-    run grep -F '"$sudo_bin" -n "$apt_get_bin" update -qq && "$sudo_bin" -n "$apt_get_bin" install -y jq' "$installer"
-    assert_success
+    # Since bf205c78 the upgrade phase refuses non-root up front, so it can
+    # never block on a sudo password prompt; it may only advise sudo in logs.
+    phase="$(awk '/^run_ubuntu_upgrade_phase\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$installer")"
+    [[ -n "$phase" ]]
+    grep -qF 'if [[ $EUID -ne 0 ]]; then' <<<"$phase"
+    grep -qF 'Ubuntu auto-upgrade requires running the installer as root' <<<"$phase"
 
-    run grep -F '"$sudo_bin" -n "$mkdir_bin" -p "${ACFS_RESUME_DIR:-/var/lib/acfs}"' "$installer"
-    assert_success
-
-    run grep -F '"$sudo_bin" -n "$chown_bin" "$("$id_bin" -u):$("$id_bin" -g)" "${ACFS_RESUME_DIR:-/var/lib/acfs}"' "$installer"
-    assert_success
+    run grep -nE '(sudo|\$SUDO)' <<<"$(grep -vE '^[[:space:]]*(#|log_)' <<<"$phase")"
+    assert_failure
+    assert_output ""
 }
 
 @test "run_as_target: passwd home overrides stale TARGET_HOME and home-scoped bin dir" {

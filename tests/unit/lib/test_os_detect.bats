@@ -73,7 +73,7 @@ EOF
 
     run validate_os
     assert_failure # Returns 1
-    assert_output --partial "Recommended: Ubuntu 24.04+"
+    assert_output --partial "Recommended: Ubuntu 24.04 or 26.04 LTS"
 }
 
 @test "is_wsl: detects microsoft kernel" {

@@ -28,7 +28,8 @@ teardown() {
 }
 
 @test "continue_install: template does not contain streaming curl pipe" {
-    run grep -nE 'curl[^#]*\|\s*bash' "$PROJECT_ROOT/scripts/lib/ubuntu_upgrade.sh"
+    # Code only: a comment may mention the original curl|bash run.
+    run grep -nE '^[^#]*curl[^#]*\|\s*bash' "$PROJECT_ROOT/scripts/lib/ubuntu_upgrade.sh"
     assert_failure
     assert_output ""
 }

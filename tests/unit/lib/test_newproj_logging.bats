@@ -54,11 +54,11 @@ teardown() {
 @test "init_logging handles missing directory gracefully" {
     export ACFS_LOG_DIR="/nonexistent/path/that/should/not/exist"
 
-    # Should fall back to /tmp and still create a log
+    # Should fall back to the temp dir and still create a log
     init_logging
 
-    # The log dir should have been reset to /tmp
-    [[ "$ACFS_LOG_DIR" == "/tmp" ]]
+    # The log dir should have been reset to ${TMPDIR:-/tmp}
+    [[ "$ACFS_LOG_DIR" == "${TMPDIR:-/tmp}" ]]
     # And the log file should exist
     [[ -f "$ACFS_SESSION_LOG" ]]
 }
