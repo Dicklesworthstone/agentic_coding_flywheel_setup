@@ -237,10 +237,10 @@ const AGENTS: AgentPaneV2[] = [
     angle: 30,
     terminalLines: [
       "$ claude --model sonnet",
-      "Analyzing codebase structure...",
+      "Analyzing codebase...",
       "Found 147 source files",
-      "Mapping dependency graph...",
-      "Generating architecture doc...",
+      "Mapping dependencies...",
+      "Drafting architecture...",
       "Writing summary report...",
     ],
   },
@@ -257,9 +257,9 @@ const AGENTS: AgentPaneV2[] = [
     terminalLines: [
       "$ claude --model sonnet",
       "Scanning test coverage...",
-      "Running static analysis...",
+      "Running static checks...",
       "Checking type safety...",
-      "Auditing error handling...",
+      "Auditing error paths...",
       "Compiling review notes...",
     ],
   },
@@ -293,11 +293,11 @@ const AGENTS: AgentPaneV2[] = [
     spawnStep: 4,
     angle: 210,
     terminalLines: [
-      '$ agy --model "Gemini 3.8 Flash (High)"',
+      "$ agy",
       "Reading documentation...",
       "Cross-referencing APIs...",
       "Generating type stubs...",
-      "Writing integration tests...",
+      "Adding integration tests",
       "Documentation complete!",
     ],
   },
@@ -327,12 +327,14 @@ const STEP_DURATIONS: Record<number, number> = {
   7: 2000,
 };
 
-// Hexagonal layout: panes arranged around a center hub
+// Hexagonal layout: panes arranged around a center hub. Panes are as large as
+// the 700x440 viewBox allows (>=15 units between neighbours) so pane text can
+// be 9-11 units: the cockpit renders at ~1:1 on phones (bd-k3qa5).
 const HUB_CX = 350;
 const HUB_CY = 220;
-const HEX_RADIUS = 155;
-const PANE_W = 140;
-const PANE_H = 100;
+const HEX_RADIUS = 175;
+const PANE_W = 160;
+const PANE_H = 120;
 
 function getPaneCenter(angle: number): { x: number; y: number } {
   const rad = ((angle - 90) * Math.PI) / 180;
@@ -825,20 +827,20 @@ function InteractiveNtmOrchestrator() {
                   />
 
                   {/* Title bar */}
-                  <rect x={px} y={py} width={PANE_W} height={22} rx={10} fill={agent.colorDim} />
-                  <rect x={px} y={py + 10} width={PANE_W} height={12} fill={agent.colorDim} />
+                  <rect x={px} y={py} width={PANE_W} height={26} rx={10} fill={agent.colorDim} />
+                  <rect x={px} y={py + 12} width={PANE_W} height={14} fill={agent.colorDim} />
 
                   {/* Traffic light dots */}
-                  <circle cx={px + 12} cy={py + 11} r={3} fill="rgba(255,255,255,0.15)" />
-                  <circle cx={px + 22} cy={py + 11} r={3} fill="rgba(255,255,255,0.1)" />
-                  <circle cx={px + 32} cy={py + 11} r={3} fill="rgba(255,255,255,0.08)" />
+                  <circle cx={px + 12} cy={py + 13} r={3} fill="rgba(255,255,255,0.15)" />
+                  <circle cx={px + 22} cy={py + 13} r={3} fill="rgba(255,255,255,0.1)" />
+                  <circle cx={px + 32} cy={py + 13} r={3} fill="rgba(255,255,255,0.08)" />
 
                   {/* Agent name */}
                   <text
-                    x={px + 46}
-                    y={py + 15}
+                    x={px + 44}
+                    y={py + 17}
                     fill={agent.colorLight}
-                    fontSize="9"
+                    fontSize="11"
                     fontWeight="600"
                     fontFamily="system-ui"
                   >
@@ -848,28 +850,29 @@ function InteractiveNtmOrchestrator() {
                   {/* Status indicator */}
                   <OrchestratorStatusDot
                     x={px + PANE_W - 14}
-                    y={py + 11}
+                    y={py + 13}
                     status={status}
                     color={agent.color}
                     active={inView}
                   />
 
-                  {/* Terminal content area */}
+                  {/* Terminal content area: dark enough that the hub connection
+                      line behind the pane does not run through the text */}
                   <rect
                     x={px + 4}
-                    y={py + 24}
+                    y={py + 28}
                     width={PANE_W - 8}
-                    height={PANE_H - 28}
+                    height={PANE_H - 32}
                     rx={4}
-                    fill="rgba(0,0,0,0.3)"
+                    fill="rgba(0,0,0,0.6)"
                   />
 
                   {/* Model label */}
                   <text
                     x={px + 10}
-                    y={py + 38}
-                    fill="rgba(255,255,255,0.3)"
-                    fontSize="7"
+                    y={py + 45}
+                    fill="rgba(255,255,255,0.5)"
+                    fontSize="8.5"
                     fontFamily="monospace"
                   >
                     {agent.model}
@@ -879,9 +882,9 @@ function InteractiveNtmOrchestrator() {
                   {status === "idle" && (
                     <text
                       x={px + 10}
-                      y={py + 52}
-                      fill="rgba(255,255,255,0.2)"
-                      fontSize="7.5"
+                      y={py + 63}
+                      fill="rgba(255,255,255,0.45)"
+                      fontSize="9"
                       fontFamily="monospace"
                     >
                       Waiting for task...
@@ -892,10 +895,10 @@ function InteractiveNtmOrchestrator() {
                     <>
                       <text
                         x={px + 10}
-                        y={py + 52}
+                        y={py + 63}
                         fill={agent.colorLight}
-                        fillOpacity={0.7}
-                        fontSize="7.5"
+                        fillOpacity={0.85}
+                        fontSize="9"
                         fontFamily="monospace"
                       >
                         {agent.terminalLines[Math.min(termLine, agent.terminalLines.length - 1)]}
@@ -903,7 +906,7 @@ function InteractiveNtmOrchestrator() {
                       {status === "working" && (
                         <OrchestratorTypingCursor
                           x={px + 10}
-                          y={py + 64}
+                          y={py + 78}
                           color={agent.colorLight}
                           active={inView}
                         />
@@ -916,22 +919,22 @@ function InteractiveNtmOrchestrator() {
                     <g>
                       <rect
                         x={px + 10}
-                        y={py + PANE_H - 14}
-                        width={PANE_W - 28}
+                        y={py + PANE_H - 17}
+                        width={PANE_W - 50}
                         height={4}
                         rx={2}
                         fill="rgba(255,255,255,0.05)"
                       />
                       <motion.rect
                         x={px + 10}
-                        y={py + PANE_H - 14}
+                        y={py + PANE_H - 17}
                         height={4}
                         rx={2}
                         fill={agent.color}
                         fillOpacity={0.7}
                         initial={{ width: 0 }}
                         animate={{
-                          width: ((status === "done" ? 100 : progress) / 100) * (PANE_W - 28),
+                          width: ((status === "done" ? 100 : progress) / 100) * (PANE_W - 50),
                         }}
                         transition={{
                           type: "spring",
@@ -940,10 +943,10 @@ function InteractiveNtmOrchestrator() {
                         }}
                       />
                       <text
-                        x={px + PANE_W - 14}
-                        y={py + PANE_H - 10}
-                        fill="rgba(255,255,255,0.3)"
-                        fontSize="6"
+                        x={px + PANE_W - 10}
+                        y={py + PANE_H - 12}
+                        fill="rgba(255,255,255,0.55)"
+                        fontSize="8.5"
                         fontFamily="monospace"
                         textAnchor="end"
                       >
@@ -965,10 +968,10 @@ function InteractiveNtmOrchestrator() {
                     >
                       <text
                         x={px + 10}
-                        y={py + 64}
+                        y={py + 80}
                         fill={agent.colorLight}
                         fillOpacity={0.9}
-                        fontSize="7.5"
+                        fontSize="9"
                         fontWeight="bold"
                         fontFamily="monospace"
                       >
@@ -993,7 +996,7 @@ function InteractiveNtmOrchestrator() {
               stroke="rgba(255,255,255,0.08)"
               strokeWidth={1}
             />
-            <text x={8} y={14} fill="rgba(255,255,255,0.3)" fontSize="7" fontFamily="system-ui">
+            <text x={8} y={14} fill="rgba(255,255,255,0.5)" fontSize="9" fontFamily="system-ui">
               tmux layout
             </text>
             {/* Minimap panes */}
