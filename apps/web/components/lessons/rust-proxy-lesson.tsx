@@ -1311,7 +1311,9 @@ function InteractiveTrafficInspectorImpl() {
           {/* Step navigation + description */}
           <div className="flex items-center gap-3">
             <motion.button
+              type="button"
               onClick={goPrev}
+              aria-label="Previous step"
               disabled={stepIndex === 0}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
@@ -1344,7 +1346,9 @@ function InteractiveTrafficInspectorImpl() {
             </AnimatePresence>
 
             <motion.button
+              type="button"
               onClick={goNext}
+              aria-label="Next step"
               disabled={stepIndex === SCENARIOS.length - 1}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}

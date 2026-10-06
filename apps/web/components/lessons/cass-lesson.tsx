@@ -1231,7 +1231,9 @@ function InteractiveSessionSearch() {
         {/* Scenario selector tabs */}
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={handlePrev}
+            aria-label="Previous search scenario"
             disabled={searching}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/60 hover:text-white hover:border-white/[0.15] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -1260,7 +1262,9 @@ function InteractiveSessionSearch() {
           </div>
 
           <button
+            type="button"
             onClick={handleNext}
+            aria-label="Next search scenario"
             disabled={searching}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/60 hover:text-white hover:border-white/[0.15] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >

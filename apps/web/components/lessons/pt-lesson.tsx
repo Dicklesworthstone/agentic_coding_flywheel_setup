@@ -1315,6 +1315,7 @@ function InteractiveProcessTriageDashboard() {
           <motion.button
             type="button"
             onClick={() => goToStep(Math.max(0, step - 1))}
+            aria-label="Previous scenario"
             disabled={step === 0}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
@@ -1330,6 +1331,8 @@ function InteractiveProcessTriageDashboard() {
                 key={s.id}
                 type="button"
                 onClick={() => goToStep(i)}
+                aria-label={`Scenario ${i + 1}: ${s.label}`}
+                aria-pressed={i === step}
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.9 }}
                 transition={SPRING}
@@ -1349,6 +1352,7 @@ function InteractiveProcessTriageDashboard() {
           <motion.button
             type="button"
             onClick={() => goToStep(Math.min(totalSteps - 1, step + 1))}
+            aria-label="Next scenario"
             disabled={step === totalSteps - 1}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
