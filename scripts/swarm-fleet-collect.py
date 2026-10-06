@@ -570,7 +570,58 @@ def check_imported_history(git, entry):
     git.run(["rev-list", "--objects", "--quiet", "--missing=error", head, "--"])
 
 
-def import_collection(path, repository, name, hosts, timeout, approval=None):
+def review_ref_value(git, ref):
+    code, _ = git.run(["symbolic-ref", "--quiet", ref], allowed=(0, 1))
+    if code == 0:
+        return "symbolic"
+    code, raw = git.run(["show-ref", "--verify", ref], allowed=(0, 1, 128))
+    if code != 0:
+        # --quiet distinguishes a missing ref from malformed/broken ref data;
+        # a non-quiet missing ref can return 128 on supported Git versions.
+        missing, _ = git.run(["show-ref", "--verify", "--quiet", ref], allowed=(0, 1))
+        require(missing == 1, "review_ref_changed_during_check")
+        return None
+    parts = raw.rstrip(b"\n").split(b" ")
+    require(len(parts) == 2 and parts[1] == ref.encode(), "invalid_review_ref")
+    value = parts[0].decode("ascii", "strict")
+    require(oid(value), "invalid_review_ref")
+    return value
+
+
+def check_review_refs(git, entries, refs):
+    """Compare existing refs and history only; absence never authorizes a retry."""
+    by_id = {r["id"]: r for r in refs}
+    rows, observed = [], {}
+    for entry in entries:
+        reference = by_id.get(entry["id"])
+        row = {"id": entry["id"], "ref": reference["ref"] if reference else None,
+               "head_commit": entry["snapshot"]["head_commit"], "status": "unconfirmed"}
+        try:
+            if reference:
+                value = review_ref_value(git, reference["ref"])
+                observed[reference["ref"]] = value
+                row["status"] = ("missing" if value is None else "symbolic" if value == "symbolic"
+                                 else "matched" if value == reference["head_commit"] else "different")
+                if row["status"] != "matched":
+                    rows.append(row)
+                    continue
+            check_imported_history(git, entry)
+            row["status"] = "matched" if reference else "unchanged"
+        except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+            row.update(status="unconfirmed", code=str(exc) if isinstance(exc, fleet.Refused) else "local_git_unavailable")
+        rows.append(row)
+    # Detect refs changed during the multi-ref observation. This is not a lock
+    # against noncooperating Git writers or a point-in-time transaction snapshot.
+    for row in rows:
+        if row["ref"] in observed:
+            try:
+                require(review_ref_value(git, row["ref"]) == observed[row["ref"]], "review_ref_changed_during_check")
+            except (fleet.Refused, OSError, subprocess.SubprocessError):
+                row.update(status="unconfirmed", code="review_ref_changed_or_unavailable")
+    return rows
+
+
+def import_collection(path, repository, name, hosts, timeout, approval=None, *, check=False):
     global IMPORT_STARTED
     IMPORT_STARTED = False
     require(sys.platform == "linux" and os.geteuid() != 0 and os.getuid() == os.geteuid()
@@ -578,6 +629,7 @@ def import_collection(path, repository, name, hosts, timeout, approval=None):
     require(type(timeout) is int and 1 <= timeout <= 600, "invalid_import_timeout")
     require(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", name), "invalid_review_name")
     require(approval is None or fleet.matches(r"[0-9a-f]{64}", approval), "invalid_import_approval")
+    require(type(check) is bool and (not check or approval is not None), "check_requires_original_import_digest")
     require(type(hosts) is list and len(set(hosts)) == len(hosts)
             and all(fleet.matches(r"[a-z][a-z0-9_-]{0,63}", h) for h in hosts), "invalid_import_hosts")
     path, repository = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (path, repository))
@@ -601,6 +653,17 @@ def import_collection(path, repository, name, hosts, timeout, approval=None):
         with fleet.directory_fd(destination["common_directory"]["path"]) as dest:
             lock(dest)
             require(destination_state(git) == destination, "destination_changed")
+            if check:
+                require(all(e["snapshot"]["object_format"] == destination["object_format"] for e in entries),
+                        "import_object_format_mismatch")
+                rows = check_review_refs(git, entries, refs)
+                guard()
+                require(destination_state(git) == destination, "destination_changed")
+                matched = all(row["status"] in ("matched", "unchanged") for row in rows)
+                return {"schema": IMPORT_SCHEMA, "status": "matched" if matched else "attention",
+                        "plan_sha256": plan_sha, "read_only": True, "network_access": False,
+                        "changes_checkout": False, "runs_project_code": False, "import_started": False,
+                        "task_completion_verified": False, "import_provenance_verified": False, "hosts": rows}
             for row in refs:
                 require_new_ref(git, row["ref"])
             for entry in entries:
@@ -647,14 +710,16 @@ def import_main(args):
     parser.add_argument("--name", required=True, help="New review namespace: refs/acfs/fleet/NAME/HOST")
     parser.add_argument("--host", action="append", default=[], help="Select host IDs; default all, original order retained")
     parser.add_argument("--timeout", type=int, default=90, help="Combined Git subprocess budget, 1..600 seconds")
-    parser.add_argument("--apply", action="store_true")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--apply", action="store_true")
+    action.add_argument("--check", action="store_true", help="Inspect exact review refs without importing; requires original import digest")
     parser.add_argument("--accept-plan")
     options = parser.parse_args(args)
-    require(options.apply == (options.accept_plan is not None), "import_requires_exact_approval")
+    require((options.apply or options.check) == (options.accept_plan is not None), "import_requires_exact_approval")
     report = import_collection(options.collection, options.repository, options.name, options.host,
-                               options.timeout, options.accept_plan)
+                               options.timeout, options.accept_plan, check=options.check)
     print(encoded(report).decode(), end="")
-    return 0
+    return 1 if report["status"] == "attention" else 0
 
 
 def main(arguments=None):

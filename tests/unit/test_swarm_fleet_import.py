@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -40,7 +41,7 @@ def members(root):
 
 
 class ImportFixture:
-    def __init__(self, fmt="sha1", unchanged=False):
+    def __init__(self, fmt="sha1", unchanged=False, merge=False):
         self.root = Path(tempfile.mkdtemp(prefix="acfs-fleet-import-test-"))
         self.source, self.dest = self.root / "source", self.root / "destination"
         self.source.mkdir()
@@ -63,6 +64,18 @@ class ImportFixture:
                 git(repo, "add", ".")
                 git(repo, "update-index", "--force-remove", "obsolete")
                 git(repo, "commit", "-m", "result " + host_id)
+                if merge and host_id == "builder":
+                    # Build a real two-parent merge with plumbing, without
+                    # switching the fixture checkout or deleting its files.
+                    first = git(repo, "rev-parse", "HEAD").decode().strip()
+                    blob = git(repo, "hash-object", "-w", "--stdin", data=b"parallel change\n").strip()
+                    item = b"100644 blob " + blob + b"\tside-result\n"
+                    side_tree = git(repo, "mktree", data=git(repo, "ls-tree", self.base) + item).decode().strip()
+                    side = git(repo, "commit-tree", side_tree, "-p", self.base, data=b"side branch\n").decode().strip()
+                    tree = git(repo, "mktree", data=git(repo, "ls-tree", first) + item).decode().strip()
+                    head = git(repo, "commit-tree", tree, "-p", first, "-p", side, data=b"merge results\n").decode().strip()
+                    git(repo, "update-ref", "refs/heads/main", head, first)
+                    self.merge_parents = [first, side]
             self.heads[host_id] = git(repo, "rev-parse", "HEAD").decode().strip()
             hosts.append({"id": host_id, "host": "node" + str(index) + ".example", "user": "worker", "port": 22,
                           "request": {"repo": str(repo), "session": "wave" + str(index),
@@ -336,6 +349,25 @@ class ImportTests(unittest.TestCase):
 
 
 class FormatTests(unittest.TestCase):
+    def test_merge_graph_and_both_parent_histories_survive_import(self):
+        fx = ImportFixture(merge=True)
+        fx.apply()
+        head = fx.heads["builder"]
+        parents = [line.split()[1] for line in git(fx.dest, "cat-file", "-p", head).decode().splitlines()
+                   if line.startswith("parent ")]
+        self.assertEqual(parents, fx.merge_parents)
+        self.assertEqual(git(fx.dest, "show", head + ":side-result"), b"parallel change\n")
+
+    def test_mixed_object_formats_are_refused_without_writes(self):
+        fx = ImportFixture(fmt="sha256")
+        other = fx.root / "sha1-destination"
+        other.mkdir()
+        git(other, "init", "-b", "main", "--object-format=sha1")
+        before = members(other)
+        with self.assertRaisesRegex(fleet.Refused, "import_object_format_mismatch"):
+            fx.preview(repository=other)
+        self.assertEqual(members(other), before)
+
     def test_sha256_round_trip(self):
         fx = ImportFixture(fmt="sha256")
         self.assertEqual(fx.apply()["status"], "imported")
@@ -348,6 +380,148 @@ class FormatTests(unittest.TestCase):
         before = members(fx.dest)
         self.assertEqual(fx.apply()["status"], "noop")
         self.assertEqual(members(fx.dest), before)
+
+
+class CheckTests(unittest.TestCase):
+    def setUp(self):
+        self.fx = ImportFixture()
+        self.preview = self.fx.preview()
+
+    def check(self):
+        return self.fx.preview(approval=self.preview["plan_sha256"], check=True)
+
+    def test_check_before_import_is_read_only_and_missing_is_not_permission(self):
+        fx = self.fx
+        before, source = members(fx.dest), members(fx.collection)
+        report = self.check()
+        self.assertEqual(report["status"], "attention")
+        self.assertEqual([r["status"] for r in report["hosts"]], ["missing", "missing"])
+        self.assertTrue(report["read_only"])
+        self.assertFalse(report["import_started"])
+        self.assertEqual(members(fx.dest), before)
+        self.assertEqual(members(fx.collection), source)
+
+    def test_complete_import_matches_original_digest_without_any_writes(self):
+        fx = self.fx
+        fx.preview(approval=self.preview["plan_sha256"])
+        before, source = members(fx.dest), members(fx.collection)
+        report = self.check()
+        self.assertEqual(report["status"], "matched")
+        self.assertEqual(report["plan_sha256"], self.preview["plan_sha256"])
+        self.assertFalse(report["import_provenance_verified"])
+        self.assertEqual([r["status"] for r in report["hosts"]], ["matched", "matched"])
+        self.assertEqual(members(fx.dest), before)
+        self.assertEqual(members(fx.collection), source)
+
+    def test_partial_ref_set_is_visible_and_not_repaired(self):
+        fx = self.fx
+        fx.preview(approval=self.preview["plan_sha256"])
+        ref = fx.dest / ".git/refs/acfs/fleet/wave1/reviewer"
+        ref.rename(fx.root / "retained-reviewer-ref")
+        before = members(fx.dest)
+        report = self.check()
+        self.assertEqual(report["status"], "attention")
+        self.assertEqual([r["status"] for r in report["hosts"]], ["matched", "missing"])
+        self.assertEqual(members(fx.dest), before)
+
+    def test_changed_ref_is_not_adopted(self):
+        fx = self.fx
+        fx.preview(approval=self.preview["plan_sha256"])
+        git(fx.dest, "update-ref", "refs/acfs/fleet/wave1/reviewer", fx.base)
+        before = members(fx.dest)
+        self.assertEqual([r["status"] for r in self.check()["hosts"]], ["matched", "different"])
+        self.assertEqual(members(fx.dest), before)
+
+    def test_symbolic_ref_cannot_masquerade_as_matching_direct_ref(self):
+        fx = self.fx
+        fx.preview(approval=self.preview["plan_sha256"])
+        git(fx.dest, "symbolic-ref", "refs/acfs/fleet/wave1/builder", "refs/acfs/fleet/wave1/reviewer")
+        before = members(fx.dest)
+        self.assertEqual([r["status"] for r in self.check()["hosts"]], ["symbolic", "matched"])
+        self.assertEqual(members(fx.dest), before)
+
+    def test_original_digest_is_required_and_destination_replacement_is_detected(self):
+        fx = self.fx
+        with self.assertRaisesRegex(fleet.Refused, "check_requires_original_import_digest"):
+            fx.preview(check=True)
+        fx.dest.rename(fx.root / "original-destination")
+        git(fx.root, "clone", "--no-local", str(fx.source), str(fx.dest))
+        with self.assertRaisesRegex(fleet.Refused, "import_approval_mismatch"):
+            self.check()
+
+    def crash_after(self, command):
+        fx = self.fx
+        program = f'''import importlib.util, os, signal, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("collector", {str(SCRIPT)!r})
+c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
+original = c.LocalGit.run
+def run(self, args, data=b"", allowed=(0,)):
+    result = original(self, args, data, allowed)
+    if args[0] == {command!r}: os.kill(os.getpid(), signal.SIGKILL)
+    return result
+c.LocalGit.run = run
+c.import_collection({str(fx.collection)!r}, {str(fx.dest)!r}, "wave1", [], 90, {self.preview['plan_sha256']!r})
+'''
+        result = subprocess.run([sys.executable, "-I", "-c", program], env=ENV,
+                                capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, -signal.SIGKILL, result.stderr)
+
+    def test_sigkill_after_indexing_leaves_objects_but_no_implicit_ref_repair(self):
+        fx = self.fx
+        self.crash_after("index-pack")
+        self.assertTrue(list((fx.dest / ".git/objects/pack").glob("*.keep")))
+        before = members(fx.dest)
+        report = self.check()
+        self.assertEqual([r["status"] for r in report["hosts"]], ["missing", "missing"])
+        self.assertEqual(members(fx.dest), before)
+
+    def test_sigkill_after_ref_commit_is_confirmable_without_reimport(self):
+        fx = self.fx
+        self.crash_after("update-ref")
+        before = members(fx.dest)
+        self.assertEqual(self.check()["status"], "matched")
+        self.assertEqual(members(fx.dest), before)
+        with self.assertRaisesRegex(fleet.Refused, "review_ref_already_exists"):
+            fx.preview(approval=self.preview["plan_sha256"])
+
+    def test_changed_collection_is_rejected_under_original_digest(self):
+        fx = self.fx
+        path = fx.collection / "manifest.json"
+        path.write_bytes(path.read_bytes() + b"\n")
+        with self.assertRaisesRegex(fleet.Refused, "import_approval_mismatch"):
+            self.check()
+
+    def test_real_git_transaction_conflict_never_publishes_other_refs(self):
+        fx = self.fx
+        original = c.LocalGit.run
+        def racing_git(instance, args, data=b"", allowed=(0,)):
+            if args[0] == "update-ref":
+                # Another Git writer does not participate in the controller's
+                # flock. Introduce a real conflict after all local prechecks.
+                git(fx.dest, "update-ref", "refs/acfs/fleet/wave1/reviewer", fx.base)
+            return original(instance, args, data, allowed)
+        c.LocalGit.run = racing_git
+        try:
+            with self.assertRaisesRegex(fleet.Refused, "local_git_refused"):
+                fx.preview(approval=self.preview["plan_sha256"])
+        finally:
+            c.LocalGit.run = original
+        report = self.check()
+        self.assertEqual([r["status"] for r in report["hosts"]], ["missing", "different"])
+        self.assertEqual(git(fx.dest, "rev-parse", "HEAD").decode().strip(), fx.base)
+
+    def test_cli_exit_codes_and_check_apply_exclusion(self):
+        fx = self.fx
+        for args in (("--check",), ("--check", "--apply", "--accept-plan", self.preview["plan_sha256"])):
+            self.assertEqual(fx.cli(*args).returncode, 2)
+        result = fx.cli("--check", "--accept-plan", self.preview["plan_sha256"])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "attention")
+        fx.preview(approval=self.preview["plan_sha256"])
+        result = fx.cli("--check", "--accept-plan", self.preview["plan_sha256"])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "matched")
 
 
 if __name__ == "__main__":

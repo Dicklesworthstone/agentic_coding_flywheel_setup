@@ -185,6 +185,41 @@ with the refs already present. `import_started` on an error means writes may
 have happened, not that all refs were created. Keep the preview digest and output
 outside the strict collection directory.
 
+### Inspect an interrupted import without retrying it
+
+Use the original import selection, destination, name and digest:
+
+```bash
+acfs-fleet collect --import "$HOME/fleet-results-wave-1" \
+  --repository /path/to/project --name wave1 \
+  --check --accept-plan ORIGINAL_IMPORT_DIGEST
+```
+
+This is read-only. The digest binds the expected operation; it does not authorize
+writes in check mode. `--check` and `--apply` are mutually exclusive. Checks neither
+index packs nor create, change or repair refs. They require the intact collection
+and the same destination identity, but not remote hosts or running agents.
+
+Each selected history reports `matched`, `missing`, `different`, `symbolic`,
+`unchanged` (no commits to import), or `unconfirmed`. A matching direct ref must
+point at the exact collected commit and pass the range/path/connectivity checks.
+Symbolic refs cannot stand in for the original direct review refs. Ref changes
+detected during observation make that result unconfirmed. Cooperating importers
+are locked out; other Git writers can still modify refs, so the result is not an
+atomic repository snapshot.
+
+Exit **0** (`matched`) means all selected refs/history match, including unchanged
+ranges. Exit **1** (`attention`) means some result is not established. Exit **2**
+is an invalid input, changed approval context or local execution error. A match
+does not prove which process created the refs, that a previous importer completed
+its strict indexing checks, or that the work is correct; `import_provenance_verified`
+and `task_completion_verified` remain false.
+
+After a killed importer, some packs may exist without refs, or the ref transaction
+may already have committed despite losing its terminal response. These are
+different outcomes. Inspect the report before deciding on any further action;
+missing/changed refs never become automatic permission to retry or overwrite.
+
 ## Failure and resource limits
 
 Exit 0 means preview, collection or local integrity verification succeeded.
@@ -230,3 +265,7 @@ and fixed remote program, then exercise actual destination Git. They cover dirty
 and linked worktrees, hooks, missing prerequisites, recomputed transport checksums
 around corrupt pack objects, mismatched history metadata, occupied refs, namespace
 selection, destination replacement and cooperating-controller locks.
+Recovery tests kill actual importer children with SIGKILL after real pack indexing
+and after a real ref transaction. They also introduce a competing Git ref write
+after the importer's prechecks and verify that the create-only transaction refuses
+the other creations. Read-only checks leave collection and repository bytes intact.
