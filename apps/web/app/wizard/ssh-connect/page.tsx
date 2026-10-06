@@ -17,6 +17,7 @@ import {
   SimplerGuide,
 } from "@/components/simpler-guide";
 import { Button } from "@/components/ui/button";
+import { SshRehearsal } from "@/components/wizard/SshRehearsal";
 import { formatSshHost, formatSshTarget } from "@/lib/commandBuilder";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useUserOS, useVPSIP } from "@/lib/userPreferences";
@@ -245,6 +246,16 @@ export default function SSHConnectPage() {
           </p>
         </div>
       </AlertCard>
+
+      {/* Optional rehearsal of the prompts below, before the real login (bd-hjbld) */}
+      <div className="space-y-3">
+        <h2 className="text-xl font-semibold">Optional: rehearse it first</h2>
+        <p className="text-sm text-muted-foreground">
+          Try the security question, the invisible password and the hostname check in a pretend
+          terminal.
+        </p>
+        <SshRehearsal key={rootTarget} target={rootTarget} host={sshHost} />
+      </div>
 
       {/* Primary command */}
       <div className="space-y-4">
