@@ -19,7 +19,7 @@ import {
   Workflow,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "@/components/motion";
 import {
   CodeBlock,
@@ -1363,8 +1363,13 @@ function InteractiveDependencyGraph() {
                     : "";
 
               return (
+                <Fragment key={bead.id}>
+                {/* Outside the button: text inside it would count as visible
+                    content missing from the name (label-in-name). */}
+                <desc id={`bead-node-${bead.id}-d`}>
+                  {`${bead.title}, ${statusLabel}${actionHint}`}
+                </desc>
                 <g
-                  key={bead.id}
                   role="button"
                   tabIndex={0}
                   // Named by the node's own visible texts (priority, id, shown
@@ -1397,9 +1402,6 @@ function InteractiveDependencyGraph() {
                     cursor: isClickable ? "pointer" : "default",
                   }}
                 >
-                  <desc id={`bead-node-${bead.id}-d`}>
-                    {`${bead.title}, ${statusLabel}${actionHint}`}
-                  </desc>
                   {/* Ready glow pulse */}
                   {ready && bead.status === "open" && (
                     <rect
@@ -1665,6 +1667,7 @@ function InteractiveDependencyGraph() {
                     </text>
                   )}
                 </g>
+                </Fragment>
               );
             })}
 
