@@ -142,9 +142,13 @@ export function RecursiveImprovementViz() {
           {LAYERS.map((l, i) => (
             <button
               key={l.id}
+              id={`layer-tab-${l.id}`}
+              type="button"
               role="tab"
               aria-selected={i === activeLayer}
-              aria-controls={`layer-panel-${l.id}`}
+              // Only the selected layer's panel is ever rendered (and only once
+              // in view), so only that tab may reference it.
+              aria-controls={i === activeLayer && isInView ? `layer-panel-${l.id}` : undefined}
               onClick={() => setActiveLayer(i)}
               className={`relative shrink-0 px-4 py-3 text-xs font-semibold transition-colors ${
                 i === activeLayer ? "text-white" : "text-zinc-500 hover:text-zinc-300"
@@ -229,7 +233,12 @@ export function RecursiveImprovementViz() {
 
       {/* Layer content */}
       {isInView && (
-        <div className="relative z-10 p-5 sm:p-8" id={`layer-panel-${layer.id}`} role="tabpanel">
+        <div
+          className="relative z-10 p-5 sm:p-8"
+          id={`layer-panel-${layer.id}`}
+          role="tabpanel"
+          aria-labelledby={`layer-tab-${layer.id}`}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={layer.id}
