@@ -6434,19 +6434,19 @@ update_agents() {
 
     local bun_bin=""
     bun_bin="$(update_binary_path bun 2>/dev/null || true)"
-    if [[ -z "$bun_bin" ]]; then
-        if update_binary_exists codex || [[ "$FORCE_MODE" == "true" ]]; then
-            log_item "fail" "Bun not installed" "required for Codex updates"
-        else
-            log_item "skip" "Bun" "not installed; Codex CLI not installed"
-        fi
-    fi
 
     # Codex CLI via bun (--trust allows postinstall scripts)
     # Uses fallback chain: @latest -> unversioned -> pinned 0.87.0
     # npm can 404 briefly after publishing; pinned version is reliable fallback
     if [[ -z "$bun_bin" ]]; then
-        log_item "skip" "Codex CLI" "Bun not installed"
+        # One line for one cause: a missing Bun only matters through Codex, so
+        # it is reported once, against Codex (it used to be a Bun line plus a
+        # Codex line). Not a failure when there is no Codex to update.
+        if update_binary_exists codex || [[ "$FORCE_MODE" == "true" ]]; then
+            log_item "fail" "Codex CLI" "Bun not installed (required for Codex updates)"
+        else
+            log_item "skip" "Codex CLI" "not installed; Bun not installed either"
+        fi
     elif update_binary_exists codex || [[ "$FORCE_MODE" == "true" ]]; then
         local codex_fallback_version="0.87.0"
 

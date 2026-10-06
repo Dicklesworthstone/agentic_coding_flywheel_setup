@@ -471,7 +471,7 @@ check "agy locked launcher hands agy-real --print for the onboarding command and
 check "onboarding and web docs teach agy -p, the form that works without the wrapper" \
   "docs_use_print_flag_for_agy_prompts"
 check "agents-only update does not fail on missing Bun when Codex is absent" \
-  "grep -q 'not installed; Codex CLI not installed' scripts/lib/update.sh"
+  "grep -q 'not installed; Bun not installed either' scripts/lib/update.sh"
 check "doctor checks for the agy alias" \
   "grep -q 'agent.alias.agy' scripts/lib/doctor.sh"
 
