@@ -1287,7 +1287,7 @@ describe("Generated script headers", () => {
     expect(countMatch).not.toBeNull();
     expect(rawEntries.length).toBe(checksums.size);
     expect(Number(countMatch?.[1])).toBe(checksums.size);
-    expect(checksums.size).toBe(116);
+    expect(checksums.size).toBe(117);
 
     const mandatoryPaths = [
       "install.sh",
@@ -1302,6 +1302,7 @@ describe("Generated script headers", () => {
       "scripts/lib/acfs-services.sh",
       "scripts/lib/doctor_fix.sh",
       "scripts/lib/offline_artifact_pack.sh",
+      "scripts/lib/provisioning_packet.sh",
       "scripts/lib/autofix.sh",
       "scripts/lib/autofix_existing.sh",
       "scripts/lib/autofix_unattended.sh",
