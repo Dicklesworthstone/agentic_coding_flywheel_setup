@@ -806,7 +806,7 @@ function InteractiveGitFlow() {
 
         {/* Right: Staging Area Panel */}
         <div className="p-4">
-          <h3className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-4">
+          <h3 className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-4">
             Staging Area
           </h3>
 
@@ -909,7 +909,7 @@ function InteractiveGitFlow() {
                   <AlertTriangle className="h-5 w-5 text-red-400" />
                 </div>
                 <div>
-                  <h3className="text-sm font-bold text-red-300">DCG: Dangerous Commands</h3>
+                  <h3 className="text-sm font-bold text-red-300">DCG: Dangerous Commands</h3>
                   <p className="text-[11px] text-red-400/70">Always review before approving</p>
                 </div>
               </div>
@@ -1151,7 +1151,7 @@ function ConceptCard({
       whileHover={{ x: 4, scale: 1.01 }}
       className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
-      <h3className="font-bold text-primary text-lg">{term}</h3>
+      <h3 className="font-bold text-primary text-lg">{term}</h3>
       <p className="text-white/70 mt-2">{definition}</p>
       <p className="text-sm text-white/50 mt-2 italic">Example: {example}</p>
     </motion.div>

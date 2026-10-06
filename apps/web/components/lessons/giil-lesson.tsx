@@ -98,19 +98,19 @@ export function GiilLesson() {
         <Paragraph>GIIL extracts images from these cloud sharing services:</Paragraph>
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
-            <h3className="font-semibold text-white mb-2">iCloud</h3>
+            <h3 className="font-semibold text-white mb-2">iCloud</h3>
             <code className="text-xs text-slate-400">share.icloud.com/*</code>
           </div>
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
-            <h3className="font-semibold text-white mb-2">Dropbox</h3>
+            <h3 className="font-semibold text-white mb-2">Dropbox</h3>
             <code className="text-xs text-slate-400">dropbox.com/s/*, dl.dropbox.com/*</code>
           </div>
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
-            <h3className="font-semibold text-white mb-2">Google Photos</h3>
+            <h3 className="font-semibold text-white mb-2">Google Photos</h3>
             <code className="text-xs text-slate-400">photos.google.com/*</code>
           </div>
           <div className="p-4 rounded-lg bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50">
-            <h3className="font-semibold text-white mb-2">Google Drive</h3>
+            <h3 className="font-semibold text-white mb-2">Google Drive</h3>
             <code className="text-xs text-slate-400">drive.google.com/*</code>
           </div>
         </div>
@@ -170,7 +170,7 @@ export function GiilLesson() {
               1
             </div>
             <div>
-              <h3className="font-semibold text-white">User Screenshots Bug</h3>
+              <h3 className="font-semibold text-white">User Screenshots Bug</h3>
               <p className="text-slate-400 text-sm">
                 User captures the issue on their phone or desktop
               </p>
@@ -181,7 +181,7 @@ export function GiilLesson() {
               2
             </div>
             <div>
-              <h3className="font-semibold text-white">Share Cloud Link</h3>
+              <h3 className="font-semibold text-white">Share Cloud Link</h3>
               <p className="text-slate-400 text-sm">
                 User shares iCloud/Dropbox/Google Photos link with agent
               </p>
@@ -192,7 +192,7 @@ export function GiilLesson() {
               3
             </div>
             <div>
-              <h3className="font-semibold text-white">GIIL Downloads Image</h3>
+              <h3 className="font-semibold text-white">GIIL Downloads Image</h3>
               <p className="text-slate-400 text-sm">
                 <code className="text-xs">giil &quot;&lt;url&gt;&quot;</code> fetches
                 full-resolution image to working directory
@@ -204,7 +204,7 @@ export function GiilLesson() {
               4
             </div>
             <div>
-              <h3className="font-semibold text-white">Agent Analyzes</h3>
+              <h3 className="font-semibold text-white">Agent Analyzes</h3>
               <p className="text-slate-400 text-sm">
                 AI agent can now view and understand the visual context
               </p>

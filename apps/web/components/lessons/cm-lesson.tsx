@@ -1299,7 +1299,7 @@ function ProtocolStep({
         {number}
       </div>
       <div className="pt-1">
-        <h3className="font-bold text-white text-lg group-hover:text-primary transition-colors">
+        <h3 className="font-bold text-white text-lg group-hover:text-primary transition-colors">
           {title}
         </h3>
         <p className="text-sm text-white/60 mt-1">{description}</p>
