@@ -767,6 +767,7 @@ function InteractiveWebToMarkdown() {
           <motion.button
             type="button"
             onClick={handleStepBack}
+            aria-label="Previous page type"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
@@ -785,6 +786,7 @@ function InteractiveWebToMarkdown() {
                   key={p.id}
                   type="button"
                   onClick={() => handleSelectPage(i)}
+                  aria-pressed={isActive}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   transition={SPRING}
@@ -804,6 +806,7 @@ function InteractiveWebToMarkdown() {
           <motion.button
             type="button"
             onClick={handleStepForward}
+            aria-label="Next page type"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}

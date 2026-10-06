@@ -911,6 +911,7 @@ function InteractiveDiskPressureImpl() {
           <motion.button
             type="button"
             onClick={handleStepBack}
+            aria-label="Previous scenario"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
@@ -929,6 +930,8 @@ function InteractiveDiskPressureImpl() {
                   key={s.id}
                   type="button"
                   onClick={() => handleSelectScenario(i)}
+                  aria-label={s.label}
+                  aria-pressed={isActive}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   transition={SPRING}
@@ -948,6 +951,7 @@ function InteractiveDiskPressureImpl() {
           <motion.button
             type="button"
             onClick={handleStepForward}
+            aria-label="Next scenario"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
