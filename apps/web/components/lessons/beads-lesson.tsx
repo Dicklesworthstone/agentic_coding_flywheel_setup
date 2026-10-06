@@ -1367,7 +1367,19 @@ function InteractiveDependencyGraph() {
                   key={bead.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={`${bead.id}: ${bead.title}, ${pi.label}, ${statusLabel}${actionHint}`}
+                  // Named by the node's own visible texts (priority, id, shown
+                  // title, type, importance) so speech input can target what
+                  // is on screen; full title + status/action go in the <desc>.
+                  aria-labelledby={[
+                    `bead-node-${bead.id}-p`,
+                    `bead-node-${bead.id}-i`,
+                    `bead-node-${bead.id}-t`,
+                    `bead-node-${bead.id}-y`,
+                    imp > 0 ? `bead-node-${bead.id}-m` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  aria-describedby={`bead-node-${bead.id}-d`}
                   aria-disabled={!isClickable}
                   onClick={() => handleNodeClick(bead.id)}
                   onKeyDown={(event) => {
@@ -1385,6 +1397,9 @@ function InteractiveDependencyGraph() {
                     cursor: isClickable ? "pointer" : "default",
                   }}
                 >
+                  <desc id={`bead-node-${bead.id}-d`}>
+                    {`${bead.title}, ${statusLabel}${actionHint}`}
+                  </desc>
                   {/* Ready glow pulse */}
                   {ready && bead.status === "open" && (
                     <rect
@@ -1561,6 +1576,7 @@ function InteractiveDependencyGraph() {
                       fillOpacity={bead.priority <= 1 ? 0.3 : 1}
                     />
                     <text
+                      id={`bead-node-${bead.id}-p`}
                       x="10"
                       y="10"
                       fill={
@@ -1581,6 +1597,7 @@ function InteractiveDependencyGraph() {
 
                   {/* Bead ID */}
                   <text
+                    id={`bead-node-${bead.id}-i`}
                     x={bead.x + 22}
                     y={bead.y + 18}
                     fill={sc.text}
@@ -1593,6 +1610,7 @@ function InteractiveDependencyGraph() {
 
                   {/* Bead title */}
                   <text
+                    id={`bead-node-${bead.id}-t`}
                     x={bead.x + 22}
                     y={bead.y + 34}
                     fill={sc.text}
@@ -1605,6 +1623,7 @@ function InteractiveDependencyGraph() {
 
                   {/* Type label */}
                   <text
+                    id={`bead-node-${bead.id}-y`}
                     x={bead.x + 22}
                     y={bead.y + 48}
                     fill={
@@ -1634,6 +1653,7 @@ function InteractiveDependencyGraph() {
                   />
                   {imp > 0 && (
                     <text
+                      id={`bead-node-${bead.id}-m`}
                       x={bead.x + NODE_W + 6.5}
                       y={bead.y + NODE_H - barH - 3}
                       fill={sc.text}
