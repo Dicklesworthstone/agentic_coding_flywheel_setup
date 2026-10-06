@@ -201,7 +201,7 @@ export function BeadsLesson() {
         <div className="grid gap-6 md:grid-cols-2">
           {/* Types */}
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
-            <h4 className="font-bold text-white mb-4">Types</h4>
+            <h3className="font-bold text-white mb-4">Types</h3>
             <div className="space-y-2">
               <TypeRow type="bug" description="Something broken" color="text-red-400" />
               <TypeRow type="feature" description="New functionality" color="text-emerald-400" />
@@ -213,7 +213,7 @@ export function BeadsLesson() {
 
           {/* Priorities */}
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
-            <h4 className="font-bold text-white mb-4">Priorities (0-4)</h4>
+            <h3className="font-bold text-white mb-4">Priorities (0-4)</h3>
             <div className="space-y-2">
               <PriorityRow
                 priority="0"
@@ -2062,12 +2062,12 @@ function MetricCard({
       {/* Gradient overlay on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-      <h4 className="relative font-bold text-white flex items-center gap-3">
+      <h3className="relative font-bold text-white flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20 text-primary shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-shadow">
           <BarChart className="h-4 w-4" />
         </div>
         <span className="group-hover:text-primary transition-colors">{name}</span>
-      </h4>
+      </h3>
       <p className="relative text-sm text-white/60 mt-3">{description}</p>
       <p className="relative text-sm text-primary/80 mt-3 font-medium">
         {"\u2192"} {usage}

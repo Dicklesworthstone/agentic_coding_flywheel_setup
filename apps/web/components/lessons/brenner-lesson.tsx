@@ -236,7 +236,7 @@ brenner excerpt build --sections 42-50 --json`}
             transition={{ delay: 0.4 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">Brenner + Agent Mail</h4>
+            <h3className="font-semibold text-primary mb-2">Brenner + Agent Mail</h3>
             <p className="text-muted-foreground text-sm">
               Research sessions use Agent Mail for durable threads between agents. Each agent has an
               inbox/outbox with acknowledgment tracking.
@@ -248,7 +248,7 @@ brenner excerpt build --sections 42-50 --json`}
             transition={{ delay: 0.45 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">Brenner + NTM</h4>
+            <h3className="font-semibold text-primary mb-2">Brenner + NTM</h3>
             <p className="text-muted-foreground text-sm">
               NTM spawns parallel agent sessions for research. Use NTM to manage the tmux layout
               while Brenner coordinates the research flow.
@@ -260,7 +260,7 @@ brenner excerpt build --sections 42-50 --json`}
             transition={{ delay: 0.5 }}
             className="p-4 rounded-xl border border-border/50 bg-card/30"
           >
-            <h4 className="font-semibold text-primary mb-2">Brenner + CASS</h4>
+            <h3className="font-semibold text-primary mb-2">Brenner + CASS</h3>
             <p className="text-muted-foreground text-sm">
               Research session history is indexed by CASS. Search past sessions to build on previous
               research findings.

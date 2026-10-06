@@ -374,7 +374,7 @@ function ConceptCard({
           {icon}
         </div>
         <div>
-          <h4 className="font-bold text-white text-lg">{title}</h4>
+          <h3className="font-bold text-white text-lg">{title}</h3>
           <p className="text-sm text-white/50">{description}</p>
         </div>
       </div>
@@ -406,7 +406,7 @@ function PatternCard({
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
       <div className="relative p-5 border-b border-white/[0.06] bg-white/[0.02]">
-        <h4 className="font-bold text-white text-lg">{title}</h4>
+        <h3className="font-bold text-white text-lg">{title}</h3>
         <p className="text-sm text-white/50 mt-1">{description}</p>
       </div>
       <div className="relative p-4">

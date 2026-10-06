@@ -348,7 +348,7 @@ function SummaryCard() {
       <div className="relative">
         <div className="flex items-center gap-3 mb-3">
           <Shield className="h-5 w-5 text-emerald-400" />
-          <h4 className="font-bold text-white">Bottom Line</h4>
+          <h3className="font-bold text-white">Bottom Line</h3>
         </div>
         <p className="text-white/70 leading-relaxed">
           Good maintenance is invisible. Five seconds of{" "}

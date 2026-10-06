@@ -545,7 +545,7 @@ function InteractiveSessionHandoffImpl() {
                 <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/20 text-violet-300">
                   {step.icon}
                 </div>
-                <h4 className="text-sm font-semibold text-white/90">{step.label}</h4>
+                <h3className="text-sm font-semibold text-white/90">{step.label}</h3>
                 <span className="text-[10px] font-mono text-white/30 px-1.5 py-0.5 rounded bg-white/[0.04]">
                   {currentStep + 1}/{SCENARIO_STEPS.length}
                 </span>

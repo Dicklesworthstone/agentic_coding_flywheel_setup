@@ -345,9 +345,9 @@ function SearchPattern({
       className="group space-y-3 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
     >
       <div>
-        <h4 className="font-semibold text-white group-hover:text-primary transition-colors">
+        <h3className="font-semibold text-white group-hover:text-primary transition-colors">
           {title}
-        </h4>
+        </h3>
         <p className="text-sm text-white/50">{description}</p>
       </div>
       <CodeBlock code={code} />
@@ -1219,7 +1219,7 @@ function InteractiveSessionSearch() {
             <IconForScenario className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-sm font-semibold text-white">Cross-Agent Session Search</h4>
+            <h3className="text-sm font-semibold text-white">Cross-Agent Session Search</h3>
             <p className="text-xs text-white/40 truncate">{scenario.description}</p>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-white/30">
