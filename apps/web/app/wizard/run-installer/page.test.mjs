@@ -239,6 +239,7 @@ function fixture(initial = {}) {
       ),
     ),
     "@/components/jargon": { Jargon: "jargon" },
+    "@/components/wizard/InstallerOutputDrill": { InstallerOutputDrill: "installer-output-drill" },
     "@/lib/wizardSteps": {
       canAccessWizardStep: () => true,
       getCompletedSteps: () => [],
