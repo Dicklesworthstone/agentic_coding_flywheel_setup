@@ -747,7 +747,7 @@ function KeyCombo({ keys }: { keys: string[] }) {
       {keys.map((key, i) => (
         <span key={i} className="flex items-center gap-0.5">
           {i > 0 && <span className="text-white/20 text-[10px] mx-0.5">+</span>}
-          <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-white/[0.12] bg-white/[0.06] px-1.5 font-mono text-[10px] font-medium text-white/50 shadow-sm">
+          <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-white/[0.12] bg-white/[0.06] px-1.5 font-mono text-[10px] font-medium text-white/80 shadow-sm">
             {key}
           </kbd>
         </span>
@@ -1416,7 +1416,7 @@ function InteractivePaletteBrowser() {
                       <p className="mt-1 text-xs text-white/20 text-center">
                         Use arrow keys or click to browse
                       </p>
-                      <div className="mt-4 flex items-center gap-3 text-white/15">
+                      <div className="mt-4 flex items-center gap-3 text-white/60">
                         <div className="flex items-center gap-1">
                           <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px]">
                             &uarr;

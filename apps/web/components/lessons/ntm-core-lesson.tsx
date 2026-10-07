@@ -1037,10 +1037,9 @@ function InteractiveNtmOrchestrator() {
             <motion.div
               key={`status-${agent.id}`}
               initial={{ opacity: 0, y: 10 }}
-              animate={{
-                opacity: visible ? 1 : 0.3,
-                y: 0,
-              }}
+              // Not-yet-spawned agents show a hollow circle and a muted (but
+              // AA-legible) name instead of fading the whole chip.
+              animate={{ opacity: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.02] border border-white/[0.06] text-xs"
             >
@@ -1059,7 +1058,7 @@ function InteractiveNtmOrchestrator() {
               <span
                 className="font-mono"
                 style={{
-                  color: visible ? agent.colorLight : "rgba(255,255,255,0.2)",
+                  color: visible ? agent.colorLight : "rgba(255,255,255,0.55)",
                 }}
               >
                 {agent.name}

@@ -989,7 +989,7 @@ function MemoryAnalysisEngine({
                 <span
                   className="text-[10px] font-medium"
                   style={{
-                    color: isDone || isActive ? "#8b5cf6" : "rgba(255,255,255,0.25)",
+                    color: isDone || isActive ? "#8b5cf6" : "rgba(255,255,255,0.55)",
                   }}
                 >
                   {stage}

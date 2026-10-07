@@ -836,7 +836,7 @@ function TmuxStatusBar({
 
       {/* Right: hostname + time */}
       <div className="shrink-0 flex items-center gap-2">
-        <span className="hidden sm:inline opacity-60">ubuntu@vps</span>
+        <span className="hidden sm:inline opacity-80">ubuntu@vps</span>
         <span>{time}</span>
       </div>
     </div>

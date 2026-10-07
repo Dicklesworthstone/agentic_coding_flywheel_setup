@@ -1458,7 +1458,7 @@ function InteractiveSourceCombiner() {
                   >
                     <FileCode className="h-10 w-10 mb-3" />
                     <p className="text-sm">Select files to preview prompt</p>
-                    <p className="text-xs mt-1 text-white/15">
+                    <p className="text-xs mt-1 text-white/50">
                       Toggle files in the tree or use Select All
                     </p>
                   </motion.div>

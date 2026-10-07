@@ -420,17 +420,58 @@ type AgentStatus =
   | "done"
   | "rate-limited";
 
-const STATUS_PALETTE: Record<AgentStatus, { bg: string; border: string; label: string }> = {
-  idle: { bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.1)", label: "Idle" },
-  spawning: { bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.5)", label: "Spawning" },
-  working: { bg: "rgba(16,185,129,0.10)", border: "rgba(52,211,153,0.5)", label: "Working" },
-  sending: { bg: "rgba(234,179,8,0.10)", border: "rgba(250,204,21,0.5)", label: "Sending Mail" },
-  conflict: { bg: "rgba(239,68,68,0.12)", border: "rgba(248,113,113,0.6)", label: "Conflict!" },
-  merging: { bg: "rgba(96,165,250,0.10)", border: "rgba(96,165,250,0.5)", label: "Merging" },
-  done: { bg: "rgba(16,185,129,0.15)", border: "rgba(52,211,153,0.6)", label: "Done" },
+// `border` strokes the hexes; `text` is the legend label color, kept at full
+// strength so the small labels meet WCAG AA on the dark panel.
+const STATUS_PALETTE: Record<
+  AgentStatus,
+  { bg: string; border: string; text: string; label: string }
+> = {
+  idle: {
+    bg: "rgba(255,255,255,0.03)",
+    border: "rgba(255,255,255,0.1)",
+    text: "rgba(255,255,255,0.6)",
+    label: "Idle",
+  },
+  spawning: {
+    bg: "rgba(139,92,246,0.12)",
+    border: "rgba(139,92,246,0.5)",
+    text: "#a78bfa",
+    label: "Spawning",
+  },
+  working: {
+    bg: "rgba(16,185,129,0.10)",
+    border: "rgba(52,211,153,0.5)",
+    text: "#34d399",
+    label: "Working",
+  },
+  sending: {
+    bg: "rgba(234,179,8,0.10)",
+    border: "rgba(250,204,21,0.5)",
+    text: "#facc15",
+    label: "Sending Mail",
+  },
+  conflict: {
+    bg: "rgba(239,68,68,0.12)",
+    border: "rgba(248,113,113,0.6)",
+    text: "#f87171",
+    label: "Conflict!",
+  },
+  merging: {
+    bg: "rgba(96,165,250,0.10)",
+    border: "rgba(96,165,250,0.5)",
+    text: "#60a5fa",
+    label: "Merging",
+  },
+  done: {
+    bg: "rgba(16,185,129,0.15)",
+    border: "rgba(52,211,153,0.6)",
+    text: "#34d399",
+    label: "Done",
+  },
   "rate-limited": {
     bg: "rgba(239,68,68,0.10)",
     border: "rgba(248,113,113,0.5)",
+    text: "#f87171",
     label: "Rate Limited",
   },
 };
@@ -994,10 +1035,10 @@ function TaskQueuePanel({ beads }: { beads: SwarmScenario["queueBeads"] }) {
             style={{
               borderColor: agent ? agent.color + "40" : "rgba(255,255,255,0.08)",
               backgroundColor: agent ? agent.color + "10" : "rgba(255,255,255,0.02)",
-              color: agent ? agent.color : "rgba(255,255,255,0.4)",
+              color: agent ? agent.color : "rgba(255,255,255,0.62)",
             }}
           >
-            <span className="font-mono opacity-60">{b.id}</span>
+            <span className="font-mono opacity-80">{b.id}</span>
             <span>{b.label}</span>
             {agent && (
               <span className="ml-0.5 font-semibold" style={{ color: agent.color }}>
@@ -1395,7 +1436,7 @@ function InteractiveSwarmOrchestrator() {
                 style={{ backgroundColor: agent.color, opacity: 0.8 }}
               />
               <span className="text-white/50">{agent.name}:</span>
-              <span className="font-medium" style={{ color: palette.border }}>
+              <span className="font-medium" style={{ color: palette.text }}>
                 {palette.label}
               </span>
             </div>

@@ -735,7 +735,8 @@ export function HumanAgentTimelineViz() {
               type="button"
               onClick={advance}
               disabled={activeIndex >= STAGE_COUNT - 1}
-              className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              // Dark text: white on #a78bfa / #FF5500 is only 2.7-3.3:1.
+              className="rounded-xl px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 background: currentStage.actor === "agent" ? AGENT_COLOR : HUMAN_COLOR,
               }}

@@ -1831,7 +1831,7 @@ function TreeNodeRow({
 
         {/* Permission hint on folder */}
         {isFolder && node.permissions && (
-          <span className="ml-auto text-[10px] text-white/15 font-mono shrink-0 hidden sm:inline">
+          <span className="ml-auto text-[10px] text-white/50 font-mono shrink-0 hidden sm:inline">
             {node.permissions}
           </span>
         )}

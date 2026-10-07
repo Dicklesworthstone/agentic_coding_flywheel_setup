@@ -872,7 +872,7 @@ function InteractiveArchiveSearch() {
             <span className="text-sm font-medium">
               Choose a mining scenario to explore your archive
             </span>
-            <span className="text-xs text-white/15">
+            <span className="text-xs text-white/50">
               6 scenarios available: search, DMs, Grok, likes, threads, sentiment
             </span>
           </motion.div>

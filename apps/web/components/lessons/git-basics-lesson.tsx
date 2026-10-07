@@ -1086,7 +1086,7 @@ function StagingZone({
             <motion.span
               key="empty"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="text-[10px] text-white/30 italic"
             >
