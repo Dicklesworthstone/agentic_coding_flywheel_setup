@@ -143,6 +143,7 @@ work and collection remain unchanged.
 ```bash
 python3 -B tests/unit/test_swarm_fleet_integrate.py -v
 python3 -B tests/unit/test_swarm_fleet_resolutions.py -v
+python3 -B tests/unit/test_swarm_fleet_resolution_recovery.py -v
 ```
 
 The resolution suite uses real Git merges, object transfer, create-only candidate
@@ -151,3 +152,10 @@ later-host continuation, incremental multiple conflicts, SHA-1/SHA-256, literal
 binary content, modes, symlinks, modify/delete decisions, exact approval binding,
 private CLI inputs and refusal paths. It does not establish live SSH/provider
 acceptance or a full installer/VM run.
+
+The structural/recovery suite additionally exercises rename/rename and both
+file/directory decisions, explicit preservation of clean descendants, literal
+unusual paths, dirty linked-worktree indexes and a real competing symbolic ref.
+It kills actual controllers with SIGKILL after the resolved objects are indexed
+and after the candidate ref is created. Subsequent checks distinguish a missing
+ref from a matched publication without retrying or writing to the destination.
