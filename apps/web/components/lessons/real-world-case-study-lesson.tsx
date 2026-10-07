@@ -2092,10 +2092,9 @@ function SwarmTimelineView({
           <motion.div
             key={evt.id}
             initial={{ opacity: 0, x: -16 }}
-            animate={{
-              opacity: reached ? 1 : 0.35,
-              x: 0,
-            }}
+            // Unreached events stay legible (muted text, dashed border) rather than
+            // fading the whole card below WCAG AA contrast.
+            animate={{ opacity: 1, x: 0 }}
             transition={{
               type: "spring",
               stiffness: 200,
@@ -2106,6 +2105,8 @@ function SwarmTimelineView({
             <button
               onClick={() => onEventClick(evt.id)}
               className={`w-full text-left rounded-xl border p-4 transition duration-200 ${
+                reached ? "" : "border-dashed"
+              } ${
                 isActive
                   ? `bg-gradient-to-br ${styles.gradient} border-white/[0.15] ring-1 ${styles.ring}`
                   : "border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12] hover:bg-white/[0.03]"

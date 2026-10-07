@@ -572,9 +572,9 @@ function BudgetGauge({ percent }: { percent: number }) {
   };
 
   const getLabelColor = (pct: number): string => {
-    if (pct < 50) return "text-emerald-400/60";
-    if (pct < 75) return "text-amber-400/60";
-    return "text-red-400/60";
+    if (pct < 50) return "text-emerald-400/80";
+    if (pct < 75) return "text-amber-400/80";
+    return "text-red-400/80";
   };
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -698,7 +698,7 @@ function SavingsCounter({ target }: { target: number }) {
             initial={{ opacity: 0, x: -4 }}
             animate={{ opacity: 1, x: 0 }}
             transition={SPRING}
-            className="text-xs text-emerald-400/60 font-medium"
+            className="text-xs text-emerald-400/80 font-medium"
           >
             saved
           </motion.span>
@@ -707,7 +707,7 @@ function SavingsCounter({ target }: { target: number }) {
       {target > 0 ? (
         <div className="flex items-center gap-1 mt-1">
           <ArrowDownRight className="h-3 w-3 text-emerald-400/60" />
-          <span className="text-[10px] text-emerald-400/60 font-medium">
+          <span className="text-[10px] text-emerald-400/80 font-medium">
             Prompt caching + provider shifting
           </span>
         </div>
@@ -1005,7 +1005,7 @@ function InteractiveCostDashboardImpl() {
               transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
             />
-            <span className="text-[10px] text-emerald-400/60 font-medium">LIVE</span>
+            <span className="text-[10px] text-emerald-400/80 font-medium">LIVE</span>
           </div>
         </div>
 
@@ -1124,14 +1124,14 @@ function InteractiveCostDashboardImpl() {
               {step.totalCost > 30 ? (
                 <>
                   <ArrowUpRight className="h-3 w-3 text-red-400/60" />
-                  <span className="text-[10px] text-red-400/60 font-medium">
+                  <span className="text-[10px] text-red-400/80 font-medium">
                     Above daily average
                   </span>
                 </>
               ) : (
                 <>
                   <ArrowDownRight className="h-3 w-3 text-emerald-400/60" />
-                  <span className="text-[10px] text-emerald-400/60 font-medium">
+                  <span className="text-[10px] text-emerald-400/80 font-medium">
                     Within normal range
                   </span>
                 </>

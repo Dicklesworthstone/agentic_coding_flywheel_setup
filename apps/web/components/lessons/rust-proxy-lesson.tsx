@@ -926,21 +926,21 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
                   key={h.key}
                   className="flex items-start gap-2 font-mono text-[10px] leading-relaxed"
                 >
-                  <span className={h.modified ? "text-amber-400/80" : "text-blue-400/60"}>
+                  <span className={h.modified ? "text-amber-400/80" : "text-blue-400/80"}>
                     {h.key}:
                   </span>
                   <span
-                    className={`${h.redacted ? "text-red-400/50 line-through" : h.modified ? "text-amber-400/60" : "text-white/40"} break-all`}
+                    className={`${h.redacted ? "text-red-400/80 line-through" : h.modified ? "text-amber-400/80" : "text-white/40"} break-all`}
                   >
                     {h.value}
                   </span>
                   {h.modified && (
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400/60 border border-amber-500/20">
+                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
                       INJECTED
                     </span>
                   )}
                   {h.redacted && (
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400/60 border border-red-500/20">
+                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400/80 border border-red-500/20">
                       REDACTED
                     </span>
                   )}
@@ -1059,9 +1059,9 @@ function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
 
 function LogStream({ logs, active }: { logs: LogEntry[]; active: boolean }) {
   const levelColors: Record<string, string> = {
-    info: "text-blue-400/60",
-    warn: "text-amber-400/70",
-    error: "text-red-400/70",
+    info: "text-blue-400/80",
+    warn: "text-amber-400/80",
+    error: "text-red-400/80",
     debug: "text-white/25",
   };
 
@@ -1264,7 +1264,7 @@ function InteractiveTrafficInspectorImpl() {
               transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
             />
-            <span className="text-[10px] text-emerald-400/60 font-medium">LIVE</span>
+            <span className="text-[10px] text-emerald-400/80 font-medium">LIVE</span>
           </div>
 
           <div className="flex gap-2">
@@ -1387,7 +1387,7 @@ function InteractiveTrafficInspectorImpl() {
               {scenario.statusCode}
             </span>
             <span
-              className={`shrink-0 ${scenario.statusCode >= 400 ? "text-red-400/60" : "text-white/30"}`}
+              className={`shrink-0 ${scenario.statusCode >= 400 ? "text-red-400/80" : "text-white/30"}`}
             >
               {scenario.statusText}
             </span>
