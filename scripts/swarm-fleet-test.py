@@ -30,11 +30,13 @@ require, encoded, decode, digest = fleet.require, fleet.encoded, fleet.decode, f
 SCHEMA = "acfs.swarm-fleet-test.v1"
 SPEC_SCHEMA = "acfs.swarm-fleet-test-spec.v1"
 EVIDENCE_SCHEMA = "acfs.swarm-fleet-test-evidence.v1"
+PROMOTION_SCHEMA = "acfs.swarm-fleet-promotion.v1"
 MAX_TREE_BYTES = 256 * 1024 * 1024
 MAX_BLOB_BYTES = 8 * 1024 * 1024
 MAX_LOG_BYTES = 8 * 1024 * 1024
 RUN_STARTED = False
 OUTPUT_DIRECTORY = None
+PROMOTION_STARTED = False
 
 
 def specification(value):
@@ -553,11 +555,182 @@ def evidence_main(args):
     return 0 if report["status"] == "passed" else 1
 
 
+def idle_branch(git, reference):
+    """Include all registered worktrees, even locked/prunable ones; never prune."""
+    raw = git.run(["worktree", "list", "--porcelain", "-z"])[1]
+    require(raw.endswith(b"\0\0"), "invalid_promotion_worktree_list")
+    records = raw[:-2].split(b"\0\0")
+    require(1 <= len(records) <= 1024, "promotion_worktree_limit")
+    for record in records:
+        fields = {}
+        for field in record.split(b"\0"):
+            key, _, value = field.partition(b" ")
+            require(key in {b"worktree", b"HEAD", b"branch", b"detached", b"bare", b"locked", b"prunable"}
+                    and key not in fields, "invalid_promotion_worktree_list")
+            fields[key] = value
+        require(b"worktree" in fields and sum(k in fields for k in (b"branch", b"detached", b"bare")) == 1,
+                "ambiguous_promotion_worktree_state")
+        branch = fields.get(b"branch")
+        if branch is not None:
+            require(branch.startswith(b"refs/heads/"), "invalid_promotion_worktree_branch")
+            # Account for a checked-out symbolic branch that ultimately targets
+            # this branch, as well as the usual direct branch reported by Git.
+            code, target = git.run(["symbolic-ref", "--quiet", branch.decode("utf-8", "strict")], allowed=(0, 1))
+            require(branch != reference.encode() and (code != 0 or target.rstrip(b"\n") != reference.encode()),
+                    "promotion_branch_is_checked_out")
+
+
+def promote_ref(git, reference, old, candidate, guard):
+    """Recheck while Git holds the ref lock, then perform exactly one CAS update.
+
+    --no-deref alone still permits overwriting a symbolic ref whose target has
+    the expected OID. Inspect it AFTER prepare, while cooperating Git writers
+    cannot replace it. Closing an uncommitted transaction aborts it.
+    """
+    global PROMOTION_STARTED
+    options = ["core.hooksPath=/dev/null", "core.fsmonitor=false", "maintenance.auto=false", "gc.auto=0",
+               "core.logAllRefUpdates=false"]
+    argv = ["/usr/bin/git", "--no-pager", "-C", str(git.repository)]
+    for option in options:
+        argv += ["-c", option]
+    argv += ["update-ref", "--no-deref", "--stdin", "-m", "acfs-fleet tested candidate promotion"]
+    PROMOTION_STARTED = True  # even a prepared transaction may leave locks after SIGKILL
+    env = {**git.env, "GIT_COMMITTER_NAME": "ACFS Fleet Promotion", "GIT_COMMITTER_EMAIL": "acfs-fleet@localhost"}
+    process = subprocess.Popen(argv, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, start_new_session=True)
+    commit_sent = False
+    try:
+        with selectors.DefaultSelector() as poll:
+            os.set_blocking(process.stdout.fileno(), False)
+            poll.register(process.stdout, selectors.EVENT_READ)
+            def exchange(data, expected):
+                require(time.monotonic() < git.deadline, "promotion_git_deadline")
+                process.stdin.write(data)
+                process.stdin.flush()
+                received = bytearray()
+                while len(received) < len(expected):
+                    remaining = git.deadline - time.monotonic()
+                    require(remaining > 0, "promotion_git_deadline")
+                    for key, _ in poll.select(min(remaining, 0.05)):
+                        chunk = os.read(key.fd, 4096)
+                        require(chunk and len(received) + len(chunk) <= 4096, "promotion_transaction_refused")
+                        received.extend(chunk)
+                    require(process.poll() is None or len(received) == len(expected), "promotion_transaction_refused")
+                require(bytes(received) == expected, "promotion_transaction_refused")
+            exchange(("start\nupdate " + reference + " " + candidate + " " + old + "\nprepare\n").encode(),
+                     b"start: ok\nprepare: ok\n")
+            guard()
+            require(collect.review_ref_value(git, reference) == old, "promotion_branch_changed_or_symbolic")
+            idle_branch(git, reference)
+            commit_sent = True
+            exchange(b"commit\n", b"commit: ok\n")
+            process.stdin.close()
+            require(process.wait(timeout=5) == 0, "promotion_transaction_refused")
+    finally:
+        if process.poll() is None:
+            try:
+                if not commit_sent and not process.stdin.closed:
+                    process.stdin.write(b"abort\n")
+                    process.stdin.flush()
+                if not process.stdin.closed:
+                    process.stdin.close()
+                process.wait(timeout=1)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=5)
+        if not process.stdin.closed:
+            process.stdin.close()
+        process.stdout.close()
+
+
+def promote_candidate(path, repository, expected, branch, old, timeout=90, approval=None, *, check=False):
+    global PROMOTION_STARTED
+    PROMOTION_STARTED = False
+    require(fleet.matches(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,191}", branch), "invalid_promotion_branch")
+    require(collect.oid(old), "promotion_requires_exact_old_commit")
+    require(approval is None or fleet.matches(r"[0-9a-f]{64}", approval), "invalid_promotion_approval")
+    require(type(check) is bool and (not check or approval is not None), "promotion_check_requires_original_approval")
+    with test_evidence(path, repository, expected, timeout) as (evidence, saved, git, guard):
+        require(evidence["status"] == "passed", "passing_test_evidence_required")
+        reference = "refs/heads/" + branch
+        git.run(["check-ref-format", reference])
+        candidate = evidence["commit"]
+        fmt = saved["destination"]["object_format"]
+        require(len(old) == len(candidate), "promotion_object_format_mismatch")
+        raw = git.run(["cat-file", "commit", old])[1]
+        require(object_matches(raw, "commit", old, fmt), "promotion_old_commit_mismatch")
+        code, _ = git.run(["merge-base", "--is-ancestor", old, candidate], allowed=(0, 1))
+        require(code == 0, "promotion_not_fast_forward")
+        git.run(["rev-list", "--objects", "--quiet", "--missing=error", candidate, "--"])
+        plan = {"schema": PROMOTION_SCHEMA, "policy": "verified-tests-unchecked-out-fast-forward-v1",
+                "test_directory": saved["output_directory"], "test_plan_sha256": expected,
+                "evidence_sha256": evidence["evidence_sha256"], "destination": saved["destination"],
+                "ref": reference, "expected_old_commit": old, "candidate_commit": candidate,
+                "candidate_tree": evidence["tree"], "timeout_seconds": timeout,
+                "git_version": git.text(["--version"]),
+                "source_sha256": {name: digest(Path(__file__).with_name(name).read_bytes()) for name in
+                                  ("swarm-fleet-test.py", "swarm-fleet-collect.py", "swarm-fleet-launch.py")}}
+        plan_sha = digest(encoded(plan))
+        require(approval is None or approval == plan_sha, "promotion_approval_mismatch")
+        report = {"schema": PROMOTION_SCHEMA, "status": "preview", "plan": plan, "plan_sha256": plan_sha,
+                  "promotion_started": False, "changes_checkout": False, "network_access": False,
+                  "runs_project_code": False, "test_provenance_verified": False, "task_completion_verified": False}
+        current = collect.review_ref_value(git, reference)
+        if check:
+            status = ("missing" if current is None else "symbolic" if current == "symbolic" else
+                      "matched" if current == candidate else "not_promoted" if current == old else "different")
+            guard()
+            if collect.review_ref_value(git, reference) != current:
+                status = "unconfirmed"
+            return {**report, "status": "matched" if status == "matched" else "attention",
+                    "read_only": True, "branch_status": status, "promotion_provenance_verified": False}
+        require(current == old, "promotion_branch_changed_missing_or_symbolic")
+        if old != candidate:
+            idle_branch(git, reference)
+        guard()
+        if approval is None:
+            return report
+        if old == candidate:
+            return {**report, "status": "noop"}
+        promote_ref(git, reference, old, candidate, guard)
+        guard()
+        require(collect.review_ref_value(git, reference) == candidate, "promotion_result_unconfirmed")
+        return {**report, "status": "promoted", "promotion_started": True}
+
+
+def promotion_main(args):
+    parser = argparse.ArgumentParser(description="Fast-forward an unoccupied local branch to an exactly tested commit",
+                                     allow_abbrev=False)
+    parser.add_argument("--promote", required=True, help="Original private test run directory")
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--expect-plan", required=True, help="Original test-plan digest; not promotion approval")
+    parser.add_argument("--branch", required=True, help="Existing local branch name, never a revision expression")
+    parser.add_argument("--expect-old", required=True, help="Exact old branch commit; only fast-forwards are allowed")
+    parser.add_argument("--timeout", type=int, default=90)
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--apply", action="store_true")
+    action.add_argument("--check", action="store_true", help="Inspect original promotion without changing refs")
+    parser.add_argument("--accept-plan")
+    options = parser.parse_args(args)
+    require((options.apply or options.check) == (options.accept_plan is not None), "promotion_requires_exact_approval")
+    report = promote_candidate(options.promote, options.repository, options.expect_plan, options.branch,
+                               options.expect_old, options.timeout, options.accept_plan, check=options.check)
+    print(encoded(report).decode(), end="")
+    return 1 if report["status"] == "attention" else 0
+
+
 def main(args=None):
     args = list(sys.argv[1:] if args is None else args)
+    if any(a == "--promote" or a.startswith("--promote=") for a in args):
+        return promotion_main(args)
     if any(a == "--verify" or a.startswith("--verify=") for a in args):
         return evidence_main(args)
-    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
+        epilog="Saved evidence: --verify RUN --repository DIR --expect-plan SHA256. "
+               "Promotion: --promote RUN --repository DIR --expect-plan SHA256 --branch NAME --expect-old OID.")
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit", required=True, help="Exact full commit ID, never a branch or revision expression")
     parser.add_argument("--spec", required=True, help="Private reviewed JSON test commands; no automatic project discovery")
@@ -584,6 +757,7 @@ def cli():
         print(encoded({"schema": SCHEMA, "status": "interrupted" if isinstance(exc, fleet.Interrupted) else "error",
                        "code": str(exc) if isinstance(exc, fleet.Refused) else "test_io_or_process_failure",
                        "run_started": RUN_STARTED, "output_directory": OUTPUT_DIRECTORY,
+                       "promotion_started": PROMOTION_STARTED,
                        "task_completion_verified": False}).decode(), end="")
         return 128 + exc.signum if isinstance(exc, fleet.Interrupted) else 2
 

@@ -94,6 +94,21 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(runner.fleet.Refused, "record_mismatch"):
             self.inspect(fx, result)
 
+    def test_an_attempt_after_failure_cannot_be_accepted_as_an_ordered_run(self):
+        fx = Fixture("raise SystemExit(1)\n")
+        fx.spec["commands"].append({"id": "later", "argv": [base.PYTHON, "-c", "pass"], "timeout_seconds": 10})
+        result = fx.apply()
+        value = json.loads((fx.output / "result.json").read_text())
+        row = {**value["tests"][0], "id": "later", "status": "passed", "exit_code": 0}
+        value["tests"][1] = row
+        (fx.output / "result.json").write_bytes(runner.encoded(value))
+        with runner.fleet.directory_fd(fx.output, private=True) as fd:
+            runner.fleet.publish(fd, "later.attempt.json", {"schema": runner.SCHEMA,
+                "plan_sha256": result["plan_sha256"], "command": fx.spec["commands"][1]})
+            runner.fleet.publish(fd, "later.result.json", row)
+        with self.assertRaisesRegex(runner.fleet.Refused, "nonprefix_history"):
+            self.inspect(fx, result)
+
     def test_log_tampering_and_retargeted_log_path_are_refused(self):
         fx = Fixture()
         result = fx.apply()
@@ -246,6 +261,323 @@ r.execute({str(fx.repo)!r}, {fx.commit!r}, {fx.spec!r}, {str(fx.output)!r}, 30, 
         (fx.output / "workspace/data.txt").write_text("changed")
         result = subprocess.run(args, env=fx.env, capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+
+class PromotionTests(unittest.TestCase):
+    def setUp(self):
+        self.assertNotEqual(os.geteuid(), 0)
+
+    def fixture(self, fmt="sha1", program="print('candidate passed')\n"):
+        fx = Fixture(program, fmt=fmt)
+        fx.old = fx.commit
+        blob = fx.git("hash-object", "-w", "--stdin", data=b"new tested feature\n").decode().strip()
+        fx.git("update-index", "--add", "--cacheinfo", "100644," + blob + ",feature.txt")
+        fx.tree = fx.git("write-tree").decode().strip()
+        fx.commit = fx.git("commit-tree", fx.tree, "-p", fx.old, data=b"candidate\n").decode().strip()
+        fx.git("update-ref", "refs/acfs/integrations/wave", fx.commit)
+        fx.git("update-ref", "refs/heads/release", fx.old)
+        fx.test_result = fx.apply()
+        return fx
+
+    def promote(self, fx, **kw):
+        options = dict(path=fx.output, repository=fx.repo, expected=fx.test_result["plan_sha256"],
+                       branch="release", old=fx.old, timeout=30)
+        options.update(kw)
+        return runner.promote_candidate(**options)
+
+    def applied(self, fx, **kw):
+        preview = self.promote(fx, **kw)
+        return self.promote(fx, approval=preview["plan_sha256"], **kw)
+
+    def value(self, fx):
+        return fx.git("rev-parse", "refs/heads/release").decode().strip()
+
+    def test_preview_is_repeatable_and_does_not_change_any_files(self):
+        fx = self.fixture()
+        before = fx.contents(fx.root)
+        report = self.promote(fx)
+        self.assertEqual(report, self.promote(fx))
+        self.assertEqual(report["status"], "preview")
+        self.assertEqual(report["plan"]["candidate_commit"], fx.commit)
+        self.assertEqual(report["plan"]["expected_old_commit"], fx.old)
+        self.assertNotEqual(report["plan_sha256"], fx.test_result["plan_sha256"])
+        self.assertEqual(fx.contents(fx.root), before)
+
+    def test_only_approved_branch_and_its_reflog_change_not_checkout_or_objects(self):
+        fx = self.fixture()
+        before = fx.contents(fx.repo)
+        evidence = fx.contents(fx.output)
+        result = self.applied(fx)
+        self.assertEqual(result["status"], "promoted")
+        self.assertEqual(self.value(fx), fx.commit)
+        self.assertEqual(fx.git("rev-parse", "HEAD").decode().strip(), fx.old)
+        after = fx.contents(fx.repo)
+        changed = {p for p in set(before) | set(after) if before.get(p) != after.get(p)}
+        self.assertIn(".git/refs/heads/release", changed)
+        self.assertLessEqual(changed, {".git/refs/heads/release", ".git/logs/refs/heads/release"})
+        self.assertEqual(fx.contents(fx.output), evidence)
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_changed"):
+            self.promote(fx, approval=result["plan_sha256"])
+
+    def test_test_approval_does_not_authorize_branch_promotion(self):
+        fx = self.fixture()
+        with self.assertRaisesRegex(runner.fleet.Refused, "promotion_approval_mismatch"):
+            self.promote(fx, approval=fx.test_result["plan_sha256"])
+        self.assertEqual(self.value(fx), fx.old)
+
+    def test_failed_incomplete_and_edited_runs_cannot_promote(self):
+        for kind in ("failed", "incomplete", "changed"):
+            fx = self.fixture(program="raise SystemExit(1)\n" if kind == "failed" else "pass\n")
+            if kind == "incomplete":
+                (fx.output / "result.json").rename(fx.root / "retained-result.json")
+            elif kind == "changed":
+                (fx.output / "workspace/feature.txt").write_text("not tested")
+            before = fx.contents(fx.repo)
+            with self.subTest(kind=kind), self.assertRaisesRegex(runner.fleet.Refused, "passing_test_evidence_required"):
+                self.promote(fx)
+            self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_main_and_linked_checked_out_branches_are_refused(self):
+        fx = self.fixture()
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_is_checked_out"):
+            self.promote(fx, branch="main")
+        linked = fx.root / "linked with a newline\nquote'"
+        fx.git("worktree", "add", "--no-checkout", str(linked), "release")
+        before = fx.contents(fx.repo)
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_is_checked_out"):
+            self.promote(fx)
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_prunable_worktree_registration_still_blocks_promotion(self):
+        fx = self.fixture()
+        linked = fx.root / "linked"
+        fx.git("worktree", "add", "--no-checkout", str(linked), "release")
+        linked.rename(fx.root / "retained-linked")
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_is_checked_out"):
+            self.promote(fx)
+        self.assertEqual(self.value(fx), fx.old)
+
+    def test_checked_out_symbolic_alias_cannot_hide_target_branch(self):
+        fx = self.fixture()
+        fx.git("symbolic-ref", "refs/heads/main", "refs/heads/release")
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_is_checked_out"):
+            self.promote(fx)
+        self.assertEqual(self.value(fx), fx.old)
+
+    def test_wrong_old_commit_and_non_fast_forward_are_refused(self):
+        fx = self.fixture()
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_changed"):
+            self.promote(fx, old=fx.commit)
+        other = fx.git("commit-tree", fx.tree, data=b"unrelated\n").decode().strip()
+        fx.git("update-ref", "refs/heads/release", other)
+        with self.assertRaisesRegex(runner.fleet.Refused, "not_fast_forward"):
+            self.promote(fx, old=other)
+        self.assertEqual(self.value(fx), other)
+
+    def test_missing_and_symbolic_targets_are_never_created_or_adopted(self):
+        fx = self.fixture()
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_changed"):
+            self.promote(fx, branch="missing")
+        fx.git("symbolic-ref", "refs/heads/release", "refs/heads/main")
+        with self.assertRaisesRegex(runner.fleet.Refused, "branch_changed"):
+            self.promote(fx)
+        self.assertEqual(fx.git("symbolic-ref", "refs/heads/release").strip(), b"refs/heads/main")
+
+    def test_noop_does_not_touch_refs_or_reflogs(self):
+        fx = self.fixture()
+        fx.git("update-ref", "refs/heads/release", fx.commit)
+        before = fx.contents(fx.repo)
+        report = self.applied(fx, old=fx.commit)
+        self.assertEqual(report["status"], "noop")
+        self.assertFalse(report["promotion_started"])
+        self.assertEqual(fx.contents(fx.repo), before)
+
+    def test_sha256_ref_publication_and_read_only_check(self):
+        fx = self.fixture(fmt="sha256")
+        result = self.applied(fx)
+        before = fx.contents(fx.root)
+        checked = self.promote(fx, approval=result["plan_sha256"], check=True)
+        self.assertEqual(checked["status"], "matched")
+        self.assertEqual(checked["branch_status"], "matched")
+        self.assertTrue(checked["read_only"])
+        self.assertFalse(checked["promotion_provenance_verified"])
+        self.assertEqual(fx.contents(fx.root), before)
+
+    def test_check_distinguishes_unpromoted_missing_symbolic_and_different(self):
+        fx = self.fixture()
+        preview = self.promote(fx)
+        checked = self.promote(fx, approval=preview["plan_sha256"], check=True)
+        self.assertEqual((checked["status"], checked["branch_status"]), ("attention", "not_promoted"))
+        (fx.repo / ".git/refs/heads/release").rename(fx.root / "retained-ref")
+        self.assertEqual(self.promote(fx, approval=preview["plan_sha256"], check=True)["branch_status"], "missing")
+        fx.git("symbolic-ref", "refs/heads/release", "refs/heads/main")
+        self.assertEqual(self.promote(fx, approval=preview["plan_sha256"], check=True)["branch_status"], "symbolic")
+        other = fx.git("commit-tree", fx.tree, "-p", fx.old, data=b"competing\n").decode().strip()
+        fx.git("update-ref", "--no-deref", "refs/heads/release", other)
+        self.assertEqual(self.promote(fx, approval=preview["plan_sha256"], check=True)["branch_status"], "different")
+
+    def test_changed_target_or_run_evidence_invalidates_original_promotion_plan(self):
+        fx = self.fixture()
+        preview = self.promote(fx)
+        fx.git("update-ref", "refs/heads/other", fx.old)
+        with self.assertRaisesRegex(runner.fleet.Refused, "approval_mismatch"):
+            self.promote(fx, branch="other", approval=preview["plan_sha256"])
+        # Even harmless serialization changes alter the exact evidence digest.
+        path = fx.output / "result.json"
+        path.write_text(path.read_text() + "\n")
+        with self.assertRaisesRegex(runner.fleet.Refused, "approval_mismatch"):
+            self.promote(fx, approval=preview["plan_sha256"])
+
+    def test_real_competing_direct_ref_writer_wins_without_being_overwritten(self):
+        fx = self.fixture()
+        preview = self.promote(fx)
+        other = fx.git("commit-tree", fx.tree, "-p", fx.old, data=b"competitor\n").decode().strip()
+        original = runner.promote_ref
+        def compete(git, reference, old, candidate, guard):
+            fx.git("update-ref", reference, other, old)
+            return original(git, reference, old, candidate, guard)
+        runner.promote_ref = compete
+        try:
+            with self.assertRaisesRegex(runner.fleet.Refused, "transaction_refused"):
+                self.promote(fx, approval=preview["plan_sha256"])
+        finally:
+            runner.promote_ref = original
+        self.assertEqual(self.value(fx), other)
+        self.assertFalse((fx.repo / ".git/refs/heads/release.lock").exists())
+
+    def test_real_symbolic_ref_race_is_refused_after_git_has_prepared_lock(self):
+        fx = self.fixture()
+        preview = self.promote(fx)
+        original = runner.promote_ref
+        def compete(git, reference, old, candidate, guard):
+            fx.git("symbolic-ref", reference, "refs/heads/main")
+            return original(git, reference, old, candidate, guard)
+        runner.promote_ref = compete
+        try:
+            with self.assertRaisesRegex(runner.fleet.Refused, "branch_changed_or_symbolic"):
+                self.promote(fx, approval=preview["plan_sha256"])
+        finally:
+            runner.promote_ref = original
+        self.assertEqual(fx.git("symbolic-ref", "refs/heads/release").strip(), b"refs/heads/main")
+        self.assertEqual(fx.git("rev-parse", "HEAD").decode().strip(), fx.old)
+        self.assertFalse((fx.repo / ".git/refs/heads/release.lock").exists())
+
+    def test_late_worktree_checkout_aborts_prepared_transaction(self):
+        fx = self.fixture()
+        preview = self.promote(fx)
+        original = runner.promote_ref
+        def checkout(git, reference, old, candidate, guard):
+            fx.git("worktree", "add", "--no-checkout", str(fx.root / "late"), "release")
+            return original(git, reference, old, candidate, guard)
+        runner.promote_ref = checkout
+        try:
+            with self.assertRaisesRegex(runner.fleet.Refused, "branch_is_checked_out"):
+                self.promote(fx, approval=preview["plan_sha256"])
+        finally:
+            runner.promote_ref = original
+        self.assertEqual(self.value(fx), fx.old)
+        self.assertFalse((fx.repo / ".git/refs/heads/release.lock").exists())
+
+    def test_evidence_change_after_prepare_aborts_without_promoting(self):
+        fx = self.fixture()
+        preview = self.promote(fx)
+        original = runner.promote_ref
+        def mutate(git, reference, old, candidate, guard):
+            def changed_guard():
+                (fx.output / "logs/unit.stdout").write_text("late tamper")
+                guard()
+            return original(git, reference, old, candidate, changed_guard)
+        runner.promote_ref = mutate
+        try:
+            with self.assertRaisesRegex(runner.fleet.Refused, "evidence_changed"):
+                self.promote(fx, approval=preview["plan_sha256"])
+        finally:
+            runner.promote_ref = original
+        self.assertEqual(self.value(fx), fx.old)
+        self.assertFalse((fx.repo / ".git/refs/heads/release.lock").exists())
+
+    def test_sigkill_before_and_after_ref_commit_is_inspectable_without_retry(self):
+        import time
+        for after in (False, True):
+            fx = self.fixture()
+            preview = self.promote(fx)
+            program = f'''import importlib.util, os, signal
+spec = importlib.util.spec_from_file_location("r", {str(SCRIPT)!r})
+r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
+original = r.promote_ref
+def crash(git, ref, old, candidate, guard):
+    def before():
+        guard()
+        os.kill(os.getpid(), signal.SIGKILL)
+    original(git, ref, old, candidate, guard if {after!r} else before)
+    os.kill(os.getpid(), signal.SIGKILL)
+r.promote_ref = crash
+r.promote_candidate({str(fx.output)!r}, {str(fx.repo)!r}, {fx.test_result['plan_sha256']!r},
+                    'release', {fx.old!r}, 30, {preview['plan_sha256']!r})
+'''
+            killed = subprocess.run([sys.executable, "-I", "-c", program], env=fx.env, capture_output=True, timeout=20)
+            self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+            end = time.monotonic() + 5
+            lock = fx.repo / ".git/refs/heads/release.lock"
+            while lock.exists() and time.monotonic() < end:
+                time.sleep(0.02)
+            before = fx.contents(fx.root)
+            result = self.promote(fx, approval=preview["plan_sha256"], check=True)
+            self.assertEqual(result["branch_status"], "matched" if after else "not_promoted")
+            self.assertEqual(fx.contents(fx.root), before)
+
+    def test_cli_preview_apply_and_check_preserve_literal_branch_and_exit_codes(self):
+        fx = self.fixture()
+        args = [sys.executable, "-I", str(SCRIPT), "--promote", str(fx.output), "--repository", str(fx.repo),
+                "--expect-plan", fx.test_result["plan_sha256"], "--branch", "release", "--expect-old", fx.old]
+        def run(*more):
+            return subprocess.run(args + list(more), env=fx.env, capture_output=True, text=True, timeout=20)
+        preview = run()
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        approval = json.loads(preview.stdout)["plan_sha256"]
+        self.assertEqual(run("--check", "--accept-plan", approval).returncode, 1)
+        for flags in (("--run",), ("--apply",), ("--check",), ("--verify", str(fx.output)),
+                      ("--apply", "--check", "--accept-plan", approval)):
+            self.assertEqual(run(*flags).returncode, 2)
+        applied = run("--apply", "--accept-plan", approval)
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        self.assertEqual(json.loads(applied.stdout)["status"], "promoted")
+        self.assertEqual(run("--check", "--accept-plan", approval).returncode, 0)
+
+    def test_real_two_parent_integration_test_verify_promotion_pipeline(self):
+        support_spec = importlib.util.spec_from_file_location("pipeline_fixture",
+                        Path(__file__).with_name("test_swarm_fleet_integrate.py"))
+        support = importlib.util.module_from_spec(support_spec)
+        support_spec.loader.exec_module(support)
+        program = ("import unittest\nfrom pathlib import Path\nclass T(unittest.TestCase):\n"
+                   " def test_both_changes(self):\n"
+                   "  self.assertEqual(Path('left').read_text()+Path('right').read_text(), 'leftright')\n"
+                   "unittest.main()\n")
+        fx = support.Fixture(files={"test.py": ("100644", program.encode())})
+        for side in ("left", "right"):
+            commit = fx.commit(side, [fx.base], {side: ("100644", side.encode())})
+            fx.add_host(side, commit)
+        fx.seal()
+        integration = fx.preview()
+        published = fx.preview(approval=integration["plan_sha256"])
+        candidate = published["plan"]["result"]["candidate_commit"]
+        self.assertEqual(len(fx.text(fx.repo, "show", "-s", "--format=%P", candidate).split()), 2)
+        fx.git(fx.repo, "update-ref", "refs/heads/release", fx.base)
+        output = fx.root / "qualification"
+        specification = {"schema": runner.SPEC_SCHEMA, "environment": {}, "commands": [
+            {"id": "unit", "argv": [base.PYTHON, "-B", "test.py"], "timeout_seconds": 10}]}
+        preview = runner.execute(fx.repo, candidate, specification, output)
+        tests = runner.execute(fx.repo, candidate, specification, output, approval=preview["plan_sha256"])
+        self.assertEqual(tests["status"], "passed")
+        evidence = runner.verify_test_run(output, fx.repo, preview["plan_sha256"])
+        self.assertEqual(evidence["commit"], candidate)
+        options = (output, fx.repo, preview["plan_sha256"], "release", fx.base)
+        promotion = runner.promote_candidate(*options)
+        result = runner.promote_candidate(*options, approval=promotion["plan_sha256"])
+        self.assertEqual(result["status"], "promoted")
+        self.assertEqual(fx.text(fx.repo, "rev-parse", "refs/heads/release"), candidate)
+        self.assertEqual(fx.text(fx.repo, "rev-parse", "HEAD"), fx.base)
+        self.assertEqual(runner.promote_candidate(*options, approval=promotion["plan_sha256"], check=True)["status"], "matched")
 
 
 if __name__ == "__main__":
