@@ -6,6 +6,7 @@ as the current user: the separate snapshot and clean environment are NOT a sandb
 No commands, dependencies, credentials or permissions are inferred from the project.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import os
@@ -28,6 +29,7 @@ fleet = collect.fleet
 require, encoded, decode, digest = fleet.require, fleet.encoded, fleet.decode, fleet.digest
 SCHEMA = "acfs.swarm-fleet-test.v1"
 SPEC_SCHEMA = "acfs.swarm-fleet-test-spec.v1"
+EVIDENCE_SCHEMA = "acfs.swarm-fleet-test-evidence.v1"
 MAX_TREE_BYTES = 256 * 1024 * 1024
 MAX_BLOB_BYTES = 8 * 1024 * 1024
 MAX_LOG_BYTES = 8 * 1024 * 1024
@@ -356,7 +358,205 @@ def execute(repository, commit, spec, output, timeout=600, approval=None):
             return report
 
 
+def evidence_plan(plan, expected):
+    """Validate a historical plan, without invoking its recorded executables."""
+    fields = {"schema", "policy", "source_sha256", "destination", "commit", "tree",
+              "tree_entries_sha256", "files", "tree_bytes", "specification", "executables",
+              "output_directory", "output_parent_identity", "deadline_seconds", "runs_project_code",
+              "sandboxed", "network_isolated", "inherits_environment", "git_history_included"}
+    require(type(plan) is dict and set(plan) == fields and plan["schema"] == SCHEMA
+            and plan["policy"] == "exact-tree-explicit-unsandboxed-tests-v1", "invalid_saved_test_plan")
+    require(fleet.matches(r"[0-9a-f]{64}", expected) and digest(encoded(plan)) == expected,
+            "test_evidence_plan_mismatch")
+    specification(plan["specification"])
+    require(all(plan[k] is False for k in ("sandboxed", "network_isolated", "inherits_environment", "git_history_included"))
+            and plan["runs_project_code"] is True, "invalid_saved_test_policy")
+    hashes = plan["source_sha256"]
+    require(type(hashes) is dict and set(hashes) == {"swarm-fleet-test.py", "swarm-fleet-collect.py", "swarm-fleet-launch.py"}
+            and all(fleet.matches(r"[0-9a-f]{64}", h) for h in hashes.values()), "invalid_saved_test_sources")
+    require(collect.oid(plan["commit"]) and collect.oid(plan["tree"])
+            and fleet.matches(r"[0-9a-f]{64}", plan["tree_entries_sha256"])
+            and type(plan["files"]) is int and 1 <= plan["files"] <= 10000
+            and type(plan["tree_bytes"]) is int and 0 <= plan["tree_bytes"] <= MAX_TREE_BYTES
+            and type(plan["deadline_seconds"]) is int and 1 <= plan["deadline_seconds"] <= 3600,
+            "invalid_saved_test_snapshot")
+    fleet.absolute_path(plan["output_directory"])
+    parent = plan["output_parent_identity"]
+    require(type(parent) is list and len(parent) == 2 and all(type(n) is int and n >= 0 for n in parent),
+            "invalid_saved_test_parent")
+    programs = plan["executables"]
+    paths = {c["argv"][0] for c in plan["specification"]["commands"]}
+    require(type(programs) is dict and set(programs) == paths, "invalid_saved_test_executables")
+    for path, program in programs.items():
+        require(type(program) is dict and set(program) == {"path", "resolved_path", "sha256", "bytes", "identity"}
+                and program["path"] == path and fleet.matches(r"[0-9a-f]{64}", program["sha256"])
+                and type(program["bytes"]) is int and 0 < program["bytes"] <= MAX_TREE_BYTES,
+                "invalid_saved_test_executable")
+        fleet.absolute_path(program["resolved_path"])
+        identity = program["identity"]
+        require(type(identity) is list and len(identity) == 2 and all(type(n) is int and n >= 0 for n in identity),
+                "invalid_saved_test_executable")
+
+
+def log_fingerprint(fd, name):
+    raw = collect.read_bundle(fd, name)
+    require(len(raw) <= MAX_LOG_BYTES, "test_evidence_log_limit")
+    return {"file": "logs/" + name, "bytes": len(raw), "sha256": digest(raw)}
+
+
+def evidence_records(fd, plan, expected):
+    """A final summary must agree with every command intent, result and log."""
+    metadata = {"intent.json": fleet.read_at(fd, "intent.json"),
+                "result.json": fleet.read_at(fd, "result.json", optional=True)}
+    if metadata["result.json"] is None:
+        # Incomplete runs may have live children or partially written files.
+        # Do not guess a successful outcome from their prefix or try to repair it.
+        return None, metadata, {}
+    result = decode(metadata["result.json"])
+    fields = {"schema", "status", "plan", "plan_sha256", "run_started", "task_completion_verified", "tests"}
+    require(type(result) is dict and set(result) == fields and result["schema"] == SCHEMA
+            and result["status"] in ("passed", "failed") and result["plan_sha256"] == expected
+            and encoded(result["plan"]) == encoded(plan) and result["task_completion_verified"] is False
+            and type(result["run_started"]) is bool, "invalid_test_evidence_result")
+    commands, rows = plan["specification"]["commands"], result["tests"]
+    require(type(rows) is list and len(rows) == len(commands), "test_evidence_command_count")
+    logs, stopped, attempted = {}, False, False
+    for command, row in zip(commands, rows):
+        name = command["id"]
+        require(type(row) is dict and row.get("id") == name, "test_evidence_command_order")
+        for suffix in (".attempt.json", ".result.json"):
+            metadata[name + suffix] = fleet.read_at(fd, name + suffix, optional=True)
+        attempt, saved = metadata[name + ".attempt.json"], metadata[name + ".result.json"]
+        if row.get("status") == "not_attempted":
+            require(set(row) == {"id", "status"} and attempt is None and saved is None,
+                    "test_evidence_unattempted_mismatch")
+            stopped = True
+            continue
+        require(not stopped and attempt is not None and saved is not None, "test_evidence_nonprefix_history")
+        attempted = True
+        require(encoded(decode(attempt)) == encoded({"schema": SCHEMA, "plan_sha256": expected, "command": command})
+                and encoded(decode(saved)) == encoded(row), "test_evidence_record_mismatch")
+        require(set(row) == {"id", "status", "exit_code", "logs", "duration_ms", "tracked_sources_unchanged"}
+                and type(row["status"]) is str
+                and row["status"] in {"passed", "failed", "timed_out", "output_limit", "process_error", "sources_changed"}
+                and (row["exit_code"] is None or type(row["exit_code"]) is int)
+                and type(row["duration_ms"]) is int and row["duration_ms"] >= 0
+                and type(row["tracked_sources_unchanged"]) is bool, "invalid_test_evidence_command")
+        require((row["status"] == "sources_changed") == (not row["tracked_sources_unchanged"]),
+                "test_evidence_source_state_mismatch")
+        if row["status"] == "passed":
+            require(row["exit_code"] == 0, "test_evidence_false_pass")
+        elif row["status"] == "failed":
+            require(type(row["exit_code"]) is int and row["exit_code"] != 0, "test_evidence_false_failure")
+        stopped = row["status"] != "passed"
+        require(type(row["logs"]) is dict and set(row["logs"]) == {"stdout", "stderr"}, "invalid_test_evidence_logs")
+        for stream in ("stdout", "stderr"):
+            filename = name + "." + stream
+            with fleet.directory_fd(Path(plan["output_directory"]) / "logs", private=True) as log_fd:
+                actual = log_fingerprint(log_fd, filename)
+            require(encoded(row["logs"][stream]) == encoded(actual), "test_evidence_log_mismatch")
+            logs[filename] = actual
+        require(sum(row["logs"][s]["bytes"] for s in ("stdout", "stderr")) <= MAX_LOG_BYTES,
+                "test_evidence_log_limit")
+    passed = all(row["status"] == "passed" for row in rows)
+    require(result["run_started"] == attempted and (result["status"] == "passed") == passed,
+            "test_evidence_summary_mismatch")
+    return result, metadata, logs
+
+
+@contextmanager
+def test_evidence(path, repository, expected, timeout=90):
+    """Hold evidence/repository locks and expose a guard for downstream consumers.
+
+    This checks local integrity, not provenance against the same user who owns
+    both test code and records. No recorded executable is invoked or rehashed.
+    """
+    require(sys.platform == "linux" and os.getuid() == os.geteuid() and os.geteuid() != 0
+            and not os.environ.get("SUDO_USER"), "verify_as_repository_owner_without_sudo")
+    require(type(timeout) is int and 1 <= timeout <= 3600, "invalid_evidence_timeout")
+    path, repository = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (path, repository))
+    with fleet.directory_fd(path, private=True) as fd:
+        collect.lock(fd)
+        intent_raw = fleet.read_at(fd, "intent.json")
+        intent = decode(intent_raw)
+        require(type(intent) is dict and set(intent) == {"schema", "plan"} and intent["schema"] == SCHEMA,
+                "invalid_test_evidence_intent")
+        plan = intent["plan"]
+        evidence_plan(plan, expected)
+        require(plan["output_directory"] == str(path), "test_evidence_directory_mismatch")
+        with fleet.directory_fd(path.parent) as parent:
+            info = os.fstat(parent)
+            require([info.st_dev, info.st_ino] == plan["output_parent_identity"], "test_evidence_parent_mismatch")
+        git = collect.LocalGit(repository, timeout)
+        destination = collect.destination_state(git)
+        require(encoded(destination) == encoded(plan["destination"]), "test_evidence_repository_mismatch")
+        with fleet.directory_fd(destination["common_directory"]["path"]) as source:
+            collect.lock(source)
+            tree, entries, total = tree_snapshot(git, plan["commit"], destination["object_format"])
+            require(tree == plan["tree"] and digest(encoded(entries)) == plan["tree_entries_sha256"]
+                    and len(entries) == plan["files"] and total == plan["tree_bytes"], "test_evidence_tree_mismatch")
+            # Hash all selected Git blobs, not merely their size or pathname.
+            read_blobs(git, entries, destination["object_format"])
+            result, metadata, logs = evidence_records(fd, plan, expected)
+            require(metadata["intent.json"] == intent_raw, "test_evidence_changed")
+            workspace = path / "workspace"
+            unchanged = workspace_matches(workspace, entries, destination["object_format"])
+            directories = {"workspace", "logs", "home", "tmp"}
+            def guard():
+                with fleet.directory_fd(path, private=True) as current:
+                    require(os.path.samestat(os.fstat(fd), os.fstat(current)), "test_evidence_directory_changed")
+                for filename, raw in metadata.items():
+                    require(fleet.read_at(fd, filename, optional=True) == raw, "test_evidence_changed")
+                require(collect.destination_state(git) == destination, "test_evidence_repository_changed")
+                if result is not None:
+                    require(set(os.listdir(fd)) == directories | {k for k, v in metadata.items() if v is not None},
+                            "unexpected_test_evidence_member")
+                    for name in directories:
+                        with fleet.directory_fd(path / name, private=True):
+                            pass
+                    with fleet.directory_fd(path / "logs", private=True) as log_fd:
+                        require(set(os.listdir(log_fd)) == set(logs), "unexpected_test_evidence_log")
+                        for name, expected_log in logs.items():
+                            require(log_fingerprint(log_fd, name) == expected_log, "test_evidence_changed")
+                    require(workspace_matches(workspace, entries, destination["object_format"]) == unchanged,
+                            "test_evidence_workspace_changed")
+            guard()
+            status = "incomplete" if result is None else result["status"] if unchanged else "sources_changed"
+            evidence_hash = digest(encoded({"records": {k: digest(v) if v is not None else None for k, v in metadata.items()},
+                                           "logs": logs})) if result is not None else None
+            report = {"schema": EVIDENCE_SCHEMA, "status": status, "test_plan_sha256": expected,
+                      "evidence_sha256": evidence_hash, "commit": plan["commit"], "tree": tree,
+                      "read_only": True, "runs_project_code": False, "tests_rerun": False,
+                      "complete": result is not None, "tracked_sources_unchanged": unchanged,
+                      "test_provenance_verified": False, "task_completion_verified": False,
+                      "tests": [{"id": r["id"], "status": r["status"], "exit_code": r.get("exit_code")}
+                                for r in result["tests"]] if result else []}
+            yield report, plan, git, guard
+            guard()
+
+
+def verify_test_run(path, repository, expected, timeout=90):
+    with test_evidence(path, repository, expected, timeout) as (report, _, _, _guard):
+        return report
+
+
+def evidence_main(args):
+    parser = argparse.ArgumentParser(description="Verify saved exact-candidate test evidence without rerunning tests",
+                                     allow_abbrev=False)
+    parser.add_argument("--verify", required=True, help="Original private test output directory")
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--expect-plan", required=True, help="Original test approval digest retained outside the run directory")
+    parser.add_argument("--timeout", type=int, default=90)
+    options = parser.parse_args(args)
+    report = verify_test_run(options.verify, options.repository, options.expect_plan, options.timeout)
+    print(encoded(report).decode(), end="")
+    return 0 if report["status"] == "passed" else 1
+
+
 def main(args=None):
+    args = list(sys.argv[1:] if args is None else args)
+    if any(a == "--verify" or a.startswith("--verify=") for a in args):
+        return evidence_main(args)
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit", required=True, help="Exact full commit ID, never a branch or revision expression")
