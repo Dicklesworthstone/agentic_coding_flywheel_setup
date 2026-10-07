@@ -4528,10 +4528,32 @@ update_run_cargo_git_source_install() {
         return 1
     fi
 
+    # Per-tool version hold (issue #357): this source-build path bypasses the
+    # verified-installer wrapper, so honor the hold here, before any clone or
+    # cargo build. Without it a held rust_proxy was still rebuilt from source
+    # (20+ minutes per host) on every run.
+    if update_tool_hold_details "$binary_name"; then
+        echo "SKIPPED (hold): $binary_name $UPDATE_LAST_HOLD_DETAILS" >&2
+        log_to_file "Hold honored for $binary_name: $UPDATE_LAST_HOLD_DETAILS"
+        return "$UPDATE_EXIT_HELD"
+    fi
+
     local build_cmd
     build_cmd="$(cat <<'EOF'
 set -euo pipefail
 mkdir -p "$HOME/.cargo/bin"
+# Skip the full release build when the installed binary was already built from
+# the current upstream HEAD (stamp written after each successful install).
+# Without this, every run cloned and rebuilt every source tool from scratch.
+# ACFS_SOURCE_REBUILD=1 forces a rebuild.
+acfs_src_stamp="$HOME/.cache/acfs/source-builds/$2.commit"
+if [[ "${ACFS_SOURCE_REBUILD:-0}" != "1" && -x "$HOME/.cargo/bin/$2" && -s "$acfs_src_stamp" ]]; then
+    acfs_upstream="$(git ls-remote "$1" HEAD 2>/dev/null | awk 'NR==1 { print $1 }')" || acfs_upstream=""
+    if [[ -n "$acfs_upstream" && "$(cat "$acfs_src_stamp")" == "$acfs_upstream" ]]; then
+        echo "$2 already built from upstream ${acfs_upstream:0:12}; skipping source rebuild"
+        exit 0
+    fi
+fi
 make_acfs_cargo_tmp_dir() {
     local candidate=""
     local tmp_dir=""
@@ -4574,6 +4596,8 @@ cd "$ACFS_TMP_DIR/src"
 # RCH_ENABLED=0 is rch's own disable switch, scoped to this one-off tool build.
 RCH_ENABLED=0 cargo build --release --target-dir "$ACFS_TMP_DIR/target"
 install -m 0755 "$ACFS_TMP_DIR/target/release/$2" "$HOME/.cargo/bin/$2"
+mkdir -p "${acfs_src_stamp%/*}"
+git rev-parse HEAD > "$acfs_src_stamp.tmp" && mv -f "$acfs_src_stamp.tmp" "$acfs_src_stamp"
 EOF
 )"
     update_run_in_target_context "" bash -c "$build_cmd" _ "$repo_url" "$binary_name"

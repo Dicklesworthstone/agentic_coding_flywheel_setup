@@ -12577,6 +12577,64 @@ EOF
     assert_output --partial "binary=tool-bin"
 }
 
+@test "update cargo git source installer honors an active hold before any clone (#357)" {
+    write_active_hold rust_proxy
+    update_run_in_target_context() { echo "BUILD RAN"; }
+
+    run update_run_cargo_git_source_install "https://example.test/rust_proxy.git" "rust_proxy"
+
+    [[ "$status" -eq 93 ]]
+    assert_output --partial "SKIPPED (hold): rust_proxy"
+    refute_output --partial "BUILD RAN"
+}
+
+# Fake git/cargo for the source-build script: ls-remote and rev-parse answer
+# with the given sha, clone makes the destination, cargo only announces itself.
+write_fake_source_build_tools() {
+    local sha="$1"
+    FAKE_SRC_BIN="$BATS_TEST_TMPDIR/fakebin"
+    mkdir -p "$FAKE_SRC_BIN" "$HOME/.cargo/bin" "$HOME/.cache/acfs/source-builds"
+    cat > "$FAKE_SRC_BIN/git" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+    ls-remote) printf '%s\tHEAD\n' "$sha" ;;
+    clone) mkdir -p "\${@: -1}" ;;
+    rev-parse) printf '%s\n' "$sha" ;;
+    *) echo "unexpected git \$*" >&2; exit 1 ;;
+esac
+EOF
+    printf '#!/usr/bin/env bash\necho "CARGO INVOKED"\nexit 1\n' > "$FAKE_SRC_BIN/cargo"
+    chmod +x "$FAKE_SRC_BIN/git" "$FAKE_SRC_BIN/cargo"
+    printf '#!/bin/sh\n' > "$HOME/.cargo/bin/tool-bin"
+    chmod +x "$HOME/.cargo/bin/tool-bin"
+    update_run_in_target_context() { shift; PATH="$FAKE_SRC_BIN:$PATH" "$@"; }
+}
+
+@test "update cargo git source installer skips the rebuild when the stamp matches upstream HEAD" {
+    write_fake_source_build_tools abc123def4567890abc123def4567890abc12345
+    printf '%s\n' abc123def4567890abc123def4567890abc12345 > "$HOME/.cache/acfs/source-builds/tool-bin.commit"
+
+    run update_run_cargo_git_source_install "https://example.test/tool.git" "tool-bin"
+
+    assert_success
+    assert_output --partial "tool-bin already built from upstream abc123def456; skipping source rebuild"
+    refute_output --partial "CARGO INVOKED"
+}
+
+@test "update cargo git source installer rebuilds when upstream moved or ACFS_SOURCE_REBUILD=1" {
+    write_fake_source_build_tools 1111111111111111111111111111111111111111
+    printf '%s\n' 2222222222222222222222222222222222222222 > "$HOME/.cache/acfs/source-builds/tool-bin.commit"
+
+    run update_run_cargo_git_source_install "https://example.test/tool.git" "tool-bin"
+    assert_failure
+    assert_output --partial "CARGO INVOKED"
+
+    printf '%s\n' 1111111111111111111111111111111111111111 > "$HOME/.cache/acfs/source-builds/tool-bin.commit"
+    ACFS_SOURCE_REBUILD=1 run update_run_cargo_git_source_install "https://example.test/tool.git" "tool-bin"
+    assert_failure
+    assert_output --partial "CARGO INVOKED"
+}
+
 @test "update fsfs installer uses Linux lite release artifact args" {
     update_fsfs_linux_target_triple() { printf '%s\n' "x86_64-unknown-linux-musl"; }
     update_resolve_fsfs_artifact_contract() {
