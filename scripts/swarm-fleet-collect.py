@@ -8,6 +8,8 @@ refs without changing existing refs, HEAD, the index or the working tree.
 Uncommitted files are deliberately not included.
 """
 import argparse
+import base64
+import binascii
 from contextlib import contextmanager
 import fcntl
 import hashlib
@@ -37,6 +39,7 @@ MAX_BUNDLE = 16 * 1024 * 1024
 IMPORT_SCHEMA = "acfs.swarm-fleet-import.v1"
 IMPORT_STARTED = False
 INTEGRATION_SCHEMA = "acfs.swarm-fleet-integration.v1"
+RESOLUTIONS_SCHEMA = "acfs.swarm-fleet-resolutions.v1"
 INTEGRATION_SCRATCH = None
 INTEGRATION_WRITES_STARTED = False
 
@@ -752,21 +755,120 @@ def builtin_merge_attributes(git, commit):
                 for i in range(0, len(fields) - 1, 3)), "external_merge_driver_not_supported")
 
 
-def merge_candidate(git, entries, onto, evidence):
+def resolution_specification(value, evidence, entries):
+    """Explicit replacement bytes, never shell commands or mutable Git refs."""
+    if value is None:
+        return None
+    value = decode(encoded(value))  # Bound input size/depth and detach caller data.
+    require(type(value) is dict and set(value) == {"schema", "collection_evidence_sha256", "steps"}
+            and value["schema"] == RESOLUTIONS_SCHEMA
+            and value["collection_evidence_sha256"] == evidence, "invalid_resolution_collection")
+    steps = value["steps"]
+    require(type(steps) is list and 1 <= len(steps) <= len(entries), "invalid_resolution_steps")
+    hosts, seen = {e["id"]: e for e in entries}, set()
+    for step in steps:
+        require(type(step) is dict and set(step) == {"id", "previous_commit", "head_commit", "conflict_tree", "changes"}
+                and fleet.matches(r"[a-z][a-z0-9_-]{0,63}", step["id"])
+                and step["id"] in hosts and step["id"] not in seen, "unknown_or_duplicate_resolution_host")
+        seen.add(step["id"])
+        snap = hosts[step["id"]]["snapshot"]
+        require(all(oid(step[k]) and len(step[k]) == len(snap["head_commit"])
+                    for k in ("previous_commit", "head_commit", "conflict_tree"))
+                and step["head_commit"] == snap["head_commit"], "invalid_resolution_objects")
+        changes, paths = step["changes"], set()
+        require(type(changes) is list and len(changes) <= 4096, "resolution_change_limit")
+        for change in changes:
+            require(type(change) is dict and type(change.get("mode")) is str
+                    and change["mode"] in ("delete", "100644", "100755", "120000"), "invalid_resolution_mode")
+            fields = {"path", "mode"} if change["mode"] == "delete" else {"path", "mode", "content_base64"}
+            require(set(change) == fields and type(change["path"]) is str
+                    and 0 < len(change["path"]) <= 4096 and "\0" not in change["path"]
+                    and not change["path"].startswith("/")
+                    and all(c not in ("", ".", "..", ".git") for c in change["path"].split("/"))
+                    and change["path"] not in paths, "invalid_or_duplicate_resolution_path")
+            paths.add(change["path"])
+            if change["mode"] != "delete":
+                text = change["content_base64"]
+                require(type(text) is str and text.isascii(), "invalid_resolution_content")
+                try:
+                    raw = base64.b64decode(text, validate=True)
+                except (ValueError, binascii.Error):
+                    raise fleet.Refused("invalid_resolution_content") from None
+                require(base64.b64encode(raw).decode() == text, "noncanonical_resolution_content")
+        # Equivalent change/host orderings must produce the same reviewed plan.
+        changes.sort(key=lambda c: c["path"].encode())
+    steps.sort(key=lambda s: s["id"])
+    return value
+
+
+def resolve_conflict(git, row, step):
+    """Apply reviewed bytes only to the scratch index, preserving all other paths."""
+    require(all(step[k] == row[k] for k in ("previous_commit", "head_commit", "conflict_tree")),
+            "resolution_conflict_changed")
+    changes = step["changes"]
+    paths = {c["path"] for c in changes}
+    require(set(row["conflicted_paths"]) <= paths, "resolution_missing_conflicted_path")
+    git.run(["read-tree", row["conflict_tree"]])
+    removals, additions, projected = [], [], []
+    zero = "0" * len(step["head_commit"])
+    for change in changes:
+        path, mode = change["path"], change["mode"]
+        # Clear every explicitly edited entry first to support file/directory
+        # transitions independent of input order. No working file is removed.
+        removals.append(("0 " + zero + "\t" + path).encode() + b"\0")
+        record = {"path": path, "mode": mode}
+        if mode != "delete":
+            raw = base64.b64decode(change["content_base64"], validate=True)
+            blob = git.run(["hash-object", "-w", "--stdin"], raw)[1].decode().strip()
+            require(oid(blob), "invalid_resolution_blob")
+            additions.append((mode + " " + blob + "\t" + path).encode() + b"\0")
+            record.update(blob=blob, bytes=len(raw), sha256=digest(raw))
+        projected.append(record)
+    if changes:
+        git.run(["update-index", "-z", "--index-info"], b"".join(removals + additions))
+    tree = git.text(["write-tree"])
+    actual = {}
+    index = git.run(["ls-files", "--stage", "-z"])[1]
+    require(not index or index.endswith(b"\0"), "invalid_resolution_index")
+    for item in index[:-1].split(b"\0") if index else []:
+        metadata, separator, path = item.partition(b"\t")
+        fields = metadata.split()
+        require(separator and len(fields) == 3 and fields[2] == b"0", "invalid_resolution_index")
+        actual[path.decode("utf-8", "strict")] = (fields[0].decode(), fields[1].decode())
+    for record in projected:
+        expected = None if record["mode"] == "delete" else (record["mode"], record["blob"])
+        require(actual.get(record["path"]) == expected, "resolution_index_did_not_apply_exactly")
+    changed = integration_paths(git.run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames",
+                                        "--name-only", "-z", row["conflict_tree"], tree, "--"])[1])
+    require(set(changed) <= paths, "resolution_changed_unlisted_path")
+    # New attributes may not introduce external merge drivers for later hosts.
+    builtin_merge_attributes(git, tree)
+    git.run(["read-tree", "--empty"])
+    row.update(resolution_sha256=digest(encoded(step)), resolution_changes=projected,
+               resolved_tree=tree)
+    return tree
+
+
+def merge_candidate(git, entries, onto, evidence, resolutions=None):
     """Merge in original host order; never use a conflicted tree as a parent."""
     current = onto
+    selected = {s["id"]: s for s in resolutions["steps"]} if resolutions else {}
     rows = [{"id": e["id"], "head_commit": e["snapshot"]["head_commit"], "status": "not_attempted"}
             for e in entries]
     for row, entry in zip(rows, entries):
         head = entry["snapshot"]["head_commit"]
         row["previous_commit"] = current
+        resolution = selected.get(row["id"])
         if entry["snapshot"]["commit_count"] == 0:
+            require(resolution is None, "resolution_for_nonconflicting_host")
             row.update(status="unchanged", result_commit=current)
             continue
         if git.run(["merge-base", "--is-ancestor", head, current], allowed=(0, 1))[0] == 0:
+            require(resolution is None, "resolution_for_nonconflicting_host")
             row.update(status="already_contained", result_commit=current)
             continue
         if git.run(["merge-base", "--is-ancestor", current, head], allowed=(0, 1))[0] == 0:
+            require(resolution is None, "resolution_for_nonconflicting_host")
             current = head
             row.update(status="fast_forward", result_commit=current)
             continue
@@ -775,22 +877,31 @@ def merge_candidate(git, entries, onto, evidence):
         tree, separator, conflicts = raw.partition(b"\0")
         require(separator and oid(tree.decode("ascii", "strict")), "invalid_merge_tree_response")
         paths = integration_paths(conflicts)
+        tree = tree.decode()
         if code == 1:
             # Some logical conflicts have no unmerged file entries. The exit
             # status is authoritative; an empty path list is NOT a clean merge.
-            row.update(status="conflict", conflicted_paths=paths)
-            return {"status": "conflict", "steps": rows, "candidate_commit": None, "candidate_tree": None}
-        require(not paths, "contradictory_merge_tree_response")
+            row.update(status="conflict", conflicted_paths=paths, conflict_tree=tree)
+            if resolution is None:
+                return {"status": "conflict", "steps": rows, "candidate_commit": None, "candidate_tree": None}
+            tree = resolve_conflict(git, row, resolution)
+        else:
+            require(resolution is None, "resolution_for_nonconflicting_host")
+            require(not paths, "contradictory_merge_tree_response")
         dates = [git.text(["show", "--no-patch", "--format=%ct", parent]) for parent in (current, head)]
         require(all(fleet.matches(r"[0-9]{1,12}", d) for d in dates), "unsupported_parent_timestamp")
         timestamp = str(max(int(d) for d in dates) + 1) + " +0000"
         git.env.update(GIT_AUTHOR_NAME="ACFS Fleet Integration", GIT_COMMITTER_NAME="ACFS Fleet Integration",
                        GIT_AUTHOR_EMAIL="acfs-fleet@localhost", GIT_COMMITTER_EMAIL="acfs-fleet@localhost",
                        GIT_AUTHOR_DATE=timestamp, GIT_COMMITTER_DATE=timestamp)
-        message = ("ACFS fleet integration: " + entry["id"] + "\n\nCollection evidence: " + evidence + "\n").encode()
-        current = git.run(["commit-tree", tree.decode(), "-p", current, "-p", head], message)[1].decode().strip()
+        message = "ACFS fleet integration: " + entry["id"] + "\n\nCollection evidence: " + evidence + "\n"
+        if resolution is not None:
+            # Bind only this step, not the whole specification: later steps
+            # reference this commit, so hashing them here would be circular.
+            message += "Reviewed resolution: " + row["resolution_sha256"] + "\n"
+        current = git.run(["commit-tree", tree, "-p", current, "-p", head], message.encode())[1].decode().strip()
         require(oid(current), "invalid_integration_commit")
-        row.update(status="merged", result_commit=current)
+        row.update(status="resolved" if resolution is not None else "merged", result_commit=current)
     tree = git.text(["rev-parse", "--verify", current + "^{tree}"])
     paths = integration_paths(git.run(["diff", "--no-ext-diff", "--no-textconv", "--no-renames",
                                        "--name-only", "-z", onto, current, "--"])[1])
@@ -842,7 +953,7 @@ def publish_integration(git, scratch, plan, bundles, artifacts, guard):
             git.run(["index-pack", "--stdin", "--fix-thin", "--strict", "--threads=1",
                      "--max-input-size=" + str(MAX_BUNDLE), keep], pack)
         check_imported_history(git, entry)
-    if any(step["status"] == "merged" for step in plan["result"]["steps"]):
+    if any(step["status"] in ("merged", "resolved") for step in plan["result"]["steps"]):
         # Transfer only synthesized merge objects after all source objects exist.
         revisions = candidate + "\n^" + plan["onto_commit"] + "\n"
         revisions += "".join("^" + e["snapshot"]["head_commit"] + "\n" for e in plan["hosts"])
@@ -888,7 +999,7 @@ def inspect_integration(git, plan):
     return row
 
 
-def integrate_collection(path, repository, onto, name, hosts, timeout, approval=None, *, check=False):
+def integrate_collection(path, repository, onto, name, hosts, timeout, approval=None, *, check=False, resolutions=None):
     global INTEGRATION_SCRATCH, INTEGRATION_WRITES_STARTED
     INTEGRATION_SCRATCH = None
     INTEGRATION_WRITES_STARTED = False
@@ -910,6 +1021,7 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
             require(destination_state(git) == destination, "destination_changed")
             entries = [e for e in source["hosts"] if not hosts or e["id"] in hosts]
             require(entries and (not hosts or len(entries) == len(hosts)), "unknown_integration_host")
+            resolutions = resolution_specification(resolutions, evidence, entries)
             reference = "refs/acfs/integrations/" + name
             if not check:
                 require_new_ref(git, reference)
@@ -944,7 +1056,8 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
             for commit in dict.fromkeys([onto, *[e["snapshot"]["head_commit"] for e in entries]]):
                 builtin_merge_attributes(scratch, commit)
             scratch.run(["read-tree", "--empty"])
-            result = merge_candidate(scratch, entries, onto, evidence)
+            result = (merge_candidate(scratch, entries, onto, evidence) if resolutions is None else
+                      merge_candidate(scratch, entries, onto, evidence, resolutions))
             guard()
             require(destination_state(git) == destination, "destination_changed")
             if not check:
@@ -954,6 +1067,9 @@ def integrate_collection(path, repository, onto, name, hosts, timeout, approval=
                     "collection_plan_sha256": source["plan_sha256"], "destination": destination,
                     "git_version": scratch.text(["--version"]), "onto_commit": onto, "ref": reference,
                     "hosts": entries, "timeout_seconds": timeout, "result": result}
+            if resolutions is not None:
+                plan.update(policy="builtin-sequential-merge-tree-reviewed-resolutions-v2",
+                            resolution_spec_sha256=digest(encoded(resolutions)))
             require(len(encoded(plan)) <= fleet.LIMIT, "integration_plan_size_limit")
             report = {"schema": INTEGRATION_SCHEMA, "status": "preview" if result["status"] == "clean" else "conflict",
                     "plan": plan, "plan_sha256": digest(encoded(plan)) if result["status"] == "clean" else None,
@@ -986,6 +1102,7 @@ def integration_main(args):
     parser.add_argument("--onto", required=True, help="Exact full target commit ID; never a moving branch name")
     parser.add_argument("--name", required=True, help="New candidate namespace: refs/acfs/integrations/NAME")
     parser.add_argument("--host", action="append", default=[])
+    parser.add_argument("--resolutions", help="Private reviewed JSON replacement bytes for exact reproduced conflicts")
     parser.add_argument("--timeout", type=int, default=90)
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--apply", action="store_true", help="Publish the approved clean candidate; never update HEAD or existing refs")
@@ -994,7 +1111,8 @@ def integration_main(args):
     options = parser.parse_args(args)
     require((options.apply or options.check) == (options.accept_plan is not None), "integration_requires_exact_approval")
     report = integrate_collection(options.collection, options.repository, options.onto,
-                                  options.name, options.host, options.timeout, options.accept_plan, check=options.check)
+                                  options.name, options.host, options.timeout, options.accept_plan, check=options.check,
+                                  resolutions=decode(fleet.read_input(options.resolutions)) if options.resolutions else None)
     print(encoded(report).decode(), end="")
     return 1 if report["status"] in ("conflict", "attention") else 0
 

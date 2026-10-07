@@ -52,6 +52,12 @@ Preview does not publish a candidate ref. It needs no previous `--import`
 operation: the selected histories are read from the collection, not mutable
 review refs or branch names.
 
+To continue past a conflict, supply an explicit [reviewed resolution
+specification](swarm-fleet-resolutions.md) using `--resolutions FILE`. Each
+decision is bound to the actual parents and conflict tree. The controller
+preserves both histories, continues later hosts, and requires a new complete
+integration approval before publishing the resolved candidate.
+
 ## Publish the exact reviewed candidate
 
 Repeat the original integration command with
