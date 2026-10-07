@@ -1079,7 +1079,7 @@ function InteractiveSessionHandoffImpl() {
                               : "text-white/40"
                         }`}
                       >
-                        {isCommand && <span className="text-violet-400/60">~/project </span>}
+                        {isCommand && <span className="text-violet-400/80">~/project </span>}
                         {line}
                       </motion.div>
                     );
@@ -1105,7 +1105,7 @@ function InteractiveSessionHandoffImpl() {
                     className="flex items-center gap-1 mt-1 pt-1 border-t border-white/[0.04]"
                   >
                     <CheckCircle2 className="h-3 w-3 text-emerald-400/60" />
-                    <span className="text-[10px] text-emerald-400/50">Step complete</span>
+                    <span className="text-[10px] text-emerald-400/80">Step complete</span>
                   </motion.div>
                 )}
               </div>
@@ -1125,15 +1125,11 @@ function InteractiveSessionHandoffImpl() {
                   <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">
                     Task
                   </span>
-                  <motion.p
-                    animate={{
-                      opacity: currentStep >= 1 ? 1 : 0.3,
-                    }}
-                    transition={springTransition}
-                    className="text-[11px] text-white/60 font-mono leading-snug"
-                  >
+                  {/* The session's task is known from the start; only the
+                      captured files and decisions appear step by step. */}
+                  <p className="text-[11px] text-white/60 font-mono leading-snug">
                     Refactoring auth middleware to support OAuth2 PKCE flow
-                  </motion.p>
+                  </p>
                 </div>
 
                 {/* Files */}
@@ -1309,7 +1305,7 @@ function InteractiveSessionHandoffImpl() {
                         isActive
                           ? "text-violet-300"
                           : isCompleted
-                            ? "text-emerald-400/60"
+                            ? "text-emerald-400/80"
                             : "text-white/25"
                       }
                     >

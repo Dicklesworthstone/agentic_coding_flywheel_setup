@@ -1059,7 +1059,7 @@ function InteractiveSkillBrowser() {
               >
                 {cat.icon}
                 {cat.label}
-                <span className={`ml-0.5 text-[10px] ${isActive ? "opacity-70" : "opacity-40"}`}>
+                <span className={`ml-0.5 text-[10px] ${isActive ? "opacity-90" : "opacity-80"}`}>
                   {count}
                 </span>
               </motion.button>
@@ -1129,7 +1129,7 @@ function InteractiveSkillBrowser() {
                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                               )}
                             </div>
-                            <span className={`text-[10px] ${cat.textColor} opacity-70`}>
+                            <span className={`text-[10px] ${cat.textColor} opacity-90`}>
                               {cat.label}
                             </span>
                           </div>
@@ -1200,7 +1200,7 @@ function InteractiveSkillBrowser() {
                               Install
                             </motion.button>
                           ) : (
-                            <span className="text-[10px] text-emerald-400/60 font-medium">
+                            <span className="text-[10px] text-emerald-400/80 font-medium">
                               Installed
                             </span>
                           )}
