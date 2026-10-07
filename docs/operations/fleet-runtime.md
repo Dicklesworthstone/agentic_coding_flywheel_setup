@@ -1,7 +1,7 @@
 # Install the fleet controllers without retaining a checkout
 
 `acfs-fleet` provides one installed entrypoint for the existing fleet `launch`,
-`prepare`, `dispatch`, `status`, and `collect` controllers. Install it explicitly from a trusted,
+`prepare`, `dispatch`, `status`, `collect`, and `test` controllers. Install it explicitly from a trusted,
 complete ACFS checkout on a Linux controller with Python 3.9 or newer. It does
 not replace `acfs`, change the one-line installer, or install anything remotely.
 
@@ -15,14 +15,14 @@ python3 -I scripts/acfs-fleet.py install \
   --prefix "$HOME/.acfs/fleet" --bin-dir "$HOME/.local/bin"
 ```
 
-This reads and syntax-checks the frontend and five controller files, reports a content-derived
+This reads and syntax-checks the frontend and six controller files, reports a content-derived
 runtime ID and an installation plan digest, and creates nothing. Review the
 paths, files and previous launcher. Repeat the command with
 `--apply --accept-plan THE_RETURNED_DIGEST` to install, as the target user without
 sudo. Installation performs no network access and launches no agents or prompts.
 The source checkout is a code trust decision; hashes are not publisher signatures.
 
-The prefix contains `releases/RUNTIME_ID/`, holding the frontend, five complete
+The prefix contains `releases/RUNTIME_ID/`, holding the frontend, six complete
 controllers and a hash/size manifest. The release directory and entrypoint are
 mode 0500; remaining files are mode 0400. A symlink named `acfs-fleet` in the
 selected bin directory points to the completed release. Ensure that directory
@@ -37,12 +37,13 @@ acfs-fleet prepare --help
 acfs-fleet dispatch --help
 acfs-fleet status --help
 acfs-fleet collect --help
+acfs-fleet test --help
 ```
 
 All options after the command are forwarded literally to the corresponding
 controller. Standard input, current directory, terminal and exit/signal status
 are preserved. There is no new approval parser or implicit `--launch`,
-`--prepare`, `--send`, `--collect`, or `--resume`. The launch/dispatch controllers' previews
+`--prepare`, `--send`, `--collect`, `--run`, or `--resume`. The launch/dispatch controllers' previews
 can open SSH connections; preparation's preview stays local. Their normal
 explicit approvals, trust files, receipt rules and recovery limitations remain.
 The status observer opens read-only SSH queries against the original fleet; it
@@ -54,8 +55,19 @@ The [collector](swarm-fleet-collection.md) reads explicitly selected committed
 ranges from the original fleet repositories. Its preview opens SSH connections
 but creates nothing; `--collect --accept-plan SHA256` saves private incremental
 Git bundles. `acfs-fleet collect --verify DIRECTORY` checks a saved collection
-offline. It does not import, check out, merge, push, or run the collected code.
+offline. Its separate offline import and [integration](swarm-fleet-integration.md)
+modes need their own explicit approvals before publishing new review/candidate
+refs; they do not change the working checkout or execute project code.
 Committed history is not redacted; review it before sharing any bundle.
+
+The [test runner](swarm-fleet-testing.md) closes the handoff from a published
+candidate to explicitly selected project checks. `test` previews the exact
+commit/tree, commands, executable hashes and environment. `--run --accept-plan
+SHA256` executes those commands in a private tree snapshot with bounded logs,
+not in your dirty source checkout. **This is not a sandbox:** tests run as you
+and can access network and user files. No commands or dependencies are discovered
+or installed automatically, and no inherited credential environment is copied.
+Use only reviewed, trusted tests or your own disposable containment environment.
 
 The frontend replaces itself with the selected Python controller in isolated
 mode. It verifies the complete cohort before doing so, including siblings that
@@ -100,7 +112,7 @@ unavailable. Partial or modified versions are not advertised as usable. The
 `current` field names the runtime executing the inventory, which may itself be
 a directly invoked pinned entrypoint rather than the PATH launcher.
 
-Put `--runtime ID` **before** `launch`, `prepare`, `dispatch`, `status`, or `collect`, then supply the
+Put `--runtime ID` **before** `launch`, `prepare`, `dispatch`, `status`, `collect`, or `test`, then supply the
 original controller arguments, journal paths and approvals. The selector verifies
 that exact retained cohort and executes its original frontend as well as its
 controllers. It does not rewrite the active launcher or operation journals,
@@ -114,21 +126,22 @@ runtime ID or pinned entrypoint with your external operation records.
 
 ### Upgrade from a retained runtime
 
-Collection-enabled releases use manifest schema `acfs.fleet-runtime.v3`: the
-frontend plus all five fixed controller roles are required. The installer,
-inventory and selector also verify retained `acfs.fleet-runtime.v1` releases
-(frontend plus launch/prepare/dispatch) and `acfs.fleet-runtime.v2` releases
-(those four files plus status). It never adds a command to an old release,
-changes its runtime ID, or rewrites its manifest.
+Test-enabled releases use manifest schema `acfs.fleet-runtime.v4`: the frontend
+plus all six fixed controller roles are required. The installer, inventory and
+selector also verify retained `acfs.fleet-runtime.v1` releases (frontend plus
+launch/prepare/dispatch), `acfs.fleet-runtime.v2` releases (those files plus
+status), and `acfs.fleet-runtime.v3` releases (v2 plus collect). It never adds a
+command to an old release, changes its runtime ID, or rewrites its manifest.
 Unknown layouts, missing roles, extra paths and malformed metadata are refused.
 
 Upgrade using the explicit preview/apply flow above. The new `version` and
 `runtimes` reports include a `commands` list for each verified runtime. Legacy
-v1 releases do not advertise `status`; neither v1 nor v2 advertises `collect`.
+v1 releases do not advertise `status`; neither v1 nor v2 advertises `collect`;
+none of v1/v2/v3 advertises `test`.
 Selecting an unsupported command on a retained release returns
 `runtime_command_unavailable` before executing that frontend. There is no fallback
 to the current controller. Unavailable releases advertise no commands. Use the new
-frontend to inventory all three generations; an old frontend cannot verify the new
+frontend to inventory all four generations; an old frontend cannot verify the new
 layout, but its pinned original operations remain unchanged.
 
 Selecting a legacy runtime still executes that release's original frontend and
@@ -144,6 +157,7 @@ available if that policy changes in a later release.
 python3 -B tests/unit/test_fleet_runtime.py -v
 python3 -B tests/unit/test_fleet_runtime_status.py -v
 python3 -B tests/unit/test_swarm_fleet_collect.py -v
+python3 -B tests/unit/test_swarm_fleet_test.py -v
 ```
 
 These tests run the actual frontend and installer with real private files and
@@ -161,6 +175,10 @@ capability-aware selection, and the actual installed status controller with its
 production launch/dispatch imports after the source checkout becomes unavailable.
 Its journal contains no attempted launch, so that integration test opens no SSH
 connections, starts no agents, and sends no work.
-Collection integration covers all three exact layouts, unavailable-command
+Collection integration covers exact retained layouts, unavailable-command
 refusal and the actual installed collector verifying real Git bundle artifacts
 without its checkout. Other controller roles are inert peers in that case.
+Test integration executes the actual installed runner and production Git helpers
+against a real commit after its source checkout becomes unavailable. It verifies
+explicit and pinned-runtime execution, original source preservation, old-runtime
+refusal and whole-cohort integrity after adding the test role.

@@ -61,6 +61,13 @@ python3 -I scripts/swarm-fleet-test.py \
   --output-dir "$HOME/fleet-tests-wave1"
 ```
 
+After an explicit [fleet runtime installation or upgrade](fleet-runtime.md),
+use the same arguments with `acfs-fleet test`. A v4 runtime includes this runner
+and its exact Git helper versions. Older v1/v2/v3 runtimes remain usable for
+their original commands, but selecting `test` on them fails rather than falling
+back to new code. `acfs-fleet --runtime RUNTIME_ID test ...` selects the complete
+retained implementation without changing the active launcher.
+
 Preview reads the exact commit/tree and test executable identities/hashes but
 executes no project code and writes no files. Review the candidate, commands,
 environment, output location, limits and explicit unsandboxed execution policy.
