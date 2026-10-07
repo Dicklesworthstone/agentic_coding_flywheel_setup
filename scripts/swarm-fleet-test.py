@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import time
+import zlib
 
 sys.dont_write_bytecode = True
 _helper = Path(__file__).absolute().with_name("swarm-fleet-collect.py")
@@ -34,6 +35,8 @@ PROMOTION_SCHEMA = "acfs.swarm-fleet-promotion.v1"
 MAX_TREE_BYTES = 256 * 1024 * 1024
 MAX_BLOB_BYTES = 8 * 1024 * 1024
 MAX_LOG_BYTES = 8 * 1024 * 1024
+GIT_SNAPSHOT_POLICY = "exact-tree-explicit-unsandboxed-tests-v2"
+GIT_SNAPSHOT_MODE = "shallow-single-commit-v1"
 RUN_STARTED = False
 OUTPUT_DIRECTORY = None
 PROMOTION_STARTED = False
@@ -208,6 +211,148 @@ def workspace_matches(workspace, entries, fmt):
         return False
 
 
+def git_snapshot_objects(git, commit, tree, entries, fmt):
+    """Reconstruct canonical trees, checking their root against the real commit.
+
+    Only the selected commit and its tree are copied. Parents, tags, other refs,
+    configuration, hooks, credentials and source object-store links never enter
+    the workspace. Reconstruction is iterative and bounded, including depth.
+    """
+    directories = {"": {}}
+    for entry in entries:
+        parts = entry["path"].split("/")
+        parent = ""
+        for name in parts[:-1]:
+            path = parent + "/" + name if parent else name
+            existing = directories[parent].setdefault(name, ("40000", path))
+            require(existing == ("40000", path), "invalid_git_snapshot_tree")
+            directories.setdefault(path, {})
+            require(len(directories) <= 10000, "git_snapshot_directory_limit")
+            parent = path
+        require(parts[-1] not in directories[parent], "invalid_git_snapshot_tree")
+        directories[parent][parts[-1]] = (entry["mode"], entry["oid"])
+    objects, tree_ids, total = {}, {}, 0
+    for path in sorted(directories, key=lambda p: (p.count("/"), len(p)), reverse=True):
+        children = directories[path]
+        raw = bytearray()
+        for name in sorted(children, key=lambda n: n.encode() + (b"/" if children[n][0] == "40000" else b"")):
+            mode, oid = children[name]
+            if mode == "40000":
+                oid = tree_ids[oid]
+            raw.extend(mode.encode() + b" " + name.encode() + b"\0" + bytes.fromhex(oid))
+        raw = bytes(raw)
+        total += len(raw)
+        require(total <= MAX_BLOB_BYTES, "git_snapshot_metadata_limit")
+        oid = hashlib.new(fmt, b"tree " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+        tree_ids[path] = oid
+        objects[oid] = ("tree", raw)
+    require(tree_ids[""] == tree, "git_snapshot_tree_mismatch")
+    raw = git.run(["cat-file", "commit", commit], limit=MAX_BLOB_BYTES)[1]
+    require(total + len(raw) <= MAX_BLOB_BYTES and raw.startswith(b"tree " + tree.encode() + b"\n")
+            and object_matches(raw, "commit", commit, fmt), "git_snapshot_commit_mismatch")
+    objects[commit] = ("commit", raw)
+    return objects
+
+
+def git_snapshot_layout(commit, objects, entries, fmt):
+    config = ("[core]\n\trepositoryformatversion = " + ("1" if fmt == "sha256" else "0")
+              + "\n\tbare = false\n\tfilemode = true\n\tlogAllRefUpdates = false\n"
+                "\thooksPath = /dev/null\n\tfsmonitor = false\n[gc]\n\tauto = 0\n"
+                "[maintenance]\n\tauto = false\n")
+    if fmt == "sha256":
+        config += "[extensions]\n\tobjectformat = sha256\n"
+    files = {"HEAD": (commit + "\n").encode(), "shallow": (commit + "\n").encode(), "config": config.encode()}
+    for oid, (kind, raw) in objects.items():
+        files["objects/" + oid[:2] + "/" + oid[2:]] = (kind, len(raw), oid)
+    for entry in entries:
+        oid = entry["oid"]
+        files["objects/" + oid[:2] + "/" + oid[2:]] = ("blob", entry["bytes"], oid)
+    directories = {"", "objects", "refs", "refs/heads", "refs/tags"}
+    for name in files:
+        if name.startswith("objects/"):
+            directories.add(name.rsplit("/", 1)[0])
+    return files, directories
+
+
+def materialize_git_snapshot(workspace, commit, tree, objects, entries, blobs, fmt):
+    files, directories = git_snapshot_layout(commit, objects, entries, fmt)
+    root = workspace / ".git"
+    for name in sorted(directories, key=lambda p: (p.count("/"), len(p), p)):
+        (root / name).mkdir(mode=0o700)
+    for name, value in files.items():
+        if isinstance(value, tuple):
+            kind, size, oid = value
+            raw = blobs[oid] if kind == "blob" else objects[oid][1]
+            value = zlib.compress(kind.encode() + b" " + str(size).encode() + b"\0" + raw)
+        fd = os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+    # read-tree populates only the new index; no checkout, filters or hooks run.
+    collect.LocalGit(workspace, 10).run(["read-tree", "--no-sparse-checkout", tree])
+    os.chmod(root / "index", 0o600)
+    return files, directories
+
+
+def git_snapshot_read(fd, name, limit):
+    handle = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    with os.fdopen(handle, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        # Git may refresh index stat data with mode 0644. Its parent is private;
+        # permit that normal refresh, never a different owner/link/shared write.
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.geteuid()
+                and not info.st_mode & 0o022 and info.st_size <= limit, "unsafe_git_snapshot_file")
+        raw = stream.read(limit + 1)
+        require(len(raw) <= limit, "git_snapshot_file_limit")
+        return raw
+
+
+def git_snapshot_matches(workspace, layout, entries, fmt):
+    if layout is None:
+        return True
+    files, directories = layout
+    root = workspace / ".git"
+    try:
+        members = {name: set() for name in directories}
+        for name in (set(files) | directories | {"index"}) - {""}:
+            parent, _, child = name.rpartition("/")
+            members[parent].add(child)
+        for directory, expected in members.items():
+            with fleet.directory_fd(root / directory, private=True) as fd:
+                require(set(os.listdir(fd)) == expected, "git_snapshot_members_changed")
+                for child in expected:
+                    name = directory + "/" + child if directory else child
+                    if name in directories:
+                        continue
+                    if name == "index":
+                        git_snapshot_read(fd, child, MAX_BLOB_BYTES)
+                        continue
+                    wanted = files[name]
+                    limit = len(wanted) if isinstance(wanted, bytes) else MAX_BLOB_BYTES + 65536
+                    raw = git_snapshot_read(fd, child, limit)
+                    if isinstance(wanted, bytes):
+                        require(raw == wanted, "git_snapshot_control_changed")
+                    else:
+                        kind, size, oid = wanted
+                        header = kind.encode() + b" " + str(size).encode() + b"\0"
+                        inflater = zlib.decompressobj()
+                        content = inflater.decompress(raw, len(header) + size + 1)
+                        require(inflater.eof and not inflater.unused_data and not inflater.unconsumed_tail
+                                and content.startswith(header) and len(content) == len(header) + size
+                                and object_matches(content[len(header):], kind, oid, fmt), "git_snapshot_object_changed")
+        # Only after rejecting config, links and extra members may Git parse its
+        # index. Read-only plumbing accepts harmless stat-cache refreshes, not
+        # added/deleted/staged entries, conflict stages or a different commit.
+        raw = collect.LocalGit(workspace, 10).run(["ls-files", "--stage", "-z"], limit=MAX_BLOB_BYTES)[1]
+        expected = b"".join((e["mode"] + " " + e["oid"] + " 0\t" + e["path"]).encode() + b"\0"
+                            for e in sorted(entries, key=lambda e: e["path"].encode()))
+        return raw == expected
+    except (fleet.Refused, OSError, ValueError, zlib.error, subprocess.SubprocessError):
+        return False
+
+
 def run_command(command, program, workspace, env, logs, deadline):
     """Capture bounded private logs; failure and timeout are never successful tests."""
     row = {"id": command["id"], "status": "unconfirmed", "exit_code": None, "logs": {}}
@@ -276,13 +421,14 @@ def run_command(command, program, workspace, env, logs, deadline):
     return row
 
 
-def execute(repository, commit, spec, output, timeout=600, approval=None):
+def execute(repository, commit, spec, output, timeout=600, approval=None, *, git_snapshot=False):
     global RUN_STARTED, OUTPUT_DIRECTORY
     RUN_STARTED, OUTPUT_DIRECTORY = False, None
     require(sys.platform == "linux" and os.getuid() == os.geteuid() and os.geteuid() != 0
             and not os.environ.get("SUDO_USER"), "test_as_repository_owner_without_sudo")
     require(type(timeout) is int and 1 <= timeout <= 3600, "invalid_test_deadline")
     require(approval is None or fleet.matches(r"[0-9a-f]{64}", approval), "invalid_test_approval")
+    require(type(git_snapshot) is bool, "invalid_git_snapshot_option")
     spec = specification(spec)
     repository, output = (Path(fleet.absolute_path(str(Path(os.path.abspath(p))))) for p in (repository, output))
     fleet.state_preflight({"state_directory": str(output)})
@@ -294,6 +440,7 @@ def execute(repository, commit, spec, output, timeout=600, approval=None):
     with fleet.directory_fd(destination["common_directory"]["path"]) as source:
         collect.lock(source)
         tree, entries, total = tree_snapshot(git, commit, destination["object_format"])
+        objects = git_snapshot_objects(git, commit, tree, entries, destination["object_format"]) if git_snapshot else None
         programs = {c["argv"][0]: executable(c["argv"][0]) for c in spec["commands"]}
         with fleet.directory_fd(output.parent) as parent:
             info = os.fstat(parent)
@@ -307,6 +454,8 @@ def execute(repository, commit, spec, output, timeout=600, approval=None):
                 "output_directory": str(output), "output_parent_identity": parent_identity,
                 "deadline_seconds": timeout, "runs_project_code": True, "sandboxed": False,
                 "network_isolated": False, "inherits_environment": False, "git_history_included": False}
+        if git_snapshot:
+            plan.update(policy=GIT_SNAPSHOT_POLICY, git_snapshot=GIT_SNAPSHOT_MODE)
         require(len(encoded(plan)) <= fleet.LIMIT, "test_plan_size_limit")
         plan_sha = digest(encoded(plan))
         report = {"schema": SCHEMA, "status": "preview", "plan": plan, "plan_sha256": plan_sha,
@@ -329,11 +478,19 @@ def execute(repository, commit, spec, output, timeout=600, approval=None):
             for path in (workspace, logs, output / "home", output / "tmp"):
                 path.mkdir(mode=0o700)
             materialize(workspace, entries, blobs)
-            require(workspace_matches(workspace, entries, destination["object_format"]), "test_snapshot_mismatch")
+            layout = materialize_git_snapshot(workspace, commit, tree, objects, entries, blobs,
+                                               destination["object_format"]) if git_snapshot else None
+            def sources_match():
+                return (workspace_matches(workspace, entries, destination["object_format"])
+                        and git_snapshot_matches(workspace, layout, entries, destination["object_format"]))
+            require(sources_match(), "test_snapshot_mismatch")
             env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "CI": "true",
                    **spec["environment"], "HOME": str(output / "home"), "TMPDIR": str(output / "tmp"),
                    "XDG_CONFIG_HOME": str(output / "home/config"), "XDG_CACHE_HOME": str(output / "home/cache"),
                    "XDG_DATA_HOME": str(output / "home/data")}
+            if git_snapshot:
+                env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+                           GIT_NO_REPLACE_OBJECTS="1", GIT_NO_LAZY_FETCH="1", GIT_TERMINAL_PROMPT="0")
             rows = [{"id": c["id"], "status": "not_attempted"} for c in spec["commands"]]
             deadline = time.monotonic() + timeout
             for index, command in enumerate(spec["commands"]):
@@ -346,7 +503,7 @@ def execute(repository, commit, spec, output, timeout=600, approval=None):
                               "plan_sha256": plan_sha, "command": command})
                 RUN_STARTED = report["run_started"] = True
                 rows[index] = run_command(command, programs[command["argv"][0]], workspace, env, logs, deadline)
-                unchanged = workspace_matches(workspace, entries, destination["object_format"])
+                unchanged = sources_match()
                 rows[index]["tracked_sources_unchanged"] = unchanged
                 if not unchanged:
                     rows[index]["status"] = "sources_changed"
@@ -366,8 +523,12 @@ def evidence_plan(plan, expected):
               "tree_entries_sha256", "files", "tree_bytes", "specification", "executables",
               "output_directory", "output_parent_identity", "deadline_seconds", "runs_project_code",
               "sandboxed", "network_isolated", "inherits_environment", "git_history_included"}
-    require(type(plan) is dict and set(plan) == fields and plan["schema"] == SCHEMA
-            and plan["policy"] == "exact-tree-explicit-unsandboxed-tests-v1", "invalid_saved_test_plan")
+    require(type(plan) is dict, "invalid_saved_test_plan")
+    if plan.get("policy") == GIT_SNAPSHOT_POLICY:
+        fields.add("git_snapshot")
+        require(plan.get("git_snapshot") == GIT_SNAPSHOT_MODE, "invalid_saved_git_snapshot")
+    require(set(plan) == fields and plan["schema"] == SCHEMA
+            and plan["policy"] in ("exact-tree-explicit-unsandboxed-tests-v1", GIT_SNAPSHOT_POLICY), "invalid_saved_test_plan")
     require(fleet.matches(r"[0-9a-f]{64}", expected) and digest(encoded(plan)) == expected,
             "test_evidence_plan_mismatch")
     specification(plan["specification"])
@@ -502,7 +663,14 @@ def test_evidence(path, repository, expected, timeout=90):
             result, metadata, logs = evidence_records(fd, plan, expected)
             require(metadata["intent.json"] == intent_raw, "test_evidence_changed")
             workspace = path / "workspace"
-            unchanged = workspace_matches(workspace, entries, destination["object_format"])
+            layout = None
+            if plan["policy"] == GIT_SNAPSHOT_POLICY:
+                objects = git_snapshot_objects(git, plan["commit"], tree, entries, destination["object_format"])
+                layout = git_snapshot_layout(plan["commit"], objects, entries, destination["object_format"])
+            def sources_match():
+                return (workspace_matches(workspace, entries, destination["object_format"])
+                        and git_snapshot_matches(workspace, layout, entries, destination["object_format"]))
+            unchanged = sources_match()
             directories = {"workspace", "logs", "home", "tmp"}
             def guard():
                 with fleet.directory_fd(path, private=True) as current:
@@ -520,8 +688,7 @@ def test_evidence(path, repository, expected, timeout=90):
                         require(set(os.listdir(log_fd)) == set(logs), "unexpected_test_evidence_log")
                         for name, expected_log in logs.items():
                             require(log_fingerprint(log_fd, name) == expected_log, "test_evidence_changed")
-                    require(workspace_matches(workspace, entries, destination["object_format"]) == unchanged,
-                            "test_evidence_workspace_changed")
+                    require(sources_match() == unchanged, "test_evidence_workspace_changed")
             guard()
             status = "incomplete" if result is None else result["status"] if unchanged else "sources_changed"
             evidence_hash = digest(encoded({"records": {k: digest(v) if v is not None else None for k, v in metadata.items()},
@@ -736,12 +903,14 @@ def main(args=None):
     parser.add_argument("--spec", required=True, help="Private reviewed JSON test commands; no automatic project discovery")
     parser.add_argument("--output-dir", required=True, help="New private directory outside the repository; retained on failure")
     parser.add_argument("--deadline", type=int, default=600, help="Test phase deadline, 1..3600 seconds; Git staging has its own same-size budget")
+    parser.add_argument("--git-snapshot", action="store_true",
+                        help="Include independent shallow Git metadata for this commit; no parents, tags, remotes or source configuration")
     parser.add_argument("--run", action="store_true", help="Run trusted project code as you; NOT sandboxed and may access network")
     parser.add_argument("--accept-plan")
     options = parser.parse_args(args)
     require(options.run == (options.accept_plan is not None), "test_run_requires_exact_approval")
     result = execute(options.repository, options.commit, decode(fleet.read_input(options.spec)),
-                     options.output_dir, options.deadline, options.accept_plan)
+                     options.output_dir, options.deadline, options.accept_plan, git_snapshot=options.git_snapshot)
     print(encoded(result).decode(), end="")
     return 1 if result["status"] == "failed" else 0
 

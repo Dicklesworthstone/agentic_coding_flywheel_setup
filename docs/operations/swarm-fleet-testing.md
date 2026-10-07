@@ -83,12 +83,66 @@ attribute cannot hide a failing test or rewrite the tested bytes. Source object
 hashes are checked. Absolute, escaping, dangling or cyclic symlinks, submodules,
 and Git LFS pointers are refused instead of qualifying an incomplete snapshot.
 
-**The snapshot has no `.git` directory or history.** Checks requiring history,
+**By default the snapshot has no `.git` directory or history.** Checks requiring history,
 tags, submodules, LFS materialization or the original dirty working tree need a
 separate explicitly configured environment. No checkout, ref, index, object or
 configuration change is made in the source repository by the runner. This does
 not restrict what intentionally executed test code can do with the same user's
 permissions. Ordinary and linked worktrees and SHA-1/SHA-256 commits are supported.
+
+### Git-dependent builds and tests
+
+Add `--git-snapshot` to both preview and execution when checks need a real Git
+repository, for example `git rev-parse HEAD`, `git ls-files`, `git status`, or
+`git diff`. After upgrading the installed runtime from this source, this is:
+
+```bash
+acfs-fleet test \
+  --repository /path/to/project --commit FULL_CANDIDATE_COMMIT_ID \
+  --spec /path/to/private-tests.json \
+  --output-dir "$HOME/fleet-git-tests-wave1" --git-snapshot
+```
+
+Review the new plan, then repeat with `--run --accept-plan THE_TEST_PLAN_DIGEST`.
+The option is part of approval: a plain-snapshot approval cannot enable it, and
+its approval cannot silently select a plain snapshot. Retained older runtimes
+keep their original behavior and do not gain this option automatically.
+
+This mode creates an **independent, shallow, single-commit repository** inside
+`workspace/.git`. HEAD is detached at the actual reviewed commit, not a synthetic
+replacement. The index records its exact tracked paths, modes and object IDs.
+Verified blobs and reconstructed, root-hash-checked trees are copied into a new
+loose object store; nothing is hard-linked or borrowed from the source. This is
+not a linked worktree or a clone of the source's configuration. The runner copies
+no source remotes, hooks, tags, branches, alternates, credentials or dirty files.
+It performs no fetch, checkout or source-repository update. System/global Git
+configuration is disabled in the test environment for this mode.
+
+**No parent history or tags are included.** `git log`/`rev-list` see one commit,
+so history counts, tag-based version derivation and parent diffs still need a
+ different explicitly configured environment. Submodules and LFS remain refused.
+The selected commit object includes its original author, committer and message;
+review the workspace before sharing it. Tests remain unsandboxed and can execute
+arbitrary Git operations, network calls or same-user filesystem access themselves.
+
+After each command and when verifying saved evidence, the runner checks the
+Git control files, exact directory members, object contents and semantic index
+against the original commit. Normal index stat refreshes are accepted. Changing
+HEAD, staged entries, configuration, refs or objects makes the run
+`sources_changed`, even after exit 0, and stops later commands. Altered saved Git
+metadata also prevents promotion/publication through the existing evidence gate.
+Verification never repairs the snapshot or reruns tests, and it rejects unsafe
+metadata before allowing read-only Git index inspection. As with tracked files,
+checks do not detect changes a trusted test makes and restores between observations.
+
+The opt-in uses test policy `exact-tree-explicit-unsandboxed-tests-v2` and
+`git_snapshot: shallow-single-commit-v1`; ordinary v1 evidence remains supported.
+The existing `git_history_included` field remains false: copying one commit is
+not copying its history. Canonical reconstructed trees are required; noncanonical
+tree encodings are refused rather than rewritten to a different commit.
+Additional limits are 10,000 tree directories, 8 MiB combined tree/commit
+metadata, 8 MiB index data, and a separate 10-second bound on each snapshot
+index plumbing call. Copied Git objects consume additional disk space.
 
 ## Results and failure handling
 
@@ -136,6 +190,7 @@ resource-limited environment when appropriate.
 
 ```bash
 python3 -B tests/unit/test_swarm_fleet_test.py -v
+python3 -B tests/unit/test_swarm_fleet_git_snapshot.py -v
 ```
 
 The suite uses real Git objects and actual unprivileged subprocesses, including
@@ -144,3 +199,6 @@ production integration controller. It covers dirty/linked worktrees, SHA-256,
 raw export attributes, binary/executable/link handling, aggregate and per-test
 deadlines, output limits, source mutation, executable/spec changes and interruption.
 It does not claim a sandbox, live provider acceptance or full installer validation.
+The Git-snapshot suite runs real Git commands as an unprivileged user, verifies
+dirty-source preservation, SHA-256 and unusual paths, and exercises altered
+metadata, objects, unsafe files, approval separation and actual local promotion.
