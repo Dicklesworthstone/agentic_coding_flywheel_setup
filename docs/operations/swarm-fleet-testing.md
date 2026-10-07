@@ -191,6 +191,7 @@ resource-limited environment when appropriate.
 ```bash
 python3 -B tests/unit/test_swarm_fleet_test.py -v
 python3 -B tests/unit/test_swarm_fleet_git_snapshot.py -v
+python3 -B tests/unit/test_fleet_runtime_git_snapshot.py -v
 ```
 
 The suite uses real Git objects and actual unprivileged subprocesses, including
@@ -202,3 +203,10 @@ It does not claim a sandbox, live provider acceptance or full installer validati
 The Git-snapshot suite runs real Git commands as an unprivileged user, verifies
 dirty-source preservation, SHA-256 and unusual paths, and exercises altered
 metadata, objects, unsafe files, approval separation and actual local promotion.
+The installed integration suite runs the production frontend, test/evidence,
+promotion and publication code after the controller checkout becomes unavailable.
+It covers real local bare-receiver pushes and read-only checks for SHA-1,
+SHA-256 and a two-parent merge candidate, linked source worktrees, source-only
+hooks/filters, and refusal of failing or subsequently altered test evidence.
+Unused preparation/dispatch/status roles are inert sentinels in that fixture;
+the suite does not launch agents or establish live SSH/provider acceptance.
