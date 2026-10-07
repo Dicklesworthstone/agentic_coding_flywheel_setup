@@ -17,19 +17,23 @@ import secrets
 import stat
 import sys
 
-SCHEMA = "acfs.fleet-runtime.v4"
+SCHEMA = "acfs.fleet-runtime.v5"
 LEGACY_SCHEMA = "acfs.fleet-runtime.v1"
 OBSERVER_SCHEMA = "acfs.fleet-runtime.v2"
 COLLECTION_SCHEMA = "acfs.fleet-runtime.v3"
+TEST_SCHEMA = "acfs.fleet-runtime.v4"
 PLAN_SCHEMA = "acfs.fleet-runtime-install.v1"
-COMMANDS = {name: "swarm-fleet-" + name + ".py" for name in ("launch", "prepare", "dispatch", "status", "collect", "test")}
+COMMANDS = {name: "swarm-fleet-" + name + ".py" for name in ("launch", "prepare", "dispatch", "status", "collect", "test", "publish")}
 FILES = tuple(sorted(("acfs-fleet.py", *COMMANDS.values())))
 # Fixed role sets, not arbitrary paths or optional files from an untrusted
 # manifest. Retained releases keep exactly their original capabilities.
 FILES_BY_SCHEMA = {
-    LEGACY_SCHEMA: tuple(name for name in FILES if name not in (COMMANDS["status"], COMMANDS["collect"], COMMANDS["test"])),
-    OBSERVER_SCHEMA: tuple(name for name in FILES if name not in (COMMANDS["collect"], COMMANDS["test"])),
-    COLLECTION_SCHEMA: tuple(name for name in FILES if name != COMMANDS["test"]),
+    LEGACY_SCHEMA: tuple(name for name in FILES if name not in
+                         (COMMANDS["status"], COMMANDS["collect"], COMMANDS["test"], COMMANDS["publish"])),
+    OBSERVER_SCHEMA: tuple(name for name in FILES if name not in
+                           (COMMANDS["collect"], COMMANDS["test"], COMMANDS["publish"])),
+    COLLECTION_SCHEMA: tuple(name for name in FILES if name not in (COMMANDS["test"], COMMANDS["publish"])),
+    TEST_SCHEMA: tuple(name for name in FILES if name != COMMANDS["publish"]),
     SCHEMA: FILES,
 }
 LIMIT = 1024 * 1024
@@ -305,10 +309,10 @@ def install(prefix, bin_dir, approval=None):
             "network_access": False, "starts_agents": False, "sends_prompts": False}
 
 
-HELP = """Usage: acfs-fleet {launch|prepare|dispatch|status|collect|test} [CONTROLLER OPTIONS...]
+HELP = """Usage: acfs-fleet {launch|prepare|dispatch|status|collect|test|publish} [CONTROLLER OPTIONS...]
        acfs-fleet version
        acfs-fleet runtimes
-       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|status|collect|test|version} [OPTIONS...]
+       acfs-fleet --runtime SHA256 {launch|prepare|dispatch|status|collect|test|publish|version} [OPTIONS...]
        python3 -I scripts/acfs-fleet.py install --prefix DIR --bin-dir DIR
            [--apply --accept-plan SHA256]
 
@@ -319,6 +323,8 @@ Collect previews committed Git ranges and saves bundles only with explicit appro
 its separate offline import/integration modes require their own explicit approvals.
 Test previews exact-commit checks; --run executes approved project code in a private
 snapshot with a clean environment, NOT a sandbox. It may access network/user files.
+Publish previews the explicit remote branch; only --push with its own approval
+uploads tested history. A push may activate server hooks, CI or deployments.
 Use COMMAND --help for the existing operation and recovery options.
 Installation is offline and preview-only by default, as the target user without
 sudo. Prefix and bin directory must already exist and be user-owned, not writable
@@ -327,7 +333,7 @@ by others. Releases are retained; an update never deletes a previous runtime.
 Use the original runtime for recovery; absent or damaged releases never fall back.
 Retained four/five-file runtimes stay usable but do not provide collect.
 The four-file runtime also lacks status; unsupported commands never fall back.
-Only seven-file v4 runtimes provide test; older runtimes are not modified.
+Test requires v4 or newer; publish requires v5. Retained runtimes are never modified.
 """
 
 

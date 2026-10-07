@@ -15,10 +15,11 @@ are performed by this controller; remote automation is outside its control.
 
 ## Preview and publish
 
-From a trusted complete checkout on Linux, as the repository owner:
+After an explicit [fleet runtime installation or upgrade](fleet-runtime.md),
+run on Linux as the repository owner:
 
 ```bash
-python3 -I scripts/swarm-fleet-publish.py \
+acfs-fleet publish \
   --test-run "$HOME/fleet-tests-wave1" \
   --repository /path/to/project \
   --expect-test-plan ORIGINAL_TEST_PLAN_DIGEST \
@@ -29,6 +30,13 @@ python3 -I scripts/swarm-fleet-publish.py \
   --identity-file "$HOME/.ssh/id_ed25519" \
   --state-dir "$HOME/fleet-publication-wave1"
 ```
+
+From a complete trusted checkout, `python3 -I scripts/swarm-fleet-publish.py`
+accepts the same arguments. Installed publication requires a v5 runtime. Older
+v1/v2/v3/v4 versions retain their original capabilities and cannot fall back to
+the new publisher. Keep the original runtime ID with publication records;
+`acfs-fleet --runtime ORIGINAL_RUNTIME_ID publish ...` selects that complete
+retained implementation without changing the active launcher.
 
 Replace the placeholders and select the actual branch, destination and identity.
 The local `release` branch must already point directly to the exact tested commit;

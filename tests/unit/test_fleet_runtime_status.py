@@ -32,8 +32,10 @@ class RuntimeStatusTests(unittest.TestCase):
     def legacy(self, active=True, schema="acfs.fleet-runtime.v1"):
         fx = self.fx
         names = LEGACY_FILES if schema == "acfs.fleet-runtime.v1" else (*LEGACY_FILES, "swarm-fleet-status.py")
-        if schema == "acfs.fleet-runtime.v3":
+        if schema in ("acfs.fleet-runtime.v3", "acfs.fleet-runtime.v4"):
             names = (*names, "swarm-fleet-collect.py")
+        if schema == "acfs.fleet-runtime.v4":
+            names = (*names, "swarm-fleet-test.py")
         files = {name: (LEGACY_FRONTEND if name == "acfs-fleet.py" else fx.peer).encode() for name in names}
         manifest = {"schema": schema, "files": {
             name: {"sha256": runtime.sha(raw), "bytes": len(raw)} for name, raw in files.items()}}
@@ -64,14 +66,14 @@ class RuntimeStatusTests(unittest.TestCase):
         report = fx.install()
         version = fx.run_cli(["version"], installed=True)
         self.assertEqual(version.returncode, 0, version.stderr)
-        self.assertEqual(json.loads(version.stdout)["schema"], "acfs.fleet-runtime.v4")
-        self.assertEqual(set(json.loads(version.stdout)["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test"})
+        self.assertEqual(json.loads(version.stdout)["schema"], "acfs.fleet-runtime.v5")
+        self.assertEqual(set(json.loads(version.stdout)["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test", "publish"})
         result = fx.run_cli(["runtimes"], installed=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         rows = {r["runtime"]: r for r in json.loads(result.stdout)["runtimes"]}
         self.assertEqual(set(rows), {old_id, report["runtime"]})
         self.assertEqual(set(rows[old_id]["commands"]), {"launch", "prepare", "dispatch"})
-        self.assertEqual(set(rows[report["runtime"]]["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test"})
+        self.assertEqual(set(rows[report["runtime"]]["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test", "publish"})
         self.assertTrue(rows[report["runtime"]]["current"])
         self.assertEqual(fx.members(old), before)
 
@@ -212,7 +214,7 @@ for name, raw in (("known", fixture.known), ("identity", fixture.key)):
         self.assertEqual(set(rows), {v1, v2, current["runtime"]})
         self.assertEqual(rows[v1]["commands"], ["launch", "prepare", "dispatch"])
         self.assertEqual(rows[v2]["commands"], ["launch", "prepare", "dispatch", "status"])
-        self.assertEqual(rows[current["runtime"]]["commands"], ["launch", "prepare", "dispatch", "status", "collect", "test"])
+        self.assertEqual(rows[current["runtime"]]["commands"], ["launch", "prepare", "dispatch", "status", "collect", "test", "publish"])
         for old in (v1, v2):
             result = fx.run_cli(["--runtime", old, "collect", "--help"], installed=True)
             self.assertEqual(result.returncode, 2)
@@ -232,6 +234,7 @@ for name, raw in (("known", fixture.known), ("identity", fixture.key)):
             "acfs.fleet-runtime.v2": set(LEGACY_FILES) | {"swarm-fleet-status.py"},
             "acfs.fleet-runtime.v3": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py"},
             "acfs.fleet-runtime.v4": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py", "swarm-fleet-test.py"},
+            "acfs.fleet-runtime.v5": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py", "swarm-fleet-test.py", "swarm-fleet-publish.py"},
         }
         self.assertEqual(set(runtime.FILES_BY_SCHEMA), set(expected))
         for schema, names in expected.items():
@@ -420,6 +423,116 @@ print(json.dumps({{"repo": str(fixture.repo), "commit": fixture.commit,
             self.assertEqual((Path(output) / "logs/unit.stdout").read_text(), "tested exact source\n")
             self.assertFalse(report["plan"]["sandboxed"])
         self.assertEqual(fx.members(Path(data["repo"])), original)
+
+    def test_retained_v1_through_v4_never_acquire_publication(self):
+        fx = self.fx
+        old = [self.legacy(active=False, schema="acfs.fleet-runtime.v" + str(n)) for n in range(1, 5)]
+        before = [fx.members(root) for _, root in old]
+        installed = fx.install()
+        result = fx.run_cli(["runtimes"], installed=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = {r["runtime"]: r for r in json.loads(result.stdout)["runtimes"]}
+        self.assertEqual(len(rows), 5)
+        self.assertIn("publish", rows[installed["runtime"]]["commands"])
+        for old_id, _ in old:
+            self.assertNotIn("publish", rows[old_id]["commands"])
+            result = fx.run_cli(["--runtime", old_id, "publish", "--push"], installed=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("runtime_command_unavailable", result.stderr)
+        self.assertEqual([fx.members(root) for _, root in old], before)
+        self.assertEqual(os.readlink(fx.bin_dir / "acfs-fleet"), installed["pinned_launcher"])
+
+    def test_v4_test_frontend_keeps_original_recovery_arguments(self):
+        fx = self.fx
+        old_id, root = self.legacy(schema="acfs.fleet-runtime.v4")
+        before = fx.members(root)
+        fx.install()
+        args = ["test", "--promote", "original ' run", "--check", "--accept-plan", "d" * 64]
+        result = fx.run_cli(["--runtime", old_id, *args], installed=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"legacy_frontend": True, "argv": args})
+        self.assertEqual(fx.members(root), before)
+
+    def test_publication_code_is_required_and_bound_to_installation_approval(self):
+        fx = self.fx
+        preview = fx.preview()
+        source = fx.checkout / "swarm-fleet-publish.py"
+        source.write_text(fx.peer + "# changed publication authority\n")
+        result = fx.run_cli([*fx.options(), "--apply", "--accept-plan", preview["plan_sha256"]])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("installation_approval_mismatch", result.stderr)
+        source.rename(fx.checkout / "retained-publication-controller")
+        self.assertEqual(fx.run_cli(fx.options()).returncode, 2)
+        self.assertFalse((fx.prefix / "releases").exists())
+
+    def test_damaged_publisher_blocks_whole_runtime(self):
+        fx = self.fx
+        installed = fx.install()
+        path = Path(installed["pinned_launcher"]).parent / "swarm-fleet-publish.py"
+        path.chmod(0o600)
+        path.write_text("raise SystemExit('WRONG PUBLICATION CODE')\n")
+        path.chmod(0o400)
+        for command in ("publish", "test", "launch", "version"):
+            result = fx.run_cli([command, "--help"], installed=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("runtime_integrity_mismatch", result.stderr)
+            self.assertNotIn("WRONG PUBLICATION CODE", result.stdout + result.stderr)
+
+    def test_publish_passes_literal_approval_arguments_stdin_and_exit_status(self):
+        fx = self.fx
+        installed = fx.install()
+        args = ["--push", "--accept-plan", "a" * 64, "$(touch NEVER)", "", "--exit"]
+        for prefix in ([], ["--runtime", installed["runtime"]]):
+            result = fx.run_cli([*prefix, "publish", *args], installed=True)
+            self.assertEqual(result.returncode, 23, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["argv"], args)
+        result = fx.run_cli(["publish", "--echo-stdin"], installed=True, input="literal input\n")
+        self.assertEqual(result.stdout, "literal input\n")
+        self.assertEqual(fx.run_cli(["publish", "--signal"], installed=True).returncode, -15)
+        self.assertFalse((fx.home / "NEVER").exists())
+
+    def test_installed_publisher_uses_real_git_and_evidence_without_checkout(self):
+        fx = self.fx
+        # All four modules executed by this operation are production code.
+        # Unrelated launch/prepare/status peers are not executed.
+        for name in ("swarm-fleet-publish.py", "swarm-fleet-test.py",
+                     "swarm-fleet-collect.py", "swarm-fleet-launch.py"):
+            (fx.checkout / name).write_bytes((ROOT / "scripts" / name).read_bytes())
+        installed = fx.install()
+        setup = f'''import importlib.util, json
+spec = importlib.util.spec_from_file_location("publication_fixture", {str(Path(__file__).with_name('test_swarm_fleet_publish.py'))!r})
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+fixture = module.Fixture(integrate=True)
+print(json.dumps({{"argv": fixture.cli_args()[3:], "repo": str(fixture.repo),
+                  "remote": str(fixture.remote), "candidate": fixture.candidate,
+                  "state": str(fixture.state)}}))
+'''
+        made = subprocess.run([sys.executable, "-I", "-c", setup], capture_output=True, text=True,
+                              env=fx.env, timeout=20, **fx.credentials)
+        self.assertEqual(made.returncode, 0, made.stderr)
+        data = json.loads(made.stdout)
+        fx.checkout.rename(fx.root / "retained-source")
+        original = fx.members(Path(data["repo"]))
+        args = ["publish", *data["argv"]]
+        preview = fx.run_cli(args, installed=True)
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        self.assertFalse(Path(data["state"]).exists())
+        digest = json.loads(preview.stdout)["plan_sha256"]
+        published = fx.run_cli([*args, "--push", "--accept-plan", digest], installed=True)
+        self.assertEqual(published.returncode, 0, published.stdout + published.stderr)
+        self.assertEqual(json.loads(published.stdout)["status"], "published")
+        saved = fx.members(Path(data["state"]))
+        for prefix in ([], ["--runtime", installed["runtime"]]):
+            checked = fx.run_cli([*prefix, *args, "--check", "--accept-plan", digest], installed=True)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            self.assertEqual(json.loads(checked.stdout)["remote_status"], "matched")
+        self.assertEqual(fx.members(Path(data["repo"])), original)
+        self.assertEqual(fx.members(Path(data["state"])), saved)
+        observed = subprocess.run(["/usr/bin/git", "-C", data["remote"], "rev-parse", "refs/heads/main"],
+                                  capture_output=True, text=True, env=fx.env, timeout=5, **fx.credentials)
+        self.assertEqual(observed.returncode, 0, observed.stderr)
+        self.assertEqual(observed.stdout.strip(), data["candidate"])
 
 
 if __name__ == "__main__":
