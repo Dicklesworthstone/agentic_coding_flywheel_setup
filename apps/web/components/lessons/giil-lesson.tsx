@@ -925,7 +925,7 @@ function InteractiveCloudDownload() {
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-400/60" />
                   )}
                 </div>
-                <p className="text-[10px] text-white/30 truncate font-mono">
+                <p className="text-xs text-white/30 truncate font-mono">
                   {provider.urlPattern}
                 </p>
                 <div className="mt-1.5">

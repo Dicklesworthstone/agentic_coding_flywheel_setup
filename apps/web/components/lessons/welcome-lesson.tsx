@@ -871,15 +871,15 @@ function InteractiveArchitecture() {
                       }}
                     />
                   </div>
-                  <span className="text-[10px] text-white/40">Active - running and healthy</span>
+                  <span className="text-xs text-white/40">Active - running and healthy</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-amber-400" />
-                  <span className="text-[10px] text-white/40">Ready - installed, needs auth</span>
+                  <span className="text-xs text-white/40">Ready - installed, needs auth</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-white/20" />
-                  <span className="text-[10px] text-white/40">Standby - available if needed</span>
+                  <span className="text-xs text-white/40">Standby - available if needed</span>
                 </div>
               </div>
             </div>

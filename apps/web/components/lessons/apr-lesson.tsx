@@ -1159,7 +1159,7 @@ function PlanDocument({
                           <span className="text-[10px] font-semibold text-white/40 block">
                             {comment.author}
                           </span>
-                          <span className={`text-[10px] ${cStyle.text}`}>{comment.text}</span>
+                          <span className={`text-xs ${cStyle.text}`}>{comment.text}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -1599,7 +1599,7 @@ function InteractiveRefinementLoop() {
                                       line {comment.line + 1}
                                     </span>
                                   </div>
-                                  <span className={`text-[11px] ${cStyle.text}`}>
+                                  <span className={`text-xs ${cStyle.text}`}>
                                     {comment.text}
                                   </span>
                                 </div>

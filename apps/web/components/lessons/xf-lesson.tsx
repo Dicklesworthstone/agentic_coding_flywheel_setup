@@ -730,7 +730,7 @@ function InteractiveArchiveSearch() {
               <div className="min-w-0">
                 <div className="truncate">{sc.label}</div>
                 <div
-                  className={`text-[10px] truncate ${activeScenario === sc.id ? "text-primary/60" : "text-white/20"}`}
+                  className={`text-xs truncate ${activeScenario === sc.id ? "text-primary/60" : "text-white/20"}`}
                 >
                   {sc.description}
                 </div>

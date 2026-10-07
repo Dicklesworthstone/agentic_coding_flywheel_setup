@@ -942,7 +942,7 @@ function StackTracePanel({ frames, animated }: { frames: StackFrame[]; animated:
               <span className="font-semibold text-white/80">{frame.layer}</span>
               <span className="text-white/30 font-mono truncate">{frame.file}</span>
             </div>
-            <p className={`mt-0.5 ${frame.isError ? "text-red-300/80" : "text-white/50"}`}>
+            <p className={`mt-0.5 text-xs ${frame.isError ? "text-red-300/80" : "text-white/50"}`}>
               {frame.description}
             </p>
           </div>
@@ -1029,7 +1029,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium text-white/80">{fix.label}</span>
+              <span className="text-xs font-medium text-white/80">{fix.label}</span>
               <span
                 className={`text-[10px] font-mono shrink-0 ${
                   fix.confidence >= 90
