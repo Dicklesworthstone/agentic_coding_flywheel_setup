@@ -78,6 +78,50 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     reject "1.4.2 (34cbb9a40)" 1.4.0
     reject 1.4.2 "bogus"      # a corrupt floor never accepts anything
 
+    # ---- pinned Bun binary metadata (#433: name the failing condition) -----
+    [[ "$(type -t bun_binary_unsafe_reason)" == "function" ]] \
+        || fail "bun_binary_unsafe_reason not defined"
+    bun_case() {
+        # bun_case NAME -> fresh dir/bun (0755, nlink 1) under the state tmp
+        local root="$STATE_TMP/bun-$1"
+        mkdir -p "$root/bin"
+        chmod 0755 "$root" "$root/bin"
+        printf '#!/bin/sh\n' > "$root/bin/bun"
+        chmod 0755 "$root/bin/bun"
+        printf '%s\n' "$root/bin/bun"
+    }
+    trusted() {
+        local reason=""
+        reason="$(bun_binary_unsafe_reason "$1")" || fail "expected trusted Bun at $1, got: $reason"
+        [[ -z "$reason" ]] || fail "trusted Bun printed a reason: $reason"
+    }
+    untrusted() {
+        local reason=""
+        ! reason="$(bun_binary_unsafe_reason "$1")" || fail "expected untrusted Bun at $1"
+        [[ "$reason" == *"$2"* ]] || fail "expected reason containing '$2', got: $reason"
+    }
+
+    b="$(bun_case plain)"; trusted "$b"
+    b="$(bun_case bunx-hardlink)"; ln "$b" "${b%/*}/bunx"; trusted "$b"
+    b="$(bun_case bunx-symlink)"; ln -s "$b" "${b%/*}/bunx"; trusted "$b"
+    b="$(bun_case symlinked)"; mv "$b" "$b.real"; ln -s "$b.real" "$b"
+    untrusted "$b" "missing or unsafe"
+    b="$(bun_case missing)"; rm -f -- "$b"; untrusted "$b" "missing or unsafe"
+    b="$(bun_case dir-writable)"; chmod 0775 "${b%/*}"
+    untrusted "$b" "directory is group/world writable (mode 775)"
+    b="$(bun_case bin-writable)"; chmod 0775 "$b"
+    untrusted "$b" "binary is group/world writable (mode 775)"
+    b="$(bun_case three-links)"; ln "$b" "${b%/*}/bunx"; ln "$b" "$STATE_TMP/bun-three-links/snapshot"
+    untrusted "$b" "has 3 hard links"
+    b="$(bun_case foreign-link)"; ln "$b" "$STATE_TMP/bun-foreign-link/elsewhere"
+    untrusted "$b" "second hard link that is not the sibling bunx"
+    b="$(bun_case foreign-link-symlinked-bunx)"; ln -s "$b" "${b%/*}/bunx"
+    ln "$b" "$STATE_TMP/bun-foreign-link-symlinked-bunx/elsewhere"
+    untrusted "$b" "second hard link that is not the sibling bunx"
+    # Owner checks need a second uid; covered by review, not fixtured here.
+    grep -q 'bun_unsafe_reason="$(bun_binary_unsafe_reason "$BUN_BIN")"' "$MONITOR" \
+        || fail "the monitor no longer gates on bun_binary_unsafe_reason"
+
     # ---- alert dedupe ----------------------------------------------------
     due() {
         _fail_alert_due "$@" || fail "expected alert to be due for: $*"

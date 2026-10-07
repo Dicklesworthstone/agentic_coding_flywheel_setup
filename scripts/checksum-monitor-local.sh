@@ -444,6 +444,70 @@ bun_version_is_acceptable() {
     (( 10#${a[2]} >= 10#${m[2]} ))
 }
 
+# bun_binary_unsafe_reason BUN_BIN
+# Prints why the pinned Bun binary cannot be trusted and returns 1, or prints
+# nothing and returns 0. Each condition has its own reason so a fail-closed
+# alert says what to fix (#433 only reported "metadata is unsafe").
+bun_binary_unsafe_reason() {
+    local bin="$1" dir="" uid="" owner="" mode="" links="" inode="" bunx_inode=""
+    uid="$(id -u)"
+    if [[ ! -f "$bin" || -L "$bin" || ! -x "$bin" ]]; then
+        printf 'pinned Bun binary is missing or unsafe: %s\n' "$bin"
+        return 1
+    fi
+
+    dir="${bin%/*}"
+    owner="$(stat -c '%u' -- "$dir" 2>/dev/null || true)"
+    mode="$(stat -c '%a' -- "$dir" 2>/dev/null || true)"
+    if [[ "$owner" != "$uid" ]]; then
+        printf 'pinned Bun directory is owned by uid %s, not %s: %s\n' "${owner:-unknown}" "$uid" "$dir"
+        return 1
+    fi
+    if [[ ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        printf 'pinned Bun directory mode is unreadable: %s\n' "$dir"
+        return 1
+    fi
+    if (( (8#$mode & 022) != 0 )); then
+        printf 'pinned Bun directory is group/world writable (mode %s): %s\n' "$mode" "$dir"
+        return 1
+    fi
+
+    owner="$(stat -c '%u' -- "$bin" 2>/dev/null || true)"
+    mode="$(stat -c '%a' -- "$bin" 2>/dev/null || true)"
+    links="$(stat -c '%h' -- "$bin" 2>/dev/null || true)"
+    if [[ "$owner" != "$uid" ]]; then
+        printf 'pinned Bun binary is owned by uid %s, not %s: %s\n' "${owner:-unknown}" "$uid" "$bin"
+        return 1
+    fi
+    if [[ ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        printf 'pinned Bun binary mode is unreadable: %s\n' "$bin"
+        return 1
+    fi
+    # nlink==1 is the plain case. Bun's own installer hardlinks bunx to bun in
+    # the same directory, so nlink==2 is also legitimate when the extra link is
+    # exactly that sibling bunx (same inode). Anything else stays fail-closed (#355).
+    if [[ "$links" != "1" ]]; then
+        if [[ "$links" != "2" ]]; then
+            printf 'pinned Bun binary has %s hard links (trusted: 1, or 2 with the sibling bunx): %s\n' \
+                "${links:-unknown}" "$bin"
+            return 1
+        fi
+        if [[ -f "$dir/bunx" && ! -L "$dir/bunx" ]]; then
+            inode="$(stat -c '%i' -- "$bin" 2>/dev/null || true)"
+            bunx_inode="$(stat -c '%i' -- "$dir/bunx" 2>/dev/null || true)"
+        fi
+        if [[ -z "$inode" || "$inode" != "$bunx_inode" ]]; then
+            printf 'pinned Bun binary has a second hard link that is not the sibling bunx: %s\n' "$bin"
+            return 1
+        fi
+    fi
+    if (( (8#$mode & 022) != 0 )); then
+        printf 'pinned Bun binary is group/world writable (mode %s): %s\n' "$mode" "$bin"
+        return 1
+    fi
+    return 0
+}
+
 # Consecutive fail-closed runs are tracked so a persistently broken monitor
 # (expired gh auth, dead network, wedged clone) alerts a human instead of
 # silently leaving checksums unmonitored. Alerting is strictly best-effort:
@@ -646,37 +710,8 @@ for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp
         || fail_closed "dependency is group/world writable: $dep -> $dep_real"
 done
 
-[[ -f "$BUN_BIN" && ! -L "$BUN_BIN" && -x "$BUN_BIN" ]] \
-    || fail_closed "pinned Bun binary is missing or unsafe: $BUN_BIN"
-bun_dir="${BUN_BIN%/*}"
-bun_dir_owner="$(stat -c '%u' -- "$bun_dir" 2>/dev/null || true)"
-bun_dir_mode="$(stat -c '%a' -- "$bun_dir" 2>/dev/null || true)"
-[[ "$bun_dir_owner" == "$(id -u)" && "$bun_dir_mode" =~ ^[0-7]{3,4}$ ]] \
-    || fail_closed "pinned Bun directory metadata is unsafe: $bun_dir"
-bun_dir_mode_value=$((8#$bun_dir_mode))
-(( (bun_dir_mode_value & 022) == 0 )) \
-    || fail_closed "pinned Bun directory is group/world writable: $bun_dir"
-bun_owner="$(stat -c '%u' -- "$BUN_BIN" 2>/dev/null || true)"
-bun_links="$(stat -c '%h' -- "$BUN_BIN" 2>/dev/null || true)"
-bun_mode="$(stat -c '%a' -- "$BUN_BIN" 2>/dev/null || true)"
-# nlink==1 is the plain case. Bun's own installer hardlinks bunx to bun in the
-# same directory, so nlink==2 is also legitimate when the extra link is exactly
-# that sibling bunx (same inode). Anything else stays fail-closed (#355).
-bun_links_ok=false
-if [[ "$bun_links" == "1" ]]; then
-    bun_links_ok=true
-elif [[ "$bun_links" == "2" && -f "$bun_dir/bunx" && ! -L "$bun_dir/bunx" ]]; then
-    bun_inode="$(stat -c '%i' -- "$BUN_BIN" 2>/dev/null || true)"
-    bunx_inode="$(stat -c '%i' -- "$bun_dir/bunx" 2>/dev/null || true)"
-    if [[ -n "$bun_inode" && "$bun_inode" == "$bunx_inode" ]]; then
-        bun_links_ok=true
-    fi
-fi
-[[ "$bun_owner" == "$(id -u)" && "$bun_links_ok" == "true" && "$bun_mode" =~ ^[0-7]{3,4}$ ]] \
-    || fail_closed "pinned Bun binary metadata is unsafe: $BUN_BIN"
-bun_mode_value=$((8#$bun_mode))
-(( (bun_mode_value & 022) == 0 )) \
-    || fail_closed "pinned Bun binary is group/world writable: $BUN_BIN"
+bun_unsafe_reason="$(bun_binary_unsafe_reason "$BUN_BIN")" \
+    || fail_closed "$bun_unsafe_reason"
 
 [[ -d "$MONITOR_REPO/.git" ]] || fail_closed "monitor clone not found at $MONITOR_REPO"
 cd "$MONITOR_REPO"
