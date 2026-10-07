@@ -319,12 +319,14 @@ test.describe("Tool Detail Pages (generated data)", () => {
     expect(bodyText).not.toContain("curl -fsSL");
   });
 
-  test("/learn/tools/pt prefers the canonical robot-mode example", async ({ page }) => {
+  test("/learn/tools/pt prefers the canonical manifest example", async ({ page }) => {
     await page.goto("/learn/tools/pt");
     await waitForPageSettled(page);
 
+    // 4c3748ca: pt 2.1.0 has no --top; the manifest example is `pt scan --format json`.
     const bodyText = await page.textContent("body");
-    expect(bodyText).toContain("pt --robot --top 10");
+    expect(bodyText).toContain("pt scan --format json");
+    expect(bodyText).not.toContain("pt --robot --top 10");
     expect(bodyText).not.toContain("pt --help");
   });
 
