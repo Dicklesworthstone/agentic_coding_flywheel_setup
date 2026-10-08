@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "b3c6d5e2ecb3c6f23b330acc5cc716cf350fd1115edd3d12e56e848471f1291a"
+    sha256: "6aaeca92269cad4bf2b61e9f37c55854f9c68b93ea5ab4937bab505ef55ef480"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
