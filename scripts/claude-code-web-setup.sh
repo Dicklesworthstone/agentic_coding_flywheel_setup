@@ -14,7 +14,7 @@
 #   #!/bin/bash
 #   curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
 #
-# or paste this whole file into the field. Network access must be "Full"
+# or paste this whole file into the field. Network access "Full" is recommended
 # (or Custom allowing raw.githubusercontent.com and downloads.agent-flywheel.com).
 # Locked-down networks retain existing tools and report unavailable downloads.
 #
