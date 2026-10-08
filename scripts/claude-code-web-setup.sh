@@ -92,6 +92,8 @@ cloud_find_binary() {
         command -v "$1" 2>/dev/null
 }
 
+# Exported job functions are invoked in the timeout-controlled child Bash.
+# shellcheck disable=SC2329
 cloud_link_onto_path() {
     # Cloud sessions put ~/.local/bin, /usr/local/bin, ~/.cargo/bin and
     # ~/.bun/bin on PATH, but not ~/go/bin or installer-private directories.
@@ -100,27 +102,31 @@ cloud_link_onto_path() {
     dir="$(dirname "$path")"
     case "$dir" in
         "$ACFS_CLOUD_BIN_DIR" | /usr/local/bin | /usr/bin | "$HOME/.cargo/bin" | "$HOME/.bun/bin") ;;
-        *) ln -sf "$path" "$ACFS_CLOUD_BIN_DIR/$bin" ;;
+        *) ln -s "$path" "$ACFS_CLOUD_BIN_DIR/$bin" ;;
     esac
 }
 
 cloud_version() {
     local bin="$1" path out
     path="$(cloud_find_binary "$bin")" || return 1
-    out="$(timeout 5 "$path" --version </dev/null 2>&1)" || return 1
+    out="$(timeout --kill-after=1 5 "$path" --version </dev/null 2>&1)" || return 1
     [[ -n "$out" ]] || return 1
     printf '%s\n' "${out%%$'\n'*}"
 }
 
-cloud_install_tool() {
+# shellcheck disable=SC2329
+cloud_install_tool_job() {
     local tool="$1" rc bin version log="$ACFS_CLOUD_STATE_DIR/logs/$1.log"
     bin="$(cloud_tool_field "$tool" 3)"
     if [[ "${ACFS_CLOUD_REINSTALL:-0}" != "1" ]] && version="$(cloud_version "$bin")" && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail >/dev/null; }; then
-        cloud_link_onto_path "$bin"
+        if ! cloud_link_onto_path "$bin" || { [[ "$tool" == am ]] && ! cloud_link_onto_path mcp-agent-mail; }; then
+            cloud_record "$tool" fail "existing binary could not be linked onto PATH"
+            return 0
+        fi
         cloud_record "$tool" ok "$version (already installed)"
         return 0
     fi
-    timeout --kill-after=2 "$ACFS_CLOUD_TIMEOUT" python3 - "$tool" "$ACFS_CLOUD_WORK" "$HOME/.local" >"$log" 2>&1 <<'PY'
+    python3 - "$tool" "$ACFS_CLOUD_WORK" "$HOME/.local" >"$log" 2>&1 <<'PY'
 import hashlib, io, json, pathlib, re, shutil, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
@@ -242,28 +248,75 @@ except Exception as error:
 PY
     rc=$?
     if [[ $rc -eq 0 ]]; then
-        cloud_record "$tool" ok "$(cloud_version "$bin") (verified prebuilt)"
-    elif [[ $rc -eq 124 || $rc -eq 137 ]]; then
-        cloud_record "$tool" fail "download/install timed out after ${ACFS_CLOUD_TIMEOUT}s (see $log)"
+        if version="$(cloud_version "$bin")" && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail >/dev/null; }; then
+            cloud_record "$tool" ok "$version (verified prebuilt)"
+        else
+            cloud_record "$tool" fail "installed binary verification failed; see $log"
+        fi
     else
         cloud_record "$tool" fail "$(tail -n 1 "$log"); see $log; no source build attempted"
     fi
     return 0
 }
 
+cloud_install_tool() {
+    # Bound the entire job, including existing/final binary probes, not only
+    # downloads. GNU timeout also signals the job's subprocess group.
+    local tool="$1" rc log="$ACFS_CLOUD_STATE_DIR/logs/$1.log"
+    : > "$log"
+    timeout --kill-after=2 "$ACFS_CLOUD_TIMEOUT" bash -c 'set -uo pipefail; cloud_install_tool_job "$1"' _ "$tool"
+    rc=$?
+    if [[ $rc -eq 124 || $rc -eq 137 ]]; then
+        cloud_record "$tool" fail "download/install timed out after ${ACFS_CLOUD_TIMEOUT}s (see $log)"
+    elif [[ $rc -ne 0 || ! -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
+        cloud_record "$tool" fail "tool job failed (exit $rc); see $log; no source build attempted"
+    fi
+}
+
 cloud_register_agent_mail() {
     # Register Agent Mail with Claude Code as a stdio MCP server so each
     # session spawns it on demand; nothing has to survive the VM snapshot.
-    local server claude_bin
-    server="$(cloud_find_binary mcp-agent-mail)" || return 1
+    local server claude_bin legacy
+    server="$(cloud_find_binary am)" || return 1
     claude_bin="$(command -v claude 2>/dev/null)" || return 1
+    legacy="$(cloud_find_binary mcp-agent-mail)" || return 1
+    : > "$ACFS_CLOUD_STATE_DIR/logs/mcp.log"
+    # Migrate only the exact user-scope entry emitted by earlier ACFS setup.
+    # That release defaults to HTTP, so launching it without args as stdio
+    # never connected. Preserve every other field/entry and retain a backup.
+    if ! python3 - "$HOME/.claude.json" "$legacy" "$server" "$ACFS_CLOUD_WORK" >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1 <<'PY'
+import json, os, pathlib, stat, sys
+path, legacy, server, work = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], pathlib.Path(sys.argv[4])
+if path.is_file():
+    original = path.read_bytes()
+    config = json.loads(original)
+    entry = config.get('mcpServers', {}).get('mcp-agent-mail', {})
+    if entry.get('command') == legacy and entry.get('args', []) == [] and entry.get('type', 'stdio') == 'stdio':
+        if path.is_symlink():
+            raise ValueError('Legacy registration is in a symlinked config; retained unchanged')
+        (work / 'claude.json.before-stdio-fix').write_bytes(original)
+        (work / 'claude.json.before-stdio-fix').chmod(0o600)
+        entry['command'], entry['args'] = server, ['serve-stdio']
+        updated = path.with_name(path.name + '.acfs-' + work.name + '.tmp')
+        with updated.open('x') as output:
+            output.write(json.dumps(config, indent=2) + '\n')
+        updated.chmod(stat.S_IMODE(path.stat().st_mode))
+        if path.read_bytes() != original:
+            raise ValueError('Config changed concurrently; registration retained, candidate saved')
+        os.replace(updated, path)
+        print('Migrated legacy ACFS registration to am serve-stdio; backup retained in ' + str(work))
+PY
+    then
+        cloud_warn "Could not migrate legacy Agent Mail registration; inspect logs/mcp.log"
+        return 1
+    fi
     # Keep any existing registration rather than removing user configuration.
-    if timeout 5 "$claude_bin" mcp get mcp-agent-mail >"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1; then
+    if timeout --kill-after=1 5 "$claude_bin" mcp get mcp-agent-mail </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1; then
         ACFS_CLOUD_MCP_DETAIL="Existing Agent Mail MCP registration retained; see logs/mcp.log"
         return 0
     fi
     ACFS_CLOUD_MCP_DETAIL="Registered Agent Mail as the stdio MCP server 'mcp-agent-mail'"
-    timeout 10 "$claude_bin" mcp add --scope user mcp-agent-mail -- "$server" </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1
+    timeout --kill-after=1 10 "$claude_bin" mcp add --scope user mcp-agent-mail -- "$server" serve-stdio </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1
 }
 
 cloud_tool_guide_line() {
@@ -289,7 +342,7 @@ cloud_write_guide() {
     for tool in $ACFS_CLOUD_DEFAULT_TOOLS; do
         if [[ -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
             IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/$tool"
-        elif cloud_version "$(cloud_tool_field "$tool" 3)" >/dev/null; then
+        elif cloud_version "$(cloud_tool_field "$tool" 3)" >/dev/null && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail >/dev/null; }; then
             status="ok"
         else
             continue
@@ -324,7 +377,18 @@ cloud_write_guide() {
 
     mkdir -p "$(dirname "$ACFS_CLOUD_GUIDE")"
     tmp="$ACFS_CLOUD_WORK/CLAUDE.md"
+    printf '%s\n' "$block" > "$ACFS_CLOUD_WORK/tool-guide.md"
     if [[ -f "$ACFS_CLOUD_GUIDE" ]]; then
+        # An interrupted/manual edit can leave an unmatched marker. Refuse
+        # to interpret the rest of the user's instructions as managed content.
+        if ! awk -v begin="$ACFS_CLOUD_GUIDE_BEGIN" -v end="$ACFS_CLOUD_GUIDE_END" '
+            $0 == begin { if (inside) { bad = 1; exit } inside = 1 }
+            $0 == end { if (!inside) { bad = 1; exit } inside = 0 }
+            END { exit (bad || inside) }
+        ' "$ACFS_CLOUD_GUIDE"; then
+            cloud_warn "Unbalanced ACFS guide markers; existing instructions preserved. New guide: $ACFS_CLOUD_WORK/tool-guide.md"
+            return 1
+        fi
         # Keep everything outside the managed block (e.g. other setup lines),
         # minus trailing blank lines so re-runs do not accumulate them.
         awk -v begin="$ACFS_CLOUD_GUIDE_BEGIN" -v end="$ACFS_CLOUD_GUIDE_END" '
@@ -353,7 +417,7 @@ cloud_main() {
     esac
     ACFS_CLOUD_TOOLS="${ACFS_CLOUD_TOOLS:-$ACFS_CLOUD_DEFAULT_TOOLS}"
     ACFS_CLOUD_TIMEOUT="${ACFS_CLOUD_TIMEOUT:-180}"
-    if [[ ! "$ACFS_CLOUD_TIMEOUT" =~ ^[0-9]+$ ]] || (( ACFS_CLOUD_TIMEOUT < 1 || ACFS_CLOUD_TIMEOUT > 180 )); then
+    if [[ ! "$ACFS_CLOUD_TIMEOUT" =~ ^([1-9]|[1-9][0-9]|1[0-7][0-9]|180)$ ]]; then
         cloud_warn "ACFS_CLOUD_TIMEOUT must be an integer from 1 to 180"
         return 0
     fi
@@ -367,6 +431,8 @@ cloud_main() {
     ACFS_CLOUD_WORK="$(mktemp -d "${TMPDIR:-/tmp}/acfs-cloud.XXXXXX")" || return 0
     mkdir -p "$ACFS_CLOUD_STATE_DIR/logs" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_WORK/status"
     export PATH="$ACFS_CLOUD_BIN_DIR:/usr/local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"
+    export ACFS_CLOUD_WORK ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
+    export -f cloud_install_tool_job cloud_version cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
 
     cloud_step "ACFS cloud setup: $ACFS_CLOUD_TOOLS"
     cloud_detail "ACFS ref: $ACFS_REF, whole tool job timeout: ${ACFS_CLOUD_TIMEOUT}s"

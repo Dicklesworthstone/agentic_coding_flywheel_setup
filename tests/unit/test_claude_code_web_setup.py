@@ -126,15 +126,56 @@ class MirrorPublisher(unittest.TestCase):
             self.prepare(self.release(tool="br", signature=True), tool="br", signature_error=True)
 
     def test_unsafe_tag_fails_before_download(self):
-        release = {"tag_name": "../../escape", "assets": []}
-        with self.assertRaisesRegex(ValueError, "Unsafe release tag"):
-            self.prepare(release)
+        for tag in ("../../escape", ".", ".."):
+            with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, "Unsafe release tag"):
+                self.prepare({"tag_name": tag, "assets": []})
 
     def test_unsafe_jsm_relay_tag_never_fetches_checksums(self):
         with mock.patch.object(publisher, "fetch", return_value=b"../../escape") as fetch:
             with self.assertRaisesRegex(ValueError, "Unsafe release tag"):
                 publisher.prepare("jsm", self.stage)
         fetch.assert_called_once_with("https://jeffreys-skills.md/api/v1/downloads/jsm/latest.txt")
+
+    def test_jsm_relay_checksum_requires_one_matching_row(self):
+        for checksums in (b'\n', b'bad  jsm-x86_64-unknown-linux-musl.tar.gz\n',
+                          (('a' * 64 + '  jsm-x86_64-unknown-linux-musl.tar.gz\n') * 2).encode()):
+            with self.subTest(checksums=checksums), mock.patch.object(publisher, 'fetch', side_effect=[b'v1.2.3', checksums]):
+                with self.assertRaisesRegex(ValueError, 'JSM relay checksum'):
+                    publisher.prepare('jsm', self.stage)
+
+    def test_partial_refresh_keeps_all_unselected_tools(self):
+        current = json.loads((ROOT / 'cloud-mirror.json').read_text())
+        replacement = {'version': 'updated', 'sha256': 'a' * 64}
+        output = self.stage / 'candidate.json'
+        argv = ['publisher', '--stage', str(self.stage), '--output', str(output), '--tools', 'bv']
+        with mock.patch('sys.argv', argv), mock.patch.object(publisher, 'prepare', return_value=('bv', replacement)):
+            publisher.main()
+        candidate = json.loads(output.read_text())
+        self.assertEqual(set(candidate['tools']), set(current['tools']))
+        self.assertEqual(candidate['tools']['bv'], replacement)
+        self.assertEqual(candidate['tools']['br'], current['tools']['br'])
+
+    def test_duplicate_selection_and_unsafe_base_fail_before_preparing(self):
+        for extra in (['--tools', 'bv', 'bv'], ['--base-url', 'http://mirror.invalid'],
+                      ['--base-url', 'https://mirror.invalid/../escape']):
+            argv = ['publisher', '--stage', str(self.stage), '--output', str(self.stage / 'unused.json'), *extra]
+            with self.subTest(extra=extra), mock.patch('sys.argv', argv), mock.patch.object(publisher, 'prepare') as prepare:
+                with self.assertRaises(SystemExit):
+                    publisher.main()
+                prepare.assert_not_called()
+
+    def test_publish_uses_configured_url_path_as_object_prefix(self):
+        packed = b'verified archive'
+        entry = {'file': 'bv/v1/bundle.tar.gz', 'sha256': publisher.digest(packed)}
+        argv = ['publisher', '--stage', str(self.stage), '--output', str(self.stage / 'published.json'),
+                '--base-url', 'https://mirror.invalid/custom/prefix', '--publish']
+        missing = publisher.urllib.error.HTTPError('https://mirror.invalid', 404, 'missing', {}, io.BytesIO())
+        with mock.patch('sys.argv', argv), mock.patch.object(publisher, 'prepare', side_effect=lambda tool, stage: (tool, entry)), \
+                mock.patch.object(publisher, 'fetch', side_effect=[value for _ in publisher.TOOLS for value in (missing, packed)]), \
+                mock.patch.object(publisher, 'run') as run:
+            publisher.main()
+        self.assertEqual(run.call_count, len(publisher.TOOLS))
+        self.assertEqual(run.call_args_list[0].args[4], 'acfs-cloud-tools/custom/prefix/bv/v1/bundle.tar.gz')
 
     def test_ubs_requires_complete_nonempty_checksum_tables(self):
         valid = "declare -A MODULE_CHECKSUMS=(\n['js']='" + "a" * 64 + "'\n)\ndeclare -A HELPER_CHECKSUMS=(\n['helper.py']='" + "b" * 64 + "'\n)"
@@ -312,6 +353,20 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertFalse((self.home / ".local/bin/br").exists())
         self.assertIn("Not installed", (self.home / ".claude/CLAUDE.md").read_text())
 
+    def test_binary_that_fails_at_installed_path_is_not_reported_working(self):
+        self.bundle(content=b'#!/bin/sh\ncase "$0" in *-stage/bin/br) echo br-staged;; *) exit 1;; esac\n')
+        output = self.run_setup()
+        self.assertNotIn('(verified prebuilt)', output)
+        self.assertIn('installed binary verification failed', output)
+        self.assertIn('Not installed', (self.home / '.claude/CLAUDE.md').read_text())
+
+    def test_existing_binary_probe_obeys_whole_job_deadline(self):
+        self.command('br', '#!/bin/sh\ntrap "" TERM\nsleep 9\necho br-late\n')
+        start = time.monotonic()
+        output = self.run_setup(ACFS_CLOUD_TIMEOUT='1')
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertIn('timed out', output)
+
     def test_blocked_network_keeps_existing_tools_and_reports_missing(self):
         self.command("br", "#!/bin/sh\necho br-existing\n")
         output = self.run_setup("br bv")
@@ -349,6 +404,26 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertIn("`br`", text)
         self.assertIn("`bv`", text)
 
+    def test_malformed_managed_markers_preserve_all_user_instructions(self):
+        self.bundle()
+        (self.home / '.claude').mkdir()
+        guide = self.home / '.claude/CLAUDE.md'
+        begin = '<!-- BEGIN ACFS CLOUD TOOLS (managed by claude-code-web-setup.sh) -->'
+        end = '<!-- END ACFS CLOUD TOOLS -->'
+        for markers in (begin, end, begin + '\n' + begin + '\n' + end):
+            original = 'My instructions.\n' + markers + '\nKeep these too.\n'
+            guide.write_text(original)
+            with self.subTest(markers=markers):
+                output = self.run_setup()
+                self.assertEqual(guide.read_text(), original)
+                self.assertIn('Unbalanced ACFS guide markers', output)
+
+    def test_partial_rerun_does_not_claim_incomplete_agent_mail(self):
+        self.command('am', '#!/bin/sh\necho am-existing\n')
+        self.bundle()
+        self.run_setup()
+        self.assertNotIn('`am` / `mcp-agent-mail`', (self.home / '.claude/CLAUDE.md').read_text())
+
     def test_download_job_deadline_is_real(self):
         self.bundle()
         entry = self.manifest["tools"]["br"]
@@ -373,8 +448,40 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         output = self.run_setup('am')
         calls = (self.root / 'mcp-calls').read_text()
         self.assertIn('mcp add --scope user mcp-agent-mail -- ', calls)
+        self.assertIn('/am serve-stdio', calls)
         self.assertNotIn('remove', calls)
         self.assertIn('Registered Agent Mail', output)
+
+    def test_migrates_only_old_acfs_registration_and_retains_backup(self):
+        self.bundle('am')
+        self.command('claude', '#!/bin/sh\n[ "$2" = get ]\n')
+        config = self.home / '.claude.json'
+        original = {'preferences': {'theme': 'dark'}, 'mcpServers': {
+            'mcp-agent-mail': {'type': 'stdio', 'command': str(self.home / '.local/bin/mcp-agent-mail'), 'args': [], 'env': {'KEEP': 'value'}},
+            'another-server': {'command': 'keep', 'args': ['original']}}}
+        config.write_text(json.dumps(original))
+        before = config.read_bytes()
+        self.run_setup('am')
+        migrated = json.loads(config.read_text())
+        self.assertEqual(migrated['preferences'], original['preferences'])
+        self.assertEqual(migrated['mcpServers']['another-server'], original['mcpServers']['another-server'])
+        self.assertEqual(migrated['mcpServers']['mcp-agent-mail']['env'], {'KEEP': 'value'})
+        self.assertEqual(migrated['mcpServers']['mcp-agent-mail']['args'], ['serve-stdio'])
+        backups = list((self.root / 'tmp').glob('acfs-cloud.*/claude.json.before-stdio-fix'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), before)
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+        self.run_setup('am')
+        self.assertEqual(len(list((self.root / 'tmp').glob('acfs-cloud.*/claude.json.before-stdio-fix'))), 1)
+
+    def test_retains_custom_existing_mcp_registration(self):
+        self.bundle('am')
+        self.command('claude', '#!/bin/sh\n[ "$2" = get ]\n')
+        config = self.home / '.claude.json'
+        original = b'{"mcpServers":{"mcp-agent-mail":{"type":"http","url":"https://my-server.invalid/mcp"}}}\n'
+        config.write_bytes(original)
+        self.run_setup('am')
+        self.assertEqual(config.read_bytes(), original)
 
     def test_missing_second_agent_mail_binary_rejected(self):
         self.bundle("am")

@@ -18,6 +18,7 @@ import tarfile
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 import zipfile
 
 KEY = "RWTQGPeLsnm9G7VFdFWkkcRi3wJK/PqsYxWC+oLNN74W9IjBxRU1Xu70"
@@ -121,10 +122,14 @@ def prepare(tool, stage):
         # The vendor's public relay serves this private repository's releases.
         relay = "https://jeffreys-skills.md/api/v1/downloads/jsm"
         version = fetch(relay + "/latest.txt").decode().strip()
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", version):
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", version):
             raise ValueError("Unsafe release tag")
         checksums = fetch(relay + "/" + version + "/SHA256SUMS")
-        sha = next(row.split()[0] for row in checksums.decode().splitlines() if row.split()[-1] == pattern)
+        rows = [row.split() for row in checksums.decode().splitlines() if row.strip()]
+        matched = [row[0] for row in rows if len(row) == 2 and row[1].lstrip('*').removeprefix('./') == pattern]
+        if len(matched) != 1 or not re.fullmatch(r"[a-f0-9]{64}", matched[0]):
+            raise ValueError("JSM relay checksum missing, malformed or duplicated")
+        sha = matched[0]
         release = {"tag_name": version, "assets": [
             {"name": pattern, "digest": "sha256:" + sha, "browser_download_url": f"{relay}/{version}/{pattern}"},
             {"name": "SHA256SUMS", "digest": "sha256:" + digest(checksums), "browser_download_url": f"{relay}/{version}/SHA256SUMS"},
@@ -135,7 +140,7 @@ def prepare(tool, stage):
         except json.JSONDecodeError as error:
             raise ValueError(f"{repo}: gh returned invalid release metadata") from error
     version = release["tag_name"]
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", version):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", version):
         raise ValueError("Unsafe release tag")
     assets = {item["name"]: item for item in release["assets"]}
     name = pattern.format(v=version.removeprefix("v"))
@@ -233,10 +238,24 @@ def main():
     parser.add_argument("--base-url", default="https://downloads.agent-flywheel.com/acfs-cloud/v1")
     parser.add_argument("--bucket", default="acfs-cloud-tools")
     parser.add_argument("--publish", action="store_true")
-    parser.add_argument("--tools", nargs="+", choices=TOOLS, default=list(TOOLS))
+    parser.add_argument("--tools", nargs="+", choices=TOOLS, default=list(TOOLS),
+                        help="Refresh these tools, retaining other entries from cloud-mirror.json")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("Choose a new output path; candidate already exists")
+    if len(set(args.tools)) != len(args.tools):
+        parser.error("Each tool may be selected only once")
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[A-Za-z0-9_.-]+)*", args.base_url):
+        parser.error("Choose an HTTPS base URL without query, fragment or trailing slash")
+    object_prefix = urlsplit(args.base_url).path.strip("/")
+    if any(part in (".", "..") for part in object_prefix.split("/")):
+        parser.error("Unsafe base URL path")
+    retained = {}
+    if set(args.tools) != set(TOOLS):
+        current = json.loads((Path(__file__).resolve().parents[1] / "cloud-mirror.json").read_text())
+        if current.get("schema") != 1 or current.get("platform") != "linux-x86_64" or current.get("base_url") != args.base_url:
+            parser.error("A partial refresh must use the current manifest's platform and base URL")
+        retained = {tool: entry for tool, entry in current["tools"].items() if tool not in args.tools}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         entries = dict(pool.map(lambda tool: prepare(tool, args.stage), args.tools))
     if args.publish:
@@ -248,17 +267,19 @@ def main():
             except urllib.error.HTTPError as error:
                 if error.code != 404:
                     raise
+                error.close()
             else:
                 if not hmac.compare_digest(digest(existing), entry["sha256"]):
                     raise ValueError(f"Remote object mismatch: {tool}; refusing overwrite")
                 continue
-            run("wrangler", "r2", "object", "put", args.bucket + "/acfs-cloud/v1/" + entry["file"],
+            object_key = "/".join(part for part in (args.bucket, object_prefix, entry["file"]) if part)
+            run("wrangler", "r2", "object", "put", object_key,
                 "--file", str(args.stage / entry["file"]), "--remote", "--content-type", "application/gzip",
                 "--cache-control", "public, max-age=31536000, immutable")
             if not hmac.compare_digest(digest(fetch(url)), entry["sha256"]):
                 raise ValueError(f"Public readback mismatch: {tool}")
             print(f"{tool}: published and public hash verified", flush=True)
-    manifest = {"schema": 1, "platform": "linux-x86_64", "base_url": args.base_url, "tools": entries}
+    manifest = {"schema": 1, "platform": "linux-x86_64", "base_url": args.base_url, "tools": {**retained, **entries}}
     with args.output.open("x") as output:
         json.dump(manifest, output, indent=2, sort_keys=True)
         output.write("\n")
