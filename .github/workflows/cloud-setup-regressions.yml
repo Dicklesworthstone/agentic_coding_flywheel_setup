@@ -1,0 +1,52 @@
+name: Cloud Setup Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/claude-code-web-setup.sh'
+      - 'scripts/cloud-mirror-publish.py'
+      - 'cloud-mirror.json'
+      - 'tests/unit/test_claude_code_web_setup.*'
+      - '.github/workflows/cloud-setup-regressions.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/claude-code-web-setup.sh'
+      - 'scripts/cloud-mirror-publish.py'
+      - 'cloud-mirror.json'
+      - 'tests/unit/test_claude_code_web_setup.*'
+      - '.github/workflows/cloud-setup-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint setup entrypoint
+        run: shellcheck scripts/claude-code-web-setup.sh tests/unit/test_claude_code_web_setup.sh
+      - name: Exercise verification, network failures, deadlines and both agents
+        run: bash tests/unit/test_claude_code_web_setup.sh
+
+  public-binaries:
+    # Manual smoke executes only the trusted default-branch manifest.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install all public prebuilt tools in a fresh home
+        shell: bash
+        run: |
+          export HOME="$RUNNER_TEMP/acfs-cloud-smoke"
+          mkdir -p "$HOME"
+          ACFS_CLOUD_AGENT=codex ACFS_CLOUD_REINSTALL=1 bash scripts/claude-code-web-setup.sh
+          for tool in br bv am mcp-agent-mail ubs cass cm ms ast-grep jsm jfp; do
+            "$HOME/.local/bin/$tool" --version
+          done
+          test -s "$HOME/.codex/AGENTS.md"
