@@ -123,6 +123,7 @@ cloud_install_tool() {
     timeout --kill-after=2 "$ACFS_CLOUD_TIMEOUT" python3 - "$tool" "$ACFS_CLOUD_WORK" "$HOME/.local" >"$log" 2>&1 <<'PY'
 import hashlib, io, json, pathlib, re, shutil, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
+blocked_hosts = []
 try:
     manifest = json.loads((work / 'cloud-mirror.json').read_text())
     if manifest['schema'] != 1 or manifest['platform'] != 'linux-x86_64':
@@ -147,7 +148,9 @@ try:
                                  '-o', str(target), url], stdout=subprocess.PIPE, text=True, check=False)
         if result.returncode and result.stdout.strip() in ('403', '407'):
             host = url.split('/')[2]
-            print(host + ' is blocked by this environment\'s network access level (set Full or allow it in Custom)', flush=True)
+            diagnostic = host + ' is blocked by this environment\'s network access level (set Full or allow it in Custom)'
+            blocked_hosts.append(diagnostic)
+            print(diagnostic, flush=True)
         return result.returncode == 0
     fallback = False
     expected_sha = entry['sha256']
@@ -234,7 +237,7 @@ except subprocess.CalledProcessError as error:
         print(str(error), file=sys.stderr)
     sys.exit(1)
 except Exception as error:
-    print(str(error), file=sys.stderr)
+    print('; '.join([*blocked_hosts, str(error)]), file=sys.stderr)
     sys.exit(1)
 PY
     rc=$?

@@ -322,11 +322,17 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
     def test_proxy_connect_denial_names_network_setting(self):
         self.bundle()
         self.urls.pop('https://mirror.invalid/v1/' + self.manifest['tools']['br']['file'])
+        output = self.run_setup()
+        self.assertNotIn('is blocked by this environment', output)
         (self.root / 'deny-connect').write_text('403')
-        self.run_setup()
+        output = self.run_setup()
         log = (self.home / '.acfs/cloud/logs/br.log').read_text()
         self.assertIn('mirror.invalid is blocked by this environment', log)
         self.assertIn('set Full or allow it in Custom', log)
+        self.assertIn('mirror.invalid is blocked by this environment', output)
+        guide = (self.home / '.claude/CLAUDE.md').read_text()
+        self.assertIn('mirror.invalid is blocked by this environment', guide)
+        self.assertIn('set Full or allow it in Custom', guide)
 
     def test_partial_rerun_preserves_guide_and_previous_tools(self):
         self.bundle()
