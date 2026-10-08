@@ -60,6 +60,16 @@ key="\${url#https://}"
 key="\${key%%\?*}"
 key="\${key//\//__}"
 src="$SANDBOX/served/\$key"
+if [[ -f "\$src.blocked" ]]; then
+    # What the egress proxy does to a host outside the network access level:
+    # it refuses the CONNECT, which curl -f reports as an HTTP 403.
+    if [[ "\$fmt" == '%{http_connect}' ]]; then
+        printf '403'
+        exit 56
+    fi
+    printf 'curl: (22) The requested URL returned error: 403\n' >&2
+    exit 22
+fi
 if [[ ! -f "\$src" ]]; then
     [[ -n "\$fmt" ]] && printf '000'
     exit 22
@@ -74,6 +84,11 @@ EOF
 
     # GitHub release downloads work unless a test says otherwise.
     printf 'redirect' | serve "$PROBE_URL" 302
+}
+
+# block URL: the network access level denies this host.
+block() {
+    : > "$SANDBOX/served/$(url_key "$1").blocked"
 }
 
 add_fake_claude() {
@@ -218,6 +233,18 @@ test_skips_release_installers_when_github_is_scoped() {
     [[ ! -e "$SANDBOX/home/.local/bin/br" ]]
 }
 
+test_trusted_network_skips_vendor_hosts_but_installs_the_rest() {
+    fake_installer br br | serve_installer br
+    write_ledger br
+    block "$JSM_URL"
+
+    run_setup ACFS_CLOUD_TOOLS="br jsm"
+    [[ "$LAST_STATUS" -eq 0 ]] || return 1
+    expect_output "br    br 1.2.3" || return 1
+    expect_output "jeffreys-skills.md is blocked by this environment's network access level (set it to Full)" || return 1
+    expect_file_contains "$SANDBOX/home/.claude/CLAUDE.md" '- `jsm`: jeffreys-skills.md is blocked'
+}
+
 test_guide_block_is_replaced_not_duplicated() {
     mkdir -p "$SANDBOX/home/.claude"
     printf 'Keep this preference.\n' > "$SANDBOX/home/.claude/CLAUDE.md"
@@ -294,6 +321,7 @@ run_test "installs ledger-verified tools and writes the Claude guide" test_insta
 run_test "refuses an installer whose checksum does not match the ledger" test_refuses_installer_with_checksum_mismatch
 run_test "exits 0 when every download fails" test_exits_zero_when_everything_is_unreachable
 run_test "skips release installers when the GitHub proxy scopes github.com" test_skips_release_installers_when_github_is_scoped
+run_test "on a Trusted network, skips vendor hosts and installs the rest" test_trusted_network_skips_vendor_hosts_but_installs_the_rest
 run_test "replaces the CLAUDE.md block instead of duplicating it" test_guide_block_is_replaced_not_duplicated
 run_test "times out a hung installer" test_times_out_a_hung_installer
 run_test "builds bv from source when the release install fails" test_builds_bv_from_source_when_release_install_fails

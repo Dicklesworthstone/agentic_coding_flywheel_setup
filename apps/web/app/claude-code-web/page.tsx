@@ -43,7 +43,7 @@ const STEPS = [
   {
     title: "Set Network access to Full",
     description:
-      "jsm and jfp download from jeffreys-skills.md and jeffreysprompts.com. Every other tool only needs GitHub.",
+      "Recommended. On the default Trusted level the script still installs everything that only needs GitHub, and skips jsm and jfp, whose installers live on their own sites.",
   },
   {
     title: "Paste the setup script",

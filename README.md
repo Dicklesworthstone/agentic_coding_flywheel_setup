@@ -467,14 +467,14 @@ Everything else â€” language runtimes, AI agents, and the flywheel tool stack â€
 
 [Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) runs every cloud session (claude.ai/code, the desktop and mobile apps, `claude --cloud`) on a disposable Ubuntu 24.04 VM that is root-only, already ships Rust, Go, Bun, and uv, and is snapshotted after its setup script runs. The full installer is the wrong tool there: there is no user to create, no shell to theme, no Ubuntu release to upgrade, and nothing it starts survives the snapshot. For those VMs ACFS has a separate, lightweight entry point, [`scripts/claude-code-web-setup.sh`](scripts/claude-code-web-setup.sh), that installs only the agent-facing flywheel CLIs. The [web guide](https://agent-flywheel.com/claude-code-web) walks through it with copy buttons.
 
-**Set it up:** in claude.ai/code open the environment menu, choose **Add cloud environment** (or edit one), set **Network access** to **Full**, and paste this as the **Setup script**:
+**Set it up:** in claude.ai/code open the environment menu, choose **Add cloud environment** (or edit one), set **Network access** to **Full** (recommended), and paste this as the **Setup script**:
 
 ```bash
 #!/bin/bash
 curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
 ```
 
-Full access is needed for `jsm` and `jfp`, which download from jeffreys-skills.md and jeffreysprompts.com; the other tools only need GitHub. Pasting the whole script into the field works too.
+If your organization locks environments to the default **Trusted** level, the script still runs and installs everything that only needs GitHub. `jsm` and `jfp` download from jeffreys-skills.md and jeffreysprompts.com, which Trusted blocks, so they are skipped and reported as blocked by the network access level. Pasting the whole script into the field works too.
 
 | Tool | Command | In a cloud session |
 |------|---------|--------------------|

@@ -15,9 +15,10 @@
 #   #!/bin/bash
 #   curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
 #
-# or paste this whole file into the field. Network access must be "Full"
-# (or Custom with jeffreys-skills.md and jeffreysprompts.com allowed) for
-# jsm and jfp; everything else needs only the default Trusted hosts.
+# or paste this whole file into the field. Network access "Full" is
+# recommended. The default "Trusted" level also works with reduced coverage:
+# jsm and jfp download from jeffreys-skills.md and jeffreysprompts.com, which
+# Trusted blocks, so they are skipped and reported as such.
 #
 # Contract with the cloud environment
 # (https://code.claude.com/docs/en/cloud-environments#setup-scripts):
@@ -98,6 +99,16 @@ cloud_download() {
         -o "$2" "$1"
 }
 
+cloud_host_blocked() {
+    # True when the egress proxy refuses the CONNECT for this URL's host,
+    # which is how a host outside the environment's network access level
+    # shows up. curl -f reports that as a plain HTTP 403, so ask for the
+    # proxy's CONNECT code separately (an allowed host answers 200).
+    local code
+    code="$(curl -sS -o /dev/null --max-time 20 -w '%{http_connect}' "$1" 2>/dev/null)"
+    [[ "$code" == "403" || "$code" == "407" ]]
+}
+
 cloud_record() {
     # $1 = tool, $2 = ok|fail, $3 = detail
     printf '%s|%s\n' "$2" "$3" > "$ACFS_CLOUD_WORK/status/$1"
@@ -130,7 +141,7 @@ cloud_version() {
 
 cloud_install_tool() {
     # Runs in a background job: download, verify, run, and record one installer.
-    local tool="$1" key bin args url sha actual installer log rc
+    local tool="$1" key bin args url host sha actual installer log rc
     local -a installer_args=() installer_env=()
     key="$(cloud_tool_field "$tool" 2)"
     bin="$(cloud_tool_field "$tool" 3)"
@@ -156,7 +167,13 @@ cloud_install_tool() {
     fi
 
     if ! cloud_download "$url" "$installer" 2>"$log"; then
-        cloud_record "$tool" fail "could not download ${url%%\?*} (see $log)"
+        host="${url#https://}"
+        host="${host%%/*}"
+        if cloud_host_blocked "$url"; then
+            cloud_record "$tool" fail "$host is blocked by this environment's network access level (set it to Full)"
+        else
+            cloud_record "$tool" fail "could not download ${url%%\?*} (see $log)"
+        fi
         return 0
     fi
 
