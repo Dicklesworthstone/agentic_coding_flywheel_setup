@@ -131,4 +131,22 @@ test.describe("Production Smoke Tests", () => {
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);
   });
+
+  test("claude code web page shows a copyable setup script", async ({ page }) => {
+    const { jsErrors, failedRequests } = setupErrorMonitoring(page);
+
+    await page.goto("/claude-code-web");
+    await waitForPageSettled(page);
+
+    await expect(page.locator("h1").first()).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Setup script for a Claude Code cloud environment" }),
+    ).toContainText("scripts/claude-code-web-setup.sh | bash");
+
+    await page.getByRole("button", { name: "Copy setup script" }).click();
+    await expect(page.getByText("Copied").first()).toBeVisible();
+
+    expect(failedRequests).toEqual([]);
+    expect(jsErrors).toEqual([]);
+  });
 });
