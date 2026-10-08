@@ -351,15 +351,17 @@ export default function ClaudeCodeWebPage() {
           <SetupScriptCard label="Install script for a Codex cloud environment" script={CODEX_CLOUD_SETUP_SCRIPT}
             copyLabel="Copy Codex install script" title="Install script" />
           <p className="mb-4 mt-8 text-sm leading-relaxed text-muted-foreground">
-            Add the following to its Start skill so each task loads the guide and sets PATH:
+            Add the following to its Start skill. The recipe also installs the repository skill
+            acfs-cloud-tools to help tasks discover the guide and set PATH:
           </p>
           <pre tabIndex={0} aria-label="Codex Start skill instructions"
             className="whitespace-pre-wrap break-words rounded-xl border border-border/50 bg-muted/40 p-4 text-sm leading-relaxed">
             <code>{CODEX_CLOUD_START_SKILL}</code>
           </pre>
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
-            Agent Mail is available as a CLI; hosted MCP is not configured. The Start skill loads
-            the workspace guide explicitly. Older environments with Setup and Maintenance
+            Agent Mail is available as a CLI; hosted MCP is not configured. If your task does not
+            discover acfs-cloud-tools, invoke it or read the workspace guide explicitly.
+            Older environments with Setup and Maintenance
             script fields use the install command in Setup. Both modes have Linux smoke tests;
             verify PATH, instruction loading and network access in your hosted task.
           </p>
