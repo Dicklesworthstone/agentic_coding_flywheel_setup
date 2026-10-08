@@ -34,6 +34,7 @@
 #   ACFS_CLOUD_AGENT     claude (default) or codex; selects the instruction guide
 #   ACFS_CLOUD_ROOT      writable absolute data root (default: $HOME); in Codex
 #                        mode a custom root also holds the explicitly loaded guide
+#   ACFS_CLOUD_SKILL_DIR optional absolute repository skill directory for Codex
 #   ACFS_CLOUD_TOOLS     space-separated subset of tools to install
 #                        (default: br bv am ubs cass cm ms ast-grep jsm jfp)
 #   ACFS_CLOUD_TIMEOUT   whole tool job timeout in seconds (default: 180, max: 180)
@@ -45,6 +46,7 @@ ACFS_RAW="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_fly
 ACFS_CLOUD_SCRIPT_URL="${ACFS_RAW}/scripts/claude-code-web-setup.sh"
 ACFS_CLOUD_DEFAULT_TOOLS="br bv am ubs cass cm ms ast-grep jsm jfp"
 ACFS_CLOUD_ROOT="${ACFS_CLOUD_ROOT:-$HOME}"
+ACFS_CLOUD_SKILL_DIR="${ACFS_CLOUD_SKILL_DIR:-}"
 ACFS_CLOUD_STATE_DIR="${ACFS_CLOUD_ROOT}/.acfs/cloud"
 ACFS_CLOUD_BIN_DIR="${ACFS_CLOUD_ROOT}/.local/bin"
 ACFS_CLOUD_AGENT="${ACFS_CLOUD_AGENT:-claude}"
@@ -380,7 +382,7 @@ cloud_write_guide() {
         block+="$(printf '%s\n' "${missing[@]}")"$'\n'
     fi
     block+=$'\n'"Setup log: \`$ACFS_CLOUD_STATE_DIR/setup.log\` (per-tool logs in \`$ACFS_CLOUD_STATE_DIR/logs/\`)."
-    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
+    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
     fi
@@ -415,6 +417,46 @@ cloud_write_guide() {
     fi
     printf '%s\n' "$block" >> "$tmp"
     cat "$tmp" > "$ACFS_CLOUD_GUIDE"
+}
+
+cloud_write_codex_skill() {
+    [[ "$ACFS_CLOUD_AGENT" == codex && -n "$ACFS_CLOUD_SKILL_DIR" ]] || return 0
+    # A saved environment Start skill was absent from a fresh hosted task's
+    # catalog. Repository skills are a separately discoverable runtime surface.
+    # Never replace an existing skill, even one with the same name.
+    if ! python3 - "$ACFS_CLOUD_SKILL_DIR" "$ACFS_CLOUD_GUIDE" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_STATE_DIR" <<'PY'
+import pathlib, shlex, sys
+directory, guide, bins, state = sys.argv[1:]
+if not pathlib.Path(guide).is_file():
+    raise ValueError('Tool guide is missing; repository skill was not created')
+content = '''---
+name: acfs-cloud-tools
+description: Use when starting coding work in this cloud repository, choosing tasks, or using Beads, Beads Viewer, Agent Mail, UBS, CASS, memory or skills. Load the installed flywheel tool guide and configure PATH; do not reinstall tools.
+---
+
+# ACFS cloud tools
+
+Read the generated tool guide at {guide} and setup results at {log}.
+In every task shell, run `export PATH={bins}:"$PATH"` before using the CLIs.
+Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
+Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
+Do not run the full VPS installer or build tools from source.
+Agent Mail is available as a CLI; this skill does not configure hosted MCP.
+'''.format(guide=shlex.quote(guide), log=shlex.quote(str(pathlib.Path(state) / 'setup.log')), bins=shlex.quote(bins))
+path = pathlib.Path(directory) / 'SKILL.md'
+path.parent.mkdir(parents=True, exist_ok=True)
+try:
+    with path.open('x', encoding='utf-8') as output:
+        output.write(content)
+except FileExistsError:
+    if path.is_symlink() or not path.is_file() or path.read_text() != content:
+        raise ValueError('Existing repository skill retained unchanged: ' + str(path))
+print('Repository skill for Codex: ' + str(path))
+PY
+    then
+        cloud_warn "Could not create the Codex repository skill; use the generated guide explicitly"
+        return 1
+    fi
 }
 
 cloud_main() {
@@ -482,6 +524,7 @@ cloud_main() {
     fi
 
     cloud_write_guide
+    cloud_write_codex_skill
     if [[ "$ACFS_CLOUD_AGENT" == codex && -s "$(dirname "$ACFS_CLOUD_GUIDE")/AGENTS.override.md" ]]; then
         cloud_warn "Existing AGENTS.override.md takes precedence. Add a reference to $ACFS_CLOUD_GUIDE in your Start skill."
     fi
@@ -503,6 +546,10 @@ cloud_main() {
 
 if [[ "$ACFS_CLOUD_ROOT" != /* || "$ACFS_CLOUD_ROOT" == / ]]; then
     cloud_warn "ACFS_CLOUD_ROOT must be an absolute directory other than /"
+    exit 0
+fi
+if [[ "$ACFS_CLOUD_AGENT" == codex && -n "$ACFS_CLOUD_SKILL_DIR" && ( "$ACFS_CLOUD_SKILL_DIR" != /* || "$ACFS_CLOUD_SKILL_DIR" == / ) ]]; then
+    cloud_warn "ACFS_CLOUD_SKILL_DIR must be an absolute directory other than /"
     exit 0
 fi
 if ! mkdir -p "$ACFS_CLOUD_STATE_DIR"; then

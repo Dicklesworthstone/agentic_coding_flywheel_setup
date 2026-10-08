@@ -528,6 +528,39 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
                 self.assertIn('ACFS_CLOUD_ROOT must be an absolute directory', output)
                 self.assertFalse((self.home / '.acfs').exists())
 
+    def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
+        self.bundle()
+        writable = self.root / 'workspace tools'
+        skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
+        options = dict(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable), ACFS_CLOUD_SKILL_DIR=str(skill))
+        self.run_setup(**options)
+        content = (skill / 'SKILL.md').read_bytes()
+        self.assertIn(b'name: acfs-cloud-tools', content)
+        self.assertIn(str(writable / '.codex/AGENTS.md').encode(), content)
+        self.assertIn(str(writable / '.acfs/cloud/setup.log').encode(), content)
+        self.assertIn(b'export PATH=', content)
+        self.assertIn(b'use the repository\'s existing Beads tracker', content)
+        self.assertIn('ACFS_CLOUD_SKILL_DIR=' + str(skill), (writable / '.codex/AGENTS.md').read_text())
+        self.run_setup(**options)
+        self.assertEqual((skill / 'SKILL.md').read_bytes(), content)
+
+    def test_codex_repository_skill_preserves_existing_content(self):
+        self.bundle()
+        skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
+        skill.mkdir(parents=True)
+        original = b'My existing skill.\n'
+        (skill / 'SKILL.md').write_bytes(original)
+        output = self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
+        self.assertEqual((skill / 'SKILL.md').read_bytes(), original)
+        self.assertIn('Existing repository skill retained unchanged', output)
+
+    def test_invalid_codex_skill_directory_is_rejected_before_writing(self):
+        for directory in ('relative-skill', '/'):
+            with self.subTest(directory=directory):
+                output = self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=directory)
+                self.assertIn('ACFS_CLOUD_SKILL_DIR must be an absolute directory', output)
+                self.assertFalse((self.home / '.acfs').exists())
+
     def test_missing_second_agent_mail_binary_rejected(self):
         self.bundle("am")
         self.manifest["tools"]["am"]["bins"] = ["am"]
