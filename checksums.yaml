@@ -136,7 +136,7 @@ installers:
 
   pi:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
-    sha256: "4ddea5bce9c0a9168d62fee76c05cb61e9c8c911d9fdcbe65aafac485e002bd1"
+    sha256: "6c0d508c16ab566f6e6627e1c069b9526aaa18879174cc8444319f7708dc90e4"
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
