@@ -18,6 +18,14 @@ export const CLAUDE_CODE_WEB_SETUP_SCRIPT = `#!/bin/bash\ncurl -fsSL ${CLAUDE_CO
 
 export const CLAUDE_CODE_WEB_DOCS_URL = "https://code.claude.com/docs/en/cloud-environments";
 
+export const CODEX_CLOUD_DOCS_URL = "https://learn.chatgpt.com/docs/environments/cloud-environments";
+export const CODEX_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_AGENT=codex bash`;
+export const CODEX_CLOUD_START_SKILL = `Read ~/.codex/AGENTS.md for the installed flywheel tools and ~/.acfs/cloud/setup.log for failures.
+If CODEX_HOME is set, read $CODEX_HOME/AGENTS.md instead.
+In each task shell, export PATH="$HOME/.local/bin:$PATH" before using the tools.
+Check br --version, bv --version, ubs --version and jsm --version before starting work.
+Use br ready --json and bv --robot-triage; never open their interactive TUIs.`;
+
 export type ClaudeCodeWebTool = {
   /** Tool id as the script's ACFS_CLOUD_TOOLS spells it. */
   id: string;
@@ -97,6 +105,11 @@ export type ClaudeCodeWebOption = {
 };
 
 export const CLAUDE_CODE_WEB_OPTIONS: ClaudeCodeWebOption[] = [
+  {
+    name: "ACFS_CLOUD_AGENT",
+    defaultValue: "claude",
+    effect: "codex writes the Codex instruction guide and skips Claude MCP registration.",
+  },
   {
     name: "ACFS_CLOUD_TOOLS",
     defaultValue: CLAUDE_CODE_WEB_TOOLS.map((tool) => tool.id).join(" "),

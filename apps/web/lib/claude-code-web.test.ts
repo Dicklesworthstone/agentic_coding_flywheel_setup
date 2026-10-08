@@ -14,6 +14,8 @@ import {
   CLAUDE_CODE_WEB_SCRIPT_URL,
   CLAUDE_CODE_WEB_SETUP_SCRIPT,
   CLAUDE_CODE_WEB_TOOLS,
+  CODEX_CLOUD_SETUP_SCRIPT,
+  CODEX_CLOUD_START_SKILL,
 } from "./claude-code-web";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -66,5 +68,7 @@ describe("claude-code-web page data", () => {
 
   test("the README shows the same setup script", () => {
     expect(readme).toContain(CLAUDE_CODE_WEB_SETUP_SCRIPT);
+    expect(readme).toContain(CODEX_CLOUD_SETUP_SCRIPT);
+    expect(readme).toContain(CODEX_CLOUD_START_SKILL);
   });
 });

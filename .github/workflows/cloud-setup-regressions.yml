@@ -45,8 +45,15 @@ jobs:
         run: |
           export HOME="$RUNNER_TEMP/acfs-cloud-smoke"
           mkdir -p "$HOME"
-          ACFS_CLOUD_AGENT=codex ACFS_CLOUD_REINSTALL=1 bash scripts/claude-code-web-setup.sh
+          ACFS_REF="$GITHUB_SHA" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_REINSTALL=1 bash scripts/claude-code-web-setup.sh
           for tool in br bv am mcp-agent-mail ubs cass cm ms ast-grep jsm jfp; do
-            "$HOME/.local/bin/$tool" --version
+            timeout --kill-after=1 5 "$HOME/.local/bin/$tool" --version
           done
           test -s "$HOME/.codex/AGENTS.md"
+      - name: Retain public smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-public-smoke-logs
+          path: ${{ runner.temp }}/acfs-cloud-smoke/.acfs/cloud/
+          if-no-files-found: ignore

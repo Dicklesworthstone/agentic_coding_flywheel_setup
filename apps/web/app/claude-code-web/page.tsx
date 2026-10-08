@@ -26,6 +26,9 @@ import {
   CLAUDE_CODE_WEB_SCRIPT_URL,
   CLAUDE_CODE_WEB_SETUP_SCRIPT,
   CLAUDE_CODE_WEB_TOOLS,
+  CODEX_CLOUD_DOCS_URL,
+  CODEX_CLOUD_SETUP_SCRIPT,
+  CODEX_CLOUD_START_SKILL,
 } from "@/lib/claude-code-web";
 import { staggerDelay } from "@/lib/hooks/useScrollReveal";
 import { copyTextToClipboard } from "@/lib/utils";
@@ -85,7 +88,12 @@ const BEHAVIORS = [
   },
 ];
 
-function SetupScriptCard({ label }: { label: string }) {
+function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLabel = "Copy setup script", title = "Setup script" }: {
+  label: string;
+  script?: string;
+  copyLabel?: string;
+  title?: string;
+}) {
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -96,12 +104,12 @@ function SetupScriptCard({ label }: { label: string }) {
   }, []);
 
   const copy = useCallback(async () => {
-    const ok = await copyTextToClipboard(CLAUDE_CODE_WEB_SETUP_SCRIPT);
+    const ok = await copyTextToClipboard(script);
     if (!ok) return;
     setCopied(true);
     if (resetTimer.current) clearTimeout(resetTimer.current);
     resetTimer.current = setTimeout(() => setCopied(false), 2000);
-  }, []);
+  }, [script]);
 
   return (
     <div className="terminal-window w-full text-left shadow-2xl ring-1 ring-primary/10">
@@ -109,14 +117,14 @@ function SetupScriptCard({ label }: { label: string }) {
         <div className="terminal-dot terminal-dot-red" aria-hidden="true" />
         <div className="terminal-dot terminal-dot-yellow" aria-hidden="true" />
         <div className="terminal-dot terminal-dot-green" aria-hidden="true" />
-        <span className="ml-3 font-mono text-xs text-[#a9b1d6]/70">Setup script</span>
+        <span className="ml-3 font-mono text-xs text-[#a9b1d6]/70">{title}</span>
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={copy}
           className="ml-auto h-7 shrink-0 border-[#9ece6a]/40 bg-transparent text-[#c0caf5] hover:bg-[#9ece6a]/10 hover:text-[#c0caf5]"
-          aria-label="Copy setup script"
+          aria-label={copyLabel}
         >
           {copied ? (
             <>
@@ -140,7 +148,7 @@ function SetupScriptCard({ label }: { label: string }) {
         aria-label={label}
         className="overflow-x-auto p-5 font-mono text-sm leading-relaxed text-[#c0caf5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60"
       >
-        <code>{CLAUDE_CODE_WEB_SETUP_SCRIPT}</code>
+        <code>{script}</code>
       </pre>
     </div>
   );
@@ -199,7 +207,8 @@ export default function ClaudeCodeWebPage() {
             >
               Cloud sessions run on disposable VMs, so the full VPS installer is the wrong tool. One
               setup script puts br, bv, Agent Mail, ubs, cass, and the rest of the agent-facing
-              stack on PATH, verified against the same checksums as install.sh.
+              stack in your VM, verified against the repository&apos;s pinned bundle hashes.
+              Export <code className="font-mono text-base">$HOME/.local/bin</code> onto PATH in each task shell.
             </motion.p>
             <motion.div className="w-full max-w-3xl" variants={fadeUp}>
               <SetupScriptCard label="Setup script for a Claude Code cloud environment" />
@@ -329,6 +338,33 @@ export default function ClaudeCodeWebPage() {
               ))}
             </ul>
           </div>
+        </section>
+
+        <section id="codex-cloud" className="mx-auto max-w-4xl px-6 py-24">
+          <SectionHeading eyebrow="same prebuilt tools" title="ChatGPT / Codex cloud" />
+          <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
+            In Work in → Cloud, add this to your environment&apos;s Install script. Enable internet
+            access and allow raw.githubusercontent.com and downloads.agent-flywheel.com, review the
+            setup log, then Publish the environment. Republish after changing its setup.
+          </p>
+          <SetupScriptCard label="Install script for a Codex cloud environment" script={CODEX_CLOUD_SETUP_SCRIPT}
+            copyLabel="Copy Codex install script" title="Install script" />
+          <p className="mb-4 mt-8 text-sm leading-relaxed text-muted-foreground">
+            Add the following to its Start skill so each task loads the guide and sets PATH:
+          </p>
+          <pre tabIndex={0} aria-label="Codex Start skill instructions"
+            className="whitespace-pre-wrap break-words rounded-xl border border-border/50 bg-muted/40 p-4 text-sm leading-relaxed">
+            <code>{CODEX_CLOUD_START_SKILL}</code>
+          </pre>
+          <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
+            Agent Mail is available as a CLI; hosted MCP is not configured. Setup warns if
+            AGENTS.override.md takes precedence. Older environments with Setup and Maintenance
+            script fields use the install command in Setup. Both modes have Linux smoke tests;
+            verify PATH, instruction loading and network access in your hosted task.
+          </p>
+          <a href={CODEX_CLOUD_DOCS_URL} target="_blank" rel="noopener noreferrer" className={`${footerLink} mt-4 text-sm text-primary`}>
+            OpenAI cloud environment guide <ExternalLink className="ml-2 h-4 w-4" />
+          </a>
         </section>
 
         {/* =========================== OPTIONS =========================== */}

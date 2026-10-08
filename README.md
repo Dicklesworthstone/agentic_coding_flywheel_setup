@@ -480,7 +480,7 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 |------|---------|--------------------|
 | BeadsRust | `br` | Issue tracking in the repo's `.beads/` |
 | Beads Viewer | `bv` | `bv --robot-*` triage from a prebuilt release |
-| MCP Agent Mail | `am`, `mcp-agent-mail` | Registered with Claude Code as a stdio MCP server, so no daemon has to survive the snapshot |
+| MCP Agent Mail | `am`, `mcp-agent-mail` | Registers `am serve-stdio` with Claude Code, so no daemon has to survive the snapshot |
 | Ultimate Bug Scanner | `ubs` | Scanner with bundled modules/helpers; no hooks installed |
 | Coding Agent Session Search | `cass` | Search this VM's agent history |
 | CASS Memory System | `cm` | Procedural memory |
@@ -491,9 +491,9 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 
 **How it behaves:**
 - Every prebuilt bundle is checked against the repository's `cloud-mirror.json` before extraction. A mismatch skips the tool. All tools, including JSM, are hash-pinned.
-- Tool jobs run in parallel with a maximum 180-second download/install deadline, keeping setup inside the roughly five-minute caching window under normal VM operation. No compiler is invoked. Later sessions start from the snapshot with the tools already installed.
+- Tool jobs run in parallel with a maximum 180-second deadline covering downloads and both existing/final binary checks, plus up to two seconds for termination. This keeps setup inside the roughly five-minute caching window under normal VM operation. No compiler is invoked. Later sessions start from the snapshot with the tools already installed.
 - The script always exits 0, because a failing setup script stops the session from starting. Anything that did not install is listed in the summary, in `~/.acfs/cloud/setup.log`, and in the guide below.
-- It writes a managed block into `~/.claude/CLAUDE.md`, which cloud sessions load as user instructions, so Claude knows which flywheel tools exist and how to call them. Content outside the block is preserved.
+- It writes a managed block into `~/.claude/CLAUDE.md`, which cloud sessions load as user instructions, so Claude knows which flywheel tools exist and how to call them. Content outside the block is preserved. If existing managed markers are incomplete, setup leaves the file untouched and logs the retained replacement guide's location.
 
 **Left out on purpose:** everything in `install.sh` that provisions a long-lived machine (users, zsh theming, the Ubuntu upgrade, systemd services, Tailscale, PostgreSQL, Vault, cloud CLIs), plus `ntm` (no interactive terminal to drive), `dcg` (it installs a user-level Claude Code hook, and cloud sessions only run hooks from the repository's `.claude/settings.json`), `rch` (needs SSH build workers), and `caam`, `ru`, `slb`.
 
@@ -514,6 +514,8 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 The bundles target Linux x86_64. Each executable must successfully return its version before installation. JFP v1.0.3 uses Bun's standard x64 target and fails with SIGILL on older CPUs without AVX2; setup reports that failure and continues with the other tools.
 
 **Maintainer refresh:** `python3 scripts/cloud-mirror-publish.py --stage /path/on/large-disk/acfs-cloud --output /path/to/new-candidate.json --publish` discovers latest releases with authenticated `gh`, verifies release checksums and pinned Minisign signatures where published, bundles Linux x86_64 executables, uploads with authenticated Wrangler, and verifies each public download. It requires Python 3.10+, `gh`, `minisign`, and `wrangler`; these credentials are needed only by the maintainer. Review the candidate, smoke-test on Ubuntu 24.04, and commit it as `cloud-mirror.json`. Repeated runs reuse downloaded artifacts and skip matching remote bundles. Staging is retained for inspection. A failed tool aborts manifest publication; it cannot silently disappear from the install set.
+
+Use `--tools br bv` to refresh a subset while retaining every other entry from the committed manifest. Partial refreshes require its existing base URL. When mirroring to another R2 bucket/domain, `--base-url` supplies the public prefix and `--bucket` supplies the destination bucket; the URL path becomes the object prefix.
 
 ---
 

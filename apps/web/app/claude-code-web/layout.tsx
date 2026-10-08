@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
  */
 const TITLE = "ACFS for Claude Code on the web";
 const DESCRIPTION =
-  "One setup script puts br, bv, Agent Mail, ubs, cass, and the rest of the agent-facing flywheel stack into every Claude Code cloud session, verified against the same checksums as install.sh.";
+  "One setup script installs prebuilt br, bv, Agent Mail, ubs, cass, and the rest of the flywheel stack into Claude Code cloud sessions, verified against repository-pinned bundle hashes.";
 
 export const metadata: Metadata = {
   title: TITLE,
