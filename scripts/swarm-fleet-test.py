@@ -809,7 +809,10 @@ def promote_ref(git, reference, old, candidate, guard):
                     pass
                 process.wait(timeout=5)
         if not process.stdin.closed:
-            process.stdin.close()
+            try:
+                process.stdin.close()
+            except OSError:
+                pass  # git already exited; an unflushed abort cannot reach it
         process.stdout.close()
 
 
