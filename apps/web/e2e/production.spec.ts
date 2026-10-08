@@ -146,7 +146,7 @@ test.describe("Production Smoke Tests", () => {
     await page.getByRole("button", { name: "Copy setup script" }).click();
     await expect(page.getByText("Copied").first()).toBeVisible();
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
-      .toContainText("ACFS_CLOUD_AGENT=codex bash");
+      .toContainText('ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash');
     const codexCopy = page.getByRole("button", { name: "Copy Codex install script" });
     await codexCopy.click();
     await expect(codexCopy).toHaveText("Copied");

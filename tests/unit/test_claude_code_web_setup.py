@@ -460,6 +460,7 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
             'mcp-agent-mail': {'type': 'stdio', 'command': str(self.home / '.local/bin/mcp-agent-mail'), 'args': [], 'env': {'KEEP': 'value'}},
             'another-server': {'command': 'keep', 'args': ['original']}}}
         config.write_text(json.dumps(original))
+        config.chmod(0o600)
         before = config.read_bytes()
         self.run_setup('am')
         migrated = json.loads(config.read_text())
@@ -467,6 +468,7 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertEqual(migrated['mcpServers']['another-server'], original['mcpServers']['another-server'])
         self.assertEqual(migrated['mcpServers']['mcp-agent-mail']['env'], {'KEEP': 'value'})
         self.assertEqual(migrated['mcpServers']['mcp-agent-mail']['args'], ['serve-stdio'])
+        self.assertEqual(config.stat().st_mode & 0o777, 0o600)
         backups = list((self.root / 'tmp').glob('acfs-cloud.*/claude.json.before-stdio-fix'))
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), before)
@@ -498,6 +500,33 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertTrue(guide.read_text().startswith('Custom instructions.\n'))
         self.assertIn('`am` / `mcp-agent-mail`', guide.read_text())
         self.assertFalse((self.home / '.claude').exists())
+
+    def test_codex_writable_root_preserves_readonly_home_and_codex_home(self):
+        self.bundle()
+        runtime = self.root / 'runtime-config'
+        runtime.mkdir()
+        (runtime / 'AGENTS.md').write_text('Runtime instructions.\n')
+        runtime.chmod(0o555)
+        self.home.chmod(0o555)
+        writable = self.root / 'workspace tools'
+        output = self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable), CODEX_HOME=str(runtime))
+        self.assertIn('(verified prebuilt)', output)
+        self.assertTrue((writable / '.local/bin/br').is_file())
+        self.assertTrue((writable / '.acfs/cloud/setup.log').is_file())
+        guide = (writable / '.codex/AGENTS.md').read_text()
+        self.assertIn(str(writable / '.acfs/cloud/setup.log'), guide)
+        self.assertIn('workspace\\ tools/.local/bin', guide)
+        self.assertIn('ACFS_CLOUD_ROOT=', guide)
+        self.assertIn('ACFS_REF=main', guide)
+        self.assertEqual((runtime / 'AGENTS.md').read_text(), 'Runtime instructions.\n')
+        self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_invalid_root_is_rejected_before_creating_install_directories(self):
+        for root in ('relative-root', '/'):
+            with self.subTest(root=root):
+                output = self.run_setup(ACFS_CLOUD_ROOT=root)
+                self.assertIn('ACFS_CLOUD_ROOT must be an absolute directory', output)
+                self.assertFalse((self.home / '.acfs').exists())
 
     def test_missing_second_agent_mail_binary_rejected(self):
         self.bundle("am")

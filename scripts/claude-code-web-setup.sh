@@ -32,6 +32,8 @@
 #
 # Environment overrides (all optional):
 #   ACFS_CLOUD_AGENT     claude (default) or codex; selects the instruction guide
+#   ACFS_CLOUD_ROOT      writable absolute data root (default: $HOME); in Codex
+#                        mode a custom root also holds the explicitly loaded guide
 #   ACFS_CLOUD_TOOLS     space-separated subset of tools to install
 #                        (default: br bv am ubs cass cm ms ast-grep jsm jfp)
 #   ACFS_CLOUD_TIMEOUT   whole tool job timeout in seconds (default: 180, max: 180)
@@ -42,12 +44,18 @@ ACFS_REF="${ACFS_REF:-main}"
 ACFS_RAW="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF}"
 ACFS_CLOUD_SCRIPT_URL="${ACFS_RAW}/scripts/claude-code-web-setup.sh"
 ACFS_CLOUD_DEFAULT_TOOLS="br bv am ubs cass cm ms ast-grep jsm jfp"
-ACFS_CLOUD_STATE_DIR="${HOME}/.acfs/cloud"
-ACFS_CLOUD_BIN_DIR="${HOME}/.local/bin"
+ACFS_CLOUD_ROOT="${ACFS_CLOUD_ROOT:-$HOME}"
+ACFS_CLOUD_STATE_DIR="${ACFS_CLOUD_ROOT}/.acfs/cloud"
+ACFS_CLOUD_BIN_DIR="${ACFS_CLOUD_ROOT}/.local/bin"
 ACFS_CLOUD_AGENT="${ACFS_CLOUD_AGENT:-claude}"
 ACFS_CLOUD_GUIDE="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/CLAUDE.md"
 if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
     ACFS_CLOUD_GUIDE="${CODEX_HOME:-${HOME}/.codex}/AGENTS.md"
+    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+        # Hosted CODEX_HOME may be a read-only runtime mount. Keep its config
+        # intact; the Start skill explicitly loads this environment-local guide.
+        ACFS_CLOUD_GUIDE="$ACFS_CLOUD_ROOT/.codex/AGENTS.md"
+    fi
 fi
 ACFS_CLOUD_GUIDE_BEGIN="<!-- BEGIN ACFS CLOUD TOOLS (managed by claude-code-web-setup.sh) -->"
 ACFS_CLOUD_GUIDE_END="<!-- END ACFS CLOUD TOOLS -->"
@@ -126,7 +134,7 @@ cloud_install_tool_job() {
         cloud_record "$tool" ok "$version (already installed)"
         return 0
     fi
-    python3 - "$tool" "$ACFS_CLOUD_WORK" "$HOME/.local" >"$log" 2>&1 <<'PY'
+    python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >"$log" 2>&1 <<'PY'
 import hashlib, io, json, pathlib, re, shutil, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
@@ -299,7 +307,9 @@ if path.is_file():
         (work / 'claude.json.before-stdio-fix').chmod(0o600)
         entry['command'], entry['args'] = server, ['serve-stdio']
         updated = path.with_name(path.name + '.acfs-' + work.name + '.tmp')
-        with updated.open('x') as output:
+        # The config can contain credentials: restrict its temporary candidate
+        # at creation, before writing any bytes, regardless of the caller's umask.
+        with os.fdopen(os.open(updated, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
             output.write(json.dumps(config, indent=2) + '\n')
         updated.chmod(stat.S_IMODE(path.stat().st_mode))
         if path.read_bytes() != original:
@@ -324,7 +334,7 @@ cloud_tool_guide_line() {
     case "$1" in
         br) printf '%s\n' '- `br` (beads_rust): issue tracker in `.beads/`. `br ready --json`, `br show <id>`, `br update <id> --status in_progress`, `br close <id> --reason "..."`, then `br sync --flush-only` and commit `.beads/`.' ;;
         bv) printf '%s\n' '- `bv` (beads_viewer): graph-aware triage over beads. Use ONLY `--robot-*` flags (bare `bv` opens a blocking TUI): `bv --robot-triage`, `bv --robot-next`, `bv --robot-plan`.' ;;
-        am) printf '%s\n' '- `am` / `mcp-agent-mail` (Agent Mail): agent messaging and file reservations. MCP registration status is in `~/.acfs/cloud/setup.log`; use `am --help` for CLI access.' ;;
+        am) printf '%s\n' "- \`am\` / \`mcp-agent-mail\` (Agent Mail): agent messaging and file reservations. MCP registration status is in \`$ACFS_CLOUD_STATE_DIR/setup.log\`; use \`am --help\` for CLI access." ;;
         ast-grep) printf '%s\n' '- `ast-grep`: structural code search used by UBS. Use this name because Linux may have an unrelated `sg` command.' ;;
         ubs) printf '%s\n' '- `ubs` (Ultimate Bug Scanner): run `ubs <changed files>` before every commit; exit 0 means clean.' ;;
         cass) printf '%s\n' '- `cass` (session search): `cass search "query" --robot --limit 5`. Always pass `--robot` or `--json`; bare `cass` opens a TUI.' ;;
@@ -359,7 +369,7 @@ cloud_write_guide() {
     block+="# Agent Flywheel tools (ACFS cloud setup)"$'\n\n'
     block+="This VM was provisioned by the ACFS cloud setup script for $ACFS_CLOUD_AGENT"$'\n'
     block+="(https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)."$'\n'
-    block+='In each task shell, run `export PATH="$HOME/.local/bin:$PATH"` before using these CLIs:'$'\n\n'
+    block+="In each task shell, run \`export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH\` before using these CLIs:"$'\n\n'
     if [[ ${#installed[@]} -gt 0 ]]; then
         block+="$(printf '%s\n' "${installed[@]}")"$'\n'
     else
@@ -369,8 +379,8 @@ cloud_write_guide() {
         block+=$'\n'"Not installed at setup time:"$'\n\n'
         block+="$(printf '%s\n' "${missing[@]}")"$'\n'
     fi
-    block+=$'\n'"Setup log: \`~/.acfs/cloud/setup.log\` (per-tool logs in \`~/.acfs/cloud/logs/\`)."
-    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
+    block+=$'\n'"Setup log: \`$ACFS_CLOUD_STATE_DIR/setup.log\` (per-tool logs in \`$ACFS_CLOUD_STATE_DIR/logs/\`)."
+    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
     fi
@@ -430,9 +440,12 @@ cloud_main() {
         command -v "$bin" >/dev/null || { cloud_warn "Required command missing: $bin"; return 0; }
     done
     ACFS_CLOUD_WORK="$(mktemp -d "${TMPDIR:-/tmp}/acfs-cloud.XXXXXX")" || return 0
-    mkdir -p "$ACFS_CLOUD_STATE_DIR/logs" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_WORK/status"
+    if ! mkdir -p "$ACFS_CLOUD_STATE_DIR/logs" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_WORK/status"; then
+        cloud_warn "Cannot write the install directories; choose a writable ACFS_CLOUD_ROOT"
+        return 0
+    fi
     export PATH="$ACFS_CLOUD_BIN_DIR:/usr/local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"
-    export ACFS_CLOUD_WORK ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
+    export ACFS_CLOUD_WORK ACFS_CLOUD_ROOT ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
     export -f cloud_install_tool_job cloud_version cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
 
     cloud_step "ACFS cloud setup: $ACFS_CLOUD_TOOLS"
@@ -488,8 +501,15 @@ cloud_main() {
     return 0
 }
 
-mkdir -p "${HOME}/.acfs/cloud" 2>/dev/null
+if [[ "$ACFS_CLOUD_ROOT" != /* || "$ACFS_CLOUD_ROOT" == / ]]; then
+    cloud_warn "ACFS_CLOUD_ROOT must be an absolute directory other than /"
+    exit 0
+fi
+if ! mkdir -p "$ACFS_CLOUD_STATE_DIR"; then
+    cloud_warn "Cannot write $ACFS_CLOUD_STATE_DIR; choose a writable ACFS_CLOUD_ROOT"
+    exit 0
+fi
 # The subshell confines any unexpected error (including set -u) so the
 # setup script still exits 0 and the session starts.
-( cloud_main "$@" ) 2>&1 | tee "${HOME}/.acfs/cloud/setup.log" >&2
+( cloud_main "$@" ) 2>&1 | tee "$ACFS_CLOUD_STATE_DIR/setup.log" >&2
 exit 0

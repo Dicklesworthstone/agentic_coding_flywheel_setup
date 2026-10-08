@@ -346,6 +346,7 @@ export default function ClaudeCodeWebPage() {
             In Work in → Cloud, add this to your environment&apos;s Install script. Enable internet
             access and allow raw.githubusercontent.com and downloads.agent-flywheel.com, review the
             setup log, then Publish the environment. Republish after changing its setup.
+            Tools and logs live in the writable repo workspace; HOME and CODEX_HOME stay intact.
           </p>
           <SetupScriptCard label="Install script for a Codex cloud environment" script={CODEX_CLOUD_SETUP_SCRIPT}
             copyLabel="Copy Codex install script" title="Install script" />
@@ -357,8 +358,8 @@ export default function ClaudeCodeWebPage() {
             <code>{CODEX_CLOUD_START_SKILL}</code>
           </pre>
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
-            Agent Mail is available as a CLI; hosted MCP is not configured. Setup warns if
-            AGENTS.override.md takes precedence. Older environments with Setup and Maintenance
+            Agent Mail is available as a CLI; hosted MCP is not configured. The Start skill loads
+            the workspace guide explicitly. Older environments with Setup and Maintenance
             script fields use the install command in Setup. Both modes have Linux smoke tests;
             verify PATH, instruction loading and network access in your hosted task.
           </p>

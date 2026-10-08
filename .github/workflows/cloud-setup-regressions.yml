@@ -55,5 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cloud-public-smoke-logs
+          # Only this fresh home's diagnostic directory, never agent config/secrets.
           path: ${{ runner.temp }}/acfs-cloud-smoke/.acfs/cloud/
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -506,6 +506,7 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 | `ACFS_CLOUD_TIMEOUT` | `180` | Whole tool job deadline in seconds; 1–180 |
 | `ACFS_CLOUD_REINSTALL` | `0` | `1` reinstalls tools that are already on PATH (to update inside a running session) |
 | `ACFS_CLOUD_AGENT` | `claude` | `codex` writes a Codex instruction guide and skips Claude MCP registration |
+| `ACFS_CLOUD_ROOT` | `$HOME` | Writable absolute data root for binaries/logs; Codex's custom-root guide lives there too |
 | `ACFS_REF` | `main` | ACFS ref that supplies `cloud-mirror.json` |
 
 **Public prebuilt mirror:** every default tool, including `ast-grep`, JSM and JFP, comes from `https://downloads.agent-flywheel.com/acfs-cloud/v1`. No login, GitHub token or repository ownership is needed. Select **Full** network access, or **Custom** allowing `raw.githubusercontent.com` and `downloads.agent-flywheel.com`. Bundles are pinned by SHA256 in [`cloud-mirror.json`](cloud-mirror.json), use content-addressed URLs, and are checked before extraction and executable verification. Setup never runs upstream installers or builds from source.
@@ -527,26 +528,28 @@ The same public bundles work in a Linux x86_64 Codex cloud environment. In **Wor
 ```bash
 #!/bin/bash
 set -o pipefail
-curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=codex bash
+acfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash
+printf '/.acfs-cloud/\n' >> "$(git rev-parse --git-path info/exclude)"
 ```
 
-Enable internet access and add `raw.githubusercontent.com` and `downloads.agent-flywheel.com` to **Additional allowed domains**. These public downloads need no secrets or ownership of the tool repositories. Review `~/.acfs/cloud/setup.log`, then **Publish** the prepared environment. After changing its setup, **Republish** for new tasks. See OpenAI's [current cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments).
+Enable internet access and add `raw.githubusercontent.com` and `downloads.agent-flywheel.com` to **Additional allowed domains**. These public downloads need no secrets or ownership of the tool repositories. The recipe installs into the writable repository workspace because hosted home/config paths can be read-only, and excludes its data directory through local Git metadata. It preserves `HOME` and `CODEX_HOME`. Review `<repo>/.acfs-cloud/.acfs/cloud/setup.log`, then **Publish** the prepared environment. After changing its setup, **Republish** for new tasks. See OpenAI's [current cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments).
 
 Add these instructions to the environment's **Start skill**:
 
 ```text
-Read ~/.codex/AGENTS.md for the installed flywheel tools and ~/.acfs/cloud/setup.log for failures.
-If CODEX_HOME is set, read $CODEX_HOME/AGENTS.md instead.
-In each task shell, export PATH="$HOME/.local/bin:$PATH" before using the tools.
+Find the repository root with git rev-parse --show-toplevel.
+Read <repo>/.acfs-cloud/.codex/AGENTS.md for the installed flywheel tools and <repo>/.acfs-cloud/.acfs/cloud/setup.log for failures.
+In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-cloud"; export PATH="$acfs_cloud_root/.local/bin:$PATH" before using the tools.
 Check br --version, bv --version, ubs --version and jsm --version before starting work.
 Use br ready --json and bv --robot-triage; never open their interactive TUIs.
 ```
 
-Codex mode preserves existing instructions outside its managed block. A nonempty `AGENTS.override.md` takes precedence over `AGENTS.md`; setup warns so the Start skill can explicitly load the tool guide. See [OpenAI's instruction discovery rules](https://learn.chatgpt.com/docs/agent-configuration/agents-md). Agent Mail is available as a CLI; this setup does not configure or claim hosted MCP support. Local Codex MCP configuration and ChatGPT's remote MCP connections are different surfaces; see [OpenAI's MCP guide](https://learn.chatgpt.com/docs/extend/mcp).
+Codex mode preserves existing instructions outside its managed block. Without a custom root it uses `$CODEX_HOME/AGENTS.md` or `~/.codex/AGENTS.md`; a nonempty `AGENTS.override.md` takes precedence, so setup warns. With the workspace recipe above, the Start skill explicitly loads the separate tool guide. See [OpenAI's instruction discovery rules](https://learn.chatgpt.com/docs/agent-configuration/agents-md). Agent Mail is available as a CLI; this setup does not configure or claim hosted MCP support. Local Codex MCP configuration and ChatGPT's remote MCP connections are different surfaces; see [OpenAI's MCP guide](https://learn.chatgpt.com/docs/extend/mcp).
 
 If your UI instead has **Setup script** and **Maintenance script**, it uses the [legacy environment workflow](https://learn.chatgpt.com/docs/environments/cloud-environment). Put the install command in Setup script; avoid reinstalling in Maintenance script on every cached resume. Configure task-phase internet separately if tools need online access after setup.
 
-**Verification boundary:** both installer modes are tested on Ubuntu 24.04, including real public downloads. A hosted task still needs to confirm its VM architecture, PATH, instruction discovery and network policy. The script reports individual failures but exits zero; successful session startup alone does not prove every tool installed.
+**Verification boundary:** both installer modes are tested on Ubuntu 24.04, including real public downloads. A fresh Claude-hosted session with Full network access, pinned to `4a0e6bfa792ce73ad4c69847755ecd64384288c2`, installed all ten tools in 12 seconds on 2026-10-08; all eleven executables returned their versions, Claude received the guide automatically, and Agent Mail's stdio MCP health check passed. Restricted-network Claude sessions and Codex-hosted tasks still need acceptance checks for their VM architecture, PATH, instruction discovery and network policy. The script reports individual failures but exits zero; successful session startup alone does not prove every tool installed.
 
 ## The Installer
 The installer is the heart of ACFS—a modular Bash script that transforms a fresh Ubuntu or Arch-based machine into a fully-configured development environment.
