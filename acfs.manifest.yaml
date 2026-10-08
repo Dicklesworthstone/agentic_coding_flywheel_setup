@@ -2812,7 +2812,9 @@ modules:
       tool: brenner_bot
       runner: bash
       url: "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh"
-      args: ["--", "--skip-cass"]
+      # Skip brenner's own pinned toolchain: ACFS installs and updates ntm,
+      # cass and cm through their own modules (same flags as acfs update, GH #210).
+      args: ["--", "--skip-ntm", "--skip-cass", "--skip-cm"]
     install: []
     verify:
       - brenner --version || brenner --help
