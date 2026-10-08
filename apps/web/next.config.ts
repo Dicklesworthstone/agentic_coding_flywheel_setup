@@ -56,6 +56,11 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/claude-code-web",
+        destination: "/cloud-agents",
+        permanent: true,
+      },
+      {
         source: "/core_flywheel",
         destination: "/core-flywheel",
         permanent: true,

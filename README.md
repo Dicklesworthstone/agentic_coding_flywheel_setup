@@ -45,7 +45,7 @@
 
 The installer is **idempotent**—if interrupted, simply re-run it. It will automatically resume from the last completed phase without prompts.
 
-> **Using a cloud agent instead of a VPS?** A lightweight setup script installs prebuilt flywheel CLIs for [Claude Code on the web](#claude-code-on-the-web-cloud-environments) and [ChatGPT / Codex](#chatgpt--codex-cloud-environments).
+> **Using a cloud agent instead of a VPS?** The [cloud agent guide](https://agent-flywheel.com/cloud-agents) has tested Claude Code / Codex setups and researched recipes for other Linux agents. See [cloud environments](#cloud-agent-environments).
 
 > **Production environments:** For stable, reproducible installs, pin to a tagged release or specific commit:
 > ```bash
@@ -463,9 +463,13 @@ Everything else — language runtimes, AI agents, and the flywheel tool stack �
 
 ---
 
-## Claude Code on the web (cloud environments)
+## Cloud agent environments
 
-[Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) runs every cloud session (claude.ai/code, the desktop and mobile apps, `claude --cloud`) on a disposable Ubuntu 24.04 VM that is root-only, already ships Rust, Go, Bun, and uv, and is snapshotted after its setup script runs. The full installer is the wrong tool there: there is no user to create, no shell to theme, no Ubuntu release to upgrade, and nothing it starts survives the snapshot. For those VMs ACFS has a separate, lightweight entry point, [`scripts/claude-code-web-setup.sh`](scripts/claude-code-web-setup.sh), that installs only the agent-facing flywheel CLIs. The [web guide](https://agent-flywheel.com/claude-code-web) walks through it with copy buttons.
+The public [cloud agent setup guide](https://agent-flywheel.com/cloud-agents) selects the right recipe for your provider. Claude Code and ChatGPT / Codex have hosted test evidence; Amp Orbs, Devin and Grok Bot have documentation-based recipes awaiting hosted acceptance. Meta Muse needs shell/runtime and persistence checks before an installation recipe can be accepted. The installer retains its original filename and supports `claude`, `codex` and provider-neutral `generic` modes.
+
+### Claude Code on the web
+
+[Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) runs cloud sessions on a disposable Ubuntu 24.04 VM. ACFS uses [`scripts/claude-code-web-setup.sh`](scripts/claude-code-web-setup.sh) to install prebuilt agent-facing tools during setup, without provisioning users, upgrading the OS or starting background services. The [cloud guide](https://agent-flywheel.com/cloud-agents#claude) walks through it with copy buttons.
 
 **Set it up:** in claude.ai/code open the environment menu, choose **Add cloud environment** (or edit one), set **Network access** to **Full** (recommended), and paste this as the **Setup script**:
 
@@ -551,6 +555,33 @@ Codex mode preserves existing instructions outside its managed block. Without a 
 If your UI instead has **Setup script** and **Maintenance script**, it uses the [legacy environment workflow](https://learn.chatgpt.com/docs/environments/cloud-environment). Put the install command in Setup script; avoid reinstalling in Maintenance script on every cached resume. Configure task-phase internet separately if tools need online access after setup.
 
 **Verification boundary:** both installer modes are tested on Ubuntu 24.04, including real public downloads. On 2026-10-08, a fresh Claude-hosted Full session pinned to `4a0e6bfa792ce73ad4c69847755ecd64384288c2` installed all ten tools in 12 seconds; all eleven versions passed, the guide loaded automatically, and Agent Mail's stdio MCP health check passed. Codex hosted installation took 6 seconds at `140a845d`; fresh published tasks reused all eleven executables, including after the repository-skill update at `4bdbf5a7`. A task that explicitly loaded the guide configured PATH and passed all eleven probes. Automatic Codex skill loading and restricted-network Claude acceptance remain open. The script reports individual failures but exits zero; successful session startup alone does not prove every tool installed.
+
+### Other Linux cloud agents
+
+The provider-neutral template writes `$HOME/.acfs/cloud/AGENTS.md` and does not change agent configuration or register MCP servers:
+
+```bash
+#!/bin/bash
+set -o pipefail
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=generic bash
+```
+
+Include these instructions in each task:
+
+```text
+Read $HOME/.acfs/cloud/AGENTS.md and $HOME/.acfs/cloud/setup.log before starting work.
+In each task shell, run export PATH="$HOME/.local/bin:$PATH".
+Check br --version, bv --version, ubs --version and jsm --version; report missing tools from the setup log.
+Use the existing repository tracker with br ready --json and bv --robot-triage. Never open their interactive TUIs.
+Agent Mail is available as a CLI. This setup does not configure this agent's MCP servers.
+```
+
+Requirements: Linux x86_64 with compatible runtime libraries, Bash, Python 3, curl, tar and GNU timeout, plus a writable data root. Ubuntu 24.04 is the tested OS. If you set `ACFS_CLOUD_ROOT`, use that root instead of `$HOME` in these instructions. Older CPUs may reject JFP's current release; inspect the setup log and each version command.
+
+- **[Amp Orbs](https://ampcode.com/docs/orbs/customizing):** merge the command into executable `.agents/setup`, or use the project's Pre-setup Script. Do not install dependencies in `.agents/resume`. Amp documents Debian 12; binary compatibility and hosted persistence remain unverified.
+- **[Devin](https://docs.devin.ai/onboard-devin/environment/blueprint-reference):** add a Linux blueprint `run` step to `initialize` or `maintenance` and task instructions to `knowledge`. Verify a fresh snapshot. PATH exports do not persist between blueprint steps unless written to `$ENVRC`; explicit task-shell exports avoid assuming persistence.
+- **[Grok Bot](https://docs.x.ai/grok-bot/private-networks):** Enterprise Team Setup supports shell-script manifest entries on Debian-based Linux computers. Consumer setup access, binary compatibility and hosted persistence remain unverified. Grok Build CLI and chat Build Mode are different products.
+- **[Meta Muse](https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/amp/):** Meta documents a persistent Linux VM with Sentinel-controlled access. A usable startup hook, CPU/runtime compatibility and hosted installation have not been verified. [Muse Code](https://dev.meta.ai/docs/muse-code) is the separate terminal/CI agent.
 
 ## The Installer
 The installer is the heart of ACFS—a modular Bash script that transforms a fresh Ubuntu or Arch-based machine into a fully-configured development environment.

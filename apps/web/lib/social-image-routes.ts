@@ -91,12 +91,12 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     theme: "omarchy",
     tags: ["pacman", "starship", "Hyprland", "Flywheel"],
   },
-  "/claude-code-web": {
-    badge: "Claude Code on the Web",
-    title: "The Flywheel in Every Cloud Session",
+  "/cloud-agents": {
+    badge: "Cloud Agent Setup",
+    title: "Give Your Cloud Agent a Flywheel",
     description:
-      "One setup script puts br, bv, Agent Mail, ubs, cass, and the rest of the agent-facing stack into every Claude Code cloud session, verified like install.sh.",
-    path: "/claude-code-web",
+      "Verified prebuilt tools for tasks, coordination, code checks and skills. Claude Code, ChatGPT / Codex and researched Linux cloud recipes.",
+    path: "/cloud-agents",
     theme: "tools",
     tags: ["Cloud Sessions", "Beads", "Agent Mail", "Setup Script"],
   },

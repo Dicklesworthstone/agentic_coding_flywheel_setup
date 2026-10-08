@@ -2,24 +2,24 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 /**
- * Server-owned metadata for the /claude-code-web route. The page itself is a
+ * Server-owned metadata for the /cloud-agents route. The page itself is a
  * client component (site convention — see app/page.tsx) because it renders
  * framer-motion variants directly.
  */
-const TITLE = "ACFS for Claude Code on the web";
+const TITLE = "Flywheel tools for cloud agents";
 const DESCRIPTION =
-  "One setup script installs prebuilt br, bv, Agent Mail, ubs, cass, and the rest of the flywheel stack into Claude Code cloud sessions, verified against repository-pinned bundle hashes.";
+  "Verified prebuilt Flywheel tools for Claude Code and ChatGPT / Codex, with researched setup recipes for Amp Orbs, Devin, Grok Bot and other Linux cloud agents.";
 
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   alternates: {
-    canonical: "/claude-code-web",
+    canonical: "/cloud-agents",
   },
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,
-    url: "/claude-code-web",
+    url: "/cloud-agents",
     siteName: "Agent Flywheel",
     type: "website",
   },
@@ -30,6 +30,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ClaudeCodeWebLayout({ children }: { children: ReactNode }) {
+export default function CloudAgentsLayout({ children }: { children: ReactNode }) {
   return children;
 }

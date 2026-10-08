@@ -3,13 +3,13 @@ import { getStaticRouteSocialData } from "@/lib/social-image-routes";
 
 export const runtime = "edge";
 
-export const alt = "ACFS for Claude Code on the web — the flywheel in every cloud session";
+export const alt = "Agent Flywheel — verified tools for cloud agents";
 export const size = {
   width: 1200,
-  height: 630,
+  height: 600,
 };
 export const contentType = "image/png";
 
 export default function Image() {
-  return createSocialImage(getStaticRouteSocialData("/claude-code-web"), "opengraph");
+  return createSocialImage(getStaticRouteSocialData("/cloud-agents"), "twitter");
 }

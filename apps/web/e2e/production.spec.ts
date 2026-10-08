@@ -132,10 +132,10 @@ test.describe("Production Smoke Tests", () => {
     expect(jsErrors).toEqual([]);
   });
 
-  test("claude code web page shows a copyable setup script", async ({ page }) => {
+  test("cloud agent page selects and copies provider-specific setup instructions", async ({ page }) => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
-    await page.goto("/claude-code-web");
+    await page.goto("/cloud-agents");
     await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
@@ -145,6 +145,7 @@ test.describe("Production Smoke Tests", () => {
 
     await page.getByRole("button", { name: "Copy setup script" }).click();
     await expect(page.getByText("Copied").first()).toBeVisible();
+    await page.getByRole("button", { name: "ChatGPT / Codex Hosted test" }).click();
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
       .toContainText('ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash');
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
@@ -157,6 +158,19 @@ test.describe("Production Smoke Tests", () => {
     const taskCopy = page.getByRole("button", { name: "Copy Codex task instructions" });
     await taskCopy.click();
     await expect(taskCopy).toHaveText("Copied");
+    await expect(page.getByText(/Automatic Start\/repository-skill discovery did not work/)).toBeVisible();
+    await page.getByRole("button", { name: "Amp Orbs Documented workflow" }).click();
+    await expect(page.getByRole("region", { name: "Setup script for Amp Orbs" }))
+      .toContainText("ACFS_CLOUD_AGENT=generic bash");
+    await page.getByRole("button", { name: "Meta Muse Needs investigation" }).click();
+    await expect(page.getByRole("heading", { name: "Check the VM before installing" })).toBeVisible();
+    await page.getByRole("button", { name: "Open Linux template" }).click();
+    await expect(page.getByRole("region", { name: "Other Linux agent task instructions" }))
+      .toContainText("$HOME/.acfs/cloud/AGENTS.md");
+
+    await page.goto("/claude-code-web#codex-cloud");
+    await expect(page).toHaveURL(/\/cloud-agents#codex-cloud$/);
+    await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" })).toBeVisible();
 
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);

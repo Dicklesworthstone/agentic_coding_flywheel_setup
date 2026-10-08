@@ -287,6 +287,34 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         output = self.run_setup(ACFS_CLOUD_AGENT='unknown')
         self.assertIn('ACFS_CLOUD_AGENT must be claude or codex', output)
 
+    def test_generic_guide_is_provider_neutral_and_preserves_existing_instructions(self):
+        self.bundle('am')
+        self.command('claude', f'#!/bin/sh\ntouch "{self.root}/claude-called"\n')
+        guide = self.home / '.acfs/cloud/AGENTS.md'
+        guide.parent.mkdir(parents=True)
+        guide.write_text('Keep my generic instructions.\n')
+        for _ in range(2):
+            self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        text = guide.read_text()
+        self.assertTrue(text.startswith('Keep my generic instructions.\n'))
+        self.assertEqual(text.count('<!-- BEGIN ACFS CLOUD TOOLS'), 1)
+        self.assertIn('ACFS_CLOUD_AGENT=generic bash', text)
+        self.assertIn('Load this guide explicitly', text)
+        self.assertFalse((self.root / 'claude-called').exists())
+        self.assertFalse((self.home / '.claude').exists())
+        self.assertFalse((self.home / '.codex').exists())
+
+    def test_generic_writable_root_keeps_provider_homes_intact(self):
+        self.bundle()
+        writable = self.root / 'generic tools'
+        self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable))
+        self.assertTrue((writable / '.local/bin/br').is_file())
+        guide = (writable / '.acfs/cloud/AGENTS.md').read_text()
+        self.assertIn(str(writable / '.acfs/cloud/setup.log'), guide)
+        self.assertIn('generic\\ tools/.local/bin', guide)
+        self.assertFalse((self.home / '.claude').exists())
+        self.assertFalse((self.home / '.codex').exists())
+
     def test_checksum_mismatch_never_extracts_or_executes(self):
         self.bundle(content=f'#!/bin/sh\ntouch "{self.root}/executed"\n'.encode())
         self.manifest["tools"]["br"]["sha256"] = "0" * 64

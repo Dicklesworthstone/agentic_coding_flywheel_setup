@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-code-web-setup.sh - ACFS for Claude Code on the web (cloud environments)
+# claude-code-web-setup.sh - prebuilt ACFS tools for cloud agent environments
 #
 # A lightweight, alternate ACFS install path for the disposable VMs behind
 # Claude Code cloud sessions (claude.ai/code). install.sh provisions a
@@ -31,7 +31,7 @@
 #     load as user instructions, listing what was installed and how to use it.
 #
 # Environment overrides (all optional):
-#   ACFS_CLOUD_AGENT     claude (default) or codex; selects the instruction guide
+#   ACFS_CLOUD_AGENT     claude (default), codex or generic; selects the guide
 #   ACFS_CLOUD_ROOT      writable absolute data root (default: $HOME); in Codex
 #                        mode a custom root also holds the explicitly loaded guide
 #   ACFS_CLOUD_SKILL_DIR optional absolute repository skill directory for Codex
@@ -58,6 +58,10 @@ if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         # intact; the Start skill explicitly loads this environment-local guide.
         ACFS_CLOUD_GUIDE="$ACFS_CLOUD_ROOT/.codex/AGENTS.md"
     fi
+elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then
+    # Other harnesses load this guide explicitly; never change their config
+    # or assume they discover another provider's instruction directory.
+    ACFS_CLOUD_GUIDE="$ACFS_CLOUD_STATE_DIR/AGENTS.md"
 fi
 ACFS_CLOUD_GUIDE_BEGIN="<!-- BEGIN ACFS CLOUD TOOLS (managed by claude-code-web-setup.sh) -->"
 ACFS_CLOUD_GUIDE_END="<!-- END ACFS CLOUD TOOLS -->"
@@ -385,6 +389,8 @@ cloud_write_guide() {
     block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
+    elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then
+        block+=$'\nLoad this guide explicitly in your agent instructions. Agent Mail is a CLI; provider MCP registration is not configured.\n'
     fi
     block+="$ACFS_CLOUD_GUIDE_END"
 
@@ -466,8 +472,8 @@ cloud_main() {
     local -a pids=()
     started=$(date +%s)
     case "$ACFS_CLOUD_AGENT" in
-        claude|codex) ;;
-        *) cloud_warn "ACFS_CLOUD_AGENT must be claude or codex"; return 0 ;;
+        claude|codex|generic) ;;
+        *) cloud_warn "ACFS_CLOUD_AGENT must be claude or codex or generic"; return 0 ;;
     esac
     ACFS_CLOUD_TOOLS="${ACFS_CLOUD_TOOLS:-$ACFS_CLOUD_DEFAULT_TOOLS}"
     ACFS_CLOUD_TIMEOUT="${ACFS_CLOUD_TIMEOUT:-180}"

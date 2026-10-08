@@ -1326,23 +1326,15 @@ export default function HomePage() {
                 </div>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    Using Claude Code or Codex in the cloud?
+                    Working with a cloud agent?
                   </span>{" "}
                   A lightweight setup script puts br, bv, Agent Mail, ubs, and cass into every cloud
                   session.{" "}
                   <Link
-                    href="/claude-code-web"
-                    className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
+                    href="/cloud-agents"
+                    className="inline-flex min-h-11 items-center gap-1 text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary"
                   >
-                    Claude Code setup
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                  {" · "}
-                  <Link
-                    href="/claude-code-web#codex-cloud"
-                    className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
-                  >
-                    Codex setup
+                    Choose your agent
                     <ArrowRight className="h-3 w-3" />
                   </Link>
                 </p>
