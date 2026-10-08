@@ -2786,7 +2786,7 @@ acfs_generated_install_stack_brenner_bot() {
                         elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
                             log_error "stack.brenner_bot: failed to make verified installer staging file read-only"
                             ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-                        elif run_as_target_runner 'bash' "$verified_installer_file" '--skip-cass'; then
+                        elif run_as_target_runner 'bash' "$verified_installer_file" '--skip-ntm' '--skip-cass' '--skip-cm'; then
                             install_success=true
                         else
                             log_error "stack.brenner_bot: verified installer execution failed"

@@ -10631,7 +10631,9 @@ UNIT_EOF
         log_detail "Brenner Bot already installed"
     else
         log_detail "Installing Brenner Bot"
-        try_step "Installing Brenner Bot" acfs_run_verified_upstream_script_as_target "brenner_bot" "bash" --skip-cass || acfs_optional_module_install_failed "brenner_bot" "Brenner Bot"
+        # ACFS installs ntm, cass and cm itself; brenner's pinned copies would
+        # overwrite them in the same bin dir (same flags as acfs update, GH #210).
+        try_step "Installing Brenner Bot" acfs_run_verified_upstream_script_as_target "brenner_bot" "bash" --skip-ntm --skip-cass --skip-cm || acfs_optional_module_install_failed "brenner_bot" "Brenner Bot"
     fi
 
     # Required modules that acfs_optional_module_install_failed recorded above
