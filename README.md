@@ -45,6 +45,8 @@
 
 The installer is **idempotent**—if interrupted, simply re-run it. It will automatically resume from the last completed phase without prompts.
 
+> **Using Claude Code on the web instead of a VPS?** Cloud sessions get a lightweight setup script that installs just the flywheel CLIs. See [Claude Code on the web](#claude-code-on-the-web-cloud-environments).
+
 > **Production environments:** For stable, reproducible installs, pin to a tagged release or specific commit:
 > ```bash
 > # Preferred: use a tagged release (e.g., v0.9.0)
@@ -458,6 +460,52 @@ Omarchy (and Arch Linux generally) is supported by the **same one-liner** — no
 - **No oh-my-zsh / powerlevel10k on Arch**: Arch users typically have an opinionated shell setup already, so the installer skips the oh-my-zsh + powerlevel10k phase instead of clobbering your prompt.
 
 Everything else — language runtimes, AI agents, and the flywheel tool stack — installs identically to Ubuntu.
+
+---
+
+## Claude Code on the web (cloud environments)
+
+[Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) runs every cloud session (claude.ai/code, the desktop and mobile apps, `claude --cloud`) on a disposable Ubuntu 24.04 VM that is root-only, already ships Rust, Go, Bun, and uv, and is snapshotted after its setup script runs. The full installer is the wrong tool there: there is no user to create, no shell to theme, no Ubuntu release to upgrade, and nothing it starts survives the snapshot. For those VMs ACFS has a separate, lightweight entry point, [`scripts/claude-code-web-setup.sh`](scripts/claude-code-web-setup.sh), that installs only the agent-facing flywheel CLIs. The [web guide](https://agent-flywheel.com/claude-code-web) walks through it with copy buttons.
+
+**Set it up:** in claude.ai/code open the environment menu, choose **Add cloud environment** (or edit one), set **Network access** to **Full** (recommended), and paste this as the **Setup script**:
+
+```bash
+#!/bin/bash
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
+```
+
+If your organization locks environments to the default **Trusted** level, the script still runs and installs everything that only needs GitHub. `jsm` and `jfp` download from jeffreys-skills.md and jeffreysprompts.com, which Trusted blocks, so they are skipped and reported as blocked by the network access level. Pasting the whole script into the field works too.
+
+| Tool | Command | In a cloud session |
+|------|---------|--------------------|
+| BeadsRust | `br` | Issue tracking in the repo's `.beads/` |
+| Beads Viewer | `bv` | `bv --robot-*` triage (falls back to a source build if release downloads are blocked) |
+| MCP Agent Mail | `am`, `mcp-agent-mail` | Registered with Claude Code as a stdio MCP server, so no daemon has to survive the snapshot |
+| Ultimate Bug Scanner | `ubs` | Installed with `--skip-hooks` |
+| Coding Agent Session Search | `cass` | Search this VM's agent history |
+| CASS Memory System | `cm` | Procedural memory |
+| Meta Skill | `ms` | Skill search and management |
+| Jeffrey's Skills | `jsm` | Skill manager for jeffreys-skills.md |
+| JeffreysPrompts | `jfp` | Prompt library CLI |
+
+**How it behaves:**
+- Every installer is checked against the same `checksums.yaml` ledger as `install.sh`, and a mismatch means that tool is skipped, never run. `jsm` is the one exception: its installer lives outside the ledger, so the script runs the vendor's documented one-liner.
+- Installers run in parallel under a per-installer timeout, so setup normally finishes inside the roughly five-minute window the environment needs to be cached. Later sessions start from the snapshot with the tools already installed.
+- The script always exits 0, because a failing setup script stops the session from starting. Anything that did not install is listed in the summary, in `~/.acfs/cloud/setup.log`, and in the guide below.
+- It writes a managed block into `~/.claude/CLAUDE.md`, which cloud sessions load as user instructions, so Claude knows which flywheel tools exist and how to call them. Content outside the block is preserved.
+
+**Left out on purpose:** everything in `install.sh` that provisions a long-lived machine (users, zsh theming, the Ubuntu upgrade, systemd services, Tailscale, PostgreSQL, Vault, cloud CLIs), plus `ntm` (no interactive terminal to drive), `dcg` (it installs a user-level Claude Code hook, and cloud sessions only run hooks from the repository's `.claude/settings.json`), `rch` (needs SSH build workers), and `caam`, `ru`, `slb`.
+
+**Options**, set inline so the setup script itself sees them (for example `curl -fsSL … | ACFS_CLOUD_TOOLS="br bv am ubs" bash`):
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `ACFS_CLOUD_TOOLS` | `br bv am ubs cass cm ms jsm jfp` | Which tools to install |
+| `ACFS_CLOUD_TIMEOUT` | `240` | Per-installer timeout, in seconds |
+| `ACFS_CLOUD_REINSTALL` | `0` | `1` reinstalls tools that are already on PATH (to update inside a running session) |
+| `ACFS_REF` | `main` | ACFS ref that supplies `checksums.yaml` |
+
+**GitHub proxy caveat:** cloud sessions route GitHub traffic through a proxy that only serves github.com for the repositories attached to the session, and every flywheel tool downloads its release binary from github.com. If that scoping also applies while the setup script runs, the script detects it up front, skips the release installers instead of spending the time budget on them, still builds `bv` from source (an anonymous clone plus a Go build) and installs `jsm` and `jfp`, and says so in the summary and the guide.
 
 ---
 

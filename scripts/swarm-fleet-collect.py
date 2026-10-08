@@ -35,6 +35,8 @@ _spec.loader.exec_module(fleet)
 require, encoded, decode, digest = fleet.require, fleet.encoded, fleet.decode, fleet.digest
 SCHEMA = "acfs.swarm-fleet-collection.v1"
 SPEC_SCHEMA = "acfs.swarm-fleet-collection-spec.v1"
+RESUME_SCHEMA = "acfs.swarm-fleet-collection-resume.v1"
+RESUME_WRITES_STARTED = False
 MAX_BUNDLE = 16 * 1024 * 1024
 IMPORT_SCHEMA = "acfs.swarm-fleet-import.v1"
 IMPORT_STARTED = False
@@ -431,6 +433,150 @@ def execute(launch_path, selection, known, identity, output_dir, timeout, approv
             fleet.publish(dest, "manifest.json", {"schema": SCHEMA, "plan_sha256": report["plan_sha256"], "artifacts": artifacts})
             verify_at(dest)
             report.update(status="collected", artifacts=artifacts)
+            return report, 0
+
+
+def collection_recovery_inventory(fd, plan, intent_raw):
+    """Inspect a retained prefix; never treat corrupt or extra files as absent.
+
+    Before a manifest exists, an intact bundle can establish framing, the
+    advertised head and pack checksum, not original transport provenance or
+    complete Git object semantics. Fresh resume approval binds these exact bytes.
+    """
+    names = set(os.listdir(fd))
+    expected = {e["id"] + ".bundle" for e in plan["hosts"] if e["snapshot"]["commit_count"]}
+    require(names <= expected | {"intent.json", "manifest.json"}, "unexpected_collection_member")
+    recorded, artifacts, pending = {"intent.json": intent_raw}, {}, []
+    for entry in plan["hosts"]:
+        name = entry["id"] + ".bundle" if entry["snapshot"]["commit_count"] else None
+        if name and name not in names:
+            pending.append(entry["id"])
+            continue
+        if name:
+            require(not pending, "nonprefix_collection_artifacts")
+            raw = read_bundle(fd, name)
+            validate_bundle(raw, entry["snapshot"])
+            recorded[name] = raw
+        else:
+            # The approved range contains no new history to download. This is
+            # NOT a fresh observation that the remote HEAD remains unchanged.
+            raw = b""
+        artifacts[entry["id"]] = {"id": entry["id"], "file": name, "bytes": len(raw), "sha256": digest(raw)}
+    if "manifest.json" in names:
+        recorded["manifest.json"] = fleet.read_at(fd, "manifest.json")
+        verified = verify_at(fd)
+        require(not pending and verified["artifacts"] == [artifacts[e["id"]] for e in plan["hosts"]],
+                "collection_changed_during_recovery")
+    return recorded, artifacts, pending
+
+
+def resume_collection(launch_path, selection, known, identity, output_dir, timeout, approval, invoke,
+                      resume_approval=None):
+    """Preview offline, then explicitly append only missing reviewed artifacts.
+
+    Keep both locks in the original launch-then-collection order. Reuse neither
+    mutable remote snapshots nor authority from a different launch or selection.
+    The original approval identifies the range; a separate approval authorizes
+    continuing from the exact observed local state. All publication is exclusive.
+    """
+    global RESUME_WRITES_STARTED
+    RESUME_WRITES_STARTED = False
+    require(type(timeout) is int and 1 <= timeout <= 600, "invalid_timeout")
+    require(fleet.matches(r"[0-9a-f]{64}", approval), "resume_requires_original_collection_digest")
+    require(resume_approval is None or fleet.matches(r"[0-9a-f]{64}", resume_approval), "invalid_resume_approval")
+    launch_path, output_dir = (Path(fleet.absolute_path(str(Path(os.path.abspath(p)))))
+                               for p in (launch_path, output_dir))
+    require(launch_path != output_dir and launch_path not in output_dir.parents, "output_inside_launch_journal")
+    with fleet.directory_fd(launch_path, private=True) as source:
+        lock(source)
+        launch_intent = decode(fleet.read_at(source, "intent.json"))
+        require(type(launch_intent) is dict and set(launch_intent) == {"schema", "plan"}
+                and launch_intent["schema"] == fleet.STATE_SCHEMA, "invalid_launch_intent")
+        launch = launch_intent["plan"]
+        fleet.validate_plan(launch)
+        require(launch["state_directory"] == str(launch_path) and launch["known_hosts_sha256"] == digest(known)
+                and launch["identity_sha256"] == digest(identity), "launch_context_mismatch")
+        history, records = fleet.read_history(source, launch)
+        selected = selected_hosts(selection, launch, history)
+        evidence = digest(encoded({k: digest(v) if v is not None else None for k, v in records.items()}))
+        with fleet.directory_fd(output_dir, private=True) as dest:
+            lock(dest)
+            intent_raw = fleet.read_at(dest, "intent.json")
+            intent = decode(intent_raw)
+            require(type(intent) is dict and set(intent) == {"schema", "plan"}
+                    and intent["schema"] == SCHEMA, "invalid_collection_intent")
+            plan = intent["plan"]
+            validate_plan(plan)
+            require(digest(encoded(plan)) == approval, "collection_approval_mismatch")
+            require(plan["output_directory"] == str(output_dir) and plan["timeout_seconds"] == timeout
+                    and plan["known_hosts_sha256"] == digest(known) and plan["identity_sha256"] == digest(identity)
+                    and plan["launch_plan_sha256"] == digest(encoded(launch))
+                    and plan["launch_evidence_sha256"] == evidence, "collection_resume_context_mismatch")
+            require([(h["id"], base) for h, base in selected] ==
+                    [(e["id"], e["snapshot"]["base_commit"]) for e in plan["hosts"]], "collection_resume_selection_mismatch")
+            recorded, artifacts, pending = collection_recovery_inventory(dest, plan, intent_raw)
+            info = os.fstat(dest)
+            directory_identity = [info.st_dev, info.st_ino]
+
+            def guard():
+                fleet.state_unchanged(source, launch, records)
+                with fleet.directory_fd(output_dir.parent) as parent:
+                    info = os.fstat(parent)
+                    require([info.st_dev, info.st_ino] == plan["output_parent_identity"], "output_parent_changed")
+                with fleet.directory_fd(output_dir, private=True) as current:
+                    require(os.path.samestat(os.fstat(dest), os.fstat(current)), "collection_directory_changed")
+                require(set(os.listdir(dest)) == set(recorded), "collection_changed_during_recovery")
+                for name, raw in recorded.items():
+                    actual = read_bundle(dest, name) if name.endswith(".bundle") else fleet.read_at(dest, name)
+                    require(actual == raw, "collection_changed_during_recovery")
+
+            guard()
+            resume_plan = {"schema": RESUME_SCHEMA, "policy": "verified-prefix-create-only-v1",
+                           "collection_plan_sha256": approval, "collection_identity": directory_identity,
+                           "intent_sha256": digest(intent_raw),
+                           "manifest_sha256": digest(recorded["manifest.json"]) if "manifest.json" in recorded else None,
+                           "artifacts": [artifacts[e["id"]] for e in plan["hosts"] if e["id"] in artifacts],
+                           "pending_hosts": pending}
+            report = {"schema": SCHEMA, "status": "verified" if "manifest.json" in recorded else "resume_preview",
+                      "plan": plan, "plan_sha256": approval, "resume_plan": resume_plan,
+                      "resume_plan_sha256": digest(encoded(resume_plan)), "remote_read_only": True,
+                      "network_access": False, "starts_agents": False, "sends_prompts": False,
+                      "worktree_included": False, "task_completion_verified": False,
+                      "collection_provenance_verified": False, "collection_resume_writes_started": False}
+            if resume_approval is None:
+                return report, 0
+            require(resume_approval == report["resume_plan_sha256"], "collection_resume_approval_mismatch")
+            if "manifest.json" in recorded:
+                return report, 0
+            for (host, base), entry in zip(selected, plan["hosts"]):
+                if host["id"] not in pending:
+                    continue
+                guard()
+                report["network_access"] = True
+                try:
+                    _, bundle = observe(host, base, "collect", invoke, entry["snapshot"])
+                except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+                    guard()
+                    report.update(status="partial",
+                                  artifacts=[artifacts[e["id"]] for e in plan["hosts"] if e["id"] in artifacts],
+                                  error={"id": host["id"], "code": str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable"})
+                    return report, 1
+                guard()
+                name = host["id"] + ".bundle"
+                RESUME_WRITES_STARTED = report["collection_resume_writes_started"] = True
+                publish_bundle(dest, name, bundle)
+                recorded[name] = bundle
+                artifacts[host["id"]] = {"id": host["id"], "file": name, "bytes": len(bundle), "sha256": digest(bundle)}
+            guard()
+            ordered = [artifacts[e["id"]] for e in plan["hosts"]]
+            manifest = {"schema": SCHEMA, "plan_sha256": approval, "artifacts": ordered}
+            RESUME_WRITES_STARTED = report["collection_resume_writes_started"] = True
+            fleet.publish(dest, "manifest.json", manifest)
+            recorded["manifest.json"] = encoded(manifest)
+            guard()
+            verify_at(dest)
+            guard()
+            report.update(status="collected", artifacts=ordered)
             return report, 0
 
 
@@ -1135,15 +1281,21 @@ def main(arguments=None):
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--output-dir", required=True, help="New private artifact directory; never an existing project")
     parser.add_argument("--timeout", type=int, default=90, help="Per-host operation deadline, 1..600 seconds")
-    parser.add_argument("--collect", action="store_true", help="Save reviewed committed changes; no local import or merge")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--collect", action="store_true", help="Save reviewed committed changes; no local import or merge")
+    action.add_argument("--resume", action="store_true", help="Inspect retained collection offline; append missing bundles only with --accept-resume")
     parser.add_argument("--accept-plan", help="Exact collection preview digest")
+    parser.add_argument("--accept-resume", help="Exact offline resume preview digest; requires --resume and original --accept-plan")
     options = parser.parse_args(args)
-    require(options.collect == (options.accept_plan is not None), "collection_requires_exact_approval")
+    require((options.collect or options.resume) == (options.accept_plan is not None), "collection_requires_exact_approval")
+    require(options.resume or options.accept_resume is None, "resume_approval_requires_resume")
     known = fleet.read_input(options.known_hosts, private=False)
     identity = fleet.read_input(options.identity_file)
-    result, code = execute(options.launch_state, decode(fleet.read_input(options.bases)), known, identity,
-                           options.output_dir, options.timeout, options.accept_plan,
-                           transport(known, identity, options.timeout))
+    operation = resume_collection if options.resume else execute
+    extra = {"resume_approval": options.accept_resume} if options.resume else {}
+    result, code = operation(options.launch_state, decode(fleet.read_input(options.bases)), known, identity,
+                             options.output_dir, options.timeout, options.accept_plan,
+                             transport(known, identity, options.timeout), **extra)
     print(encoded(result).decode(), end="")
     return code
 
@@ -1157,6 +1309,7 @@ def cli():
         return main()
     except (fleet.Refused, OSError, ValueError, subprocess.SubprocessError, fleet.Interrupted) as exc:
         print(encoded({"schema": SCHEMA, "status": "error", "remote_read_only": True,
+                       "collection_resume_writes_started": RESUME_WRITES_STARTED,
                        "import_started": IMPORT_STARTED,
                        "integration_scratch": INTEGRATION_SCRATCH,
                        "integration_writes_started": INTEGRATION_WRITES_STARTED,

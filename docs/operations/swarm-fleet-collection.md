@@ -220,6 +220,88 @@ may already have committed despite losing its terminal response. These are
 different outcomes. Inspect the report before deciding on any further action;
 missing/changed refs never become automatic permission to retry or overwrite.
 
+## Resume an interrupted collection
+
+The updated collector can finish a retained collection without downloading its
+already-saved bundles again. This is separate from import/integration recovery:
+it writes only missing collection artifacts, never project Git objects or refs.
+Explicitly upgrade the installed fleet runtime from this checkout first; old
+retained runtimes are not modified. Existing v1 collections remain readable and
+eligible when their original policy and complete approval context still match.
+
+Keep the original collection digest, launch journal, base selection, trust files,
+output path and timeout. Start with an **offline, read-only resume preview**:
+
+```bash
+acfs-fleet collect \
+  --launch-state "$HOME/fleet-wave-1" --bases fleet-bases.json \
+  --known-hosts "$HOME/.ssh/known_hosts" \
+  --identity-file "$HOME/.ssh/id_ed25519" \
+  --output-dir "$HOME/fleet-results-wave-1" \
+  --resume --accept-plan ORIGINAL_COLLECTION_DIGEST
+```
+
+This opens no SSH connection and changes no files. `status: "resume_preview"`
+means the retained collection is incomplete but structurally recoverable. Its
+`resume_plan` lists the exact recovered artifact hashes and `pending_hosts`;
+`resume_plan_sha256` binds those bytes, the original intent, collection directory
+identity, and any complete final manifest. A complete collection instead reports
+`status: "verified"`, also without network or writes.
+
+Review the retained artifacts and pending selection, then repeat the command
+with **`--accept-resume THE_RESUME_PLAN_DIGEST`**. Both approvals are required:
+the original digest identifies the exact approved histories; the fresh resume
+digest authorizes continuing from the observed local state. It is not permission
+to adopt different remote work or overwrite a damaged file. `--resume` and
+`--collect` are mutually exclusive.
+
+Only missing nonempty ranges are requested, in original host order. The unchanged
+fixed remote collector checks each missing host against its original approved
+base, HEAD, repository identity, object format, commit count and changed paths.
+A missing host that has advanced or been replaced is refused. Successfully saved
+hosts are **not contacted**, so they may continue working or be offline without
+invalidating the historical bundle already retained locally. An approved empty
+range needs no bundle or remote read; this does not assert that the remote HEAD
+is still unchanged today.
+
+Once all ranges are available, resume creates the original-format final manifest
+and runs the existing verifier. The resulting collection works with the ordinary
+strict import and integration commands; it does not need a special consumer.
+Only missing files are created. Existing bundles, intent and manifest are never
+replaced, removed or rewritten. The launch journal and collection are locked in
+the same order as initial collection, and evidence/directory identities are
+rechecked before and after remote reads and publication.
+
+Missing completion evidence is not the same as corrupt evidence. A partial
+bundle, malformed existing manifest, unrecognized member, unsafe file, or bundle
+appearing after a missing earlier nonempty range fails closed. The controller
+does not delete torn files or silently recapture them. Preserve such a directory
+for inspection and use a new separately approved collection when it cannot be
+resumed. Existing bundles are checked for framing, advertised HEAD and pack
+checksum; before a final manifest exists this does not prove original transport
+provenance or full Git object semantics. `collection_provenance_verified` remains
+false. Review their hashes and use strict Git import checks before trusting work.
+
+After any interrupted or partially successful resume, repeat the **offline
+preview without `--accept-resume`**. Progress changes the resume digest; an old
+digest cannot approve newly observed artifacts. A crash after all bundles are
+saved but before the manifest can be completed without contacting any host.
+A crash after the final manifest is published is recognized as already verified.
+No lost response, missing ref, or failed SSH attempt triggers an automatic retry.
+
+Resume reports retain the existing exit conventions: 0 for a successful preview,
+verified no-op or completed collection; 1 for a remote refusal/partial result;
+2 for input, approval, lock or filesystem errors. `collection_resume_writes_started`
+on an error means artifact writes may have happened, not that the collection is
+complete. Signals use the existing handler. Source histories, agent sessions,
+prompts, Beads state and project working files remain untouched.
+
+Existing per-host size/deadline limits apply. Recovery retains verified bundle
+bytes in memory and rereads saved evidence around remote operations, so plan for
+up to 16 bundles of 16 MiB plus validation overhead and local I/O. It is not an
+atomic fleet snapshot, a sandbox against a malicious same-user process, proof of
+task completion, or permission to execute collected code.
+
 ## Failure and resource limits
 
 Exit 0 means preview, collection or local integrity verification succeeded.
@@ -242,15 +324,17 @@ not a sandbox against a malicious same-user process or a dishonest host.
 
 An interruption preserves the output already written and does not publish a
 successful completion report. Missing or corrupted final evidence fails
-`--verify`. Keep partial directories for inspection and use a **new output
-directory with a new preview** for another collection. No launch/send operation
-is retried, and neither local nor remote source history is rewritten.
+`--verify`. An intact retained prefix can be explicitly resumed as described
+above. Otherwise keep it for inspection and use a **new output directory with a
+new preview**. No launch/send operation is retried, and neither local nor remote
+source history is rewritten.
 
 ## Validation
 
 ```bash
 python3 -B tests/unit/test_swarm_fleet_collect.py -v
 python3 -B tests/unit/test_swarm_fleet_import.py -v
+python3 -B tests/unit/test_swarm_fleet_collection_resume.py -v
 ```
 
 Tests use actual Git repositories and the unchanged fixed remote program running
@@ -269,3 +353,10 @@ Recovery tests kill actual importer children with SIGKILL after real pack indexi
 and after a real ref transaction. They also introduce a competing Git ref write
 after the importer's prechecks and verify that the create-only transaction refuses
 the other creations. Read-only checks leave collection and repository bytes intact.
+
+Collection resume tests run the real fixed remote program and Git as an actual
+unprivileged user. They exercise offline previews, missing-only downloads,
+immutable saved artifacts, both approvals, empty ranges, changed pending HEADs,
+changed launch/trust context, corrupt/non-prefix evidence, and SHA-1/SHA-256
+resume-to-strict-import-to-combined-candidate workflows. Native launch admission
+is a protocol fixture; this does not establish live SSH/provider acceptance.

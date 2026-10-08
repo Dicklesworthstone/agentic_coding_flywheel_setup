@@ -107,6 +107,9 @@ jobs:
       - name: Run module selector unit tests
         run: bash tests/unit/test_module_selector.sh
 
+      - name: Run Claude Code on the web setup script tests
+        run: bash tests/unit/test_claude_code_web_setup.sh
+
       - name: Run Ubuntu upgrade rehearsal tests
         run: bash scripts/tests/ubuntu_upgrade_test.sh
 
