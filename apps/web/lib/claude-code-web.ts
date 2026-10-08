@@ -71,6 +71,12 @@ export const CLAUDE_CODE_WEB_TOOLS: ClaudeCodeWebTool[] = [
     role: "Local skill search and management.",
   },
   {
+    id: "ast-grep",
+    name: "ast-grep",
+    command: "ast-grep",
+    role: "Structural code search and UBS scan dependency.",
+  },
+  {
     id: "jsm",
     name: "Jeffrey's Skills",
     command: "jsm",
@@ -98,8 +104,8 @@ export const CLAUDE_CODE_WEB_OPTIONS: ClaudeCodeWebOption[] = [
   },
   {
     name: "ACFS_CLOUD_TIMEOUT",
-    defaultValue: "240",
-    effect: "Per-installer timeout, in seconds.",
+    defaultValue: "180",
+    effect: "Whole tool download/install deadline in seconds, from 1 to 180.",
   },
   {
     name: "ACFS_CLOUD_REINSTALL",
@@ -109,7 +115,7 @@ export const CLAUDE_CODE_WEB_OPTIONS: ClaudeCodeWebOption[] = [
   {
     name: "ACFS_REF",
     defaultValue: "main",
-    effect: "The ACFS git ref whose checksums.yaml verifies the installers.",
+    effect: "The ACFS git ref whose cloud-mirror.json pins prebuilt bundle hashes.",
   },
 ];
 

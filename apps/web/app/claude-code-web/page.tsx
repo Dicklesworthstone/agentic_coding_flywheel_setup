@@ -43,7 +43,7 @@ const STEPS = [
   {
     title: "Set Network access to Full",
     description:
-      "Recommended. On the default Trusted level the script still installs everything that only needs GitHub, and skips jsm and jfp, whose installers live on their own sites.",
+      "Recommended for the public prebuilt mirror. Custom can allow raw.githubusercontent.com and downloads.agent-flywheel.com. Trusted tries public release fallbacks and reports unavailable tools.",
   },
   {
     title: "Paste the setup script",
@@ -55,15 +55,15 @@ const STEPS = [
 const BEHAVIORS = [
   {
     icon: <ShieldCheck className="h-6 w-6" />,
-    title: "Verified like install.sh",
+    title: "Verified prebuilt tools",
     description:
-      "Every installer is checked against the same checksums.yaml ledger the full installer uses. A mismatch means that tool is skipped, never run. jsm is the one vendor installer outside the ledger.",
+      "Every bundle is checked against cloud-mirror.json in the ACFS repository before extraction. Upstream checksums and available signatures are verified when publishing. No source builds or upstream installers run in your session.",
   },
   {
     icon: <Clock className="h-6 w-6" />,
     title: "Fits the cache window",
     description:
-      "Installers run in parallel under a per-installer timeout, so setup normally finishes inside the roughly five minutes an environment needs to be cached.",
+      "Downloads and installation run in parallel, with a maximum 180-second deadline per tool job. Tools arrive prebuilt, including JSM, JFP, and ast-grep.",
   },
   {
     icon: <Check className="h-6 w-6" />,
@@ -367,14 +367,14 @@ export default function ClaudeCodeWebPage() {
           <div className="mt-10 flex gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
             <div className="text-sm leading-relaxed text-muted-foreground">
-              <p className="mb-2 font-semibold text-foreground">If GitHub downloads are blocked</p>
+              <p className="mb-2 font-semibold text-foreground">Full network access recommended</p>
               <p>
-                Cloud sessions send GitHub traffic through a proxy that serves github.com only for
-                the repositories attached to the session, and every flywheel tool downloads its
-                release binary from github.com. If that also applies while the setup script runs,
-                the script notices up front, skips those installers instead of spending the time
-                budget on them, still builds bv from source and installs jsm and jfp, and says so
-                in its summary and in ~/.claude/CLAUDE.md.
+                Anyone can use the public mirror without credentials or repository ownership.
+                Select Full, or Custom allowing raw.githubusercontent.com and
+                downloads.agent-flywheel.com. Under Trusted, setup tries pinned public release
+                binaries when the mirror is blocked. What installs depends on the environment&apos;s
+                GitHub proxy. Existing working tools are retained, unavailable tools are listed in
+                the setup log and guide, and no source build is attempted.
               </p>
             </div>
           </div>

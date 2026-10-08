@@ -1,0 +1,168 @@
+{
+  "base_url": "https://downloads.agent-flywheel.com/acfs-cloud/v1",
+  "platform": "linux-x86_64",
+  "schema": 1,
+  "tools": {
+    "am": {
+      "bins": [
+        "am",
+        "mcp-agent-mail"
+      ],
+      "file": "am/v0.3.38/9549252e3fe0de917587b6fa0617e4e2a56b9b707607380b7ab36ad3e4519c28/am-linux-x86_64.tar.gz",
+      "sha256": "9549252e3fe0de917587b6fa0617e4e2a56b9b707607380b7ab36ad3e4519c28",
+      "source": {
+        "asset": "mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz",
+        "repo": "Dicklesworthstone/mcp_agent_mail_rust",
+        "sha256": "951599b29977b56c676e2c0e92d967fcf90d5ba37da2857d8d5214eb67af4502",
+        "tag": "v0.3.38",
+        "url": "https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/v0.3.38/mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz",
+        "verification": "minisign+sha256"
+      },
+      "version": "v0.3.38"
+    },
+    "ast-grep": {
+      "bins": [
+        "ast-grep"
+      ],
+      "file": "ast-grep/0.45.3/d3b78131bc5c15290b9fa3e937abfc11c7f2caf8ae2305c737a0ca83ade42a48/ast-grep-linux-x86_64.tar.gz",
+      "sha256": "d3b78131bc5c15290b9fa3e937abfc11c7f2caf8ae2305c737a0ca83ade42a48",
+      "source": {
+        "asset": "app-x86_64-unknown-linux-gnu.zip",
+        "repo": "ast-grep/ast-grep",
+        "sha256": "f8ac830881339d1edee6b2652f54798c0f4da5a827f2db38a08ee31117783ce8",
+        "tag": "0.45.3",
+        "url": "https://github.com/ast-grep/ast-grep/releases/download/0.45.3/app-x86_64-unknown-linux-gnu.zip",
+        "verification": "sha256"
+      },
+      "version": "0.45.3"
+    },
+    "br": {
+      "bins": [
+        "br"
+      ],
+      "file": "br/v0.7.4/8d0098c5997dfb74f3166c4f93d5c559e2a244904e8c16ebd72611e2d1609c3f/br-linux-x86_64.tar.gz",
+      "sha256": "8d0098c5997dfb74f3166c4f93d5c559e2a244904e8c16ebd72611e2d1609c3f",
+      "source": {
+        "asset": "br-0.7.4-linux_musl_amd64.tar.gz",
+        "repo": "Dicklesworthstone/beads_rust",
+        "sha256": "5263fa20f988588b88320856e7a1086505d28a2456628b85cc8f6ec51e0af732",
+        "tag": "v0.7.4",
+        "url": "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.7.4/br-0.7.4-linux_musl_amd64.tar.gz",
+        "verification": "minisign+sha256"
+      },
+      "version": "v0.7.4"
+    },
+    "bv": {
+      "bins": [
+        "bv"
+      ],
+      "file": "bv/v0.25.2/c65f3c4d077b54cefbbb4bb6c30fbf525fd5f84c5a94cefed571bd9093b3625d/bv-linux-x86_64.tar.gz",
+      "sha256": "c65f3c4d077b54cefbbb4bb6c30fbf525fd5f84c5a94cefed571bd9093b3625d",
+      "source": {
+        "asset": "bv_0.25.2_linux_amd64.tar.gz",
+        "repo": "Dicklesworthstone/beads_viewer",
+        "sha256": "4c269087af7a0ddef6825609cb4cdf7db0163624d26d7b02030c38c260b1e199",
+        "tag": "v0.25.2",
+        "url": "https://github.com/Dicklesworthstone/beads_viewer/releases/download/v0.25.2/bv_0.25.2_linux_amd64.tar.gz",
+        "verification": "sha256"
+      },
+      "version": "v0.25.2"
+    },
+    "cass": {
+      "bins": [
+        "cass"
+      ],
+      "file": "cass/v0.10.0/f05906a3751321b7afcd9c035a4ba8f41a1b1d5bf98446812c74a6168f247bed/cass-linux-x86_64.tar.gz",
+      "sha256": "f05906a3751321b7afcd9c035a4ba8f41a1b1d5bf98446812c74a6168f247bed",
+      "source": {
+        "asset": "cass-linux-amd64.tar.gz",
+        "repo": "Dicklesworthstone/coding_agent_session_search",
+        "sha256": "638ea8a8a9023c2e046bf8868392e6191218b89cf006e81af3ca205b546c4681",
+        "tag": "v0.10.0",
+        "url": "https://github.com/Dicklesworthstone/coding_agent_session_search/releases/download/v0.10.0/cass-linux-amd64.tar.gz",
+        "verification": "sha256"
+      },
+      "version": "v0.10.0"
+    },
+    "cm": {
+      "bins": [
+        "cm"
+      ],
+      "file": "cm/v0.5.0/1e19903a4b6b7ca5965e25c8681aab86bced4c865ebcabf617b031d33ca1036f/cm-linux-x86_64.tar.gz",
+      "sha256": "1e19903a4b6b7ca5965e25c8681aab86bced4c865ebcabf617b031d33ca1036f",
+      "source": {
+        "asset": "cass-memory-linux-x64",
+        "repo": "Dicklesworthstone/cass_memory_system",
+        "sha256": "06e1563881f8bb1225cf7036068252ef210f242704a27f8ce32518b822181bd7",
+        "tag": "v0.5.0",
+        "url": "https://github.com/Dicklesworthstone/cass_memory_system/releases/download/v0.5.0/cass-memory-linux-x64",
+        "verification": "sha256"
+      },
+      "version": "v0.5.0"
+    },
+    "jfp": {
+      "bins": [
+        "jfp"
+      ],
+      "file": "jfp/v1.0.3/7c9c4de1f984ceb06ef87592f7905a4715c0c49d0bcfb689206b8aaa9e6f2f4e/jfp-linux-x86_64.tar.gz",
+      "sha256": "7c9c4de1f984ceb06ef87592f7905a4715c0c49d0bcfb689206b8aaa9e6f2f4e",
+      "source": {
+        "asset": "jfp-linux-x64",
+        "repo": "Dicklesworthstone/jeffreysprompts.com",
+        "sha256": "d09cf440ed05d4e88180ebcc1851ae1908553124c384f3417c0ab417ae5b086d",
+        "tag": "v1.0.3",
+        "url": "https://github.com/Dicklesworthstone/jeffreysprompts.com/releases/download/v1.0.3/jfp-linux-x64",
+        "verification": "sha256"
+      },
+      "version": "v1.0.3"
+    },
+    "jsm": {
+      "bins": [
+        "jsm"
+      ],
+      "file": "jsm/v0.3.25/abeb6e2bd5791aea98682f1202f0496bf4ca549d8cd77269fd339eaea03739a0/jsm-linux-x86_64.tar.gz",
+      "sha256": "abeb6e2bd5791aea98682f1202f0496bf4ca549d8cd77269fd339eaea03739a0",
+      "source": {
+        "asset": "jsm-x86_64-unknown-linux-musl.tar.gz",
+        "repo": "Dicklesworthstone/jeffreys-skills.md",
+        "sha256": "81c4ea5e57506f3da778f5c79a6871fd7dcad47a98362a8526c04d2e4d6292b0",
+        "tag": "v0.3.25",
+        "url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.25/jsm-x86_64-unknown-linux-musl.tar.gz",
+        "verification": "sha256"
+      },
+      "version": "v0.3.25"
+    },
+    "ms": {
+      "bins": [
+        "ms"
+      ],
+      "file": "ms/v0.2.3/d4508fd8951a6c98813b0ad3f4c96b936e8390ae08873e040f9838f606bfc82f/ms-linux-x86_64.tar.gz",
+      "sha256": "d4508fd8951a6c98813b0ad3f4c96b936e8390ae08873e040f9838f606bfc82f",
+      "source": {
+        "asset": "ms-0.2.3-x86_64-unknown-linux-gnu.tar.gz",
+        "repo": "Dicklesworthstone/meta_skill",
+        "sha256": "5b3058a4e98231cd38f903bd3f8da8bdf52d245eed6c4a09a6b32eec9e71c4fe",
+        "tag": "v0.2.3",
+        "url": "https://github.com/Dicklesworthstone/meta_skill/releases/download/v0.2.3/ms-0.2.3-x86_64-unknown-linux-gnu.tar.gz",
+        "verification": "minisign+sha256"
+      },
+      "version": "v0.2.3"
+    },
+    "ubs": {
+      "bins": [
+        "ubs"
+      ],
+      "file": "ubs/v5.4.17/9d1f6b4d661b3edca0e8607116432b2da9a36a800e7f366c3f916a5c893d1996/ubs-linux-x86_64.tar.gz",
+      "sha256": "9d1f6b4d661b3edca0e8607116432b2da9a36a800e7f366c3f916a5c893d1996",
+      "source": {
+        "asset": "ubs",
+        "repo": "Dicklesworthstone/ultimate_bug_scanner",
+        "sha256": "afa342bcb1ddda7a65ea0401607c5eb42ea8b4857dfb444d892df36c600bf473",
+        "tag": "v5.4.17",
+        "url": "https://github.com/Dicklesworthstone/ultimate_bug_scanner/releases/download/v5.4.17/ubs",
+        "verification": "minisign+sha256"
+      },
+      "version": "v5.4.17"
+    }
+  }
+}
