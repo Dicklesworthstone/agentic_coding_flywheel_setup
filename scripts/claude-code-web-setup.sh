@@ -31,6 +31,7 @@
 #     load as user instructions, listing what was installed and how to use it.
 #
 # Environment overrides (all optional):
+#   ACFS_CLOUD_AGENT     claude (default) or codex; selects the instruction guide
 #   ACFS_CLOUD_TOOLS     space-separated subset of tools to install
 #                        (default: br bv am ubs cass cm ms ast-grep jsm jfp)
 #   ACFS_CLOUD_TIMEOUT   whole tool job timeout in seconds (default: 180, max: 180)
@@ -43,7 +44,11 @@ ACFS_CLOUD_SCRIPT_URL="${ACFS_RAW}/scripts/claude-code-web-setup.sh"
 ACFS_CLOUD_DEFAULT_TOOLS="br bv am ubs cass cm ms ast-grep jsm jfp"
 ACFS_CLOUD_STATE_DIR="${HOME}/.acfs/cloud"
 ACFS_CLOUD_BIN_DIR="${HOME}/.local/bin"
+ACFS_CLOUD_AGENT="${ACFS_CLOUD_AGENT:-claude}"
 ACFS_CLOUD_GUIDE="${HOME}/.claude/CLAUDE.md"
+if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
+    ACFS_CLOUD_GUIDE="${CODEX_HOME:-${HOME}/.codex}/AGENTS.md"
+fi
 ACFS_CLOUD_GUIDE_BEGIN="<!-- BEGIN ACFS CLOUD TOOLS (managed by claude-code-web-setup.sh) -->"
 ACFS_CLOUD_GUIDE_END="<!-- END ACFS CLOUD TOOLS -->"
 # Columns: tool | manifest key | primary binary. All bundles are public.
@@ -295,8 +300,9 @@ cloud_write_guide() {
 
     block="$ACFS_CLOUD_GUIDE_BEGIN"$'\n'
     block+="# Agent Flywheel tools (ACFS cloud setup)"$'\n\n'
-    block+="This VM was provisioned by the ACFS Claude Code on the web setup script"$'\n'
-    block+="(https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup). These CLIs are on PATH:"$'\n\n'
+    block+="This VM was provisioned by the ACFS cloud setup script for $ACFS_CLOUD_AGENT"$'\n'
+    block+="(https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)."$'\n'
+    block+='In each task shell, run `export PATH="$HOME/.local/bin:$PATH"` before using these CLIs:'$'\n\n'
     if [[ ${#installed[@]} -gt 0 ]]; then
         block+="$(printf '%s\n' "${installed[@]}")"$'\n'
     else
@@ -307,7 +313,10 @@ cloud_write_guide() {
         block+="$(printf '%s\n' "${missing[@]}")"$'\n'
     fi
     block+=$'\n'"Setup log: \`~/.acfs/cloud/setup.log\` (per-tool logs in \`~/.acfs/cloud/logs/\`)."
-    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | bash\`."$'\n'
+    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
+    if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
+        block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
+    fi
     block+="$ACFS_CLOUD_GUIDE_END"
 
     mkdir -p "$(dirname "$ACFS_CLOUD_GUIDE")"
@@ -335,6 +344,10 @@ cloud_main() {
     local started tool bin status detail pid selected=" "
     local -a pids=()
     started=$(date +%s)
+    case "$ACFS_CLOUD_AGENT" in
+        claude|codex) ;;
+        *) cloud_warn "ACFS_CLOUD_AGENT must be claude or codex"; return 0 ;;
+    esac
     ACFS_CLOUD_TOOLS="${ACFS_CLOUD_TOOLS:-$ACFS_CLOUD_DEFAULT_TOOLS}"
     ACFS_CLOUD_TIMEOUT="${ACFS_CLOUD_TIMEOUT:-180}"
     if [[ ! "$ACFS_CLOUD_TIMEOUT" =~ ^[0-9]+$ ]] || (( ACFS_CLOUD_TIMEOUT < 1 || ACFS_CLOUD_TIMEOUT > 180 )); then
@@ -377,7 +390,7 @@ cloud_main() {
         wait "$pid" 2>/dev/null || true
     done
 
-    if [[ -f "$ACFS_CLOUD_WORK/status/am" ]] && IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/am" && [[ "$status" == "ok" ]]; then
+    if [[ "$ACFS_CLOUD_AGENT" == claude && -f "$ACFS_CLOUD_WORK/status/am" ]] && IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/am" && [[ "$status" == "ok" ]]; then
         if cloud_register_agent_mail; then
             cloud_detail "$ACFS_CLOUD_MCP_DETAIL"
         else
@@ -386,6 +399,9 @@ cloud_main() {
     fi
 
     cloud_write_guide
+    if [[ "$ACFS_CLOUD_AGENT" == codex && -s "$(dirname "$ACFS_CLOUD_GUIDE")/AGENTS.override.md" ]]; then
+        cloud_warn "Existing AGENTS.override.md takes precedence. Add a reference to $ACFS_CLOUD_GUIDE in your Start skill."
+    fi
 
     cloud_step "Summary ($(( $(date +%s) - started ))s)"
     for tool in $ACFS_CLOUD_TOOLS; do
@@ -397,7 +413,7 @@ cloud_main() {
             cloud_warn "$(printf '%-5s %s' "$tool" "$detail")"
         fi
     done
-    cloud_detail "Guide for Claude: $ACFS_CLOUD_GUIDE; logs: $ACFS_CLOUD_STATE_DIR/logs/"
+    cloud_detail "Guide for $ACFS_CLOUD_AGENT: $ACFS_CLOUD_GUIDE; logs: $ACFS_CLOUD_STATE_DIR/logs/"
     cloud_detail "Retained staging: $ACFS_CLOUD_WORK"
     return 0
 }

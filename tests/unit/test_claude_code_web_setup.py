@@ -94,6 +94,33 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertTrue((self.home / ".local/bin/br").is_file())
         self.assertNotIn("github.com/", (self.root / "requests").read_text())
 
+    def test_codex_preserves_instructions_and_never_registers_claude_mcp(self):
+        self.bundle('am')
+        codex_home = self.home / 'custom-codex'
+        codex_home.mkdir()
+        guide = codex_home / 'AGENTS.md'
+        guide.write_text('Keep my existing instructions.\n')
+        override = codex_home / 'AGENTS.override.md'
+        override.write_text('Existing override.\n')
+        self.command('claude', f'#!/bin/sh\ntouch "{self.root}/claude-called"\n')
+        for _ in range(2):
+            output = self.run_setup('am', ACFS_CLOUD_AGENT='codex', CODEX_HOME=str(codex_home))
+        self.assertIn('AGENTS.override.md takes precedence', output)
+        self.assertEqual(override.read_text(), 'Existing override.\n')
+        self.assertTrue(guide.read_text().startswith('Keep my existing instructions.\n'))
+        self.assertEqual(guide.read_text().count('<!-- BEGIN ACFS CLOUD TOOLS'), 1)
+        self.assertIn('ACFS_CLOUD_AGENT=codex bash', guide.read_text())
+        self.assertIn('Hosted Codex MCP registration is not configured', guide.read_text())
+        self.assertFalse((self.root / 'claude-called').exists())
+        self.assertFalse((self.home / '.claude').exists())
+
+    def test_codex_default_guide_and_invalid_agent(self):
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='codex')
+        self.assertTrue((self.home / '.codex/AGENTS.md').is_file())
+        output = self.run_setup(ACFS_CLOUD_AGENT='unknown')
+        self.assertIn('ACFS_CLOUD_AGENT must be claude or codex', output)
+
     def test_checksum_mismatch_never_extracts_or_executes(self):
         self.bundle(content=f'#!/bin/sh\ntouch "{self.root}/executed"\n'.encode())
         self.manifest["tools"]["br"]["sha256"] = "0" * 64

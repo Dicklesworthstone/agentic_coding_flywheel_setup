@@ -504,6 +504,7 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 | `ACFS_CLOUD_TOOLS` | `br bv am ubs cass cm ms ast-grep jsm jfp` | Which tools to install |
 | `ACFS_CLOUD_TIMEOUT` | `180` | Whole tool job deadline in seconds; 1–180 |
 | `ACFS_CLOUD_REINSTALL` | `0` | `1` reinstalls tools that are already on PATH (to update inside a running session) |
+| `ACFS_CLOUD_AGENT` | `claude` | `codex` writes a Codex instruction guide and skips Claude MCP registration |
 | `ACFS_REF` | `main` | ACFS ref that supplies `cloud-mirror.json` |
 
 **Public prebuilt mirror:** every default tool, including `ast-grep`, JSM and JFP, comes from `https://downloads.agent-flywheel.com/acfs-cloud/v1`. No login, GitHub token or repository ownership is needed. Select **Full** network access, or **Custom** allowing `raw.githubusercontent.com` and `downloads.agent-flywheel.com`. Bundles are pinned by SHA256 in [`cloud-mirror.json`](cloud-mirror.json), use content-addressed URLs, and are checked before extraction and executable verification. Setup never runs upstream installers or builds from source.
@@ -515,6 +516,34 @@ The bundles target Linux x86_64. Each executable must successfully return its ve
 **Maintainer refresh:** `python3 scripts/cloud-mirror-publish.py --stage /path/on/large-disk/acfs-cloud --output /path/to/new-candidate.json --publish` discovers latest releases with authenticated `gh`, verifies release checksums and pinned Minisign signatures where published, bundles Linux x86_64 executables, uploads with authenticated Wrangler, and verifies each public download. It requires Python 3.10+, `gh`, `minisign`, and `wrangler`; these credentials are needed only by the maintainer. Review the candidate, smoke-test on Ubuntu 24.04, and commit it as `cloud-mirror.json`. Repeated runs reuse downloaded artifacts and skip matching remote bundles. Staging is retained for inspection. A failed tool aborts manifest publication; it cannot silently disappear from the install set.
 
 ---
+
+## ChatGPT / Codex cloud environments
+
+The same public bundles work in a Linux x86_64 Codex cloud environment. In **Work in → Cloud**, create or edit an environment and put this in its **Install script**:
+
+```bash
+#!/bin/bash
+set -o pipefail
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=codex bash
+```
+
+Enable internet access and add `raw.githubusercontent.com` and `downloads.agent-flywheel.com` to **Additional allowed domains**. These public downloads need no secrets or ownership of the tool repositories. Review `~/.acfs/cloud/setup.log`, then **Publish** the prepared environment. After changing its setup, **Republish** for new tasks. See OpenAI's [current cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments).
+
+Add these instructions to the environment's **Start skill**:
+
+```text
+Read ~/.codex/AGENTS.md for the installed flywheel tools and ~/.acfs/cloud/setup.log for failures.
+If CODEX_HOME is set, read $CODEX_HOME/AGENTS.md instead.
+In each task shell, export PATH="$HOME/.local/bin:$PATH" before using the tools.
+Check br --version, bv --version, ubs --version and jsm --version before starting work.
+Use br ready --json and bv --robot-triage; never open their interactive TUIs.
+```
+
+Codex mode preserves existing instructions outside its managed block. A nonempty `AGENTS.override.md` takes precedence over `AGENTS.md`; setup warns so the Start skill can explicitly load the tool guide. See [OpenAI's instruction discovery rules](https://learn.chatgpt.com/docs/agent-configuration/agents-md). Agent Mail is available as a CLI; this setup does not configure or claim hosted MCP support. Local Codex MCP configuration and ChatGPT's remote MCP connections are different surfaces; see [OpenAI's MCP guide](https://learn.chatgpt.com/docs/extend/mcp).
+
+If your UI instead has **Setup script** and **Maintenance script**, it uses the [legacy environment workflow](https://learn.chatgpt.com/docs/environments/cloud-environment). Put the install command in Setup script; avoid reinstalling in Maintenance script on every cached resume. Configure task-phase internet separately if tools need online access after setup.
+
+**Verification boundary:** both installer modes are tested on Ubuntu 24.04, including real public downloads. A hosted task still needs to confirm its VM architecture, PATH, instruction discovery and network policy. The script reports individual failures but exits zero; successful session startup alone does not prove every tool installed.
 
 ## The Installer
 The installer is the heart of ACFS—a modular Bash script that transforms a fresh Ubuntu or Arch-based machine into a fully-configured development environment.
