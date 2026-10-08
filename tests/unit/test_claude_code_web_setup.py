@@ -3,6 +3,7 @@
 Each case retains its scratch directory; there is no automatic deletion.
 """
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -13,10 +14,134 @@ import tarfile
 import tempfile
 import time
 import unittest
+from unittest import mock
+import warnings
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/claude-code-web-setup.sh"
 MANIFEST_URL = "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/cloud-mirror.json"
+publisher_spec = importlib.util.spec_from_file_location("cloud_publisher", ROOT / "scripts/cloud-mirror-publish.py")
+publisher = importlib.util.module_from_spec(publisher_spec)
+publisher_spec.loader.exec_module(publisher)
+
+
+class MirrorPublisher(unittest.TestCase):
+    def setUp(self):
+        self.stage = Path(tempfile.mkdtemp(prefix="acfs-publisher-test-"))
+
+    def tar(self, names):
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode="w:gz") as archive:
+            for name in names:
+                info = tarfile.TarInfo(name)
+                info.size = 3
+                archive.addfile(info, io.BytesIO(b"bin"))
+        return out.getvalue()
+
+    def release(self, tool="bv", checksums=True, signature=False):
+        _, pattern, bins, _ = publisher.TOOLS[tool]
+        name = pattern.format(v="1.2.3")
+        data = self.tar(bins)
+        work = self.stage / tool / "v1.2.3"
+        work.mkdir(parents=True)
+        payloads = {name: data}
+        if checksums:
+            payloads[name + ".sha256"] = (publisher.digest(data) + "  " + name + "\n").encode()
+        if signature:
+            payloads[name + ".minisig"] = b"invalid signature"
+        for filename, content in payloads.items():
+            (work / filename).write_bytes(content)
+        return {"tag_name": "v1.2.3", "assets": [
+            {"name": filename, "digest": "sha256:" + publisher.digest(content),
+             "browser_download_url": "https://upstream.invalid/" + filename}
+            for filename, content in payloads.items()]}
+
+    def prepare(self, release, tool="bv", signature_error=False):
+        def run(*args):
+            if args[0] == "gh":
+                return json.dumps(release)
+            if args[0] == "minisign" and signature_error:
+                raise subprocess.CalledProcessError(1, args)
+            self.fail("Unexpected external command: " + repr(args))
+        with mock.patch.object(publisher, "run", side_effect=run), mock.patch.object(publisher, "fetch", side_effect=AssertionError("Unexpected network")):
+            return publisher.prepare(tool, self.stage)
+
+    def test_normalized_bundle_is_reproducible(self):
+        files = {"bin/br": b"executable", "share/ubs/modules/data.json": b"{}"}
+        first = publisher.bundle(files)
+        self.assertEqual(first, publisher.bundle(dict(reversed(list(files.items())))))
+        with tarfile.open(fileobj=io.BytesIO(first), mode="r:gz") as archive:
+            self.assertEqual(archive.getmember("bin/br").mode, 0o755)
+            self.assertEqual(archive.getmember("share/ubs/modules/data.json").mode, 0o644)
+
+    def test_duplicate_tar_and_zip_members_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate upstream"):
+            publisher.archive_files(self.tar(["bin/br", "bin/br"]), "br.tar.gz")
+        out = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with zipfile.ZipFile(out, "w") as archive:
+                archive.writestr("br", b"one")
+                archive.writestr("br", b"two")
+        with self.assertRaisesRegex(ValueError, "Duplicate upstream"):
+            publisher.archive_files(out.getvalue(), "br.zip")
+
+    def test_oversized_archive_rejected_before_reading_body(self):
+        info = tarfile.TarInfo("large")
+        info.size = 1024 * 1024 * 1024 + 1
+        with self.assertRaisesRegex(ValueError, "beyond 1 GiB"):
+            publisher.archive_files(info.tobuf(), "large.tar.gz")
+
+    def test_valid_release_packages_expected_binary(self):
+        tool, entry = self.prepare(self.release())
+        self.assertEqual(tool, "bv")
+        packed = (self.stage / entry["file"]).read_bytes()
+        self.assertEqual(publisher.digest(packed), entry["sha256"])
+        self.assertEqual(publisher.archive_files(packed, entry["file"]), {"bin/bv": b"bin"})
+
+    def test_asset_digest_mismatch_blocks_packaging(self):
+        release = self.release()
+        release["assets"][0]["digest"] = "sha256:" + "0" * 64
+        with self.assertRaisesRegex(ValueError, "digest mismatch"):
+            self.prepare(release)
+
+    def test_release_checksum_mismatch_blocks_packaging(self):
+        release = self.release()
+        checksum = release["assets"][1]
+        wrong = ("0" * 64 + "  " + release["assets"][0]["name"] + "\n").encode()
+        (self.stage / "bv/v1.2.3" / checksum["name"]).write_bytes(wrong)
+        checksum["digest"] = "sha256:" + publisher.digest(wrong)
+        with self.assertRaisesRegex(ValueError, "upstream checksum mismatch"):
+            self.prepare(release)
+
+    def test_missing_checksum_and_required_signature_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "missing upstream checksum"):
+            self.prepare(self.release(checksums=False))
+        with self.assertRaisesRegex(ValueError, "expected release signature"):
+            self.prepare(self.release(tool="br"), tool="br")
+
+    def test_bad_signature_blocks_packaging(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.prepare(self.release(tool="br", signature=True), tool="br", signature_error=True)
+
+    def test_unsafe_tag_fails_before_download(self):
+        release = {"tag_name": "../../escape", "assets": []}
+        with self.assertRaisesRegex(ValueError, "Unsafe release tag"):
+            self.prepare(release)
+
+    def test_unsafe_jsm_relay_tag_never_fetches_checksums(self):
+        with mock.patch.object(publisher, "fetch", return_value=b"../../escape") as fetch:
+            with self.assertRaisesRegex(ValueError, "Unsafe release tag"):
+                publisher.prepare("jsm", self.stage)
+        fetch.assert_called_once_with("https://jeffreys-skills.md/api/v1/downloads/jsm/latest.txt")
+
+    def test_ubs_requires_complete_nonempty_checksum_tables(self):
+        valid = "declare -A MODULE_CHECKSUMS=(\n['js']='" + "a" * 64 + "'\n)\ndeclare -A HELPER_CHECKSUMS=(\n['helper.py']='" + "b" * 64 + "'\n)"
+        self.assertEqual(publisher.ubs_helpers(valid), [("ubs-js.sh", "a" * 64), ("helper.py", "b" * 64)])
+        for invalid in ("", "declare -A MODULE_CHECKSUMS=(\n)", valid.replace("b" * 64, "wrong"), valid.replace("helper.py", "../escape")):
+            with self.subTest(source=invalid), self.assertRaises(ValueError):
+                publisher.ubs_helpers(invalid)
 
 
 class CloudSetup(unittest.TestCase):

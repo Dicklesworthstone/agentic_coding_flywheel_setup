@@ -46,7 +46,7 @@ def digest(data):
 def fetch(url):
     if not url.startswith("https://"):
         raise ValueError("HTTPS required")
-    request = urllib.request.Request(url, headers={"User-Agent": "acfs-cloud-mirror/1.0", "Accept": "*/*"})
+    request = urllib.request.Request(url, headers={"User-Agent": "OpenAI File Downloader, XaiImageApiFetch/1.0", "Accept": "*/*"})
     with urllib.request.urlopen(request, timeout=120) as response:
         if not response.url.startswith("https://"):
             raise ValueError("Insecure redirect")
@@ -55,11 +55,49 @@ def fetch(url):
 
 def archive_files(data, name):
     """Read regular files without extracting any upstream paths onto disk."""
+    files, total = {}, 0
+
+    def add(path, size, read):
+        nonlocal total
+        if path in files:
+            raise ValueError(f"Duplicate upstream archive member: {path}")
+        total += size
+        if size < 0 or total > 1024 * 1024 * 1024:
+            raise ValueError("Upstream archive expands beyond 1 GiB")
+        files[path] = read()
+
     if name.endswith(".zip"):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            return {item.filename: archive.read(item) for item in archive.infolist() if not item.is_dir()}
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:
-        return {item.name: archive.extractfile(item).read() for item in archive if item.isfile()}
+            for item in archive.infolist():
+                if not item.is_dir():
+                    add(item.filename, item.file_size, lambda item=item: archive.read(item))
+    else:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:
+            for item in archive:
+                if item.isfile():
+                    add(item.name, item.size, lambda item=item: archive.extractfile(item).read())
+    return files
+
+
+def ubs_helpers(source):
+    """Require complete, nonempty release checksum tables before publishing."""
+    entries = []
+    for table in ("MODULE_CHECKSUMS", "HELPER_CHECKSUMS"):
+        body = re.search(r"declare -A " + table + r"=\((.*?)\n\)", source, re.S)
+        if not body:
+            raise ValueError(f"Missing UBS {table}")
+        parsed = re.findall(r"\['?([^'\]]+)'?\]='([a-f0-9]{64})'", body.group(1))
+        lines = [line.strip() for line in body.group(1).splitlines() if line.strip() and not line.strip().startswith("#")]
+        if not parsed or len(parsed) != len(lines):
+            raise ValueError(f"Empty or malformed UBS {table}")
+        for path, sha in parsed:
+            path = f"ubs-{path}.sh" if table == "MODULE_CHECKSUMS" else path
+            if PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts:
+                raise ValueError(f"Unsafe UBS helper path: {path}")
+            if any(existing == path for existing, _ in entries):
+                raise ValueError(f"Duplicate UBS helper: {path}")
+            entries.append((path, sha))
+    return entries
 
 
 def bundle(files):
@@ -83,6 +121,8 @@ def prepare(tool, stage):
         # The vendor's public relay serves this private repository's releases.
         relay = "https://jeffreys-skills.md/api/v1/downloads/jsm"
         version = fetch(relay + "/latest.txt").decode().strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", version):
+            raise ValueError("Unsafe release tag")
         checksums = fetch(relay + "/" + version + "/SHA256SUMS")
         sha = next(row.split()[0] for row in checksums.decode().splitlines() if row.split()[-1] == pattern)
         release = {"tag_name": version, "assets": [
@@ -158,15 +198,7 @@ def prepare(tool, stage):
     if tool == "ubs":
         # UBS is an interpreted program. Bundle every module/helper from its
         # release-pinned, hash-checked tables; never run its system installer.
-        source = data.decode()
-        entries = []
-        for table in ("MODULE_CHECKSUMS", "HELPER_CHECKSUMS"):
-            body = re.search(r"declare -A " + table + r"=\((.*?)\n\)", source, re.S)
-            if not body:
-                raise ValueError(f"Missing UBS {table}")
-            for path, sha in re.findall(r"\['?([^'\]]+)'?\]='([a-f0-9]{64})'", body.group(1)):
-                path = f"ubs-{path}.sh" if table == "MODULE_CHECKSUMS" else path
-                entries.append((path, sha))
+        entries = ubs_helpers(data.decode())
 
         def helper(entry):
             path, sha = entry
