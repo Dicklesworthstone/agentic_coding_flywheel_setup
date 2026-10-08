@@ -45,7 +45,7 @@ ACFS_CLOUD_DEFAULT_TOOLS="br bv am ubs cass cm ms ast-grep jsm jfp"
 ACFS_CLOUD_STATE_DIR="${HOME}/.acfs/cloud"
 ACFS_CLOUD_BIN_DIR="${HOME}/.local/bin"
 ACFS_CLOUD_AGENT="${ACFS_CLOUD_AGENT:-claude}"
-ACFS_CLOUD_GUIDE="${HOME}/.claude/CLAUDE.md"
+ACFS_CLOUD_GUIDE="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/CLAUDE.md"
 if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
     ACFS_CLOUD_GUIDE="${CODEX_HOME:-${HOME}/.codex}/AGENTS.md"
 fi
@@ -276,15 +276,16 @@ cloud_install_tool() {
 cloud_register_agent_mail() {
     # Register Agent Mail with Claude Code as a stdio MCP server so each
     # session spawns it on demand; nothing has to survive the VM snapshot.
-    local server claude_bin legacy
+    local server claude_bin legacy config="$HOME/.claude.json"
     server="$(cloud_find_binary am)" || return 1
     claude_bin="$(command -v claude 2>/dev/null)" || return 1
     legacy="$(cloud_find_binary mcp-agent-mail)" || return 1
+    [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && config="$CLAUDE_CONFIG_DIR/.claude.json"
     : > "$ACFS_CLOUD_STATE_DIR/logs/mcp.log"
     # Migrate only the exact user-scope entry emitted by earlier ACFS setup.
     # That release defaults to HTTP, so launching it without args as stdio
     # never connected. Preserve every other field/entry and retain a backup.
-    if ! python3 - "$HOME/.claude.json" "$legacy" "$server" "$ACFS_CLOUD_WORK" >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1 <<'PY'
+    if ! python3 - "$config" "$legacy" "$server" "$ACFS_CLOUD_WORK" >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1 <<'PY'
 import json, os, pathlib, stat, sys
 path, legacy, server, work = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], pathlib.Path(sys.argv[4])
 if path.is_file():
@@ -310,7 +311,7 @@ PY
         cloud_warn "Could not migrate legacy Agent Mail registration; inspect logs/mcp.log"
         return 1
     fi
-    # Keep any existing registration rather than removing user configuration.
+    # Keep custom registrations; repair only the legacy ACFS command above.
     if timeout --kill-after=1 5 "$claude_bin" mcp get mcp-agent-mail </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1; then
         ACFS_CLOUD_MCP_DETAIL="Existing Agent Mail MCP registration retained; see logs/mcp.log"
         return 0

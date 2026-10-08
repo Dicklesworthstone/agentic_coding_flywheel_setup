@@ -252,7 +252,10 @@ def main():
         parser.error("Unsafe base URL path")
     retained = {}
     if set(args.tools) != set(TOOLS):
-        current = json.loads((Path(__file__).resolve().parents[1] / "cloud-mirror.json").read_text())
+        try:
+            current = json.loads((Path(__file__).resolve().parents[1] / "cloud-mirror.json").read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            parser.error(f"Cannot retain the existing manifest: {error}")
         if current.get("schema") != 1 or current.get("platform") != "linux-x86_64" or current.get("base_url") != args.base_url:
             parser.error("A partial refresh must use the current manifest's platform and base URL")
         retained = {tool: entry for tool, entry in current["tools"].items() if tool not in args.tools}

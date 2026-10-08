@@ -483,6 +483,22 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.run_setup('am')
         self.assertEqual(config.read_bytes(), original)
 
+    def test_claude_config_directory_controls_guide_and_legacy_migration(self):
+        self.bundle('am')
+        self.command('claude', '#!/bin/sh\n[ "$2" = get ]\n')
+        directory = self.home / 'custom-claude'
+        directory.mkdir()
+        guide = directory / 'CLAUDE.md'
+        guide.write_text('Custom instructions.\n')
+        config = directory / '.claude.json'
+        config.write_text(json.dumps({'mcpServers': {'mcp-agent-mail': {
+            'command': str(self.home / '.local/bin/mcp-agent-mail'), 'args': []}}}))
+        self.run_setup('am', CLAUDE_CONFIG_DIR=str(directory))
+        self.assertEqual(json.loads(config.read_text())['mcpServers']['mcp-agent-mail']['args'], ['serve-stdio'])
+        self.assertTrue(guide.read_text().startswith('Custom instructions.\n'))
+        self.assertIn('`am` / `mcp-agent-mail`', guide.read_text())
+        self.assertFalse((self.home / '.claude').exists())
+
     def test_missing_second_agent_mail_binary_rejected(self):
         self.bundle("am")
         self.manifest["tools"]["am"]["bins"] = ["am"]
