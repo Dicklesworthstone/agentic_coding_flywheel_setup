@@ -35,6 +35,7 @@ _spec.loader.exec_module(fleet)
 require, encoded, decode, digest = fleet.require, fleet.encoded, fleet.decode, fleet.digest
 SCHEMA = "acfs.swarm-fleet-collection.v1"
 SPEC_SCHEMA = "acfs.swarm-fleet-collection-spec.v1"
+PINNED_SPEC_SCHEMA = "acfs.swarm-fleet-collection-spec.v2"
 RESUME_SCHEMA = "acfs.swarm-fleet-collection-resume.v1"
 RESUME_WRITES_STARTED = False
 MAX_BUNDLE = 16 * 1024 * 1024
@@ -79,11 +80,16 @@ ENV = {"PATH":"/usr/bin:/bin", "LANG":"C", "LC_ALL":"C", "HOME":"/nonexistent",
 OPTIONS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
            "-c", "core.attributesFile=/dev/null", "-c", "diff.external=",
            "-c", "maintenance.auto=false", "-c", "gc.auto=0", "-c", "pack.threads=1"]
-def git(args, limit=LIMIT, allowed=(0,)):
+def git(args, limit=LIMIT, allowed=(0,), data=b''):
     process = subprocess.Popen(['/usr/bin/git', *OPTIONS, *args], env=ENV,
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+        stdin=subprocess.PIPE if data else subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
     output = bytearray()
     try:
+        if data:
+            # Only two validated full object IDs are sent, well below PIPE_BUF.
+            process.stdin.write(data)
+            process.stdin.close()
         with selectors.DefaultSelector() as poll:
             os.set_blocking(process.stdout.fileno(), False)
             poll.register(process.stdout, selectors.EVENT_READ)
@@ -103,8 +109,9 @@ def git(args, limit=LIMIT, allowed=(0,)):
         except ProcessLookupError: pass
         process.wait(timeout=5)
         process.stdout.close()
+        if process.stdin is not None: process.stdin.close()
 def text(args): return git(args)[1].decode('utf-8', 'strict').rstrip('\n')
-def snapshot(repo, base, fd):
+def snapshot(repo, base, fd, pinned=None):
     need(text(['rev-parse', '--show-toplevel']) == repo, "repository_root_mismatch")
     need(text(['rev-parse', '--is-shallow-repository']) == 'false', "incomplete_history")
     # Refuse partial clones before any command that needs commit/tree objects.
@@ -116,7 +123,10 @@ def snapshot(repo, base, fd):
     width = 40 if fmt == 'sha1' else 64
     need(re.fullmatch('[0-9a-f]{%d}' % width, base), "invalid_base_commit")
     need(text(['rev-parse', '--verify', '--end-of-options', base + '^{commit}']) == base, "invalid_base_commit")
-    head = text(['rev-parse', '--verify', 'HEAD^{commit}'])
+    if pinned is not None:
+        need(isinstance(pinned, str) and re.fullmatch('[0-9a-f]{%d}' % width, pinned), "invalid_pinned_commit")
+        need(text(['rev-parse', '--verify', '--end-of-options', pinned + '^{commit}']) == pinned, "invalid_pinned_commit")
+    head = pinned if pinned is not None else text(['rev-parse', '--verify', 'HEAD^{commit}'])
     need(re.fullmatch('[0-9a-f]{%d}' % width, head), "invalid_head_commit")
     need(git(['merge-base', '--is-ancestor', base, head], allowed=(0, 1))[0] == 0, "base_not_ancestor")
     count = int(text(['rev-list', '--count', base + '..' + head, '--']))
@@ -131,22 +141,37 @@ def snapshot(repo, base, fd):
 try:
     need(os.geteuid() != 0 and os.getuid() == os.geteuid(), "nonroot_user_required")
     request = json.loads(sys.argv[1])
-    need(request['mode'] in ('preview', 'collect'), "invalid_operation")
+    need(request['mode'] in ('preview', 'collect', 'preview_pinned', 'collect_pinned'), "invalid_operation")
     deadline = time.monotonic() + request['timeout']
     repo, base = request['repo'], request['base_commit']
+    pinned = request['head_commit'] if request['mode'].endswith('_pinned') else None
+    if request['mode'].endswith('_pinned'):
+        need(isinstance(pinned, str) and re.fullmatch('(?:[0-9a-f]{40}|[0-9a-f]{64})', pinned), "invalid_pinned_commit")
     fd = directory(repo)
     try:
         os.fchdir(fd)
-        observed = snapshot(repo, base, fd)
+        observed = snapshot(repo, base, fd, pinned)
         bundle = b''
-        if request['mode'] == 'collect':
+        if request['mode'] in ('collect', 'collect_pinned'):
             observed_bytes = (json.dumps(observed, sort_keys=True, ensure_ascii=True, indent=2) + '\n').encode()
             need(hashlib.sha256(observed_bytes).hexdigest() == request['snapshot_sha256'], "reviewed_snapshot_changed")
             if observed['commit_count']:
-                # HEAD must be a named ref for git bundle. The collector checks
-                # the advertised OID as well as before/after HEAD snapshots.
-                bundle = git(['bundle', 'create', '--version=3', '-', 'HEAD', '^' + base], MAX_BUNDLE)[1]
-        need(snapshot(repo, base, fd) == observed, "repository_changed_during_read")
+                if pinned is None:
+                    # Live-HEAD mode retains its before/after snapshot contract.
+                    bundle = git(['bundle', 'create', '--version=3', '-', 'HEAD', '^' + base], MAX_BUNDLE)[1]
+                else:
+                    # git bundle needs a named ref; never create or move one in
+                    # the source just to export an immutable historical commit.
+                    # Excluding base excludes its complete reachable history.
+                    # Requiring that exact base is therefore sufficient even
+                    # for merges with several excluded boundary ancestors.
+                    header = ('# v3 git bundle\n@object-format=' + observed['object_format'] +
+                              '\n-' + base + ' reviewed base\n' + pinned + ' HEAD\n\n').encode()
+                    revisions = (pinned + '\n^' + base + '\n').encode()
+                    pack = git(['pack-objects', '--stdout', '--revs', '--thin', '--delta-base-offset'],
+                               MAX_BUNDLE - len(header), data=revisions)[1]
+                    bundle = header + pack
+        need(snapshot(repo, base, fd, pinned) == observed, "repository_changed_during_read")
         fresh = directory(repo)
         try: need(os.path.samestat(os.fstat(fd), os.fstat(fresh)), "repository_replaced")
         finally: os.close(fresh)
@@ -162,6 +187,9 @@ except (Refused, OSError, ValueError, KeyError, TypeError, subprocess.Subprocess
     sys.exit(2)
 '''
 POLICY = digest(REMOTE.encode())
+# Historical data remains verifiable; it never acquires pinned-mode authority.
+LIVE_HEAD_POLICY_V1 = "c5df7ba2edaec7fcb08f383a977f299f55997f59f85185ec25bdf06cacda2bcc"
+PINNED_POLICY = digest(REMOTE.encode() + b'\0explicit-pinned-commits-v1')
 
 
 def oid(value):
@@ -170,13 +198,18 @@ def oid(value):
 
 def selected_hosts(spec, launch, history):
     require(type(spec) is dict and set(spec) == {"schema", "hosts"}
-            and spec["schema"] == SPEC_SCHEMA and type(spec["hosts"]) is list
+            and spec["schema"] in (SPEC_SCHEMA, PINNED_SPEC_SCHEMA) and type(spec["hosts"]) is list
             and 1 <= len(spec["hosts"]) <= 16, "invalid_collection_selection")
+    pinned = spec["schema"] == PINNED_SPEC_SCHEMA
     bases = {}
     for item in spec["hosts"]:
-        require(type(item) is dict and set(item) == {"id", "base_commit"}
+        fields = {"id", "base_commit", "head_commit"} if pinned else {"id", "base_commit"}
+        require(type(item) is dict and set(item) == fields
                 and fleet.matches(r"[a-z][a-z0-9_-]{0,63}", item["id"])
                 and item["id"] not in bases and oid(item["base_commit"]), "invalid_or_duplicate_collection_host")
+        if pinned:
+            require(oid(item["head_commit"]) and len(item["head_commit"]) == len(item["base_commit"]),
+                    "invalid_pinned_commit")
         bases[item["id"]] = item["base_commit"]
     selected = []
     for host, (attempted, targets) in zip(launch["spec"]["hosts"], history):
@@ -233,9 +266,13 @@ def validate_bundle(raw, snapshot):
 
 
 def remote_command(host, base, mode, snapshot, timeout):
-    require(mode in ("preview", "collect") and oid(base), "invalid_collection_operation")
+    require(mode in ("preview", "collect", "preview_pinned", "collect_pinned") and oid(base), "invalid_collection_operation")
     request = {"repo": host["request"]["repo"], "base_commit": base, "mode": mode,
                "snapshot_sha256": digest(encoded(snapshot)) if snapshot is not None else None, "timeout": timeout}
+    if mode.endswith("_pinned"):
+        require(type(snapshot) is dict and oid(snapshot.get("head_commit"))
+                and len(snapshot["head_commit"]) == len(base), "invalid_pinned_commit")
+        request["head_commit"] = snapshot["head_commit"]
     # Program and JSON are separate literal arguments, never interpolated code.
     return "exec python3 -I -c " + shlex.quote(REMOTE) + " " + shlex.quote(encoded(request).decode())
 
@@ -251,6 +288,10 @@ def transport(known, identity, timeout, *, runner=fleet.capture, ssh="/usr/bin/s
 
 
 def observe(host, base, mode, invoke, expected=None):
+    require(mode in ("preview", "collect", "preview_pinned", "collect_pinned"), "invalid_collection_operation")
+    if mode == "preview_pinned":
+        require(type(expected) is dict and set(expected) == {"head_commit"} and oid(expected["head_commit"])
+                and len(expected["head_commit"]) == len(base), "invalid_pinned_commit")
     code, raw = invoke(host, base, mode, expected)
     require(type(code) is int and code == 0 and type(raw) is bytes, "remote_collection_refused")
     require(len(raw) <= MAX_BUNDLE + fleet.LIMIT, "collection_output_limit")
@@ -262,8 +303,10 @@ def observe(host, base, mode, invoke, expected=None):
     snapshot = validate_snapshot(value["snapshot"], base)
     require(type(value["bundle_bytes"]) is int and value["bundle_bytes"] == len(bundle)
             and value["bundle_sha256"] == digest(bundle), "bundle_transfer_mismatch")
-    if mode == "preview":
+    if mode in ("preview", "preview_pinned"):
         require(not bundle, "preview_returned_bundle")
+        if mode == "preview_pinned":
+            require(snapshot["head_commit"] == expected["head_commit"], "reviewed_snapshot_changed")
     else:
         require(encoded(snapshot) == encoded(expected), "reviewed_snapshot_changed")
         if snapshot["commit_count"]:
@@ -303,7 +346,8 @@ def publish_bundle(fd, name, raw):
 def validate_plan(plan):
     require(type(plan) is dict and set(plan) == {"schema", "policy", "launch_plan_sha256", "launch_evidence_sha256",
             "known_hosts_sha256", "identity_sha256", "output_directory", "output_parent_identity", "timeout_seconds", "hosts"}
-            and plan["schema"] == SCHEMA and plan["policy"] == POLICY, "invalid_collection_plan")
+            and plan["schema"] == SCHEMA and plan["policy"] in (POLICY, LIVE_HEAD_POLICY_V1, PINNED_POLICY),
+            "invalid_collection_plan")
     for name in ("launch_plan_sha256", "launch_evidence_sha256", "known_hosts_sha256", "identity_sha256"):
         require(fleet.matches(r"[0-9a-f]{64}", plan[name]), "invalid_collection_plan_digest")
     fleet.absolute_path(plan["output_directory"])
@@ -380,11 +424,13 @@ def execute(launch_path, selection, known, identity, output_dir, timeout, approv
         def guard():
             fleet.state_unchanged(source, launch, records)
         selected = selected_hosts(selection, launch, history)
+        pinned = selection["schema"] == PINNED_SPEC_SCHEMA
+        heads = {h["id"]: {"head_commit": h["head_commit"]} for h in selection["hosts"]} if pinned else {}
         entries, errors = [], []
         for host, base in selected:
             guard()
             try:
-                snapshot, _ = observe(host, base, "preview", invoke)
+                snapshot, _ = observe(host, base, "preview_pinned" if pinned else "preview", invoke, heads.get(host["id"]))
                 entries.append({"id": host["id"], "snapshot": snapshot})
             except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
                 errors.append({"id": host["id"], "code": str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable"})
@@ -393,14 +439,15 @@ def execute(launch_path, selection, known, identity, output_dir, timeout, approv
                   "sends_prompts": False, "worktree_included": False, "task_completion_verified": False}
         if errors:
             return {**report, "errors": errors}, 1
-        plan = {"schema": SCHEMA, "policy": POLICY, "launch_plan_sha256": digest(encoded(launch)),
+        plan = {"schema": SCHEMA, "policy": PINNED_POLICY if pinned else POLICY, "launch_plan_sha256": digest(encoded(launch)),
                 "launch_evidence_sha256": digest(encoded({k: digest(v) if v is not None else None for k, v in records.items()})),
                 "known_hosts_sha256": digest(known), "identity_sha256": digest(identity),
                 "output_directory": str(output_dir), "output_parent_identity": output_parent,
                 "timeout_seconds": timeout, "hosts": entries}
         validate_plan(plan)
         require(len(encoded(plan)) <= fleet.LIMIT, "collection_plan_size_limit")
-        report.update(status="preview", plan=plan, plan_sha256=digest(encoded(plan)))
+        report.update(status="preview", plan=plan, plan_sha256=digest(encoded(plan)),
+                      revision_mode="pinned" if pinned else "live_head")
         if approval is None:
             return report, 0
         require(approval == report["plan_sha256"], "collection_approval_mismatch")
@@ -417,7 +464,7 @@ def execute(launch_path, selection, known, identity, output_dir, timeout, approv
             for (host, base), entry in zip(selected, entries):
                 guard()
                 try:
-                    _, bundle = observe(host, base, "collect", invoke, entry["snapshot"])
+                    _, bundle = observe(host, base, "collect_pinned" if pinned else "collect", invoke, entry["snapshot"])
                 except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
                     report.update(status="partial", artifacts=artifacts,
                                   error={"id": host["id"], "code": str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable"})
@@ -514,6 +561,12 @@ def resume_collection(launch_path, selection, known, identity, output_dir, timeo
                     and plan["launch_evidence_sha256"] == evidence, "collection_resume_context_mismatch")
             require([(h["id"], base) for h, base in selected] ==
                     [(e["id"], e["snapshot"]["base_commit"]) for e in plan["hosts"]], "collection_resume_selection_mismatch")
+            pinned = plan["policy"] == PINNED_POLICY
+            require(pinned == (selection["schema"] == PINNED_SPEC_SCHEMA), "collection_resume_selection_mismatch")
+            if pinned:
+                heads = {h["id"]: h["head_commit"] for h in selection["hosts"]}
+                require(all(heads[e["id"]] == e["snapshot"]["head_commit"] for e in plan["hosts"]),
+                        "collection_resume_selection_mismatch")
             recorded, artifacts, pending = collection_recovery_inventory(dest, plan, intent_raw)
             info = os.fstat(dest)
             directory_identity = [info.st_dev, info.st_ino]
@@ -532,6 +585,7 @@ def resume_collection(launch_path, selection, known, identity, output_dir, timeo
 
             guard()
             resume_plan = {"schema": RESUME_SCHEMA, "policy": "verified-prefix-create-only-v1",
+                           "execution_policy": POLICY,
                            "collection_plan_sha256": approval, "collection_identity": directory_identity,
                            "intent_sha256": digest(intent_raw),
                            "manifest_sha256": digest(recorded["manifest.json"]) if "manifest.json" in recorded else None,
@@ -543,6 +597,7 @@ def resume_collection(launch_path, selection, known, identity, output_dir, timeo
                       "network_access": False, "starts_agents": False, "sends_prompts": False,
                       "worktree_included": False, "task_completion_verified": False,
                       "collection_provenance_verified": False, "collection_resume_writes_started": False}
+            report["revision_mode"] = "pinned" if pinned else "live_head"
             if resume_approval is None:
                 return report, 0
             require(resume_approval == report["resume_plan_sha256"], "collection_resume_approval_mismatch")
@@ -554,7 +609,7 @@ def resume_collection(launch_path, selection, known, identity, output_dir, timeo
                 guard()
                 report["network_access"] = True
                 try:
-                    _, bundle = observe(host, base, "collect", invoke, entry["snapshot"])
+                    _, bundle = observe(host, base, "collect_pinned" if pinned else "collect", invoke, entry["snapshot"])
                 except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
                     guard()
                     report.update(status="partial",
@@ -1276,7 +1331,7 @@ def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
                                      epilog="Offline review import: --import COLLECTION --repository DIR --name NAME [--apply --accept-plan SHA256]")
     parser.add_argument("--launch-state", required=True)
-    parser.add_argument("--bases", required=True, help="Private host-ID to full base-commit selection")
+    parser.add_argument("--bases", required=True, help="Private selection: v1 live HEAD, or v2 exact base/head commits")
     parser.add_argument("--known-hosts", required=True)
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--output-dir", required=True, help="New private artifact directory; never an existing project")
