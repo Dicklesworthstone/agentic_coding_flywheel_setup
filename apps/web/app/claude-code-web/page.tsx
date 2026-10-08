@@ -88,11 +88,12 @@ const BEHAVIORS = [
   },
 ];
 
-function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLabel = "Copy setup script", title = "Setup script" }: {
+function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLabel = "Copy setup script", title = "Setup script", wrap = false }: {
   label: string;
   script?: string;
   copyLabel?: string;
   title?: string;
+  wrap?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -139,14 +140,14 @@ function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLab
           )}
         </Button>
         <span role="status" aria-live="polite" className="sr-only">
-          {copied ? "Setup script copied to clipboard" : ""}
+          {copied ? `${title} copied to clipboard` : ""}
         </span>
       </div>
       <pre
         tabIndex={0}
         role="region"
         aria-label={label}
-        className="overflow-x-auto p-5 font-mono text-sm leading-relaxed text-[#c0caf5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60"
+        className={`overflow-x-auto p-5 font-mono text-sm leading-relaxed text-[#c0caf5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60 ${wrap ? "whitespace-pre-wrap break-words" : ""}`}
       >
         <code>{script}</code>
       </pre>
@@ -351,19 +352,19 @@ export default function ClaudeCodeWebPage() {
           <SetupScriptCard label="Install script for a Codex cloud environment" script={CODEX_CLOUD_SETUP_SCRIPT}
             copyLabel="Copy Codex install script" title="Install script" />
           <p className="mb-4 mt-8 text-sm leading-relaxed text-muted-foreground">
-            Add the following to its Start skill. The recipe also installs the repository skill
-            acfs-cloud-tools to help tasks discover the guide and set PATH:
+            Save these instructions in its Start skill and include them at the start of each new
+            task. Hosted tests reused all eleven executables, but did not automatically load the
+            saved Start skill or generated repository skill. These instructions explicitly load
+            the guide and set PATH:
           </p>
-          <pre tabIndex={0} aria-label="Codex Start skill instructions"
-            className="whitespace-pre-wrap break-words rounded-xl border border-border/50 bg-muted/40 p-4 text-sm leading-relaxed">
-            <code>{CODEX_CLOUD_START_SKILL}</code>
-          </pre>
+          <SetupScriptCard label="Codex Start skill instructions" script={CODEX_CLOUD_START_SKILL}
+            copyLabel="Copy Codex task instructions" title="Task instructions" wrap />
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
             Agent Mail is available as a CLI; hosted MCP is not configured. If your task does not
-            discover acfs-cloud-tools, invoke it or read the workspace guide explicitly.
+            discover acfs-cloud-tools, read its SKILL.md or the workspace guide explicitly.
             Older environments with Setup and Maintenance
-            script fields use the install command in Setup. Both modes have Linux smoke tests;
-            verify PATH, instruction loading and network access in your hosted task.
+            script fields use the install command in Setup. Verify PATH, instruction loading and
+            network access in your hosted task before relying on the tools.
           </p>
           <a href={CODEX_CLOUD_DOCS_URL} target="_blank" rel="noopener noreferrer" className={`${footerLink} mt-4 text-sm text-primary`}>
             OpenAI cloud environment guide <ExternalLink className="ml-2 h-4 w-4" />

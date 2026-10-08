@@ -118,7 +118,7 @@ export const CLAUDE_CODE_WEB_OPTIONS: ClaudeCodeWebOption[] = [
   {
     name: "ACFS_CLOUD_SKILL_DIR",
     defaultValue: "",
-    effect: "Optional absolute Codex repository skill directory. Creates a discoverable tool-guide skill without replacing existing skills.",
+    effect: "Optional absolute Codex repository skill directory. Creates a tool-guide skill without replacing existing skills; hosted catalog loading still needs verification.",
   },
   {
     name: "ACFS_CLOUD_TOOLS",

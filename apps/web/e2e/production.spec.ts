@@ -152,6 +152,11 @@ test.describe("Production Smoke Tests", () => {
     const codexCopy = page.getByRole("button", { name: "Copy Codex install script" });
     await codexCopy.click();
     await expect(codexCopy).toHaveText("Copied");
+    await expect(page.getByRole("region", { name: "Codex Start skill instructions" }))
+      .toContainText('export PATH="$acfs_cloud_root/.local/bin:$PATH"');
+    const taskCopy = page.getByRole("button", { name: "Copy Codex task instructions" });
+    await taskCopy.click();
+    await expect(taskCopy).toHaveText("Copied");
 
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);

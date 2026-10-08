@@ -422,7 +422,8 @@ cloud_write_guide() {
 cloud_write_codex_skill() {
     [[ "$ACFS_CLOUD_AGENT" == codex && -n "$ACFS_CLOUD_SKILL_DIR" ]] || return 0
     # A saved environment Start skill was absent from a fresh hosted task's
-    # catalog. Repository skills are a separately discoverable runtime surface.
+    # catalog. Write the documented repository skill format; hosted catalog
+    # loading is not guaranteed, so the guide remains usable by explicit path.
     # Never replace an existing skill, even one with the same name.
     if ! python3 - "$ACFS_CLOUD_SKILL_DIR" "$ACFS_CLOUD_GUIDE" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_STATE_DIR" <<'PY'
 import pathlib, shlex, sys
