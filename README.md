@@ -45,7 +45,7 @@
 
 The installer is **idempotent**—if interrupted, simply re-run it. It will automatically resume from the last completed phase without prompts.
 
-> **Using Claude Code on the web instead of a VPS?** Cloud sessions get a lightweight setup script that installs just the flywheel CLIs. See [Claude Code on the web](#claude-code-on-the-web-cloud-environments).
+> **Using a cloud agent instead of a VPS?** A lightweight setup script installs prebuilt flywheel CLIs for [Claude Code on the web](#claude-code-on-the-web-cloud-environments) and [ChatGPT / Codex](#chatgpt--codex-cloud-environments).
 
 > **Production environments:** For stable, reproducible installs, pin to a tagged release or specific commit:
 > ```bash

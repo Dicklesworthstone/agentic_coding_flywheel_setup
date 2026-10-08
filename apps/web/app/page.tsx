@@ -1316,7 +1316,7 @@ export default function HomePage() {
                 </p>
               </motion.div>
 
-              {/* Claude Code on the web callout */}
+              {/* Cloud agent setup callout */}
               <motion.div
                 className="mt-4 flex items-start gap-3 rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm"
                 variants={fadeUp}
@@ -1326,7 +1326,7 @@ export default function HomePage() {
                 </div>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    Using Claude Code on the web?
+                    Using Claude Code or Codex in the cloud?
                   </span>{" "}
                   A lightweight setup script puts br, bv, Agent Mail, ubs, and cass into every cloud
                   session.{" "}
@@ -1334,7 +1334,15 @@ export default function HomePage() {
                     href="/claude-code-web"
                     className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
                   >
-                    See the cloud setup
+                    Claude Code setup
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                  {" · "}
+                  <Link
+                    href="/claude-code-web#codex-cloud"
+                    className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
+                  >
+                    Codex setup
                     <ArrowRight className="h-3 w-3" />
                   </Link>
                 </p>
