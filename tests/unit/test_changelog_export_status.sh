@@ -910,7 +910,9 @@ cat > "$target_home/.local/bin/bun" <<'SCRIPT'
 exit 0
 SCRIPT
 chmod +x "$target_home/.local/bin/bun"
-export TARGET_USER="ubuntu"
+# init_target_context honors an explicit TARGET_HOME only for the calling
+# user, so name the caller instead of assuming the tests run as `ubuntu`.
+export TARGET_USER="$(id -un)"
 export TARGET_HOME="$target_home"
 export ACFS_BIN_DIR="$target_home/.local/bin"
 export BUN_BIN="$target_home/.bun/bin/bun"
@@ -7691,10 +7693,7 @@ EOF
 test_smoke_bootstrap_uses_system_state_target_home_when_getent_unavailable() {
     setup_system_state_target_home_only_env
 
-    local current_user=""
     local output=""
-
-    current_user="$(id -un 2>/dev/null || whoami 2>/dev/null || true)"
 
     output=$(
         HOME="$TEST_ROOT_HOME" ACFS_SYSTEM_STATE_FILE="$TEST_SYSTEM_STATE_FILE" \
@@ -7703,7 +7702,10 @@ test_smoke_bootstrap_uses_system_state_target_home_when_getent_unavailable() {
             _ "$SMOKE_TEST_SH"
     )
 
-    if [[ "$output" == *"target_user=$current_user"* ]] \
+    # The state names a home but no user, and no passwd entry claims that home.
+    # Since 1f18b751 the owner of the directory (here, the caller) is not
+    # trusted as the target user, so the documented default stands.
+    if [[ "$output" == *$'target_user=ubuntu\n'* ]] \
         && [[ "$output" == *"target_home=$TEST_TARGET_HOME"* ]] \
         && [[ "$output" == *"binary=$TEST_TARGET_HOME/.local/bin/claude"* ]]; then
         harness_pass "smoke bootstrap uses system state target_home when getent is unavailable"
