@@ -74,8 +74,8 @@ export const CLOUD_AGENTS: CloudAgent[] = [
   },
   {
     id: "grok", name: "Grok Bot", initials: "GB", evidence: "Documented workflow",
-    summary: "Enterprise Team Setup can run shell scripts on the shared cloud computer.",
-    caveat: "Team Setup is Enterprise-only and runs on Debian-based Linux. ACFS has not been accepted there. Grok Bot, the Grok Build CLI and chat Build Mode are different integration surfaces.",
+    summary: "Enterprise Team Setup runs shell scripts on every team member's cloud computer.",
+    caveat: "Team Setup is Enterprise-only and runs scripts as the computer user on Linux team computers. ACFS has not been accepted there. Grok Bot, the Grok Build CLI and chat Build Mode are different integration surfaces.",
     docs: "https://docs.x.ai/grok-bot/private-networks", script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },
   {
@@ -92,12 +92,27 @@ export const CLOUD_AGENTS: CloudAgent[] = [
   },
 ];
 
+/**
+ * The selected agent's own recipe, installing only `tools`. Keeping the
+ * recipe's ACFS_CLOUD_AGENT means a Claude user never copies generic mode
+ * (which skips CLAUDE.md and MCP registration) by accident.
+ */
+export function cloudSubsetRecipe(agentId: string, tools = "br bv am ubs"): string {
+  const script = CLOUD_AGENTS.find((agent) => agent.id === agentId)?.script ?? GENERIC_CLOUD_SETUP_SCRIPT;
+  return script.replace(" | ", ` | ACFS_CLOUD_TOOLS="${tools}" `);
+}
+
+export type ClaudeCodeWebToolGroup = "Plan" | "Coordinate" | "Check" | "Remember" | "Skills";
+
 export type ClaudeCodeWebTool = {
   /** Tool id as the script's ACFS_CLOUD_TOOLS spells it. */
   id: string;
   name: string;
   command: string;
   role: string;
+  group: ClaudeCodeWebToolGroup;
+  /** Extra executables the same bundle puts on PATH. */
+  alsoInstalls?: string[];
 };
 
 /** In the script's default install order. */
@@ -107,62 +122,79 @@ export const CLAUDE_CODE_WEB_TOOLS: ClaudeCodeWebTool[] = [
     name: "BeadsRust",
     command: "br",
     role: "Dependency-aware issues that live in the repo's .beads/ and travel with the code.",
+    group: "Plan",
   },
   {
     id: "bv",
     name: "Beads Viewer",
     command: "bv --robot-triage",
     role: "Graph-aware triage: what to work on next and what it unblocks.",
+    group: "Plan",
   },
   {
     id: "am",
     name: "MCP Agent Mail",
     command: "am",
     role: "Agent messaging and file reservations. Claude gets stdio MCP registration; other agents get CLI access.",
+    group: "Coordinate",
+    alsoInstalls: ["mcp-agent-mail"],
   },
   {
     id: "ubs",
     name: "Ultimate Bug Scanner",
     command: "ubs <files>",
     role: "Scans changed files for bugs before every commit.",
+    group: "Check",
   },
   {
     id: "cass",
     name: "Session Search",
     command: 'cass search "query" --robot',
     role: "Searches the agent session history on this VM.",
+    group: "Remember",
   },
   {
     id: "cm",
     name: "CASS Memory",
     command: 'cm context "task" --json',
     role: "Procedural memory pulled in before a task starts.",
+    group: "Remember",
   },
   {
     id: "ms",
     name: "Meta Skill",
     command: "ms",
     role: "Local skill search and management.",
+    group: "Skills",
   },
   {
     id: "ast-grep",
     name: "ast-grep",
     command: "ast-grep",
     role: "Structural code search and UBS scan dependency.",
+    group: "Check",
   },
   {
     id: "jsm",
     name: "Jeffrey's Skills",
     command: "jsm",
     role: "Skill manager for the jeffreys-skills.md library.",
+    group: "Skills",
   },
   {
     id: "jfp",
     name: "JeffreysPrompts",
     command: "jfp",
     role: "The battle-tested prompt library, from the terminal.",
+    group: "Skills",
   },
 ];
+
+/** Every command the default bundle puts on PATH (Agent Mail ships two). */
+export const CLOUD_EXECUTABLES: string[] = CLAUDE_CODE_WEB_TOOLS.flatMap((tool) => [
+  tool.command.split(" ")[0],
+  ...(tool.alsoInstalls ?? []),
+]);
 
 export type ClaudeCodeWebOption = {
   name: string;
@@ -174,12 +206,12 @@ export const CLAUDE_CODE_WEB_OPTIONS: ClaudeCodeWebOption[] = [
   {
     name: "ACFS_CLOUD_AGENT",
     defaultValue: "claude",
-    effect: "claude registers stdio MCP; codex writes a Codex guide; generic writes .acfs/cloud/AGENTS.md without provider configuration.",
+    effect: "claude writes ~/.claude/CLAUDE.md and registers stdio MCP; codex writes a Codex guide; generic writes .acfs/cloud/AGENTS.md without provider configuration. Any other value installs nothing.",
   },
   {
     name: "ACFS_CLOUD_ROOT",
     defaultValue: "$HOME",
-    effect: "Writable data root for binaries and logs. In Codex mode a custom root also holds the explicitly loaded guide.",
+    effect: "Writable absolute data root (not /) for binaries and logs. In Codex mode a custom root also holds the explicitly loaded guide.",
   },
   {
     name: "ACFS_CLOUD_SKILL_DIR",
@@ -194,7 +226,7 @@ export const CLAUDE_CODE_WEB_OPTIONS: ClaudeCodeWebOption[] = [
   {
     name: "ACFS_CLOUD_TIMEOUT",
     defaultValue: "180",
-    effect: "Whole tool download/install deadline in seconds, from 1 to 180.",
+    effect: "Deadline in seconds, from 1 to 180, for each tool's job: download, install and version checks. Jobs run in parallel; an out-of-range value installs nothing.",
   },
   {
     name: "ACFS_CLOUD_REINSTALL",
@@ -226,7 +258,7 @@ export const CLAUDE_CODE_WEB_LEFT_OUT: ClaudeCodeWebOmission[] = [
   {
     name: "dcg",
     reason:
-      "Hook support depends on the harness. Claude cloud accepts repository hooks; this installer does not add provider hooks.",
+      "dcg works as a Claude Code hook. Cloud sessions run hooks from the repository's .claude/settings.json, not from user-level settings, and this installer never edits your repository.",
   },
   {
     name: "rch",
