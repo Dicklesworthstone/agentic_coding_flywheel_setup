@@ -139,16 +139,20 @@ test.describe("Production Smoke Tests", () => {
     await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
-    const provider = page.getByRole("combobox", { name: "Provider to set up", exact: true });
-    await expect(provider).toHaveValue("claude");
+    // One provider picker drives the hand-off brief, the guide and the URL.
+    const provider = (name: string) => page.getByRole("radio", { name, exact: true });
+    const pick = (name: string) => page.locator("label").filter({ has: provider(name) }).click();
+    await expect(provider("Claude Code Hosted test")).toBeChecked();
     const fullInstructions = page.getByRole("button", { name: "Copy full instructions for Claude Code", exact: true });
     await expect(fullInstructions).toBeVisible();
     await fullInstructions.click();
     await expect(fullInstructions).toHaveText("Full instructions copied");
-    await provider.selectOption("codex");
+    await pick("ChatGPT / Codex Hosted test");
+    await expect(provider("ChatGPT / Codex Hosted test")).toBeChecked();
+    await expect(page).toHaveURL(/\/cloud-agents#codex$/);
     await expect(page.getByRole("button", { name: "Copy full instructions for ChatGPT / Codex", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "ChatGPT / Codex Hosted test" })).toHaveAttribute("aria-pressed", "true");
-    await provider.selectOption("claude");
+    await expect(page.getByRole("heading", { name: "Set up ChatGPT / Codex" })).toBeVisible();
+    await pick("Claude Code Hosted test");
     const claudeSteps = page.getByRole("list", { name: "Claude Code setup walkthrough" });
     await expect(page.getByRole("link", { name: "Claude Code documentation", exact: true })).toHaveCount(0);
     await expect(claudeSteps.getByRole("img")).toHaveCount(4);
@@ -165,8 +169,8 @@ test.describe("Production Smoke Tests", () => {
 
     await page.getByRole("button", { name: "Copy setup script" }).click();
     await expect(page.getByText("Copied").first()).toBeVisible();
-    await page.getByRole("button", { name: "ChatGPT / Codex Hosted test" }).click();
-    await expect(provider).toHaveValue("codex");
+    await pick("ChatGPT / Codex Hosted test");
+    await expect(provider("ChatGPT / Codex Hosted test")).toBeChecked();
     await expect(page.getByRole("list", { name: "ChatGPT / Codex setup walkthrough" }).getByRole("img")).toHaveCount(4);
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
       .toContainText('ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash');
@@ -181,10 +185,10 @@ test.describe("Production Smoke Tests", () => {
     await taskCopy.click();
     await expect(taskCopy).toHaveText("Copied");
     await expect(page.getByText(/Automatic Start\/repository-skill discovery did not work/)).toBeVisible();
-    await page.getByRole("button", { name: "Amp Orbs Documented workflow" }).click();
+    await pick("Amp Orbs Documented workflow");
     await expect(page.getByRole("region", { name: "Setup script for Amp Orbs" }))
       .toContainText("ACFS_CLOUD_AGENT=generic bash");
-    await page.getByRole("button", { name: "Meta Muse Needs investigation" }).click();
+    await pick("Meta Muse Needs investigation");
     await expect(page.getByRole("heading", { name: "Check the VM before installing" })).toBeVisible();
     await page.getByRole("button", { name: "Open Linux template" }).click();
     await expect(page.getByRole("region", { name: "Other Linux agent task instructions" }))
@@ -198,6 +202,53 @@ test.describe("Production Smoke Tests", () => {
     await expect(page.getByRole("heading", { name: "Paste into the Install script editor" })).toBeInViewport();
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
       .toContainText("bash || exit 1");
+
+    expect(failedRequests).toEqual([]);
+    expect(jsErrors).toEqual([]);
+  });
+
+  test("cloud agent guide annotates screenshots, tracks progress and keeps options agent-specific", async ({ page }) => {
+    const { jsErrors, failedRequests } = setupErrorMonitoring(page);
+
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+
+    // The brief preview shows exactly what the copy button hands to a browser agent.
+    const preview = page.getByRole("button", { name: "Preview brief" });
+    await preview.click();
+    const brief = page.getByRole("region", { name: "Full agent instructions for Claude Code" });
+    await expect(brief).toContainText("# Set up Agent Flywheel for Claude Code");
+    await expect(brief).toContainText("Controls to use, in order: (1) Environment chip; (2) Cloud.");
+    await page.getByRole("button", { name: "Hide brief" }).click();
+    await expect(brief).toHaveCount(0);
+
+    // Highlighted controls are listed in text and survive into the enlarged view.
+    const firstStep = page.locator("#claude-step-cloud-menu");
+    await expect(firstStep.getByRole("list", { name: "Highlighted controls" })).toContainText("Environment chip");
+    const enlarge = firstStep.getByRole("button", { name: /^Enlarge screenshot: / });
+    await enlarge.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "Highlighted controls" })).toContainText("Cloud");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(enlarge).toBeFocused();
+
+    // Step progress is local, per provider, and survives a reload.
+    const done = page.getByRole("button", { name: "Mark as done: Open the Cloud menu" });
+    await done.click();
+    await expect(done).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await waitForPageSettled(page);
+    await expect(page.getByRole("button", { name: "Mark as done: Open the Cloud menu" })).toHaveAttribute("aria-pressed", "true");
+
+    // The subset example keeps the selected agent's own mode.
+    await page.getByText("Options and environment variables").click();
+    const claudeSubset = page.getByRole("region", { name: "Subset install example for Claude Code" });
+    await expect(claudeSubset).toContainText('| ACFS_CLOUD_TOOLS="br bv am ubs" bash');
+    await expect(claudeSubset).not.toContainText("ACFS_CLOUD_AGENT");
+    await page.locator("label").filter({ has: page.getByRole("radio", { name: "Devin Documented workflow", exact: true }) }).click();
+    await expect(page.getByRole("region", { name: "Subset install example for Devin" })).toContainText("ACFS_CLOUD_AGENT=generic bash");
 
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);

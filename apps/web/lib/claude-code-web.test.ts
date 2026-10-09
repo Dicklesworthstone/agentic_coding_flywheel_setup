@@ -22,6 +22,8 @@ import {
   GENERIC_CLOUD_TASK_INSTRUCTIONS,
   CLOUD_AGENTS,
   CLOUD_AGENT_ROUTE,
+  CLOUD_EXECUTABLES,
+  cloudSubsetRecipe,
 } from "./claude-code-web";
 import nextConfig from "../next.config";
 import { getStaticRouteSocialData } from "./social-image-routes";
@@ -185,6 +187,51 @@ describe("cloud agent page data", () => {
     expect(await nextConfig.redirects?.()).toContainEqual({
       source: "/claude-code-web", destination: CLOUD_AGENT_ROUTE, permanent: true,
     });
+  });
+
+  test("the eleven executables match every verification list and the mirror bundles", () => {
+    const listed = "br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp";
+    expect(CLOUD_EXECUTABLES.join(", ").replace(/, (\S+)$/, " and $1")).toBe(listed);
+    expect(getCloudAgentSetupInstructions("claude")).toContain(listed);
+    expect(GROK_CLOUD_CHECK_SCRIPT).toContain(`for tool in ${CLOUD_EXECUTABLES.join(" ")}; do`);
+    const mirror = JSON.parse(readFileSync(join(REPO_ROOT, "cloud-mirror.json"), "utf8")) as { tools: Record<string, { bins: string[] }> };
+    expect(Object.values(mirror.tools).flatMap((tool) => tool.bins).sort()).toEqual([...CLOUD_EXECUTABLES].sort());
+  });
+
+  test("subset recipes keep each agent's own mode and stay valid bash", () => {
+    for (const agent of CLOUD_AGENTS) {
+      const recipe = cloudSubsetRecipe(agent.id);
+      expect(recipe).toContain('| ACFS_CLOUD_TOOLS="br bv am ubs" ');
+      expect(recipe.replace(' ACFS_CLOUD_TOOLS="br bv am ubs"', "")).toBe(agent.script ?? GENERIC_CLOUD_SETUP_SCRIPT);
+      const result = spawnSync("bash", ["-n"], { input: recipe, encoding: "utf8" });
+      expect(result.status).toBe(0);
+    }
+    expect(cloudSubsetRecipe("claude")).not.toContain("ACFS_CLOUD_AGENT");
+    expect(cloudSubsetRecipe("codex")).toContain("ACFS_CLOUD_AGENT=codex");
+    expect(cloudSubsetRecipe("muse")).toContain("ACFS_CLOUD_AGENT=generic");
+  });
+
+  test("screenshot highlights stay inside their image and name a control", () => {
+    for (const walkthrough of Object.values(CLOUD_WALKTHROUGHS)) {
+      for (const step of walkthrough.steps) {
+        for (const box of step.screenshot?.highlights ?? []) {
+          expect(box.label.length).toBeGreaterThan(2);
+          expect(box.x).toBeGreaterThanOrEqual(0);
+          expect(box.y).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.w).toBeLessThanOrEqual(100);
+          expect(box.y + box.h).toBeLessThanOrEqual(100);
+        }
+      }
+    }
+  });
+
+  test("the Muse brief embeds the Linux steps once, without a second document", () => {
+    const muse = getCloudAgentSetupInstructions("muse");
+    expect(muse.match(/^# /gm)).toHaveLength(1);
+    expect(muse.match(/^## Completion and handoff$/gm)).toHaveLength(1);
+    expect(muse.match(/^Visual guide: /gm)).toHaveLength(1);
+    for (const step of CLOUD_WALKTHROUGHS.generic.steps) expect(muse).toContain(step.title);
+    expect(muse.indexOf("## Linux template")).toBeGreaterThan(muse.indexOf("Use the Linux template only if those checks pass"));
   });
 
   test("other providers use generic mode and retain honest acceptance boundaries", () => {

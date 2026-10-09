@@ -59,6 +59,8 @@ const RESEARCH_DATE_LABEL = `${researchDay} ${MONTHS[researchMonth - 1]} ${resea
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const textLink = `inline-flex min-h-11 items-center gap-1.5 rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline ${focusRing}`;
+// The theme's text-3xl/4xl scale is fluid up to 64px; section titles use a fixed, calmer step.
+const sectionTitle = "text-[1.875rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[2.5rem]";
 
 const EVIDENCE_STYLE: Record<CloudAgent["evidence"], { dot: string; badge: string }> = {
   "Hosted test": { dot: "bg-emerald-400", badge: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" },
@@ -100,13 +102,15 @@ const BEHAVIORS = [
   },
 ];
 
-const TOOL_GROUPS: { id: ClaudeCodeWebToolGroup; title: string; blurb: string; icon: typeof ListChecks; span: string }[] = [
+const TOOL_GROUPS: { id: ClaudeCodeWebToolGroup; title: string; blurb: string; icon: typeof ListChecks; span: string; wide?: boolean }[] = [
   { id: "Plan", title: "Plan the work", blurb: "Issues that live in the repo, triaged by what they unblock.", icon: ListChecks, span: "lg:col-span-2" },
   { id: "Coordinate", title: "Coordinate", blurb: "Messages and file reservations between agents.", icon: Mail, span: "lg:col-span-2" },
   { id: "Check", title: "Check the code", blurb: "Bug scans and structural search before a commit.", icon: ScanSearch, span: "lg:col-span-2" },
-  { id: "Remember", title: "Remember", blurb: "Search past sessions and recall learned procedures.", icon: Brain, span: "lg:col-span-3" },
-  { id: "Skills", title: "Skills and prompts", blurb: "Reusable skills and a prompt library from the terminal.", icon: Sparkles, span: "sm:col-span-2 lg:col-span-3" },
+  { id: "Remember", title: "Remember", blurb: "Search past sessions and recall learned procedures.", icon: Brain, span: "lg:col-span-3", wide: true },
+  { id: "Skills", title: "Skills and prompts", blurb: "Reusable skills and a prompt library from the terminal.", icon: Sparkles, span: "sm:col-span-2 lg:col-span-3", wide: true },
 ];
+// Wide group cards lay their tools out in a row, one column per tool.
+const WIDE_GROUP_COLUMNS: Record<number, string> = { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3" };
 
 /* ------------------------------------------------------------------ */
 /* Copy                                                                */
@@ -234,15 +238,15 @@ function ProviderPicker({ agentId, choose }: { agentId: string; choose: (id: str
                 onChange={() => choose(item.id)}
                 className="sr-only"
               />
-              <span aria-hidden="true" className={`flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold transition-colors ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/80"}`}>{item.initials}</span>
+              <span aria-hidden="true" className={`flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold transition-colors max-sm:hidden ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/80"}`}>{item.initials}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-foreground">{item.name}</span>
-                <span className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted-foreground sm:text-xs">
+                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground sm:text-xs">
                   <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${EVIDENCE_STYLE[item.evidence].dot}`} />
-                  {item.evidence}
+                  <span className="truncate">{item.evidence}</span>
                 </span>
               </span>
-              {selected && <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />}
+              {selected && <Check className="size-4 shrink-0 text-primary max-sm:hidden" aria-hidden="true" />}
             </label>
           );
         })}
@@ -312,6 +316,32 @@ function HandoffCard({ agent }: { agent: CloudAgent }) {
   );
 }
 
+function ScriptTeaser({ agent }: { agent: CloudAgent }) {
+  if (!agent.script) {
+    return (
+      <p className="flex gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.05] p-4 text-sm leading-relaxed text-muted-foreground">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" aria-hidden="true" />
+        <span><strong className="font-semibold text-foreground">No install script for {agent.name} yet.</strong> A supported setup hook has not been established, so the guide starts with a capability check before anything is installed.</span>
+      </p>
+    );
+  }
+  const caption = agent.id === "claude"
+    ? "That is the entire Claude setup script. The guide shows the exact field."
+    : agent.id === "codex"
+      ? "The Codex install script. New tasks also need the instructions from the guide."
+      : agent.id === "generic"
+        ? "The provider-neutral Linux script. Paste it into your provider's setup hook."
+        : `The provider-neutral Linux script. The guide shows where ${agent.name} runs it.`;
+  return (
+    <div className="min-w-0">
+      <p className="mb-3 text-sm leading-relaxed text-muted-foreground">
+        <span className="font-medium text-foreground">Know your way around? </span>{caption}
+      </p>
+      <CodePanel text={agent.script} title={`${agent.name} · setup script`} label={`${agent.name} setup script preview`} copyLabel={`Copy ${agent.name} setup script`} />
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Screenshots                                                         */
 /* ------------------------------------------------------------------ */
@@ -326,7 +356,8 @@ function Highlights({ shot }: { shot: SetupScreenshot }) {
           className="pointer-events-none absolute rounded-md border-2 border-[oklch(0.58_0.15_205)] shadow-[0_0_0_3px_oklch(0.75_0.18_195/0.3),0_0_22px_oklch(0.75_0.18_195/0.45)]"
           style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
         >
-          <span className="absolute -left-2.5 -top-2.5 flex size-5 items-center justify-center rounded-full bg-primary font-mono text-[11px] font-bold text-primary-foreground shadow-md ring-2 ring-white">
+          {/* Badges sit on the right edge so they never cover the label they mark. */}
+          <span className={`absolute -top-2.5 flex size-5 items-center justify-center rounded-full bg-primary font-mono text-[11px] font-bold text-primary-foreground shadow-md ring-2 ring-white ${box.x + box.w > 95 ? "-left-2.5" : "-right-2.5"}`}>
             {index + 1}
           </span>
         </span>
@@ -349,7 +380,10 @@ function HighlightLegend({ shot, className = "" }: { shot: SetupScreenshot; clas
   );
 }
 
-function ShotFigure({ shot, sizes, onOpen }: { shot: SetupScreenshot; sizes: string; onOpen: (shot: SetupScreenshot) => void }) {
+/** Safari does not focus a clicked button, so the trigger is passed explicitly for focus return. */
+type OpenShot = (shot: SetupScreenshot, opener: HTMLElement) => void;
+
+function ShotFigure({ shot, sizes, onOpen }: { shot: SetupScreenshot; sizes: string; onOpen: OpenShot }) {
   const ratio = shot.width / shot.height;
   return (
     <figure className="min-w-0">
@@ -362,12 +396,12 @@ function ShotFigure({ shot, sizes, onOpen }: { shot: SetupScreenshot; sizes: str
           <Highlights shot={shot} />
           <button
             type="button"
-            onClick={() => onOpen(shot)}
+            onClick={(event) => onOpen(shot, event.currentTarget)}
             aria-label={`Enlarge screenshot: ${shot.alt}`}
             className="group absolute inset-0 flex cursor-zoom-in items-end justify-end p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
           >
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-visible:opacity-100">
-              <ZoomIn className="size-3.5" aria-hidden="true" />Enlarge
+            <span className="inline-flex size-8 items-center justify-center gap-1.5 rounded-full bg-black/70 text-xs font-medium text-white shadow-lg backdrop-blur transition-opacity sm:size-auto sm:px-3 sm:py-1.5 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-visible:opacity-100">
+              <ZoomIn className="size-4 sm:size-3.5" aria-hidden="true" /><span className="max-sm:hidden">Enlarge</span>
             </span>
           </button>
         </div>
@@ -380,7 +414,7 @@ function ShotFigure({ shot, sizes, onOpen }: { shot: SetupScreenshot; sizes: str
   );
 }
 
-function Lightbox({ shot, onClose }: { shot: SetupScreenshot; onClose: () => void }) {
+function Lightbox({ shot, opener, onClose }: { shot: SetupScreenshot; opener: HTMLElement; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [actualSize, setActualSize] = useState(false);
@@ -389,7 +423,6 @@ function Lightbox({ shot, onClose }: { shot: SetupScreenshot; onClose: () => voi
   useEffect(() => {
     const node = dialog.current;
     if (!node) return;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = document.documentElement;
     const previousOverflow = root.style.overflow;
     root.style.overflow = "hidden";
@@ -398,17 +431,19 @@ function Lightbox({ shot, onClose }: { shot: SetupScreenshot; onClose: () => voi
     return () => {
       root.style.overflow = previousOverflow;
       if (node.open) node.close();
-      opener?.focus();
+      if (opener.isConnected) opener.focus();
     };
-  }, []);
+  }, [opener]);
 
   return (
     <dialog
       ref={dialog}
       aria-label={`Screenshot: ${shot.alt}`}
-      onClose={onClose}
+      // `close` is queued as a task; a stale one from an effect cleanup must not
+      // dismiss a dialog that has already been reopened.
+      onClose={() => { if (!dialog.current?.open) onClose(); }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[oklch(0.08_0.015_260/0.92)] p-0 text-foreground backdrop:bg-black/70 backdrop:backdrop-blur-sm"
+      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[oklch(0.08_0.015_260)] p-0 text-foreground backdrop:bg-black/80"
     >
       <div className="flex h-full flex-col" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
         <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-white/10 bg-black/40 px-3 sm:px-5">
@@ -416,7 +451,6 @@ function Lightbox({ shot, onClose }: { shot: SetupScreenshot; onClose: () => voi
           <button
             type="button"
             onClick={() => setActualSize((value) => !value)}
-            aria-pressed={actualSize}
             className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm text-foreground/90 hover:bg-white/10 ${focusRing}`}
           >
             {actualSize ? <Minimize2 className="size-4" aria-hidden="true" /> : <Maximize2 className="size-4" aria-hidden="true" />}
@@ -536,7 +570,7 @@ function useStepProgress(agentId: string, steps: SetupStep[]) {
 
 const stepAnchor = (agentId: string, stepId: string) => `${agentId}-step-${stepId}`;
 
-function StepBody({ agent, step, onOpenShot }: { agent: CloudAgent; step: SetupStep; onOpenShot: (shot: SetupScreenshot) => void }) {
+function StepBody({ agent, step, onOpenShot }: { agent: CloudAgent; step: SetupStep; onOpenShot: OpenShot }) {
   const shot = step.screenshot;
   const wide = shot ? shot.width / shot.height > 1 : false;
   const paragraphs = step.paragraphs.map((paragraph) => (
@@ -590,7 +624,7 @@ function StepBody({ agent, step, onOpenShot }: { agent: CloudAgent; step: SetupS
   );
 }
 
-function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose: (id: string) => void; onOpenShot: (shot: SetupScreenshot) => void }) {
+function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose: (id: string) => void; onOpenShot: OpenShot }) {
   const walkthrough = CLOUD_WALKTHROUGHS[agent.id];
   const steps = walkthrough.steps;
   const { done, toggle, reset } = useStepProgress(agent.id, steps);
@@ -602,18 +636,30 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
   const hosted = agent.evidence === "Hosted test";
 
   useEffect(() => {
-    const visible = new Set<number>();
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        const index = Number((entry.target as HTMLElement).dataset.index);
-        if (entry.isIntersecting) visible.add(index);
-        else visible.delete(index);
-      }
-      if (visible.size) setActive(Math.min(...visible));
-    }, { rootMargin: "-25% 0px -60% 0px" });
-    stepRefs.current.forEach((node) => node && observer.observe(node));
-    return () => observer.disconnect();
-  }, [agent.id]);
+    // The active step is the last one whose top has passed a reading line;
+    // above the first step that is step 1, so the rail never shows stale state.
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = window.innerHeight * 0.35;
+      let index = 0;
+      stepRefs.current.forEach((node, i) => {
+        if (node && node.getBoundingClientRect().top <= line) index = i;
+      });
+      setActive(index);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, []);
 
   useEffect(() => {
     if (!stepsOpen) return;
@@ -639,7 +685,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
           onChange={(event) => choose(event.target.value)}
           className={`min-h-11 w-full appearance-none rounded-lg border border-border/80 bg-background py-2 pl-3 pr-9 text-sm text-foreground ${focusRing}`}
         >
-          {CLOUD_AGENTS.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.evidence}</option>)}
+          {CLOUD_AGENTS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
       </span>
@@ -683,11 +729,11 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
       <div className="grid gap-6 border-b border-border/60 pb-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] lg:items-end lg:gap-10">
         <div className="min-w-0">
           <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs uppercase tracking-[0.18em] text-primary">
-            <span className="inline-flex items-center gap-2"><BookOpen className="size-4" aria-hidden="true" />Illustrated guide</span>
+            <span className="inline-flex items-center gap-2"><BookOpen className="size-4" aria-hidden="true" />{steps.some((step) => step.screenshot) ? "Illustrated guide" : "Step-by-step guide"}</span>
             <EvidenceBadge evidence={agent.evidence} className="font-sans normal-case tracking-normal" />
           </p>
-          <h2 id="guide-heading" className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Set up {agent.name}</h2>
-          <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">{walkthrough.introduction}</p>
+          <h2 id="guide-heading" className={sectionTitle}>Set up {agent.name}</h2>
+          <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-[17px]">{walkthrough.introduction}</p>
           <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground/90">{walkthrough.visualEvidence} Checked {RESEARCH_DATE_LABEL}.</p>
         </div>
         <div className={`flex gap-3 rounded-2xl border p-4 text-sm leading-relaxed ${hosted ? "border-emerald-400/25 bg-emerald-400/[0.05]" : "border-amber-400/25 bg-amber-400/[0.05]"}`}>
@@ -699,7 +745,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
       </div>
 
       {/* Mobile and tablet: a sticky progress bar with a step menu. */}
-      <div ref={mobileBar} className="sticky top-0 z-30 -mx-5 mb-8 border-b border-border/60 bg-background/90 px-5 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 sm:-mx-8 sm:px-8 lg:hidden">
+      <div ref={mobileBar} className="sticky top-0 z-30 -mx-5 mb-8 border-b border-border/60 bg-background px-5 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.8)] sm:-mx-8 sm:px-8 lg:hidden">
         <div className="flex min-h-14 items-center gap-3 py-2">
           <div className="min-w-0 flex-1">
             <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -719,7 +765,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
         </div>
         <div className="pb-2">{progressBar}</div>
         {stepsOpen && (
-          <div id="guide-step-menu" className="absolute inset-x-0 top-full max-h-[70dvh] overflow-y-auto border-b border-border/60 bg-background/95 px-5 pb-5 pt-3 shadow-2xl shadow-black/60 backdrop-blur-md sm:px-8">
+          <div id="guide-step-menu" className="absolute inset-x-0 top-full max-h-[70dvh] overflow-y-auto overscroll-contain border-b border-border/60 bg-card px-5 pb-5 pt-3 shadow-2xl shadow-black/70 sm:px-8">
             <nav aria-label={`${agent.name} setup steps`}>{stepList(() => setStepsOpen(false))}</nav>
             <div className="mt-4 border-t border-border/60 pt-4">{switcher("guide-agent-mobile")}</div>
           </div>
@@ -748,7 +794,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
           </div>
         </aside>
 
-        <ol aria-label={`${agent.name} setup walkthrough`} key={agent.id} className="min-w-0">
+        <ol aria-label={`${agent.name} setup walkthrough`} className="min-w-0">
           {steps.map((step, index) => {
             const isDone = done.has(step.id);
             const isActive = index === activeIndex;
@@ -757,7 +803,6 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
               <li
                 key={step.id}
                 id={stepAnchor(agent.id, step.id)}
-                data-index={index}
                 ref={(node) => { stepRefs.current[index] = node; }}
                 className="relative scroll-mt-28 border-t border-border/50 pb-12 pt-10 first:border-t-0 first:pt-0 last:pb-0 sm:border-t-0 sm:pl-16 sm:pt-0 lg:scroll-mt-8"
               >
@@ -771,7 +816,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
                   </span>
                   <div className="min-w-0 pt-0.5">
                     <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Step {index + 1} of {steps.length}</p>
-                    <h3 className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{step.title}</h3>
+                    <h3 className="mt-1 text-[1.3rem] font-semibold leading-snug tracking-tight text-foreground sm:text-[1.55rem]">{step.title}</h3>
                   </div>
                 </div>
                 <div className="mt-5">
@@ -833,7 +878,8 @@ function runLines(agentId: string, failed: boolean): RunLine[] {
   lines.push({ tone: "step", parts: ["[acfs-cloud] Summary (", seconds ? `${seconds}` : { muted: "n" }, "s)"] });
   for (const id of ids) {
     const label = `    ${id.padEnd(5)} `;
-    if (failed && id === "jfp") lines.push({ tone: "warn", parts: [`${label}installed binary verification failed; see ${logs}jfp.log`] });
+    // The script's own message when both the mirror and JSM's non-GitHub fallback are unreachable.
+    if (failed && id === "jsm") lines.push({ tone: "warn", parts: [`${label}mirror and public release blocked/unavailable; select Full network access; see ${logs}jsm.log; no source build attempted`] });
     else lines.push({ tone: "ok", parts: [label, { muted: "‹version›" }, " (verified prebuilt)"] });
   }
   lines.push({ tone: "detail", parts: [`    Guide for ${mode}: ${guide}; logs: ${logs}`] });
@@ -843,7 +889,7 @@ function runLines(agentId: string, failed: boolean): RunLine[] {
 
 const RUN_TONE: Record<RunTone, string> = {
   step: "text-[#7aa2f7]",
-  detail: "text-[#737aa2]",
+  detail: "text-[#8a91b8]",
   ok: "text-[#9ece6a]",
   warn: "text-[#e0af68]",
   prompt: "text-[#c0caf5]",
@@ -919,11 +965,11 @@ function RunPreview({ agent }: { agent: CloudAgent }) {
           >
             {line.parts.map((part, partIndex) => typeof part === "string"
               ? <span key={partIndex}>{part}</span>
-              : <span key={partIndex} className="text-[#565f89]">{part.muted}</span>)}
+              : <span key={partIndex} className="text-[#737aa2]">{part.muted}</span>)}
           </span>
         ))}
       </pre>
-      <p className="border-t border-white/[0.07] px-4 py-2.5 text-xs leading-relaxed text-[#737aa2] sm:px-5">
+      <p className="border-t border-white/[0.07] px-4 py-2.5 text-xs leading-relaxed text-[#8a91b8] sm:px-5">
         Abridged from the script&apos;s real summary. Times are from our hosted runs; versions vary.
       </p>
     </div>
@@ -939,7 +985,7 @@ function Disclosure({ title, summary, children }: { title: string; summary: stri
     <details className="group rounded-2xl border border-border/60 bg-card/30 transition-colors open:bg-card/50">
       <summary className={`flex min-h-16 cursor-pointer list-none items-center gap-4 rounded-2xl px-4 py-4 sm:px-6 [&::-webkit-details-marker]:hidden ${focusRing}`}>
         <span className="min-w-0 flex-1">
-          <span className="block text-lg font-semibold tracking-tight text-foreground">{title}</span>
+          <span className="block text-[1.0625rem] font-semibold tracking-tight text-foreground sm:text-[1.125rem]">{title}</span>
           <span className="mt-0.5 block text-sm text-muted-foreground">{summary}</span>
         </span>
         <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border/70 transition-transform group-open:rotate-180">
@@ -988,7 +1034,8 @@ const NETWORK_LEVELS = [
 
 export default function CloudAgentsPage() {
   const [agentId, setAgentId] = useState("claude");
-  const [lightbox, setLightbox] = useState<SetupScreenshot | null>(null);
+  const [lightbox, setLightbox] = useState<{ shot: SetupScreenshot; opener: HTMLElement } | null>(null);
+  const openShot = useCallback<OpenShot>((shot, opener) => setLightbox({ shot, opener }), []);
   const agent = CLOUD_AGENTS.find((item) => item.id === agentId) ?? CLOUD_AGENTS[0];
   const walkthrough = CLOUD_WALKTHROUGHS[agent.id];
   const firstStep = `#${stepAnchor(agent.id, walkthrough.steps[0].id)}`;
@@ -1037,8 +1084,8 @@ export default function CloudAgentsPage() {
           Agent Flywheel
         </Link>
         <div className="flex items-center gap-1 text-sm text-muted-foreground sm:gap-5">
-          <Link href="/learn" className={`${textLink} hidden sm:inline-flex`}>Learn</Link>
-          <Link href="/tldr" className={`${textLink} hidden sm:inline-flex`}>TL;DR</Link>
+          <Link href="/learn" className={`${textLink} max-sm:hidden`}>Learn</Link>
+          <Link href="/tldr" className={`${textLink} max-sm:hidden`}>TL;DR</Link>
           <a href={CLAUDE_CODE_WEB_SCRIPT_SOURCE_URL} target="_blank" rel="noopener noreferrer" className={`${textLink} px-1`}>
             <GitBranch className="size-4" aria-hidden="true" />View source<span className="sr-only"> (new tab)</span>
           </a>
@@ -1051,10 +1098,10 @@ export default function CloudAgentsPage() {
             <p className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-primary">
               <Cloud className="size-3.5" aria-hidden="true" />Cloud agent setup
             </p>
-            <h1 id="hero-heading" className="mt-6 text-[2.6rem] font-semibold leading-[1.04] tracking-tight text-foreground sm:text-6xl lg:text-[4.25rem]">
+            <h1 id="hero-heading" className="mt-6 text-[2.5rem] font-semibold leading-[1.05] tracking-tight text-foreground sm:text-[3.5rem] lg:text-[4.25rem]">
               Give your cloud agent <span className="text-gradient-cyan">a flywheel.</span>
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+            <p className="mt-6 max-w-xl text-[17px] leading-relaxed text-muted-foreground sm:text-[19px]">
               Prebuilt tools for tasks, coordination, code checks, memory and reusable skills, installed in your provider&apos;s setup phase. Hand the setup to a browser agent, or follow the illustrated guide.
             </p>
           </div>
@@ -1072,7 +1119,7 @@ export default function CloudAgentsPage() {
                     <BookOpen className="size-5" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block font-semibold text-foreground">{agent.id === "muse" ? "Start the capability check" : "Follow the illustrated guide"}</span>
+                    <span className="block font-semibold text-foreground">{agent.id === "muse" ? "Start the capability check" : screenshotCount ? "Follow the illustrated guide" : "Follow the step-by-step guide"}</span>
                     <span className="mt-0.5 block text-sm text-muted-foreground">
                       {walkthrough.steps.length} steps{screenshotCount ? ` · ${screenshotCount} real screenshots` : ""} · copy buttons on every script
                     </span>
@@ -1083,32 +1130,35 @@ export default function CloudAgentsPage() {
             </div>
           </div>
 
-          <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-5 border-t border-border/50 pt-8 sm:grid-cols-4 lg:col-start-1 lg:row-start-2 lg:grid-cols-2 lg:self-end xl:grid-cols-4">
-            {[
-              { value: "10", label: "tools", sub: `${CLOUD_EXECUTABLES.length} executables` },
-              { value: "12s", label: "Claude install", sub: `hosted run, ${RESEARCH_DATE_LABEL}` },
-              { value: "0", label: "secrets", sub: "no source builds" },
-              { value: "2", label: "download hosts", sub: "both public" },
-            ].map((fact) => (
-              <div key={fact.label} className="flex min-w-0 flex-col-reverse">
-                <dt className="mt-1 text-sm text-foreground/80">
-                  {fact.label}
-                  <span className="block text-xs text-muted-foreground">{fact.sub}</span>
-                </dt>
-                <dd className="font-mono text-3xl font-semibold tracking-tight text-foreground">{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-border/50 pt-8 sm:grid-cols-4">
+              {[
+                { value: "10", label: "tools", sub: `${CLOUD_EXECUTABLES.length} executables` },
+                { value: "12s", label: "Claude install", sub: "hosted run" },
+                { value: "0", label: "secrets", sub: "no source builds" },
+                { value: "2", label: "download hosts", sub: "both public" },
+              ].map((fact) => (
+                <div key={fact.label} className="flex min-w-0 flex-col-reverse justify-end">
+                  <dt className="mt-1 text-sm text-foreground/80">
+                    {fact.label}
+                    <span className="block text-xs text-muted-foreground">{fact.sub}</span>
+                  </dt>
+                  <dd className="font-mono text-[1.75rem] font-semibold leading-none tracking-tight text-foreground">{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <ScriptTeaser agent={agent} />
+          </div>
         </section>
 
-        <GuideSection key={agent.id} agent={agent} choose={choose} onOpenShot={setLightbox} />
+        <GuideSection key={agent.id} agent={agent} choose={choose} onOpenShot={openShot} />
 
         {/* ========================= HOW IT WORKS ========================= */}
         <section aria-labelledby="how-heading" className="border-y border-border/40 bg-card/20">
           <div className="mx-auto grid max-w-6xl gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-14">
             <div className="min-w-0">
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">How installation works</p>
-              <h2 id="how-heading" className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Fast, verified, and honest about failures</h2>
+              <h2 id="how-heading" className={`mt-3 ${sectionTitle}`}>Fast, verified, and honest about failures</h2>
               <ul className="mt-8 space-y-6">
                 {BEHAVIORS.map((behavior) => (
                   <li key={behavior.title} className="flex gap-4">
@@ -1124,7 +1174,9 @@ export default function CloudAgentsPage() {
               </ul>
             </div>
             <div className="min-w-0 lg:pt-16">
-              <RunPreview agent={agent} />
+              <div className="lg:sticky lg:top-8">
+                <RunPreview agent={agent} />
+              </div>
             </div>
           </div>
         </section>
@@ -1133,7 +1185,7 @@ export default function CloudAgentsPage() {
         <section aria-labelledby="tools-heading" className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
           <div className="max-w-2xl">
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">What gets installed</p>
-            <h2 id="tools-heading" className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Ten tools that carry the work forward</h2>
+            <h2 id="tools-heading" className={`mt-3 ${sectionTitle}`}>Ten tools that carry the work forward</h2>
             <p className="mt-4 text-base leading-relaxed text-muted-foreground">
               {CLOUD_EXECUTABLES.length} executables from hash-pinned bundles, installed into <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">.local/bin</code> under your data root. Install a subset with ACFS_CLOUD_TOOLS.
             </p>
@@ -1150,7 +1202,7 @@ export default function CloudAgentsPage() {
                     <p className="text-xs text-muted-foreground">{group.blurb}</p>
                   </div>
                 </div>
-                <ul className={`mt-5 grid gap-4 ${group.id === "Skills" ? "lg:grid-cols-3" : group.id === "Remember" ? "lg:grid-cols-2" : ""}`}>
+                <ul className={`mt-5 grid gap-4 ${group.wide ? WIDE_GROUP_COLUMNS[CLAUDE_CODE_WEB_TOOLS.filter((tool) => tool.group === group.id).length] ?? "" : ""}`}>
                   {CLAUDE_CODE_WEB_TOOLS.filter((tool) => tool.group === group.id).map((tool) => (
                     <li key={tool.id} className="min-w-0 border-t border-border/50 pt-4">
                       <p className="text-sm font-semibold text-foreground">{tool.name}</p>
@@ -1173,7 +1225,7 @@ export default function CloudAgentsPage() {
           <div className="mx-auto grid max-w-6xl gap-10 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
             <div className="min-w-0">
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">Network access</p>
-              <h2 id="network-heading" className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Two public download hosts</h2>
+              <h2 id="network-heading" className={`mt-3 ${sectionTitle}`}>Two public download hosts</h2>
               <p className="mt-4 text-base leading-relaxed text-muted-foreground">
                 No credentials or repository ownership needed. Use full access, or allow these hosts in your provider&apos;s policy. Setup never falls back to a source build.
               </p>
@@ -1202,7 +1254,7 @@ export default function CloudAgentsPage() {
         {/* ======================== REFERENCE DETAILS ======================== */}
         <section aria-labelledby="reference-heading" className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">Reference</p>
-          <h2 id="reference-heading" className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Scope and options</h2>
+          <h2 id="reference-heading" className={`mt-3 ${sectionTitle}`}>Scope and options</h2>
           <div className="mt-10 space-y-4">
             <Disclosure title="What this bundle leaves out" summary="Machine provisioning and the tools that need a long-lived host.">
               <ul className="divide-y divide-border/40">
@@ -1257,8 +1309,8 @@ export default function CloudAgentsPage() {
         <section aria-labelledby="cta-heading" className="relative overflow-hidden border-t border-border/40">
           <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[40rem] max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.75_0.18_195/0.12)] blur-[110px]" />
           <div className="relative mx-auto flex max-w-3xl flex-col items-center px-5 py-24 text-center sm:px-8 sm:py-28">
-            <h2 id="cta-heading" className="text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">Want the whole stack?</h2>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            <h2 id="cta-heading" className="text-[2rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[2.75rem]">Want the whole stack?</h2>
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-[17px]">
               The cloud script covers the tools an agent calls. A VPS of your own gets everything: the shell, tmux, every agent CLI, and the services that keep running between sessions.
             </p>
             <div className="mt-9 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
@@ -1303,7 +1355,7 @@ export default function CloudAgentsPage() {
         </div>
       </footer>
 
-      {lightbox && <Lightbox key={lightbox.src} shot={lightbox} onClose={() => setLightbox(null)} />}
+      {lightbox && <Lightbox key={lightbox.shot.src} shot={lightbox.shot} opener={lightbox.opener} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
