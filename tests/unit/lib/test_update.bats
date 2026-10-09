@@ -14177,7 +14177,10 @@ setup_opencode_update_fixture() {
     FAIL_COUNT=0
     SKIP_COUNT=0
 
-    cat > "$STUB_DIR/zoxide" <<'EOF'
+    # update_tool_binary_path never consults PATH; it looks in the target
+    # home's bin dirs, so the stub must live there rather than on PATH.
+    mkdir -p "$HOME/.local/bin"
+    cat > "$HOME/.local/bin/zoxide" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "--version" ]]; then
   echo "zoxide 0.9.9"
@@ -14185,7 +14188,7 @@ else
   echo "zoxide 0.9.9"
 fi
 EOF
-    chmod +x "$STUB_DIR/zoxide"
+    chmod +x "$HOME/.local/bin/zoxide"
 
     update_require_security() {
         return 0
@@ -14228,7 +14231,10 @@ EOF
     FAIL_COUNT=0
     SKIP_COUNT=0
 
-    cat > "$STUB_DIR/zoxide" <<'EOF'
+    # update_tool_binary_path never consults PATH; it looks in the target
+    # home's bin dirs, so the stub must live there rather than on PATH.
+    mkdir -p "$HOME/.local/bin"
+    cat > "$HOME/.local/bin/zoxide" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "--version" ]]; then
   echo "zoxide 0.9.9"
@@ -14236,19 +14242,23 @@ else
   echo "zoxide 0.9.9"
 fi
 EOF
-    chmod +x "$STUB_DIR/zoxide"
+    chmod +x "$HOME/.local/bin/zoxide"
 
     update_require_security() {
         return 0
     }
 
     update_run_verified_installer() {
+        : > "$HOME/zoxide-installer-ran"
         echo "Error: you have exceeded GitHub's API rate limit. Please try again later." >&2
         return 1
     }
 
     update_zoxide
 
+    # A "not installed" skip would satisfy the counts below without ever
+    # attempting the reinstall.
+    [[ -f "$HOME/zoxide-installer-ran" ]]
     [[ "$SUCCESS_COUNT" -eq 0 ]]
     [[ "$SKIP_COUNT" -eq 1 ]]
     [[ "$FAIL_COUNT" -eq 0 ]]
