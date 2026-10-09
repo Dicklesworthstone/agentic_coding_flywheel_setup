@@ -78,8 +78,10 @@ ln -sfn "$REPO_ROOT/acfs" "$TMPROOT/acfs"
 # bytes. Byte-identical copies satisfy it. install.sh is the real, unmodified
 # installer (what the ledger hashes); the code under test is still sourced
 # from $SOURCEABLE, which differs only by the trailing `main "$@"`.
-mkdir -p "$TMPROOT/packages/onboard"
-for ledger_file in install.sh VERSION checksums.yaml acfs.manifest.yaml packages/onboard/onboard.sh; do
+mkdir -p "$TMPROOT/packages/onboard" "$TMPROOT/packages/manifest/src"
+for ledger_file in install.sh VERSION checksums.yaml acfs.manifest.yaml packages/onboard/onboard.sh \
+    packages/manifest/src/agent-readiness-audit.ts packages/manifest/src/agent-profile-rehearsal.ts \
+    packages/manifest/src/binary-architecture.ts; do
     cp -p "$REPO_ROOT/$ledger_file" "$TMPROOT/$ledger_file"
 done
 

@@ -107,14 +107,16 @@ create_bootstrap_archive() {
     local stage_dir=""
 
     stage_dir="$(mktemp -d "$LOG_DIR/archive-stage.XXXXXX")"
-    mkdir -p "$stage_dir/acfs-local/scripts" "$stage_dir/acfs-local/packages"
+    mkdir -p "$stage_dir/acfs-local/packages/manifest/src"
 
-    cp -R /repo/scripts/lib "$stage_dir/acfs-local/scripts/"
-    cp -R /repo/scripts/generated "$stage_dir/acfs-local/scripts/"
-    cp /repo/scripts/preflight.sh "$stage_dir/acfs-local/scripts/preflight.sh"
-    cp /repo/scripts/acfs-global "$stage_dir/acfs-local/scripts/acfs-global"
-    cp /repo/scripts/acfs-update "$stage_dir/acfs-local/scripts/acfs-update"
+    # Mirror the release tarball's extracted subset: every ledger member must be
+    # present (templates, completions, services-setup.sh, install.sh, ...), and a
+    # hand-picked list drifts each time the ledger grows.
+    cp -R /repo/scripts "$stage_dir/acfs-local/scripts"
+    cp /repo/install.sh "$stage_dir/acfs-local/install.sh"
     cp -R /repo/packages/onboard "$stage_dir/acfs-local/packages/onboard"
+    cp /repo/packages/manifest/src/{agent-readiness-audit,agent-profile-rehearsal,binary-architecture}.ts \
+        "$stage_dir/acfs-local/packages/manifest/src/"
     cp -R /repo/acfs "$stage_dir/acfs-local/acfs"
     cp /repo/checksums.yaml "$stage_dir/acfs-local/checksums.yaml"
     cp /repo/acfs.manifest.yaml "$stage_dir/acfs-local/acfs.manifest.yaml"

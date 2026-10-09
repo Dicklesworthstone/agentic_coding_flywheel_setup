@@ -1032,7 +1032,7 @@ DEEP_MODE=false
 FIX_MODE=false
 DRY_RUN_MODE=false
 # Options forwarded verbatim to run_doctor_fix (--yes, --prompt, --only ...).
-declare -a FIX_ARGS=()
+declare -ga FIX_ARGS=()
 
 # Caching for deep checks - skip slow operations that recently passed
 # Related: agentic_coding_flywheel_setup-lz1

@@ -64,8 +64,14 @@ fi
 head -n "$((total_lines - 1))" "$REPO_ROOT/install.sh" > "$SOURCEABLE"
 ln -sfn "$REPO_ROOT/scripts" "$TMPROOT/scripts"
 ln -sfn "$REPO_ROOT/acfs" "$TMPROOT/acfs"
-ln -sfn "$REPO_ROOT/checksums.yaml" "$TMPROOT/checksums.yaml"
-ln -sfn "$REPO_ROOT/acfs.manifest.yaml" "$TMPROOT/acfs.manifest.yaml"
+# detect_environment verifies the internal checksum ledger, which refuses
+# symlinked top-level files; byte-identical regular copies satisfy it.
+mkdir -p "$TMPROOT/packages/onboard" "$TMPROOT/packages/manifest/src"
+for ledger_file in install.sh VERSION checksums.yaml acfs.manifest.yaml packages/onboard/onboard.sh \
+    packages/manifest/src/agent-readiness-audit.ts packages/manifest/src/agent-profile-rehearsal.ts \
+    packages/manifest/src/binary-architecture.ts; do
+    cp -p "$REPO_ROOT/$ledger_file" "$TMPROOT/$ledger_file"
+done
 
 TARGET_USER="$(whoami)"
 TARGET_HOME="$HOME"

@@ -15,9 +15,11 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_SKIPPED=0
 
-pass() { ((TESTS_PASSED++)); echo "✅ PASS: $1"; }
-fail() { ((TESTS_FAILED++)); echo "❌ FAIL: $1"; }
-skip() { ((TESTS_SKIPPED++)); echo "⏭️  SKIP: $1"; }
+# Under set -e, ((COUNT++)) from 0 returns 1; the first skip outside an &&/||
+# list (no `tru` installed) used to end the suite silently at Test 7.
+pass() { TESTS_PASSED=$((TESTS_PASSED + 1)); echo "✅ PASS: $1"; }
+fail() { TESTS_FAILED=$((TESTS_FAILED + 1)); echo "❌ FAIL: $1"; }
+skip() { TESTS_SKIPPED=$((TESTS_SKIPPED + 1)); echo "⏭️  SKIP: $1"; }
 
 echo "=== ACFS Output Module Unit Tests ==="
 echo ""

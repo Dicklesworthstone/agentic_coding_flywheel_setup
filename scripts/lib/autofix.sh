@@ -411,8 +411,10 @@ if declare -gA _acfs_test_assoc &>/dev/null; then
     declare -gA ACFS_CHANGE_RECORDS=()
     declare -ga ACFS_CHANGE_ORDER=()
 else
-    declare -A ACFS_CHANGE_RECORDS=() 2>/dev/null || ACFS_CHANGE_RECORDS=()
-    declare -a ACFS_CHANGE_ORDER=() 2>/dev/null || ACFS_CHANGE_ORDER=()
+    # bash without declare -g (macOS 3.2) has no associative arrays either; a
+    # plain assignment stays global even when this file is sourced in a function.
+    ACFS_CHANGE_RECORDS=()
+    ACFS_CHANGE_ORDER=()
 fi
 
 # Session management
