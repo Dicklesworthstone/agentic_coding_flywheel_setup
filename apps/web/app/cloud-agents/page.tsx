@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fadeUp, motion, springs, staggerContainer } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import {
   CLAUDE_CODE_WEB_LEFT_OUT,
@@ -29,12 +28,11 @@ import {
   CLOUD_AGENTS,
   CLOUD_AGENT_RESEARCH_DATE,
 } from "@/lib/claude-code-web";
-import { staggerDelay } from "@/lib/hooks/useScrollReveal";
 import { copyTextToClipboard } from "@/lib/utils";
 
 const GITHUB_URL = "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup";
 const README_URL = `${GITHUB_URL}#cloud-agent-environments`;
-const SUBSET_EXAMPLE = `curl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_TOOLS="br bv am ubs" bash`;
+const SUBSET_EXAMPLE = `curl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_AGENT=generic ACFS_CLOUD_TOOLS="br bv am ubs" bash`;
 
 const BEHAVIORS = [
   {
@@ -154,16 +152,10 @@ function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLab
 
 function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
-    <motion.div
-      className="mb-12 text-center"
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={springs.smooth}
-    >
+    <div className="mb-12 text-center">
       <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">{eyebrow}</p>
       <h2 className="font-mono text-3xl font-bold tracking-tight sm:text-4xl">{title}</h2>
-    </motion.div>
+    </div>
   );
 }
 
@@ -306,19 +298,11 @@ export default function CloudAgentsPage() {
         <section className="border-y border-border/30 bg-card/20 py-24">
           <div className="mx-auto max-w-6xl px-6">
             <SectionHeading eyebrow="what lands on PATH" title="Tools that carry the work forward" />
-            <motion.div
-              className="grid gap-x-10 sm:grid-cols-2"
-              variants={staggerContainer}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-80px" }}
-            >
-              {CLAUDE_CODE_WEB_TOOLS.map((tool, index) => (
-                <motion.div
+            <div className="grid gap-x-10 sm:grid-cols-2">
+              {CLAUDE_CODE_WEB_TOOLS.map((tool) => (
+                <div
                   key={tool.id}
                   className="min-w-0 border-b border-border/50 py-5"
-                  variants={fadeUp}
-                  transition={{ ...springs.snappy, delay: staggerDelay(index, 0.05) }}
                 >
                   <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
                     <h3 className="font-semibold">{tool.name}</h3>
@@ -327,28 +311,20 @@ export default function CloudAgentsPage() {
                     </code>
                   </div>
                   <p className="text-sm leading-relaxed text-muted-foreground">{tool.role}</p>
-                </motion.div>
+                </div>
               ))}
-            </motion.div>
+            </div>
           </div>
         </section>
 
         {/* =========================== BEHAVIOR =========================== */}
         <details className="mx-auto max-w-6xl px-6 py-8">
           <summary className="min-h-11 cursor-pointer rounded-md py-3 text-xl font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">How installation works</summary>
-          <motion.div
-            className="mt-5 grid gap-6 sm:grid-cols-2"
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-80px" }}
-          >
-            {BEHAVIORS.map((behavior, index) => (
-              <motion.div
+          <div className="mt-5 grid gap-6 sm:grid-cols-2">
+            {BEHAVIORS.map((behavior) => (
+              <div
                 key={behavior.title}
                 className="rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm"
-                variants={fadeUp}
-                transition={{ ...springs.snappy, delay: staggerDelay(index, 0.08) }}
               >
                 <div className="mb-4 inline-flex rounded-xl bg-primary/10 p-3 text-primary">
                   {behavior.icon}
@@ -359,9 +335,9 @@ export default function CloudAgentsPage() {
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   {behavior.description}
                 </p>
-              </motion.div>
+              </div>
             ))}
-          </motion.div>
+          </div>
         </details>
 
         {/* ========================== LEFT OUT ========================== */}
@@ -499,7 +475,7 @@ export default function CloudAgentsPage() {
                   href="https://jeffreyemanuel.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-6 items-center text-primary hover:underline"
+                  className={`${footerLink} text-primary`}
                 >
                   Jeffrey Emanuel
                 </a>
