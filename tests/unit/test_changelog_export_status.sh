@@ -1972,6 +1972,8 @@ test_autofix_existing_detects_target_home_install_when_home_is_relative() {
 
     local target_home="$TEST_HOME/autofix-existing-target"
     mkdir -p "$target_home/.acfs"
+    # An empty ~/.acfs is not an installation (see the lock/log-only test).
+    printf '{}\n' > "$target_home/.acfs/state.json"
 
     local output=""
     output=$(cd "$TEST_HOME" && HOME="relative-home" TARGET_HOME="$target_home" \
@@ -1985,6 +1987,41 @@ test_autofix_existing_detects_target_home_install_when_home_is_relative() {
         harness_pass "autofix_existing detects target_home install when HOME is relative"
     else
         harness_fail "autofix_existing detects target_home install when HOME is relative" "$output"
+    fi
+
+    cleanup_mock_env
+}
+
+test_autofix_existing_ignores_lock_and_log_only_acfs_dir() {
+    setup_mock_env
+
+    # An existing target user whose ~/.acfs holds only what install.sh's own
+    # lock and an aborted run leave behind: not an installation.
+    local target_home="$TEST_HOME/autofix-existing-fresh-target"
+    mkdir -p "$target_home/.acfs/logs"
+    : > "$target_home/.acfs/.install.lock"
+    printf '{}\n' > "$target_home/.acfs/logs/install_summary_20261009_000000.json"
+
+    local detect_script='
+        unset _ACFS_AUTOFIX_SOURCED _ACFS_AUTOFIX_EXISTING_SOURCED
+        source "$1"
+        detect_existing_acfs
+    '
+    local fresh_output="" fresh_status=0
+    fresh_output=$(cd "$TEST_HOME" && HOME="$target_home" TARGET_HOME="$target_home" \
+        bash -c "$detect_script" _ "$AUTOFIX_EXISTING_SH" 2>&1) || fresh_status=$?
+
+    # Any installed content (state, configs) makes it an installation again.
+    printf '{}\n' > "$target_home/.acfs/state.json"
+    local installed_output="" installed_status=0
+    installed_output=$(cd "$TEST_HOME" && HOME="$target_home" TARGET_HOME="$target_home" \
+        bash -c "$detect_script" _ "$AUTOFIX_EXISTING_SH" 2>&1) || installed_status=$?
+
+    if [[ $fresh_status -ne 0 && -z "$fresh_output" && $installed_status -eq 0 && "$installed_output" == *"$target_home/.acfs"* ]]; then
+        harness_pass "autofix_existing ignores a lock/log-only ~/.acfs but detects installed content"
+    else
+        harness_fail "autofix_existing ignores a lock/log-only ~/.acfs but detects installed content" \
+            "fresh=$fresh_status:'$fresh_output' installed=$installed_status:'$installed_output'"
     fi
 
     cleanup_mock_env
@@ -11773,6 +11810,7 @@ main() {
     test_autofix_uses_target_home_for_state_dir_when_home_is_relative || true
     test_autofix_repairs_stale_target_home_for_state_dir_from_passwd || true
     test_autofix_existing_detects_target_home_install_when_home_is_relative || true
+    test_autofix_existing_ignores_lock_and_log_only_acfs_dir || true
     test_autofix_existing_reads_target_home_version_under_root_home || true
     test_autofix_existing_prefers_target_home_over_poisoned_acfs_home || true
     test_autofix_existing_backup_preserves_distinct_relative_paths || true

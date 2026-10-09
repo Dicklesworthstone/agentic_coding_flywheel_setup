@@ -46,13 +46,70 @@ if [[ "${ACFS_TEST_STRICT:-false}" == "true" ]]; then
 fi
 
 # PHASE 1: Fresh Install
-log "PHASE 1: Fresh Install (mode=${TEST_MODE})"
-if bash install.sh "${INSTALL_ARGS[@]}" > "${ARTIFACTS_DIR}/install.log" 2>&1; then
-    log "Install successful"
+# With ACFS_TEST_INTERRUPT_RESUME=true the first run is hung up (SIGHUP, as an
+# SSH drop would) once INTERRUPT_AFTER_PHASE is checkpointed, so the kill lands
+# inside the next phase. The rerun with --resume must skip every checkpointed
+# phase and finish the install.
+STATE_FILE="/home/ubuntu/.acfs/state.json"
+INTERRUPT_AFTER_PHASE="${ACFS_TEST_INTERRUPT_AFTER_PHASE:-cli_tools}"
+
+completed_phases() {
+    jq -r '(.completed_phases // [])[]' "$STATE_FILE" 2>/dev/null
+}
+
+if [[ "${ACFS_TEST_INTERRUPT_RESUME:-false}" == "true" ]]; then
+    log "PHASE 1a: Interrupted install (mode=${TEST_MODE}, hang up after ${INTERRUPT_AFTER_PHASE})"
+    bash install.sh "${INSTALL_ARGS[@]}" > "${ARTIFACTS_DIR}/install-interrupted.log" 2>&1 &
+    install_pid=$!
+    waited=0
+    until completed_phases | grep -qx "$INTERRUPT_AFTER_PHASE"; do
+        if ! kill -0 "$install_pid" 2>/dev/null; then
+            tail -n 50 "${ARTIFACTS_DIR}/install-interrupted.log"
+            fail "Installer exited before ${INTERRUPT_AFTER_PHASE} was checkpointed"
+        fi
+        if (( waited >= 3600 )); then
+            kill -KILL "$install_pid" 2>/dev/null || true
+            fail "Timed out waiting for ${INTERRUPT_AFTER_PHASE} to be checkpointed"
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+    kill -HUP "$install_pid"
+    interrupted_status=0
+    wait "$install_pid" || interrupted_status=$?
+    [[ $interrupted_status -ne 0 ]] || fail "Hung-up installer reported success"
+    mapfile -t checkpointed < <(completed_phases)
+    [[ ${#checkpointed[@]} -gt 0 ]] || fail "No checkpointed phases survived the interruption"
+    printf '%s\n' "${checkpointed[@]}" | grep -qx "$INTERRUPT_AFTER_PHASE" \
+        || fail "Checkpoint for ${INTERRUPT_AFTER_PHASE} was lost by the interruption"
+    if completed_phases | grep -qx finalize; then
+        fail "Interruption landed after the final phase; nothing was left to resume"
+    fi
+    log "Interrupted with exit ${interrupted_status}; checkpointed: ${checkpointed[*]}"
+
+    log "PHASE 1b: Resume (mode=${TEST_MODE})"
+    if bash install.sh "${INSTALL_ARGS[@]}" --resume > "${ARTIFACTS_DIR}/install.log" 2>&1; then
+        log "Resumed install successful"
+    else
+        log "Resumed install failed! Last 50 lines:"
+        tail -n 50 "${ARTIFACTS_DIR}/install.log"
+        fail "Resume phase failed"
+    fi
+    skipped=$(grep -c 'Skipped (already completed)' "${ARTIFACTS_DIR}/install.log" || true)
+    if (( skipped < ${#checkpointed[@]} )); then
+        fail "Resume re-ran checkpointed phases: ${skipped} skipped, ${#checkpointed[@]} checkpointed"
+    fi
+    completed_phases | grep -qx finalize || fail "Resumed install did not checkpoint the final phase"
+    log "Resume skipped ${skipped} checkpointed phase(s) and completed the install"
 else
-    log "Install failed! Last 50 lines:"
-    tail -n 50 "${ARTIFACTS_DIR}/install.log"
-    fail "Install phase failed"
+    log "PHASE 1: Fresh Install (mode=${TEST_MODE})"
+    if bash install.sh "${INSTALL_ARGS[@]}" > "${ARTIFACTS_DIR}/install.log" 2>&1; then
+        log "Install successful"
+    else
+        log "Install failed! Last 50 lines:"
+        tail -n 50 "${ARTIFACTS_DIR}/install.log"
+        fail "Install phase failed"
+    fi
 fi
 
 # PHASE 2: Verification

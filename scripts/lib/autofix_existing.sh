@@ -562,6 +562,24 @@ autofix_existing_rollback_and_drop_changes_since() {
 # Detection Functions
 # =============================================================================
 
+# install.sh creates ~/.acfs for its install lock before the existing-install
+# check, and aborted runs leave only logs there. Neither is an installation:
+# without this, an existing target user (Docker images, cloud images run via
+# sudo) turned every fresh install into an "upgrade from unknown".
+# Non-directory and symlinked markers keep counting, conservatively.
+autofix_existing_acfs_dir_has_install_content() {
+    local dir="$1" entry=""
+    [[ -d "$dir" && ! -L "$dir" ]] || return 0
+    for entry in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
+        [[ -e "$entry" || -L "$entry" ]] || continue
+        case "${entry##*/}" in
+            logs|.install.lock) ;;
+            *) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 # Detect existing ACFS installation
 # Returns: space-separated list of found markers (empty if none)
 detect_existing_acfs() {
@@ -571,6 +589,9 @@ detect_existing_acfs() {
     while IFS= read -r marker; do
         [[ -n "$marker" ]] || continue
         if autofix_path_exists "$marker"; then
+            if [[ "${marker##*/}" == ".acfs" ]] && ! autofix_existing_acfs_dir_has_install_content "$marker"; then
+                continue
+            fi
             found_markers+=("$marker")
         fi
     done < <(autofix_existing_installation_markers 2>/dev/null || true)
