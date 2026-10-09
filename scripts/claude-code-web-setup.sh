@@ -141,7 +141,7 @@ cloud_install_tool_job() {
         return 0
     fi
     python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >"$log" 2>&1 <<'PY'
-import hashlib, io, json, pathlib, re, shutil, subprocess, sys, tarfile, zipfile
+import hashlib, io, json, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
 try:
@@ -190,14 +190,30 @@ try:
         data = archive.read_bytes()
         name = source['asset']
         contents = []
+        def upstream_binary(path, size, read):
+            if size < 0 or size > 512 * 1024 * 1024:
+                raise ValueError('upstream binary expands beyond 512 MiB: ' + path)
+            # Bound the selected bodies before allocating or normalizing them.
+            if sum(len(value) for _, value in contents) + size > 1024 * 1024 * 1024:
+                raise ValueError('upstream binary payloads expand beyond 1 GiB')
+            payload = read()
+            if len(payload) != size:
+                raise ValueError('upstream binary size mismatch: ' + path)
+            contents.append((path, payload))
         if name.endswith('.zip'):
             with zipfile.ZipFile(io.BytesIO(data)) as z:
-                contents = [(m.filename, z.read(m)) for m in z.infolist() if not m.is_dir() and pathlib.PurePosixPath(m.filename).name in expected_bins]
+                for m in z.infolist():
+                    if not m.is_dir() and pathlib.PurePosixPath(m.filename).name in expected_bins:
+                        if stat.S_IFMT(m.external_attr >> 16) not in (0, stat.S_IFREG):
+                            raise ValueError('upstream binary is not a regular file: ' + m.filename)
+                        upstream_binary(m.filename, m.file_size, lambda m=m: z.read(m))
         elif name.endswith(('.tar.gz', '.tar.xz')):
             with tarfile.open(fileobj=io.BytesIO(data), mode='r:*') as t:
-                contents = [(m.name, t.extractfile(m).read()) for m in t if m.isfile() and m.size < 512*1024*1024 and pathlib.PurePosixPath(m.name).name in expected_bins]
+                for m in t:
+                    if m.isfile() and pathlib.PurePosixPath(m.name).name in expected_bins:
+                        upstream_binary(m.name, m.size, lambda m=m: t.extractfile(m).read())
         elif len(expected_bins) == 1:
-            contents = [(expected_bins[0], data)]
+            upstream_binary(expected_bins[0], len(data), lambda: data)
         normalized = work / (tool + '-normalized.tar.gz')
         with tarfile.open(normalized, 'w:gz') as t:
             for binary in expected_bins:
@@ -295,7 +311,10 @@ cloud_register_agent_mail() {
     claude_bin="$(command -v claude 2>/dev/null)" || return 1
     legacy="$(cloud_find_binary mcp-agent-mail)" || return 1
     [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && config="$CLAUDE_CONFIG_DIR/.claude.json"
-    : > "$ACFS_CLOUD_STATE_DIR/logs/mcp.log"
+    # `claude mcp get` can print a custom registration's environment values.
+    # Restrict this diagnostic file before any command writes to it.
+    (umask 077; : > "$ACFS_CLOUD_STATE_DIR/logs/mcp.log") || return 1
+    chmod 600 "$ACFS_CLOUD_STATE_DIR/logs/mcp.log" || return 1
     # Migrate only the exact user-scope entry emitted by earlier ACFS setup.
     # That release defaults to HTTP, so launching it without args as stdio
     # never connected. Preserve every other field/entry and retain a backup.
@@ -352,7 +371,7 @@ cloud_tool_guide_line() {
 }
 
 cloud_write_guide() {
-    local tool status detail block tmp
+    local tool status detail block
     local -a installed=() missing=()
     # Cover every known tool, not just this run's selection, so a partial
     # re-run does not drop tools installed earlier from the guide.
@@ -394,35 +413,75 @@ cloud_write_guide() {
     fi
     block+="$ACFS_CLOUD_GUIDE_END"
 
-    mkdir -p "$(dirname "$ACFS_CLOUD_GUIDE")"
-    tmp="$ACFS_CLOUD_WORK/CLAUDE.md"
     printf '%s\n' "$block" > "$ACFS_CLOUD_WORK/tool-guide.md"
-    if [[ -f "$ACFS_CLOUD_GUIDE" ]]; then
-        # An interrupted/manual edit can leave an unmatched marker. Refuse
-        # to interpret the rest of the user's instructions as managed content.
-        if ! awk -v begin="$ACFS_CLOUD_GUIDE_BEGIN" -v end="$ACFS_CLOUD_GUIDE_END" '
-            $0 == begin { if (inside) { bad = 1; exit } inside = 1 }
-            $0 == end { if (!inside) { bad = 1; exit } inside = 0 }
-            END { exit (bad || inside) }
-        ' "$ACFS_CLOUD_GUIDE"; then
-            cloud_warn "Unbalanced ACFS guide markers; existing instructions preserved. New guide: $ACFS_CLOUD_WORK/tool-guide.md"
-            return 1
-        fi
-        # Keep everything outside the managed block (e.g. other setup lines),
-        # minus trailing blank lines so re-runs do not accumulate them.
-        awk -v begin="$ACFS_CLOUD_GUIDE_BEGIN" -v end="$ACFS_CLOUD_GUIDE_END" '
-            $0 == begin { skip = 1; next }
-            $0 == end { skip = 0; next }
-            skip { next }
-            /^[[:space:]]*$/ { blank++; next }
-            { while (blank > 0) { print ""; blank-- } print }
-        ' "$ACFS_CLOUD_GUIDE" > "$tmp"
-        [[ -s "$tmp" ]] && printf '\n' >> "$tmp"
-    else
-        : > "$tmp"
+    if ! python3 - "$ACFS_CLOUD_GUIDE" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_GUIDE_BEGIN" "$ACFS_CLOUD_GUIDE_END" <<'PY'
+# ACFS atomic tool guide: never truncate the live instructions or follow links.
+import os, pathlib, stat, sys
+path, work = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+begin, end = sys.argv[3:]
+try:
+    def reject_links():
+        if any(parent.is_symlink() for parent in [path, *path.parents]):
+            raise ValueError('Symlink in instruction path; existing instructions preserved')
+    reject_links()
+    snapshot = path.stat() if path.exists() else None
+    if snapshot and not stat.S_ISREG(snapshot.st_mode):
+        raise ValueError('Instruction destination is not a regular file')
+    original = path.read_bytes() if snapshot else b''
+    if snapshot:
+        with os.fdopen(os.open(work / 'instructions-before-update', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as backup:
+            backup.write(original)
+    kept, inside = [], False
+    for line in original.decode('utf-8').splitlines(keepends=True):
+        marker = line.rstrip('\r\n')
+        if marker == begin:
+            if inside:
+                raise ValueError('Unbalanced ACFS guide markers')
+            inside = True
+        elif marker == end:
+            if not inside:
+                raise ValueError('Unbalanced ACFS guide markers')
+            inside = False
+        elif not inside:
+            kept.append(line)
+    if inside:
+        raise ValueError('Unbalanced ACFS guide markers')
+    while kept and not kept[-1].strip():
+        kept.pop()
+    preserved = ''.join(kept)
+    if preserved and not preserved.endswith('\n'):
+        preserved += '\n'
+    content = (preserved + ('\n' if preserved else '')).encode() + (work / 'tool-guide.md').read_bytes()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    reject_links()
+    candidate = path.with_name('.' + path.name + '.acfs-' + work.name + '.tmp')
+    with os.fdopen(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as output:
+        output.write(content)
+        output.flush()
+        os.fsync(output.fileno())
+    if snapshot:
+        owner = candidate.stat()
+        if (owner.st_uid, owner.st_gid) != (snapshot.st_uid, snapshot.st_gid):
+            os.chown(candidate, snapshot.st_uid, snapshot.st_gid)
+        candidate.chmod(stat.S_IMODE(snapshot.st_mode))
+        reject_links()
+        current = path.stat()
+        fields = ('st_dev', 'st_ino', 'st_mtime_ns', 'st_ctime_ns', 'st_size', 'st_mode', 'st_uid', 'st_gid')
+        if any(getattr(current, field) != getattr(snapshot, field) for field in fields) or path.read_bytes() != original:
+            raise ValueError('Instructions changed while preparing the guide; candidate retained at ' + str(candidate))
+        os.replace(candidate, path)
+    else:
+        # Exclusive creation cannot replace instructions that appeared meanwhile.
+        # Retain the private candidate, like the rest of this run's staging.
+        os.link(candidate, path)
+except Exception as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+PY
+    then
+        cloud_warn "Could not publish the tool guide; existing instructions preserved. New guide: $ACFS_CLOUD_WORK/tool-guide.md"
+        return 1
     fi
-    printf '%s\n' "$block" >> "$tmp"
-    cat "$tmp" > "$ACFS_CLOUD_GUIDE"
 }
 
 cloud_write_codex_skill() {
@@ -530,8 +589,11 @@ cloud_main() {
         fi
     fi
 
-    cloud_write_guide
-    cloud_write_codex_skill
+    if cloud_write_guide; then
+        cloud_write_codex_skill
+    else
+        cloud_warn "Guide publication failed; no new repository skill was created"
+    fi
     if [[ "$ACFS_CLOUD_AGENT" == codex && -s "$(dirname "$ACFS_CLOUD_GUIDE")/AGENTS.override.md" ]]; then
         cloud_warn "Existing AGENTS.override.md takes precedence. Add a reference to $ACFS_CLOUD_GUIDE in your Start skill."
     fi
@@ -557,6 +619,24 @@ if [[ "$ACFS_CLOUD_ROOT" != /* || "$ACFS_CLOUD_ROOT" == / ]]; then
 fi
 if [[ "$ACFS_CLOUD_AGENT" == codex && -n "$ACFS_CLOUD_SKILL_DIR" && ( "$ACFS_CLOUD_SKILL_DIR" != /* || "$ACFS_CLOUD_SKILL_DIR" == / ) ]]; then
     cloud_warn "ACFS_CLOUD_SKILL_DIR must be an absolute directory other than /"
+    exit 0
+fi
+if ! command -v python3 >/dev/null; then
+    cloud_warn "Required command missing: python3"
+    exit 0
+fi
+# Validate log destinations before tee or a job truncates an existing file.
+# The same guard covers setup.log, every tool log and private MCP diagnostics.
+if ! python3 - "$ACFS_CLOUD_STATE_DIR" "$ACFS_CLOUD_DEFAULT_TOOLS" <<'PY'
+import pathlib, sys
+state = pathlib.Path(sys.argv[1])
+paths = [state / 'setup.log', *(state / 'logs' / (tool + '.log') for tool in [*sys.argv[2].split(), 'mcp'])]
+for path in paths:
+    if any(parent.is_symlink() for parent in [path, *path.parents]) or (path.exists() and not path.is_file()):
+        print('Unsafe cloud log destination; existing files preserved: ' + str(path), file=sys.stderr)
+        sys.exit(1)
+PY
+then
     exit 0
 fi
 if ! mkdir -p "$ACFS_CLOUD_STATE_DIR"; then

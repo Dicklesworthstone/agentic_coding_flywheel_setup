@@ -4,9 +4,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 
 import {
   CLAUDE_CODE_WEB_OPTIONS,
@@ -104,5 +106,40 @@ describe("cloud agent page data", () => {
     expect(CLOUD_AGENTS.find((agent) => agent.id === "muse")?.script).toBeUndefined();
     expect(CLOUD_AGENTS.find((agent) => agent.id === "amp")?.caveat).toContain("Debian 12");
     expect(CLOUD_AGENTS.find((agent) => agent.id === "codex")?.caveat).toContain("did not work");
+  });
+
+  test("the actual Codex recipe fails on a missing bootstrap and leaves Git exclusions alone", () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-codex-recipe-")));
+    const repo = join(workspace, "repository with spaces");
+    const bin = join(workspace, "bin");
+    const template = join(workspace, "empty-template");
+    mkdirSync(repo);
+    mkdirSync(bin);
+    mkdirSync(template);
+    // Inherited Git overrides must never redirect this test to a real checkout.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+    env.GIT_CONFIG_NOSYSTEM = "1";
+    env.GIT_CONFIG_GLOBAL = "/dev/null";
+    env.GIT_TEMPLATE_DIR = template;
+    env.PATH = `${bin}:${process.env.PATH}`;
+    const init = spawnSync("git", ["init", "--quiet", repo], { env, encoding: "utf8" });
+    expect(init.status).toBe(0);
+    const exclude = join(repo, ".git/info/exclude");
+    mkdirSync(join(repo, ".git/info"), { recursive: true });
+    writeFileSync(exclude, "# Keep my exclusions\n");
+    writeFileSync(join(bin, "curl"), "#!/bin/sh\nexit 22\n", { mode: 0o755 });
+    const result = spawnSync("bash", ["-c", CODEX_CLOUD_SETUP_SCRIPT], {
+      cwd: repo, env, encoding: "utf8",
+    });
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(exclude, "utf8")).toBe("# Keep my exclusions\n");
+    // The same public recipe must still execute a fetched script successfully.
+    writeFileSync(join(bin, "curl"), '#!/bin/sh\ncat <<\'BOOTSTRAP\'\nprintf "%s" "$ACFS_CLOUD_ROOT" > bootstrap-ran\nBOOTSTRAP\n', { mode: 0o755 });
+    const success = spawnSync("bash", ["-c", CODEX_CLOUD_SETUP_SCRIPT], {
+      cwd: repo, env, encoding: "utf8",
+    });
+    expect(success.status).toBe(0);
+    expect(readFileSync(join(repo, "bootstrap-ran"), "utf8")).toBe(join(repo, ".acfs-cloud"));
+    expect(readFileSync(exclude, "utf8")).toContain("/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n");
   });
 });

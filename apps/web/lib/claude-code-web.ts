@@ -19,7 +19,7 @@ export const CLAUDE_CODE_WEB_SETUP_SCRIPT = `#!/bin/bash\ncurl -fsSL ${CLAUDE_CO
 export const CLAUDE_CODE_WEB_DOCS_URL = "https://code.claude.com/docs/en/cloud-environments";
 
 export const CODEX_CLOUD_DOCS_URL = "https://learn.chatgpt.com/docs/environments/cloud-environments";
-export const CODEX_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\nacfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash\nprintf '/.acfs-cloud/\\n/.agents/skills/acfs-cloud-tools/\\n' >> "$(git rev-parse --git-path info/exclude)"`;
+export const CODEX_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\nacfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1\nprintf '/.acfs-cloud/\\n/.agents/skills/acfs-cloud-tools/\\n' >> "$(git rev-parse --git-path info/exclude)"`;
 export const CODEX_CLOUD_START_SKILL = `Find the repository root with git rev-parse --show-toplevel.
 Read <repo>/.acfs-cloud/.codex/AGENTS.md for the installed flywheel tools and <repo>/.acfs-cloud/.acfs/cloud/setup.log for failures.
 In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-cloud"; export PATH="$acfs_cloud_root/.local/bin:$PATH" before using the tools.

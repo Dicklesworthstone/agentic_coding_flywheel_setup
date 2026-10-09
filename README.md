@@ -534,7 +534,7 @@ The same public bundles work in a Linux x86_64 Codex cloud environment. In **Wor
 #!/bin/bash
 set -o pipefail
 acfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1
-curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1
 printf '/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$(git rev-parse --git-path info/exclude)"
 ```
 

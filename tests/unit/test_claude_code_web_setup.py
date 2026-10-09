@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -344,6 +346,49 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.run_setup()
         self.assertFalse((self.home / '.local/bin/br').exists())
 
+    def test_fallback_zip_rejects_oversized_or_link_binary_before_execution(self):
+        for variant in ('oversized', 'symlink'):
+            with self.subTest(variant=variant):
+                out = io.BytesIO()
+                info = zipfile.ZipInfo('br')
+                info.create_system = 3
+                info.external_attr = (stat.S_IFLNK | 0o777) << 16 if variant == 'symlink' else (stat.S_IFREG | 0o755) << 16
+                with zipfile.ZipFile(out, 'w') as archive:
+                    archive.writestr(info, f'#!/bin/sh\ntouch "{self.root}/executed"\necho br-version\n')
+                data = bytearray(out.getvalue())
+                if variant == 'oversized':
+                    # A tiny archive advertises an oversized selected payload.
+                    # Reject its metadata before attempting to read its body.
+                    central = data.index(b'PK\x01\x02')
+                    struct.pack_into('<I', data, central + 24, 512 * 1024 * 1024 + 1)
+                source_url = 'https://upstream.invalid/br-' + variant + '.zip'
+                self.serve(source_url, bytes(data))
+                self.manifest['tools']['br'] = {
+                    'file': 'br/v1/missing.tar.gz', 'sha256': '0' * 64, 'bins': ['br'],
+                    'source': {'url': source_url, 'asset': 'br.zip', 'sha256': hashlib.sha256(data).hexdigest()},
+                }
+                output = self.run_setup(ACFS_CLOUD_REINSTALL='1')
+                self.assertFalse((self.root / 'executed').exists())
+                self.assertFalse((self.home / '.local/bin/br').exists())
+                self.assertIn('upstream binary', output)
+
+    def test_fallback_zip_installs_expected_regular_binary(self):
+        self.bundle('ast-grep')
+        entry = self.manifest['tools']['ast-grep']
+        self.urls.pop('https://mirror.invalid/v1/' + entry['file'])
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, 'w') as archive:
+            archive.writestr('release/ast-grep', '#!/bin/sh\necho ast-grep-zip-version\n')
+            archive.writestr('README', 'Not part of the installed overlay.')
+        data = out.getvalue()
+        source_url = 'https://upstream.invalid/ast-grep.zip'
+        self.serve(source_url, data)
+        entry['source'] = {'url': source_url, 'asset': 'ast-grep.zip', 'sha256': hashlib.sha256(data).hexdigest()}
+        output = self.run_setup('ast-grep')
+        self.assertIn('ast-grep-zip-version (verified prebuilt)', output)
+        self.assertTrue((self.home / '.local/bin/ast-grep').is_file())
+        self.assertFalse((self.home / '.local/README').exists())
+
     def test_invalid_manifest_platform_never_downloads_payload(self):
         self.bundle()
         self.manifest['platform'] = 'darwin-arm64'
@@ -445,6 +490,131 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
                 output = self.run_setup()
                 self.assertEqual(guide.read_text(), original)
                 self.assertIn('Unbalanced ACFS guide markers', output)
+
+    def test_symlinked_guide_preserves_target_and_retains_new_guide(self):
+        self.bundle()
+        (self.home / '.claude').mkdir()
+        target = self.root / 'private-instructions'
+        target.write_text('Keep these private instructions.\n')
+        guide = self.home / '.claude/CLAUDE.md'
+        guide.symlink_to(target)
+        output = self.run_setup()
+        self.assertEqual(target.read_text(), 'Keep these private instructions.\n')
+        self.assertTrue(guide.is_symlink())
+        self.assertIn('Could not publish the tool guide', output)
+        candidates = list((self.root / 'tmp').glob('acfs-cloud.*/tool-guide.md'))
+        self.assertEqual(len(candidates), 1)
+        self.assertIn('`br`', candidates[0].read_text())
+
+    def test_guide_update_is_atomic_and_preserves_permissions(self):
+        self.bundle()
+        (self.home / '.claude').mkdir()
+        guide = self.home / '.claude/CLAUDE.md'
+        guide.write_text('Keep my instructions.\n')
+        guide.chmod(0o640)
+        # An existing reader must continue seeing the complete old file while
+        # a new reader gets the complete replacement, never a truncated file.
+        with guide.open('rb') as old_reader:
+            self.run_setup()
+            self.assertEqual(old_reader.read(), b'Keep my instructions.\n')
+        self.assertTrue(guide.read_text().startswith('Keep my instructions.\n\n<!-- BEGIN'))
+        self.assertEqual(guide.stat().st_mode & 0o777, 0o640)
+
+    def test_failed_atomic_guide_publication_preserves_original(self):
+        self.bundle()
+        (self.home / '.claude').mkdir()
+        guide = self.home / '.claude/CLAUDE.md'
+        guide.write_text('Do not truncate this guide.\n')
+        # Inject a filesystem rename failure into the actual Python process,
+        # after its candidate was written; the real Bash entrypoint still runs.
+        python = shutil.which('python3')
+        fault_bin = self.root / 'fault-bin'
+        fault_bin.mkdir()
+        wrapper = fault_bin / 'python3'
+        wrapper.write_text(f'''#!{python}
+import os, sys
+source = sys.stdin.read()
+sys.argv = sys.argv[1:]
+if 'ACFS atomic tool guide' in source:
+    def refused(*args, **kwargs):
+        raise OSError('injected publication failure')
+    os.replace = refused
+exec(compile(source, '<setup-python>', 'exec'))
+''')
+        wrapper.chmod(0o755)
+        self.env['PATH'] = str(fault_bin) + ':' + self.env['PATH']
+        output = self.run_setup()
+        self.assertEqual(guide.read_text(), 'Do not truncate this guide.\n')
+        self.assertIn('injected publication failure', output)
+        candidates = list(guide.parent.glob('.*.acfs-*.tmp'))
+        self.assertEqual(len(candidates), 1)
+        self.assertIn('`br`', candidates[0].read_text())
+
+    def test_concurrent_instruction_edit_is_preserved(self):
+        self.bundle()
+        (self.home / '.claude').mkdir()
+        guide = self.home / '.claude/CLAUDE.md'
+        guide.write_text('Original instructions.\n')
+        fault_bin = self.root / 'concurrent-bin'
+        fault_bin.mkdir()
+        wrapper = fault_bin / 'python3'
+        wrapper.write_text(f'''#!{shutil.which('python3')}
+import os, sys
+source = sys.stdin.read()
+sys.argv = sys.argv[1:]
+if 'ACFS atomic tool guide' in source:
+    original_fsync = os.fsync
+    def concurrent_write(fd):
+        original_fsync(fd)
+        with open({str(guide)!r}, 'a') as guide:
+            guide.write('Concurrent instructions.\\n')
+    os.fsync = concurrent_write
+exec(compile(source, '<setup-python>', 'exec'))
+''')
+        wrapper.chmod(0o755)
+        self.env['PATH'] = str(fault_bin) + ':' + self.env['PATH']
+        output = self.run_setup()
+        self.assertEqual(guide.read_text(), 'Original instructions.\nConcurrent instructions.\n')
+        self.assertIn('Instructions changed while preparing the guide', output)
+
+    def test_codex_failed_guide_publication_does_not_create_skill(self):
+        self.bundle()
+        guide = self.home / '.codex/AGENTS.md'
+        guide.parent.mkdir()
+        original = 'Existing instructions.\n<!-- BEGIN ACFS CLOUD TOOLS (managed by claude-code-web-setup.sh) -->\n'
+        guide.write_text(original)
+        skill = self.home / '.agents/skills/acfs-cloud-tools'
+        self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
+        self.assertEqual(guide.read_text(), original)
+        self.assertFalse((skill / 'SKILL.md').exists())
+
+    def test_symlinked_log_destinations_are_preserved_before_setup(self):
+        self.bundle()
+        for name in ('setup.log', 'logs/br.log'):
+            with self.subTest(name=name):
+                root = self.root / name.replace('/', '-')
+                state = root / '.acfs/cloud'
+                log = state / name
+                log.parent.mkdir(parents=True)
+                target = root / 'user-data'
+                target.write_text('Keep these unrelated data.\n')
+                log.symlink_to(target)
+                output = self.run_setup(ACFS_CLOUD_ROOT=str(root), ACFS_CLOUD_AGENT='generic')
+                self.assertEqual(target.read_text(), 'Keep these unrelated data.\n')
+                self.assertTrue(log.is_symlink())
+                self.assertIn('Unsafe cloud log destination', output)
+                self.assertFalse((root / '.local/bin/br').exists())
+
+    def test_mcp_diagnostics_are_private_even_when_log_already_exists(self):
+        self.bundle('am')
+        log = self.home / '.acfs/cloud/logs/mcp.log'
+        log.parent.mkdir(parents=True)
+        log.write_text('Previous diagnostic.\n')
+        log.chmod(0o644)
+        self.command('claude', '#!/bin/sh\necho custom-environment-diagnostic\n')
+        self.run_setup('am')
+        self.assertIn('custom-environment-diagnostic', log.read_text())
+        self.assertEqual(log.stat().st_mode & 0o777, 0o600)
 
     def test_partial_rerun_does_not_claim_incomplete_agent_mail(self):
         self.command('am', '#!/bin/sh\necho am-existing\n')
