@@ -182,6 +182,13 @@ stub_doctor_fix_agent_mail_health_ready() {
                 ;;
         esac
     }
+    # The post-restart wait probes through stack.sh's own system curl, not
+    # doctor_fix_system_curl. Unstubbed, it reads the live 127.0.0.1:8765, so
+    # these tests passed only where a real Agent Mail was running and spent
+    # the full 240s wait failing everywhere else.
+    agent_mail_fix_wait_for_health() {
+        return 0
+    }
 }
 
 test_doctor_fix_prefers_target_home_for_autofix_state() {
@@ -2843,22 +2850,15 @@ EOF
 
 test_fix_ssh_server_records_change_when_enabling_service() {
     setup_test_env
-    local created_systemd_dir=false
     local original_resolver=""
     local temp_bin=""
 
-    if [[ ! -d /run/systemd/system ]]; then
-        mkdir -p /run/systemd/system || {
-            echo "  Failed to create /run/systemd/system for SSH server test"
-            cleanup_test_env
-            return 1
-        }
-        created_systemd_dir=true
-    fi
+    # Pretend to be a systemd host without touching the real /run; setup
+    # re-sources doctor_fix.sh, so this stub ends with the test.
+    doctor_fix_systemd_booted() { return 0; }
 
     start_autofix_session >/dev/null || {
         echo "  Failed to start autofix session"
-        if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
         cleanup_test_env
         return 1
     }
@@ -2893,7 +2893,6 @@ EOF
     if ! fix_ssh_server "network.ssh_server" >/dev/null 2>&1; then
         eval "$original_resolver"
         echo "  fix_ssh_server should succeed when systemctl enable/start succeeds"
-        if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
         cleanup_test_env
         return 1
     fi
@@ -2901,13 +2900,11 @@ EOF
     if ! jq -e 'select(.description == "Enabled and started SSH server")' "$ACFS_CHANGES_FILE" >/dev/null 2>&1; then
         eval "$original_resolver"
         echo "  fix_ssh_server did not record the SSH enable/start change"
-        if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
         cleanup_test_env
         return 1
     fi
 
     eval "$original_resolver"
-    if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
     cleanup_test_env
     return 0
 }
@@ -2918,11 +2915,6 @@ test_fix_ssh_server_installs_openssh_with_pacman_on_arch() {
     local temp_bin=""
     local pkg_log=""
 
-    if [[ ! -d /run/systemd/system ]]; then
-        echo "  SKIP: requires a systemd host"
-        cleanup_test_env
-        return 0
-    fi
     start_autofix_session >/dev/null || {
         echo "  Failed to start autofix session"
         cleanup_test_env
@@ -2982,22 +2974,13 @@ test_fix_ssh_server_installs_openssh_with_pacman_on_arch() {
 
 test_fix_ssh_server_fails_when_service_enable_fails() {
     setup_test_env
-    local created_systemd_dir=false
     local original_resolver=""
     local temp_bin=""
 
-    if [[ ! -d /run/systemd/system ]]; then
-        mkdir -p /run/systemd/system || {
-            echo "  Failed to create /run/systemd/system for SSH server test"
-            cleanup_test_env
-            return 1
-        }
-        created_systemd_dir=true
-    fi
+    doctor_fix_systemd_booted() { return 0; }
 
     start_autofix_session >/dev/null || {
         echo "  Failed to start autofix session"
-        if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
         cleanup_test_env
         return 1
     }
@@ -3032,7 +3015,6 @@ EOF
     if fix_ssh_server "network.ssh_server" >/dev/null 2>&1; then
         eval "$original_resolver"
         echo "  fix_ssh_server should fail when systemctl enable/start fails"
-        if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
         cleanup_test_env
         return 1
     fi
@@ -3040,13 +3022,11 @@ EOF
     if [[ -s "$ACFS_CHANGES_FILE" ]]; then
         eval "$original_resolver"
         echo "  fix_ssh_server should not record a change when enable/start fails"
-        if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
         cleanup_test_env
         return 1
     fi
 
     eval "$original_resolver"
-    if [[ "$created_systemd_dir" == "true" ]]; then rmdir /run/systemd/system 2>/dev/null || true; fi
     cleanup_test_env
     return 0
 }

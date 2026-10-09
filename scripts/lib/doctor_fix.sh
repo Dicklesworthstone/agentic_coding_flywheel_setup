@@ -2208,6 +2208,11 @@ fix_verified_install() {
 # Fixer: SSH Server (fix.ssh.server)
 # ============================================================
 
+# True when the host booted with systemd as init (sd_booted semantics).
+doctor_fix_systemd_booted() {
+    [[ -d /run/systemd/system ]]
+}
+
 # Install and enable SSH server
 fix_ssh_server() {
     local check_id="$1"
@@ -2226,7 +2231,7 @@ fix_ssh_server() {
     # Guard: Check if already installed
     if [[ -n "$sshd_bin" ]] || [[ -f "$sshd_config" ]]; then
         # Check if running
-        if [[ -n "$systemctl_bin" && -d /run/systemd/system ]]; then
+        if [[ -n "$systemctl_bin" ]] && doctor_fix_systemd_booted; then
             if "$systemctl_bin" is-active --quiet ssh 2>/dev/null || "$systemctl_bin" is-active --quiet sshd 2>/dev/null; then
                 doctor_fix_log INFO "SSH server already installed and running"
                 return 0
