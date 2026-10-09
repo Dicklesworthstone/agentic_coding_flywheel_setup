@@ -102,6 +102,30 @@ class MirrorPublisher(unittest.TestCase):
         self.assertEqual(publisher.digest(packed), entry["sha256"])
         self.assertEqual(publisher.archive_files(packed, entry["file"]), {"bin/bv": b"bin"})
 
+    def test_jfp_packages_baseline_when_both_cpu_assets_exist(self):
+        work = self.stage / "jfp/v1.0.3"
+        work.mkdir(parents=True)
+        payloads = {"jfp-linux-x64": b"modern CPU binary", "jfp-linux-x64-baseline": b"baseline CPU binary"}
+        for name, data in list(payloads.items()):
+            payloads[name + ".sha256"] = (publisher.digest(data) + "\n").encode()
+        for name, data in payloads.items():
+            (work / name).write_bytes(data)
+        release = {"tag_name": "v1.0.3", "assets": [
+            {"name": name, "digest": "sha256:" + publisher.digest(data),
+             "browser_download_url": "https://upstream.invalid/" + name}
+            for name, data in payloads.items()]}
+        _, entry = self.prepare(release, tool="jfp")
+        self.assertEqual(entry["source"]["asset"], "jfp-linux-x64-baseline")
+        packed = (self.stage / entry["file"]).read_bytes()
+        self.assertEqual(publisher.archive_files(packed, entry["file"]), {"bin/jfp": b"baseline CPU binary"})
+
+    def test_jfp_never_falls_back_to_modern_only_release(self):
+        release = {"tag_name": "v1.0.3", "assets": [
+            {"name": "jfp-linux-x64", "digest": "sha256:" + "a" * 64,
+             "browser_download_url": "https://upstream.invalid/jfp-linux-x64"}]}
+        with self.assertRaisesRegex(ValueError, "missing required release asset.*baseline"):
+            self.prepare(release, tool="jfp")
+
     def test_asset_digest_mismatch_blocks_packaging(self):
         release = self.release()
         release["assets"][0]["digest"] = "sha256:" + "0" * 64

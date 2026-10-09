@@ -32,7 +32,7 @@ TOOLS = {
     "ubs": ("Dicklesworthstone/ultimate_bug_scanner", "ubs", ["ubs"], "RWS+jJ7psytzl3v4znpraY9VWBQrICXBFmT3VwvxpTzbuV2Q/CBTDmVJ"),
     "ast-grep": ("ast-grep/ast-grep", "app-x86_64-unknown-linux-gnu.zip", ["ast-grep"], None),
     "jsm": ("Dicklesworthstone/jeffreys-skills.md", "jsm-x86_64-unknown-linux-musl.tar.gz", ["jsm"], None),
-    "jfp": ("Dicklesworthstone/jeffreysprompts.com", "jfp-linux-x64", ["jfp"], None),
+    "jfp": ("Dicklesworthstone/jeffreysprompts.com", "jfp-linux-x64-baseline", ["jfp"], None),
 }
 
 
@@ -144,6 +144,8 @@ def prepare(tool, stage):
         raise ValueError("Unsafe release tag")
     assets = {item["name"]: item for item in release["assets"]}
     name = pattern.format(v=version.removeprefix("v"))
+    if name not in assets:
+        raise ValueError(f"{tool}: missing required release asset: {name}")
     work = stage / tool / version
     work.mkdir(parents=True, exist_ok=True)
 

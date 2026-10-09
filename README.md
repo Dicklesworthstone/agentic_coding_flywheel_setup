@@ -507,7 +507,7 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `ACFS_CLOUD_TOOLS` | `br bv am ubs cass cm ms ast-grep jsm jfp` | Which tools to install |
-| `ACFS_CLOUD_TIMEOUT` | `180` | Whole tool job deadline in seconds; 1–180 |
+| `ACFS_CLOUD_TIMEOUT` | `180` | Deadline for each tool's job (download, install and version checks) in seconds; 1–180 |
 | `ACFS_CLOUD_REINSTALL` | `0` | `1` reinstalls tools that are already on PATH (to update inside a running session) |
 | `ACFS_CLOUD_AGENT` | `claude` | `codex` writes a Codex instruction guide and skips Claude MCP registration |
 | `ACFS_CLOUD_ROOT` | `$HOME` | Writable absolute data root for binaries/logs; Codex's custom-root guide lives there too |
@@ -518,7 +518,7 @@ Full access enables the public binary mirror. Custom and restricted-mode behavio
 
 **Trusted/degraded mode:** when the mirror cannot be reached, setup tries the exact upstream public binary pinned in the same manifest. The environment's GitHub proxy may block that too, so Trusted does **not** guarantee all tools. Existing working tools remain available, failures explain the Full/Custom setting in the summary, and session startup continues. UBS's upstream fallback downloads its pinned modules on the first scan; the mirror bundle includes them already.
 
-The bundles target Linux x86_64. Each executable must successfully return its version before installation. JFP v1.0.3 uses Bun's standard x64 target and fails with SIGILL on older CPUs without AVX2; setup reports that failure and continues with the other tools.
+The bundles target Linux x86_64. Each executable must successfully return its version before installation. JFP uses the baseline x64 release asset, verified on both Ivy Bridge without AVX2 and EPYC with AVX2. The publisher requires that asset and refuses to substitute a modern-only build.
 
 **Maintainer refresh:** `python3 scripts/cloud-mirror-publish.py --stage /path/on/large-disk/acfs-cloud --output /path/to/new-candidate.json --publish` discovers latest releases with authenticated `gh`, verifies release checksums and pinned Minisign signatures where published, bundles Linux x86_64 executables, uploads with authenticated Wrangler, and verifies each public download. It requires Python 3.10+, `gh`, `minisign`, and `wrangler`; these credentials are needed only by the maintainer. Review the candidate, smoke-test on Ubuntu 24.04, and commit it as `cloud-mirror.json`. Repeated runs reuse downloaded artifacts and skip matching remote bundles. Staging is retained for inspection. A failed tool aborts manifest publication; it cannot silently disappear from the install set.
 
@@ -540,7 +540,7 @@ printf '/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$(git rev-parse 
 
 Enable internet access and add `raw.githubusercontent.com` and `downloads.agent-flywheel.com` to **Additional allowed domains**. These public downloads need no secrets or ownership of the tool repositories. The recipe installs into the writable repository workspace because hosted home/config paths can be read-only, and excludes its data directory through local Git metadata. It preserves `HOME` and `CODEX_HOME`. Review `<repo>/.acfs-cloud/.acfs/cloud/setup.log`, then **Publish** the prepared environment. After changing its setup, **Republish** for new tasks. See OpenAI's [current cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments).
 
-Save these instructions in the environment's **Start skill** and include them at the start of each new task. Our hosted checks reused all eleven tools but did not automatically load the saved Start skill or generated repository skill; explicitly loading the guide and setting PATH works:
+Save these instructions in the environment's **Start skill** and include them at the start of each new task. Our hosted checks reused all eleven executables but did not automatically load the saved Start skill or generated repository skill; explicitly loading the guide and setting PATH works:
 
 ```text
 Find the repository root with git rev-parse --show-toplevel.
@@ -576,11 +576,11 @@ Use the existing repository tracker with br ready --json and bv --robot-triage. 
 Agent Mail is available as a CLI. This setup does not configure this agent's MCP servers.
 ```
 
-Requirements: Linux x86_64 with compatible runtime libraries, Bash, Python 3, curl, tar and GNU timeout, plus a writable data root. Ubuntu 24.04 is the tested OS. If you set `ACFS_CLOUD_ROOT`, use that root instead of `$HOME` in these instructions. Older CPUs may reject JFP's current release; inspect the setup log and each version command.
+Requirements: Linux x86_64 with compatible runtime libraries, Bash, Python 3, curl, tar and GNU timeout, plus a writable data root. Ubuntu 24.04 is the tested OS. If you set `ACFS_CLOUD_ROOT`, use that root instead of `$HOME` in these instructions. Inspect the setup log and each version command to confirm the installed tools work.
 
 - **[Amp Orbs](https://ampcode.com/docs/orbs/customizing):** merge the command into executable `.agents/setup`, or use the project's Pre-setup Script. Do not install dependencies in `.agents/resume`. Amp documents Debian 12; binary compatibility and hosted persistence remain unverified.
 - **[Devin](https://docs.devin.ai/onboard-devin/environment/blueprint-reference):** add a Linux blueprint `run` step to `initialize` or `maintenance` and task instructions to `knowledge`. Verify a fresh snapshot. PATH exports do not persist between blueprint steps unless written to `$ENVRC`; explicit task-shell exports avoid assuming persistence.
-- **[Grok Bot](https://docs.x.ai/grok-bot/private-networks):** Enterprise Team Setup supports shell-script manifest entries on Debian-based Linux computers. Consumer setup access, binary compatibility and hosted persistence remain unverified. Grok Build CLI and chat Build Mode are different products.
+- **[Grok Bot](https://docs.x.ai/grok-bot/private-networks):** Enterprise Team Setup runs shell-script manifest entries as the computer user on every Linux team computer. Consumer setup access, binary compatibility and hosted persistence remain unverified. Grok Build CLI and chat Build Mode are different products.
 - **[Meta Muse](https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/amp/):** Meta documents a persistent Linux VM with Sentinel-controlled access. A usable startup hook, CPU/runtime compatibility and hosted installation have not been verified. [Muse Code](https://dev.meta.ai/docs/muse-code) is the separate terminal/CI agent.
 
 ## The Installer

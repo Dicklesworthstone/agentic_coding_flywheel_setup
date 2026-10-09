@@ -104,14 +104,14 @@
       "bins": [
         "jfp"
       ],
-      "file": "jfp/v1.0.3/7c9c4de1f984ceb06ef87592f7905a4715c0c49d0bcfb689206b8aaa9e6f2f4e/jfp-linux-x86_64.tar.gz",
-      "sha256": "7c9c4de1f984ceb06ef87592f7905a4715c0c49d0bcfb689206b8aaa9e6f2f4e",
+      "file": "jfp/v1.0.3/a007a0b359697d32f8407d05527503eacb6a65ca59e79a73b43e5a96c45d8e21/jfp-linux-x86_64.tar.gz",
+      "sha256": "a007a0b359697d32f8407d05527503eacb6a65ca59e79a73b43e5a96c45d8e21",
       "source": {
-        "asset": "jfp-linux-x64",
+        "asset": "jfp-linux-x64-baseline",
         "repo": "Dicklesworthstone/jeffreysprompts.com",
-        "sha256": "d09cf440ed05d4e88180ebcc1851ae1908553124c384f3417c0ab417ae5b086d",
+        "sha256": "1395b5b64a311d22bbf72d2e79953184654ab5a485e3cf0da61605078c6e1273",
         "tag": "v1.0.3",
-        "url": "https://github.com/Dicklesworthstone/jeffreysprompts.com/releases/download/v1.0.3/jfp-linux-x64",
+        "url": "https://github.com/Dicklesworthstone/jeffreysprompts.com/releases/download/v1.0.3/jfp-linux-x64-baseline",
         "verification": "sha256"
       },
       "version": "v1.0.3"
