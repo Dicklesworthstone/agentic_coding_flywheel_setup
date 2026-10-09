@@ -22,7 +22,9 @@ pass() {
 fail() {
     TESTS_FAILED=$((TESTS_FAILED + 1))
     echo "FAIL: $1"
-    [[ -n "${2:-}" ]] && echo "  Reason: $2"
+    if [[ -n "${2:-}" ]]; then
+        echo "  Reason: $2"
+    fi
 }
 
 write_fixture() {
@@ -298,7 +300,7 @@ test_high_load_quiesce_waits() {
       .status == "warn" and
       .quiesce_advisory.recommendation == "wait" and
       (.checks[] | select(.id == "host_pressure" and .status == "warn")) and
-      (.quiesce_advisory.reasons[] | contains("Host load"))
+      any(.quiesce_advisory.reasons[]; contains("Host load"))
     ' <<<"$output" >/dev/null || return 1
 
     pass "high_load_quiesce_waits"
@@ -318,7 +320,7 @@ test_low_memory_quiesce_waits() {
       .status == "warn" and
       .quiesce_advisory.recommendation == "wait" and
       (.checks[] | select(.id == "host_pressure" and .status == "warn")) and
-      (.quiesce_advisory.reasons[] | contains("Available memory"))
+      any(.quiesce_advisory.reasons[]; contains("Available memory"))
     ' <<<"$output" >/dev/null || return 1
 
     pass "low_memory_quiesce_waits"

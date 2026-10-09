@@ -22,7 +22,9 @@ pass() {
 fail() {
     TESTS_FAILED=$((TESTS_FAILED + 1))
     echo "FAIL: $1"
-    [[ -n "${2:-}" ]] && echo "  Reason: $2"
+    if [[ -n "${2:-}" ]]; then
+        echo "  Reason: $2"
+    fi
 }
 
 write_fixture() {
@@ -162,7 +164,7 @@ test_partial_epic_reports_weak_and_missing() {
       .summary.satisfied == 1 and
       .summary.weakly_verified == 1 and
       .summary.missing == 1 and
-      (.suggested_bead_titles[] | contains("Support bundles include convergence evidence"))
+      any(.suggested_bead_titles[]; contains("Support bundles include convergence evidence"))
     ' <<< "$output" >/dev/null || return 1
 
     pass "partial_epic_reports_weak_and_missing"

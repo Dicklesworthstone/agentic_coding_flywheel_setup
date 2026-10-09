@@ -22,7 +22,9 @@ pass() {
 fail() {
     TESTS_FAILED=$((TESTS_FAILED + 1))
     echo "FAIL: $1"
-    [[ -n "${2:-}" ]] && echo "  Reason: $2"
+    if [[ -n "${2:-}" ]]; then
+        echo "  Reason: $2"
+    fi
     return 0
 }
 
@@ -304,7 +306,7 @@ test_stale_probes_warn_and_block_launch_targets() {
       .summary.recommended_agents_total == 0 and
       .summary.safe_agents_total == 0 and
       (.recommended_launch_targets | length == 0) and
-      (.warnings[] | contains("old-controller") and contains("stale probe"))
+      any(.warnings[]; contains("old-controller") and contains("stale probe"))
     ' <<< "$output" >/dev/null || return 1
 
     pass "stale_probes_warn_and_block_launch_targets"

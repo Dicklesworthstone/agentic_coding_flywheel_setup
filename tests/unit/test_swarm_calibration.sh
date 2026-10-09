@@ -22,7 +22,9 @@ pass() {
 fail() {
     TESTS_FAILED=$((TESTS_FAILED + 1))
     echo "FAIL: $1"
-    [[ -n "${2:-}" ]] && echo "  Reason: $2"
+    if [[ -n "${2:-}" ]]; then
+        echo "  Reason: $2"
+    fi
     return 0
 }
 
@@ -248,7 +250,7 @@ test_malformed_artifact_files_emit_warnings() {
       .status == "warn" and
       .summary.valid_scenarios == 1 and
       .summary.malformed_files == 1 and
-      (.warnings[] | contains("capacity.json is malformed JSON")) and
+      any(.warnings[]; contains("capacity.json is malformed JSON")) and
       (.scenarios[] | select(.agent_count == 25 and .valid == false and .classification == "invalid_artifact"))
     ' <<< "$output" >/dev/null || return 1
 
