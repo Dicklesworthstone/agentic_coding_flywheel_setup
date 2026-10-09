@@ -601,8 +601,11 @@ EOF
     ' 2>&1
 ) || true
 
-if echo "$cargo_target_dir_output" | grep -q '^CARGO_TARGET_DIR_ENV=.*/inherited-target$' \
-    && echo "$cargo_target_dir_output" | grep -q '^CARGO_ARGS=build --release --target-dir .*/target$' \
+# Whether the inherited CARGO_TARGET_DIR is visible to cargo depends on the
+# platform (Linux target-context runs scrub it to an allowlist; macOS passes
+# it through), so assert the invariant: the helper's own --target-dir is the
+# build location and nothing is built in the inherited directory.
+if echo "$cargo_target_dir_output" | grep -q '^CARGO_ARGS=build --release --target-dir .*/target$' \
     && echo "$cargo_target_dir_output" | grep -q '^demo-tool$' \
     && ! echo "$cargo_target_dir_output" | grep -q '^BUILD_OUTPUT=.*/inherited-target'; then
     pass "cargo git source helper installs from its own target dir despite inherited CARGO_TARGET_DIR"

@@ -37,6 +37,11 @@ def template_parts():
 
 class CloudInitTest(unittest.TestCase):
     def setUp(self):
+        # The template refuses group-writable recovery state, as it should for
+        # root-written /var/lib state; fixtures written under a developer umask
+        # of 0002 (Ubuntu's per-user-group default) must not trip that check.
+        previous_umask = os.umask(0o022)
+        self.addCleanup(os.umask, previous_umask)
         self.temp = tempfile.TemporaryDirectory(prefix="acfs-provider-test-")
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
