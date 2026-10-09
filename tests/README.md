@@ -101,6 +101,12 @@ brew install expect
 # Run the full Docker Ubuntu matrix
 ./tests/vm/test_install_ubuntu.sh --all
 
+# Hang up the first install after cli_tools is checkpointed; --resume must skip it and finish
+./tests/vm/test_install_ubuntu.sh --interrupt-resume
+
+# Run the install in an arm64 container (binfmt/QEMU user emulation on x86_64 hosts; slow)
+./tests/vm/test_install_ubuntu.sh --platform linux/arm64
+
 # Run focused fresh-root curl|bash regression
 ./tests/vm/test_fresh_root_bootstrap_regression.sh
 

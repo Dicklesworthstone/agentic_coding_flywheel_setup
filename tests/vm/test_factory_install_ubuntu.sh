@@ -905,13 +905,32 @@ collect_artifacts() {
     pass "artifacts.remote_archive" "$archive"
 }
 
+upgrade_recovery_failed() {
+    # The continuation is a transient --collect unit, so once it fails only
+    # this boot's journal remembers it. Either failure is final until a human
+    # intervenes; without this check the wait burns the whole timeout.
+    systemctl is-failed --quiet acfs-upgrade-resume.service && return 0
+    systemctl is-active --quiet acfs-continue-install.service && return 1
+    local last=""
+    last=$(journalctl -b -u acfs-continue-install.service -o cat --no-pager 2>/dev/null \
+        | grep -E "Failed with result|Deactivated successfully|^Started " | tail -n 1 || true)
+    [[ "$last" == *"Failed with result"* ]]
+}
+
 wait_for_post_install_ready() {
     local deadline=$((SECONDS + ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS))
     local target_home="/home/$ACFS_FACTORY_TARGET_USERNAME"
     local target_path="$target_home/.local/bin:$target_home/.acfs/bin:$target_home/.cargo/bin:$target_home/.bun/bin:$target_home/.atuin/bin:$target_home/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
     while [[ "$SECONDS" -lt "$deadline" ]]; do
-        if id "$ACFS_FACTORY_TARGET_USERNAME" >/dev/null 2>&1 \
+        if upgrade_recovery_failed; then
+            journalctl -b -u acfs-upgrade-resume.service -u acfs-continue-install.service -n 80 --no-pager || true
+            fail "post.wait_ready" "upgrade resume or installer continuation failed; see journal above"
+        fi
+        # The continuation writes ~/.acfs/VERSION and installs acfs before it
+        # finishes; asserting while it still runs would race the installer.
+        if ! systemctl is-active --quiet acfs-continue-install.service \
+            && id "$ACFS_FACTORY_TARGET_USERNAME" >/dev/null 2>&1 \
             && [[ -f "$target_home/.acfs/VERSION" ]] \
             && sudo -n -u "$ACFS_FACTORY_TARGET_USERNAME" env ACFS_DOCTOR_CI=true HOME="$target_home" PATH="$target_path" bash -lc 'command -v acfs >/dev/null' >/dev/null 2>&1; then
             pass "post.wait_ready" "ACFS files and target user are present"

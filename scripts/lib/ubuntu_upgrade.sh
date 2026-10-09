@@ -2003,7 +2003,10 @@ else
 
     chmod 0444 "\${STAGED_INSTALLER}" || true
 
-    bash "\${STAGED_INSTALLER}" "\${INSTALL_ARGS[@]}"
+    # Run it exactly as the original curl|bash did: from stdin, with no script
+    # path. Given a path, install.sh treats the staging directory as a local
+    # checkout and fails looking for scripts/lib beside the staged file.
+    bash -s -- "\${INSTALL_ARGS[@]}" < "\${STAGED_INSTALLER}"
 fi
 
 echo "ACFS installation complete!"

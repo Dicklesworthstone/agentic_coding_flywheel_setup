@@ -82,9 +82,12 @@ umask 077
 # world-writable. An ancestor may be sticky (such as /tmp, for fixtures) or
 # group-writable by a system group without world write: stock Ubuntu ships
 # /var/log as root:syslog 0775, and refusing it stranded every resume after
-# the release-upgrade reboot. No environment path override exists.
+# the release-upgrade reboot. Pass "ancestor" as $2 when the path is only the
+# container of a directory about to be created (the log parent's /var/log);
+# the created directory is then checked as the controlled one. No environment
+# path override exists.
 resume_recovery_directory_safe() {
-    local path="${1:-}" parent owner group mode
+    local path="${1:-}" role="${2:-controlled}" parent owner group mode
     [[ "$path" == /* && "$path" != / && "$path" != */ && "$path" != *//* ]] || return 1
     [[ "$path" != *'/./'* && "$path" != */. && "$path" != *'/../'* && "$path" != */.. ]] || return 1
     parent="$path"
@@ -93,7 +96,7 @@ resume_recovery_directory_safe() {
         read -r owner group mode < <(/usr/bin/stat -c '%u %g %a' -- "$parent") || return 1
         [[ "$owner" == 0 && "$group" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
         if (( (8#$mode & 8#022) != 0 )); then
-            [[ "$parent" != "$path" ]] || return 1
+            [[ "$parent" != "$path" || "$role" == ancestor ]] || return 1
             if (( (8#$mode & 8#1000) == 0 )); then
                 (( (8#$mode & 8#002) == 0 && group < 1000 )) || return 1
             fi
@@ -211,7 +214,7 @@ resume_checkpoint_enabled() {
 
 resume_initialize_log() {
     local parent="${ACFS_LOG%/*}"
-    resume_recovery_directory_safe "${parent%/*}" || return 1
+    resume_recovery_directory_safe "${parent%/*}" ancestor || return 1
     if [[ ! -e "$parent" && ! -L "$parent" ]]; then
         /usr/bin/mkdir -m 700 -- "$parent" || return 1
     fi

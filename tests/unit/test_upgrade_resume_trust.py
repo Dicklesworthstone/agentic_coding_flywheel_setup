@@ -40,7 +40,10 @@ class ResumeTrustTests(unittest.TestCase):
         self.log_parent.mkdir()
         self.log = self.log_parent / "acfs" / "upgrade_resume.log"
         self.state = self.state_dir / "state.json"
-        self.state.write_text('{"ubuntu_upgrade":{"target_version":"26.04"}}\n')
+        # A checkpoint the production reader accepts (schema 3, enabled, known
+        # stage), so startup tests reach the log and context gates.
+        self.state.write_text('{"schema_version":3,"ubuntu_upgrade":{"enabled":true,'
+                              '"current_stage":"pre_upgrade_reboot","target_version":"26.04"}}\n')
         self.context = self.state_dir / "continue_context.env"
         self.context.write_text('CONTINUE_HOME=/root\nCONTINUE_INSTALL_ARGS=(--yes --skip-ubuntu-upgrade)\n')
         for path in [self.lib / "state.sh", self.lib / "ubuntu_upgrade.sh", self.state_dir / "continue_install.sh"]:
@@ -240,6 +243,22 @@ done
         self.log_parent.chmod(0o775)
         log_dir.chmod(0o770)
         self.checked(self.dir_check(log_dir), 1)
+
+    @unittest.skipUnless(os.geteuid() == 0, "root-owned recovery boundary requires root fixtures")
+    def test_root_startup_accepts_stock_ubuntu_var_log_container(self):
+        # Startup checks the log directory's container (/var/log, root:syslog
+        # 0775 on stock Ubuntu) before creating /var/log/acfs. Checking it as a
+        # controlled directory failed every post-reboot resume on a real host.
+        os.chown(self.log_parent, 0, 4)
+        self.log_parent.chmod(0o775)
+        self.checked(self.startup())
+        self.assertEqual(self.log.parent.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.log.stat().st_mode & 0o777, 0o600)
+        for gid, mode in [(65534, 0o775), (4, 0o777)]:
+            with self.subTest(gid=gid, mode=oct(mode)):
+                os.chown(self.log_parent, 0, gid)
+                self.log_parent.chmod(mode)
+                self.checked(self.startup(), 1)
 
     @unittest.skipUnless(os.geteuid() == 0, "root-owned recovery boundary requires root fixtures")
     def test_symlinked_log_parent_and_log_do_not_change_target(self):

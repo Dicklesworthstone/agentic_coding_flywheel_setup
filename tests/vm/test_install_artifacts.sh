@@ -100,9 +100,17 @@ test_fail() {
 # ============================================================
 # Test: Log file exists
 # ============================================================
+# Newest file matching a timestamped name. Earlier aborted or read-only runs
+# (selection checks, an interrupted install) leave their own logs and
+# summaries here, and find's directory order is not chronological; the fixed
+# YYYYMMDD_HHMMSS names sort lexically in time order.
+newest_log_artifact() {
+    find "$ACFS_LOGS_DIR" -name "$1" -type f 2>/dev/null | LC_ALL=C sort | tail -n 1
+}
+
 test_log_file_exists() {
     local log_files
-    log_files=$(find "$ACFS_LOGS_DIR" -name 'install-*.log' -type f 2>/dev/null | head -1)
+    log_files=$(newest_log_artifact 'install-*.log')
 
     if [[ -z "$log_files" ]]; then
         test_fail "log_file_exists" "No install log file found in $ACFS_LOGS_DIR"
@@ -151,7 +159,7 @@ test_log_file_content() {
 # ============================================================
 test_summary_json_exists() {
     local summary_files
-    summary_files=$(find "$ACFS_LOGS_DIR" -name 'install_summary_*.json' -type f 2>/dev/null | head -1)
+    summary_files=$(newest_log_artifact 'install_summary_*.json')
 
     if [[ -z "$summary_files" ]]; then
         test_fail "summary_json_exists" "No summary JSON file found in $ACFS_LOGS_DIR"
@@ -349,7 +357,7 @@ test_log_summary_cross_reference() {
 # ============================================================
 test_performance_budget_json_exists() {
     local budget_files
-    budget_files=$(find "$ACFS_LOGS_DIR" -name 'performance_budget_*.json' -type f 2>/dev/null | head -1)
+    budget_files=$(newest_log_artifact 'performance_budget_*.json')
 
     if [[ -z "$budget_files" ]]; then
         test_fail "performance_budget_json_exists" "No performance budget JSON file found in $ACFS_LOGS_DIR"
@@ -495,7 +503,7 @@ main() {
     log "--- Log File Tests ---"
     local log_file
     test_log_file_exists || true
-    log_file=$(find "$ACFS_LOGS_DIR" -name 'install-*.log' -type f 2>/dev/null | head -1)
+    log_file=$(newest_log_artifact 'install-*.log')
     if [[ -n "$log_file" && -f "$log_file" ]]; then
         test_log_file_content "$log_file"
     fi
@@ -504,7 +512,7 @@ main() {
     log "--- Summary JSON Tests ---"
     local summary_file
     test_summary_json_exists || true
-    summary_file=$(find "$ACFS_LOGS_DIR" -name 'install_summary_*.json' -type f 2>/dev/null | head -1)
+    summary_file=$(newest_log_artifact 'install_summary_*.json')
     if [[ -n "$summary_file" && -f "$summary_file" ]]; then
         test_summary_json_valid "$summary_file"
         test_summary_json_schema "$summary_file"
@@ -517,7 +525,7 @@ main() {
     log "--- Performance Budget JSON Tests ---"
     local budget_file
     test_performance_budget_json_exists || true
-    budget_file=$(find "$ACFS_LOGS_DIR" -name 'performance_budget_*.json' -type f 2>/dev/null | head -1)
+    budget_file=$(newest_log_artifact 'performance_budget_*.json')
     if [[ -n "$budget_file" && -f "$budget_file" ]]; then
         test_performance_budget_json_valid "$budget_file"
         test_performance_budget_json_schema "$budget_file"

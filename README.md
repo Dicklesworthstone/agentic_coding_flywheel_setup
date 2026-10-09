@@ -3261,6 +3261,12 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 # Docker integration matrix across the supported LTS releases (22.04, 24.04, 26.04)
 ./tests/vm/test_install_ubuntu.sh --all
 
+# Interrupted install (SIGHUP after cli_tools) that --resume must finish
+./tests/vm/test_install_ubuntu.sh --interrupt-resume
+
+# arm64 container install (needs binfmt emulation on x86_64 hosts)
+./tests/vm/test_install_ubuntu.sh --platform linux/arm64
+
 # Real factory-host integration test preserving Ubuntu 24.04 LTS
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 24.04
 
@@ -4745,8 +4751,11 @@ For maximum security, you can:
 ```bash
 curl -fsSL "https://..." -o install.sh
 less install.sh
-bash install.sh --yes --mode vibe
+bash -s -- --yes --mode vibe < install.sh
 ```
+
+Feed the reviewed file to `bash -s` exactly as `curl | bash` would. Run by path
+(`bash install.sh`), the installer expects a full repository checkout beside it.
 
 ### Checksum Verification Deep Dive
 

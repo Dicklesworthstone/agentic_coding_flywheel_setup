@@ -2849,9 +2849,15 @@ detect_environment() {
             abs_lib_dir="$(pwd)/${ACFS_LIB_DIR#./}"
         fi
         echo "ERROR: Library directory not found: $abs_lib_dir" >&2
-        echo "This typically means bootstrap failed or the script is being run from an unexpected location." >&2
-        echo "For curl|bash installation, ensure network connectivity to GitHub." >&2
-        echo "For local installation, run from the repository root directory." >&2
+        if [[ -n "${SCRIPT_DIR:-}" && ! -e "$SCRIPT_DIR/scripts" ]]; then
+            # A downloaded install.sh run by path is treated as a checkout.
+            echo "install.sh was run as a standalone file, which needs a full repository checkout beside it." >&2
+            echo "To run a downloaded copy, stream it like curl|bash: bash -s -- [options] < install.sh" >&2
+        else
+            echo "This typically means bootstrap failed or the script is being run from an unexpected location." >&2
+            echo "For curl|bash installation, ensure network connectivity to GitHub." >&2
+            echo "For a local checkout, run the install.sh at the repository root." >&2
+        fi
         exit 1
     fi
 

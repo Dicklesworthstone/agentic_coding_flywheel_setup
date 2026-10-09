@@ -11,10 +11,19 @@ STATE_LIBRARY="${ACFS_TEST_STATE_LIBRARY:-$ROOT/scripts/lib/state.sh}"
 SUITE=$(mktemp -d "${TMPDIR:-/tmp}/acfs-resume-safety.XXXXXX")
 PASS=0 FAIL=0
 
+# Print one function, skipping over quoted heredoc bodies: the checkpoint
+# reader embeds Python whose own column-0 "}" is not the end of the function.
 extract_function() {
-    awk -v name="$1" '$0 == name "() {" { p=1 } p { print } p && /^}/ { exit }' "$SCRIPT"
+    awk -v name="$1" -v q="'" '
+        $0 == name "() {" { p = 1 }
+        !p { next }
+        { print }
+        hd != "" { if ($0 == hd) hd = ""; next }
+        (i = index($0, "<<" q)) { rest = substr($0, i + 3); hd = substr(rest, 1, index(rest, q) - 1); next }
+        /^}/ { exit }
+    ' "$SCRIPT"
 }
-for function_name in parse_resume_args compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state validate_resume_target mark_state_complete load_continue_context launch_continue_script resume_recovery_file_safe retarget_resume_checkpoint; do
+for function_name in parse_resume_args compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state validate_resume_target mark_state_complete load_continue_context launch_continue_script resume_recovery_directory_safe resume_recovery_file_safe resume_read_checkpoint resume_checkpoint_enabled retarget_resume_checkpoint; do
     extract_function "$function_name" >> "$SUITE/functions.sh"
 done
 awk '/^ubuntu_validate_upgrade_versions\(\) \{/ { p=1 } p { print } p && /^}/ { exit }' "$LIBRARY" > "$SUITE/policy.sh"
@@ -118,7 +127,7 @@ check_dispatch() {
     ACFS_RESUME_DIR="$WORK/resume" ACFS_LIB_DIR="$WORK/lib" ACFS_LOG="$WORK/run.log"
     ACFS_STATE_FILE="$ACFS_RESUME_DIR/state.json"
     local UBUNTU_TARGET_VERSION=26.04 UBUNTU_TARGET_VERSION_NUM=2604 state_target_version=26.04
-    local BASE_VERSION=24.04 FAKE_ID=ubuntu STAGE=rebooting FAIL_AT='' PLAN=26.04
+    local BASE_VERSION=24.04 FAKE_ID=ubuntu STAGE=awaiting_reboot FAIL_AT='' PLAN=26.04
     local INSTALLED_VERSION=26.04 AUDIT='' EXPECTED_STATUS=0 EXPECTED_HOP=26.04
     local upgrade_lock_fd='' holder_fd=''
     mkdir -p "$ACFS_RESUME_DIR" "$ACFS_LIB_DIR"
@@ -187,7 +196,9 @@ check_dispatch() {
     case "$scenario" in
         normal) ;;
         kernel-only) STAGE=pre_upgrade_reboot ;;
-        stale-complete) STAGE=completed; BASE_VERSION=22.04; PLAN=$'24.04\n26.04'; INSTALLED_VERSION=24.04; EXPECTED_HOP=24.04 ;;
+        # 6d9c57f5: a completed checkpoint on a host below target is copied or
+        # restored state; refuse rather than replay the OS upgrade.
+        stale-complete) STAGE=completed; BASE_VERSION=22.04; EXPECTED_STATUS=1 ;;
         at-target) BASE_VERSION=26.04 ;;
         beyond-target) BASE_VERSION=26.04; UBUNTU_TARGET_VERSION=24.04; UBUNTU_TARGET_VERSION_NUM=2404; state_target_version=24.04 ;;
         lock-at-target) BASE_VERSION=26.04; FAIL_AT=lock; EXPECTED_STATUS=1 ;;
@@ -198,7 +209,9 @@ check_dispatch() {
             exec {holder_fd}>"$WORK/shared.lock"
             flock -n "$holder_fd"
             ;;
-        changed-target) UBUNTU_TARGET_VERSION=24.04; UBUNTU_TARGET_VERSION_NUM=2404; state_target_version=24.04 ;;
+        # 6d9c57f5: any checkpoint change while acquiring the lock is refused
+        # without touching the service, MOTD or state of the process that owns it.
+        changed-target) UBUNTU_TARGET_VERSION=24.04; UBUNTU_TARGET_VERSION_NUM=2404; state_target_version=24.04; EXPECTED_STATUS=1 ;;
         corrupted-after-lock) EXPECTED_STATUS=1 ;;
         obsolete-after-lock) EXPECTED_STATUS=1 ;;
         library-at-target)
@@ -232,7 +245,11 @@ check_dispatch() {
         *) FAIL_AT="$scenario"; EXPECTED_STATUS=1 ;;
     esac
     jq -n --arg target "$UBUNTU_TARGET_VERSION" --arg stage "$STAGE" \
-        '{ubuntu_upgrade:{target_version:$target,current_stage:$stage,upgrade_path:["24.04","26.04"],completed_upgrades:[{},{}]}}' > "$ACFS_STATE_FILE"
+        '{schema_version:3,ubuntu_upgrade:{enabled:true,target_version:$target,current_stage:$stage,upgrade_path:["24.04","26.04"],completed_upgrades:[{},{}]}}' > "$ACFS_STATE_FILE"
+    # Startup snapshots the checkpoint with the production reader; the
+    # dispatcher re-reads it under the lock and requires an exact match.
+    local RESUME_CHECKPOINT_SNAPSHOT=''
+    RESUME_CHECKPOINT_SNAPSHOT=$(resume_read_checkpoint "$ACFS_STATE_FILE")
     local result=0
     (set -e; builtin source "$SUITE/main.sh") > "$WORK/stdout" 2> "$WORK/stderr" || result=$?
     assert_eq "$result" "$EXPECTED_STATUS"
@@ -249,6 +266,9 @@ check_dispatch() {
     else
         if [[ "$FAIL_AT" == lock || "$scenario" == real-lock-busy ]]; then
             [[ ! -f "$WORK/disabled" && ! -f "$WORK/marked" && ! -f "$WORK/locked" ]]
+        elif [[ "$scenario" == changed-target || "$scenario" == stale-complete || "$scenario" == *-after-lock ]]; then
+            [[ ! -f "$WORK/disabled" && ! -f "$WORK/failure" && ! -f "$WORK/marked" && -f "$WORK/released" ]]
+            [[ ! -f "$WORK/upgraded" && ! -f "$WORK/channel" ]]
         else
             [[ -f "$WORK/disabled" && -f "$WORK/failure" ]]
         fi
@@ -261,14 +281,21 @@ check_dispatch() {
         esac
     fi
 }
-for scenario in normal kernel-only stale-complete at-target beyond-target bad-os bad-target missing-target \
-    lock-at-target lock-beyond-target real-lock-free real-lock-busy changed-target corrupted-after-lock \
-    library-at-target missing-libraries-at-target \
-    obsolete-after-lock point-release eol-recovery eol-host-24 eol-host-25 future-host future-target obsolete-target eol-above-target obsolete-library \
-    backwards overshoot garbage-hop no-op wrong-release audit-output target-audit audit-status post-audit \
-    continuation mark library state-library logging-library lock channel resumed start plan preflight executor complete reboot-state shutdown; do
-    run "resume dispatcher: $scenario" check_dispatch "$scenario"
-done
+dispatch_scenarios=(normal kernel-only stale-complete at-target beyond-target bad-os bad-target missing-target
+    lock-at-target lock-beyond-target real-lock-free real-lock-busy changed-target corrupted-after-lock
+    library-at-target missing-libraries-at-target
+    obsolete-after-lock point-release eol-recovery eol-host-24 eol-host-25 future-host future-target obsolete-target eol-above-target obsolete-library
+    backwards overshoot garbage-hop no-op wrong-release audit-output target-audit audit-status post-audit
+    continuation mark library state-library logging-library lock channel resumed start plan preflight executor complete reboot-state shutdown)
+# The dispatcher re-reads the checkpoint with the production reader, which
+# accepts only a root-owned file.
+if [[ $EUID -eq 0 ]]; then
+    for scenario in "${dispatch_scenarios[@]}"; do
+        run "resume dispatcher: $scenario" check_dispatch "$scenario"
+    done
+else
+    printf 'SKIP %s resume dispatcher cases: run as root for the root-owned checkpoint reader\n' "${#dispatch_scenarios[@]}"
+fi
 
 check_context() {
     local scenario="$1" WORK ACFS_CONTINUE_CONTEXT_FILE
@@ -352,7 +379,7 @@ CONTEXT
             assert_eq "$status" 0
             local -a args=()
             mapfile -d '' -t args < "$WORK/argv"
-            assert_eq "${#args[@]}" 17
+            assert_eq "${#args[@]}" 18
             assert_eq "${args[0]}" --collect
             assert_eq "${args[1]}" --no-ask-password
             assert_eq "${args[2]}" --unit=acfs-continue-install
@@ -368,7 +395,9 @@ CONTEXT
             assert_eq "${args[13]}" '--setenv=ACFS_STATE_FILE=/data/dev user/.acfs/state.json'
             assert_eq "${args[14]}" '--setenv=ACFS_REF=release/test-$literal;not-a-command'
             assert_eq "${args[15]}" /bin/bash
-            assert_eq "${args[16]}" "$ACFS_RESUME_DIR/continue_install.sh"
+            # Privileged mode ignores inherited BASH_ENV/functions (d28c3be8).
+            assert_eq "${args[16]}" -p
+            assert_eq "${args[17]}" "$ACFS_RESUME_DIR/continue_install.sh"
             ;;
         already-active)
             assert_eq "$status" 0
@@ -508,7 +537,7 @@ check_retarget() {
         future-target) OLD_TARGET=28.04 ;;
     esac
     jq -n --arg target "$OLD_TARGET" '{
-        schema_version: 2, preserved_top_level: {value: "untouched"},
+        schema_version: 3, preserved_top_level: {value: "untouched"},
         ubuntu_upgrade: {enabled: true, target_version: $target, original_version: "22.04",
             upgrade_path: ["24.04","25.04","25.10"], completed_upgrades: [{from:"22.04",to:"24.04"}],
             current_stage: "error", last_error: "old failure", needs_reboot: true, resume_after_reboot: true,

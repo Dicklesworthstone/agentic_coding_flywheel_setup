@@ -127,7 +127,7 @@ EOF
 #!/usr/bin/env bash
 cat <<'EOF_SCRIPT'
 #!/usr/bin/env bash
-printf 'remote-executed:%s\n' "\$*" > "$marker"
+printf 'remote-executed:%s source:[%s]\n' "\$*" "\${BASH_SOURCE[0]:-}" > "$marker"
 EOF_SCRIPT
 exit 0
 EOF_CURL
@@ -158,6 +158,10 @@ EOF_CURL
     [[ -f "$marker" ]]
     run cat "$marker"
     assert_output --partial "remote-executed:--yes --mode vibe --skip-ubuntu-upgrade"
+    # install.sh enters curl|bash bootstrap mode only without a script path; a
+    # path makes it look for scripts/lib beside the staged file (2026-10-09
+    # 24.04->26.04 QEMU run died with "Library directory not found: /tmp/scripts/lib").
+    assert_output --partial "source:[]"
 }
 
 @test "continue_install: never executes bash if curl fails with partial output" {
