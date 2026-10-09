@@ -579,15 +579,17 @@ function StepBody({ agent, step, onOpenShot }: { agent: CloudAgent; step: SetupS
   const details = (
     <>
       {step.fields && (
-        <dl className="grid max-w-2xl gap-2 rounded-xl border border-border/70 bg-card/50 p-3 sm:grid-cols-2 sm:p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary sm:col-span-2">Where this goes</p>
-          {step.fields.map((field) => (
-            <div key={field.label} className="min-w-0 rounded-lg border border-border/60 bg-background/60 px-3 py-2">
-              <dt className="text-xs text-muted-foreground">{field.label}</dt>
-              <dd className="mt-0.5 break-words text-sm font-medium text-foreground">{field.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="max-w-2xl rounded-xl border border-border/70 bg-card/50 p-3 sm:p-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Where this goes</p>
+          <dl className="grid gap-2 sm:grid-cols-2">
+            {step.fields.map((field) => (
+              <div key={field.label} className="min-w-0 rounded-lg border border-border/60 bg-background/60 px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{field.label}</dt>
+                <dd className="mt-0.5 break-words text-sm font-medium text-foreground">{field.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       )}
       {step.paste && (
         <CodePanel
@@ -773,7 +775,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
       </div>
 
       <div className="lg:mt-10 lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:gap-12">
-        <aside className="hidden lg:block" aria-label="Guide navigation">
+        <div className="hidden lg:block">
           <div className="sticky top-8 space-y-6">
             <nav aria-label={`${agent.name} steps`}>
               <p className="mb-2 px-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Steps</p>
@@ -792,7 +794,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
             </div>
             <div className="border-t border-border/60 px-2.5 pt-5">{switcher("guide-agent-desktop")}</div>
           </div>
-        </aside>
+        </div>
 
         <ol aria-label={`${agent.name} setup walkthrough`} className="min-w-0">
           {steps.map((step, index) => {
@@ -1131,7 +1133,7 @@ export default function CloudAgentsPage() {
           </div>
 
           <div className="min-w-0 space-y-10 lg:col-start-1 lg:row-start-2">
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-border/50 pt-8 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-border/50 pt-8 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
               {[
                 { value: "10", label: "tools", sub: `${CLOUD_EXECUTABLES.length} executables` },
                 { value: "12s", label: "Claude install", sub: "hosted run" },
