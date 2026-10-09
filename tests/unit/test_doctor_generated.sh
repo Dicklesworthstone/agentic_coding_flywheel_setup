@@ -318,40 +318,40 @@ test_warn_checks_have_fix_hints() {
 }
 
 test_fix_hint_uses_module_id() {
-    harness_section "Test: Fix hints use correct module IDs"
+    harness_section "Test: Fix hints name real manifest modules"
 
     local output
     ensure_doctor_json_output
     output="$DOCTOR_JSON_OUTPUT"
 
-    # Sample a few installer-backed checks and verify fix hints reference
-    # their module. Some modules intentionally return bespoke prose guidance
-    # instead of an ACFS reinstall command, so skip those here.
-    local samples
-    samples=$(echo "$output" | jq -r '.checks[] | select(.fix and .id and (.fix | contains("agent-flywheel.com/install"))) | "\(.id)|\(.fix)"' 2>/dev/null | head -5)
+    # Check IDs and module IDs differ by design (shell.ohmyzsh -> shell.omz,
+    # tool.bun -> lang.bun, agent.claude -> agents.claude), so deriving the
+    # module from the check ID was wrong. What a user needs is that every
+    # reinstall hint's --only target is a real manifest module.
+    local modules
+    modules="$(bash -c 'source "$1"; printf "%s\n" "${ACFS_MODULES_IN_ORDER[@]}"' _ \
+        "$REPO_ROOT/scripts/generated/manifest_index.sh")"
 
-    local checks_passed=0
-    local checks_total=0
+    local hints check_id fix_hint target checks_passed=0 checks_total=0
+    hints=$(echo "$output" | jq -r '.checks[] | select(.fix and .id and (.fix | contains("--only "))) | "\(.id)|\(.fix)"' 2>/dev/null)
 
     while IFS='|' read -r check_id fix_hint; do
         [[ -z "$check_id" ]] && continue
-        ((checks_total++))
-
-        # Extract module ID from check ID (strip trailing .N suffix)
-        local module_id
-        module_id=$(echo "$check_id" | sed 's/\.[0-9]*$//')
-
-        if echo "$fix_hint" | grep -q "\-\-only $module_id"; then
-            ((checks_passed++))
+        checks_total=$((checks_total + 1))
+        target="$(sed -n 's/.*--only \([^ ]*\).*/\1/p' <<< "$fix_hint")"
+        if grep -qxF -- "$target" <<< "$modules"; then
+            checks_passed=$((checks_passed + 1))
+        else
+            harness_capture_output "unknown_module_fix_hint_$checks_total" "$check_id => $fix_hint"
         fi
-    done <<< "$samples"
+    done <<< "$hints"
 
     if [[ "$checks_total" -eq 0 ]]; then
-        harness_pass "No checks with fix hints to verify"
+        harness_pass "No checks with --only fix hints to verify"
     elif [[ "$checks_passed" -eq "$checks_total" ]]; then
-        harness_pass "All $checks_total sampled fix hints use correct module IDs"
+        harness_pass "All $checks_total --only fix hints name real manifest modules"
     else
-        harness_fail "Only $checks_passed of $checks_total fix hints use correct module IDs"
+        harness_fail "Only $checks_passed of $checks_total --only fix hints name real manifest modules"
     fi
 }
 
