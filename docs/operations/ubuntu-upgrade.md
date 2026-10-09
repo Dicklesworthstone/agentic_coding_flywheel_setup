@@ -5,7 +5,7 @@ This document covers the internal architecture and debugging procedures for the 
 ## Overview
 
 Ordinary installs keep supported Ubuntu 22.04/24.04 LTS hosts on their current release. ACFS upgrades Ubuntu only when `--target-ubuntu=26.04` (or another supported LTS target) is passed explicitly, and `--skip-ubuntu-upgrade` suppresses that request in either argument order. Ubuntu 25.10 reached end-of-life on 2026-07-09; it is accepted only as a recovery source on the way to 26.04, never as a destination. The upgrade system handles:
-- Reviewed LTS hops (22.04 → 24.04 → 26.04) and the 25.10 → 26.04 recovery hop, which first moves 25.10's archive URIs to old-releases
+- Reviewed LTS hops (22.04 → 24.04 → 26.04) and the 25.10 → 26.04 recovery hop. That hop moves 25.10's official archive URIs to old-releases.ubuntu.com only once old-releases actually serves `questing`; until Ubuntu archives it there, the regular archive still does, and sources are left alone. Stock 25.10 images ship uutils `env` 0.2 without `--default-signal`, so the installer's bootstrap handoff uses GNU `gnuenv` there.
 - Automatic reboots after each upgrade
 - Resume via systemd service
 - State persistence across reboots

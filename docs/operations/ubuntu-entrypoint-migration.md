@@ -54,7 +54,9 @@ upgrade request but never authorizes ignoring an unfinished checkpoint.
 
 The upgrade phase bootstraps only its missing `jq` and `curl` prerequisites,
 after source/root checks and lock acquisition. On Ubuntu 25.10 the library
-recovers official APT locations before package acquisition. APT update uses
+moves official APT locations to old-releases before package acquisition, but
+only once old-releases serves 25.10 (it keeps the live archive until then and
+fails closed on sources already pointing at a 404). APT update uses
 cooperative lock waiting and `APT::Update::Error-Mode=any`. Both binaries are
 checked again after package installation; an exit-zero package command with a
 missing binary is a failure, not permission to start the upgrade.
