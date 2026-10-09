@@ -22,7 +22,11 @@ pass() {
 fail() {
     TESTS_FAILED=$((TESTS_FAILED + 1))
     echo "FAIL: $1"
-    [[ -n "${2:-}" ]] && echo "  Reason: $2"
+    # An `[[ ]] && echo` tail returned 1 under set -e and aborted the suite at
+    # the first failure, so later tests never ran or reported.
+    if [[ -n "${2:-}" ]]; then
+        echo "  Reason: $2"
+    fi
 }
 
 test_support_capture_resource_profile_sanitizes_paths() {
@@ -142,6 +146,13 @@ write_inventory_fixture() {
   ]
 }
 JSON
+    # Admission excludes future probes (no infinite freshness) and ones older
+    # than 24h, so a fixed 2099 stamp made the inventory warn; stamp it now.
+    local now=""
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq --arg now "$now" '.hosts |= map(if .last_probe_at != null then .last_probe_at = $now else . end)' \
+        "$path" > "$path.fresh"
+    mv "$path.fresh" "$path"
 }
 
 # Sensitive-laden inventory: contains forbidden field names (ssh_user,
@@ -446,6 +457,60 @@ test_support_capture_swarm_inventory_malformed_is_sanitized() {
     pass "support_capture_swarm_inventory_malformed_is_sanitized"
 }
 
+test_support_capture_agent_readiness_keeps_valid_reports_only() {
+    local home_dir acfs_home bundle_dir mode
+    home_dir="$ARTIFACT_DIR/readiness-home"
+    acfs_home="$home_dir/.acfs"
+    mkdir -p "$acfs_home/scripts"
+    # Stand-in for the installed audit: a failing tool still emits a valid
+    # report with exit 1; garbage output must become an explicit error marker.
+    cat > "$acfs_home/scripts/agent-readiness-audit.sh" <<'EOF'
+#!/usr/bin/env bash
+[[ "$*" == "--json --no-version" ]] || exit 2
+if [[ "$READINESS_MODE" == fail-report ]]; then
+    printf '{"ok":false,"tools":[{"id":"claude","status":"fail"}]}\n'
+    exit 1
+fi
+printf 'not json\n'
+EOF
+
+    for mode in fail-report garbage; do
+        bundle_dir="$ARTIFACT_DIR/readiness-bundle-$mode"
+        mkdir -p "$bundle_dir"
+        env \
+            HOME="$home_dir" \
+            SUPPORT_SH="$SUPPORT_SH" \
+            REPO_ROOT="$REPO_ROOT" \
+            BUNDLE_DIR="$bundle_dir" \
+            ACFS_HOME="$acfs_home" \
+            READINESS_MODE="$mode" \
+            bash -lc '
+                set -euo pipefail
+                log_step() { :; }
+                log_section() { :; }
+                log_detail() { :; }
+                log_success() { :; }
+                log_warn() { :; }
+                log_error() { :; }
+                # shellcheck source=../../scripts/lib/support.sh
+                source "$SUPPORT_SH"
+                _SUPPORT_ACFS_HOME="$ACFS_HOME"
+                _SUPPORT_SCRIPT_DIR="$REPO_ROOT/scripts/lib"
+                BUNDLE_FILES=()
+                capture_agent_readiness_json "$BUNDLE_DIR" || true
+                printf "%s\n" "${BUNDLE_FILES[@]}" > "$BUNDLE_DIR/recorded"
+            '
+        grep -qx 'agent-readiness.json' "$bundle_dir/recorded" || return 1
+    done
+
+    jq -e '.ok == false and .tools[0].status == "fail"' \
+        "$ARTIFACT_DIR/readiness-bundle-fail-report/agent-readiness.json" >/dev/null || return 1
+    jq -e '.error | test("agent readiness")' \
+        "$ARTIFACT_DIR/readiness-bundle-garbage/agent-readiness.json" >/dev/null || return 1
+
+    pass "support_capture_agent_readiness_keeps_valid_reports_only"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -465,6 +530,7 @@ main() {
     run_test test_support_capture_swarm_inventory_fails_closed_on_sensitive_fields
     run_test test_support_capture_swarm_inventory_absent_is_structured
     run_test test_support_capture_swarm_inventory_malformed_is_sanitized
+    run_test test_support_capture_agent_readiness_keeps_valid_reports_only
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

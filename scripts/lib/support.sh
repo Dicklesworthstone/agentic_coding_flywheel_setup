@@ -1755,6 +1755,37 @@ capture_doctor_json() {
     fi
 }
 
+# Capture the agent readiness audit (CLI presence, auth-file and CAAM state; the
+# audit never prints token values or file contents). --no-version keeps bundle
+# collection from executing agent CLIs. A failing tool still yields valid JSON
+# with exit 1, so the output's validity decides what is kept.
+# Usage: capture_agent_readiness_json <bundle_dir>
+capture_agent_readiness_json() {
+    local bundle_dir="$1"
+
+    local readiness_script=""
+    if [[ -n "$_SUPPORT_ACFS_HOME" ]] && [[ -f "$_SUPPORT_ACFS_HOME/scripts/agent-readiness-audit.sh" ]]; then
+        readiness_script="$_SUPPORT_ACFS_HOME/scripts/agent-readiness-audit.sh"
+    elif [[ -f "$_SUPPORT_SCRIPT_DIR/../agent-readiness-audit.sh" ]]; then
+        readiness_script="$_SUPPORT_SCRIPT_DIR/../agent-readiness-audit.sh"
+    fi
+    if [[ -z "$readiness_script" ]]; then
+        log_warn "agent-readiness-audit.sh not found, skipping agent readiness"
+        return 1
+    fi
+
+    log_detail "Running acfs agent-readiness --json --no-version ..."
+    timeout "$DOCTOR_TIMEOUT" bash "$readiness_script" --json --no-version > "$bundle_dir/agent-readiness.json" 2>/dev/null || true
+    if ! jq -e '.tools | type == "array"' "$bundle_dir/agent-readiness.json" >/dev/null 2>&1; then
+        log_warn "Agent readiness audit timed out or failed"
+        echo '{"error": "agent readiness audit failed or timed out"}' > "$bundle_dir/agent-readiness.json"
+        record_bundle_file "agent-readiness.json"
+        return 1
+    fi
+    record_bundle_file "agent-readiness.json"
+    return 0
+}
+
 # Capture local swarm status JSON output.
 # Usage: capture_swarm_status_json <bundle_dir>
 capture_swarm_status_json() {
@@ -3509,6 +3540,7 @@ main() {
     # --- Capture doctor JSON ---
     log_detail "Running health checks..."
     capture_doctor_json "$bundle_dir" || true
+    capture_agent_readiness_json "$bundle_dir" || true
     capture_checkpoint_summary_json "$bundle_dir" || true
     capture_local_progress_json "$bundle_dir" || true
     capture_swarm_status_json "$bundle_dir" || true
