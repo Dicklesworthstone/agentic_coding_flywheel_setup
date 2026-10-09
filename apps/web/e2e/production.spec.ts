@@ -139,6 +139,15 @@ test.describe("Production Smoke Tests", () => {
     await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
+    const claudeSteps = page.getByRole("list", { name: "Claude Code setup walkthrough" });
+    await expect(claudeSteps.getByRole("img")).toHaveCount(4);
+    for (const image of await claudeSteps.getByRole("img").all()) {
+      await image.scrollIntoViewIfNeeded();
+      await expect.poll(() => image.evaluate((node) => {
+        const element = node as HTMLImageElement;
+        return element.complete && element.naturalWidth > 0;
+      })).toBe(true);
+    }
     await expect(
       page.getByRole("region", { name: "Setup script for a Claude Code cloud environment" }),
     ).toContainText("scripts/claude-code-web-setup.sh | bash");
@@ -146,6 +155,7 @@ test.describe("Production Smoke Tests", () => {
     await page.getByRole("button", { name: "Copy setup script" }).click();
     await expect(page.getByText("Copied").first()).toBeVisible();
     await page.getByRole("button", { name: "ChatGPT / Codex Hosted test" }).click();
+    await expect(page.getByRole("list", { name: "ChatGPT / Codex setup walkthrough" }).getByRole("img")).toHaveCount(4);
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
       .toContainText('ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash');
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
@@ -171,6 +181,11 @@ test.describe("Production Smoke Tests", () => {
     await page.goto("/claude-code-web#codex-cloud");
     await expect(page).toHaveURL(/\/cloud-agents#codex-cloud$/);
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" })).toBeVisible();
+
+    await page.goto("/cloud-agents#codex-step-install-script");
+    await expect(page.getByRole("heading", { name: "Paste into the Install script editor" })).toBeInViewport();
+    await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
+      .toContainText("bash || exit 1");
 
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);

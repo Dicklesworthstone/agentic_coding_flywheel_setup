@@ -25,6 +25,7 @@ import {
 } from "./claude-code-web";
 import nextConfig from "../next.config";
 import { getStaticRouteSocialData } from "./social-image-routes";
+import { CLOUD_WALKTHROUGHS, DEVIN_CLOUD_BLUEPRINT, GROK_CLOUD_CHECK_SCRIPT } from "./cloud-agent-walkthroughs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const script = readFileSync(join(REPO_ROOT, CLAUDE_CODE_WEB_SCRIPT_PATH), "utf-8");
@@ -43,6 +44,49 @@ function scriptDefault(name: string): string {
 }
 
 describe("cloud agent page data", () => {
+  test("walkthroughs cover every provider with stable, unique step anchors", () => {
+    expect(Object.keys(CLOUD_WALKTHROUGHS).sort()).toEqual(CLOUD_AGENTS.map((agent) => agent.id).sort());
+    for (const walkthrough of Object.values(CLOUD_WALKTHROUGHS)) {
+      expect(walkthrough.steps.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(walkthrough.steps.map((step) => step.id)).size).toBe(walkthrough.steps.length);
+      expect(walkthrough.steps.every((step) => /^[a-z0-9-]+$/.test(step.id))).toBe(true);
+    }
+    expect(CLOUD_WALKTHROUGHS.codex.steps.find((step) => step.id === "install-script")?.paste?.text).toBe(CODEX_CLOUD_SETUP_SCRIPT);
+    expect(CLOUD_WALKTHROUGHS.codex.steps.find((step) => step.id === "start-skill")?.paste?.text).toBe(CODEX_CLOUD_START_SKILL);
+    expect(CLOUD_WALKTHROUGHS.claude.steps.find((step) => step.id === "setup-script")?.paste?.text).toBe(CLAUDE_CODE_WEB_SETUP_SCRIPT);
+  });
+
+  test("all eight genuine screenshot references exist with accurate intrinsic dimensions", () => {
+    const screenshots = Object.values(CLOUD_WALKTHROUGHS).flatMap((walkthrough) => walkthrough.steps.flatMap((step) => step.screenshot ? [step.screenshot] : []));
+    expect(screenshots).toHaveLength(8);
+    expect(new Set(screenshots.map((shot) => shot.src)).size).toBe(8);
+    for (const shot of screenshots) {
+      expect(shot.src).toMatch(/^\/cloud-agents\/[a-z-]+\.png$/);
+      const bytes = readFileSync(join(REPO_ROOT, "apps/web/public", shot.src));
+      expect(bytes.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      expect(bytes.readUInt32BE(16)).toBe(shot.width);
+      expect(bytes.readUInt32BE(20)).toBe(shot.height);
+      expect(shot.alt.length).toBeGreaterThan(30);
+      expect(shot.caption).toContain("8 Oct 2026");
+    }
+  });
+
+  test("provider examples retain exact scripts and explicit hosted limits", () => {
+    expect(DEVIN_CLOUD_BLUEPRINT).toContain(GENERIC_CLOUD_SETUP_SCRIPT.split("\n").map((line) => `      ${line}`).join("\n"));
+    expect(DEVIN_CLOUD_BLUEPRINT).toContain(GENERIC_CLOUD_TASK_INSTRUCTIONS.split("\n").map((line) => `      ${line}`).join("\n"));
+    for (const source of [GENERIC_CLOUD_SETUP_SCRIPT, GROK_CLOUD_CHECK_SCRIPT]) {
+      const result = spawnSync("bash", ["-n"], { input: source, encoding: "utf8" });
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+    }
+    expect(GROK_CLOUD_CHECK_SCRIPT).toContain('"$tool" --version >/dev/null 2>&1 || exit 1');
+    for (const id of ["amp", "devin", "grok"]) {
+      expect(CLOUD_WALKTHROUGHS[id].visualEvidence).toContain("No ");
+      expect(CLOUD_WALKTHROUGHS[id].steps.some((step) => step.screenshot)).toBe(false);
+    }
+    expect(CLOUD_WALKTHROUGHS.muse.steps.some((step) => step.paste?.text.includes("curl -fsSL"))).toBe(false);
+  });
+
   test("lists exactly the script's default tools, in order", () => {
     expect(CLAUDE_CODE_WEB_TOOLS.map((tool) => tool.id).join(" ")).toBe(
       scriptAssignment("ACFS_CLOUD_DEFAULT_TOOLS"),

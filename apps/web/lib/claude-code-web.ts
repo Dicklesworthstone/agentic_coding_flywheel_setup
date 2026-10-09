@@ -41,7 +41,6 @@ export type CloudAgent = {
   initials: string;
   evidence: "Hosted test" | "Documented workflow" | "Needs investigation" | "Linux template";
   summary: string;
-  steps: string[];
   caveat: string;
   docs: string;
   script?: string;
@@ -52,63 +51,42 @@ export const CLOUD_AGENTS: CloudAgent[] = [
   {
     id: "claude", name: "Claude Code", initials: "CC", evidence: "Hosted test",
     summary: "Install once in the environment. Claude loads the tool guide and starts Agent Mail on demand.",
-    steps: ["Open Add cloud environment in claude.ai/code, or edit an existing environment.",
-      "Choose Full network access, or Custom with the two public download domains below.",
-      "Paste the setup script, start a session and check ~/.acfs/cloud/setup.log."],
     caveat: "The Full-network hosted run installed all eleven executables and passed Agent Mail MCP health. Restricted-network hosted acceptance remains open.",
     docs: CLAUDE_CODE_WEB_DOCS_URL, script: CLAUDE_CODE_WEB_SETUP_SCRIPT,
   },
   {
     id: "codex", name: "ChatGPT / Codex", initials: "CX", evidence: "Hosted test",
     summary: "Keep the tools in the writable repository workspace, then load their guide in each task.",
-    steps: ["In Work in → Cloud, edit the environment's Install script. Older environments call this Setup.",
-      "Allow the two public download domains, run setup, review the log and Publish the environment.",
-      "Include the task instructions below in every new task; republish after setup changes."],
     caveat: "Fresh hosted tasks reused all eleven executables. Automatic Start/repository-skill discovery did not work in those tests. Explicit guide loading is required; hosted MCP is not configured.",
     docs: CODEX_CLOUD_DOCS_URL, script: CODEX_CLOUD_SETUP_SCRIPT, instructions: CODEX_CLOUD_START_SKILL,
   },
   {
     id: "amp", name: "Amp Orbs", initials: "AO", evidence: "Documented workflow",
     summary: "Use the project snapshot's setup phase to prepare tools before an orb starts.",
-    steps: ["Add this script to the project's Pre-setup Script, or merge it into an executable .agents/setup.",
-      "Keep dependency installation in setup. .agents/resume has a short blocking window and is for runtime work.",
-      "Inspect the ACFS log and test every executable in a fresh orb before relying on this recipe."],
     caveat: "Amp documents Debian 12 orbs. These bundles were tested on Ubuntu 24.04; Debian library compatibility and hosted persistence have not been accepted. Unavailable binaries are reported without source builds.",
     docs: "https://ampcode.com/docs/orbs/customizing", script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },
   {
     id: "devin", name: "Devin", initials: "DV", evidence: "Documented workflow",
     summary: "Include prebuilt tools in a Linux environment blueprint and reuse its snapshot.",
-    steps: ["In a Linux blueprint, add the install command to a run step in initialize or maintenance; merge with existing steps.",
-      "Add the task instructions to a knowledge item. A shell's PATH export alone does not persist across blueprint steps.",
-      "Build the snapshot, start a fresh session and inspect tool versions plus the setup log."],
     caveat: "Devin documents Linux snapshots, run steps and knowledge entries. This ACFS recipe has not been tested in Devin; check CPU architecture and runtime libraries first. macOS and Windows blueprints are outside this bundle target.",
-    docs: "https://docs.devin.ai/onboard-devin/environment/blueprint-reference", script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
+    docs: "https://docs.devin.ai/onboard-devin/environment/blueprints", script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },
   {
     id: "grok", name: "Grok Bot", initials: "GB", evidence: "Documented workflow",
     summary: "Enterprise Team Setup can run shell scripts on the shared cloud computer.",
-    steps: ["For Enterprise teams, add the script as a Team Setup manifest entry. Preserve existing entries.",
-      "Verify the computer is Linux x86_64 and can reach the two public download domains.",
-      "Add explicit tool-guide instructions to the Bot and verify versions after setup and a later refresh."],
     caveat: "Team Setup is Enterprise-only and runs on Debian-based Linux. ACFS has not been accepted there. Grok Bot, the Grok Build CLI and chat Build Mode are different integration surfaces.",
     docs: "https://docs.x.ai/grok-bot/private-networks", script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },
   {
     id: "muse", name: "Meta Muse", initials: "MM", evidence: "Needs investigation",
     summary: "Muse has a persistent Linux cloud computer; an ACFS setup hook has not been established.",
-    steps: ["Confirm shell access, CPU architecture, Python 3, Bash, curl, tar and GNU timeout in your Muse VM.",
-      "Confirm permitted downloads and where installed files persist. Respect the VM's Sentinel approvals.",
-      "If these checks pass, try the generic Linux template and explicitly load its tool guide."],
     caveat: "No Muse hosted install or supported startup hook has been verified. Muse Code is Meta's separate terminal/CI agent; its Linux CLI is not evidence that the personal Muse VM supports this setup.",
-    docs: "https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/amp/",
+    docs: "https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse",
   },
   {
     id: "generic", name: "Other Linux agent", initials: "SH", evidence: "Linux template",
     summary: "A provider-neutral guide for a cloud machine where you can run shell commands.",
-    steps: ["Confirm Linux x86_64, compatible runtime libraries and Bash, Python 3, curl, tar and GNU timeout.",
-      "Run the script in the provider's setup phase using a writable HOME, or set an absolute ACFS_CLOUD_ROOT.",
-      "Load the generated guide explicitly, set PATH in each task shell and check the log after a fresh session."],
     caveat: "Ubuntu 24.04 is the tested OS. Other images and CPUs need version checks. With ACFS_CLOUD_ROOT, substitute that root for $HOME in the task instructions. No agent configuration or MCP registration is changed.",
     docs: CLAUDE_CODE_WEB_SCRIPT_SOURCE_URL, script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },

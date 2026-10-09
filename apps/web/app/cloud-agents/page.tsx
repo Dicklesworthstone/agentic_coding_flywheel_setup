@@ -14,7 +14,9 @@ import {
   Mail,
   ShieldCheck,
   Terminal,
+  ZoomIn,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ import {
   CLOUD_AGENT_RESEARCH_DATE,
 } from "@/lib/claude-code-web";
 import { copyTextToClipboard } from "@/lib/utils";
+import { CLOUD_WALKTHROUGHS, type SetupScreenshot } from "@/lib/cloud-agent-walkthroughs";
 
 const GITHUB_URL = "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup";
 const README_URL = `${GITHUB_URL}#cloud-agent-environments`;
@@ -107,7 +110,7 @@ function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLab
         <div className="terminal-dot terminal-dot-red" aria-hidden="true" />
         <div className="terminal-dot terminal-dot-yellow" aria-hidden="true" />
         <div className="terminal-dot terminal-dot-green" aria-hidden="true" />
-        <span className="ml-3 font-mono text-xs text-[#a9b1d6]/70">{title}</span>
+        <span title={title} className="ml-3 min-w-0 flex-1 truncate font-mono text-xs text-[#a9b1d6]/70">{title}</span>
         <Button
           type="button"
           variant="outline"
@@ -162,18 +165,43 @@ function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) 
 const footerLink =
   "inline-flex min-h-11 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60";
 
+function ScreenshotFigure({ screenshot }: { screenshot: SetupScreenshot }) {
+  return (
+    <figure className="min-w-0 self-start overflow-hidden rounded-xl border border-border/70 bg-card">
+      <a href={screenshot.src} target="_blank" rel="noopener noreferrer"
+        aria-label={`Open full-size screenshot: ${screenshot.alt} (new tab)`}
+        className="group block bg-[#f5f5f5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
+        <Image src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height}
+          sizes="(min-width: 1024px) 520px, (min-width: 640px) 80vw, 100vw"
+          className="h-auto max-h-[34rem] w-full object-contain" />
+        <span className="flex min-h-11 items-center justify-center gap-2 border-t border-black/10 px-3 text-sm font-medium text-[#31313a] group-hover:underline">
+          <ZoomIn className="size-4" aria-hidden="true" />Open full-size screenshot<ExternalLink className="size-3.5" aria-hidden="true" />
+        </span>
+      </a>
+      <figcaption className="px-4 py-3 text-xs leading-relaxed text-muted-foreground">{screenshot.caption}</figcaption>
+    </figure>
+  );
+}
+
 function CloudWorkbench() {
   const [agentId, setAgentId] = useState("claude");
   useEffect(() => {
     const readHash = () => {
-      const id = window.location.hash.slice(1).replace("codex-cloud", "codex");
+      const id = window.location.hash.slice(1).split("-step-")[0].replace("codex-cloud", "codex");
       if (CLOUD_AGENTS.some((agent) => agent.id === id)) setAgentId(id);
     };
     readHash();
     window.addEventListener("hashchange", readHash);
     return () => window.removeEventListener("hashchange", readHash);
   }, []);
+  useEffect(() => {
+    const fragment = window.location.hash.slice(1);
+    // A direct step link may arrive before that provider's walkthrough mounts.
+    // Only an explicit step fragment requests scrolling.
+    if (fragment.startsWith(`${agentId}-step-`)) document.getElementById(fragment)?.scrollIntoView({ block: "start" });
+  }, [agentId]);
   const agent = CLOUD_AGENTS.find((item) => item.id === agentId) ?? CLOUD_AGENTS[0];
+  const walkthrough = CLOUD_WALKTHROUGHS[agent.id];
   const choose = (id: string) => {
     setAgentId(id);
     window.history.replaceState(null, "", `#${id}`);
@@ -201,50 +229,61 @@ function CloudWorkbench() {
           </button>
         ))}
       </div>
-      <div id="agent-setup" className="mt-8 grid min-w-0 gap-8 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="min-w-0">
-          <p className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-primary"><Cloud className="size-4" aria-hidden="true" />{agent.evidence}</p>
-          <h3 className="text-2xl font-semibold tracking-tight">{agent.name}</h3>
-          <p className="mt-3 text-base leading-relaxed text-muted-foreground">{agent.summary}</p>
-          <ol className="mt-6 space-y-5">
-            {agent.steps.map((step, index) => (
-              <li key={step} className="flex gap-3 text-sm leading-relaxed">
-                <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full border border-primary/40 font-mono text-xs text-primary">{index + 1}</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-          <a href={agent.docs} target="_blank" rel="noopener noreferrer" className={`${footerLink} mt-4 gap-2 text-sm text-primary`}>
-            {agent.id === "generic" ? "Read the installer source" : `${agent.name} documentation`}<ExternalLink className="size-4" aria-hidden="true" />
-          </a>
-        </div>
-        <div className="min-w-0 space-y-6" key={agent.id}>
-          {agent.script ? (
-            <SetupScriptCard script={agent.script} wrap
-              label={agent.id === "claude" ? "Setup script for a Claude Code cloud environment" : agent.id === "codex" ? "Install script for a Codex cloud environment" : `Setup script for ${agent.name}`}
-              copyLabel={agent.id === "claude" ? "Copy setup script" : agent.id === "codex" ? "Copy Codex install script" : `Copy ${agent.name} setup script`}
-              title={agent.id === "codex" ? "Install script" : "Setup script"} />
-          ) : (
-            <div className="rounded-xl border border-border bg-card/60 p-6">
-              <Terminal className="mb-4 size-7 text-primary" aria-hidden="true" />
-              <h4 className="font-semibold">Check the VM before installing</h4>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Shell access and a persistent Linux computer are the first requirements. Once confirmed, use the provider-neutral recipe.</p>
-              <button type="button" onClick={() => choose("generic")} className={`${footerLink} mt-4 gap-2 text-sm font-semibold text-primary`}>Open Linux template<ArrowRight className="size-4" aria-hidden="true" /></button>
-            </div>
-          )}
-          {agent.instructions && (
-            <div>
-              <p className="mb-3 text-sm font-medium">Include these instructions in each task</p>
-              <SetupScriptCard script={agent.instructions} wrap title="Task instructions"
-                label={agent.id === "codex" ? "Codex Start skill instructions" : `${agent.name} task instructions`}
-                copyLabel={agent.id === "codex" ? "Copy Codex task instructions" : `Copy ${agent.name} task instructions`} />
-            </div>
-          )}
-          <div className="flex gap-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm leading-relaxed">
+      <div id="agent-setup" className="mt-8 min-w-0">
+        <div className="grid gap-6 border-b border-border/60 pb-7 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="min-w-0">
+            <p className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-primary"><Cloud className="size-4" aria-hidden="true" />{agent.evidence}</p>
+            <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">Set up {agent.name}</h3>
+            <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground">{walkthrough.introduction}</p>
+            <a href={agent.docs} target="_blank" rel="noopener noreferrer" className={`${footerLink} mt-4 gap-2 text-sm text-primary`}>
+              {agent.id === "generic" ? "Read the installer source" : `${agent.name} documentation`}<ExternalLink className="size-4" aria-hidden="true" />
+            </a>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{walkthrough.visualEvidence}</p>
+          </div>
+          <div className="flex self-start gap-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm leading-relaxed">
             <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-400" aria-hidden="true" />
             <p className="text-muted-foreground"><strong className="text-foreground">What is verified. </strong>{agent.caveat}</p>
           </div>
         </div>
+        <nav aria-label={`${agent.name} setup steps`} className="my-7">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{walkthrough.steps.length} steps · choose a step to jump</p>
+          <ol className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+            {walkthrough.steps.map((step, index) => (
+              <li key={step.id}>
+                <a href={`#${agent.id}-step-${step.id}`} className={`${footerLink} w-full gap-3 text-sm text-muted-foreground`}>
+                  <span className="font-mono text-xs text-primary" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>{step.title}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+        <ol className="space-y-8 sm:space-y-10" key={agent.id} aria-label={`${agent.name} setup walkthrough`}>
+          {walkthrough.steps.map((step, index) => (
+            <li key={step.id} id={`${agent.id}-step-${step.id}`} className="scroll-mt-6 border-t border-border/60 pt-7">
+              <div className="mb-5 flex items-start gap-3 sm:gap-4">
+                <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 font-mono text-sm font-semibold text-primary">{index + 1}</span>
+                <h4 className="pt-1 text-lg font-semibold tracking-tight sm:text-xl">{step.title}</h4>
+              </div>
+              <div className={`grid min-w-0 gap-6 ${step.screenshot ? "lg:grid-cols-2 lg:gap-8" : ""}`}>
+                <div className="min-w-0 space-y-4">
+                  {step.paragraphs.map((paragraph) => <p key={paragraph} className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">{paragraph}</p>)}
+                  {step.fields && (
+                    <div className="max-w-3xl rounded-lg border border-primary/25 bg-primary/5 px-4 py-3">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">Where this goes</p>
+                      <dl className="space-y-3">
+                        {step.fields.map((field) => <div key={field.label}><dt className="text-xs leading-relaxed text-muted-foreground">{field.label}</dt><dd className="mt-1 break-words text-sm font-medium text-foreground">{field.value}</dd></div>)}
+                      </dl>
+                    </div>
+                  )}
+                  {step.paste && <SetupScriptCard script={step.paste.text} wrap title={step.paste.title} copyLabel={step.paste.label} label={step.paste.regionLabel ?? `${agent.name}: ${step.paste.title}`} />}
+                  {step.note && <p className="max-w-3xl rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm leading-relaxed text-foreground">{step.note}</p>}
+                  {agent.id === "muse" && step.id === "template" && <button type="button" onClick={() => choose("generic")} className={`${footerLink} gap-2 text-sm font-semibold text-primary`}>Open Linux template<ArrowRight className="size-4" aria-hidden="true" /></button>}
+                </div>
+                {step.screenshot && <ScreenshotFigure screenshot={step.screenshot} />}
+              </div>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );
