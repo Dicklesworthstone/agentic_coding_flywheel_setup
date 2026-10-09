@@ -1048,6 +1048,27 @@ wait_for_ssh_ready() {
     return 1
 }
 
+remote_boot_id() {
+    ssh "${ssh_args[@]}" "$SSH_TARGET" cat /proc/sys/kernel/random/boot_id 2>/dev/null
+}
+
+# A failed first run is a reboot handoff only if the guest goes down, comes
+# back with a new boot ID, or has a shutdown scheduled. An installer that just
+# failed would otherwise be waited on for the whole post-reboot timeout.
+installer_reboot_started() {
+    local deadline=$((SECONDS + 300)) current=""
+    while [[ "$SECONDS" -lt "$deadline" ]]; do
+        if ! current="$(remote_boot_id)" || [[ "$current" != "$initial_boot_id" ]]; then
+            return 0
+        fi
+        if ssh "${ssh_args[@]}" "$SSH_TARGET" test -e /run/systemd/shutdown/scheduled 2>/dev/null; then
+            return 0
+        fi
+        sleep 15
+    done
+    return 1
+}
+
 collect_remote_artifacts() {
     echo "[factory-e2e] Collecting remote artifacts from $remote_dir" >&2
     scp "${scp_args[@]}" "$SSH_TARGET:$remote_dir/factory-e2e.log" "$ARTIFACTS_DIR/" 2>/dev/null || true
@@ -1058,13 +1079,17 @@ collect_remote_artifacts() {
     redact_local_factory_artifacts
 }
 
+initial_boot_id="$(remote_boot_id || true)"
 remote_status=0
 set +e
 run_remote_runner "full"
 remote_status=$?
 set -e
 
-if [[ "$remote_status" -ne 0 && "$ALLOW_INSTALL_REBOOT" == "true" ]]; then
+if [[ "$remote_status" -ne 0 && "$ALLOW_INSTALL_REBOOT" == "true" ]] \
+    && [[ -n "$initial_boot_id" ]] && ! installer_reboot_started; then
+    echo "[factory-e2e] Initial SSH run exited $remote_status and the guest neither rebooted nor scheduled a reboot; reporting the installer failure." >&2
+elif [[ "$remote_status" -ne 0 && "$ALLOW_INSTALL_REBOOT" == "true" ]]; then
     echo "[factory-e2e] Initial SSH run exited $remote_status; treating as possible installer reboot." >&2
     if wait_for_ssh_ready; then
         post_deadline=$((SECONDS + POST_REBOOT_TIMEOUT_SECONDS))

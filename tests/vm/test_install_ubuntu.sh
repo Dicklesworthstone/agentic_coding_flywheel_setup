@@ -16,6 +16,7 @@
 # Requirements:
 #   - docker (or compatible runtime that supports `docker run`)
 #   - for a foreign --platform: binfmt/QEMU user emulation registered on the host
+#     with the C (credentials) flag, so setuid sudo works inside the container
 # ============================================================
 
 set -euo pipefail
@@ -130,6 +131,26 @@ if [[ -z "$PLATFORM" ]]; then
       exit 1
       ;;
   esac
+fi
+
+# A binfmt handler without the C (credentials) flag runs setuid binaries
+# unprivileged, so sudo inside an emulated container cannot elevate. The
+# 2026-10-09 arm64 run on ts1 (flags POF) spent hours installing, then failed
+# SLB, MDWB, SRPS and the passwordless-sudo smoke check on exactly that.
+host_platform=""
+case "$(uname -m)" in
+  x86_64|amd64) host_platform="linux/amd64" ;;
+  aarch64|arm64) host_platform="linux/arm64" ;;
+esac
+if [[ "$PLATFORM" != "$host_platform" && -d /proc/sys/fs/binfmt_misc ]]; then
+  binfmt_handler="qemu-x86_64"
+  [[ "$PLATFORM" == "linux/arm64" ]] && binfmt_handler="qemu-aarch64"
+  binfmt_flags="$(sed -n 's/^flags: //p' "/proc/sys/fs/binfmt_misc/$binfmt_handler" 2>/dev/null || true)"
+  if [[ "$binfmt_flags" != *C* ]]; then
+    echo "ERROR: $PLATFORM emulation needs /proc/sys/fs/binfmt_misc/$binfmt_handler registered with the C (credentials) flag (found flags: '${binfmt_flags:-none}')." >&2
+    echo "       Without it sudo cannot elevate inside the container, so the install cannot pass." >&2
+    exit 1
+  fi
 fi
 
 run_one() {

@@ -104,7 +104,9 @@ brew install expect
 # Hang up the first install after cli_tools is checkpointed; --resume must skip it and finish
 ./tests/vm/test_install_ubuntu.sh --interrupt-resume
 
-# Run the install in an arm64 container (binfmt/QEMU user emulation on x86_64 hosts; slow)
+# Run the install in an arm64 container (binfmt/QEMU user emulation on x86_64 hosts; many
+# hours). The qemu-aarch64 handler needs the C (credentials) flag so sudo works inside the
+# container; the harness refuses to start without it.
 ./tests/vm/test_install_ubuntu.sh --platform linux/arm64
 
 # Run focused fresh-root curl|bash regression
