@@ -346,6 +346,15 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
         command: "claude",
       },
       {
+        title: "Check every agent's sign-in at once",
+        steps: [
+          "Run the readiness audit on the VPS",
+          "It reports Claude Code, Codex, Antigravity and CAAM profile state without printing tokens",
+          "Follow the next action it prints for each warning",
+        ],
+        command: "acfs agent-readiness",
+      },
+      {
         title: "Check your subscription",
         steps: [
           "Verify you have an active Claude subscription",
