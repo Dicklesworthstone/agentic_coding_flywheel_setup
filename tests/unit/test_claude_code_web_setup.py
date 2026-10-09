@@ -750,6 +750,22 @@ exec(compile(source, '<setup-python>', 'exec'))
                 self.assertIn('ACFS_CLOUD_ROOT must be an absolute directory', output)
                 self.assertFalse((self.home / '.acfs').exists())
 
+    def test_custom_root_guide_configures_jfp_cache_and_preserves_overrides(self):
+        self.bundle('jfp')
+        self.home.chmod(0o555)
+        writable = self.root / "workspace tools ' quoted $ dollars"
+        self.run_setup('jfp', ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable))
+        guide = (writable / '.codex/AGENTS.md').read_text()
+        commands = [line.split('`')[1] for line in guide.splitlines() if 'export JFP_HOME=' in line]
+        self.assertEqual(len(commands), 1)
+        for existing in ('', str(self.root / 'existing JFP config')):
+            with self.subTest(existing=existing):
+                result = subprocess.run(['bash', '-c', commands[0] + '\nprintf "%s\\0%s" "$JFP_HOME" "$HOME"'],
+                                        env={**self.env, 'JFP_HOME': existing}, capture_output=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.split(b'\0'), [(existing or str(writable)).encode(), str(self.home).encode()])
+        self.assertEqual(list(self.home.iterdir()), [])
+
     def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
         self.bundle()
         writable = self.root / 'workspace tools'

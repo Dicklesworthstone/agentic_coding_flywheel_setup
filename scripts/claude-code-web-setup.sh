@@ -408,6 +408,9 @@ cloud_write_guide() {
     block+="This VM was provisioned by the ACFS cloud setup script for $ACFS_CLOUD_AGENT"$'\n'
     block+="(https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)."$'\n'
     block+="In each task shell, run \`export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH\` before using these CLIs:"$'\n\n'
+    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+        block+="For JFP's prompt cache in this writable data root, run \`export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}\`. This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable."$'\n\n'
+    fi
     if [[ ${#installed[@]} -gt 0 ]]; then
         block+="$(printf '%s\n' "${installed[@]}")"$'\n'
     else
@@ -519,6 +522,7 @@ Read the generated tool guide at {guide} and setup results at {log}.
 In every task shell, run `export PATH={bins}:"$PATH"` before using the CLIs.
 Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
 Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
+When the home directory is read-only, use the guide's JFP_HOME export for the prompt cache.
 Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.
 '''.format(guide=shlex.quote(guide), log=shlex.quote(str(pathlib.Path(state) / 'setup.log')), bins=shlex.quote(bins))
