@@ -303,6 +303,23 @@ acfs_download_to_file() {
     # Ensure parent dir exists
     acfs_security_mkdir_p "$output_dir" || return $?
 
+    # Metadata maintenance can retain all evidence without loading the normal
+    # GitHub retry helper (which has its own cleanup). A failed single attempt
+    # stays failed, and both response headers and any partial body survive.
+    if [[ "${ACFS_SECURITY_RETAIN_TEMP_FILES:-false}" == "true" ]]; then
+        local retained_headers
+        retained_headers="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-hdr.XXXXXX")" || return 1
+        printf 'Retaining download headers: %s\n' "$retained_headers" >&2
+        if acfs_curl -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' \
+            --proto '=https' --proto-redir '=https' \
+            --connect-timeout 15 --max-time 45 --max-filesize 1048576 \
+            "$url" -o "$output_path" -D "$retained_headers"; then
+            return 0
+        else
+            return $?
+        fi
+    fi
+
     # Use GitHub-specific backoff only for an exact approved GitHub origin.
     if acfs_is_github_download_url "$url"; then
         # Load github_api.sh if not already loaded
@@ -346,7 +363,7 @@ acfs_download_to_file() {
 
         if (( status == 0 )); then
             (( attempt > 0 )) && log_info "Succeeded on retry ${attempt} for fetching ${name}"
-            [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+            [[ -n "$hdr_file" ]] && _acfs_remove_temp_files "$hdr_file"
             return 0
         fi
 
@@ -368,7 +385,7 @@ acfs_download_to_file() {
             fi
         fi
 
-        [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+        [[ -n "$hdr_file" ]] && _acfs_remove_temp_files "$hdr_file"
 
         if (( retryable != 0 )); then
             return "$status"
@@ -593,6 +610,13 @@ calculate_sha256() {
 _acfs_remove_temp_files() {
     local path
     local rm_bin=""
+
+    if [[ "${ACFS_SECURITY_RETAIN_TEMP_FILES:-false}" == "true" ]]; then
+        for path in "$@"; do
+            [[ -z "$path" ]] || printf 'Retaining security metadata file: %s\n' "$path" >&2
+        done
+        return 0
+    fi
 
     rm_bin="$(acfs_security_system_binary_path rm 2>/dev/null || true)"
     [[ -n "$rm_bin" ]] || return 0
@@ -1967,7 +1991,7 @@ print_current_checksums() {
         local sha256
 
         printf "  Fetching %s... " "$name" >&2
-        sha256=$(fetch_checksum "$url" 2>/dev/null) || {
+        sha256=$(fetch_checksum "$url") || {
             echo "FAILED" >&2
             had_failure=true
             continue
@@ -1997,8 +2021,10 @@ print_current_checksums() {
         return 1
     fi
 
-    acfs_security_cat_file "$tmp_output"
+    local emit_status=0
+    acfs_security_cat_file "$tmp_output" || emit_status=$?
     _acfs_remove_temp_files "$tmp_output"
+    return "$emit_status"
 }
 
 # ============================================================
@@ -3470,6 +3496,9 @@ Commands:
 
 Options:
   --json               Output in JSON format (use with --verify)
+  --retain-temp-files  Retain metadata downloads, headers and snapshots for this
+                       invocation; one bounded fetch attempt per installer.
+                       Supported with checksum/update/verify/candidate commands.
 
 Examples:
   ./security.sh --print
@@ -3480,11 +3509,38 @@ Examples:
   ./security.sh --verify --json
   ./security.sh --validate-checksum-candidate checksums.yaml /tmp/candidate.yaml /tmp/verification.json > /tmp/validated.yaml
   ./security.sh --checksum https://bun.sh/install
+  ./security.sh --update-checksums --retain-temp-files > /tmp/acfs-checksums.retained.candidate.yaml
 EOF
 }
 
 main() {
     local json_output=false
+    local ACFS_SECURITY_RETAIN_TEMP_FILES=false
+    local -a command_args=()
+    local arg
+
+    for arg in "$@"; do
+        if [[ "$arg" == "--retain-temp-files" ]]; then
+            if [[ "$ACFS_SECURITY_RETAIN_TEMP_FILES" == "true" ]]; then
+                echo "Duplicate --retain-temp-files option" >&2
+                return 1
+            fi
+            ACFS_SECURITY_RETAIN_TEMP_FILES=true
+        else
+            command_args+=("$arg")
+        fi
+    done
+    set -- "${command_args[@]}"
+
+    if [[ "$ACFS_SECURITY_RETAIN_TEMP_FILES" == "true" ]]; then
+        case "${1:-}" in
+            --update-checksums|--verify|--validate-checksum-candidate|--checksum) ;;
+            *)
+                echo "--retain-temp-files requires a checksum metadata command" >&2
+                return 1
+                ;;
+        esac
+    fi
 
     # Parse --json flag if present
     for arg in "$@"; do
@@ -3498,6 +3554,10 @@ main() {
             print_upstream_urls
             ;;
         --update-checksums)
+            if [[ "$#" -ne 1 ]]; then
+                echo "Usage: security.sh --update-checksums [--retain-temp-files]" >&2
+                return 1
+            fi
             print_current_checksums
             ;;
         --verify)

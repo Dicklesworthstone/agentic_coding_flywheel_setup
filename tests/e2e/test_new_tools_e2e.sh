@@ -20,6 +20,7 @@ FAIL_COUNT=0
 SKIP_COUNT=0
 VERBOSE=false
 JSON_STDOUT=false
+CHECKSUM_RETENTION_ONLY=false
 TEST_TIMEOUT_SECONDS="${TEST_TIMEOUT_SECONDS:-10}"
 
 declare -a TEST_RESULTS=()
@@ -777,17 +778,170 @@ test_integration() {
 # JSON Output
 # ============================================================
 
+test_checksum_retention() {
+    local repo_root
+    repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P) || return 1
+    if ! command -v python3 >/dev/null 2>&1; then
+        fail "checksum_retention" "Actual Python3 is required; this selected test cannot skip"
+        return 1
+    fi
+    if python3 - "$repo_root" 1>&2 <<'PY'
+import hashlib
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+import uuid
+
+repo = pathlib.Path(sys.argv[1])
+parent = pathlib.Path(os.environ.get("ACFS_CHECKSUM_E2E_ROOT", ""))
+expected = os.environ.get("ACFS_CHECKSUM_E2E_ASB_SHA256", "")
+assert parent.is_absolute() and parent.is_dir(), "An admitted retained test root is required"
+assert re.fullmatch(r"[0-9a-f]{64}", expected), "A freshly bound public ASB installer digest is required"
+root = pathlib.Path(tempfile.mkdtemp(prefix="acfs-checksum-e2e-", dir=parent))
+print(f"Retaining checksum E2E evidence: {root}", flush=True)
+security = repo / "scripts/lib/security.sh"
+current = root / "current.yaml"
+current.write_bytes((repo / "checksums.yaml").read_bytes())
+original = current.read_bytes()
+sentinel = root / "retained-sentinel.txt"
+sentinel.write_bytes(b"retain-this-original-file\n")
+
+def invoke(label, *args):
+    directory = pathlib.Path(tempfile.mkdtemp(prefix=label + "-", dir=root))
+    env = dict(os.environ, TMPDIR=str(directory), CHECKSUMS_FILE=str(current),
+               ACFS_INTERACTIVE="false", NO_COLOR="1")
+    print(f"Running actual canonical metadata command: {label}", flush=True)
+    result = subprocess.run(["bash", str(security), *args], env=env,
+                            capture_output=True, timeout=1800)
+    (directory / "stdout.txt").write_bytes(result.stdout)
+    (directory / "stderr.txt").write_bytes(result.stderr)
+    sys.stderr.buffer.write(result.stderr)
+    return result, directory
+
+url = "https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
+target, target_dir = invoke("public-asb", "--checksum", url, "--retain-temp-files")
+assert target.returncode == 0, "Real public ASB checksum command failed"
+assert target.stdout.decode().strip() == expected
+bodies = list(target_dir.glob("acfs-fetch.*"))
+headers = list(target_dir.glob("acfs-hdr.*"))
+assert len(bodies) == len(headers) == 1, "The actual downloaded body and headers must survive"
+assert hashlib.sha256(bodies[0].read_bytes()).hexdigest() == expected
+assert re.search(rb"(?m)^HTTP/[^ ]+ 200(?: |\r?$)", headers[0].read_bytes())
+retained_body = bodies[0].read_bytes()
+retained_headers = headers[0].read_bytes()
+
+generation, generation_dir = invoke("full-generation", "--update-checksums", "--retain-temp-files")
+assert generation.returncode == 0, "A failed fetch cannot qualify an incomplete candidate"
+candidate = root / "candidate.yaml"
+candidate.write_bytes(generation.stdout)
+assert generation.stdout.startswith(b"# checksums.yaml - Auto-generated ")
+assert generation.stdout.endswith(b"\n")
+assert list(generation_dir.glob("acfs-checksums-out.*")), "The complete generated output must survive"
+assert list(generation_dir.glob("acfs-fetch.*")), "Generation downloads must survive"
+assert list(generation_dir.glob("acfs-hdr.*")), "Generation response headers must survive"
+
+# Force the actual final output writer to fail, after real complete fetching.
+# A cleanup success must not hide a real SIGPIPE/write failure.
+broken_dir = pathlib.Path(tempfile.mkdtemp(prefix="closed-output-", dir=root))
+broken_env = dict(os.environ, TMPDIR=str(broken_dir), CHECKSUMS_FILE=str(current),
+                  ACFS_INTERACTIVE="false", NO_COLOR="1")
+read_fd, write_fd = os.pipe()
+os.close(read_fd)
+try:
+    broken = subprocess.run(["bash", str(security), "--update-checksums", "--retain-temp-files"],
+                            env=broken_env, stdout=write_fd, stderr=subprocess.PIPE, timeout=1800)
+finally:
+    os.close(write_fd)
+(broken_dir / "stderr.txt").write_bytes(broken.stderr)
+sys.stderr.buffer.write(broken.stderr)
+assert broken.returncode != 0, "Failed output must not be masked by successful retention"
+generated_outputs = list(broken_dir.glob("acfs-checksums-out.*"))
+assert len(generated_outputs) == 1
+assert generated_outputs[0].read_bytes().startswith(b"# checksums.yaml - Auto-generated ")
+assert generated_outputs[0].read_bytes().endswith(b"\n")
+assert b"refusing to emit incomplete" not in broken.stderr, "This must reach the actual output failure"
+
+verification, verification_dir = invoke("full-verification", "--verify", "--json", "--retain-temp-files")
+report_data = json.loads(verification.stdout)
+assert report_data["schema"] == "acfs.installer-checksum-verification.v1"
+assert report_data["checksumsYamlSha256"] == hashlib.sha256(original).hexdigest()
+assert not report_data["errors"] and not report_data["skipped"], "Incomplete verification is a failure"
+assert report_data["total"] == len(report_data["matches"]) + len(report_data["mismatches"])
+assert report_data["total"] > 0
+assert verification.returncode == (1 if report_data["mismatches"] else 0)
+assert list(verification_dir.glob("acfs-checksums-policy.*")), "Bound policy snapshots must survive"
+assert list(verification_dir.glob("acfs-checksum-report.*")), "The real verification report must survive"
+report = root / "verification.json"
+report.write_bytes(verification.stdout)
+validated, validation_dir = invoke("strict-validation", "--validate-checksum-candidate",
+                                  str(current), str(candidate), str(report), "--retain-temp-files")
+assert validated.returncode == 0, "The actual generated candidate must match the actual observation set"
+assert validated.stdout == candidate.read_bytes()
+assert list(validation_dir.glob("acfs-checksums-current.*")), "Original snapshot must survive validation"
+assert list(validation_dir.glob("acfs-checksums-candidate.*")), "Candidate snapshot must survive validation"
+
+# Change one actual generated digest; do not alter the real report to make it pass.
+pattern = rb'(  asb:\n    url: "[^"\n]+"\n    sha256: ")([0-9a-f]{64})(")'
+def change_digest(match):
+    digest = match[2]
+    return match[1] + (b"0" if digest[:1] != b"0" else b"1") + digest[1:] + match[3]
+changed, count = re.subn(pattern, change_digest, candidate.read_bytes())
+assert count == 1
+invalid = root / "changed-candidate.yaml"
+invalid.write_bytes(changed)
+rejected, rejected_dir = invoke("changed-digest", "--validate-checksum-candidate",
+                               str(current), str(invalid), str(report), "--retain-temp-files")
+assert rejected.returncode != 0 and not rejected.stdout
+assert b"asb" in rejected.stderr and b"checksum" in rejected.stderr.lower()
+assert list(rejected_dir.glob("acfs-checksums-candidate.*")), "Rejected evidence must survive"
+
+missing_url = "https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/no-installer-" + uuid.uuid4().hex + ".sh"
+missing, missing_dir = invoke("real-missing-url", "--checksum", missing_url, "--retain-temp-files")
+assert missing.returncode != 0 and not missing.stdout
+assert b"Failed to fetch" in missing.stderr
+missing_headers = list(missing_dir.glob("acfs-hdr.*"))
+assert len(missing_headers) == 1, "A failure must retain its single-attempt response headers"
+assert re.search(rb"(?m)^HTTP/[^ ]+ 404(?: |\r?$)", missing_headers[0].read_bytes())
+assert len(list(missing_dir.glob("acfs-fetch.*"))) == 1
+
+unknown, unknown_dir = invoke("unknown-option", "--update-checksums", "--retain-temp-files", "--unknown")
+assert unknown.returncode != 0 and not unknown.stdout
+assert not list(unknown_dir.glob("acfs-fetch.*")), "Invalid options must fail before fetching"
+assert current.read_bytes() == original and (repo / "checksums.yaml").read_bytes() == original
+assert sentinel.read_bytes() == b"retain-this-original-file\n"
+assert bodies[0].read_bytes() == retained_body and headers[0].read_bytes() == retained_headers
+print("Actual canonical checksum retention, positive validation and real negatives passed", flush=True)
+PY
+    then
+        pass "checksum_retention" "Actual public generation/verification/strict validation and retained failure evidence passed"
+        return 0
+    else
+        fail "checksum_retention" "Actual canonical checksum retention failed; all test evidence retained"
+        return 1
+    fi
+}
+
 write_json_results() {
     local result_status
+    local suite_name="ACFS New Tools E2E"
+    local categories='"flywheel_tools": 7, "additional_stack_tools": 6, "utility_tools": 9, "integration_tests": 5'
+    if [[ "$CHECKSUM_RETENTION_ONLY" == "true" ]]; then
+        suite_name="ACFS Canonical Checksum Retention E2E"
+        categories='"canonical_checksum_metadata": 1'
+    fi
     if [[ $FAIL_COUNT -gt 0 ]]; then
         result_status="FAILED"
     else
         result_status="PASSED"
     fi
 
-    cat > "$JSON_FILE" <<EOF
+    cat > "$JSON_FILE" <<EOF || return 1
 {
-  "test_suite": "ACFS New Tools E2E",
+  "test_suite": "$suite_name",
   "timestamp": "$(date -Iseconds)",
   "log_file": "$LOG_FILE",
   "summary": {
@@ -798,10 +952,7 @@ write_json_results() {
     "result": "$result_status"
   },
   "categories": {
-    "flywheel_tools": 7,
-    "additional_stack_tools": 6,
-    "utility_tools": 9,
-    "integration_tests": 5
+    $categories
   },
   "tests": [
 $(IFS=,; echo "${TEST_RESULTS[*]}" | sed 's/},{/},\n    {/g' | sed 's/^/    /')
@@ -813,11 +964,14 @@ EOF
 
 print_usage() {
     cat <<'EOF'
-Usage: test_new_tools_e2e.sh [--json] [--verbose]
+Usage: test_new_tools_e2e.sh [--json] [--verbose] [--checksum-retention]
 
 Options:
   --json     Emit the final JSON summary to stdout and send logs to stderr
   --verbose  Include additional detail in the log output
+  --checksum-retention  Select real canonical checksum metadata tests only.
+                        Requires ACFS_CHECKSUM_E2E_ROOT and a freshly bound
+                        ACFS_CHECKSUM_E2E_ASB_SHA256; retains all test artifacts.
   -h, --help Show this help text
 EOF
 }
@@ -830,6 +984,9 @@ parse_args() {
                 ;;
             --verbose)
                 VERBOSE=true
+                ;;
+            --checksum-retention)
+                CHECKSUM_RETENTION_ONLY=true
                 ;;
             -h|--help)
                 print_usage
@@ -877,6 +1034,25 @@ print_summary() {
 
 main() {
     parse_args "$@"
+
+    if [[ "$CHECKSUM_RETENTION_ONLY" == "true" ]]; then
+        local report_dir
+        if [[ "${ACFS_CHECKSUM_E2E_ROOT:-}" != /* || ! -d "${ACFS_CHECKSUM_E2E_ROOT:-}" ]]; then
+            printf 'An admitted absolute ACFS_CHECKSUM_E2E_ROOT is required\n' >&2
+            return 1
+        fi
+        report_dir=$(mktemp -d "${ACFS_CHECKSUM_E2E_ROOT%/}/acfs-checksum-results.XXXXXX") || return 1
+        LOG_FILE="$report_dir/results.log"
+        JSON_FILE="$report_dir/results.json"
+        test_checksum_retention
+        local checksum_exit=$?
+        write_json_results || return 1
+        print_summary
+        if [[ "$JSON_STDOUT" == "true" ]]; then
+            cat "$JSON_FILE" || return 1
+        fi
+        return "$checksum_exit"
+    fi
 
     log "INFO" "START" "========================================"
     log "INFO" "START" "ACFS New Tools E2E Test Suite"
