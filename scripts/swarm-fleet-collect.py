@@ -366,6 +366,44 @@ def validate_plan(plan):
         validate_snapshot(entry["snapshot"], entry["snapshot"].get("base_commit"))
 
 
+def pin_preview(value, approval):
+    """Project an exactly reviewed preview into immutable ranges, without I/O.
+
+    This is not collection authority or proof of remote provenance. The caller
+    must preview the emitted v2 selection and approve that new collection plan.
+    Do not carry endpoints, paths or runtime configuration into a selection.
+    """
+    value = decode(encoded(value))
+    fields = {"schema", "status", "remote_read_only", "starts_agents", "sends_prompts",
+              "worktree_included", "task_completion_verified", "plan", "plan_sha256"}
+    require(type(value) is dict and set(value) in (fields, fields | {"revision_mode"})
+            and value["schema"] == SCHEMA and value["status"] == "preview"
+            and value["remote_read_only"] is True
+            and all(value[k] is False for k in ("starts_agents", "sends_prompts", "worktree_included", "task_completion_verified")),
+            "pin_requires_collection_preview")
+    plan = value["plan"]
+    validate_plan(plan)
+    require(fleet.matches(r"[0-9a-f]{64}", approval)
+            and approval == value["plan_sha256"] == digest(encoded(plan)), "pin_preview_approval_mismatch")
+    if "revision_mode" in value:
+        require(value["revision_mode"] == ("pinned" if plan["policy"] == PINNED_POLICY else "live_head"),
+                "pin_preview_mode_mismatch")
+    return {"schema": PINNED_SPEC_SCHEMA,
+            "hosts": [{"id": e["id"], "base_commit": e["snapshot"]["base_commit"],
+                       "head_commit": e["snapshot"]["head_commit"]} for e in plan["hosts"]]}
+
+
+def pin_main(args):
+    parser = argparse.ArgumentParser(description="Emit exact base/head selection from a reviewed preview; no network or file writes",
+                                     allow_abbrev=False)
+    parser.add_argument("--pin-preview", required=True, help="Private saved collection preview JSON, not an intent or final manifest")
+    parser.add_argument("--accept-plan", required=True, help="Exact digest of that saved preview; this does not approve collection")
+    options = parser.parse_args(args)
+    selection = pin_preview(decode(fleet.read_input(options.pin_preview)), options.accept_plan)
+    print(encoded(selection).decode(), end="")
+    return 0
+
+
 def verify_at(fd):
     intent = decode(fleet.read_at(fd, "intent.json"))
     require(type(intent) is dict and set(intent) == {"schema", "plan"} and intent["schema"] == SCHEMA,
@@ -1320,6 +1358,8 @@ def integration_main(args):
 
 def main(arguments=None):
     args = list(sys.argv[1:] if arguments is None else arguments)
+    if "--pin-preview" in args:
+        return pin_main(args)
     if "--integrate" in args:
         return integration_main(args)
     if "--import" in args:
@@ -1329,7 +1369,8 @@ def main(arguments=None):
         print(encoded(verify(args[1])).decode(), end="")
         return 0
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
-                                     epilog="Offline review import: --import COLLECTION --repository DIR --name NAME [--apply --accept-plan SHA256]")
+                                     epilog="Freeze reviewed ranges: --pin-preview PREVIEW.json --accept-plan SHA256. "
+                                            "Offline review import: --import COLLECTION --repository DIR --name NAME [--apply --accept-plan SHA256]")
     parser.add_argument("--launch-state", required=True)
     parser.add_argument("--bases", required=True, help="Private selection: v1 live HEAD, or v2 exact base/head commits")
     parser.add_argument("--known-hosts", required=True)

@@ -10,7 +10,53 @@ Use an updated trusted checkout, or explicitly upgrade the installed
 [fleet runtime](fleet-runtime.md). Retained older runtimes are not rewritten and
 will not understand the new selection schema.
 
-## Choose exact ranges
+## Freeze a reviewed preview without copying commit IDs
+
+Start with the ordinary live-HEAD preview using the original launch journal,
+version-1 base selection and trust files. Save its JSON stdout privately outside
+the launch/collection directories. A successful preview already contains every
+selected host's exact observed base and tip; those observations do not have to
+be simultaneous, and no collection has been approved yet.
+
+Use the saved preview and its exact `plan_sha256`:
+
+```bash
+acfs-fleet collect --pin-preview "$HOME/fleet-preview.json" \
+  --accept-plan ORIGINAL_PREVIEW_DIGEST
+```
+
+This emits only a version-2 range selection on stdout. It reads the one private
+input, validates the complete plan and digest, and does not open SSH connections,
+start Git or create files. No launch journal, credentials or live host needs to
+be available for this conversion. It retains original host order, including
+empty ranges, without copying paths, task text or trust metadata into the result.
+
+To save the output without replacing an existing file:
+
+```bash
+(
+  umask 077
+  set -o noclobber
+  acfs-fleet collect --pin-preview "$HOME/fleet-preview.json" \
+    --accept-plan ORIGINAL_PREVIEW_DIGEST > "$HOME/fleet-ranges.json"
+)
+```
+
+Check the exit status before using the file. Shell redirection can leave an empty
+file or an error report if conversion fails; neither is a valid selection. The
+command refuses partial/blocked/completed reports, malformed or modified plans,
+incorrect digests, unsafe input files and combinations with collection/import/
+resume actions. It does not silently choose a replacement tip or fix input.
+
+Review the emitted ranges, then run the ordinary collection preview with
+`--bases "$HOME/fleet-ranges.json"` as shown below. **The old digest approves only
+the conversion, not a pinned collection.** Use the new pinned preview's digest
+for `--collect`. The original hosts and repository identities are checked by that
+new preview. The saved preview is operator-supplied evidence, not a signature or
+independent proof of provenance; keep it together with the original launch and
+review context. No old partial output is adopted or overwritten by conversion.
+
+## Choose exact ranges directly
 
 The existing `--bases` option accepts a private version-2 selection file:
 
@@ -133,4 +179,6 @@ missing-only recovery after further commits, binary/mode/symlink/deletion
 preservation, SHA-1/SHA-256 strict import and combined-candidate publication,
 and merge graphs with several excluded boundary ancestors. Native launch
 admission is a protocol fixture; these are not live SSH/provider or installer
-acceptance results.
+acceptance results. Offline-conversion tests cover real private CLI inputs,
+malformed/tampered evidence, mutually exclusive actions, no subprocess/network
+use, and live-preview-to-pinned-collection after both hosts advance.

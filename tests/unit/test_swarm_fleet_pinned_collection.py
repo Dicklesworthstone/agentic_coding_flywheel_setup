@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Collect exact historical commits with real Git while agent HEADs keep moving."""
 import copy
+from contextlib import redirect_stdout
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -333,6 +335,140 @@ class PinnedCollectionTests(unittest.TestCase):
         self.assertEqual((code, report["status"]), (0, "verified"))
         self.assertEqual(report["revision_mode"], "live_head")
         self.assertEqual(report["resume_plan"]["execution_policy"], collect.POLICY)
+
+
+class PinPreviewTests(unittest.TestCase):
+    def setUp(self):
+        self.assertNotEqual(os.geteuid(), 0, "Exercise actual unprivileged production behavior")
+        self.fx = Fixture(pinned=False)
+        self.preview, code = self.fx.run()
+        self.assertEqual(code, 0, self.preview)
+        self.approval = self.preview["plan_sha256"]
+
+    def input_file(self):
+        path = self.fx.root / "saved-preview.json"
+        path.write_bytes(collect.encoded(self.preview))
+        path.chmod(0o600)
+        return path
+
+    def cli(self, path, *args):
+        return subprocess.run([sys.executable, "-I", "-B", collect.__file__, "--pin-preview", str(path),
+                               "--accept-plan", self.approval, *args],
+                              env={**self.fx.git.env, "PATH": "/nonexistent"},
+                              capture_output=True, text=True, timeout=10)
+
+    def test_live_preview_freezes_then_collects_after_both_heads_advance(self):
+        fx = self.fx
+        before = fx.git.contents(fx.root)
+        with patch.object(collect, "transport", side_effect=AssertionError("opened transport")), \
+             patch.object(subprocess, "Popen", side_effect=AssertionError("started process")):
+            selection = collect.pin_preview(self.preview, self.approval)
+        self.assertEqual(fx.git.contents(fx.root), before)
+        self.assertEqual(set(selection), {"schema", "hosts"})
+        self.assertEqual(selection["schema"], collect.PINNED_SPEC_SCHEMA)
+        self.assertEqual([h["id"] for h in selection["hosts"]], ["alpha", "beta"])
+        self.assertTrue(all(set(h) == {"id", "base_commit", "head_commit"} for h in selection["hosts"]))
+        fx.selection = selection
+        for name in fx.heads:
+            fx.advance(name)
+        pinned, code = fx.run()
+        self.assertEqual(code, 0, pinned)
+        self.assertNotEqual(pinned["plan_sha256"], self.approval)
+        with self.assertRaisesRegex(fleet.Refused, "collection_approval_mismatch"):
+            fx.run(self.approval)
+        result, code = fx.run(pinned["plan_sha256"])
+        self.assertEqual((code, result["status"]), (0, "collected"))
+        self.assertEqual(collect.verify(fx.out)["status"], "verified")
+        imported = collect.import_collection(fx.out, fx.git.repo, "frozen", [], 90)
+        self.assertEqual(collect.import_collection(fx.out, fx.git.repo, "frozen", [], 90,
+                         imported["plan_sha256"])["status"], "imported")
+
+    def test_pin_is_repeatable_and_preserves_sha256_empty_ranges(self):
+        fx = Fixture("sha256")
+        for item in fx.selection["hosts"]:
+            item["base_commit"] = item["head_commit"]
+        report, code = fx.run()
+        self.assertEqual(code, 0, report)
+        first = collect.pin_preview(report, report["plan_sha256"])
+        second = collect.pin_preview(json.loads(json.dumps(report)), report["plan_sha256"])
+        self.assertEqual(first, second)
+        self.assertEqual(first, fx.selection)
+        self.assertTrue(all(len(h["head_commit"]) == 64 for h in first["hosts"]))
+
+    def test_bad_digest_or_changed_plan_cannot_freeze_different_work(self):
+        for approval in (None, "f" * 64, self.approval[:20], True):
+            with self.subTest(approval=approval), self.assertRaisesRegex(fleet.Refused, "pin_preview_approval_mismatch"):
+                collect.pin_preview(self.preview, approval)
+        changed = copy.deepcopy(self.preview)
+        changed["plan"]["hosts"][0]["snapshot"]["head_commit"] = "f" * 40
+        with self.assertRaisesRegex(fleet.Refused, "pin_preview_approval_mismatch"):
+            collect.pin_preview(changed, self.approval)
+
+    def test_nonpreview_and_malformed_or_unknown_policy_evidence_refused(self):
+        for status in ("blocked", "partial", "collected", "verified", "resume_preview"):
+            with self.subTest(status=status), self.assertRaisesRegex(fleet.Refused, "pin_requires_collection_preview"):
+                collect.pin_preview({**self.preview, "status": status}, self.approval)
+        for key, value in (("hosts", []), ("policy", "f" * 64), ("timeout_seconds", True)):
+            changed = copy.deepcopy(self.preview)
+            changed["plan"][key] = value
+            changed["plan_sha256"] = collect.digest(collect.encoded(changed["plan"]))
+            with self.subTest(key=key), self.assertRaises(fleet.Refused):
+                collect.pin_preview(changed, changed["plan_sha256"])
+        for key, value in (("starts_agents", True), ("worktree_included", 0), ("unexpected", "ignored?")):
+            with self.subTest(key=key), self.assertRaises(fleet.Refused):
+                collect.pin_preview({**self.preview, key: value}, self.approval)
+        with self.assertRaisesRegex(fleet.Refused, "pin_preview_mode_mismatch"):
+            collect.pin_preview({**self.preview, "revision_mode": "pinned"}, self.approval)
+
+    def test_main_conversion_needs_only_private_preview_and_never_starts_a_process(self):
+        path = self.input_file()
+        before = self.fx.git.contents(self.fx.root)
+        output = io.StringIO()
+        with patch.object(subprocess, "Popen", side_effect=AssertionError("started process")), \
+             patch.object(collect, "transport", side_effect=AssertionError("opened transport")), redirect_stdout(output):
+            code = collect.main(["--pin-preview", str(path), "--accept-plan", self.approval])
+        self.assertEqual(code, 0)
+        self.assertEqual(collect.decode(output.getvalue().encode()), collect.pin_preview(self.preview, self.approval))
+        self.assertEqual(self.fx.git.contents(self.fx.root), before)
+        # Actual isolated CLI with no Git/SSH available via PATH.
+        cli = self.cli(path)
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        self.assertEqual(cli.stderr, "")
+        self.assertEqual(cli.stdout, output.getvalue())
+        self.assertEqual(self.fx.git.contents(self.fx.root), before)
+
+    def test_cli_rejects_mutating_or_other_modes_instead_of_dispatching_them(self):
+        path = self.input_file()
+        before = self.fx.git.contents(self.fx.root)
+        for args in (("--collect",), ("--resume",), ("--import", str(self.fx.out)),
+                     ("--integrate", str(self.fx.out)), ("--verify", str(self.fx.out)),
+                     ("--accept-resume", self.approval), ("--launch-state", str(self.fx.launch))):
+            with self.subTest(args=args):
+                refused = self.cli(path, *args)
+                self.assertEqual(refused.returncode, 2, refused.stdout + refused.stderr)
+                self.assertEqual(self.fx.git.contents(self.fx.root), before)
+
+    def test_cli_refuses_unsafe_or_corrupt_saved_previews(self):
+        path = self.input_file()
+        public = self.fx.root / "public-preview.json"
+        public.write_bytes(path.read_bytes())
+        public.chmod(0o644)
+        link = self.fx.root / "linked-preview.json"
+        link.symlink_to(path)
+        fifo = self.fx.root / "pipe-preview"
+        os.mkfifo(fifo, 0o600)
+        malformed = self.fx.root / "malformed-preview.json"
+        malformed.write_bytes(b'{"schema":')
+        malformed.chmod(0o600)
+        duplicate = self.fx.root / "duplicate-preview.json"
+        duplicate.write_bytes(b'{"schema":"a","schema":"b"}')
+        duplicate.chmod(0o600)
+        for source in (public, link, fifo, malformed, duplicate):
+            with self.subTest(source=source):
+                refused = self.cli(source)
+                self.assertEqual(refused.returncode, 2, refused.stdout + refused.stderr)
+        self.assertFalse(self.fx.out.exists())
+        self.assertEqual(collect.decode(path.read_bytes()), self.preview)
 
 
 if __name__ == "__main__":
