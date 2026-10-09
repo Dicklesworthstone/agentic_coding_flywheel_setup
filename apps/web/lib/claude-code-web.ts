@@ -53,7 +53,7 @@ export const CLOUD_AGENTS: CloudAgent[] = [
   {
     id: "claude", name: "Claude Code", initials: "CC", evidence: "Hosted test",
     summary: "Install once in the environment. Claude loads the tool guide and starts Agent Mail on demand.",
-    caveat: "The Full-network hosted run installed all eleven executables and passed Agent Mail MCP health. Restricted-network hosted acceptance remains open.",
+    caveat: "Full and default Trusted hosted runs installed all eleven executables and passed Agent Mail MCP health. The cold Trusted run took 53 seconds using verified public fallbacks. Organization policies may still block those downloads; inspect the setup summary.",
     docs: CLAUDE_CODE_WEB_DOCS_URL, script: CLAUDE_CODE_WEB_SETUP_SCRIPT,
   },
   {

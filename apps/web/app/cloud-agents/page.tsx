@@ -880,8 +880,8 @@ function runLines(agentId: string, failed: boolean): RunLine[] {
   lines.push({ tone: "step", parts: ["[acfs-cloud] Summary (", seconds ? `${seconds}` : { muted: "n" }, "s)"] });
   for (const id of ids) {
     const label = `    ${id.padEnd(5)} `;
-    // The script's own message when both the mirror and JSM's non-GitHub fallback are unreachable.
-    if (failed && id === "jsm") lines.push({ tone: "warn", parts: [`${label}mirror and public release blocked/unavailable; select Full network access; see ${logs}jsm.log; no source build attempted`] });
+    // Illustrate a blocked tool when both public download paths are unavailable.
+    if (failed && id === "jsm") lines.push({ tone: "warn", parts: [`${label}mirror and public release blocked/unavailable; use Full or Custom allowing the public download hosts; see ${logs}jsm.log; no source build attempted`] });
     else lines.push({ tone: "ok", parts: [label, { muted: "‹version›" }, " (verified prebuilt)"] });
   }
   lines.push({ tone: "detail", parts: [`    Guide for ${mode}: ${guide}; logs: ${logs}`] });
@@ -1012,14 +1012,14 @@ const NETWORK_LEVELS = [
     icon: CircleCheck,
     tone: "text-emerald-400/80",
     verdict: "Should work",
-    detail: "Allow the two hosts below and keep the provider's package-manager defaults so your own installs still work. Not yet accepted in a hosted run.",
+    detail: "Allow the two hosts below and keep the provider's package-manager defaults so your own installs still work. This allowlist passed the ChatGPT hosted test; Claude's Custom mode has not been accepted.",
   },
   {
     name: "Trusted",
-    icon: AlertTriangle,
-    tone: "text-amber-400",
-    verdict: "Partial",
-    detail: "Setup starts, but the mirror is blocked. It falls back to the same pinned binaries on GitHub releases, which the GitHub proxy may also block, and JSM's fallback host is not GitHub. Read the summary for what is missing.",
+    icon: CircleCheck,
+    tone: "text-emerald-400/80",
+    verdict: "Tested",
+    detail: "Our cold Claude run installed all eleven executables in 53 seconds through verified public GitHub fallbacks, including JSM. The mirror is blocked and UBS fetches its modules on first use. Organization policies may still block downloads; read the summary.",
   },
   {
     name: "None",
