@@ -169,6 +169,85 @@ class MirrorPublisher(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'JSM relay checksum'):
                     publisher.prepare('jsm', self.stage)
 
+    def jsm_fallback(self):
+        data = self.tar(["jsm"])
+        work = self.stage / "jsm/v1.2.3"
+        work.mkdir(parents=True, exist_ok=True)
+        name = publisher.TOOLS["jsm"][1]
+        (work / name).write_bytes(data)
+        sha = publisher.digest(data)
+        asset = f"jsm-v1.2.3-linux-x86_64-{sha}.tar.gz"
+        entry = {"version": "v1.2.3", "sha256": "a" * 64, "source": {
+            "asset": name, "sha256": sha, "url": "https://vendor.invalid/jsm.tar.gz"}}
+        release = {"tag_name": publisher.FALLBACK_TAG, "draft": False, "assets": [
+            {"name": asset, "digest": "sha256:" + sha}]}
+        return data, entry, release
+
+    def test_jsm_public_fallback_reuses_verified_asset_and_retains_provenance(self):
+        data, entry, release = self.jsm_fallback()
+        with mock.patch.object(publisher, "run", return_value=json.dumps(release)) as run, \
+                mock.patch.object(publisher, "fetch", return_value=data) as fetch:
+            publisher.publish_jsm_fallback(entry, self.stage)
+        run.assert_called_once_with("gh", "api", f"repos/{publisher.FALLBACK_REPO}/releases/tags/{publisher.FALLBACK_TAG}")
+        self.assertEqual(entry["source"]["upstream_url"], "https://vendor.invalid/jsm.tar.gz")
+        self.assertEqual(entry["sha256"], "a" * 64, "Mirror bundle pin changed")
+        self.assertTrue(entry["source"]["url"].startswith(f"https://github.com/{publisher.FALLBACK_REPO}/releases/download/"))
+        fetch.assert_called_once_with(entry["source"]["url"])
+
+    def test_jsm_public_fallback_upload_never_clobbers(self):
+        data, entry, release = self.jsm_fallback()
+        empty = {**release, "assets": []}
+        with mock.patch.object(publisher, "run", side_effect=[json.dumps(empty), "uploaded", json.dumps(release)]) as run, \
+                mock.patch.object(publisher, "fetch", return_value=data):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        args = run.call_args_list[1].args
+        self.assertEqual(args[:4], ("gh", "release", "upload", publisher.FALLBACK_TAG))
+        self.assertNotIn("--clobber", args)
+
+    def test_jsm_public_fallback_creation_preserves_normal_latest_release(self):
+        data, entry, release = self.jsm_fallback()
+        missing = subprocess.CalledProcessError(1, ["gh", "api"], output='{"status":"404"}')
+        with mock.patch.object(publisher, "run", side_effect=[missing, "created", json.dumps(release)]) as run, \
+                mock.patch.object(publisher, "fetch", return_value=data):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        args = run.call_args_list[1].args
+        self.assertEqual(args[:4], ("gh", "release", "create", publisher.FALLBACK_TAG))
+        self.assertIn("--latest=false", args)
+        self.assertIn("--prerelease", args)
+
+    def test_jsm_public_fallback_auth_error_never_creates_release(self):
+        _, entry, _ = self.jsm_fallback()
+        denied = subprocess.CalledProcessError(1, ["gh", "api"], output='{"status":"403"}')
+        with mock.patch.object(publisher, "run", side_effect=denied) as run, \
+                mock.patch.object(publisher, "fetch") as fetch, self.assertRaises(subprocess.CalledProcessError):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        self.assertEqual(run.call_count, 1)
+        fetch.assert_not_called()
+
+    def test_jsm_public_fallback_rejects_staging_and_remote_digest_mismatch(self):
+        data, entry, release = self.jsm_fallback()
+        work = self.stage / "jsm/v1.2.3" / entry["source"]["asset"]
+        work.write_bytes(b"tampered")
+        with mock.patch.object(publisher, "run") as run, self.assertRaisesRegex(ValueError, "staging checksum"):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        run.assert_not_called()
+        work.write_bytes(data)
+        release["assets"][0]["digest"] = "sha256:" + "0" * 64
+        with mock.patch.object(publisher, "run", return_value=json.dumps(release)) as run, \
+                mock.patch.object(publisher, "fetch") as fetch, self.assertRaisesRegex(ValueError, "GitHub asset digest"):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        self.assertEqual(run.call_count, 1)
+        fetch.assert_not_called()
+
+    def test_jsm_public_fallback_rejects_anonymous_readback_mismatch(self):
+        _, entry, release = self.jsm_fallback()
+        with mock.patch.object(publisher, "run", return_value=json.dumps(release)), \
+                mock.patch.object(publisher, "fetch", return_value=b"tampered"), \
+                self.assertRaisesRegex(ValueError, "anonymous readback"):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        self.assertEqual(entry["source"]["url"], "https://vendor.invalid/jsm.tar.gz")
+        self.assertNotIn("upstream_url", entry["source"])
+
     def test_partial_refresh_keeps_all_unselected_tools(self):
         current = json.loads((ROOT / 'cloud-mirror.json').read_text())
         replacement = {'version': 'updated', 'sha256': 'a' * 64}
@@ -198,10 +277,12 @@ class MirrorPublisher(unittest.TestCase):
         missing = publisher.urllib.error.HTTPError('https://mirror.invalid', 404, 'missing', {}, io.BytesIO())
         with mock.patch('sys.argv', argv), mock.patch.object(publisher, 'prepare', side_effect=lambda tool, stage: (tool, entry)), \
                 mock.patch.object(publisher, 'fetch', side_effect=[value for _ in publisher.TOOLS for value in (missing, packed)]), \
-                mock.patch.object(publisher, 'run') as run:
+                mock.patch.object(publisher, 'run') as run, \
+                mock.patch.object(publisher, 'publish_jsm_fallback') as fallback:
             publisher.main()
         self.assertEqual(run.call_count, len(publisher.TOOLS))
         self.assertEqual(run.call_args_list[0].args[4], 'acfs-cloud-tools/custom/prefix/bv/v1/bundle.tar.gz')
+        fallback.assert_called_once_with(entry, self.stage)
 
     def test_ubs_requires_complete_nonempty_checksum_tables(self):
         valid = "declare -A MODULE_CHECKSUMS=(\n['js']='" + "a" * 64 + "'\n)\ndeclare -A HELPER_CHECKSUMS=(\n['helper.py']='" + "b" * 64 + "'\n)"
