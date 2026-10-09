@@ -651,7 +651,9 @@ acfs_security_close_fd() {
     local fd="${1:-}"
 
     [[ "$fd" =~ ^[0-9]+$ ]] || return 0
-    exec {fd}<&- 2>/dev/null || true
+    # Scope error suppression to this close; a bare exec redirection would
+    # permanently disconnect the caller's stderr.
+    { exec {fd}<&-; } 2>/dev/null || true
 }
 
 acfs_security_release_bound_snapshot() {
@@ -693,6 +695,36 @@ acfs_security_copy_fd_bounded() {
     (( copied_size <= max_bytes )) || return 1
 }
 
+# BSD fdescfs exposes /dev/fd entries with their own inode identity.  Compare
+# the actual open handles with fstat there instead of treating those entries
+# as Linux's symlinks.  Keep the native Bash path on hosts where it works.
+acfs_security_fd_matches_path() {
+    local source_file="$1"
+    local identity_fd="$2"
+    local comparison_fd="${3:-$2}"
+    local perl_bin=""
+
+    [[ "$identity_fd" =~ ^[0-9]+$ && "$comparison_fd" =~ ^[0-9]+$ ]] || return 1
+    [[ -f "$source_file" && ! -L "$source_file" && -r "$source_file" ]] || return 1
+    if [[ -f "/dev/fd/$identity_fd" && -f "/dev/fd/$comparison_fd" ]] \
+        && [[ "$source_file" -ef "/dev/fd/$identity_fd" ]] \
+        && [[ "/dev/fd/$comparison_fd" -ef "/dev/fd/$identity_fd" ]]; then
+        return 0
+    fi
+
+    perl_bin="$(acfs_security_system_binary_path perl)" || return 1
+    "$perl_bin" -MFcntl=:mode -e '
+        my @held = stat(STDIN);
+        open my $other, "<&=3" or exit 1;
+        my @other = stat($other);
+        my @path = lstat($ARGV[0]);
+        exit 1 unless @held && @other && @path;
+        exit 1 unless S_ISREG($held[2]) && S_ISREG($other[2]) && S_ISREG($path[2]);
+        exit 1 unless $held[0] == $path[0] && $held[1] == $path[1];
+        exit 1 unless $held[0] == $other[0] && $held[1] == $other[1];
+    ' "$source_file" <&"$identity_fd" 3<&"$comparison_fd"
+}
+
 # Snapshot a regular, non-symlink policy file while retaining an identity file
 # descriptor.  Output variables are assigned only after every check succeeds.
 acfs_security_open_bound_snapshot() {
@@ -723,7 +755,7 @@ acfs_security_open_bound_snapshot() {
         log_error "Unable to open $label: $source_file"
         return 1
     fi
-    if [[ ! -f "/dev/fd/$identity_fd" || -L "$source_file" || ! "$source_file" -ef "/dev/fd/$identity_fd" ]]; then
+    if ! acfs_security_fd_matches_path "$source_file" "$identity_fd"; then
         log_error "$label changed identity while it was opened: $source_file"
         acfs_security_close_fd "$identity_fd"
         return 1
@@ -746,7 +778,7 @@ acfs_security_open_bound_snapshot() {
         acfs_security_release_bound_snapshot "$snapshot" "$identity_fd"
         return 1
     fi
-    if [[ ! -f "$source_file" || -L "$source_file" || ! "$source_file" -ef "/dev/fd/$identity_fd" ]]; then
+    if ! acfs_security_fd_matches_path "$source_file" "$identity_fd"; then
         log_error "$label changed identity while it was snapshotted: $source_file"
         acfs_security_release_bound_snapshot "$snapshot" "$identity_fd"
         return 1
@@ -780,9 +812,7 @@ acfs_security_bound_snapshot_is_current() {
         log_error "Unable to reopen $label: $source_file"
         return 1
     fi
-    if [[ ! -f "/dev/fd/$verification_fd" ]] \
-        || [[ ! "$source_file" -ef "/dev/fd/$identity_fd" ]] \
-        || [[ ! "/dev/fd/$verification_fd" -ef "/dev/fd/$identity_fd" ]]; then
+    if ! acfs_security_fd_matches_path "$source_file" "$identity_fd" "$verification_fd"; then
         log_error "$label changed identity during validation: $source_file"
         acfs_security_close_fd "$verification_fd"
         return 1
@@ -800,9 +830,7 @@ acfs_security_bound_snapshot_is_current() {
     _acfs_remove_temp_files "$verification_snapshot"
 
     if [[ "$verification_digest" != "$expected_digest" ]] \
-        || [[ ! -f "$source_file" || -L "$source_file" ]] \
-        || [[ ! "$source_file" -ef "/dev/fd/$identity_fd" ]] \
-        || [[ ! "/dev/fd/$verification_fd" -ef "/dev/fd/$identity_fd" ]]; then
+        || ! acfs_security_fd_matches_path "$source_file" "$identity_fd" "$verification_fd"; then
         log_error "$label changed bytes or identity during validation: $source_file"
         acfs_security_close_fd "$verification_fd"
         return 1

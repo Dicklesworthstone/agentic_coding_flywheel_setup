@@ -827,6 +827,12 @@ test_checksum_candidate_validation_rejects_cross_wired_hashes
 test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence
 test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift
 
+if bash "$PROJECT_ROOT/tests/unit/test_security_fd_identity.sh"; then
+    test_pass "retained descriptor identity and diagnostic stream regression"
+else
+    test_fail "retained descriptor identity and diagnostic stream regression"
+fi
+
 echo ""
 echo "==================="
 echo "Passed: $TESTS_PASSED, Failed: $TESTS_FAILED"
