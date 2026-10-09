@@ -141,7 +141,7 @@ cloud_install_tool_job() {
         return 0
     fi
     python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >"$log" 2>&1 <<'PY'
-import hashlib, io, json, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
+import hashlib, io, json, os, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
 try:
@@ -260,10 +260,23 @@ try:
             raise ValueError('symlink in destination: ' + str(target))
         if target.exists() and not target.is_file():
             raise ValueError('non-file destination: ' + str(target))
+    replacements = []
     for name in sorted(seen):
         target = prefix / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(stage / name, target)
+        if any(p.is_symlink() for p in [target, *target.parents]):
+            raise ValueError('symlink in destination: ' + str(target))
+        # Copy beside the destination before replacing it. A timeout, full disk
+        # or interrupted copy must not truncate an already working executable.
+        candidate = target.with_name('.' + target.name + '.acfs-' + work.name + '.tmp')
+        with candidate.open('xb'):
+            pass
+        shutil.copy2(stage / name, candidate)
+        replacements.append((candidate, target))
+    for candidate, target in replacements:
+        if any(p.is_symlink() for p in [target, *target.parents]):
+            raise ValueError('symlink in destination: ' + str(target))
+        os.replace(candidate, target)
     if fallback and tool == 'ubs':
         print('UBS public-release fallback: modules download on first scan; mirror bundles include them.', flush=True)
 except subprocess.CalledProcessError as error:
@@ -510,7 +523,12 @@ Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.
 '''.format(guide=shlex.quote(guide), log=shlex.quote(str(pathlib.Path(state) / 'setup.log')), bins=shlex.quote(bins))
 path = pathlib.Path(directory) / 'SKILL.md'
+def reject_links():
+    if any(parent.is_symlink() for parent in [path, *path.parents]):
+        raise ValueError('Symlink in repository skill path; existing files preserved: ' + str(path))
+reject_links()
 path.parent.mkdir(parents=True, exist_ok=True)
+reject_links()
 try:
     with path.open('x', encoding='utf-8') as output:
         output.write(content)

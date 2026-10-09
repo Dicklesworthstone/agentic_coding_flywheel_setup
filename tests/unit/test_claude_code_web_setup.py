@@ -752,6 +752,76 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertEqual((skill / 'SKILL.md').read_bytes(), original)
         self.assertIn('Existing repository skill retained unchanged', output)
 
+    def test_codex_repository_skill_rejects_symlinked_parents(self):
+        self.bundle()
+        for component in ('skills', 'acfs-cloud-tools'):
+            with self.subTest(component=component):
+                repository = self.root / ('repository-' + component)
+                skill = repository / '.agents/skills/acfs-cloud-tools'
+                link = skill.parent if component == 'skills' else skill
+                link.parent.mkdir(parents=True)
+                target = self.root / ('external-' + component)
+                target.mkdir()
+                sentinel = target / 'existing-data'
+                sentinel.write_bytes(b'Preserve this unrelated directory.\n')
+                link.symlink_to(target, target_is_directory=True)
+                output = self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
+                self.assertEqual(list(target.iterdir()), [sentinel])
+                self.assertEqual(sentinel.read_bytes(), b'Preserve this unrelated directory.\n')
+                self.assertIn('Symlink in repository skill path', output)
+                self.assertIn('use the generated guide explicitly', output)
+                self.assertIn('`br`', (self.home / '.codex/AGENTS.md').read_text())
+
+    def test_reinstall_replaces_binary_atomically_for_existing_readers(self):
+        original = b'#!/bin/sh\necho br-old\n'
+        self.command('br', original.decode())
+        self.bundle(content=b'#!/bin/sh\necho br-new\n')
+        old = self.bin / 'br'
+        # Install to the actual managed destination, rather than the fixture PATH.
+        managed = self.home / '.local/bin/br'
+        managed.parent.mkdir(parents=True)
+        managed.write_bytes(old.read_bytes())
+        managed.chmod(0o755)
+        with managed.open('rb') as reader:
+            output = self.run_setup(ACFS_CLOUD_REINSTALL='1')
+            self.assertEqual(reader.read(), original)
+        self.assertEqual(managed.read_bytes(), b'#!/bin/sh\necho br-new\n')
+        self.assertIn('br-new (verified prebuilt)', output)
+
+    def test_failed_reinstall_copy_preserves_working_binary(self):
+        original = b'#!/bin/sh\necho br-old\n'
+        managed = self.home / '.local/bin/br'
+        managed.parent.mkdir(parents=True)
+        managed.write_bytes(original)
+        managed.chmod(0o755)
+        self.bundle(content=b'#!/bin/sh\necho br-new\n')
+        fault_bin = self.root / 'copy-fault-bin'
+        fault_bin.mkdir()
+        wrapper = fault_bin / 'python3'
+        wrapper.write_text(f'''#!{shutil.which('python3')}
+import pathlib, shutil, sys
+source = sys.stdin.read()
+sys.argv = sys.argv[1:]
+if 'for name in sorted(seen)' in source:
+    original_copy = shutil.copy2
+    def interrupted_copy(src, dst, *args, **kwargs):
+        target = pathlib.Path(dst)
+        if target.parent == pathlib.Path({str(managed.parent)!r}):
+            target.write_bytes(b'interrupted binary copy')
+            raise OSError('injected interrupted binary copy')
+        return original_copy(src, dst, *args, **kwargs)
+    shutil.copy2 = interrupted_copy
+exec(compile(source, '<setup-python>', 'exec'))
+''')
+        wrapper.chmod(0o755)
+        self.env['PATH'] = str(fault_bin) + ':' + self.env['PATH']
+        output = self.run_setup(ACFS_CLOUD_REINSTALL='1')
+        self.assertEqual(managed.read_bytes(), original)
+        result = subprocess.run([str(managed), '--version'], capture_output=True, text=True, timeout=5, check=True)
+        self.assertEqual(result.stdout.strip(), 'br-old')
+        self.assertIn('injected interrupted binary copy', output)
+        self.assertNotIn('br-new (verified prebuilt)', output)
+
     def test_invalid_codex_skill_directory_is_rejected_before_writing(self):
         for directory in ('relative-skill', '/'):
             with self.subTest(directory=directory):
