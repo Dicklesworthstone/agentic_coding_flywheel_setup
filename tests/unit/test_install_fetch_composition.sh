@@ -38,21 +38,10 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/acfs-composition-proof.XXXXXX")"
-cleanup_tmproot() { rm -rf "$TMPROOT"; }
-trap cleanup_tmproot EXIT
+trap 'rm -rf "$TMPROOT"' EXIT
 mkdir -p "$TMPROOT"
 
 FAIL=0
-assert() {
-    local desc="$1" cond="$2"
-    if [[ "$cond" == "true" ]]; then
-        echo "PASS: $desc"
-    else
-        echo "FAIL: $desc"
-        FAIL=1
-    fi
-}
-note() { echo "NOTE: $1"; }
 
 SOURCEABLE="$TMPROOT/install_sourceable.sh"
 total_lines="$(wc -l < "$REPO_ROOT/install.sh")"
@@ -80,6 +69,23 @@ HAS_GUM=false
 YES_MODE=true
 # shellcheck disable=SC1090
 source "$SOURCEABLE"
+# install.sh removes every shell function that exists when it starts and
+# installs its own EXIT/INT/TERM traps. Helpers defined earlier silently
+# vanished (each assert became "command not found" and FAIL stayed 0), and
+# the installer's cleanup ran at test exit. Define them, and reclaim the
+# traps, only after sourcing.
+trap 'rm -rf "$TMPROOT"' EXIT
+trap - INT TERM
+assert() {
+    local desc="$1" cond="$2"
+    if [[ "$cond" == "true" ]]; then
+        echo "PASS: $desc"
+    else
+        echo "FAIL: $desc"
+        FAIL=1
+    fi
+}
+note() { echo "NOTE: $1"; }
 detect_environment
 # install.sh's own `set -euo pipefail` is now active in this shell (it leaks
 # in via sourcing above). Every step below intentionally exercises failure
