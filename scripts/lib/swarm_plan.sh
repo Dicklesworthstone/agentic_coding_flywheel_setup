@@ -423,9 +423,12 @@ $status as $s
       "rch_pressure";
       $rch_check_status;
       (if (b($rch.available) | not) then "RCH is unavailable for CPU-heavy build/test offload"
-       elif (b($rch.status_json_ok) | not) or $rch.status == "fail" then "RCH status JSON failed or timed out"
+       elif (b($rch.status_json_ok) | not) then "RCH status JSON failed or timed out"
+       # A probe that parsed but failed (e.g. no workers registered) must name
+       # the real cause, not a JSON/timeout failure the operator cannot find.
        elif ($rch_workers_total < 1) then "RCH reports no workers"
        elif ($rch_workers_total > 0 and $rch_workers_healthy < 1) then "RCH reports no healthy workers"
+       elif $rch.status == "fail" then "RCH status probe reports a failure; inspect rch status"
        elif (b($rch.queue_json_ok) | not) then "RCH queue telemetry failed or is unavailable; wait for a fresh probe"
        elif $rch_stale_worker_count > 0 then "RCH pressure telemetry has stale workers; wait for fresh telemetry"
        elif $rch_telemetry_uncertain then "RCH pressure telemetry is incomplete; collect fresh counters"
