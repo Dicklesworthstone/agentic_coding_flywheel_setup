@@ -578,6 +578,8 @@ Agent Mail is available as a CLI. This setup does not configure this agent's MCP
 
 Requirements: Linux x86_64 with compatible runtime libraries, Bash, Python 3, curl, tar and GNU timeout, plus a writable data root. Ubuntu 24.04 is the tested OS. If you set `ACFS_CLOUD_ROOT`, use that root instead of `$HOME` in these instructions. Inspect the setup log and each version command to confirm the installed tools work.
 
+For a custom data root, follow the generated guide's `JFP_HOME` export so prompt caching also uses the writable workspace. It preserves an existing `JFP_HOME`; a configured `XDG_CONFIG_HOME` takes precedence and must be writable.
+
 - **[Amp Orbs](https://ampcode.com/docs/orbs/customizing):** merge the command into executable `.agents/setup`, or use the project's Pre-setup Script. Do not install dependencies in `.agents/resume`. Amp documents Debian 12; binary compatibility and hosted persistence remain unverified.
 - **[Devin](https://docs.devin.ai/onboard-devin/environment/blueprint-reference):** add a Linux blueprint `run` step to `initialize` or `maintenance` and task instructions to `knowledge`. Verify a fresh snapshot. PATH exports do not persist between blueprint steps unless written to `$ENVRC`; explicit task-shell exports avoid assuming persistence.
 - **[Grok Bot](https://docs.x.ai/grok-bot/private-networks):** Enterprise Team Setup runs shell-script manifest entries as the computer user on every Linux team computer. Consumer setup access, binary compatibility and hosted persistence remain unverified. Grok Build CLI and chat Build Mode are different products.

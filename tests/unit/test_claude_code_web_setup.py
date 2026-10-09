@@ -753,17 +753,23 @@ exec(compile(source, '<setup-python>', 'exec'))
     def test_custom_root_guide_configures_jfp_cache_and_preserves_overrides(self):
         self.bundle('jfp')
         self.home.chmod(0o555)
-        writable = self.root / "workspace tools ' quoted $ dollars"
+        writable = self.root / "workspace tools ' quoted $ dollars$(touch jfp-injected)"
         self.run_setup('jfp', ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable))
         guide = (writable / '.codex/AGENTS.md').read_text()
         commands = [line.split('`')[1] for line in guide.splitlines() if 'export JFP_HOME=' in line]
         self.assertEqual(len(commands), 1)
+        # Execute the authored guide as a private script in its fixture directory.
+        # A quoting regression must never run an injected command in the checkout.
+        script = self.root / 'jfp-cache-guide.sh'
+        with script.open('x') as output:
+            output.write(commands[0] + '\nprintf "%s\\0%s" "$JFP_HOME" "$HOME"')
         for existing in ('', str(self.root / 'existing JFP config')):
             with self.subTest(existing=existing):
-                result = subprocess.run(['bash', '-c', commands[0] + '\nprintf "%s\\0%s" "$JFP_HOME" "$HOME"'],
+                result = subprocess.run(['bash', str(script)], cwd=self.root,
                                         env={**self.env, 'JFP_HOME': existing}, capture_output=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.split(b'\0'), [(existing or str(writable)).encode(), str(self.home).encode()])
+        self.assertFalse((self.root / 'jfp-injected').exists())
         self.assertEqual(list(self.home.iterdir()), [])
 
     def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
