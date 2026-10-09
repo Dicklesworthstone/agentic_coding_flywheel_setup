@@ -39,6 +39,14 @@ class Refused(Exception):
     """Fixed error codes only; project output and SSH diagnostics stay private."""
 
 
+class Interrupted(Exception):
+    def __init__(self, signum):
+        self.signum = signum
+
+
+FLEET_REFUSED = Refused
+
+
 def require(condition, code):
     if not condition:
         raise Refused(code)
@@ -361,11 +369,13 @@ def receiver(request, pack, deadline):
 
 
 def load_fleet():
+    global FLEET_REFUSED
     path = Path(__file__).absolute().with_name("swarm-fleet-launch.py")
     require(path.is_file() and not path.is_symlink(), "trusted_fleet_helper_required")
     spec = importlib.util.spec_from_file_location("acfs_provision_fleet", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    FLEET_REFUSED = module.Refused
     return module
 
 
@@ -405,6 +415,175 @@ def response_receipt(value, request):
     return receipt
 
 
+def validate_context(context):
+    require(type(context) is dict and set(context) == {"parent_identity", "uid", "git_version"}
+            and type(context["uid"]) is int and context["uid"] > 0
+            and type(context["parent_identity"]) is list and len(context["parent_identity"]) == 2
+            and all(type(n) is int and n >= 0 for n in context["parent_identity"])
+            and type(context["git_version"]) is str and len(context["git_version"]) <= 128, "invalid_remote_context")
+
+
+def saved_plan(fleet, plan, state, known, key, approval):
+    fields = {"schema", "policy", "spec", "source", "artifact", "known_hosts_sha256", "identity_sha256",
+              "state_directory", "state_parent_identity", "timeout_seconds", "contexts"}
+    require(type(plan) is dict and set(plan) == fields and plan["schema"] == SCHEMA
+            and plan["policy"] == policy(), "invalid_provision_plan_or_runtime")
+    require(sha256(approval) and sha(encoded(plan)) == approval, "approval_mismatch")
+    require(plan["state_directory"] == str(state) and plan["known_hosts_sha256"] == sha(known)
+            and plan["identity_sha256"] == sha(key), "recovery_context_mismatch")
+    require(type(plan["timeout_seconds"]) is int and 1 <= plan["timeout_seconds"] <= 600, "invalid_timeout")
+    fleet.validate_spec(plan["spec"])
+    validate_artifact(plan["artifact"])
+    source = plan["source"]
+    require(type(source) is dict and set(source) == {"repository", "repository_identity", "common_directory", "common_identity"},
+            "invalid_saved_source")
+    absolute(source["repository"])
+    absolute(source["common_directory"])
+    for value in (source["repository_identity"], source["common_identity"], plan["state_parent_identity"]):
+        require(type(value) is list and len(value) == 2 and all(type(n) is int and n >= 0 for n in value), "invalid_saved_identity")
+    require(type(plan["contexts"]) is dict and set(plan["contexts"]) == {h["id"] for h in plan["spec"]["hosts"]},
+            "invalid_saved_contexts")
+    for context in plan["contexts"].values():
+        validate_context(context)
+
+
+def recover(fleet, state, known, key, approval, invoke, *, resume=False):
+    """Check all attempts; only untouched hosts may ever enter create again."""
+    global WRITES_ATTEMPTED
+    WRITES_ATTEMPTED = False
+    require(sys.platform == "linux" and os.geteuid() != 0 and os.getuid() == os.geteuid()
+            and not os.environ.get("SUDO_USER"), "provision_as_owner_without_sudo")
+    state = absolute(str(Path(os.path.abspath(state))))
+    with directory(state) as dest:
+        try:
+            fcntl.flock(dest, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refused("provision_operation_in_progress") from None
+        intent_raw = read_at(dest, "intent.json")
+        intent = decode(intent_raw)
+        require(type(intent) is dict and set(intent) == {"schema", "plan"} and intent["schema"] == SCHEMA, "invalid_provision_intent")
+        plan = intent["plan"]
+        saved_plan(fleet, plan, state, known, key, approval)
+        records, history = {"intent.json": intent_raw}, []
+        pending_seen, uncertain_seen = False, False
+        names = set(os.listdir(dest))
+        for host in plan["spec"]["hosts"]:
+            attempt, result = (host["id"] + suffix for suffix in (".attempt.json", ".result.json"))
+            request = request_for(plan, host, "create", plan["contexts"][host["id"]])
+            if attempt not in names:
+                require(result not in names, "result_without_attempt")
+                pending_seen = True
+                history.append((host, None))
+                continue
+            require(not pending_seen and not uncertain_seen, "nonprefix_provision_history")
+            records[attempt] = read_at(dest, attempt)
+            require(decode(records[attempt]) == {"schema": SCHEMA, "request": request}, "attempt_mismatch")
+            saved = None
+            if result in names:
+                records[result] = read_at(dest, result)
+                saved = response_receipt({"schema": SCHEMA, "status": "provisioned", "receipt": decode(records[result])}, request)
+            else:
+                uncertain_seen = True
+            history.append((host, saved if saved is not None else {}))
+
+        def guard():
+            with directory(state) as current, directory(state.parent) as parent:
+                require(identity(current) == identity(dest) and identity(parent) == plan["state_parent_identity"], "state_directory_changed")
+            require(set(os.listdir(dest)) == set(records), "unexpected_or_changed_state")
+            for name, raw in records.items():
+                require(read_at(dest, name) == raw, "state_changed")
+
+        guard()
+        report = {"schema": SCHEMA, "status": "attention", "plan_sha256": approval, "read_only": not resume,
+                  "writes_attempted": False, "starts_agents": False, "runs_project_code": False,
+                  "provenance_verified": False, "task_completion_verified": False, "hosts": []}
+        receipts = {}
+        for host, saved in history:
+            row = {"id": host["id"], "status": "not_attempted" if saved is None else "unconfirmed"}
+            report["hosts"].append(row)
+            if saved is None:
+                continue
+            guard()
+            request = request_for(plan, host, "check", plan["contexts"][host["id"]])
+            try:
+                receipt = response_receipt(invoke(host, request), request)
+                require(not saved or saved == receipt, "original_repository_changed")
+                receipts[host["id"]] = receipt
+                row.update(status="provisioned", local_result_recorded=bool(saved))
+            except (Refused, fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+                row["code"] = str(exc) if isinstance(exc, (Refused, fleet.Refused)) else "remote_io_failure"
+            guard()
+        if any(row["status"] == "unconfirmed" for row in report["hosts"]):
+            return report, 1
+        pending = [host for host, saved in history if saved is None]
+        if not resume:
+            report["status"] = "partial" if pending else "provisioned"
+            return report, 1 if pending else 0
+
+        pack = b""
+        if pending:
+            # Recreate exactly the approved pack, not whatever HEAD is now. No
+            # repair/continuation is authorized if source identity or bytes differ.
+            source, artifact, pack = source_artifact(plan["source"]["repository"], plan["artifact"]["commit"], plan["timeout_seconds"])
+            require(source == plan["source"] and artifact == plan["artifact"], "resume_source_changed")
+            for host in pending:
+                guard()
+                reply = invoke(host, request_for(plan, host, "preview"))
+                require(reply == {"schema": SCHEMA, "status": "available", "context": plan["contexts"][host["id"]]},
+                        "resume_destination_changed")
+                guard()
+        # Only after all attempted hosts are confirmed and all new hosts pass
+        # preflight may missing local confirmations or new attempts be written.
+        for row, (host, saved) in zip(report["hosts"], history):
+            guard()
+            if saved:
+                continue
+            if saved is None:
+                request = request_for(plan, host, "create", plan["contexts"][host["id"]])
+                attempt = {"schema": SCHEMA, "request": request}
+                publish(dest, host["id"] + ".attempt.json", attempt)
+                records[host["id"] + ".attempt.json"] = encoded(attempt)
+                WRITES_ATTEMPTED = report["writes_attempted"] = True
+                guard()
+                try:
+                    receipts[host["id"]] = response_receipt(invoke(host, request, pack), request)
+                except (Refused, fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+                    guard()
+                    row.update(status="unconfirmed", code=str(exc) if isinstance(exc, (Refused, fleet.Refused)) else "remote_io_failure")
+                    return {**report, "status": "partial"}, 1
+            guard()
+            WRITES_ATTEMPTED = report["writes_attempted"] = True
+            publish(dest, host["id"] + ".result.json", receipts[host["id"]])
+            records[host["id"] + ".result.json"] = encoded(receipts[host["id"]])
+            row.update(status="provisioned", local_result_recorded=True)
+            guard()
+        return {**report, "status": "provisioned"}, 0
+
+
+def recovery_main(fleet, args):
+    parser = argparse.ArgumentParser(description="Inspect or explicitly resume an original provisioning journal", allow_abbrev=False)
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--check", metavar="STATE_DIR")
+    action.add_argument("--resume", metavar="STATE_DIR")
+    parser.add_argument("--known-hosts", required=True)
+    parser.add_argument("--identity-file", required=True)
+    parser.add_argument("--accept-plan", required=True)
+    options = parser.parse_args(args)
+    known = fleet.read_input(options.known_hosts, private=False)
+    key = fleet.read_input(options.identity_file)
+    # The timeout is part of the approved original plan, never a new override.
+    path = options.check or options.resume
+    with directory(absolute(str(Path(os.path.abspath(path))))) as fd:
+        initial = decode(read_at(fd, "intent.json"))
+    require(type(initial) is dict and type(initial.get("plan")) is dict, "invalid_provision_intent")
+    timeout = initial["plan"].get("timeout_seconds")
+    require(type(timeout) is int and 1 <= timeout <= 600, "invalid_timeout")
+    report, code = recover(fleet, path, known, key, options.accept_plan, transport(fleet, known, key, timeout),
+                           resume=options.resume is not None)
+    print(encoded(report).decode(), end="")
+    return code
+
+
 def execute(fleet, spec, repository, commit, known, key, state, timeout, approval, invoke):
     global WRITES_ATTEMPTED
     WRITES_ATTEMPTED = False
@@ -430,11 +609,7 @@ def execute(fleet, spec, repository, commit, known, key, state, timeout, approva
             require(type(reply) is dict and set(reply) == {"schema", "status", "context"}
                     and reply["schema"] == SCHEMA and reply["status"] == "available", "remote_preflight_refused")
             context = reply["context"]
-            require(type(context) is dict and set(context) == {"parent_identity", "uid", "git_version"}
-                    and type(context["uid"]) is int and context["uid"] > 0
-                    and type(context["parent_identity"]) is list and len(context["parent_identity"]) == 2
-                    and all(type(n) is int and n >= 0 for n in context["parent_identity"])
-                    and type(context["git_version"]) is str and len(context["git_version"]) <= 128, "invalid_remote_context")
+            validate_context(context)
             plan["contexts"][host["id"]] = context
         except (Refused, fleet.Refused, OSError, subprocess.SubprocessError) as exc:
             errors.append({"id": host["id"], "code": str(exc) if isinstance(exc, (Refused, fleet.Refused)) else "remote_io_failure"})
@@ -494,6 +669,8 @@ def main(args=None):
         print(encoded(receiver(request, pack, deadline)).decode(), end="")
         return 0
     fleet = load_fleet()
+    if any(a in ("--check", "--resume") or a.startswith(("--check=", "--resume=")) for a in args):
+        return recovery_main(fleet, args)
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--spec", required=True, help="Existing fleet launch spec; destinations must not exist")
     parser.add_argument("--repository", required=True)
@@ -520,14 +697,18 @@ def main(args=None):
 
 def cli():
     def stop(signum, _frame):
-        raise InterruptedError(signum)
+        raise Interrupted(signum)
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, stop)
     try:
         return main()
-    except (Refused, OSError, ValueError, subprocess.SubprocessError) as exc:
+    except Interrupted as exc:
+        print(encoded({"schema": SCHEMA, "status": "interrupted", "writes_attempted": WRITES_ATTEMPTED,
+                       "code": "preserve_journal_and_remote_projects"}).decode(), end="")
+        return 128 + exc.signum
+    except (Refused, FLEET_REFUSED, OSError, ValueError, subprocess.SubprocessError) as exc:
         print(encoded({"schema": SCHEMA, "status": "error", "writes_attempted": WRITES_ATTEMPTED,
-                       "code": str(exc) if isinstance(exc, Refused) else "provision_io_or_process_failure"}).decode(), end="")
+                       "code": str(exc) if isinstance(exc, (Refused, FLEET_REFUSED)) else "provision_io_or_process_failure"}).decode(), end="")
         return 2
 
 

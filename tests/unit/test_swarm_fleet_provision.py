@@ -8,6 +8,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import selectors
+import signal
 import subprocess
 import sys
 import tempfile
@@ -342,6 +344,233 @@ class ProvisionTests(unittest.TestCase):
         self.assertTrue((Path(fx.spec["hosts"][0]["request"]["repo"]) / ".git/acfs-provision.json").exists())
         self.assertFalse((fx.state / "alpha.result.json").exists())
         self.assertFalse(Path(fx.spec["hosts"][1]["request"]["repo"]).exists())
+
+
+class RecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.assertNotEqual(os.geteuid(), 0)
+        self.fx = Fixture()
+        self.preview = self.fx.preview()
+        self.approval = self.preview["plan_sha256"]
+
+    def recover(self, resume=False, **options):
+        fx = self.fx
+        return p.recover(fleet, fx.state, fx.known, fx.key, self.approval, options.pop("invoke", fx.invoke),
+                         resume=resume, **options)
+
+    def lost_reply(self):
+        fx = self.fx
+        def lost(host, request, pack=b""):
+            value = fx.invoke(host, request, pack)
+            if request["mode"] == "create":
+                raise OSError("reply lost after actual completion")
+            return value
+        result, code = fx.run(self.approval, invoke=lost)
+        self.assertEqual((code, result["status"]), (1, "partial"))
+        fx.calls.clear()
+
+    def test_lost_reply_check_is_read_only_and_resume_creates_only_untouched_host(self):
+        fx = self.fx
+        self.lost_reply()
+        before = fx.files(fx.root)
+        checked, code = self.recover()
+        self.assertEqual((code, checked["status"]), (1, "partial"))
+        self.assertEqual([h["status"] for h in checked["hosts"]], ["provisioned", "not_attempted"])
+        self.assertFalse(checked["hosts"][0]["local_result_recorded"])
+        self.assertEqual(fx.files(fx.root), before)
+        self.assertEqual(fx.calls, [("alpha", "check")])
+        first = fx.files(Path(fx.spec["hosts"][0]["request"]["repo"]))
+        fx.calls.clear()
+        result, code = self.recover(resume=True)
+        self.assertEqual((code, result["status"]), (0, "provisioned"))
+        self.assertEqual(fx.calls, [("alpha", "check"), ("beta", "preview"), ("beta", "create")])
+        self.assertEqual(fx.files(Path(fx.spec["hosts"][0]["request"]["repo"])), first)
+        self.assertTrue((fx.state / "alpha.result.json").exists())
+        self.assertTrue((fx.state / "beta.result.json").exists())
+
+    def test_completed_check_and_resume_need_no_source_and_write_nothing(self):
+        fx = self.fx
+        self.assertEqual(fx.run(self.approval)[1], 0)
+        fx.repo.rename(fx.root / "retained-source")
+        before = fx.files(fx.root)
+        fx.calls.clear()
+        with patch.object(p, "source_artifact", side_effect=AssertionError("read source during completed recovery")):
+            for resume in (False, True):
+                report, code = self.recover(resume=resume)
+                self.assertEqual((code, report["status"]), (0, "provisioned"))
+                self.assertFalse(report["writes_attempted"])
+        self.assertEqual(fx.calls, [("alpha", "check"), ("beta", "check")] * 2)
+        self.assertEqual(fx.files(fx.root), before)
+
+    def test_no_receipt_never_authorizes_retry_or_later_host_creation(self):
+        fx = self.fx
+        def lost_before_create(host, request, pack=b""):
+            if request["mode"] == "create":
+                raise OSError("never reached host")
+            return fx.invoke(host, request, pack)
+        self.assertEqual(fx.run(self.approval, invoke=lost_before_create)[1], 1)
+        before = fx.files(fx.root)
+        fx.calls.clear()
+        for resume in (False, True):
+            report, code = self.recover(resume=resume)
+            self.assertEqual((code, report["status"]), (1, "attention"))
+            self.assertEqual([h["status"] for h in report["hosts"]], ["unconfirmed", "not_attempted"])
+        self.assertEqual(fx.calls, [("alpha", "check")] * 2)
+        self.assertEqual(fx.files(fx.root), before)
+
+    def test_changed_remote_work_is_reported_without_hiding_other_host(self):
+        fx = self.fx
+        fx.run(self.approval)
+        repo = Path(fx.spec["hosts"][0]["request"]["repo"])
+        (repo / "old.txt").write_text("agent has begun work\n")
+        before = fx.files(fx.root)
+        fx.calls.clear()
+        report, code = self.recover()
+        self.assertEqual((code, report["status"]), (1, "attention"))
+        self.assertEqual(report["hosts"][0]["code"], "checkout_not_clean")
+        self.assertEqual(report["hosts"][1]["status"], "provisioned")
+        self.assertEqual(fx.files(fx.root), before)
+        self.assertEqual(fx.calls, [("alpha", "check"), ("beta", "check")])
+
+    def test_all_pending_destinations_are_checked_before_reconstructing_a_receipt(self):
+        fx = self.fx
+        self.lost_reply()
+        other = Path(fx.spec["hosts"][1]["request"]["repo"])
+        other.mkdir(mode=0o700)
+        (other / "keep").write_text("not ours")
+        before = fx.files(fx.root)
+        with self.assertRaisesRegex(p.Refused, "destination_already_exists"):
+            self.recover(resume=True)
+        self.assertEqual(fx.files(fx.root), before)
+        self.assertFalse((fx.state / "alpha.result.json").exists())
+
+    def test_mismatched_approval_trust_or_saved_request_is_refused_before_network(self):
+        fx = self.fx
+        self.lost_reply()
+        fx.calls.clear()
+        for approval, known in (("f" * 64, fx.known), (self.approval, b"wrong trust")):
+            with self.assertRaises(p.Refused):
+                p.recover(fleet, fx.state, known, fx.key, approval, fx.invoke)
+        attempt = fx.state / "alpha.attempt.json"
+        value = p.decode(attempt.read_bytes())
+        value["request"]["repo"] = str(fx.root / "unapproved")
+        attempt.write_bytes(p.encoded(value))
+        with self.assertRaisesRegex(p.Refused, "attempt_mismatch"):
+            self.recover()
+        self.assertEqual(fx.calls, [])
+
+    def kill_at(self, event):
+        fx = self.fx
+        code = f'''
+import importlib.util, json, os, signal, subprocess
+s = importlib.util.spec_from_file_location("actual", {str(SCRIPT)!r})
+p = importlib.util.module_from_spec(s); s.loader.exec_module(p)
+fleet = p.load_fleet()
+original = p.publish
+def publish(fd, name, value):
+    original(fd, name, value)
+    if name == {event!r}: os.kill(os.getpid(), signal.SIGKILL)
+p.publish = publish
+def invoke(host, request, pack=b""):
+    raw = json.dumps(request, separators=(",", ":")).encode() + b"\\n" + pack
+    source = "RECEIVER_POLICY=" + repr(p.policy()) + "\\n" + open({str(SCRIPT)!r}).read()
+    result = subprocess.run(["/usr/bin/python3", "-I", "-c", source, "--receiver", "20"],
+                            input=raw, capture_output=True, timeout=25)
+    value = p.decode(result.stdout)
+    if result.returncode: raise p.Refused(value["code"])
+    if request["mode"] == "create" and {event!r} == "remote_complete":
+        os.kill(os.getpid(), signal.SIGKILL)
+    return value
+p.execute(fleet, {fx.spec!r}, {str(fx.repo)!r}, {fx.commit!r}, {fx.known!r}, {fx.key!r},
+          {str(fx.state)!r}, 90, {self.approval!r}, invoke)
+'''
+        result = subprocess.run([sys.executable, "-I", "-c", code], env=fx.env,
+                                capture_output=True, timeout=35)
+        self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+        fx.calls.clear()
+
+    def test_sigkill_after_remote_completion_recovers_without_recreating_first_repo(self):
+        fx = self.fx
+        self.kill_at("remote_complete")
+        first = fx.files(Path(fx.spec["hosts"][0]["request"]["repo"]))
+        self.assertFalse((fx.state / "alpha.result.json").exists())
+        checked, code = self.recover()
+        self.assertEqual((code, checked["status"]), (1, "partial"))
+        fx.calls.clear()
+        resumed, code = self.recover(resume=True)
+        self.assertEqual((code, resumed["status"]), (0, "provisioned"))
+        self.assertEqual(fx.calls, [("alpha", "check"), ("beta", "preview"), ("beta", "create")])
+        self.assertEqual(fx.files(Path(fx.spec["hosts"][0]["request"]["repo"])), first)
+
+    def test_sigkill_after_attempt_is_unconfirmed_not_permission_to_retry(self):
+        fx = self.fx
+        self.kill_at("alpha.attempt.json")
+        before = fx.files(fx.root)
+        report, code = self.recover(resume=True)
+        self.assertEqual((code, report["status"]), (1, "attention"))
+        self.assertEqual(fx.calls, [("alpha", "check")])
+        self.assertEqual(fx.files(fx.root), before)
+
+    def test_sigkill_after_final_result_is_read_only_completed_noop(self):
+        fx = self.fx
+        self.kill_at("beta.result.json")
+        before = fx.files(fx.root)
+        report, code = self.recover(resume=True)
+        self.assertEqual((code, report["status"]), (0, "provisioned"))
+        self.assertFalse(report["writes_attempted"])
+        self.assertEqual(fx.files(fx.root), before)
+
+    def test_cli_reads_only_original_state_and_rejects_mixed_creation_flags(self):
+        fx = self.fx
+        self.kill_at("intent.json")
+        inputs = {}
+        for name, raw in (("known", fx.known), ("key", fx.key)):
+            path = fx.root / name
+            path.write_bytes(raw)
+            path.chmod(0o600)
+            inputs[name] = str(path)
+        args = [sys.executable, "-I", str(SCRIPT), "--check", str(fx.state), "--known-hosts", inputs["known"],
+                "--identity-file", inputs["key"], "--accept-plan", self.approval]
+        before = fx.files(fx.root)
+        # No attempts: no OpenSSH binary or source lookup is required.
+        result = subprocess.run(args, env=fx.env, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(p.decode(result.stdout)["status"], "partial")
+        for extra in (["--provision"], ["--resume", str(fx.state)], ["--repository", str(fx.repo)]):
+            result = subprocess.run([*args, *extra], env=fx.env, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(fx.files(fx.root), before)
+        Path(inputs["key"]).chmod(0o644)
+        result = subprocess.run(args, env=fx.env, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(p.decode(result.stdout)["code"], "unsafe_input_file")
+        self.assertNotIn(b"Traceback", result.stderr)
+
+    def test_handled_receiver_sigterm_returns_143_without_claiming_completion(self):
+        code = f'''
+import importlib.util, sys
+s = importlib.util.spec_from_file_location("actual", {str(SCRIPT)!r})
+p = importlib.util.module_from_spec(s); s.loader.exec_module(p)
+original = p.receive_input
+def ready(deadline):
+    print("ready", file=sys.stderr, flush=True)
+    return original(deadline)
+p.receive_input = ready
+sys.argv = [{str(SCRIPT)!r}, "--receiver", "20"]
+sys.exit(p.cli())
+'''
+        with subprocess.Popen([sys.executable, "-I", "-c", code], env=self.fx.env,
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+            with selectors.DefaultSelector() as poll:
+                poll.register(proc.stderr, selectors.EVENT_READ)
+                self.assertTrue(poll.select(10), "receiver did not start")
+                self.assertEqual(os.read(proc.stderr.fileno(), 6), b"ready\n")
+            proc.send_signal(signal.SIGTERM)
+            stdout, stderr = proc.communicate(timeout=10)
+            self.assertEqual(proc.returncode, 143, stdout + stderr)
+            result = p.decode(stdout)
+            self.assertEqual(result["status"], "interrupted")
+            self.assertFalse(result["writes_attempted"])
 
 
 if __name__ == "__main__":
