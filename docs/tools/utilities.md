@@ -253,11 +253,12 @@ Source code to LLM prompt generator with an interactive TUI. Built with Bun/Type
 
 ```bash
 s2p --help
+s2p --version
 ```
 
 ### Basic Usage
 
-`s2p` is an interactive TUI, not a non-interactive CLI. Its only flag is `-h`/`--help`; the first positional argument is the directory to open in (defaults to the current directory). File selection and prompt generation happen inside the TUI:
+Launch `s2p` to select files and generate prompts in its interactive TUI. Use `-h`/`--help` for usage or `-V`/`--version` for the installed version. The first positional argument is the directory to open in (defaults to the current directory):
 
 ```bash
 # Launch the TUI in the current directory
@@ -332,7 +333,7 @@ cargo install aadc
 cargo install coding_agent_usage_tracker
 ```
 
-`s2p` (source_to_prompt_tui) is a Bun/TypeScript tool, not a Rust crate, so it is installed via its own install script (which requires `bun`) rather than `cargo`:
+Install `s2p` (source_to_prompt_tui) through its Bash installer. Published standalone binaries include the Bun runtime; building from source requires Git and Bun:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh | bash
