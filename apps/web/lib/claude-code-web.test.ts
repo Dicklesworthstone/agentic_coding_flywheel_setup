@@ -25,7 +25,8 @@ import {
 } from "./claude-code-web";
 import nextConfig from "../next.config";
 import { getStaticRouteSocialData } from "./social-image-routes";
-import { CLOUD_WALKTHROUGHS, DEVIN_CLOUD_BLUEPRINT, GROK_CLOUD_CHECK_SCRIPT } from "./cloud-agent-walkthroughs";
+import { createSocialImage } from "./social-image";
+import { CLOUD_WALKTHROUGHS, DEVIN_CLOUD_BLUEPRINT, getCloudAgentSetupInstructions, GROK_CLOUD_CHECK_SCRIPT } from "./cloud-agent-walkthroughs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const script = readFileSync(join(REPO_ROOT, CLAUDE_CODE_WEB_SCRIPT_PATH), "utf-8");
@@ -44,6 +45,55 @@ function scriptDefault(name: string): string {
 }
 
 describe("cloud agent page data", () => {
+  test("computer-use handoff includes the complete selected walkthrough without provider docs links", () => {
+    for (const agent of CLOUD_AGENTS) {
+      const instructions = getCloudAgentSetupInstructions(agent.id);
+      expect(instructions).toStartWith(`# Set up Agent Flywheel for ${agent.name}\n`);
+      expect(instructions).toContain(agent.caveat);
+      expect(instructions).toContain("not on my local computer");
+      expect(instructions).toContain("Preserve my existing setup commands");
+      expect(instructions).toContain("ask at that point");
+      expect(instructions).toContain("raw.githubusercontent.com and downloads.agent-flywheel.com");
+      expect(instructions).not.toContain(agent.docs);
+      for (const step of CLOUD_WALKTHROUGHS[agent.id].steps) {
+        expect(instructions).toContain(step.title);
+        for (const paragraph of step.paragraphs) expect(instructions).toContain(paragraph);
+        for (const field of step.fields ?? []) expect(instructions).toContain(`**${field.label}:** ${field.value}`);
+        if (step.paste) expect(instructions).toContain(`\n${step.paste.text}\n\`\`\``);
+        if (step.note) expect(instructions).toContain(step.note);
+        if (step.screenshot) expect(instructions).toContain(`https://agent-flywheel.com${step.screenshot.src}`);
+      }
+      expect(instructions).toContain("Check a fresh task/session");
+      expect(instructions).toContain("Visual guide: https://agent-flywheel.com/cloud-agents#");
+    }
+  });
+
+  test("handoff retains exact runnable recipes, later-task instructions and the Muse capability boundary", () => {
+    const claude = getCloudAgentSetupInstructions("claude");
+    const codex = getCloudAgentSetupInstructions("codex");
+    expect(claude).toContain(`\`\`\`bash\n${CLAUDE_CODE_WEB_SETUP_SCRIPT}\n\`\`\``);
+    expect(codex).toContain(`\`\`\`bash\n${CODEX_CLOUD_SETUP_SCRIPT}\n\`\`\``);
+    expect(codex).toContain(CODEX_CLOUD_START_SKILL);
+    expect(codex).toContain("br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp");
+    expect(codex).toContain("setup exit 0 alone is not installation success");
+    expect(getCloudAgentSetupInstructions("devin")).toContain(`\`\`\`yaml\n${DEVIN_CLOUD_BLUEPRINT}\n\`\`\``);
+    expect(getCloudAgentSetupInstructions("muse")).toContain("Otherwise report the unsupported capability and stop without installing");
+    expect(getCloudAgentSetupInstructions("muse")).toContain(GENERIC_CLOUD_SETUP_SCRIPT);
+    expect(() => getCloudAgentSetupInstructions("__proto__")).toThrow("Unknown cloud agent");
+  });
+
+  test("dedicated cloud share images render nonempty PNGs at each platform size", async () => {
+    for (const [variant, height] of [["opengraph", 630], ["twitter", 600]] as const) {
+      const response = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      expect(response.status).toBe(200);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(bytes.length).toBeGreaterThan(4096);
+      expect(bytes.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      expect(bytes.readUInt32BE(16)).toBe(1200);
+      expect(bytes.readUInt32BE(20)).toBe(height);
+    }
+  });
+
   test("walkthroughs cover every provider with stable, unique step anchors", () => {
     expect(Object.keys(CLOUD_WALKTHROUGHS).sort()).toEqual(CLOUD_AGENTS.map((agent) => agent.id).sort());
     for (const walkthrough of Object.values(CLOUD_WALKTHROUGHS)) {

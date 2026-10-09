@@ -238,10 +238,70 @@ function titleFontSize(title: string, variant: SocialImageVariant): number {
   return 80;
 }
 
+function CloudToolBadge({ label, top, left, color }: { label: string; top: number; left: number; color: string }) {
+  return <div style={{ display: "flex", position: "absolute", top, left, width: 100, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, background: "#0b1923", border: `1px solid ${color}`, color, fontSize: 28, fontWeight: 700, fontFamily: "monospace" }}>{label}</div>;
+}
+
+/** Route-specific art: a cloud surrounded by the tools in its flywheel. */
+function createCloudAgentSocialImage(variant: SocialImageVariant): ImageResponse {
+  const height = variant === "twitter" ? 600 : 630;
+  return new ImageResponse(
+    <div style={{ display: "flex", position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "linear-gradient(135deg, #071018 0%, #0b1723 52%, #101329 100%)", color: "#f4f8ff", fontFamily: "sans-serif" }}>
+      <div style={{ display: "flex", position: "absolute", right: -100, top: -80, width: 650, height: 700, background: "radial-gradient(circle, rgba(75,199,213,0.16) 0%, rgba(128,98,232,0.08) 45%, transparent 70%)" }} />
+      <div style={{ display: "flex", position: "absolute", left: 58, top: 43, alignItems: "center", gap: 12 }}>
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none"><circle cx="17" cy="17" r="14" stroke="#50ddcf" strokeWidth="2" /><path d="M12 11 L19 17 L12 23 M21 23 H26" stroke="#50ddcf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <div style={{ display: "flex", fontSize: 23, fontWeight: 700, letterSpacing: "-0.02em" }}>Agent Flywheel</div>
+      </div>
+      <div style={{ display: "flex", position: "absolute", right: 54, top: 49, fontSize: 16, letterSpacing: "0.14em", color: "#9cb5c9" }}>CLOUD AGENT SETUP</div>
+      <div style={{ display: "flex", position: "absolute", left: 58, top: 131, flexDirection: "column", width: 650 }}>
+        <div style={{ display: "flex", fontSize: 76, fontWeight: 700, letterSpacing: "-0.045em", lineHeight: 1.06 }}>Give your</div>
+        <div style={{ display: "flex", fontSize: 76, fontWeight: 700, letterSpacing: "-0.045em", lineHeight: 1.06 }}>cloud agent</div>
+        <div style={{ display: "flex", fontSize: 76, fontWeight: 700, letterSpacing: "-0.045em", lineHeight: 1.06, color: "#50ddcf" }}>a flywheel.</div>
+        <div style={{ display: "flex", marginTop: 25, fontSize: 24, lineHeight: 1.35, color: "#a9bdcf" }}>Real screenshots. Exact steps. Copy-ready scripts.</div>
+      </div>
+      <div style={{ display: "flex", position: "absolute", left: 58, top: 477, gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", padding: "10px 15px", borderRadius: 9, border: "1px solid #34555b", background: "#11272d", color: "#ddf9f4", fontSize: 18 }}>Claude Code</div>
+        <div style={{ display: "flex", alignItems: "center", padding: "10px 15px", borderRadius: 9, border: "1px solid #354564", background: "#172337", color: "#e1eaff", fontSize: 18 }}>ChatGPT / Codex</div>
+        <div style={{ display: "flex", alignItems: "center", padding: "10px 15px", borderRadius: 9, border: "1px solid #343953", color: "#b4c2d3", fontSize: 18 }}>More Linux agents</div>
+      </div>
+      <div style={{ display: "flex", position: "absolute", left: 720, top: 109, width: 420, height: 420 }}>
+        <svg width="420" height="420" viewBox="0 0 420 420" fill="none" style={{ display: "flex", position: "absolute", left: 0, top: 0 }}>
+          <defs><linearGradient id="cloud-wheel" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse"><stop stopColor="#50ddcf" /><stop offset="1" stopColor="#9b87ff" /></linearGradient></defs>
+          <circle cx="210" cy="210" r="172" stroke="url(#cloud-wheel)" strokeWidth="2" opacity="0.6" />
+          <circle cx="210" cy="210" r="130" stroke="url(#cloud-wheel)" strokeWidth="1" opacity="0.22" />
+          <line x1="210" y1="210" x2="210" y2="38" stroke="#50ddcf" opacity="0.25" />
+          <line x1="210" y1="210" x2="360" y2="124" stroke="#9b87ff" opacity="0.25" />
+          <line x1="210" y1="210" x2="360" y2="296" stroke="#9b87ff" opacity="0.25" />
+          <line x1="210" y1="210" x2="210" y2="382" stroke="#50ddcf" opacity="0.25" />
+          <line x1="210" y1="210" x2="60" y2="296" stroke="#50ddcf" opacity="0.25" />
+          <line x1="210" y1="210" x2="60" y2="124" stroke="#50ddcf" opacity="0.25" />
+          <circle cx="210" cy="210" r="91" fill="#0b1e29" stroke="#335563" strokeWidth="1" />
+          <path d="M166 228 H260 C282 228 296 211 291 191 C288 178 277 169 264 168 C257 146 238 132 216 132 C188 132 166 151 161 175 C142 177 130 189 131 204 C132 218 145 228 166 228 Z" stroke="#6ce6db" strokeWidth="4" fill="#122e37" strokeLinejoin="round" />
+          <path d="M205 157 L222 170 L205 183 M228 183 H244" stroke="#a5f7ef" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M338 68 L350 84 L330 84 Z" fill="#8e90ff" />
+          <path d="M76 345 L63 330 L83 330 Z" fill="#50ddcf" />
+        </svg>
+        <div style={{ display: "flex", position: "absolute", top: 240, left: 141, width: 138, justifyContent: "center", fontSize: 23, fontWeight: 700 }}>Flywheel</div>
+        <CloudToolBadge label="br" top={14} left={160} color="#50ddcf" />
+        <CloudToolBadge label="bv" top={100} left={310} color="#a697ff" />
+        <CloudToolBadge label="am" top={272} left={310} color="#a697ff" />
+        <CloudToolBadge label="ubs" top={358} left={160} color="#50ddcf" />
+        <CloudToolBadge label="cass" top={272} left={10} color="#50ddcf" />
+        <CloudToolBadge label="jsm" top={100} left={10} color="#50ddcf" />
+      </div>
+      <div style={{ display: "flex", position: "absolute", left: 58, bottom: 30, color: "#82a5b4", fontSize: 18 }}>agent-flywheel.com/cloud-agents</div>
+      <div style={{ display: "flex", position: "absolute", right: 58, bottom: 30, color: "#a9bdcf", fontSize: 18 }}>11 executables · 10 prebuilt bundles</div>
+      <div style={{ display: "flex", position: "absolute", left: 0, right: 0, bottom: 0, height: 4, background: "linear-gradient(90deg, #50ddcf, #7cbafa, #9b87ff)" }} />
+    </div>,
+    { width: 1200, height },
+  );
+}
+
 export function createSocialImage(
   data: SocialImageData,
   variant: SocialImageVariant,
 ): ImageResponse {
+  if (data.path === "/cloud-agents") return createCloudAgentSocialImage(variant);
   const width = 1200;
   const height = variant === "twitter" ? 600 : 630;
   const palette = PALETTES[data.theme ?? "default"];

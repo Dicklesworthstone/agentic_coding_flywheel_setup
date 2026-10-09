@@ -3,12 +3,11 @@ import type { ReactNode } from "react";
 
 /**
  * Server-owned metadata for the /cloud-agents route. The page itself is a
- * client component (site convention — see app/page.tsx) because it renders
- * framer-motion variants directly.
+ * client component because its provider switcher and copy controls are interactive.
  */
 const TITLE = "Flywheel tools for cloud agents";
 const DESCRIPTION =
-  "Verified prebuilt Flywheel tools for Claude Code and ChatGPT / Codex, with researched setup recipes for Amp Orbs, Devin, Grok Bot and other Linux cloud agents.";
+  "Step-by-step cloud agent setup with real screenshots and copy-ready scripts. Claude Code, ChatGPT / Codex, Amp Orbs, Devin, Grok Bot and other Linux agents.";
 
 export const metadata: Metadata = {
   title: TITLE,

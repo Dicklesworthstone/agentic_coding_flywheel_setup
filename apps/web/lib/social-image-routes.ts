@@ -95,7 +95,7 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     badge: "Cloud Agent Setup",
     title: "Give Your Cloud Agent a Flywheel",
     description:
-      "Verified prebuilt tools for tasks, coordination, code checks and skills. Claude Code, ChatGPT / Codex and researched Linux cloud recipes.",
+      "Real screenshots, exact steps and copy-ready scripts. Prebuilt Flywheel tools for Claude Code, ChatGPT / Codex and more Linux agents.",
     path: "/cloud-agents",
     theme: "tools",
     tags: ["Cloud Sessions", "Beads", "Agent Mail", "Setup Script"],

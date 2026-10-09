@@ -139,7 +139,18 @@ test.describe("Production Smoke Tests", () => {
     await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
+    const provider = page.getByRole("combobox", { name: "Provider to set up", exact: true });
+    await expect(provider).toHaveValue("claude");
+    const fullInstructions = page.getByRole("button", { name: "Copy full instructions for Claude Code", exact: true });
+    await expect(fullInstructions).toBeVisible();
+    await fullInstructions.click();
+    await expect(fullInstructions).toHaveText("Full instructions copied");
+    await provider.selectOption("codex");
+    await expect(page.getByRole("button", { name: "Copy full instructions for ChatGPT / Codex", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "ChatGPT / Codex Hosted test" })).toHaveAttribute("aria-pressed", "true");
+    await provider.selectOption("claude");
     const claudeSteps = page.getByRole("list", { name: "Claude Code setup walkthrough" });
+    await expect(page.getByRole("link", { name: "Claude Code documentation", exact: true })).toHaveCount(0);
     await expect(claudeSteps.getByRole("img")).toHaveCount(4);
     for (const image of await claudeSteps.getByRole("img").all()) {
       await image.scrollIntoViewIfNeeded();
@@ -155,6 +166,7 @@ test.describe("Production Smoke Tests", () => {
     await page.getByRole("button", { name: "Copy setup script" }).click();
     await expect(page.getByText("Copied").first()).toBeVisible();
     await page.getByRole("button", { name: "ChatGPT / Codex Hosted test" }).click();
+    await expect(provider).toHaveValue("codex");
     await expect(page.getByRole("list", { name: "ChatGPT / Codex setup walkthrough" }).getByRole("img")).toHaveCount(4);
     await expect(page.getByRole("region", { name: "Install script for a Codex cloud environment" }))
       .toContainText('ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash');

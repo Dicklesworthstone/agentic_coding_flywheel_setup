@@ -1,5 +1,6 @@
 import {
   CLAUDE_CODE_WEB_SETUP_SCRIPT,
+  CLOUD_AGENTS,
   CODEX_CLOUD_SETUP_SCRIPT,
   CODEX_CLOUD_START_SKILL,
   GENERIC_CLOUD_SETUP_SCRIPT,
@@ -13,6 +14,47 @@ export type SetupScreenshot = {
   alt: string;
   caption: string;
 };
+
+/** Self-contained computer-use handoff, kept in sync with the visible guide. */
+export function getCloudAgentSetupInstructions(agentId: string): string {
+  const agent = CLOUD_AGENTS.find((item) => item.id === agentId);
+  const walkthrough = CLOUD_WALKTHROUGHS[agentId];
+  if (!agent || !walkthrough) throw new Error(`Unknown cloud agent: ${agentId}`);
+
+  const parts = [
+    `# Set up Agent Flywheel for ${agent.name}`,
+    "Use computer use in my browser to follow these instructions and configure my cloud coding environment. Install the tools in the provider's cloud environment, not on my local computer. Use the repository I specify; ask me which repository if it is unclear. Preserve my existing setup commands, project instructions, environments and repository access settings.",
+    "## Working instructions",
+    "- Follow the actual UI labels below. The screenshots are reference captures from 8 October 2026; if the UI differs, inspect it before acting. Do not invent a missing setup control.\n- Use my existing signed-in session. If sign-in, a billing change, organization permission or a network-policy approval is required, explain the exact action and ask at that point. Respect browser/computer-use approval requirements and organization restrictions.\n- Public downloads require no credentials or ownership of the tool repositories. Prefer allowing only raw.githubusercontent.com and downloads.agent-flywheel.com when the provider supports a custom policy. Full network access is an alternative when authorized; keep a locked organization policy and report unavailable tools.\n- Keep existing commands and settings. Merge the exact recipes below into their named fields. Do not replace unrelated setup or instruction content. Do not add secrets. Do not compile tools from source or run the full VPS installer.\n- Stop if this provider cannot supply a compatible, writable Linux x86_64 setup shell or retain installed files. For a documented but untested provider, verify compatibility rather than promising installation.",
+    "## Provider and evidence",
+    walkthrough.introduction,
+    `**${agent.evidence}.** ${agent.caveat}`,
+    walkthrough.visualEvidence,
+    "## Setup steps",
+  ];
+  walkthrough.steps.forEach((step, index) => {
+    parts.push(`### ${index + 1}. ${step.title}`, ...step.paragraphs);
+    if (step.fields) parts.push(step.fields.map((field) => `- **${field.label}:** ${field.value}`).join("\n"));
+    if (step.paste) {
+      const language = step.paste.text.startsWith("#!/bin/bash") ? "bash" : step.paste.text === DEVIN_CLOUD_BLUEPRINT ? "yaml" : "text";
+      parts.push(`**Paste into ${step.paste.title}:**`, `\`\`\`${language}\n${step.paste.text}\n\`\`\``);
+    }
+    if (step.note) parts.push(`**Note:** ${step.note}`);
+    if (step.screenshot) parts.push(`![${step.screenshot.alt}](https://agent-flywheel.com${step.screenshot.src})`, step.screenshot.caption);
+    if (agentId === "muse" && step.id === "template") {
+      parts.push("If all capability checks pass, use the complete Linux template below. Otherwise report the unsupported capability and stop without installing.", getCloudAgentSetupInstructions("generic"));
+    }
+  });
+  parts.push(
+    "## Completion and handoff",
+    agentId === "muse"
+      ? "Report the VM capability results and whether installation was possible. Do not claim a hosted Muse install merely from its terminal availability. If you use the Linux template, apply its verification and persistence checks."
+      : "Run the first-session verification from this guide. Check every executable: br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp. Read the setup log and tool guide at the paths in the recipe. Report each missing or failed tool and its log reason; setup exit 0 alone is not installation success. Check a fresh task/session after saving or publishing to confirm the tools persist and the agent loads the guide.",
+    "Tell me which environment/project you configured, which settings and fields changed, which tools were verified, any missing tools or blocked steps, and what I must include in later tasks. Do not claim success before the runtime checks pass. Keep edits to provider setup only; do not commit project changes or start unrelated coding work.",
+    `Visual guide: https://agent-flywheel.com/cloud-agents#${agentId}`,
+  );
+  return parts.join("\n\n") + "\n";
+}
 
 export type SetupStep = {
   id: string;
