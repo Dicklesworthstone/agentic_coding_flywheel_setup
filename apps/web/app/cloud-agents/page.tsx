@@ -960,7 +960,7 @@ function RunPreview({ agent }: { agent: CloudAgent }) {
         {lines.map((line, index) => (
           <span
             key={index}
-            className={`block whitespace-pre ${RUN_TONE[line.tone]} ${phase === "armed" ? "opacity-0" : ""}`}
+            className={`block whitespace-pre-wrap pl-[4ch] -indent-[4ch] [overflow-wrap:anywhere] ${RUN_TONE[line.tone]} ${phase === "armed" ? "opacity-0" : ""}`}
             style={phase === "play" ? { animation: `slide-in-left 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) ${index * 45}ms both` } : undefined}
           >
             {line.parts.map((part, partIndex) => typeof part === "string"

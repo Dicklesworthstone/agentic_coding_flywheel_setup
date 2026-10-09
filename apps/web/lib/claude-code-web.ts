@@ -23,12 +23,14 @@ export const CODEX_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\nacfs_clou
 export const CODEX_CLOUD_START_SKILL = `Find the repository root with git rev-parse --show-toplevel.
 Read <repo>/.acfs-cloud/.codex/AGENTS.md for the installed flywheel tools and <repo>/.acfs-cloud/.acfs/cloud/setup.log for failures.
 In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-cloud"; export PATH="$acfs_cloud_root/.local/bin:$PATH" before using the tools.
+Follow the guide's JFP_HOME export in each task shell so JFP caches prompts in the writable workspace; preserve an existing JFP_HOME and keep any XDG_CONFIG_HOME writable.
 Check br --version, bv --version, ubs --version and jsm --version before starting work.
 Use br ready --json and bv --robot-triage; never open their interactive TUIs.`;
 
 export const GENERIC_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_AGENT=generic bash`;
 export const GENERIC_CLOUD_TASK_INSTRUCTIONS = `Read $HOME/.acfs/cloud/AGENTS.md and $HOME/.acfs/cloud/setup.log before starting work.
 In each task shell, run export PATH="$HOME/.local/bin:$PATH".
+If using a custom writable data root, follow the guide's JFP_HOME export in each task shell; preserve an existing JFP_HOME and keep any XDG_CONFIG_HOME writable.
 Check br --version, bv --version, ubs --version and jsm --version; report missing tools from the setup log.
 Use the existing repository tracker with br ready --json and bv --robot-triage. Never open their interactive TUIs.
 Agent Mail is available as a CLI. This setup does not configure this agent's MCP servers.`;
