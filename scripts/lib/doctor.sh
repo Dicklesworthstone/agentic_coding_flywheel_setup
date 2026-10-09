@@ -1061,6 +1061,8 @@ print_acfs_help() {
     echo "  capacity [options]  Estimate safe/recommended agent counts"
     echo "  policy-lint         Lint AGENTS/templates/docs for policy drift"
     echo "  credential-preflight Read-only credential exposure preflight"
+    echo "  agent-readiness     Agent CLI, auth file and CAAM profile readiness (--json;"
+    echo "                      --rehearse plans isolated profile checks, --run executes)"
     echo "  swarm plan          Queue-aware launch advisor"
     echo "  swarm launch        Explicit admission-checked native agent startup"
     echo "  swarm status        Local swarm/coordination JSON snapshot"
@@ -5730,6 +5732,18 @@ main() {
             fi
 
             echo "Error: services-setup.sh not found" >&2
+            return 1
+            ;;
+        agent-readiness|agent_readiness|readiness)
+            shift
+            local readiness_script=""
+            readiness_script="$(_acfs_doctor_find_scripts_script "agent-readiness-audit.sh" 2>/dev/null || true)"
+
+            if [[ -n "$readiness_script" ]]; then
+                _acfs_doctor_exec_bash_script "$readiness_script" "$@"
+            fi
+
+            echo "Error: agent-readiness-audit.sh not found (run: acfs update)" >&2
             return 1
             ;;
         support-bundle|bundle)

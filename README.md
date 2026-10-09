@@ -2779,20 +2779,24 @@ Offline mode reports local manifest/checksum consistency for stack tools. Networ
 
 ### Agent Readiness Audit (`scripts/agent-readiness-audit.sh`)
 
-Run the local agent readiness audit before launching a swarm on a freshly installed VPS:
+Run the local agent readiness audit before launching a swarm on a freshly installed VPS (the installer ships it; from a checkout, `bash scripts/agent-readiness-audit.sh` is equivalent):
 
 ```bash
-bash scripts/agent-readiness-audit.sh
-bash scripts/agent-readiness-audit.sh --json
+acfs agent-readiness
+acfs agent-readiness --json
+acfs agent-readiness --rehearse --profile claude:work --profile codex:main        # plan only
+acfs agent-readiness --rehearse --profile claude:work --profile codex:main --run  # run local CAAM status/--version checks
 ```
+
+Rehearsal uses isolated profiles from `caam profile ls`, never activates, logs in or rotates accounts, and only proves local startup, not live authentication (see `acfs agent-readiness --rehearse --help` for the opt-in live check).
 
 The audit checks Claude Code, Codex CLI, Antigravity CLI, and `caam` without printing token values or auth file contents. It reports CLI presence, version availability, parseable auth/config files, CAAM default profile consistency, and stale CAAM defaults that point at missing profiles.
 
 Useful options:
 
 ```bash
-bash scripts/agent-readiness-audit.sh --no-version  # Skip CLI --version probes
-bash scripts/agent-readiness-audit.sh --home /home/ubuntu --path "$PATH"
+acfs agent-readiness --no-version  # Skip CLI --version probes
+acfs agent-readiness --home /home/ubuntu --path "$PATH"
 ```
 
 Treat failures as launch blockers. Warnings usually mean the CLI is installed but needs a user sign-in or CAAM default profile selection.

@@ -3892,6 +3892,10 @@ acfs_load_internal_checksums_data() {
         scripts/lib/swarm_simulation.sh
         scripts/lib/swarm_status.sh
         scripts/services-setup.sh
+        scripts/agent-readiness-audit.sh
+        packages/manifest/src/agent-readiness-audit.ts
+        packages/manifest/src/agent-profile-rehearsal.ts
+        packages/manifest/src/binary-architecture.ts
         scripts/generated/manifest_index.sh
         scripts/generated/doctor_checks.sh
         scripts/generated/install_all.sh
@@ -4173,6 +4177,9 @@ bootstrap_repo_archive() {
         --wildcards --wildcards-match-slash \
         "*/scripts/**" \
         "*/packages/onboard/**" \
+        "*/packages/manifest/src/agent-readiness-audit.ts" \
+        "*/packages/manifest/src/agent-profile-rehearsal.ts" \
+        "*/packages/manifest/src/binary-architecture.ts" \
         "*/acfs/**" \
         "*/install.sh" \
         "*/checksums.yaml" \
@@ -10920,6 +10927,15 @@ finalize() {
     # Install services-setup wizard
     try_step "Installing services-setup.sh" install_asset "scripts/services-setup.sh" "$ACFS_HOME/scripts/services-setup.sh" || return 1
     try_step "Setting scripts permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/services-setup.sh" || return 1
+
+    # Agent readiness audit and profile rehearsal (`acfs agent-readiness`). The
+    # TypeScript sources keep their checkout layout so the wrapper runs as-is.
+    try_step "Installing agent readiness audit" install_asset "scripts/agent-readiness-audit.sh" "$ACFS_HOME/scripts/agent-readiness-audit.sh" || return 1
+    try_step "Setting agent readiness audit permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/agent-readiness-audit.sh" || return 1
+    try_step "Installing agent-readiness-audit.ts" install_asset "packages/manifest/src/agent-readiness-audit.ts" "$ACFS_HOME/packages/manifest/src/agent-readiness-audit.ts" || return 1
+    try_step "Installing agent-profile-rehearsal.ts" install_asset "packages/manifest/src/agent-profile-rehearsal.ts" "$ACFS_HOME/packages/manifest/src/agent-profile-rehearsal.ts" || return 1
+    try_step "Installing binary-architecture.ts" install_asset "packages/manifest/src/binary-architecture.ts" "$ACFS_HOME/packages/manifest/src/binary-architecture.ts" || return 1
+    try_step "Setting agent readiness ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/packages" || return 1
     try_step "Setting lib scripts permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh "$ACFS_HOME/scripts/nightly-update.sh" || return 1
     try_step "Setting generated scripts permissions" $SUDO find "$ACFS_HOME/scripts/generated" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} + || return 1
     try_step "Setting scripts ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts" || return 1

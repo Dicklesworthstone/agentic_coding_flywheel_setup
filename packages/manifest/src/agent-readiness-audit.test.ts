@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -463,5 +463,52 @@ describe("agent readiness audit", () => {
     expect(antigravity?.status).toBe("unknown");
     expect(antigravity?.config?.status).toBe("unknown");
     expect(JSON.stringify(report)).not.toContain(REDACTION_SAMPLE);
+  });
+
+  test("installed `acfs agent-readiness` runs the shipped copy through the CLI dispatcher", () => {
+    // Mirror install.sh: doctor.sh is bin/acfs, the wrapper lives in scripts/,
+    // and the TypeScript keeps its checkout layout under packages/manifest/src.
+    const fixture = createCliFixture();
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    const acfsHome = join(fixture.root, "acfs-home");
+    const installed: [string, string][] = [
+      ["scripts/lib/doctor.sh", "bin/acfs"],
+      ["scripts/agent-readiness-audit.sh", "scripts/agent-readiness-audit.sh"],
+      ...["agent-readiness-audit.ts", "agent-profile-rehearsal.ts", "binary-architecture.ts"].map(
+        (file): [string, string] => [`packages/manifest/src/${file}`, `packages/manifest/src/${file}`],
+      ),
+    ];
+    for (const [from, to] of installed) {
+      mkdirSync(dirname(join(acfsHome, to)), { recursive: true });
+      copyFileSync(join(repo, from), join(acfsHome, to));
+    }
+    const run = (args: string[]) =>
+      spawnSync("/bin/bash", [join(acfsHome, "bin", "acfs"), ...args], {
+        encoding: "utf8",
+        env: {
+          HOME: fixture.home,
+          ACFS_HOME: acfsHome,
+          PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+        },
+      });
+
+    // The dispatcher re-derives ACFS_BIN_DIR from the passwd home (by design),
+    // so CLI presence reflects the real host; auth comes from --home.
+    const audit = run(["agent-readiness", "--json", "--no-version", "--home", fixture.home, "--path", fixture.bin]);
+    expect(audit.stderr).not.toContain("not found");
+    expect(audit.stderr).not.toContain("unknown option");
+    expect([0, 1]).toContain(audit.status);
+    const report = parseCliJsonReport(audit.stdout);
+    expect(report.tools.map((tool) => [tool.id, tool.auth?.status ?? null])).toEqual([
+      ["claude", "pass"],
+      ["codex", "pass"],
+      ["agy", "pass"],
+      ["caam", null],
+    ]);
+    expect(audit.stdout).not.toContain(fixture.secret);
+
+    const rehearsal = run(["agent-readiness", "--rehearse", "--help"]);
+    expect(rehearsal.status).toBe(0);
+    expect(rehearsal.stdout).toContain("--profile PROVIDER:NAME");
   });
 });

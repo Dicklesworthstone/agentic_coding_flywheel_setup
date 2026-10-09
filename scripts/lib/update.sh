@@ -3342,7 +3342,7 @@ sync_acfs_deployed() {
         local deployed_rel="$1"
 
         case "$deployed_rel" in
-            bin/acfs|bin/acfs-update|bin/flywheel-update-agents-md|onboard/onboard.sh|scripts/generated/*.sh|scripts/lib/*.sh|scripts/nightly-update.sh|scripts/services-setup.sh)
+            bin/acfs|bin/acfs-update|bin/flywheel-update-agents-md|onboard/onboard.sh|scripts/generated/*.sh|scripts/lib/*.sh|scripts/nightly-update.sh|scripts/services-setup.sh|scripts/agent-readiness-audit.sh)
                 printf '%s\n' "755"
                 ;;
         esac
@@ -3446,6 +3446,10 @@ sync_acfs_deployed() {
         "scripts/lib/agy_locked.py:scripts/lib/agy_locked.py"
         "scripts/lib/agy_locked.py:bin/agy-locked"
         "scripts/services-setup.sh:scripts/services-setup.sh"
+        "scripts/agent-readiness-audit.sh:scripts/agent-readiness-audit.sh"
+        "packages/manifest/src/agent-readiness-audit.ts:packages/manifest/src/agent-readiness-audit.ts"
+        "packages/manifest/src/agent-profile-rehearsal.ts:packages/manifest/src/agent-profile-rehearsal.ts"
+        "packages/manifest/src/binary-architecture.ts:packages/manifest/src/binary-architecture.ts"
         "scripts/lib/info.sh:scripts/lib/info.sh"
         "scripts/lib/status.sh:scripts/lib/status.sh"
         "scripts/lib/rescue.sh:scripts/lib/rescue.sh"

@@ -56,6 +56,10 @@ create_archive() {
   # A hand-picked subset silently drifted each time the ledger grew.
   cp -R "$REPO_ROOT/scripts" "$stage_dir/acfs-offline/scripts"
   cp -R "$REPO_ROOT/packages/onboard" "$stage_dir/acfs-offline/packages/onboard"
+  # `acfs agent-readiness` sources are the only extracted packages/manifest files.
+  mkdir -p "$stage_dir/acfs-offline/packages/manifest/src"
+  cp "$REPO_ROOT"/packages/manifest/src/{agent-readiness-audit,agent-profile-rehearsal,binary-architecture}.ts \
+    "$stage_dir/acfs-offline/packages/manifest/src/"
 
   cp -R "$REPO_ROOT/acfs" "$stage_dir/acfs-offline/acfs"
   # Bootstrap extracts and requires */install.sh alongside the runtime (fe0d314b).

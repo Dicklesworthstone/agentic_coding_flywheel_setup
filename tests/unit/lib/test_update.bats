@@ -8732,6 +8732,10 @@ EOF
         'install_asset "scripts/lib/support.sh" "$ACFS_HOME/scripts/lib/support.sh"'
         'install_asset "scripts/generate-root-agents-md.sh" "$ACFS_HOME/bin/flywheel-update-agents-md"'
         'install_asset "scripts/services-setup.sh" "$ACFS_HOME/scripts/services-setup.sh"'
+        'install_asset "scripts/agent-readiness-audit.sh" "$ACFS_HOME/scripts/agent-readiness-audit.sh"'
+        'install_asset "packages/manifest/src/agent-readiness-audit.ts" "$ACFS_HOME/packages/manifest/src/agent-readiness-audit.ts"'
+        'install_asset "packages/manifest/src/agent-profile-rehearsal.ts" "$ACFS_HOME/packages/manifest/src/agent-profile-rehearsal.ts"'
+        'install_asset "packages/manifest/src/binary-architecture.ts" "$ACFS_HOME/packages/manifest/src/binary-architecture.ts"'
         'install_asset "scripts/lib/newproj.sh" "$ACFS_HOME/scripts/lib/newproj.sh"'
         'install_asset "scripts/lib/newproj_agents.sh" "$ACFS_HOME/scripts/lib/newproj_agents.sh"'
         'install_asset "scripts/lib/newproj_detect.sh" "$ACFS_HOME/scripts/lib/newproj_detect.sh"'
@@ -8781,6 +8785,10 @@ EOF
         '"scripts/lib/dashboard.sh:scripts/lib/dashboard.sh"'
         '"scripts/lib/support.sh:scripts/lib/support.sh"'
         '"scripts/services-setup.sh:scripts/services-setup.sh"'
+        '"scripts/agent-readiness-audit.sh:scripts/agent-readiness-audit.sh"'
+        '"packages/manifest/src/agent-readiness-audit.ts:packages/manifest/src/agent-readiness-audit.ts"'
+        '"packages/manifest/src/agent-profile-rehearsal.ts:packages/manifest/src/agent-profile-rehearsal.ts"'
+        '"packages/manifest/src/binary-architecture.ts:packages/manifest/src/binary-architecture.ts"'
         '"scripts/lib/newproj.sh:scripts/lib/newproj.sh"'
         '"scripts/lib/newproj_agents.sh:scripts/lib/newproj_agents.sh"'
         '"scripts/lib/newproj_detect.sh:scripts/lib/newproj_detect.sh"'
@@ -8811,7 +8819,7 @@ EOF
 
     run grep -F '"/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"' "$update"
     assert_success
-    run grep -F 'bin/acfs|bin/acfs-update|bin/flywheel-update-agents-md|onboard/onboard.sh|scripts/generated/*.sh|scripts/lib/*.sh|scripts/nightly-update.sh|scripts/services-setup.sh)' "$update"
+    run grep -F 'bin/acfs|bin/acfs-update|bin/flywheel-update-agents-md|onboard/onboard.sh|scripts/generated/*.sh|scripts/lib/*.sh|scripts/nightly-update.sh|scripts/services-setup.sh|scripts/agent-readiness-audit.sh)' "$update"
     assert_success
     run grep -F 'for generated_script in "$ACFS_REPO_ROOT/scripts/generated/"*.sh; do' "$update"
     assert_success

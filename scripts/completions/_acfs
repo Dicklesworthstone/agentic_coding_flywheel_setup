@@ -81,6 +81,16 @@ _acfs() {
                         '-h[Show help message]' \
                         '--help[Show help message]'
                     ;;
+                agent-readiness|agent_readiness|readiness)
+                    _arguments \
+                        '--json[JSON output]' \
+                        '--quiet[Suppress human output (exit status only)]' \
+                        '--no-version[Skip CLI --version probes]' \
+                        '--home[Home directory to audit]:directory:_files -/' \
+                        '--path[PATH to search for agent CLIs]:path:' \
+                        '--rehearse[Plan isolated CAAM profile checks (add --run to execute)]' \
+                        '--help[Show help message]'
+                    ;;
                 provisioning-packet|provider-packet)
                     _arguments \
                         '--json[Emit machine-readable validation JSON]' \
@@ -452,6 +462,8 @@ _acfs_commands() {
         'credential_preflight:Read-only credential exposure preflight'
         'secrets-preflight:Alias for credential-preflight'
         'secrets_preflight:Alias for credential-preflight'
+        'agent-readiness:Agent CLI, auth file and CAAM profile readiness'
+        'readiness:Alias for agent-readiness'
         'swarm:Swarm plan, status, doctor, simulation, packets, and inventory'
         'swarm-plan:Queue-aware launch advisor'
         'swarm_plan:Queue-aware launch advisor'

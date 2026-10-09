@@ -148,6 +148,7 @@ if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
         case "$key" in
             scripts/*|packages/onboard/*|acfs/*) ;;
             install.sh|checksums.yaml|acfs.manifest.yaml|VERSION) ;;
+            packages/manifest/src/agent-readiness-audit.ts|packages/manifest/src/agent-profile-rehearsal.ts|packages/manifest/src/binary-architecture.ts) ;;
             *) unreachable="${unreachable}  $key"$'\n' ;;
         esac
     done < <(printf '%s\n' "$ledger_data" | grep -oE '^[[:space:]]*\[[^]]+\]=' | sed 's/^[[:space:]]*\[//; s/\]=$//')
@@ -157,6 +158,7 @@ if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
         printf '%s' "$unreachable"
         echo "   install.sh unpacks only: scripts/** packages/onboard/** acfs/**"
         echo "                            install.sh checksums.yaml acfs.manifest.yaml VERSION"
+        echo "                            and the 3 agent-readiness sources in packages/manifest/src"
         echo "   Either add the path to the extraction list in install.sh, or drop it"
         echo "   from the ledger. Users would otherwise see 'INTEGRITY: <path> missing'."
         exit 1

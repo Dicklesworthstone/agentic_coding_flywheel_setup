@@ -154,8 +154,11 @@ mkdir -p "$STAGING"
 # Copy the files that bootstrap_repo_archive extracts
 cp "$REPO_ROOT/install.sh" "$STAGING/"
 cp -r "$REPO_ROOT/scripts" "$STAGING/"
-mkdir -p "$STAGING/packages"
+mkdir -p "$STAGING/packages/manifest/src"
 cp -r "$REPO_ROOT/packages/onboard" "$STAGING/packages/onboard"
+for readiness_source in agent-readiness-audit.ts agent-profile-rehearsal.ts binary-architecture.ts; do
+    cp "$REPO_ROOT/packages/manifest/src/$readiness_source" "$STAGING/packages/manifest/src/"
+done
 cp -r "$REPO_ROOT/acfs" "$STAGING/" 2>/dev/null || mkdir -p "$STAGING/acfs"
 cp "$REPO_ROOT/checksums.yaml" "$STAGING/" 2>/dev/null || echo "{}" > "$STAGING/checksums.yaml"
 cp "$REPO_ROOT/acfs.manifest.yaml" "$STAGING/" 2>/dev/null || echo "{}" > "$STAGING/acfs.manifest.yaml"
