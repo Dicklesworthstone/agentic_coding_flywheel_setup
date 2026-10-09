@@ -118,8 +118,17 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(recovery.transform_sources(text), (text, 1))
 
 
+def use_root_like_umask(test):
+    # The recovery refuses group-writable APT directories and sources, as it
+    # should for /etc/apt; a developer umask of 0002 (Ubuntu's per-user-group
+    # default) must not turn the fixtures into untrusted trees.
+    previous = os.umask(0o022)
+    test.addCleanup(os.umask, previous)
+
+
 class FilesystemTests(unittest.TestCase):
     def setUp(self):
+        use_root_like_umask(self)
         self.directory = tempfile.TemporaryDirectory(prefix="acfs-eol-test-")
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
@@ -384,6 +393,7 @@ class ArchiveStateTests(unittest.TestCase):
     """
 
     def setUp(self):
+        use_root_like_umask(self)
         self.directory = tempfile.TemporaryDirectory(prefix="acfs-eol-state-")
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
