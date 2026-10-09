@@ -149,7 +149,7 @@ export const CLOUD_WALKTHROUGHS: Record<string, CloudWalkthrough> = {
       },
       {
         id: "network", title: "Name it and choose network access",
-        paragraphs: ["In Name, enter Flywheel (or any name you will recognize). Open Network access and choose Full for the simplest setup.", "For a narrower policy, choose Custom, allow the two hosts below and tick Also include default list of common package managers so your project's own installs still work. If you stay on Trusted, setup still starts; inspect the log for tools it could not download."],
+        paragraphs: ["In Name, enter Flywheel (or any name you will recognize). Open Network access and choose Full for the simplest setup.", "For a narrower policy, choose Custom, allow the two hosts below and tick Also include default list of common package managers so your project's own installs still work. The default Trusted also works: the mirror is blocked there, so setup uses verified public GitHub fallbacks. If your organization blocks those downloads, the setup summary names the missing tools."],
         fields: [{ label: "Name", value: "Flywheel" }, { label: "Network access", value: "Full, or Custom with the two hosts" }],
         paste: { title: "Custom allowed domains", text: domains, label: "Copy Claude custom download domains" },
         screenshot: claudeScreenshot("claude-network-options", 1456, 2328, "Add cloud environment dialog with Network access expanded to None, Trusted, Full and Custom.", "3. Full and Custom are in Network access", [
