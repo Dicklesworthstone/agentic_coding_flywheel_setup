@@ -5743,7 +5743,7 @@ main() {
                 _acfs_doctor_exec_bash_script "$readiness_script" "$@"
             fi
 
-            echo "Error: agent-readiness-audit.sh not found (run: acfs update)" >&2
+            echo "Error: agent-readiness-audit.sh not found; re-run the ACFS installer (or: acfs update --bootstrap-self-update)" >&2
             return 1
             ;;
         support-bundle|bundle)
