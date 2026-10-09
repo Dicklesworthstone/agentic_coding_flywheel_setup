@@ -268,7 +268,7 @@ export function CoordinationTrioViz() {
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
                 <div
-                  className="text-[0.6rem] font-black uppercase tracking-[0.5em] block mb-6 opacity-60"
+                  className="text-[0.6rem] font-black uppercase tracking-[0.5em] block mb-6 opacity-90"
                   style={{ color: TOOL_MAP.get(hoveredTool)?.color }}
                 >
                   Component Analysis

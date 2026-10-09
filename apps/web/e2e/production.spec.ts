@@ -215,9 +215,12 @@ test.describe("Production Smoke Tests", () => {
 
     // The brief preview shows exactly what the copy button hands to a browser agent.
     const preview = page.getByRole("button", { name: "Preview brief" });
-    await preview.click();
     const brief = page.getByRole("region", { name: "Full agent instructions for Claude Code" });
-    await expect(brief).toContainText("# Set up Agent Flywheel for Claude Code");
+    // Under load a click can land before hydration; click only while the brief is absent.
+    await expect(async () => {
+      if (await brief.count() === 0) await preview.click();
+      await expect(brief).toContainText("# Set up Agent Flywheel for Claude Code", { timeout: 1000 });
+    }).toPass({ timeout: 20000 });
     await expect(brief).toContainText("Controls to use, in order: (1) Environment chip; (2) Cloud.");
     await page.getByRole("button", { name: "Hide brief" }).click();
     await expect(brief).toHaveCount(0);

@@ -46,7 +46,7 @@ export function RepresentationLadder() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="flex flex-col gap-10 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <div className="text-[0.65rem] font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-60 flex items-center gap-3">
+          <div className="text-[0.65rem] font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-90 flex items-center gap-3">
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Cost Architecture
           </div>

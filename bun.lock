@@ -48,6 +48,7 @@
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "@types/three": "^0.185.4",
+        "axe-core": "4.11.0",
         "eslint": "^9",
         "eslint-config-next": "16.1.4",
         "tailwindcss": "^4",
