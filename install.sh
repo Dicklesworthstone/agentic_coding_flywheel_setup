@@ -10353,6 +10353,11 @@ UNIT_EOF
     # RCH (Remote Compilation Helper)
     if binary_installed "rch"; then
         log_detail "RCH already installed"
+    elif [[ "$(uname -m 2>/dev/null)" == aarch64 || "$(uname -m 2>/dev/null)" == arm64 ]]; then
+        # RCH releases (v2.1.16) have no aarch64 Linux build, so its installer
+        # compiles from source; the step is long and quiet, not hung.
+        log_detail "Installing RCH: no ARM64 Linux release yet, building from source (the slowest step on ARM64)"
+        try_step "Installing RCH" acfs_run_verified_upstream_script_as_target "rch" "bash" || acfs_optional_module_install_failed "rch" "RCH"
     else
         log_detail "Installing RCH"
         try_step "Installing RCH" acfs_run_verified_upstream_script_as_target "rch" "bash" || acfs_optional_module_install_failed "rch" "RCH"

@@ -679,7 +679,8 @@ check_architecture() {
             pass "Architecture: x86_64 (AMD64)"
             ;;
         aarch64|arm64)
-            pass "Architecture: ARM64"
+            pass "Architecture: ARM64" \
+                "RCH has no ARM64 Linux release yet, so the install builds it from source (expect a longer stack phase)"
             ;;
         *)
             fail "Unsupported architecture: $arch" "ACFS requires x86_64 or ARM64"
