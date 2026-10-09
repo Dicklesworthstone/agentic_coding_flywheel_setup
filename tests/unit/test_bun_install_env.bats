@@ -300,8 +300,18 @@ make_stranded_home() {
     fix_field="$(jq -r '.fix' <<< "${JSON_CHECKS[0]}")"
     details_field="$(jq -r '.details' <<< "${JSON_CHECKS[0]}")"
     [[ "$status_field" == "warn" ]]
-    [[ "$details_field" == "4 global install(s) outside $home/.bun/bin: codex cf-wrangler vercel vc" ]]
-    [[ "$fix_field" == 'BUN_INSTALL="$HOME/.bun" bun install -g --trust @openai/codex wrangler vercel'* ]]
+    # Listing order is the directory glob order: creation order on macOS,
+    # name order on Linux. Compare the sorted sets, so each binary and each
+    # package must still appear exactly once.
+    [[ "$details_field" == "4 global install(s) outside $home/.bun/bin: "* ]]
+    local listed packages fix_prefix='BUN_INSTALL="$HOME/.bun" bun install -g --trust '
+    listed="$(tr ' ' '\n' <<< "${details_field##*: }" | LC_ALL=C sort | paste -sd' ' -)"
+    [[ "$listed" == "cf-wrangler codex vc vercel" ]]
+    [[ "$fix_field" == "$fix_prefix"* ]]
+    packages="${fix_field#"$fix_prefix"}"
+    packages="${packages%%"   (or:"*}"
+    packages="$(tr ' ' '\n' <<< "$packages" | LC_ALL=C sort | paste -sd' ' -)"
+    [[ "$packages" == "@openai/codex vercel wrangler" ]]
     [[ "$WARN_COUNT" -eq 1 ]]
 }
 

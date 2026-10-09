@@ -10663,14 +10663,16 @@ EOF
     run grep -F 'command_exists go || missing_lang+=("go")' "$installer"
     assert_failure
 
-    run grep -F "$(gh --version 2>/dev/null | head -1 || echo 'gh')" "$installer"
-    assert_failure
-
-    run grep -F "$(psql --version 2>/dev/null | head -1 || echo 'psql')" "$installer"
-    assert_failure
-
-    run grep -F "$(vault --version 2>/dev/null | head -1 || echo 'vault')" "$installer"
-    assert_failure
+    # install.sh must not embed this machine's tool version output. When a
+    # tool is absent the old `|| echo gh` fallback grepped for the bare name,
+    # which matches ordinary words ("preflight"), so skip absent tools.
+    local version_tool version_line
+    for version_tool in gh psql vault; do
+        version_line="$("$version_tool" --version 2>/dev/null | head -1 || true)"
+        [[ -n "$version_line" ]] || continue
+        run grep -F "$version_line" "$installer"
+        assert_failure
+    done
 
     run grep -F 'command -v uv &>/dev/null' "$installer"
     assert_failure
