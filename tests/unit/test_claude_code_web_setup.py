@@ -797,24 +797,20 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.bundle(content=b'#!/bin/sh\necho br-new\n')
         fault_bin = self.root / 'copy-fault-bin'
         fault_bin.mkdir()
-        wrapper = fault_bin / 'python3'
-        wrapper.write_text(f'''#!{shutil.which('python3')}
-import pathlib, shutil, sys
-source = sys.stdin.read()
-sys.argv = sys.argv[1:]
-if 'for name in sorted(seen)' in source:
-    original_copy = shutil.copy2
-    def interrupted_copy(src, dst, *args, **kwargs):
-        target = pathlib.Path(dst)
-        if target.parent == pathlib.Path({str(managed.parent)!r}):
-            target.write_bytes(b'interrupted binary copy')
-            raise OSError('injected interrupted binary copy')
-        return original_copy(src, dst, *args, **kwargs)
-    shutil.copy2 = interrupted_copy
-exec(compile(source, '<setup-python>', 'exec'))
+        # Python's startup hook injects the filesystem fault in the actual
+        # subprocess, without depending on or re-evaluating its source text.
+        (fault_bin / 'sitecustomize.py').write_text(f'''
+import pathlib, shutil
+original_copy = shutil.copy2
+def interrupted_copy(src, dst, *args, **kwargs):
+    target = pathlib.Path(dst)
+    if target.parent == pathlib.Path({str(managed.parent)!r}):
+        target.write_bytes(b'interrupted binary copy')
+        raise OSError('injected interrupted binary copy')
+    return original_copy(src, dst, *args, **kwargs)
+shutil.copy2 = interrupted_copy
 ''')
-        wrapper.chmod(0o755)
-        self.env['PATH'] = str(fault_bin) + ':' + self.env['PATH']
+        self.env['PYTHONPATH'] = str(fault_bin)
         output = self.run_setup(ACFS_CLOUD_REINSTALL='1')
         self.assertEqual(managed.read_bytes(), original)
         result = subprocess.run([str(managed), '--version'], capture_output=True, text=True, timeout=5, check=True)
