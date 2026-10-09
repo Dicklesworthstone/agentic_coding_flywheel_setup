@@ -556,6 +556,10 @@ Future pack builder commands must:
 
 ## Builder Command
 
+> Superseded design, not implemented: there is no `acfs offline-pack`. Use
+> `acfs installer-cache build` and `install.sh --verified-installer-cache`
+> from the Public Interface section above.
+
 `acfs offline-pack build` prepares `acfs-offline-pack/` from a connected
 machine:
 
@@ -586,7 +590,8 @@ Future installer consumers must:
 - continue to run existing preflight checks for OS, shell, disk, user, and
   required local tools
 
-The installer accepts an extracted pack with:
+The superseded design's installer would accept an extracted pack with (the
+installer has no `--offline-pack` flag or `ACFS_OFFLINE_PACK*` variables):
 
 ```bash
 ./install.sh --offline-pack /path/to/acfs-offline-pack --yes --mode vibe
