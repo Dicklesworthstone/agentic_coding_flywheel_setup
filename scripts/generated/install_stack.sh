@@ -985,73 +985,67 @@ acfs_generated_install_stack_meta_skill() {
             local verified_installer_file=""
             local verified_installer_chmod_bin=""
 
-            # meta_skill has no checksum-anchored Linux ARM64 install source yet.
-            if [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && { [[ "$(uname -m 2>/dev/null)" == "aarch64" ]] || [[ "$(uname -m 2>/dev/null)" == "arm64" ]]; }; then
-                log_error "stack.meta_skill: Linux ARM64 is unsupported until a checksum-anchored artifact or source revision is available"
-                ACFS_LAST_MODULE_FAILURE_REASON="unsupported architecture"
-            else
-                    # Cleared per attempt so a stale reason from an earlier module can
-                    # never be misattributed to this one.
-                    ACFS_LAST_MODULE_FAILURE_REASON=""
-                if acfs_security_init; then
-                    local known_installers_decl=""
-                    # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                    known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
-                    if [[ "$known_installers_decl" == declare\ -A* ]]; then
-                        local tool="ms"
-                        local url=""
-                        local expected_sha256=""
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="ms"
+                    local url=""
+                    local expected_sha256=""
 
-                        # Safe access with explicit empty default
-                        url="${KNOWN_INSTALLERS[$tool]:-}"
-                        if ! expected_sha256="$(get_checksum "$tool")"; then
-                            log_error "stack.meta_skill: get_checksum failed for tool '$tool'"
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "stack.meta_skill: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "stack.meta_skill: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "stack.meta_skill: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "stack.meta_skill: trusted chmod not found for verified installer staging"
                             ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
-                            expected_sha256=""
-                        fi
-
-                        if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                            if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
-                                log_error "stack.meta_skill: failed to create verified installer staging file"
-                                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-                                verified_installer_file=""
-                            elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
-                                log_error "stack.meta_skill: installer verification failed"
-                                : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
-                            elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
-                                log_error "stack.meta_skill: trusted chmod not found for verified installer staging"
-                                ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
-                            elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
-                                log_error "stack.meta_skill: failed to make verified installer staging file read-only"
-                                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-                            elif run_as_target_runner 'bash' "$verified_installer_file" '--easy-mode'; then
-                                install_success=true
-                            else
-                                log_error "stack.meta_skill: verified installer execution failed"
-                                ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
-                            fi
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "stack.meta_skill: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file" '--easy-mode'; then
+                            install_success=true
                         else
-                            if [[ -z "$url" ]]; then
-                                log_error "stack.meta_skill: KNOWN_INSTALLERS[$tool] not found"
-                                ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
-                            fi
-                            if [[ -z "$expected_sha256" ]]; then
-                                log_error "stack.meta_skill: checksum for '$tool' not found"
-                                ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
-                            fi
+                            log_error "stack.meta_skill: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
-                        log_error "stack.meta_skill: KNOWN_INSTALLERS array not available"
-                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        if [[ -z "$url" ]]; then
+                            log_error "stack.meta_skill: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "stack.meta_skill: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
                     fi
                 else
-                    log_error "stack.meta_skill: acfs_security_init failed - check security.sh and checksums.yaml"
-                    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                    log_error "stack.meta_skill: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
-                if [[ -n "$verified_installer_file" ]]; then
-                    _acfs_remove_temp_files "$verified_installer_file"
-                    verified_installer_file=""
-                fi
+            else
+                log_error "stack.meta_skill: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback

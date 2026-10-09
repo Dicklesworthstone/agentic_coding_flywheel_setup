@@ -4288,6 +4288,20 @@ bootstrap_repo_archive() {
     return 0
 }
 
+# Print the first env executable whose --help offers --default-signal.
+acfs_signal_capable_env() {
+    local candidate="" help=""
+    for candidate in "$@"; do
+        [[ -n "$candidate" ]] || continue
+        if help="$(LC_ALL=C "$candidate" --help 2>&1)" \
+            && [[ "$help" == *"--default-signal"* ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 acfs_run_verified_bootstrap_installer() {
     local verified_installer="${ACFS_BOOTSTRAP_DIR:-}/install.sh"
     local bash_bin=""
@@ -4310,9 +4324,10 @@ acfs_run_verified_bootstrap_installer() {
     # Give both handoff paths known signal dispositions. This is essential for
     # the asynchronous path (Bash otherwise starts it with SIGINT/SIGQUIT
     # ignored) and also closes inherited-ignore edge cases on the foreground path.
-    local env_help=""
-    if ! env_help="$(LC_ALL=C "$env_bin" --help 2>&1)" \
-        || [[ "$env_help" != *"--default-signal"* ]]; then
+    # Ubuntu 25.10's default env is uutils 0.2, which lacks --default-signal;
+    # GNU env stays installed there as gnuenv (26.04's uutils env supports it).
+    if ! env_bin="$(acfs_signal_capable_env "$env_bin" \
+        "$(acfs_early_system_binary_path gnuenv 2>/dev/null || true)")"; then
         log_error "Verified bootstrap handoff requires env --default-signal support"
         return 1
     fi

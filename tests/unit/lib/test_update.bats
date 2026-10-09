@@ -1395,8 +1395,10 @@ EOF
     run grep -F 'if ! update_binary_exists "$binary_name"; then' "$update"
     assert_success
 
-    run grep -F 'meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout' "$update"
-    assert_success
+    # meta_skill's pinned installer verifies a release archive and never builds
+    # from source, so Linux ARM64 is not refused up front (v0.2.3 ships one).
+    run grep -F 'meta_skill has no checksum-anchored Linux ARM64 install source' "$update"
+    assert_failure
 
     run grep -F 'cargo install --git https://github.com/Dicklesworthstone/meta_skill' "$update"
     assert_failure

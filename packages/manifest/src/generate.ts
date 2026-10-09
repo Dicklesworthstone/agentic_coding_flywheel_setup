@@ -1665,17 +1665,10 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     "fi",
   ];
 
-  if (tool === "ms") {
-    lines.push(
-      "# meta_skill has no checksum-anchored Linux ARM64 install source yet.",
-      'if [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && { [[ "$(uname -m 2>/dev/null)" == "aarch64" ]] || [[ "$(uname -m 2>/dev/null)" == "arm64" ]]; }; then',
-      `    log_error "${escapeBash(module.id)}: Linux ARM64 is unsupported until a checksum-anchored artifact or source revision is available"`,
-      '    ACFS_LAST_MODULE_FAILURE_REASON="unsupported architecture"',
-      "else",
-      ...indentLines(verifiedInstallAttemptLines, 4),
-      "fi",
-    );
-  } else if (tool === "fsfs") {
+  // meta_skill needs no architecture special case: its pinned installer only
+  // downloads a release archive and verifies it against SHA256SUMS.txt, so a
+  // release without an aarch64 Linux artifact fails closed (no source build).
+  if (tool === "fsfs") {
     lines.push(...fsfsVerifiedInstallAttemptLines);
   } else {
     lines.push(...verifiedInstallAttemptLines);

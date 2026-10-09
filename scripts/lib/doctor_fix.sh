@@ -1023,13 +1023,6 @@ doctor_fix_run_verified_installer_with_env() {
     local bash_bin=""
     local verified_installer_file=""
     local status=0
-    local ms_arch=""
-    ms_arch="$(uname -m 2>/dev/null || true)"
-
-    if [[ "$tool" == "ms" ]] && [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && [[ "$ms_arch" == "aarch64" || "$ms_arch" == "arm64" ]]; then
-        doctor_fix_log WARN "meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout"
-        return 1
-    fi
 
     if ! doctor_fix_require_security; then
         return 1

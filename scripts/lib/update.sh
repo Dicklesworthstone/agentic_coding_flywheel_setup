@@ -4204,12 +4204,6 @@ update_require_security() {
     return 0
 }
 
-update_is_linux_arm64() {
-    local arch=""
-    arch="$(uname -m 2>/dev/null || true)"
-    [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]
-}
-
 update_fsfs_linux_target_triple() {
     local arch=""
 
@@ -5129,11 +5123,6 @@ update_run_verified_installer_with_env() {
         shift 2
     else
         shift
-    fi
-
-    if [[ "$tool" == "ms" ]] && update_is_linux_arm64; then
-        echo "meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout" >&2
-        return 1
     fi
 
     # Per-tool version hold (issue #357): a held tool is skipped before any

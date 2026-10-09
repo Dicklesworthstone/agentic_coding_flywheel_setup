@@ -718,7 +718,7 @@ else
 fi
 
 # ============================================================
-section "Test 5b: meta_skill ARM64 Linux fails closed without anchored source"
+section "Test 5b: meta_skill ARM64 Linux uses only the verified installer, never cargo"
 # ============================================================
 for ms_arm64_arch in aarch64 arm64; do
     MS_ARM64_SIGNAL="/tmp/test_update_channel_ms_arm64_${ms_arm64_arch}_$$"
@@ -772,12 +772,15 @@ for ms_arm64_arch in aarch64 arm64; do
         ' 2>&1
     ) || true
 
+    # meta_skill v0.2.3 ships a checksummed aarch64 Linux archive and its
+    # pinned installer fails closed without one, so ARM64 takes the same
+    # verified path as x86_64 (no up-front refusal, never a source build).
     if [[ -f "$MS_ARM64_SIGNAL" ]]; then
         fail "meta_skill ARM64 Linux update invoked unanchored cargo for $ms_arm64_arch"
     elif [[ "$ms_arm64_output" == *"no checksum-anchored Linux ARM64 install source"* ]]; then
-        pass "meta_skill ARM64 Linux update fails closed without an anchored source ($ms_arm64_arch)"
+        fail "meta_skill ARM64 Linux update still refuses before the verified installer ($ms_arm64_arch)"
     else
-        fail "meta_skill ARM64 Linux update did not explain the anchored-source refusal. Output: $ms_arm64_output"
+        pass "meta_skill ARM64 Linux update uses the verified installer path without cargo ($ms_arm64_arch)"
     fi
 done
 

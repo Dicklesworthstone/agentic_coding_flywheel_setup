@@ -117,6 +117,25 @@ assert_source_contains \
 assert_source_contains \
     "Non-prompting handoff uses setsid supervision" \
     "\"\$setsid_bin\" --wait \\"
+
+# Stock Ubuntu 25.10's uutils env 0.2 lacks --default-signal; the handoff must
+# fall back to GNU gnuenv there, and fail closed when neither supports it.
+eval "$(sed -n '/^acfs_signal_capable_env() {$/,/^}$/p' "$REPO_ROOT/install.sh")"
+ENV_FIXTURES="$(mktemp -d)"
+printf '#!/bin/sh\necho "Usage: env [OPTION]... -i, --ignore-signal[=SIG]"\n' > "$ENV_FIXTURES/uutils-env"
+printf '#!/bin/sh\necho "Usage: env [OPTION]... --default-signal[=SIG]"\n' > "$ENV_FIXTURES/gnuenv"
+chmod +x "$ENV_FIXTURES/uutils-env" "$ENV_FIXTURES/gnuenv"
+assert_ok "uutils env without --default-signal falls back to gnuenv" \
+    test "$(acfs_signal_capable_env "$ENV_FIXTURES/uutils-env" "$ENV_FIXTURES/gnuenv")" = "$ENV_FIXTURES/gnuenv"
+assert_ok "A capable env is kept when it comes first" \
+    test "$(acfs_signal_capable_env "$ENV_FIXTURES/gnuenv" "$ENV_FIXTURES/uutils-env")" = "$ENV_FIXTURES/gnuenv"
+assert_ok "Missing gnuenv candidate is skipped" \
+    test "$(acfs_signal_capable_env "" "$ENV_FIXTURES/gnuenv")" = "$ENV_FIXTURES/gnuenv"
+assert_ok "No capable env fails closed" \
+    bash -c "$(declare -f acfs_signal_capable_env); ! acfs_signal_capable_env '$ENV_FIXTURES/uutils-env' ''"
+assert_source_contains \
+    "Handoff offers GNU gnuenv after the default env" \
+    'acfs_early_system_binary_path gnuenv'
 echo ""
 
 # ────────────────────────────────────────

@@ -424,12 +424,14 @@ ubuntu_restore_lts_only() {
     return 0
 }
 
-# Move only Ubuntu 25.10's official archive URIs to old-releases. Preserve
-# suites, trust, architecture filters, comments, and disabled/third-party
-# sources. No network commands run until the whole local source plan succeeds.
-# Optional explicit arguments are for fixtures/manual previews, not env inputs.
+# Move only Ubuntu 25.10's official archive URIs to old-releases, and only once
+# old-releases actually serves Questing. Preserve suites, trust, architecture
+# filters, comments, and disabled/third-party sources. No network commands run
+# until the whole local source plan succeeds.
+# Optional explicit arguments are for fixtures/manual previews, not env inputs;
+# the third (probe|moved|not-moved) replaces the old-releases probe in fixtures.
 ubuntu_prepare_eol_repositories() {
-    local current python_bin apt_root="${1:-/etc/apt}" mode="${2:-apply}"
+    local current python_bin apt_root="${1:-/etc/apt}" mode="${2:-apply}" archive_state="${3:-probe}"
     current=$(ubuntu_get_version_number) || return 1
     [[ "$current" == 2510 ]] || return 0
     if [[ "$UBUNTU_TARGET_VERSION_NUM" != 2604 ]]; then
@@ -437,6 +439,7 @@ ubuntu_prepare_eol_repositories() {
         return 1
     fi
     case "$mode" in apply|--dry-run) ;; *) log_error "Invalid EOL repository recovery mode"; return 1 ;; esac
+    case "$archive_state" in probe|moved|not-moved) ;; *) log_error "Invalid EOL archive state"; return 1 ;; esac
     if [[ -n "${APT_CONFIG:-}" ]]; then
         log_error "Custom APT_CONFIG requires manual EOL repository recovery"
         return 1
@@ -445,7 +448,7 @@ ubuntu_prepare_eol_repositories() {
         log_error "Python 3 is required to safely recover EOL Ubuntu repositories"
         return 1
     }
-    "$python_bin" -I - "$apt_root" "$mode" <<'ACFS_EOL_APT_PY'
+    "$python_bin" -I - "$apt_root" "$mode" "$archive_state" <<'ACFS_EOL_APT_PY'
 # Ubuntu EOL recovery changes archive locations, never release codenames.
 # https://help.ubuntu.com/community/EOLUpgrades
 # https://manpages.debian.org/trixie/apt/sources.list.5.en.html
@@ -456,6 +459,8 @@ import stat
 import sys
 import subprocess
 import tempfile
+import urllib.error
+import urllib.request
 import uuid
 from urllib.parse import urlsplit
 
@@ -466,6 +471,24 @@ class RecoveryError(Exception):
 
 SUITES = {"questing", "questing-updates", "questing-security", "questing-backports", "questing-proposed"}
 MAX_FILE_BYTES = 1024 * 1024
+MOVED_PROBE = "https://old-releases.ubuntu.com/ubuntu/dists/questing/Release"
+
+
+def questing_moved():
+    """True or False when old-releases answers definitively, None otherwise.
+
+    Ubuntu moves an EOL release to old-releases weeks or months after its EOL
+    date. Until then the regular archive still serves it (Questing did on
+    2026-10-09, three months after EOL) and pointing APT at old-releases
+    breaks every update.
+    """
+    try:
+        with urllib.request.urlopen(urllib.request.Request(MOVED_PROBE, method="HEAD"), timeout=15) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as exc:
+        return False if exc.code == 404 else None
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
 
 
 def archive_uri(value):
@@ -712,10 +735,10 @@ def validate_with_apt(candidates):
             raise RecoveryError("APT rejected the rewritten source configuration; no source files were changed")
 
 
-def prepare_sources(root, apply=False):
+def prepare_sources(root, apply=False, archive_state="probe"):
     """Validate with read-only APT, then stage all changes before replacement."""
     directories, entries, changes, candidates = [], [], [], []
-    staged, replaced = [], 0
+    staged, replaced, already_moved = [], 0, False
     try:
         directory = open_directory(root)
         directories.append(directory)
@@ -741,11 +764,25 @@ def prepare_sources(root, apply=False):
             candidates.append((name, updated))
             if updated != data:
                 changes.append((directory, name, data, info, attributes, updated))
+            elif count:
+                # Official sources the transform leaves alone already use old-releases.
+                already_moved = True
         if not binary_sources:
             raise RecoveryError("No enabled official Questing binary archive found; review custom mirrors manually")
         validate_with_apt(candidates)
         if not apply:
             return len(changes)
+
+        # Only an observed move authorizes the rewrite; anything less leaves
+        # APT on the archive that still serves the release.
+        if changes or already_moved:
+            moved = questing_moved() if archive_state == "probe" else archive_state == "moved"
+            if moved is False and already_moved:
+                raise RecoveryError("APT sources point at old-releases.ubuntu.com, but Ubuntu 25.10 is still on the regular archive; restore the .acfs-eol-*.bak original beside each changed source and retry")
+            if moved is not True:
+                print("Ubuntu 25.10 is still served by the regular archive; APT sources were left unchanged." if moved is False
+                      else "Could not confirm that Ubuntu 25.10 moved to old-releases.ubuntu.com; APT sources were left unchanged.", file=sys.stderr)
+                return 0
 
         # Backups and replacement files exist before the first source changes.
         # Every source is checked again before replacement to detect concurrent
@@ -789,7 +826,7 @@ def prepare_sources(root, apply=False):
 
 if __name__ == "__main__":
     try:
-        count = prepare_sources(sys.argv[1], apply=sys.argv[2] == "apply")
+        count = prepare_sources(sys.argv[1], apply=sys.argv[2] == "apply", archive_state=sys.argv[3])
         verb = "Updated" if sys.argv[2] == "apply" else "Would update"
         print("%s %d Ubuntu 25.10 APT source file(s); suites and trust settings preserved." % (verb, count), file=sys.stderr)
     except (RecoveryError, OSError, UnicodeError) as exc:

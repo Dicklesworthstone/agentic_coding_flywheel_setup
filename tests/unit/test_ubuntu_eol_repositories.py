@@ -128,6 +128,11 @@ class FilesystemTests(unittest.TestCase):
         self.source = self.parts / "ubuntu.sources"
         self.source.write_text(STANZA)
         self.source.chmod(0o640)
+        # These tests exercise the rewrite itself; ArchiveStateTests covers
+        # the old-releases probe that gates it.
+        probe = mock.patch.object(recovery, "questing_moved", return_value=True)
+        self.probe = probe.start()
+        self.addCleanup(probe.stop)
 
     def backups(self):
         return list(self.parts.glob("*.bak"))
@@ -334,13 +339,27 @@ class FilesystemTests(unittest.TestCase):
         self.check_apt_parser("list", updated)
 
     def test_shell_wrapper_apply_and_dry_run(self):
-        script = 'source "$1"; ubuntu_get_version_number() { echo 2510; }; ubuntu_prepare_eol_repositories "$2" "$3"'
+        script = 'source "$1"; ubuntu_get_version_number() { echo 2510; }; ubuntu_prepare_eol_repositories "$2" "$3" moved'
         for mode in ["--dry-run", "apply"]:
             result = subprocess.run(["bash", "-c", script, "_", str(LIB), str(self.root), mode], env={"PATH": "/usr/bin:/bin", "UBUNTU_TARGET_VERSION": "26.04"}, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout, "")
             self.assertIn("preserved", result.stderr)
             self.assertEqual(self.source.read_text(), STANZA if mode == "--dry-run" else STANZA.replace(OLD, NEW))
+
+    def test_shell_wrapper_keeps_sources_while_archive_still_serves_questing(self):
+        script = 'source "$1"; ubuntu_get_version_number() { echo 2510; }; ubuntu_prepare_eol_repositories "$2" apply not-moved'
+        result = subprocess.run(["bash", "-c", script, "_", str(LIB), str(self.root)], env={"PATH": "/usr/bin:/bin", "UBUNTU_TARGET_VERSION": "26.04"}, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("still served by the regular archive", result.stderr)
+        self.assertEqual(self.source.read_text(), STANZA)
+        self.assertEqual(self.backups(), [])
+
+    def test_shell_wrapper_refuses_unknown_archive_state(self):
+        script = 'source "$1"; ubuntu_get_version_number() { echo 2510; }; log_error() { :; }; ubuntu_prepare_eol_repositories "$2" apply maybe'
+        result = subprocess.run(["bash", "-c", script, "_", str(LIB), str(self.root)], env={"PATH": "/usr/bin:/bin", "UBUNTU_TARGET_VERSION": "26.04"}, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.source.read_text(), STANZA)
 
     def test_shell_refuses_custom_apt_config(self):
         script = 'source "$1"; ubuntu_get_version_number() { echo 2510; }; ubuntu_prepare_eol_repositories "$2"'
@@ -354,6 +373,86 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.source.read_text(), STANZA)
         self.assertEqual(self.backups(), [])
+
+
+class ArchiveStateTests(unittest.TestCase):
+    """The rewrite waits until old-releases really serves Questing.
+
+    On 2026-10-09, three months after EOL, archive.ubuntu.com still served
+    questing and old-releases returned 404, so an unconditional rewrite left a
+    real 25.10 host unable to run apt-get update.
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="acfs-eol-state-")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.parts = self.root / "sources.list.d"
+        self.parts.mkdir()
+        self.source = self.parts / "ubuntu.sources"
+        self.source.write_text(STANZA)
+        self.source.chmod(0o640)
+
+    def apply_with(self, moved, text=STANZA):
+        self.source.write_text(text)
+        with mock.patch.object(recovery, "questing_moved", return_value=moved) as probe:
+            result = recovery.prepare_sources(str(self.root), True)
+        return result, probe
+
+    def test_not_moved_or_unknown_leaves_sources_without_backups(self):
+        for moved in (False, None):
+            with self.subTest(moved=moved):
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    result, _ = self.apply_with(moved)
+                self.assertEqual(result, 0)
+                self.assertEqual(self.source.read_text(), STANZA)
+                self.assertEqual(list(self.parts.glob("*.bak")), [])
+                self.assertIn("left unchanged", stderr.getvalue())
+
+    def test_moved_rewrites(self):
+        result, probe = self.apply_with(True)
+        self.assertEqual(result, 1)
+        self.assertEqual(self.source.read_text(), STANZA.replace(OLD, NEW))
+        probe.assert_called_once_with()
+
+    def test_already_rewritten_but_not_moved_fails_closed_with_restore_hint(self):
+        with self.assertRaises(recovery.RecoveryError) as error:
+            self.apply_with(False, STANZA.replace(OLD, NEW))
+        self.assertIn(".acfs-eol-", str(error.exception))
+        self.assertEqual(self.source.read_text(), STANZA.replace(OLD, NEW))
+
+    def test_already_rewritten_and_moved_or_unknown_is_a_no_op(self):
+        for moved in (True, None):
+            with self.subTest(moved=moved):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result, _ = self.apply_with(moved, STANZA.replace(OLD, NEW))
+                self.assertEqual(result, 0)
+                self.assertEqual(self.source.read_text(), STANZA.replace(OLD, NEW))
+
+    def test_dry_run_and_explicit_states_never_probe(self):
+        with mock.patch.object(recovery, "questing_moved", side_effect=AssertionError("network probe")):
+            self.assertEqual(recovery.prepare_sources(str(self.root)), 1)
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(recovery.prepare_sources(str(self.root), True, "not-moved"), 0)
+            self.assertEqual(self.source.read_text(), STANZA)
+            self.assertEqual(recovery.prepare_sources(str(self.root), True, "moved"), 1)
+        self.assertEqual(self.source.read_text(), STANZA.replace(OLD, NEW))
+
+    def test_probe_maps_http_answers(self):
+        response = mock.MagicMock(status=200)
+        response.__enter__.return_value = response
+        cases = [
+            (dict(return_value=response), True),
+            (dict(side_effect=recovery.urllib.error.HTTPError(recovery.MOVED_PROBE, 404, "Not Found", {}, None)), False),
+            (dict(side_effect=recovery.urllib.error.HTTPError(recovery.MOVED_PROBE, 503, "Unavailable", {}, None)), None),
+            (dict(side_effect=recovery.urllib.error.URLError("offline")), None),
+        ]
+        for kwargs, expected in cases:
+            with self.subTest(expected=expected), mock.patch.object(recovery.urllib.request, "urlopen", **kwargs) as urlopen:
+                self.assertIs(recovery.questing_moved(), expected)
+                self.assertEqual(urlopen.call_args.args[0].get_method(), "HEAD")
+                self.assertEqual(urlopen.call_args.args[0].full_url, recovery.MOVED_PROBE)
 
 
 class UpgradeIntegrationTests(unittest.TestCase):
