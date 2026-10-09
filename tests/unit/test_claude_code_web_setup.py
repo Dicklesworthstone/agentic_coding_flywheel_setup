@@ -248,6 +248,36 @@ class MirrorPublisher(unittest.TestCase):
         self.assertEqual(entry["source"]["url"], "https://vendor.invalid/jsm.tar.gz")
         self.assertNotIn("upstream_url", entry["source"])
 
+    def test_jsm_public_fallback_rejects_collisions_and_nonpublic_releases(self):
+        data, entry, release = self.jsm_fallback()
+        public = self.stage / "public-assets"
+        public.mkdir()
+        asset = public / release["assets"][0]["name"]
+        asset.write_bytes(b"collision")
+        with mock.patch.object(publisher, "run") as run, \
+                self.assertRaisesRegex(ValueError, "local asset collision"):
+            publisher.publish_jsm_fallback(entry, self.stage)
+        run.assert_not_called()
+        asset.write_bytes(data)
+        for invalid in ({**release, "draft": True}, {**release, "tag_name": "wrong"},
+                        {**release, "assets": release["assets"] * 2}):
+            with self.subTest(release=invalid), \
+                    mock.patch.object(publisher, "run", return_value=json.dumps(invalid)), \
+                    mock.patch.object(publisher, "fetch") as fetch, self.assertRaises(ValueError):
+                publisher.publish_jsm_fallback(entry, self.stage)
+            fetch.assert_not_called()
+            self.assertNotIn("upstream_url", entry["source"])
+
+    def test_jsm_public_fallback_repeated_publish_keeps_original_provenance(self):
+        data, entry, release = self.jsm_fallback()
+        with mock.patch.object(publisher, "run", return_value=json.dumps(release)) as run, \
+                mock.patch.object(publisher, "fetch", return_value=data):
+            publisher.publish_jsm_fallback(entry, self.stage)
+            original = json.loads(json.dumps(entry))
+            publisher.publish_jsm_fallback(entry, self.stage)
+        self.assertEqual(entry, original)
+        self.assertEqual(run.call_count, 2)
+
     def test_partial_refresh_keeps_all_unselected_tools(self):
         current = json.loads((ROOT / 'cloud-mirror.json').read_text())
         replacement = {'version': 'updated', 'sha256': 'a' * 64}

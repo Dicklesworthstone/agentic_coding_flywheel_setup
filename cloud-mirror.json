@@ -127,7 +127,8 @@
         "repo": "Dicklesworthstone/jeffreys-skills.md",
         "sha256": "81c4ea5e57506f3da778f5c79a6871fd7dcad47a98362a8526c04d2e4d6292b0",
         "tag": "v0.3.25",
-        "url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.25/jsm-x86_64-unknown-linux-musl.tar.gz",
+        "upstream_url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.25/jsm-x86_64-unknown-linux-musl.tar.gz",
+        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/jsm-v0.3.25-linux-x86_64-81c4ea5e57506f3da778f5c79a6871fd7dcad47a98362a8526c04d2e4d6292b0.tar.gz",
         "verification": "sha256"
       },
       "version": "v0.3.25"
