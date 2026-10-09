@@ -79,6 +79,7 @@ function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLab
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyDeadline = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = useRef(true);
 
   useEffect(() => {
@@ -86,6 +87,7 @@ function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLab
     return () => {
       active.current = false;
       if (resetTimer.current) clearTimeout(resetTimer.current);
+      if (copyDeadline.current) clearTimeout(copyDeadline.current);
     };
   }, []);
 
@@ -94,9 +96,18 @@ function SetupScriptCard({ label, script = CLAUDE_CODE_WEB_SETUP_SCRIPT, copyLab
     setCopyState("copying");
     let ok = false;
     try {
-      ok = await copyTextToClipboard(script);
+      // Some browsers leave clipboard permission requests pending indefinitely.
+      ok = await Promise.race([
+        copyTextToClipboard(script),
+        new Promise<boolean>((resolve) => {
+          copyDeadline.current = setTimeout(() => resolve(false), 8000);
+        }),
+      ]);
     } catch {
       // Provide selectable text if a browser denies clipboard access.
+    } finally {
+      if (copyDeadline.current) clearTimeout(copyDeadline.current);
+      copyDeadline.current = null;
     }
     if (!active.current) return;
     setCopyState(ok ? "copied" : "error");
@@ -355,7 +366,7 @@ export default function CloudAgentsPage() {
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-10 sm:px-8 sm:py-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
             <p className="mb-5 flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-primary"><Cloud className="size-4" aria-hidden="true" />Cloud agent setup</p>
-            <h1 className="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">Give your cloud agent <span className="text-primary">a flywheel.</span></h1>
+            <h1 className="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight">Give your cloud agent <span className="text-primary">a flywheel.</span></h1>
             <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">Tools for tasks, coordination, code checks and reusable skills. Let ChatGPT handle the setup, or follow our illustrated guide.</p>
             <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-muted-foreground"><span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-4 text-primary" aria-hidden="true" />Verified prebuilt tools</span><span className="inline-flex items-center gap-1.5"><Copy className="size-4 text-primary" aria-hidden="true" />Copy-ready scripts</span></div>
             <AgentSetupLauncher agentId={agentId} choose={choose} />
