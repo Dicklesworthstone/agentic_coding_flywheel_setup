@@ -375,7 +375,7 @@ credential_preflight_key_is_secret_like() {
 
     lower="${key,,}"
     case "$lower" in
-        *api_key*|*api-key*|\
+        *api_key*|*api-key*|*apikey|*accesskey|*privatekey|mysql_pwd|\
         *api_secret*|*api-secret*|\
         *secret_key*|*secret-key*|\
         *access_key*|*access-key*|\
@@ -462,7 +462,7 @@ credential_preflight_scan_line() {
         if credential_preflight_key_is_secret_like "$key" &&
             ! credential_preflight_value_is_placeholder "$value" &&
             ! credential_preflight_value_has_specific_pattern "$value"; then
-            if [[ "$key" == *"password"* || "$key" == *"passwd"* ]]; then
+            if [[ "$key" == *"password"* || "$key" == *"passwd"* || "$key" == mysql_pwd ]]; then
                 credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like JSON key"
             else
                 credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "generic_secret" "secret-like JSON key"
@@ -480,7 +480,7 @@ credential_preflight_scan_line() {
             ! credential_preflight_value_is_placeholder "$value" &&
             ! credential_preflight_value_has_specific_pattern "$value"; then
             case "$key" in
-                *password*|*passwd*) credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like assignment key" ;;
+                *password*|*passwd*|mysql_pwd) credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like assignment key" ;;
                 *) credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "generic_secret" "secret-like assignment key" ;;
             esac
         fi

@@ -3303,9 +3303,21 @@ redact_file() {
         }
 
     # JSON-style secrets: "key_name": "value"
+    # Standalone camel-case key aliases also occur in SDK configuration.
+    # Keep the exact key boundary so public *KeyCount fields stay intact.
+    local camel_key_pattern='([Ss][Ee][Cc][Rr][Ee][Tt][Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][Kk][Ee][Yy]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][Kk][Ee][Yy])'
     support_sed_in_place \
-        -e 's/"(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)"[[:space:]]*:[[:space:]]*"([^"]{8,})"/"\1": "<REDACTED:\1>"/g' \
-        -e 's/"(password|PASSWORD|passwd|PASSWD)"[[:space:]]*:[[:space:]]*"([^"]{4,})"/"\1": "<REDACTED:password>"/g' \
+        -e "s/\"$camel_key_pattern\"[[:space:]]*:[[:space:]]*\"([^\"<>]{8,})\"/\"\1\": \"<REDACTED:\1>\"/g" \
+        -e "s/$camel_key_pattern([[:space:]]*[=:][[:space:]]*)\"([^\"<>]{8,})\"/\1\2\"<REDACTED:\1>\"/g" \
+        -e "s/$camel_key_pattern([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\2'<REDACTED:\1>'/g" \
+        -e "s/$camel_key_pattern([[:space:]]*[=:][[:space:]]*[\"']?)([^ \"'<>[:space:]]{8,})/\1\2<REDACTED:\1>/g" \
+        "$file" || {
+            printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+            return 1
+        }
+    support_sed_in_place \
+        -e 's/"(api_key|API_KEY|[Aa][Pp][Ii][Kk][Ee][Yy]|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)"[[:space:]]*:[[:space:]]*"([^"]{8,})"/"\1": "<REDACTED:\1>"/g' \
+        -e 's/"(password|PASSWORD|passwd|PASSWD|[Mm][Yy][Ss][Qq][Ll]_[Pp][Ww][Dd])"[[:space:]]*:[[:space:]]*"([^"]{4,})"/"\1": "<REDACTED:password>"/g' \
         -e 's/"([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))"[[:space:]]*:[[:space:]]*"([^"<>]{4,})"/"\1": "<REDACTED:password>"/g' \
         -e 's/"([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))"[[:space:]]*:[[:space:]]*"([^"<>]{8,})"/"\1": "<REDACTED:generic_secret>"/g' \
         -e 's/"([A-Za-z][A-Za-z0-9]*(Password|Passwd))"[[:space:]]*:[[:space:]]*"([^"<>]{4,})"/"\1": "<REDACTED:password>"/g' \
@@ -3322,8 +3334,8 @@ redact_file() {
     # Shell-style quoted secrets can contain spaces. Redact the full quoted
     # value before the unquoted catch-alls below see only the first word.
     support_sed_in_place \
-        -e 's/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\2"<REDACTED:\1>"/g' \
-        -e 's/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\2"<REDACTED:password>"/g' \
+        -e 's/(api_key|API_KEY|[Aa][Pp][Ii][Kk][Ee][Yy]|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\2"<REDACTED:\1>"/g' \
+        -e 's/(password|PASSWORD|passwd|PASSWD|[Mm][Yy][Ss][Qq][Ll]_[Pp][Ww][Dd])([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\2"<REDACTED:password>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
@@ -3336,8 +3348,8 @@ redact_file() {
         }
 
     support_sed_in_place \
-        -e "s/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\2'<REDACTED:\1>'/g" \
-        -e "s/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\2'<REDACTED:password>'/g" \
+        -e "s/(api_key|API_KEY|[Aa][Pp][Ii][Kk][Ee][Yy]|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\2'<REDACTED:\1>'/g" \
+        -e "s/(password|PASSWORD|passwd|PASSWD|[Mm][Yy][Ss][Qq][Ll]_[Pp][Ww][Dd])([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\2'<REDACTED:password>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
@@ -3352,8 +3364,8 @@ redact_file() {
     # Generic key=value secrets (case-insensitive would need per-line processing;
     # instead match common casings)
     support_sed_in_place \
-        -e 's/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{8,})/\1\2<REDACTED:\1>/g' \
-        -e 's/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\2<REDACTED:password>/g' \
+        -e 's/(api_key|API_KEY|[Aa][Pp][Ii][Kk][Ee][Yy]|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{8,})/\1\2<REDACTED:\1>/g' \
+        -e 's/(password|PASSWORD|passwd|PASSWD|[Mm][Yy][Ss][Qq][Ll]_[Pp][Ww][Dd])([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\2<REDACTED:password>/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\3<REDACTED:password>/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{8,})/\1\3<REDACTED:generic_secret>/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\3<REDACTED:password>/g' \

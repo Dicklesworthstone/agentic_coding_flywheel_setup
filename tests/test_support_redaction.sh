@@ -52,9 +52,9 @@ fail() {
     fi
 }
 
-# Create a temp directory for test fixtures, clean up on exit
-TEST_DIR=$(mktemp -d /tmp/acfs_redaction_test_XXXXXX)
-trap 'rm -rf "$TEST_DIR"' EXIT
+# Retain all fixtures and outputs for inspection; never delete them on exit.
+TEST_DIR="${ACFS_SUPPORT_REDACTION_TEST_ARTIFACTS_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/acfs_redaction_test_XXXXXX")}"
+mkdir -p "$TEST_DIR"
 
 # ============================================================
 # Load redact_file and redact_bundle from support.sh
@@ -420,6 +420,52 @@ result=$(redact_and_read "camel_json_secrets.txt" '{"geminiApiKey":"AIzaSyExampl
 assert_contains "CamelCase JSON API key redacted" "$result" '"geminiApiKey": "<REDACTED:generic_secret>"'
 assert_contains "CamelCase JSON password redacted" "$result" '"dbPassword": "<REDACTED:password>"'
 assert_contains "CamelCase JSON metric preserved" "$result" '"tokenCount":"123456789"'
+
+result=$(redact_and_read "credential_alias_json.txt" '{"apiKey":"fixture-alias-key-value-2026","MYSQL_PWD":"fixture mysql password phrase","PWD":"/public/workspace","apiKeyCount":"123456789"}')
+assert_contains "Top-level apiKey alias redacted in JSON" "$result" '"apiKey": "<REDACTED:apiKey>"'
+assert_contains "MYSQL_PWD alias redacted in JSON" "$result" '"MYSQL_PWD": "<REDACTED:password>"'
+assert_not_contains "JSON apiKey alias value absent" "$result" "fixture-alias-key-value-2026"
+assert_not_contains "JSON MYSQL_PWD alias value absent" "$result" "fixture mysql password phrase"
+assert_contains "Public PWD survives alias redaction" "$result" '"PWD":"/public/workspace"'
+assert_contains "API key counter survives alias redaction" "$result" '"apiKeyCount":"123456789"'
+if printf '%s' "$result" | jq -e '.apiKey == "<REDACTED:apiKey>" and .MYSQL_PWD == "<REDACTED:password>"' >/dev/null; then
+    pass "Alias redaction keeps JSON valid"
+else
+    fail "Alias redaction keeps JSON valid" "Expected redacted fields in valid JSON"
+fi
+
+result=$(redact_and_read "credential_alias_shell.txt" "apiKey=fixture-unquoted-key-value-2026
+MYSQL_PWD=fixture-unquoted-password-2026
+apiKey = \"fixture double quoted key value\"
+MYSQL_PWD = 'fixture single quoted password phrase'
+apiKey = 'fixture single quoted key value'
+MYSQL_PWD = \"fixture double quoted password phrase\"
+PWD=/public/workspace
+apiKeyCount=123456789")
+alias_case_index=0
+for secret in "fixture-unquoted-key-value-2026" "fixture-unquoted-password-2026" \
+    "fixture double quoted key value" "fixture single quoted password phrase" \
+    "fixture single quoted key value" "fixture double quoted password phrase"; do
+    alias_case_index=$((alias_case_index + 1))
+    assert_not_contains "Shell credential alias value absent (case $alias_case_index)" "$result" "$secret"
+done
+assert_contains "Quoted key alias masked in full" "$result" 'apiKey = "<REDACTED:apiKey>"'
+assert_contains "Quoted password alias masked in full" "$result" "MYSQL_PWD = '<REDACTED:password>'"
+assert_contains "Shell public PWD preserved" "$result" "PWD=/public/workspace"
+assert_contains "Shell API key counter preserved" "$result" "apiKeyCount=123456789"
+
+result=$(redact_and_read "camel_key_family.json" '{"secretKey":"fixture-secret-key-value-2026","accessKey":"fixture-access-key-value-2026","privateKey":"fixture-private-key-value-2026","privateKeyCount":"123456789"}')
+for key in secretKey accessKey privateKey; do
+    assert_contains "Camel key family JSON marker: $key" "$result" "\"$key\": \"<REDACTED:$key>\""
+    assert_not_contains "Camel key family JSON value absent: $key" "$result" "fixture-${key%Key}-key-value-2026"
+done
+assert_contains "Private key counter preserved" "$result" '"privateKeyCount":"123456789"'
+result=$(redact_and_read "camel_key_family.env" "secretKey='fixture secret key phrase'
+accessKey=fixture-access-key-value-2026
+privateKey=\"fixture private key phrase\"")
+assert_contains "Camel key family single quoted value masked" "$result" "secretKey='<REDACTED:secretKey>'"
+assert_contains "Camel key family unquoted value masked" "$result" "accessKey=<REDACTED:accessKey>"
+assert_contains "Camel key family double quoted value masked" "$result" 'privateKey="<REDACTED:privateKey>"'
 
 result=$(redact_and_read "quoted_env_secrets.txt" "PASSWORD='correct horse battery staple'
 VERCEL_TOKEN = \"quoted token value 12345\"

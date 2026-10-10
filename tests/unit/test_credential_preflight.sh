@@ -390,6 +390,57 @@ test_default_scan_covers_shell_history_and_acfs_state() {
     pass "default_scan_covers_shell_history_and_acfs_state"
 }
 
+test_credential_aliases_detected_without_values_or_mutation() {
+    local fixture="$ARTIFACT_DIR/aliases/input.json"
+    local shell_fixture="$ARTIFACT_DIR/aliases/input.env"
+    local output="$ARTIFACT_DIR/aliases.json"
+    local shell_output="$ARTIFACT_DIR/aliases-shell.json"
+    local fixture_path output_path secret
+    write_fixture "$fixture" '{"apiKey":"fixture-alias-key-value-2026","MYSQL_PWD":"fixture mysql password phrase","PWD":"/public/workspace","apiKeyCount":"123456789"}'
+    write_fixture "$shell_fixture" 'apiKey="fixture-alias-key-value-2026"
+MYSQL_PWD="fixture mysql password phrase"
+PWD=/public/workspace
+apiKeyCount=123456789'
+    for fixture_path in "$fixture" "$shell_fixture"; do
+        cp "$fixture_path" "$fixture_path.before"
+        if [[ "$fixture_path" == "$fixture" ]]; then output_path="$output"; else output_path="$shell_output"; fi
+        if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture_path" > "$output_path"; then
+            return 1
+        else
+            [[ $? -eq 1 ]] || return 1
+        fi
+        assert_category_present "$output_path" "generic_secret" || return 1
+        assert_category_present "$output_path" "password" || return 1
+        jq -e '.status == "warn" and .summary.findings == 2 and .safety.raw_secret_values_printed == false' "$output_path" >/dev/null || return 1
+        for secret in "fixture-alias-key-value-2026" "fixture mysql password phrase"; do
+            assert_no_raw_secret "$output_path" "$secret" || return 1
+        done
+        cmp -s "$fixture_path" "$fixture_path.before" || return 1
+    done
+    pass "credential_aliases_detected_without_values_or_mutation"
+}
+
+test_camel_key_family_is_detected_without_value_leaks() {
+    local fixture="$ARTIFACT_DIR/camel-family/input.json"
+    local output="$ARTIFACT_DIR/camel-family.json"
+    write_fixture "$fixture" '{"secretKey":"fixture-secret-key-value-2026","accessKey":"fixture-access-key-value-2026","privateKey":"fixture-private-key-value-2026","privateKeyCount":"123456789"}'
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output"; then return 1; fi
+    jq -e '.status == "warn" and .summary.findings == 3' "$output" >/dev/null || return 1
+    assert_no_raw_secret "$output" "fixture-secret-key-value-2026" || return 1
+    assert_no_raw_secret "$output" "fixture-access-key-value-2026" || return 1
+    assert_no_raw_secret "$output" "fixture-private-key-value-2026" || return 1
+    pass "camel_key_family_is_detected_without_value_leaks"
+}
+
+test_public_pwd_and_api_key_counters_are_not_credentials() {
+    local fixture="$ARTIFACT_DIR/public-aliases/input.json"
+    local output="$ARTIFACT_DIR/public-aliases.json"
+    write_fixture "$fixture" '{"PWD":"/public/workspace","apiKeyCount":"123456789","publicKeyFingerprint":"abcdef0123456789"}'
+    bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output" || return 1
+    jq -e '.status == "pass" and .summary.findings == 0' "$output" >/dev/null || return 1
+    pass "public_pwd_and_api_key_counters_are_not_credentials"
+}
+
 run_test() {
     local name="$1"
 
@@ -415,6 +466,9 @@ main() {
     run_test test_binary_and_unreadable_files_are_skipped
     run_test test_excluded_paths_are_opted_out
     run_test test_default_scan_covers_shell_history_and_acfs_state
+    run_test test_credential_aliases_detected_without_values_or_mutation
+    run_test test_camel_key_family_is_detected_without_value_leaks
+    run_test test_public_pwd_and_api_key_counters_are_not_credentials
 
     echo ""
     echo "Tests passed: $TESTS_PASSED"
