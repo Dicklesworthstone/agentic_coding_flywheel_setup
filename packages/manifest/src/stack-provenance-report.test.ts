@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildStackProvenanceReport,
+  linuxArchitectureCoverage,
   type ChecksumsFile,
   type GitHubReleaseFixture,
 } from "./stack-provenance-report.js";
@@ -88,7 +89,116 @@ function release(
   };
 }
 
+// Asset names as published upstream on 2026-10-09.
+const RCH_V2_1_16_ASSETS = [
+  "install.sh",
+  "install.sh.sha256",
+  "rch-v2.1.16-aarch64-apple-darwin.tar.gz",
+  "rch-v2.1.16-aarch64-apple-darwin.tar.gz.minisig",
+  "rch-v2.1.16-aarch64-apple-darwin.tar.gz.sha256",
+  "rch-v2.1.16-x86_64-unknown-linux-gnu.tar.gz",
+  "rch-v2.1.16-x86_64-unknown-linux-gnu.tar.gz.minisig",
+  "rch-v2.1.16-x86_64-unknown-linux-gnu.tar.gz.sha256",
+];
+
+describe("linux architecture coverage", () => {
+  test("reads the naming schemes ACFS stack releases use", () => {
+    expect(linuxArchitectureCoverage(RCH_V2_1_16_ASSETS)).toEqual({ x86_64: true, aarch64: false });
+    expect(
+      linuxArchitectureCoverage([
+        "ms-0.2.3-aarch64-unknown-linux-gnu.tar.gz",
+        "ms-0.2.3-linux-x86_64",
+        "ms-0.2.3-macos-aarch64",
+      ]),
+    ).toEqual({ x86_64: true, aarch64: true });
+    expect(
+      linuxArchitectureCoverage([
+        "br-0.7.4-darwin_arm64.tar.gz",
+        "br-0.7.4-linux_amd64.tar.gz",
+        "br-0.7.4-linux_musl_arm64.tar.gz",
+      ]),
+    ).toEqual({ x86_64: true, aarch64: true });
+  });
+
+  test("ignores sidecars, other operating systems and 32-bit ARM", () => {
+    expect(
+      linuxArchitectureCoverage([
+        "ntm_1.37.0_linux_armv7.tar.gz",
+        "ntm_1.37.0_darwin_arm64.tar.gz",
+        "ntm_1.37.0_linux_arm64.tar.gz.sha256",
+        "rch-v2.1.16-aarch64-unknown-linux-gnu.tar.gz.minisig",
+        "SHA256SUMS.txt",
+        "ntm",
+      ]),
+    ).toEqual({ x86_64: false, aarch64: false });
+  });
+});
+
 describe("stack provenance report", () => {
+  test("warns when a release ships an x86_64 Linux build but no aarch64 one", async () => {
+    const manifest = manifestFor([stackModule("remote_compilation_helper", "rch", "stack.rch")]);
+    const current = checksums({ rch: { repo: "remote_compilation_helper" } });
+
+    const report = await buildStackProvenanceReport({
+      manifest,
+      currentChecksums: current,
+      candidateChecksums: current,
+      githubReleases: release("remote_compilation_helper", {
+        status: "ok",
+        tagName: "v2.1.16",
+        publishedAt: "2026-01-01T00:00:00Z",
+        assetNames: RCH_V2_1_16_ASSETS,
+      }),
+      network: "check",
+    });
+
+    const tool = report.tools[0];
+    expect(tool.architecture.status).toBe("warn");
+    expect(tool.architecture.linux).toEqual({ x86_64: true, aarch64: false });
+    expect(tool.architecture.detail).toContain("no aarch64 one");
+    expect(tool.status).toBe("warn");
+    expect(tool.advisories.join("\n")).toContain(
+      "publish an aarch64 Linux build in its release matrix",
+    );
+  });
+
+  test("passes when both Linux architectures ship, and skips assets offline or when unknown", async () => {
+    const manifest = manifestFor([
+      stackModule("ultimate_bug_scanner", "ubs", "stack.ultimate_bug_scanner"),
+    ]);
+    const current = checksums({ ubs: { repo: "ultimate_bug_scanner" } });
+    const base: GitHubReleaseFixture = {
+      status: "ok",
+      tagName: "v1.0.0",
+      publishedAt: "2026-01-01T00:00:00Z",
+    };
+    const run = (fixture: GitHubReleaseFixture, network: "check" | "skip" = "check") =>
+      buildStackProvenanceReport({
+        manifest,
+        currentChecksums: current,
+        candidateChecksums: current,
+        githubReleases: release("ultimate_bug_scanner", fixture),
+        network,
+      });
+
+    const both = await run({
+      ...base,
+      assetNames: ["ubs-linux-x86_64.tar.gz", "ubs-linux-aarch64.tar.gz"],
+    });
+    expect(both.tools[0].architecture.status).toBe("pass");
+    expect(both.tools[0].status).toBe("pass");
+
+    const scriptOnly = await run({ ...base, assetNames: ["install.sh", "install.sh.sha256"] });
+    expect(scriptOnly.tools[0].architecture.status).toBe("pass");
+    expect(scriptOnly.tools[0].architecture.linux).toEqual({ x86_64: false, aarch64: false });
+
+    const unlisted = await run(base);
+    expect(unlisted.tools[0].architecture.status).toBe("unknown");
+
+    const offline = await run({ ...base, assetNames: RCH_V2_1_16_ASSETS }, "skip");
+    expect(offline.tools[0].architecture.status).toBe("skip");
+  });
+
   test("rejects semantically invalid manifests before reporting", async () => {
     const module = stackModule("ultimate_bug_scanner", "ubs", "stack.duplicate");
     const manifest = manifestFor([module, { ...module }]);
