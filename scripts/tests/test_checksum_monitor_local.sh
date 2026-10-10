@@ -115,6 +115,7 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     untrusted "$b" "has 3 hard links"
     b="$(bun_case foreign-link)"; ln "$b" "$STATE_TMP/bun-foreign-link/elsewhere"
     untrusted "$b" "second hard link that is not the sibling bunx"
+    untrusted "$b" "locate it with: sudo find / -xdev -inum $(stat -c '%i' -- "$b")"
     b="$(bun_case foreign-link-symlinked-bunx)"; ln -s "$b" "${b%/*}/bunx"
     ln "$b" "$STATE_TMP/bun-foreign-link-symlinked-bunx/elsewhere"
     untrusted "$b" "second hard link that is not the sibling bunx"

@@ -497,7 +497,12 @@ bun_binary_unsafe_reason() {
             bunx_inode="$(stat -c '%i' -- "$dir/bunx" 2>/dev/null || true)"
         fi
         if [[ -z "$inode" || "$inode" != "$bunx_inode" ]]; then
-            printf 'pinned Bun binary has a second hard link that is not the sibling bunx: %s\n' "$bin"
+            # Say where to look and how to recover; on ts1 the stray link was
+            # perf's root-owned build-id cache, and the bare reason sat in
+            # 351 consecutive fail-closed runs.
+            inode="$(stat -c '%i' -- "$bin" 2>/dev/null || true)"
+            printf 'pinned Bun binary has a second hard link that is not the sibling bunx: %s (inode %s; locate it with: sudo find / -xdev -inum %s; perf build-id caches under /root/.debug are a common source; once it is explained, break the link with a byte-identical copy: cp -p %s %s.new && mv %s.new %s)\n' \
+                "$bin" "${inode:-unknown}" "${inode:-INODE}" "$bin" "$bin" "$bin" "$bin"
             return 1
         fi
     fi
