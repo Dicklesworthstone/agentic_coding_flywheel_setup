@@ -2817,7 +2817,7 @@ jobs:
 
 ### Automated Checksum + Drift Repair (`scripts/checksum-monitor-local.sh`)
 
-ACFS monitors upstream installers for changes and repairs generated-artifact checksum drift from a local systemd timer (every 15 minutes, in a dedicated clone on a maintainer box), not from GitHub Actions; the retired `checksum-monitor.yml` did the same job and is kept only for reference.
+ACFS checks upstream installer changes from a local systemd timer (every 15 minutes, in a dedicated clone on a maintainer box). The retired GitHub Actions monitor is kept for reference; it is not the publication path.
 
 ```text
 scripts/checksum-monitor-local.sh      # the monitor
@@ -2826,11 +2826,13 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 
 **How It Works:**
 
-1. **Verify Generated Artifact Drift**: Runs `scripts/check-manifest-drift.sh --json` to detect:
-   - `ACFS_MANIFEST_SHA256` mismatches
-   - internal script checksum drift (`scripts/generated/internal_checksums.sh`)
-   - generated installer and web metadata drift via `bun run generate:diff`
-   - semantic manifest contract drift across `scripts/generated/doctor_checks.sh`, `apps/web/lib/generated`, `acfs/onboard/lessons`, README snippets, and `checksums.yaml`
+1. **Bind a clean base**: Requires a clean `main` checkout matching both remote compatibility refs. Installs manifest dependencies with `--frozen-lockfile --ignore-scripts` and checks generated artifacts with `scripts/check-manifest-drift.sh --json`. Existing drift stops the run and must be repaired separately.
+2. **Observe the complete installer set**: Downloads every required installer and binds its URL and SHA256 to the exact existing `checksums.yaml`. Any fetch error, skipped entry, malformed report, or repository change stops publication.
+3. **Validate the candidate**: Runs the canonical checksum generator, then requires the candidate to change exactly the mismatches in the first observation. A second fetch that changes a previously matching installer is rejected.
+4. **Require prior external review**: For any changed URL outside `https://raw.githubusercontent.com/Dicklesworthstone/`, records a GitHub issue before modifying repository files. A human must review the upstream bytes and authorize the exact digest printed in that issue. The authorization file must be owner-only, regular, non-symlink, and contain only `authorize:<digest>`. Without authorization, the entire candidate waits, including any first-party changes.
+5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Pushes both compatibility refs atomically and reads them back before recording a healthy run.
+
+The drift check combines `bun run generate:diff` with semantic checks across `scripts/generated/doctor_checks.sh`, `apps/web/lib/generated`, `acfs/onboard/lessons`, README snippets, and installer checksum coverage.
 
 The internal ledger is inert data: exactly `ACFS_INTERNAL_CHECKSUMS_SCHEMA=1`,
 one associative checksum map, and its exact entry count. The installer parses
@@ -2838,28 +2840,8 @@ that closed grammar without sourcing the ledger, enforces its checksum-controlle
 membership, and verifies regular non-symlink files before sourcing them. This
 is an internal consistency boundary, not an independent signature or archive
 provenance claim.
-2. **Auto-Repair Drift**: If drift is detected, runs `--fix` (regenerate + commit + push)
-3. **Verify Current Upstream Checksums**: Downloads all upstream installers, calculates SHA256
-4. **Detect Upstream Changes**: Compares against `checksums.yaml`
-5. **Categorize Tools**: Separates "trusted" tools (can auto-update) from others
-6. **Auto-Update Upstream Checksums**: Commits updated `checksums.yaml` when safe
-7. **Alert**: For non-trusted tool changes, creates GitHub issue for manual review
 
-The monitor **fails closed** when verification returns fetch errors or skipped entries; it will not emit partial/placeholder checksum updates.
-
-**What gets auto-updated:** every changed installer hash — first-party and third-party alike — is regenerated with the canonical updater, committed, and pushed. The monitor fails closed (no partial update) if any fetch fails or any entry is skipped.
-
-**What gets flagged for review:** when the changed set includes a third-party installer (anything whose URL is not under the Dicklesworthstone GitHub org: bun, uv, rustup, oh-my-zsh, atuin, zoxide, nvm, claude, antigravity, opencode, omp, grok), the monitor opens a GitHub issue with the diff after the update lands, so a human reviews the new upstream script post-hoc. First-party tool changes are committed without an issue.
-
-This gives:
-- **Velocity**: a fresh install is never broken by a stale hash for long
-- **Auditability**: every hash change is a git commit, and third-party changes get an issue for review
-- **Fail-closed behavior**: on fetch errors nothing is committed
-
-**Upstream Repo Dispatch (Fast Path):**
-- ACFS-owned tool repos emit a `repository_dispatch` event (`upstream-changed`) when their `install.sh` changes or a release is published.
-- Requires a PAT secret named `ACFS_REPO_DISPATCH_TOKEN` in each tool repo (repo scope for this org/user).
-- If dispatch fails, the 15-minute scheduled monitor still catches drift (but slower).
+First-party changes can publish automatically after these checks. External changes require review **before publication**, rather than a post-publication alert. Repeated failures are logged and escalated through deduplicated GitHub issues and optional `ACFS_NTFY_TOPIC` notifications. Check the deployed timer's logs for its current health; the existence of workflow or timer files does not prove that monitoring is running.
 
 ### Production Smoke Tests (`production-smoke.yml`)
 

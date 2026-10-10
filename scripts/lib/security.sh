@@ -190,10 +190,12 @@ acfs_security_configure_curl() {
     local curl_help=""
 
     ACFS_CURL_BIN="$(acfs_security_curl_binary_path 2>/dev/null || true)"
-    ACFS_CURL_BASE_ARGS=(-q --connect-timeout 30 --max-time 300 -fsSL)
+    # Pin executable bytes, not an HTTP compression envelope. Asking for the
+    # identity representation also keeps download-size limits on those bytes.
+    ACFS_CURL_BASE_ARGS=(-q -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' --connect-timeout 30 --max-time 300 -fsSL)
 
     if [[ -n "$ACFS_CURL_BIN" ]] && curl_help="$("$ACFS_CURL_BIN" --help all 2>/dev/null)" && [[ "$curl_help" == *"--proto"* ]]; then
-        ACFS_CURL_BASE_ARGS=(-q --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
+        ACFS_CURL_BASE_ARGS=(-q -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
     fi
 }
 
@@ -2100,8 +2102,11 @@ acfs_load_checksums_strict() {
     local tail_bin=""
     local last_byte=""
     local nul_stripped=""
-    local -A parsed_urls=()
-    local -A parsed_checksums=()
+    # Callers commonly name their result arrays parsed_urls/parsed_checksums.
+    # Bash namerefs resolve dynamically: staging under those same names would
+    # shadow the caller and erase the result during the transactional commit.
+    local -A _acfs_strict_staged_urls=()
+    local -A _acfs_strict_staged_checksums=()
     local -n output_urls="$urls_var"
     local -n output_checksums="$checksums_var"
 
@@ -2199,7 +2204,7 @@ acfs_load_checksums_strict() {
                     acfs_strict_checksums_error "$file" "$line_number" "installer URLs must be unambiguous HTTPS scalars"
                     return 1
                 fi
-                parsed_urls["$current_tool"]="$url"
+                _acfs_strict_staged_urls["$current_tool"]="$url"
                 state="sha256"
                 ;;
             sha256)
@@ -2213,7 +2218,7 @@ acfs_load_checksums_strict() {
                     acfs_strict_checksums_error "$file" "$line_number" "sha256 must be exactly 64 lowercase hexadecimal characters"
                     return 1
                 fi
-                parsed_checksums["$current_tool"]="$checksum"
+                _acfs_strict_staged_checksums["$current_tool"]="$checksum"
                 state="separator_or_eof"
                 ;;
             separator_or_eof)
@@ -2236,12 +2241,12 @@ acfs_load_checksums_strict() {
     fi
 
     expected_count="${#ACFS_SECURITY_REQUIRED_INSTALLERS[@]}"
-    if (( ${#parsed_urls[@]} != expected_count || ${#parsed_checksums[@]} != expected_count )); then
+    if (( ${#_acfs_strict_staged_urls[@]} != expected_count || ${#_acfs_strict_staged_checksums[@]} != expected_count )); then
         acfs_strict_checksums_error "$file" 0 "installer set does not exactly match the required security-policy set"
         return 1
     fi
     for tool in "${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}"; do
-        if [[ -z "${parsed_urls[$tool]:-}" || -z "${parsed_checksums[$tool]:-}" ]]; then
+        if [[ -z "${_acfs_strict_staged_urls[$tool]:-}" || -z "${_acfs_strict_staged_checksums[$tool]:-}" ]]; then
             acfs_strict_checksums_error "$file" 0 "required installer is missing: $tool"
             return 1
         fi
@@ -2251,9 +2256,9 @@ acfs_load_checksums_strict() {
     # state that may already contain a previously trusted policy.
     output_urls=()
     output_checksums=()
-    for tool in "${!parsed_urls[@]}"; do
-        output_urls["$tool"]="${parsed_urls[$tool]}"
-        output_checksums["$tool"]="${parsed_checksums[$tool]}"
+    for tool in "${!_acfs_strict_staged_urls[@]}"; do
+        output_urls["$tool"]="${_acfs_strict_staged_urls[$tool]}"
+        output_checksums["$tool"]="${_acfs_strict_staged_checksums[$tool]}"
     done
     return 0
 }

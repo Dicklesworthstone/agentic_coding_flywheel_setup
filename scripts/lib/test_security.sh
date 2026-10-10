@@ -4,8 +4,8 @@
 # Test script for security.sh
 # Run: bash scripts/lib/test_security.sh
 #
-# Tests non-network functions locally. Network functions tested
-# with local file:// URLs where possible.
+# Tests policy functions locally and executable downloads with a local HTTPS
+# server. The transport test uses the real curl binary and TLS verification.
 # ============================================================
 
 set -euo pipefail
@@ -37,7 +37,9 @@ test_fail() {
 # Create temp directory for test fixtures
 setup_fixtures() {
     TEST_TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/acfs_test_security.XXXXXX")
-    trap 'rm -rf "$TEST_TMP_DIR"' EXIT
+    if [[ "${ACFS_SECURITY_RETAIN_TEMP_FILES:-false}" != "true" ]]; then
+        trap 'rm -rf "$TEST_TMP_DIR"' EXIT
+    fi
 
     # Create a simple test script
     echo '#!/bin/bash
@@ -437,6 +439,8 @@ test_versioned_checksum_report_binds_urls_hashes_and_exit_status() {
     local status=0
     local passed=false
 
+    # Invoked indirectly by verify_all_installers_json in security.sh.
+    # shellcheck disable=SC2329
     fetch_checksum() {
         case "$1" in
             https://example.com/alpha.sh) printf '%s\n' "$STRICT_HASH_A" ;;
@@ -768,6 +772,89 @@ test_known_installers_all_https() {
     fi
 }
 
+test_https_download_preserves_executable_bytes() {
+    local name="HTTPS download preserves executable bytes across content negotiation"
+    if python3 - "$SCRIPT_DIR/security.sh" "$(command -v bash)" <<'PY'
+import gzip
+import hashlib
+import http.server
+import os
+from pathlib import Path
+import ssl
+import subprocess
+import sys
+import tempfile
+import threading
+
+library, bash = sys.argv[1:]
+root = Path(tempfile.mkdtemp(prefix="acfs-https-security-"))
+script = b"#!/bin/bash\nprintf 'verified executable bytes\\n'\n"
+cert, key = root / "cert.pem", root / "key.pem"
+subprocess.run([
+    "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", str(key), "-out", str(cert), "-days", "1",
+    "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+], check=True, timeout=30)
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/install.sh":
+            self.send_error(404)
+            return
+        identity = self.headers.get("Accept-Encoding") == "identity"
+        body = script if identity else gzip.compress(script, mtime=0)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/x-sh")
+        self.send_header("Content-Length", str(len(body)))
+        if not identity:
+            self.send_header("Content-Encoding", "gzip")
+        self.end_headers()
+        self.wfile.write(body)
+
+server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(cert, key)
+server.socket = context.wrap_socket(server.socket, server_side=True)
+thread = threading.Thread(target=server.serve_forever)
+thread.start()
+try:
+    env = dict(os.environ, CURL_CA_BUNDLE=str(cert), NO_PROXY="localhost",
+               no_proxy="localhost", ACFS_SECURITY_RETAIN_TEMP_FILES="true")
+    url = f"https://localhost:{server.server_port}/install.sh"
+    output = root / "downloaded.sh"
+    # The certificate covers localhost, not the IP address. Keep TLS name
+    # verification active and require a real rejection before the happy path.
+    bad_output = root / "wrong-host.sh"
+    bad_env = dict(env, NO_PROXY="127.0.0.1", no_proxy="127.0.0.1")
+    rejected = subprocess.run([
+        bash, "-c", 'source "$1"; acfs_download_to_file "$2" "$3" wrong-host',
+        "transport-test", library, f"https://127.0.0.1:{server.server_port}/install.sh",
+        str(bad_output),
+    ], env=bad_env, timeout=60)
+    if rejected.returncode == 0 or (bad_output.exists() and bad_output.stat().st_size):
+        raise AssertionError("HTTPS accepted a certificate for the wrong hostname")
+    completed = subprocess.run([
+        bash, "-c", 'source "$1"; acfs_download_to_file "$2" "$3" transport',
+        "transport-test", library, url, str(output),
+    ], env=env, timeout=60)
+    if completed.returncode != 0:
+        raise RuntimeError(f"real HTTPS download failed: {completed.returncode}")
+    actual = output.read_bytes()
+    if actual != script or hashlib.sha256(actual).digest() != hashlib.sha256(script).digest():
+        raise AssertionError("downloaded compression envelope instead of executable bytes")
+    print(f"Verified {len(actual)} executable bytes over TLS; evidence retained at {root}")
+finally:
+    server.shutdown()
+    thread.join()
+    server.server_close()
+PY
+    then
+        test_pass "$name"
+    else
+        test_fail "$name" "Real TLS download did not match the pinned executable bytes"
+    fi
+}
+
 # ============================================================
 # Run Tests
 # ============================================================
@@ -813,6 +900,7 @@ test_non_retryable_exit_code_success
 # KNOWN_INSTALLERS tests
 test_known_installers_has_entries
 test_known_installers_all_https
+test_https_download_preserves_executable_bytes
 
 # Strict policy/report/candidate boundary tests.  Use one fixture directory so
 # all mutation cases operate on explicitly named, isolated evidence files.

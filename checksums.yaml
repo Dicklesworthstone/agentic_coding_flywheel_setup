@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-08T17:02:52-04:00
+# checksums.yaml - Auto-generated 2026-10-09T19:50:04-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -12,7 +12,7 @@ installers:
 
   asb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
-    sha256: "9d4641f388f86041043273eb408c99789c6864691f1ab80b6023bd628f1e0d30"
+    sha256: "1280281c06b0b8185b184db367575590612d3c6f33563adb5357a923464843af"
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
@@ -56,7 +56,7 @@ installers:
 
   csctf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh"
-    sha256: "fdfe45720ab1414ef496a4d95b725e79dc7abe114353fc6e86618527eb29f3dd"
+    sha256: "3280e4efafadba6c5f7940c4dcd9ae3ccb662625f62264d9a60acf3d97103248"
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
@@ -184,7 +184,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "e8c19f8dbfaafcbeddc8d17bf9227505d918220eba2aeb543d6922bdc5bb9625"
+    sha256: "283cbef4bdaca819bd896b0dacb8a085c4c05dbc880642aa5001d97bc4db74ba"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
