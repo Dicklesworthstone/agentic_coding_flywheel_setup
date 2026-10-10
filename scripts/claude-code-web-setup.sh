@@ -366,13 +366,16 @@ cloud_register_agent_mail() {
     if ! python3 - "$config" "$legacy" "$server" "$ACFS_CLOUD_WORK" >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1 <<'PY'
 import json, os, pathlib, stat, sys
 path, legacy, server, work = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], pathlib.Path(sys.argv[4])
+def reject_links():
+    if any(parent.is_symlink() for parent in [path, *path.parents]):
+        raise ValueError('Symlink in Claude config path; existing configuration preserved')
+reject_links()
 if path.is_file():
+    snapshot = path.stat()
     original = path.read_bytes()
     config = json.loads(original)
     entry = config.get('mcpServers', {}).get('mcp-agent-mail', {})
     if entry.get('command') == legacy and entry.get('args', []) == [] and entry.get('type', 'stdio') == 'stdio':
-        if path.is_symlink():
-            raise ValueError('Legacy registration is in a symlinked config; retained unchanged')
         (work / 'claude.json.before-stdio-fix').write_bytes(original)
         (work / 'claude.json.before-stdio-fix').chmod(0o600)
         entry['command'], entry['args'] = server, ['serve-stdio']
@@ -381,8 +384,16 @@ if path.is_file():
         # at creation, before writing any bytes, regardless of the caller's umask.
         with os.fdopen(os.open(updated, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
             output.write(json.dumps(config, indent=2) + '\n')
-        updated.chmod(stat.S_IMODE(path.stat().st_mode))
-        if path.read_bytes() != original:
+            output.flush()
+            os.fsync(output.fileno())
+        owner = updated.stat()
+        if (owner.st_uid, owner.st_gid) != (snapshot.st_uid, snapshot.st_gid):
+            os.chown(updated, snapshot.st_uid, snapshot.st_gid)
+        updated.chmod(stat.S_IMODE(snapshot.st_mode))
+        reject_links()
+        current = path.stat()
+        fields = ('st_dev', 'st_ino', 'st_mtime_ns', 'st_ctime_ns', 'st_size', 'st_mode', 'st_uid', 'st_gid')
+        if any(getattr(current, field) != getattr(snapshot, field) for field in fields) or path.read_bytes() != original:
             raise ValueError('Config changed concurrently; registration retained, candidate saved')
         os.replace(updated, path)
         print('Migrated legacy ACFS registration to am serve-stdio; backup retained in ' + str(work))
@@ -714,7 +725,7 @@ import pathlib, sys
 state = pathlib.Path(sys.argv[1])
 paths = [state / 'setup.log', *(state / 'logs' / (tool + '.log') for tool in [*sys.argv[2].split(), 'mcp'])]
 for path in paths:
-    if any(parent.is_symlink() for parent in [path, *path.parents]) or (path.exists() and not path.is_file()):
+    if any(parent.is_symlink() for parent in [path, *path.parents]) or (path.exists() and (not path.is_file() or path.stat().st_nlink != 1)):
         print('Unsafe cloud log destination; existing files preserved: ' + str(path), file=sys.stderr)
         sys.exit(1)
 PY
