@@ -608,6 +608,8 @@ const SIDECAR_ASSET = /\.(sha256|sha512|sha256sum|sha512sum|sig|minisig|asc|pem|
 const X86_64_TOKEN = /(?:^|[-_.])(?:x86_64|amd64|x64)(?:[-_.]|$)/;
 const AARCH64_TOKEN = /(?:^|[-_.])(?:aarch64|arm64)(?:[-_.]|$)/;
 
+const OS_TOKEN = /linux|darwin|apple|macos|windows|freebsd|netbsd|openbsd|android|\.exe$/;
+
 /** Which Linux CPU architectures a release's asset names publish a build for. */
 export function linuxArchitectureCoverage(assetNames: string[]): LinuxArchitectureCoverage {
   const coverage: LinuxArchitectureCoverage = { x86_64: false, aarch64: false };
@@ -618,6 +620,18 @@ export function linuxArchitectureCoverage(assetNames: string[]): LinuxArchitectu
     if (AARCH64_TOKEN.test(name)) coverage.aarch64 = true;
   }
   return coverage;
+}
+
+/** Assets that name a CPU architecture but no operating system cannot be classified. */
+function osUnlabeledArchitectureAssets(assetNames: string[]): string[] {
+  return assetNames.filter((raw) => {
+    const name = raw.toLowerCase();
+    return (
+      !SIDECAR_ASSET.test(name) &&
+      !OS_TOKEN.test(name) &&
+      (X86_64_TOKEN.test(name) || AARCH64_TOKEN.test(name))
+    );
+  });
 }
 
 // A release that ships Linux binaries for one architecture only leaves the
@@ -653,9 +667,18 @@ function evaluateArchitecture(
     };
   }
   if (!linux.x86_64 && !linux.aarch64) {
+    const unlabeled = osUnlabeledArchitectureAssets(latest.assetNames);
+    if (unlabeled.length > 0) {
+      return {
+        status: "unknown",
+        detail: `${tag} has architecture-specific assets with no operating system in their names (${unlabeled.slice(0, 3).join(", ")})`,
+        tagName: latest.tagName,
+        linux,
+      };
+    }
     return {
       status: "pass",
-      detail: `${tag} publishes no Linux binaries; the installer does not depend on a per-architecture asset`,
+      detail: `${tag} publishes no architecture-specific Linux binaries (script or source release)`,
       tagName: latest.tagName,
       linux,
     };

@@ -192,6 +192,15 @@ describe("stack provenance report", () => {
     expect(scriptOnly.tools[0].architecture.status).toBe("pass");
     expect(scriptOnly.tools[0].architecture.linux).toEqual({ x86_64: false, aarch64: false });
 
+    // An architecture without an operating system in the name is not proof
+    // of a script-only release.
+    const osUnlabeled = await run({
+      ...base,
+      assetNames: ["ubs-x86_64.tar.gz", "ubs-darwin-arm64.tar.gz", "install.sh"],
+    });
+    expect(osUnlabeled.tools[0].architecture.status).toBe("unknown");
+    expect(osUnlabeled.tools[0].architecture.detail).toContain("ubs-x86_64.tar.gz");
+
     const unlisted = await run(base);
     expect(unlisted.tools[0].architecture.status).toBe("unknown");
 
