@@ -9509,6 +9509,31 @@ EOF
     [[ "$(mode_of "$runtime/scripts/a.sh")" == "644" ]]
 }
 
+@test "update_normalize_runtime_modes fixes more paths than one chmod batch and keeps .git with a trailing slash" {
+    local temp_root runtime i
+    mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+
+    temp_root="$(create_temp_dir)"
+    runtime="$temp_root/acfs"
+    umask 022
+    mkdir -p "$runtime/cache" "$runtime/.git"
+    for ((i = 0; i < 1200; i++)); do
+        : > "$runtime/cache/f$i"
+    done
+    printf 'ref: refs/heads/main\n' > "$runtime/.git/HEAD"
+    chmod 664 "$runtime"/cache/* "$runtime/.git/HEAD"
+    UPDATE_LOG_FILE="$temp_root/update.log"
+    DRY_RUN=false
+
+    update_normalize_runtime_modes "$runtime/"
+
+    run grep -F "Removed group/other write from 1200 path(s) under $runtime" "$UPDATE_LOG_FILE"
+    assert_success
+    [[ "$(mode_of "$runtime/cache/f0")" == "644" ]]
+    [[ "$(mode_of "$runtime/cache/f1199")" == "644" ]]
+    [[ "$(mode_of "$runtime/.git/HEAD")" == "664" ]]
+}
+
 @test "self-update syncs deployed scripts when repo is already current" {
     local temp_root
     local seed_repo

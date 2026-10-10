@@ -3642,29 +3642,53 @@ update_normalize_runtime_modes() {
     local acfs_home="${1:-}"
     local find_bin=""
     local chmod_bin=""
+    local stat_bin=""
+    local runtime_owner=""
     local path=""
+    local i=0
+    local failed=false
+    local -a owner_test=()
     local -a writable=()
 
-    [[ -n "$acfs_home" && "$acfs_home" == /* && "$acfs_home" != "/" ]] || return 0
-    [[ "${acfs_home%/}" != "${HOME%/}" ]] || return 0
+    acfs_home="${acfs_home%/}"
+    [[ -n "$acfs_home" && "$acfs_home" == /* ]] || return 0
+    [[ "$acfs_home" != "${HOME%/}" ]] || return 0
     [[ -d "$acfs_home" && ! -L "$acfs_home" ]] || return 0
     find_bin="$(update_system_binary_path find 2>/dev/null || true)"
     chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
     [[ -n "$find_bin" && -n "$chmod_bin" ]] || return 0
 
+    # The fleet tools accept runtime files owned by root or by the runtime's
+    # user. A user can only fix its own files; root (sudo acfs update) fixes
+    # both kinds, never anyone else's.
+    owner_test=(-user "$EUID")
+    if [[ "$EUID" == 0 ]]; then
+        stat_bin="$(update_system_binary_path stat 2>/dev/null || true)"
+        if [[ -n "$stat_bin" ]]; then
+            runtime_owner="$("$stat_bin" -c '%u' "$acfs_home" 2>/dev/null || "$stat_bin" -f '%u' "$acfs_home" 2>/dev/null || true)"
+        fi
+        if [[ "$runtime_owner" =~ ^[0-9]+$ && "$runtime_owner" != 0 ]]; then
+            owner_test=(\( -user 0 -o -user "$runtime_owner" \))
+        fi
+    fi
+
     while IFS= read -r -d '' path; do
         writable+=("$path")
     done < <("$find_bin" "$acfs_home" -xdev -path "$acfs_home/.git" -prune -o \
-        \( -type f -o -type d \) -user "$EUID" \( -perm -020 -o -perm -002 \) -print0 2>/dev/null)
+        \( -type f -o -type d \) "${owner_test[@]}" \( -perm -020 -o -perm -002 \) -print0 2>/dev/null)
     [[ ${#writable[@]} -gt 0 ]] || return 0
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log_to_file "Would remove group/other write from ${#writable[@]} path(s) under $acfs_home"
         return 0
     fi
-    # Paths are absolute (find starts from one), so no option terminator is
-    # needed; BSD chmod would read a "--" after the mode as a file name.
-    if "$chmod_bin" go-w "${writable[@]}" 2>/dev/null; then
+    # Batches keep a large runtime (caches, node_modules) under ARG_MAX. Paths
+    # are absolute (find starts from one), so no option terminator is needed;
+    # BSD chmod would read a "--" after the mode as a file name.
+    for ((i = 0; i < ${#writable[@]}; i += 500)); do
+        "$chmod_bin" go-w "${writable[@]:i:500}" 2>/dev/null || failed=true
+    done
+    if [[ "$failed" == false ]]; then
         log_to_file "Removed group/other write from ${#writable[@]} path(s) under $acfs_home"
     else
         log_to_file "Unable to remove group/other write from every path under $acfs_home"
