@@ -110,21 +110,41 @@ cloud_find_binary() {
 # Exported job functions are invoked in the timeout-controlled child Bash.
 # shellcheck disable=SC2329
 cloud_link_onto_path() {
-    # Cloud sessions put ~/.local/bin, /usr/local/bin, ~/.cargo/bin and
-    # ~/.bun/bin on PATH, but not ~/go/bin or installer-private directories.
-    local bin="$1" path dir
+    # The generated guide guarantees only this install directory on PATH.
+    # A later task need not inherit Cargo/Bun/Go paths from the setup shell.
+    local bin="$1" path target="$ACFS_CLOUD_BIN_DIR/$1" deadline="${2:-}"
     path="$(cloud_find_binary "$bin")" || return 1
-    dir="$(dirname "$path")"
-    case "$dir" in
-        "$ACFS_CLOUD_BIN_DIR" | /usr/local/bin | /usr/bin | "$HOME/.cargo/bin" | "$HOME/.bun/bin") ;;
-        *) ln -s "$path" "$ACFS_CLOUD_BIN_DIR/$bin" ;;
-    esac
+    [[ "$path" == /* ]] || path="$PWD/$path"
+    if [[ "$path" == "$target" ]]; then
+        cloud_version "$bin" "$deadline" >/dev/null
+        return $?
+    fi
+    # Exclusive symlink creation never writes inside a colliding directory or
+    # replaces an existing destination; reject linked parents before writing.
+    python3 - "$path" "$target" <<'PY' || return 1
+import os, pathlib, sys
+source, target = sys.argv[1], pathlib.Path(sys.argv[2])
+try:
+    if any(parent.is_symlink() for parent in target.parents):
+        raise ValueError('Symlink in binary directory; existing files preserved: ' + str(target))
+    os.symlink(source, target)
+except Exception as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+PY
+    cloud_version "$bin" "$deadline" >/dev/null
 }
 
 cloud_version() {
-    local bin="$1" path out
+    local bin="$1" path out deadline="${2:-}" duration=5
+    if [[ -n "$deadline" ]]; then
+        # Leave room for timeout's kill-after grace inside the guide budget.
+        duration=$(( deadline - SECONDS - 1 ))
+        (( duration > 0 )) || return 1
+        (( duration > 5 )) && duration=5
+    fi
     path="$(cloud_find_binary "$bin")" || return 1
-    out="$(timeout --kill-after=1 5 "$path" --version </dev/null 2>&1)" || return 1
+    out="$(timeout --kill-after=1 "$duration" "$path" --version </dev/null 2>&1)" || return 1
     [[ -n "$out" ]] || return 1
     printf '%s\n' "${out%%$'\n'*}"
 }
@@ -394,14 +414,22 @@ cloud_tool_guide_line() {
 
 cloud_write_guide() {
     local tool status detail block
+    # Remaining-tool discovery includes final alias probes; cap the whole
+    # phase so slow existing binaries cannot exceed the snapshot window.
+    local probe_deadline=$(( SECONDS + 60 ))
     local -a installed=() missing=()
     # Cover every known tool, not just this run's selection, so a partial
     # re-run does not drop tools installed earlier from the guide.
     for tool in $ACFS_CLOUD_DEFAULT_TOOLS; do
         if [[ -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
             IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/$tool"
-        elif cloud_version "$(cloud_tool_field "$tool" 3)" >/dev/null && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail >/dev/null; }; then
-            status="ok"
+        elif cloud_version "$(cloud_tool_field "$tool" 3)" "$probe_deadline" >/dev/null && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail "$probe_deadline" >/dev/null; }; then
+            if cloud_link_onto_path "$(cloud_tool_field "$tool" 3)" "$probe_deadline" && { [[ "$tool" != am ]] || cloud_link_onto_path mcp-agent-mail "$probe_deadline"; }; then
+                status="ok"
+            else
+                status="fail"
+                detail="existing binary could not be linked onto PATH"
+            fi
         else
             continue
         fi
@@ -416,9 +444,14 @@ cloud_write_guide() {
     block+="# Agent Flywheel tools (ACFS cloud setup)"$'\n\n'
     block+="This VM was provisioned by the ACFS cloud setup script for $ACFS_CLOUD_AGENT"$'\n'
     block+="(https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)."$'\n'
-    block+="In each task shell, run \`export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH\` before using these CLIs:"$'\n\n'
+    # Fences preserve literal backticks in valid paths/refs; an inline code
+    # span would end early even when the shell metacharacter is escaped.
+    block+=$'In each task shell, run:\n\n```bash\n'
+    block+="export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH"$'\n```\n\n'
     if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
-        block+="For JFP's prompt cache in this writable data root, run \`export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}\`. This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable."$'\n\n'
+        block+=$'For JFP\'s prompt cache in this writable data root, run:\n\n```bash\n'
+        block+="export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}"$'\n```\n\n'
+        block+=$'This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable.\n\n'
     fi
     if [[ ${#installed[@]} -gt 0 ]]; then
         block+="$(printf '%s\n' "${installed[@]}")"$'\n'
@@ -430,7 +463,8 @@ cloud_write_guide() {
         block+="$(printf '%s\n' "${missing[@]}")"$'\n'
     fi
     block+=$'\n'"Setup log: \`$ACFS_CLOUD_STATE_DIR/setup.log\` (per-tool logs in \`$ACFS_CLOUD_STATE_DIR/logs/\`)."
-    block+=" Re-run: \`curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
+    block+=$'\n\nRe-run:\n\n```bash\n'
+    block+="curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' $(printf '%q' "$ACFS_CLOUD_SCRIPT_URL") | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_TOOLS=$(printf '%q' "$ACFS_CLOUD_TOOLS") ACFS_CLOUD_TIMEOUT=$ACFS_CLOUD_TIMEOUT ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash"$'\n```\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
     elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then
@@ -528,7 +562,12 @@ description: Use when starting coding work in this cloud repository, choosing ta
 # ACFS cloud tools
 
 Read the generated tool guide at {guide} and setup results at {log}.
-In every task shell, run `export PATH={bins}:"$PATH"` before using the CLIs.
+In every task shell, run:
+
+```bash
+export PATH={bins}:"$PATH"
+```
+
 Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
 Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
 When the home directory is read-only, use the guide's JFP_HOME export for the prompt cache.

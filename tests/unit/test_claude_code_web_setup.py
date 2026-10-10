@@ -442,10 +442,10 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.manifest["tools"][tool] = {"version": "v1", "file": file, "sha256": hashlib.sha256(data).hexdigest(), "bins": bins}
         self.serve("https://mirror.invalid/v1/" + file, data)
 
-    def run_setup(self, tools="br", **options):
+    def run_setup(self, tools="br", cwd=None, **options):
         self.serve(MANIFEST_URL, json.dumps(self.manifest).encode())
         (self.root / "urls.json").write_text(json.dumps(self.urls))
-        result = subprocess.run(["bash", str(SCRIPT)], env={**self.env, "ACFS_CLOUD_TOOLS": tools, **options},
+        result = subprocess.run(["bash", str(SCRIPT)], cwd=cwd, env={**self.env, "ACFS_CLOUD_TOOLS": tools, **options},
                                 capture_output=True, text=True, timeout=30, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.root / "forbidden").exists(), "Attempted source build or clone")
@@ -470,19 +470,10 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
             self.assertEqual(args[args.index('--proto') + 1], '=https')
             self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
 
-    def test_generated_rerun_preserves_mode_root_and_hardened_fetch(self):
-        self.bundle('ubs')
-        writable = self.root / 'writable root with spaces'
-        options = dict(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable))
-        self.run_setup('ubs', **options)
-        guide = writable / '.acfs/cloud/AGENTS.md'
-        content = guide.read_text()
-        self.assertIn('Default exit 0 can include warnings; read the report', content)
-        self.assertIn('--ci --fail-on-warning', content)
-        self.assertNotIn('exit 0 means clean', content)
-        match = re.search(r'Re-run: `([^`]+)`', content)
+    def run_generated_rerun(self, content):
+        match = re.search(r'Re-run:\s*(?:```bash\n([^\n]+)\n```|`([^`]+)`)', content)
         self.assertIsNotNone(match, 'Generated guide lacks its runnable command')
-        rerun = match.group(1)
+        rerun = match.group(1) or match.group(2)
         internal = self.root / 'curl-download'
         internal.write_bytes((self.bin / 'curl').read_bytes())
         internal.chmod(0o755)
@@ -495,14 +486,31 @@ if '-o' not in args:
 else:
     os.execv({str(internal)!r}, ['curl', *args])
 ''')
-        result = subprocess.run(['bash', '-c', rerun], env={**self.env, 'ACFS_CLOUD_TOOLS': 'ubs'},
+        # A later task does not inherit the setup field's temporary overrides.
+        task_env = {name: value for name, value in self.env.items() if name != 'ACFS_CLOUD_TIMEOUT'}
+        result = subprocess.run(['bash', '-c', rerun], cwd=self.root, env=task_env,
                                 capture_output=True, text=True, timeout=30, check=False)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('ubs 1.2.3 (already installed)', result.stderr)
         try:
             args = json.loads((self.root / 'bootstrap-args').read_text())
         except (OSError, json.JSONDecodeError) as error:
             self.fail('Bootstrap argument capture failed: ' + str(error))
+        return result, args
+
+    def test_generated_rerun_preserves_mode_root_and_hardened_fetch(self):
+        self.bundle('ubs')
+        writable = self.root / 'writable root with spaces'
+        options = dict(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable), ACFS_CLOUD_TIMEOUT='7')
+        self.run_setup('ubs', **options)
+        guide = writable / '.acfs/cloud/AGENTS.md'
+        content = guide.read_text()
+        self.assertIn('Default exit 0 can include warnings; read the report', content)
+        self.assertIn('--ci --fail-on-warning', content)
+        self.assertNotIn('exit 0 means clean', content)
+        result, args = self.run_generated_rerun(content)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ACFS cloud setup: ubs\n', result.stderr.replace('\033[0m', ''))
+        self.assertIn('whole tool job timeout: 7s', result.stderr)
+        self.assertIn('ubs 1.2.3 (already installed)', result.stderr)
         self.assertEqual(args[0], '-q')
         self.assertEqual(args[args.index('--proto') + 1], '=https')
         self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
@@ -510,6 +518,26 @@ else:
         self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
         self.assertEqual(guide.read_text(), content)
         self.assertFalse((self.home / '.claude/CLAUDE.md').exists())
+
+    def check_generated_rerun_ref(self, ref):
+        manifest_url = MANIFEST_URL.replace('/main/', '/' + ref + '/')
+        self.bundle()
+        self.serve(manifest_url, json.dumps(self.manifest).encode())
+        self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_REF=ref)
+        guide = self.home / '.acfs/cloud/AGENTS.md'
+        original = guide.read_text()
+        result, args = self.run_generated_rerun(original)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('br 1.2.3 (already installed)', result.stderr)
+        self.assertEqual(args[-1], manifest_url.replace('/cloud-mirror.json', '/scripts/claude-code-web-setup.sh'))
+        self.assertIn('ACFS ref: ' + ref, result.stderr)
+        self.assertEqual(guide.read_text(), original)
+
+    def test_generated_rerun_quotes_valid_ref_metacharacters(self):
+        self.check_generated_rerun_ref('review&cloud')
+
+    def test_generated_rerun_remains_complete_markdown_with_backtick_ref(self):
+        self.check_generated_rerun_ref('review`cloud')
 
     def test_codex_preserves_instructions_and_never_registers_claude_mcp(self):
         self.bundle('am')
@@ -735,6 +763,125 @@ else:
         self.assertIn("br-existing (already installed)", output)
         self.assertIn("no source build attempted", output)
         self.assertFalse((self.home / ".local/bin/bv").exists())
+
+    def probe_from_guide(self, binary, task_env=None):
+        guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+        match = re.search(r'In each task shell, run:?\s*(?:```bash\n([^\n]+)\n```|`([^`]+)`)', guide)
+        self.assertIsNotNone(match, 'Guide lacks its PATH instruction')
+        command = match.group(1) or match.group(2)
+        descriptor, script = tempfile.mkstemp(dir=self.root, prefix='guide-path-probe-', suffix='.sh')
+        with os.fdopen(descriptor, 'w') as output:
+            output.write(command + '\n"$1" --version\n')
+        return subprocess.run(['bash', script, binary],
+                              cwd=self.root, env=task_env or self.env,
+                              capture_output=True, text=True, timeout=5, check=False)
+
+    def test_reused_private_tools_work_in_a_fresh_task_shell(self):
+        tools = [('br', '.cargo/bin'), ('ms', '.bun/bin'), ('bv', 'go/bin')]
+        for binary, directory in tools:
+            path = self.home / directory / binary
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('#!/bin/sh\necho ' + binary + '-existing\n')
+            path.chmod(0o755)
+        self.run_setup('br ms bv', ACFS_CLOUD_AGENT='generic')
+        for binary, _ in tools:
+            with self.subTest(binary=binary):
+                probe = self.probe_from_guide(binary)
+                self.assertEqual(probe.returncode, 0, probe.stderr)
+                self.assertEqual(probe.stdout.strip(), binary + '-existing')
+        self.assertEqual((self.root / 'requests').read_text().splitlines(), [MANIFEST_URL])
+
+    def test_unselected_existing_go_tool_is_callable_from_guide(self):
+        binary = self.home / 'go/bin/bv'
+        binary.parent.mkdir(parents=True)
+        binary.write_text('#!/bin/sh\necho bv-existing\n')
+        binary.chmod(0o755)
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('`bv` (beads_viewer)', (self.home / '.acfs/cloud/AGENTS.md').read_text())
+        probe = self.probe_from_guide('bv')
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout.strip(), 'bv-existing')
+
+    def test_unselected_agent_mail_links_both_commands(self):
+        for binary in ('am', 'mcp-agent-mail'):
+            source = self.home / '.cargo/bin' / binary
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text('#!/bin/sh\necho ' + binary + '-existing\n')
+            source.chmod(0o755)
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        for binary in ('am', 'mcp-agent-mail'):
+            with self.subTest(binary=binary):
+                probe = self.probe_from_guide(binary)
+                self.assertEqual(probe.returncode, 0, probe.stderr)
+                self.assertEqual(probe.stdout.strip(), binary + '-existing')
+
+    def test_reused_binary_directory_collision_is_preserved(self):
+        self.command('br', '#!/bin/sh\necho br-existing\n')
+        destination = self.home / '.local/bin/br'
+        destination.mkdir(parents=True)
+        (destination / 'keep').write_text('existing contents')
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('existing binary could not be linked onto PATH', output)
+        self.assertEqual(sorted(path.name for path in destination.iterdir()), ['keep'])
+        self.assertEqual((destination / 'keep').read_text(), 'existing contents')
+
+    def test_reused_binary_does_not_write_through_symlinked_bin_directory(self):
+        self.command('br', '#!/bin/sh\necho br-existing\n')
+        external = self.root / 'external-bin'
+        external.mkdir()
+        (self.home / '.local').mkdir()
+        (self.home / '.local/bin').symlink_to(external, target_is_directory=True)
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('existing binary could not be linked onto PATH', output)
+        self.assertEqual(list(external.iterdir()), [])
+        self.assertTrue((self.home / '.local/bin').is_symlink())
+
+    def test_existing_relative_path_tool_is_linked_absolutely(self):
+        source = self.root / 'relative-bin/br'
+        source.parent.mkdir()
+        source.write_text('#!/bin/sh\necho br-relative\n')
+        source.chmod(0o755)
+        task_env = dict(self.env)
+        self.env['PATH'] = 'relative-bin:' + self.env['PATH']
+        self.run_setup(cwd=self.root, ACFS_CLOUD_AGENT='generic')
+        link = self.home / '.local/bin/br'
+        self.assertEqual(link.readlink(), source)
+        probe = self.probe_from_guide('br', task_env)
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout.strip(), 'br-relative')
+
+    def test_generated_path_command_handles_backticks_in_home(self):
+        self.home = self.root / 'home with `literal` ticks'
+        self.home.mkdir()
+        self.env['HOME'] = str(self.home)
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        probe = self.probe_from_guide('br')
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout.strip(), 'br 1.2.3')
+
+    def test_reused_binary_must_work_through_its_new_alias(self):
+        source = self.home / '.cargo/bin/br'
+        source.parent.mkdir(parents=True)
+        source.write_text('#!/bin/sh\ncase "$0" in */.cargo/bin/br) echo br-private;; *) exit 9;; esac\n')
+        source.chmod(0o755)
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('existing binary could not be linked onto PATH', output)
+        self.assertNotIn('br-private (already installed)', output)
+        self.assertNotIn('`br` (beads_rust)', (self.home / '.acfs/cloud/AGENTS.md').read_text())
+
+    def test_unselected_tool_with_nonworking_alias_is_not_claimed_ready(self):
+        source = self.home / 'go/bin/bv'
+        source.parent.mkdir(parents=True)
+        source.write_text('#!/bin/sh\ncase "$0" in */go/bin/bv) echo bv-private;; *) exit 9;; esac\n')
+        source.chmod(0o755)
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+        self.assertIn('existing binary could not be linked onto PATH', guide)
+        self.assertNotIn('`bv` (beads_viewer)', guide)
 
     def test_proxy_connect_denial_names_network_setting(self):
         self.bundle()
@@ -1018,10 +1165,11 @@ exec(compile(source, '<setup-python>', 'exec'))
     def test_custom_root_guide_configures_jfp_cache_and_preserves_overrides(self):
         self.bundle('jfp')
         self.home.chmod(0o555)
-        writable = self.root / "workspace tools ' quoted $ dollars$(touch jfp-injected)"
+        writable = self.root / "workspace tools ' quoted ` ticks $ dollars$(touch jfp-injected)"
         self.run_setup('jfp', ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable))
         guide = (writable / '.codex/AGENTS.md').read_text()
-        commands = [line.split('`')[1] for line in guide.splitlines() if 'export JFP_HOME=' in line]
+        spans = re.findall(r'```bash\n([^\n]+)\n```|`(export JFP_HOME=[^`]+)`', guide)
+        commands = [fenced or inline for fenced, inline in spans if (fenced or inline).startswith('export JFP_HOME=')]
         self.assertEqual(len(commands), 1)
         # Execute the authored guide as a private script in its fixture directory.
         # A quoting regression must never run an injected command in the checkout.
@@ -1039,7 +1187,7 @@ exec(compile(source, '<setup-python>', 'exec'))
 
     def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
         self.bundle()
-        writable = self.root / 'workspace tools'
+        writable = self.root / 'workspace tools ` quoted'
         skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
         options = dict(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable), ACFS_CLOUD_SKILL_DIR=str(skill))
         self.run_setup(**options)
@@ -1048,6 +1196,16 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertIn(str(writable / '.codex/AGENTS.md').encode(), content)
         self.assertIn(str(writable / '.acfs/cloud/setup.log').encode(), content)
         self.assertIn(b'export PATH=', content)
+        spans = re.findall(r'```bash\n([^\n]+)\n```|`(export PATH=[^`]+)`', content.decode())
+        commands = [fenced or inline for fenced, inline in spans if (fenced or inline).startswith('export PATH=')]
+        self.assertEqual(len(commands), 1)
+        script = self.root / 'skill-path-probe.sh'
+        with script.open('x') as output:
+            output.write(commands[0] + '\nbr --version\n')
+        probe = subprocess.run(['bash', str(script)], cwd=self.root,
+                               env=self.env, capture_output=True, text=True, timeout=5, check=False)
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout.strip(), 'br 1.2.3')
         self.assertIn(b'use the repository\'s existing Beads tracker', content)
         self.assertIn('ACFS_CLOUD_SKILL_DIR=' + str(skill), (writable / '.codex/AGENTS.md').read_text())
         self.run_setup(**options)
