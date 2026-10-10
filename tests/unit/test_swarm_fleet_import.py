@@ -127,6 +127,8 @@ class ImportFixture:
 
 class ImportTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.fx = ImportFixture()
 
     def test_preview_checks_all_bundles_without_destination_or_collection_writes(self):
@@ -384,6 +386,8 @@ class FormatTests(unittest.TestCase):
 
 class CheckTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.fx = ImportFixture()
         self.preview = self.fx.preview()
 

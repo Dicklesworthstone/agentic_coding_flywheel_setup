@@ -22,6 +22,8 @@ fleet = collection.fleet
 
 class CollectionTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         # Retain all disposable fixtures; never clean up a user's repository.
         self.root = Path(tempfile.mkdtemp(prefix="acfs-collection-test-"))
         self.root.chmod(0o755)

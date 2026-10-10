@@ -137,6 +137,8 @@ class FleetFixture:
 
 class StatusTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.temp = tempfile.TemporaryDirectory(prefix="acfs-status-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -407,6 +409,8 @@ class StatusTests(unittest.TestCase):
 
 class RemoteExportTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.temp = tempfile.TemporaryDirectory(prefix="acfs-status-remote-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)

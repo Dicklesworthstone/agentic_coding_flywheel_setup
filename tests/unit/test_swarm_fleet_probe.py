@@ -96,6 +96,9 @@ def response(ident="alpha", when=None):
 class FleetTests(unittest.TestCase):
     def setUp(self):
         m.STOP.clear()
+        # Fixture runtimes are written with plain write_text; under a login
+        # user's 0002 umask they would be 664, which the probe rightly refuses.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.directory = Path(tempfile.mkdtemp(prefix="acfs-fleet-test-"))
 
     def file(self, name, data, mode=0o600):

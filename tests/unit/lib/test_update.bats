@@ -9485,6 +9485,8 @@ EOF
 
     temp_root="$(create_temp_dir)"
     runtime="$temp_root/acfs"
+    # Only the file below is writable by others, whatever the caller's umask.
+    umask 022
     mkdir -p "$runtime/scripts"
     printf "x\n" > "$runtime/scripts/a.sh"
     chmod 664 "$runtime/scripts/a.sh"

@@ -84,6 +84,8 @@ def prepared(entry):
 
 class PreparationTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.directory = Path(tempfile.mkdtemp(prefix="acfs-fleet-prepare-test-"))
         self.launch, self.history, self.records, self.work = sample(self.directory)
 
@@ -370,6 +372,8 @@ print(json.dumps({'schema':'acfs.packet-preparation.v1','status':'prepared','dir
 
 class RemotePeerTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.directory = Path(tempfile.mkdtemp(prefix="acfs-real-preparation-peer-"))
         launch, history, records, work = sample(self.directory, 1)
         self.home = self.directory / "home"

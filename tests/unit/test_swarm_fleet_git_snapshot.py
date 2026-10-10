@@ -49,6 +49,8 @@ print("checked actual detached commit, index and independent objects")
 
 class GitSnapshotTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.root = Path(tempfile.mkdtemp(prefix="acfs-git-snapshot-test-"))
         self.root.chmod(0o700)
         self.home = self.root / "home"

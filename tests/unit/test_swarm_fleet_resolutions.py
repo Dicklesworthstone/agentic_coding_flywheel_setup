@@ -38,6 +38,8 @@ def resolution(report, changes):
 
 class ResolutionTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.assertNotEqual(os.geteuid(), 0, "Exercise actual unprivileged production behavior")
 
     def fixture(self, fmt="sha1", later=False):

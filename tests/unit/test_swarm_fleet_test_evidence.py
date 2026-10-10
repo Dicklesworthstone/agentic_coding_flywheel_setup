@@ -18,6 +18,8 @@ runner, Fixture, SCRIPT = base.runner, base.Fixture, base.SCRIPT
 
 class EvidenceTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.assertNotEqual(os.geteuid(), 0)
 
     def inspect(self, fx, result, **kw):
@@ -265,6 +267,8 @@ r.execute({str(fx.repo)!r}, {fx.commit!r}, {fx.spec!r}, {str(fx.output)!r}, 30, 
 
 class PromotionTests(unittest.TestCase):
     def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
         self.assertNotEqual(os.geteuid(), 0)
 
     def fixture(self, fmt="sha1", program="print('candidate passed')\n"):
