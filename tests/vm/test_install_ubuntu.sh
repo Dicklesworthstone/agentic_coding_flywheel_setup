@@ -37,6 +37,8 @@ Options:
                        then require --resume to skip checkpointed phases and finish.
   --platform <p>       linux/amd64 or linux/arm64 (a foreign platform needs binfmt
                        emulation). Default: the host's native platform, pinned.
+  --bootstrap-e2e      Instead of the full install, run the curl|bash bootstrap and
+                       resume-after-failure E2E scripts, each in a fresh container.
   --help               Show help.
 
 Examples:
@@ -46,6 +48,7 @@ Examples:
   ./tests/vm/test_install_ubuntu.sh --mode safe
   ./tests/vm/test_install_ubuntu.sh --interrupt-resume
   ./tests/vm/test_install_ubuntu.sh --platform linux/arm64
+  ./tests/vm/test_install_ubuntu.sh --bootstrap-e2e
 EOF
 }
 
@@ -66,6 +69,7 @@ declare -a ubuntus=()
 MODE="vibe"
 STRICT=false
 INTERRUPT_RESUME=false
+BOOTSTRAP_E2E=false
 PLATFORM=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -94,6 +98,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --interrupt-resume)
       INTERRUPT_RESUME=true
+      shift
+      ;;
+    --bootstrap-e2e)
+      BOOTSTRAP_E2E=true
       shift
       ;;
     --platform)
@@ -185,12 +193,46 @@ run_one() {
     "$image" bash /repo/tests/vm/test_runner.sh
 }
 
+# The real user path is curl|bash, and resume is how users recover from a
+# dropped session. Before this flag only the (unused) Actions workflow ran
+# these two scripts. Each gets a fresh container and a writable copy of the
+# tree, so nothing root-owned lands in the host checkout.
+run_bootstrap_e2e() {
+  local ubuntu_version="$1"
+  local image="ubuntu:${ubuntu_version}"
+  local test_script=""
+
+  docker pull --platform "$PLATFORM" "$image" >/dev/null
+  for test_script in tests/e2e/test_curlbash_bootstrap.sh tests/e2e/test_resume_after_failure.sh; do
+    echo "" >&2
+    echo "[ACFS Test] Ubuntu ${ubuntu_version}: ${test_script} (platform=${PLATFORM})" >&2
+    docker run --rm --platform "$PLATFORM" \
+      -e DEBIAN_FRONTEND=noninteractive \
+      -v "${REPO_ROOT}:/src:ro" \
+      "$image" bash -c '
+        set -euo pipefail
+        apt-get update -qq >/dev/null
+        apt-get install -y -qq sudo curl git ca-certificates jq unzip tar xz-utils gnupg python3 >/dev/null
+        echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-acfs-e2e
+        chmod 440 /etc/sudoers.d/90-acfs-e2e
+        mkdir -p /repo
+        tar -C /src --exclude=.git --exclude=node_modules -cf - . | tar -C /repo -xf -
+        cd /repo
+        bash "$1"
+      ' _ "$test_script"
+  done
+}
+
 for ubuntu_version in "${ubuntus[@]}"; do
   if [[ -z "$ubuntu_version" ]]; then
     echo "ERROR: --ubuntu requires a version (e.g. 24.04)" >&2
     exit 1
   fi
-  run_one "$ubuntu_version"
+  if [[ "$BOOTSTRAP_E2E" == "true" ]]; then
+    run_bootstrap_e2e "$ubuntu_version"
+  else
+    run_one "$ubuntu_version"
+  fi
 done
 
 echo "" >&2

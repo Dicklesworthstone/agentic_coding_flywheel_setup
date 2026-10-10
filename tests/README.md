@@ -109,6 +109,10 @@ brew install expect
 # container; the harness refuses to start without it.
 ./tests/vm/test_install_ubuntu.sh --platform linux/arm64
 
+# Run the curl|bash bootstrap and resume-after-failure E2E scripts, each in a fresh container
+# (a few minutes; the only other runner was the unused Actions workflow)
+./tests/vm/test_install_ubuntu.sh --bootstrap-e2e
+
 # Run focused fresh-root curl|bash regression
 ./tests/vm/test_fresh_root_bootstrap_regression.sh
 
