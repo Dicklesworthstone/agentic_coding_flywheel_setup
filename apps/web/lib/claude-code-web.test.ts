@@ -283,4 +283,44 @@ describe("cloud agent page data", () => {
     expect(readFileSync(join(repo, "bootstrap-ran"), "utf8")).toBe(join(repo, ".acfs-cloud"));
     expect(readFileSync(exclude, "utf8")).toContain("/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n");
   });
+
+  test("full and subset recipes pass hardened download arguments through real Bash quoting", () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-fetch-recipe-")));
+    const bin = join(workspace, "bin");
+    const template = join(workspace, "empty-template");
+    mkdirSync(bin);
+    mkdirSync(template);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+    env.GIT_CONFIG_NOSYSTEM = "1";
+    env.GIT_CONFIG_GLOBAL = "/dev/null";
+    env.GIT_TEMPLATE_DIR = template;
+    env.PATH = `${bin}:${process.env.PATH}`;
+    writeFileSync(join(bin, "curl"), `#!/bin/sh
+printf '%s\\0' "$@" > "$ACFS_TEST_CURL_ARGS"
+cat <<'BOOTSTRAP'
+printf '%s' "\${ACFS_CLOUD_AGENT:-claude}" > bootstrap-mode
+BOOTSTRAP
+`, { mode: 0o755 });
+    for (const agent of CLOUD_AGENTS.filter((entry) => entry.script)) {
+      for (const [kind, recipe] of [["full", agent.script!], ["subset", cloudSubsetRecipe(agent.id)]]) {
+        const repo = join(workspace, `${agent.id}-${kind} with spaces`);
+        mkdirSync(repo);
+        expect(spawnSync("git", ["init", "--quiet", repo], { env, encoding: "utf8" }).status).toBe(0);
+        const argsPath = join(repo, "curl-args");
+        const result = spawnSync("bash", ["-c", recipe], {
+          cwd: repo, env: { ...env, ACFS_TEST_CURL_ARGS: argsPath }, encoding: "utf8",
+        });
+        if (result.status !== 0) throw new Error(`${agent.id}-${kind}: ${result.stderr}`);
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(readFileSync(argsPath, "utf8").split("\0").slice(0, -1)).toEqual([
+          "-q", "-fsSL", "--proto", "=https", "--proto-redir", "=https",
+          "-A", "OpenAI File Downloader, XaiImageApiFetch/1.0", "-H", "Accept-Encoding: identity",
+          CLAUDE_CODE_WEB_SCRIPT_URL,
+        ]);
+        expect(readFileSync(join(repo, "bootstrap-mode"), "utf8"))
+          .toBe(agent.id === "claude" ? "claude" : agent.id === "codex" ? "codex" : "generic");
+      }
+    }
+  });
 });

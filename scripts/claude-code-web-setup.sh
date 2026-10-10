@@ -12,7 +12,7 @@
 # Use it as the environment's "Setup script" (environment settings dialog):
 #
 #   #!/bin/bash
-#   curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
+#   curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
 #
 # or paste this whole file into the field. Network access "Full" is recommended
 # (or Custom allowing raw.githubusercontent.com and downloads.agent-flywheel.com).
@@ -383,7 +383,7 @@ cloud_tool_guide_line() {
         bv) printf '%s\n' '- `bv` (beads_viewer): graph-aware triage over beads. Use ONLY `--robot-*` flags (bare `bv` opens a blocking TUI): `bv --robot-triage`, `bv --robot-next`, `bv --robot-plan`.' ;;
         am) printf '%s\n' "- \`am\` / \`mcp-agent-mail\` (Agent Mail): agent messaging and file reservations. MCP registration status is in \`$ACFS_CLOUD_STATE_DIR/setup.log\`; use \`am --help\` for CLI access." ;;
         ast-grep) printf '%s\n' '- `ast-grep`: structural code search used by UBS. Use this name because Linux may have an unrelated `sg` command.' ;;
-        ubs) printf '%s\n' '- `ubs` (Ultimate Bug Scanner): run `ubs <changed files>` before every commit; exit 0 means clean.' ;;
+        ubs) printf '%s\n' '- `ubs` (Ultimate Bug Scanner): run `ubs <changed files>` before every commit. Default exit 0 can include warnings; read the report. Use `ubs <changed files> --ci --fail-on-warning` when warnings must fail the check.' ;;
         cass) printf '%s\n' '- `cass` (session search): `cass search "query" --robot --limit 5`. Always pass `--robot` or `--json`; bare `cass` opens a TUI.' ;;
         cm) printf '%s\n' '- `cm` (CASS Memory): `cm context "<task>" --json` before starting work to pull relevant procedural memory.' ;;
         ms) printf '%s\n' '- `ms` (meta_skill): local skill search and management; see `ms --help`.' ;;
@@ -430,7 +430,7 @@ cloud_write_guide() {
         block+="$(printf '%s\n' "${missing[@]}")"$'\n'
     fi
     block+=$'\n'"Setup log: \`$ACFS_CLOUD_STATE_DIR/setup.log\` (per-tool logs in \`$ACFS_CLOUD_STATE_DIR/logs/\`)."
-    block+=" Re-run: \`curl -fsSL $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
+    block+=" Re-run: \`curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' $ACFS_CLOUD_SCRIPT_URL | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash\`."$'\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
     elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then

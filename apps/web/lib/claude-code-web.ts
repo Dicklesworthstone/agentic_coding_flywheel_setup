@@ -14,12 +14,13 @@ export const CLAUDE_CODE_WEB_SCRIPT_URL = `https://raw.githubusercontent.com/Dic
 export const CLAUDE_CODE_WEB_SCRIPT_SOURCE_URL = `https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/${CLAUDE_CODE_WEB_SCRIPT_PATH}`;
 
 /** What to paste into the environment dialog's "Setup script" field. */
-export const CLAUDE_CODE_WEB_SETUP_SCRIPT = `#!/bin/bash\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | bash`;
+export const CLOUD_SETUP_DOWNLOAD_COMMAND = `curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' ${CLAUDE_CODE_WEB_SCRIPT_URL}`;
+export const CLAUDE_CODE_WEB_SETUP_SCRIPT = `#!/bin/bash\n${CLOUD_SETUP_DOWNLOAD_COMMAND} | bash`;
 
 export const CLAUDE_CODE_WEB_DOCS_URL = "https://code.claude.com/docs/en/cloud-environments";
 
 export const CODEX_CLOUD_DOCS_URL = "https://learn.chatgpt.com/docs/environments/cloud-environments";
-export const CODEX_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\nacfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1\nprintf '/.acfs-cloud/\\n/.agents/skills/acfs-cloud-tools/\\n' >> "$(git rev-parse --git-path info/exclude)"`;
+export const CODEX_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\nacfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1\n${CLOUD_SETUP_DOWNLOAD_COMMAND} | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1\nacfs_cloud_exclude="$(git rev-parse --git-path info/exclude)" || exit 1\nmkdir -p "$(dirname "$acfs_cloud_exclude")" || exit 1\nprintf '/.acfs-cloud/\\n/.agents/skills/acfs-cloud-tools/\\n' >> "$acfs_cloud_exclude"`;
 export const CODEX_CLOUD_START_SKILL = `Find the repository root with git rev-parse --show-toplevel.
 Read <repo>/.acfs-cloud/.codex/AGENTS.md for the installed flywheel tools and <repo>/.acfs-cloud/.acfs/cloud/setup.log for failures.
 In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-cloud"; export PATH="$acfs_cloud_root/.local/bin:$PATH" before using the tools.
@@ -27,7 +28,7 @@ Follow the guide's JFP_HOME export in each task shell so JFP caches prompts in t
 Check br --version, bv --version, ubs --version and jsm --version before starting work.
 Use br ready --json and bv --robot-triage; never open their interactive TUIs.`;
 
-export const GENERIC_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\ncurl -fsSL ${CLAUDE_CODE_WEB_SCRIPT_URL} | ACFS_CLOUD_AGENT=generic bash`;
+export const GENERIC_CLOUD_SETUP_SCRIPT = `#!/bin/bash\nset -o pipefail\n${CLOUD_SETUP_DOWNLOAD_COMMAND} | ACFS_CLOUD_AGENT=generic bash`;
 export const GENERIC_CLOUD_TASK_INSTRUCTIONS = `Read $HOME/.acfs/cloud/AGENTS.md and $HOME/.acfs/cloud/setup.log before starting work.
 In each task shell, run export PATH="$HOME/.local/bin:$PATH".
 If using a custom writable data root, follow the guide's JFP_HOME export in each task shell; preserve an existing JFP_HOME and keep any XDG_CONFIG_HOME writable.

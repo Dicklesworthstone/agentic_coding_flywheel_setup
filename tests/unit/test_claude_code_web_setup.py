@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import struct
@@ -468,6 +469,47 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
             self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
             self.assertEqual(args[args.index('--proto') + 1], '=https')
             self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
+
+    def test_generated_rerun_preserves_mode_root_and_hardened_fetch(self):
+        self.bundle('ubs')
+        writable = self.root / 'writable root with spaces'
+        options = dict(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable))
+        self.run_setup('ubs', **options)
+        guide = writable / '.acfs/cloud/AGENTS.md'
+        content = guide.read_text()
+        self.assertIn('Default exit 0 can include warnings; read the report', content)
+        self.assertIn('--ci --fail-on-warning', content)
+        self.assertNotIn('exit 0 means clean', content)
+        match = re.search(r'Re-run: `([^`]+)`', content)
+        self.assertIsNotNone(match, 'Generated guide lacks its runnable command')
+        rerun = match.group(1)
+        internal = self.root / 'curl-download'
+        internal.write_bytes((self.bin / 'curl').read_bytes())
+        internal.chmod(0o755)
+        self.command('curl', f'''#!{shutil.which('python3')}
+import json, os, pathlib, sys
+args=sys.argv[1:]
+if '-o' not in args:
+    pathlib.Path({str(self.root / 'bootstrap-args')!r}).write_text(json.dumps(args))
+    sys.stdout.buffer.write(pathlib.Path({str(SCRIPT)!r}).read_bytes())
+else:
+    os.execv({str(internal)!r}, ['curl', *args])
+''')
+        result = subprocess.run(['bash', '-c', rerun], env={**self.env, 'ACFS_CLOUD_TOOLS': 'ubs'},
+                                capture_output=True, text=True, timeout=30, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ubs 1.2.3 (already installed)', result.stderr)
+        try:
+            args = json.loads((self.root / 'bootstrap-args').read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            self.fail('Bootstrap argument capture failed: ' + str(error))
+        self.assertEqual(args[0], '-q')
+        self.assertEqual(args[args.index('--proto') + 1], '=https')
+        self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
+        self.assertEqual(args[args.index('-A') + 1], 'OpenAI File Downloader, XaiImageApiFetch/1.0')
+        self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
+        self.assertEqual(guide.read_text(), content)
+        self.assertFalse((self.home / '.claude/CLAUDE.md').exists())
 
     def test_codex_preserves_instructions_and_never_registers_claude_mcp(self):
         self.bundle('am')

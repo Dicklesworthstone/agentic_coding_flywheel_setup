@@ -475,7 +475,7 @@ The public [cloud agent setup guide](https://agent-flywheel.com/cloud-agents) se
 
 ```bash
 #!/bin/bash
-curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
+curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
 ```
 
 Full access enables the public binary mirror. Custom and restricted-mode behavior are described below. Pasting the whole script into the field works too.
@@ -534,8 +534,10 @@ The same public bundles work in a Linux x86_64 Codex cloud environment. In **Wor
 #!/bin/bash
 set -o pipefail
 acfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1
-curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1
-printf '/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$(git rev-parse --git-path info/exclude)"
+curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1
+acfs_cloud_exclude="$(git rev-parse --git-path info/exclude)" || exit 1
+mkdir -p "$(dirname "$acfs_cloud_exclude")" || exit 1
+printf '/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$acfs_cloud_exclude"
 ```
 
 Enable internet access and add `raw.githubusercontent.com` and `downloads.agent-flywheel.com` to **Additional allowed domains**. These public downloads need no secrets or ownership of the tool repositories. The recipe installs into the writable repository workspace because hosted home/config paths can be read-only, and excludes its data directory through local Git metadata. It preserves `HOME` and `CODEX_HOME`. Review `<repo>/.acfs-cloud/.acfs/cloud/setup.log`, then **Publish** the prepared environment. After changing its setup, **Republish** for new tasks. See OpenAI's [current cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments).
@@ -555,7 +557,7 @@ Codex mode preserves existing instructions outside its managed block. Without a 
 
 If your UI instead has **Setup script** and **Maintenance script**, it uses the [legacy environment workflow](https://learn.chatgpt.com/docs/environments/cloud-environment). Put the install command in Setup script; avoid reinstalling in Maintenance script on every cached resume. Configure task-phase internet separately if tools need online access after setup.
 
-**Verification boundary:** both installer modes are tested on Ubuntu 24.04, including real public downloads. On 2026-10-08, a fresh Claude-hosted Full session pinned to `4a0e6bfa792ce73ad4c69847755ecd64384288c2` installed all ten tools in 12 seconds; all eleven versions passed, the guide loaded automatically, and Agent Mail's stdio MCP health check passed. Codex hosted installation took 6 seconds at `140a845d`; fresh published tasks reused all eleven executables, including after the repository-skill update at `4bdbf5a7`. A task that explicitly loaded the guide configured PATH and passed all eleven probes. Automatic Codex skill loading and restricted-network Claude acceptance remain open. The script reports individual failures but exits zero; successful session startup alone does not prove every tool installed.
+**Verification boundary:** both installer modes are tested on Ubuntu 24.04, including real public downloads. On 2026-10-08, a fresh Claude-hosted Full session pinned to `4a0e6bfa792ce73ad4c69847755ecd64384288c2` installed all ten tools in 12 seconds; all eleven versions passed, the guide loaded automatically, and Agent Mail's stdio MCP health check passed. On 2026-10-09, a cold default-Trusted Claude session pinned to `31c8180860f9ed461d9843d6ed298939a5b3ea74` installed all ten tools through public fallbacks in 53 seconds; all eleven versions, automatic instructions and actual Agent Mail MCP health passed. That run's first UBS helper download failed TLS; its release-hash-verified recovery was tested separately. The later complete UBS fallback removes that lazy module download, but has not been rerun in that hosted session. Codex hosted installation took 6 seconds at `140a845d`; fresh published tasks reused all eleven executables, including after the repository-skill update at `4bdbf5a7`. A task that explicitly loaded the guide configured PATH and passed all eleven probes. Automatic Codex skill loading remains open. These times describe the pinned earlier recipes, not a fresh hosted acceptance of later changes. The script reports individual failures but exits zero; successful session startup alone does not prove every tool installed. Default UBS exit 0 can include warnings; inspect its report or use `--ci --fail-on-warning` for a warning-strict check.
 
 ### Other Linux cloud agents
 
@@ -564,7 +566,7 @@ The provider-neutral template writes `$HOME/.acfs/cloud/AGENTS.md` and does not 
 ```bash
 #!/bin/bash
 set -o pipefail
-curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=generic bash
+curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=generic bash
 ```
 
 Include these instructions in each task:
