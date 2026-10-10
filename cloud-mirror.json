@@ -153,6 +153,11 @@
       "bins": [
         "ubs"
       ],
+      "fallback": {
+        "format": "acfs-overlay",
+        "sha256": "9d1f6b4d661b3edca0e8607116432b2da9a36a800e7f366c3f916a5c893d1996",
+        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/ubs-v5.4.17-linux-x86_64-9d1f6b4d661b3edca0e8607116432b2da9a36a800e7f366c3f916a5c893d1996.tar.gz"
+      },
       "file": "ubs/v5.4.17/9d1f6b4d661b3edca0e8607116432b2da9a36a800e7f366c3f916a5c893d1996/ubs-linux-x86_64.tar.gz",
       "sha256": "9d1f6b4d661b3edca0e8607116432b2da9a36a800e7f366c3f916a5c893d1996",
       "source": {

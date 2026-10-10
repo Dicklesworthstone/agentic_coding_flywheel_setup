@@ -179,7 +179,7 @@ class MirrorPublisher(unittest.TestCase):
         asset = f"jsm-v1.2.3-linux-x86_64-{sha}.tar.gz"
         entry = {"version": "v1.2.3", "sha256": "a" * 64, "source": {
             "asset": name, "sha256": sha, "url": "https://vendor.invalid/jsm.tar.gz"}}
-        release = {"tag_name": publisher.FALLBACK_TAG, "draft": False, "assets": [
+        release = {"id": 123, "tag_name": publisher.FALLBACK_TAG, "draft": False, "assets": [
             {"name": asset, "digest": "sha256:" + sha}]}
         return data, entry, release
 
@@ -201,7 +201,11 @@ class MirrorPublisher(unittest.TestCase):
                 mock.patch.object(publisher, "fetch", return_value=data):
             publisher.publish_jsm_fallback(entry, self.stage)
         args = run.call_args_list[1].args
-        self.assertEqual(args[:4], ("gh", "release", "upload", publisher.FALLBACK_TAG))
+        self.assertEqual(args[:2], ("gh", "api"))
+        self.assertTrue(args[2].startswith(f"https://uploads.github.com/repos/{publisher.FALLBACK_REPO}/releases/123/assets?name=jsm-"))
+        self.assertEqual(args[3:5], ("--method", "POST"))
+        self.assertEqual(args[5:7], ("--header", "Content-Type: application/gzip"))
+        self.assertEqual(Path(args[8]).read_bytes(), data)
         self.assertNotIn("--clobber", args)
 
     def test_jsm_public_fallback_creation_preserves_normal_latest_release(self):
@@ -211,9 +215,13 @@ class MirrorPublisher(unittest.TestCase):
                 mock.patch.object(publisher, "fetch", return_value=data):
             publisher.publish_jsm_fallback(entry, self.stage)
         args = run.call_args_list[1].args
-        self.assertEqual(args[:4], ("gh", "release", "create", publisher.FALLBACK_TAG))
-        self.assertIn("--latest=false", args)
-        self.assertIn("--prerelease", args)
+        self.assertEqual(args[:5], ("gh", "api", f"repos/{publisher.FALLBACK_REPO}/releases", "--method", "POST"))
+        body = json.loads(Path(args[6]).read_text())
+        self.assertEqual(body["tag_name"], publisher.FALLBACK_TAG)
+        self.assertEqual(body["target_commitish"], "main")
+        self.assertEqual(body["make_latest"], "false")
+        self.assertIs(body["prerelease"], True)
+        self.assertEqual(run.call_count, 3)
 
     def test_jsm_public_fallback_auth_error_never_creates_release(self):
         _, entry, _ = self.jsm_fallback()
@@ -223,6 +231,50 @@ class MirrorPublisher(unittest.TestCase):
             publisher.publish_jsm_fallback(entry, self.stage)
         self.assertEqual(run.call_count, 1)
         fetch.assert_not_called()
+
+    def test_ubs_public_fallback_reuses_complete_bundle_and_keeps_signed_provenance(self):
+        data = self.tar(["bin/ubs", "share/ubs/modules/ubs-python.sh", "share/ubs/modules/helpers/a.py"])
+        sha = publisher.digest(data)
+        relative = f"ubs/v5.4.17/{sha}/ubs-linux-x86_64.tar.gz"
+        path = self.stage / relative
+        path.parent.mkdir(parents=True)
+        path.write_bytes(data)
+        source = {"verification": "minisign+sha256", "url": "https://upstream.invalid/ubs", "sha256": "b" * 64}
+        entry = {"version": "v5.4.17", "file": relative, "sha256": sha, "source": dict(source)}
+        release = {"id": 123, "tag_name": publisher.FALLBACK_TAG, "draft": False, "assets": [
+            {"name": f"ubs-v5.4.17-linux-x86_64-{sha}.tar.gz", "digest": "sha256:" + sha}]}
+        with mock.patch.object(publisher, "run", return_value=json.dumps(release)), \
+                mock.patch.object(publisher, "fetch", return_value=data):
+            publisher.publish_ubs_fallback(entry, self.stage)
+        self.assertEqual(entry["source"], source)
+        self.assertEqual(entry["sha256"], sha)
+        self.assertEqual(entry["fallback"]["format"], "acfs-overlay")
+        self.assertEqual(entry["fallback"]["sha256"], sha)
+        self.assertEqual((self.stage / "public-assets" / release["assets"][0]["name"]).read_bytes(), data)
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+            self.assertIn("share/ubs/modules/helpers/a.py", archive.getnames())
+
+    def test_ubs_public_fallback_rejects_unsigned_provenance_and_changed_staging(self):
+        sha = publisher.digest(b"bundle")
+        relative = f"ubs/v1/{sha}/ubs-linux-x86_64.tar.gz"
+        path = self.stage / relative
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"tampered")
+        entry = {"version": "v1", "file": relative, "sha256": sha, "source": {"verification": "sha256"}}
+        with mock.patch.object(publisher, "run") as run:
+            with self.assertRaisesRegex(ValueError, "provenance"):
+                publisher.publish_ubs_fallback(entry, self.stage)
+            entry["source"]["verification"] = "minisign+sha256"
+            with self.assertRaisesRegex(ValueError, "staging checksum"):
+                publisher.publish_ubs_fallback(entry, self.stage)
+        run.assert_not_called()
+        self.assertNotIn("fallback", entry)
+
+    def test_public_asset_uses_required_agent_header(self):
+        with mock.patch.object(publisher.subprocess, "check_output", return_value="{}") as command:
+            publisher.run("gh", "api", "repos/example/tool/releases/latest")
+        self.assertEqual(command.call_args.args[0][-2:],
+                         ("--header", "User-Agent: OpenAI File Downloader, XaiImageApiFetch/1.0"))
 
     def test_jsm_public_fallback_rejects_staging_and_remote_digest_mismatch(self):
         data, entry, release = self.jsm_fallback()
@@ -308,11 +360,13 @@ class MirrorPublisher(unittest.TestCase):
         with mock.patch('sys.argv', argv), mock.patch.object(publisher, 'prepare', side_effect=lambda tool, stage: (tool, entry)), \
                 mock.patch.object(publisher, 'fetch', side_effect=[value for _ in publisher.TOOLS for value in (missing, packed)]), \
                 mock.patch.object(publisher, 'run') as run, \
-                mock.patch.object(publisher, 'publish_jsm_fallback') as fallback:
+                mock.patch.object(publisher, 'publish_jsm_fallback') as fallback, \
+                mock.patch.object(publisher, 'publish_ubs_fallback') as ubs_fallback:
             publisher.main()
         self.assertEqual(run.call_count, len(publisher.TOOLS))
         self.assertEqual(run.call_args_list[0].args[4], 'acfs-cloud-tools/custom/prefix/bv/v1/bundle.tar.gz')
         fallback.assert_called_once_with(entry, self.stage)
+        ubs_fallback.assert_called_once_with(entry, self.stage)
 
     def test_ubs_requires_complete_nonempty_checksum_tables(self):
         valid = "declare -A MODULE_CHECKSUMS=(\n['js']='" + "a" * 64 + "'\n)\ndeclare -A HELPER_CHECKSUMS=(\n['helper.py']='" + "b" * 64 + "'\n)"
@@ -337,6 +391,7 @@ import json, pathlib, sys, time
 root=pathlib.Path({str(self.root)!r})
 args=sys.argv[1:]; url=args[-1]
 with (root/'requests').open('a') as log: log.write(url+'\\n')
+with (root/'request-args').open('a') as log: log.write(json.dumps(args)+'\\n')
 mapping=json.loads((root/'urls.json').read_text())
 if url not in mapping:
     if (root/'deny-connect').exists(): print('403', end='')
@@ -396,6 +451,18 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertIn("br 1.2.3", output)
         self.assertTrue((self.home / ".local/bin/br").is_file())
         self.assertNotIn("github.com/", (self.root / "requests").read_text())
+
+    def test_download_requests_disable_curl_config_and_request_identity_bytes(self):
+        self.bundle()
+        self.run_setup()
+        requests = [json.loads(line) for line in (self.root / 'request-args').read_text().splitlines()]
+        self.assertEqual(len(requests), 2)
+        for args in requests:
+            self.assertEqual(args[0], '-q')
+            self.assertEqual(args[args.index('-A') + 1], 'OpenAI File Downloader, XaiImageApiFetch/1.0')
+            self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
+            self.assertEqual(args[args.index('--proto') + 1], '=https')
+            self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
 
     def test_codex_preserves_instructions_and_never_registers_claude_mcp(self):
         self.bundle('am')
@@ -480,6 +547,46 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         entry['source'] = {'url': 'https://upstream.invalid/br', 'asset': 'br.tar.gz', 'sha256': '0' * 64}
         self.run_setup()
         self.assertFalse((self.home / '.local/bin/br').exists())
+
+    def test_complete_public_ubs_fallback_installs_helpers_without_lazy_downloads(self):
+        helper = tarfile.TarInfo('share/ubs/modules/helpers/offline.py')
+        helper.size = len(b'print("offline helper")\n')
+        self.bundle('ubs', extra=(helper, b'print("offline helper")\n'))
+        entry = self.manifest['tools']['ubs']
+        mirrored = self.urls.pop('https://mirror.invalid/v1/' + entry['file'])
+        url = 'https://github.com/public/releases/download/cloud/ubs-complete.tar.gz'
+        self.urls[url] = mirrored
+        entry['source'] = {'url': 'https://upstream.invalid/ubs', 'asset': 'ubs', 'sha256': 'f' * 64}
+        entry['fallback'] = {'url': url, 'format': 'acfs-overlay', 'sha256': entry['sha256']}
+        output = self.run_setup('ubs')
+        self.assertIn('ubs 1.2.3 (verified prebuilt)', output)
+        self.assertEqual((self.home / '.local/share/ubs/modules/helpers/offline.py').read_bytes(), b'print("offline helper")\n')
+        self.assertEqual((self.root / 'requests').read_text().splitlines(),
+                         [MANIFEST_URL, 'https://mirror.invalid/v1/' + entry['file'], url])
+        self.assertIn('bundled modules/helpers are ready for offline scans', (self.home / '.acfs/cloud/logs/ubs.log').read_text())
+        self.assertNotIn('modules download on first scan', (self.home / '.acfs/cloud/logs/ubs.log').read_text())
+
+    def test_public_overlay_rejects_wrong_hash_unknown_format_and_unsafe_members(self):
+        for variant in ('wrong-hash', 'unknown-format', 'symlink', 'traversal'):
+            with self.subTest(variant=variant):
+                member = tarfile.TarInfo('share/ubs/modules/linked')
+                if variant == 'symlink':
+                    member.type, member.linkname = tarfile.SYMTYPE, '/tmp'
+                elif variant == 'traversal':
+                    member.name = 'share/ubs/modules/../../escape'
+                code = f'#!/bin/sh\ntouch "{self.root}/executed"\necho ubs-version\n'.encode()
+                self.bundle('ubs', content=code, extra=(member, b''))
+                entry = self.manifest['tools']['ubs']
+                mirrored = self.urls.pop('https://mirror.invalid/v1/' + entry['file'])
+                url = 'https://upstream.invalid/ubs-' + variant
+                self.urls[url] = mirrored
+                entry['fallback'] = {'url': url, 'format': 'unexpected' if variant == 'unknown-format' else 'acfs-overlay',
+                                     'sha256': '0' * 64 if variant == 'wrong-hash' else entry['sha256']}
+                output = self.run_setup('ubs')
+                self.assertFalse((self.root / 'executed').exists())
+                self.assertFalse((self.home / '.local/bin/ubs').exists())
+                self.assertIn('unsupported public fallback format' if variant == 'unknown-format' else
+                              'public overlay checksum' if variant == 'wrong-hash' else 'unsafe archive member', output)
 
     def test_fallback_zip_rejects_oversized_or_link_binary_before_execution(self):
         for variant in ('oversized', 'symlink'):

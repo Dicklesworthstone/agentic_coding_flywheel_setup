@@ -91,7 +91,8 @@ cloud_tool_field() {
 
 cloud_download() {
     # $1 = url, $2 = destination file
-    curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 \
+    curl -q -fsSL -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' \
+        --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 \
         -o "$2" "$1"
 }
 
@@ -163,7 +164,8 @@ try:
     def download(url, target):
         if not url.startswith('https://'):
             raise ValueError('HTTPS required')
-        result = subprocess.run(['curl', '-fsSL', '--proto', '=https', '--proto-redir', '=https',
+        result = subprocess.run(['curl', '-q', '-fsSL', '-A', 'OpenAI File Downloader, XaiImageApiFetch/1.0',
+                                 '-H', 'Accept-Encoding: identity', '--proto', '=https', '--proto-redir', '=https',
                                  '--connect-timeout', '5', '--max-time', '60', '-w', '%{http_connect}',
                                  '-o', str(target), url], stdout=subprocess.PIPE, text=True, check=False)
         if result.returncode and result.stdout.strip() in ('403', '407'):
@@ -176,15 +178,19 @@ try:
     expected_sha = entry['sha256']
     if not download(base.rstrip('/') + '/' + relative, archive):
         print('Mirror unreachable: use Full or Custom allowing downloads.agent-flywheel.com. Trying pinned public release.', flush=True)
-        source = entry.get('source', {})
+        source = entry.get('fallback', entry.get('source', {}))
+        if source.get('format', 'upstream') not in ('upstream', 'acfs-overlay'):
+            raise ValueError('unsupported public fallback format')
         if not re.fullmatch(r'[a-f0-9]{64}', source.get('sha256', '')):
             raise ValueError('no pinned public release fallback')
+        if source.get('format') == 'acfs-overlay' and source['sha256'] != entry['sha256']:
+            raise ValueError('public overlay checksum must match mirror bundle')
         if not download(source['url'], archive):
             raise ValueError('mirror and public release blocked/unavailable; select Full network access')
         expected_sha, fallback = source['sha256'], True
     if hashlib.sha256(archive.read_bytes()).hexdigest() != expected_sha:
         raise ValueError('bundle checksum mismatch; not extracted')
-    if fallback:
+    if fallback and source.get('format', 'upstream') == 'upstream':
         # Normalize only the expected executables from a verified upstream asset.
         # Never extract upstream links, absolute paths or other archive payloads.
         data = archive.read_bytes()
@@ -278,7 +284,10 @@ try:
             raise ValueError('symlink in destination: ' + str(target))
         os.replace(candidate, target)
     if fallback and tool == 'ubs':
-        print('UBS public-release fallback: modules download on first scan; mirror bundles include them.', flush=True)
+        if source.get('format', 'upstream') == 'acfs-overlay':
+            print('UBS complete public fallback: bundled modules/helpers are ready for offline scans.', flush=True)
+        else:
+            print('UBS public-release fallback: modules download on first scan; mirror bundles include them.', flush=True)
 except subprocess.CalledProcessError as error:
     if error.returncode == -4:
         print('prebuilt release uses CPU instructions unavailable on this VM (SIGILL)', file=sys.stderr)

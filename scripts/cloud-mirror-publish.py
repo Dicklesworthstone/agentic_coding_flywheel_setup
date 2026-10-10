@@ -39,6 +39,8 @@ TOOLS = {
 
 
 def run(*args):
+    if args[:2] == ("gh", "api"):
+        args = (*args, "--header", "User-Agent: OpenAI File Downloader, XaiImageApiFetch/1.0")
     return subprocess.check_output(args, text=True, timeout=300)
 
 
@@ -244,15 +246,40 @@ def publish_jsm_fallback(entry, stage):
             or source["asset"] != TOOLS["jsm"][1]):
         raise ValueError("Invalid JSM fallback artifact identity")
     data = (stage / "jsm" / version / source["asset"]).read_bytes()
+    url = publish_public_asset("jsm", version, sha, data, stage)
+    # Keep provenance distinct from the public distribution location. The
+    # installer authenticates both the mirror and fallback with pinned hashes.
+    source["upstream_url"] = source.get("upstream_url", source["url"])
+    source["url"] = url
+
+
+def publish_ubs_fallback(entry, stage):
+    """Publish the complete signed-release-derived overlay, including helpers."""
+    version, sha = entry["version"], entry["sha256"]
+    relative = f"ubs/{version}/{sha}/ubs-linux-x86_64.tar.gz"
+    if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", version)
+            or not re.fullmatch(r"[a-f0-9]{64}", sha)
+            or entry["file"] != relative or entry["source"]["verification"] != "minisign+sha256"):
+        raise ValueError("Invalid UBS fallback bundle provenance")
+    data = (stage / relative).read_bytes()
+    url = publish_public_asset("ubs", version, sha, data, stage)
+    entry["fallback"] = {"format": "acfs-overlay", "sha256": sha, "url": url}
+
+
+def publish_public_asset(tool, version, sha, data, stage):
+    """Upload content-addressed bytes without replacing an existing asset."""
+    if (tool not in TOOLS or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", version)
+            or not re.fullmatch(r"[a-f0-9]{64}", sha)):
+        raise ValueError("Invalid public fallback artifact identity")
     if not hmac.compare_digest(digest(data), sha):
-        raise ValueError("JSM fallback staging checksum mismatch")
-    name = f"jsm-{version}-linux-x86_64-{sha}.tar.gz"
+        raise ValueError(f"{tool}: fallback staging checksum mismatch")
+    name = f"{tool}-{version}-linux-x86_64-{sha}.tar.gz"
     public_dir = stage / "public-assets"
     public_dir.mkdir(exist_ok=True)
     asset = public_dir / name
     if asset.exists():
         if not hmac.compare_digest(digest(asset.read_bytes()), sha):
-            raise ValueError("JSM fallback local asset collision")
+            raise ValueError(f"{tool}: fallback local asset collision")
     else:
         with asset.open("xb") as output:
             output.write(data)
@@ -266,31 +293,33 @@ def publish_jsm_fallback(entry, stage):
             raise
         release = None
     if release is None:
-        run("gh", "release", "create", FALLBACK_TAG, str(asset), "--repo", FALLBACK_REPO,
-            "--target", "main", "--prerelease", "--latest=false",
-            "--title", "Verified cloud CLI binaries",
-            "--notes", "Public copies of vendor-verified CLI archives for restricted cloud environments. "
-            "The cloud-mirror.json manifest pins each artifact by SHA256 and retains its upstream provenance. "
-            "Assets are content addressed and never replaced. This is not the latest ACFS software release.")
+        body = public_dir / (name + ".release.json")
+        with body.open("x") as output:
+            json.dump({"tag_name": FALLBACK_TAG, "target_commitish": "main", "prerelease": True,
+                       "make_latest": "false", "name": "Verified cloud CLI binaries",
+                       "body": "Public copies of vendor-verified CLI archives and complete UBS bundles for restricted "
+                       "cloud environments. cloud-mirror.json pins SHA256 and upstream provenance. "
+                       "Assets are content addressed and never replaced. This is not the latest ACFS release."}, output)
+        run("gh", "api", f"repos/{FALLBACK_REPO}/releases", "--method", "POST", "--input", str(body))
         release = json.loads(run("gh", "api", endpoint))
     if release.get("draft", True) or release.get("tag_name") != FALLBACK_TAG:
-        raise ValueError("JSM fallback release is not public or has the wrong tag")
+        raise ValueError(f"{tool}: fallback release is not public or has the wrong tag")
     matches = [item for item in release["assets"] if item["name"] == name]
     if not matches:
-        # No --clobber: even a concurrent publisher cannot replace a version.
-        run("gh", "release", "upload", FALLBACK_TAG, str(asset), "--repo", FALLBACK_REPO)
+        # GitHub's asset-create API rejects a duplicate name; never delete or
+        # replace a collision. Use the API to set the required request headers.
+        upload = f"https://uploads.github.com/repos/{FALLBACK_REPO}/releases/{release['id']}/assets?name={name}"
+        run("gh", "api", upload, "--method", "POST", "--header", "Content-Type: application/gzip",
+            "--input", str(asset))
         release = json.loads(run("gh", "api", endpoint))
         matches = [item for item in release["assets"] if item["name"] == name]
     if len(matches) != 1 or matches[0].get("digest") != "sha256:" + sha:
-        raise ValueError("JSM fallback GitHub asset digest mismatch/missing")
+        raise ValueError(f"{tool}: fallback GitHub asset digest mismatch/missing")
     url = f"https://github.com/{FALLBACK_REPO}/releases/download/{FALLBACK_TAG}/{name}"
     if not hmac.compare_digest(digest(fetch(url)), sha):
-        raise ValueError("JSM fallback anonymous readback checksum mismatch")
-    # Keep provenance distinct from the public distribution location. The
-    # installer authenticates both the mirror and fallback with pinned hashes.
-    source["upstream_url"] = source.get("upstream_url", source["url"])
-    source["url"] = url
-    print("jsm: public GitHub fallback hash verified", flush=True)
+        raise ValueError(f"{tool}: fallback anonymous readback checksum mismatch")
+    print(f"{tool}: public GitHub fallback hash verified", flush=True)
+    return url
 
 
 def main():
@@ -346,6 +375,8 @@ def main():
             print(f"{tool}: published and public hash verified", flush=True)
         if "jsm" in entries:
             publish_jsm_fallback(entries["jsm"], args.stage)
+        if "ubs" in entries:
+            publish_ubs_fallback(entries["ubs"], args.stage)
     manifest = {"schema": 1, "platform": "linux-x86_64", "base_url": args.base_url, "tools": {**retained, **entries}}
     with args.output.open("x") as output:
         json.dump(manifest, output, indent=2, sort_keys=True)
