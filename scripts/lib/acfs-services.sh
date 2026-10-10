@@ -938,6 +938,11 @@ cmd_start() {
     _initialize_bins
     _require_tmux
 
+    # Reject bad endpoint configuration before branching on tmux state: the
+    # repair path below skipped it under --dry-run and fed the raw value to
+    # the readiness probes, so the answer depended on whether a session existed.
+    _validate_endpoint_config || return 1
+
     if _session_exists; then
         local repair_rc=0 status_rc=0
         _warn "Session '$ACFS_SVC_SESSION' already exists; repairing any service that is not running."
