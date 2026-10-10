@@ -409,7 +409,7 @@ cloud_tool_guide_line() {
         ubs) printf '%s\n' '- `ubs` (Ultimate Bug Scanner): run `ubs <changed files>` before every commit. Default exit 0 can include warnings; read the report. Use `ubs <changed files> --ci --fail-on-warning` when warnings must fail the check.' ;;
         cass) printf '%s\n' '- `cass` (session search): `cass search "query" --robot --limit 5`. Always pass `--robot` or `--json`; bare `cass` opens a TUI.' ;;
         cm) printf '%s\n' '- `cm` (CASS Memory): `cm context "<task>" --json` before starting work to pull relevant procedural memory.' ;;
-        ms) printf '%s\n' '- `ms` (meta_skill): local skill search and management; see `ms --help`.' ;;
+        ms) printf '%s\n' '- `ms` (meta_skill): in a writable project, initialize local state once with `ms init --robot`, then index your skill directory with `ms index <skill-directory> --robot` and search with `ms search "query" --robot`. Reuse existing `.ms`, `MS_ROOT` or `MS_CONFIG` state; with configured overrides, skip this initialization recipe. Local initialization preserves an existing `.ms`; do not add `--global` or `--force`.' ;;
         jsm) printf '%s\n' '- `jsm` (jeffreys-skills.md): skill manager; `jsm list`, `jsm install <skill>`, `jsm --help`.' ;;
         jfp) printf '%s\n' '- `jfp` (JeffreysPrompts): prompt library CLI; `jfp --help`. Skill installs go through `jsm`.' ;;
     esac
@@ -582,6 +582,7 @@ export PATH={bins}:"$PATH"
 Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
 Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
 For a custom data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
+Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.
 '''.format(guide=shlex.quote(guide), log=shlex.quote(str(pathlib.Path(state) / 'setup.log')), bins=shlex.quote(bins))

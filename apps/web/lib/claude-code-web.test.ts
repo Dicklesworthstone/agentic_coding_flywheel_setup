@@ -110,6 +110,24 @@ describe("cloud agent page data", () => {
     expect(script).toContain('if [[ -z "${XDG_DATA_HOME:-}" ]]; then');
   });
 
+  test("MS task guidance connects project initialization, indexing and robot search", () => {
+    const instruction = "Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.";
+    for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {
+      expect(text).toContain(instruction);
+      expect(readme).toContain(text);
+    }
+    for (const provider of ["codex", "amp", "devin", "grok", "generic"]) {
+      expect(getCloudAgentSetupInstructions(provider)).toContain(instruction);
+    }
+    expect(CLAUDE_CODE_WEB_TOOLS.find((tool) => tool.id === "ms")?.command).toBe('ms search "query" --robot');
+    for (const text of [script, readme]) {
+      expect(text).toContain("ms init --robot");
+      expect(text).toContain("ms index <skill-directory> --robot");
+      expect(text).toContain('ms search "query" --robot');
+      expect(text).toContain("with configured overrides, skip this initialization recipe");
+    }
+  });
+
   test("walkthroughs cover every provider with stable, unique step anchors", () => {
     expect(Object.keys(CLOUD_WALKTHROUGHS).sort()).toEqual(CLOUD_AGENTS.map((agent) => agent.id).sort());
     for (const walkthrough of Object.values(CLOUD_WALKTHROUGHS)) {

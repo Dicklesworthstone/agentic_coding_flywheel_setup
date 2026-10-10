@@ -1188,6 +1188,31 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertEqual((runtime / 'AGENTS.md').read_text(), 'Runtime instructions.\n')
         self.assertEqual(list(self.home.iterdir()), [])
 
+    def test_ms_guide_explains_local_state_without_initializing_during_setup(self):
+        self.bundle('ms', content=b'#!/bin/sh\nprintf "%s\\n" "$*" >> "$TMPDIR/ms-invocations"\necho "ms 1.2.3"\n')
+        self.home.chmod(0o555)
+        project = self.root / 'existing project'
+        state = project / '.ms'
+        state.mkdir(parents=True)
+        original = b'# Keep the existing project configuration.\n'
+        (state / 'config.toml').write_bytes(original)
+        writable = project / '.acfs-cloud'
+        self.run_setup('ms', cwd=project, ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable),
+                       MS_ROOT=str(state), MS_CONFIG=str(state / 'config.toml'))
+        guide = (writable / '.codex/AGENTS.md').read_text()
+        for command in ('ms init --robot', 'ms index <skill-directory> --robot', 'ms search "query" --robot'):
+            self.assertIn(command, guide)
+        self.assertIn('with configured overrides, skip this initialization recipe', guide)
+        self.assertEqual((state / 'config.toml').read_bytes(), original)
+        self.assertEqual(sorted(path.name for path in state.iterdir()), ['config.toml'])
+        self.assertFalse((writable / '.ms').exists())
+        self.assertEqual(list(self.home.iterdir()), [])
+        self.run_setup('br', cwd=project, ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable))
+        self.assertIn('ms index <skill-directory> --robot', (writable / '.codex/AGENTS.md').read_text())
+        invocations = (self.root / 'tmp/ms-invocations').read_text().splitlines()
+        self.assertTrue(invocations, 'Setup must verify the installed MS binary')
+        self.assertEqual(set(invocations), {'--version'}, 'Setup must leave initialization and indexing to the task')
+
     def test_invalid_root_is_rejected_before_creating_install_directories(self):
         for root in ('relative-root', '/'):
             with self.subTest(root=root):

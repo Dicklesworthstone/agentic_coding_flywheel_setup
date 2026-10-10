@@ -553,6 +553,7 @@ Find the repository root with git rev-parse --show-toplevel.
 Read <repo>/.acfs-cloud/.codex/AGENTS.md for the installed flywheel tools and <repo>/.acfs-cloud/.acfs/cloud/setup.log for failures.
 In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-cloud"; export PATH="$acfs_cloud_root/.local/bin:$PATH" before using the tools.
 Follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell so search data, memory and prompt caches use the writable workspace; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
+Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Check br --version, bv --version, ubs --version and jsm --version before starting work.
 Use br ready --json and bv --robot-triage; never open their interactive TUIs.
 ```
@@ -580,6 +581,7 @@ Include these instructions in each task:
 Read $HOME/.acfs/cloud/AGENTS.md and $HOME/.acfs/cloud/setup.log before starting work.
 In each task shell, run export PATH="$HOME/.local/bin:$PATH".
 If using a custom writable data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
+Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Check br --version, bv --version, ubs --version and jsm --version; report missing tools from the setup log.
 Use the existing repository tracker with br ready --json and bv --robot-triage. Never open their interactive TUIs.
 Agent Mail is available as a CLI. This setup does not configure this agent's MCP servers.
@@ -588,6 +590,8 @@ Agent Mail is available as a CLI. This setup does not configure this agent's MCP
 Requirements: Linux x86_64 with compatible runtime libraries, Bash, Python 3, curl, tar and GNU timeout, plus a writable data root. Ubuntu 24.04 is the tested OS. If you set `ACFS_CLOUD_ROOT`, use that root instead of `$HOME` in these instructions. Inspect the setup log and each version command to confirm the installed tools work.
 
 For a custom data root, follow the generated guide's `CASS_DATA_DIR` and `CASS_MEMORY_HOME` exports so search data and memory also use the writable workspace, and its `JFP_HOME` export for prompt caching. These preserve existing overrides and an explicit `XDG_DATA_HOME`; configured state directories must be writable. JFP also honors `XDG_CONFIG_HOME`, which takes precedence and must be writable. Provider HOME and configuration are preserved.
+
+MS needs project state before it can search skills. In a writable project, run `ms init --robot` once, then `ms index <skill-directory> --robot` and `ms search "query" --robot`. Replace `<skill-directory>` with the directory containing your skills, such as `.agents/skills`. Reuse existing `.ms`, `MS_ROOT` or `MS_CONFIG` state; with configured overrides, skip this initialization recipe. Avoid `--global` on a read-only HOME and `--force` when preserving existing state. Setup only installs MS; it leaves project initialization and skill indexing to the task that needs them.
 
 - **[Amp Orbs](https://ampcode.com/docs/orbs/customizing):** merge the command into executable `.agents/setup`, or use the project's Pre-setup Script. Do not install dependencies in `.agents/resume`. Amp documents Debian 12; binary compatibility and hosted persistence remain unverified.
 - **[Devin](https://docs.devin.ai/onboard-devin/environment/blueprint-reference):** add a Linux blueprint `run` step to `initialize` or `maintenance` and task instructions to `knowledge`. Verify a fresh snapshot. PATH exports do not persist between blueprint steps unless written to `$ENVRC`; explicit task-shell exports avoid assuming persistence.
