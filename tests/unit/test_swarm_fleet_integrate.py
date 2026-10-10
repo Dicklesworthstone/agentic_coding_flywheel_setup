@@ -498,6 +498,10 @@ class CandidatePublicationTests(unittest.TestCase):
 
 
 class IntegrationRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
+        self.addCleanup(os.umask, os.umask(0o022))
+
     def fixture(self, **options):
         return IntegrationTests().branches(**options)
 
