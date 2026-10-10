@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-09T19:50:04-04:00
+# checksums.yaml - Auto-generated 2026-10-09T21:45:51-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -72,7 +72,7 @@ installers:
 
   fmd:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
-    sha256: "95e8ee461f75e2a1406cf0dc8f0fd2572609205054be7d4a7c71be8d9d28ecde"
+    sha256: "8a1945c3c59cf00b663ea9994d98a3e916e3a08a67ef85c5cbdab4b2678c63ca"
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"
