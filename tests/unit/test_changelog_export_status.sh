@@ -11123,11 +11123,18 @@ JSON
 
     write_fake_command "$TEST_TARGET_HOME/.local/bin/gemini" "gemini 1.2.3"
 
+    # The shared fixture installs agy. Legacy Gemini credentials must not
+    # sign it in (1 = installed, not authenticated); once agy is gone the
+    # check must report it missing (2) rather than fall back to Gemini.
     local output=""
+    local status_cmd='source "'"$ONBOARD_SH"'" help >/dev/null; check_auth_status antigravity && status=0 || status=$?; printf "%s\n" "$status"'
     output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_INSTALLED_ACFS" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
-        bash -lc 'source "'"$ONBOARD_SH"'" help >/dev/null; check_auth_status antigravity && status=0 || status=$?; printf "%s\n" "$status"')
+        bash -lc "$status_cmd")
+    rm -f "$TEST_TARGET_HOME/.local/bin/agy"
+    output+=" $(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_INSTALLED_ACFS" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
+        bash -lc "$status_cmd")"
 
-    if [[ "$output" == "2" ]]; then
+    if [[ "$output" == "1 2" ]]; then
         harness_pass "onboard antigravity auth rejects legacy Gemini credentials without agy"
     else
         harness_fail "onboard antigravity auth rejects legacy Gemini credentials without agy" "$output"
@@ -11947,6 +11954,7 @@ main() {
     test_smoke_test_can_be_sourced_without_leaking_install_context || true
     test_smoke_test_run_preserves_caller_path_when_sourced || true
     test_smoke_binary_path_prefers_persisted_bin_dir_over_poisoned_env_bin_dir || true
+    test_smoke_binary_path_ignores_other_user_home_bin_dir_from_state || true
     test_smoke_installed_script_ignores_poisoned_explicit_acfs_home || true
     test_smoke_repo_local_ignores_poisoned_explicit_acfs_home || true
     test_smoke_prefers_explicit_acfs_home_over_stale_system_state_for_target_context || true
@@ -11963,6 +11971,8 @@ main() {
     test_cheatsheet_prefers_live_home_adjacent_acfs_path_over_stale_state_target_home || true
     test_cheatsheet_can_be_sourced_without_running_main || true
     test_cheatsheet_copy_install_ignores_relative_home_trap || true
+    test_cheatsheet_uses_explicit_target_home_when_state_is_missing || true
+    test_cheatsheet_does_not_fall_back_to_current_home_when_explicit_target_is_unresolved || true
 
     harness_section "Info / Support / Onboard"
     test_state_driven_helpers_reject_invalid_target_home_from_state || true
@@ -11985,6 +11995,7 @@ main() {
     test_info_uses_target_user_path_under_root_home || true
     test_info_summary_ignores_current_shell_only_binaries || true
     test_info_binary_path_prefers_persisted_bin_dir_over_poisoned_env_bin_dir || true
+    test_info_binary_path_ignores_other_user_home_bin_dir_from_state || true
     test_info_zero_lessons_hides_onboard_prompt_and_explains_state || true
     test_info_reads_skipped_tools_without_jq || true
     test_support_bundle_uses_installed_layout_under_root_home || true
@@ -12008,8 +12019,8 @@ main() {
     test_onboard_auth_checks_ignore_other_user_home_bin_dir_from_state || true
     test_onboard_auth_checks_use_explicit_target_user_when_no_authoritative_runtime_home_exists || true
     test_onboard_auth_checks_do_not_fall_back_to_current_home_when_explicit_target_user_is_unresolved || true
-    test_onboard_gemini_vertex_auth_finds_target_google_cloud_sdk_bin_outside_current_path || true
-    test_onboard_gemini_vertex_auth_finds_target_gcloud_outside_current_path || true
+    test_onboard_antigravity_auth_respects_antigravity_home_override || true
+    test_onboard_antigravity_auth_rejects_legacy_gemini_credentials_without_agy || true
     test_onboard_copy_install_uses_system_state_under_root_home || true
     test_onboard_copy_install_uses_target_home_only_system_state_under_root_home || true
     test_onboard_repo_local_prefers_system_state_target_user_over_stale_installed_state || true
