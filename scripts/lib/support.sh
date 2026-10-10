@@ -3282,6 +3282,11 @@ redact_file() {
 
     # Apply redaction patterns using sed -E (extended regex)
     # Order: specific patterns first, then generic catch-alls
+    # Hostnames are case-insensitive; forward slashes may be JSON-escaped.
+    # Preserve ordinary URLs and webhook metadata endpoints without a token.
+    local webhook_slash='(/|\\/)'
+    local webhook_routes="([Hh][Oo][Oo][Kk][Ss][.][Ss][Ll][Aa][Cc][Kk](-[Gg][Oo][Vv])?[.][Cc][Oo][Mm]${webhook_slash}services${webhook_slash}[A-Za-z0-9_-]+${webhook_slash}[A-Za-z0-9_-]+${webhook_slash}|([Cc][Aa][Nn][Aa][Rr][Yy][.]|[Pp][Tt][Bb][.])?[Dd][Ii][Ss][Cc][Oo][Rr][Dd]([Aa][Pp][Pp])?[.][Cc][Oo][Mm]${webhook_slash}api${webhook_slash}(v[0-9]+${webhook_slash})?webhooks${webhook_slash}[0-9]+${webhook_slash})"
+    local webhook_pattern="[Hh][Tt][Tt][Pp][Ss]?:${webhook_slash}{2}${webhook_routes}[A-Za-z0-9_-]{8,}[^[:space:]\"'<>\`)]*"
     support_sed_in_place \
         -e 's/sk-[a-zA-Z0-9_-]{20,}/<REDACTED:api_key>/g' \
         -e 's/AKIA[A-Z0-9]{16}/<REDACTED:aws_key>/g' \
@@ -3289,6 +3294,9 @@ redact_file() {
         -e 's/github_pat_[a-zA-Z0-9_]{22,}/<REDACTED:github_pat>/g' \
         -e 's/hvs\.[a-zA-Z0-9]{20,}/<REDACTED:vault_token>/g' \
         -e 's/xox[bpsar]-[a-zA-Z0-9-]{10,}/<REDACTED:slack_token>/g' \
+        -e 's/tskey-[A-Za-z0-9-]{10,}/<REDACTED:tailscale_key>/g' \
+        -e 's/AIza[A-Za-z0-9_-]{35,}/<REDACTED:google_api_key>/g' \
+        -e "s#${webhook_pattern}#<REDACTED:webhook_url>#g" \
         -e 's/Bearer [a-zA-Z0-9._\/-]{10,}/Bearer <REDACTED:bearer>/g' \
         -e 's/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/<REDACTED:jwt>/g' \
         -e 's#([A-Za-z][A-Za-z0-9+.-]*://)([^/@[:space:]]*):([^/@[:space:]]+)@#\1<REDACTED:credentials>@#g' \

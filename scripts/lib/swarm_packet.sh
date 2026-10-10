@@ -230,6 +230,11 @@ swarm_packet_limit_text() {
 
 swarm_packet_sanitize_context_text() {
     local text="$1"
+    # Public endpoint metadata is safe; webhook token paths are credentials.
+    # Handle raw and JSON-escaped URLs before packet JSON adds another escape layer.
+    local webhook_slash='(/|\\/)'
+    local webhook_routes="([Hh][Oo][Oo][Kk][Ss][.][Ss][Ll][Aa][Cc][Kk](-[Gg][Oo][Vv])?[.][Cc][Oo][Mm]${webhook_slash}services${webhook_slash}[A-Za-z0-9_-]+${webhook_slash}[A-Za-z0-9_-]+${webhook_slash}|([Cc][Aa][Nn][Aa][Rr][Yy][.]|[Pp][Tt][Bb][.])?[Dd][Ii][Ss][Cc][Oo][Rr][Dd]([Aa][Pp][Pp])?[.][Cc][Oo][Mm]${webhook_slash}api${webhook_slash}(v[0-9]+${webhook_slash})?webhooks${webhook_slash}[0-9]+${webhook_slash})"
+    local webhook_pattern="[Hh][Tt][Tt][Pp][Ss]?:${webhook_slash}{2}${webhook_routes}[A-Za-z0-9_-]{8,}[^[:space:]\"'<>\`)]*"
 
     # Two concerns, one pass:
     #  1. Neutralize dangerous command examples so a packet can never teach
@@ -237,8 +242,8 @@ swarm_packet_sanitize_context_text() {
     #  2. Redact secret-shaped values. cass/cm excerpts replay agent session
     #     history, which can contain tokens or passwords that were echoed in
     #     past sessions; a work packet is handed to other agents and must
-    #     not carry live credentials. Token shapes mirror the sensitive-value
-    #     scan in swarm_inventory.sh.
+    #     not carry live credentials. Cover inventory token shapes and the
+    #     additional provider keys and secret-bearing webhook paths below.
     printf '%s' "$text" | sed -E \
         -e 's/rm[[:space:]]+-rf/[unsafe cleanup command redacted]/g' \
         -e 's/git[[:space:]]+reset[[:space:]]+--hard/[destructive git command redacted]/g' \
@@ -249,6 +254,8 @@ swarm_packet_sanitize_context_text() {
         -e 's/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/[github token redacted]/g' \
         -e 's/github_pat_[A-Za-z0-9_]{20,}/[github token redacted]/g' \
         -e 's/tskey-[A-Za-z0-9-]{10,}/[tailscale key redacted]/g' \
+        -e 's/AIza[A-Za-z0-9_-]{35,}/[google api key redacted]/g' \
+        -e "s#${webhook_pattern}#[webhook url redacted]#g" \
         -e 's/sk-[A-Za-z0-9_-]{20,}/[api key redacted]/g' \
         -e 's/hvs\.[A-Za-z0-9_-]{20,}/[vault token redacted]/g' \
         -e 's/xox[bpsar]-[A-Za-z0-9-]{10,}/[slack token redacted]/g' \
@@ -489,6 +496,8 @@ swarm_packet_build_report() {
     local bead_priority=""
     local bead_labels_json=""
     local bead_labels_text=""
+    local label_json="" label=""
+    local -a safe_labels=()
     local query=""
     local task_brief=""
     local agents_excerpt=""
@@ -513,10 +522,16 @@ swarm_packet_build_report() {
     bead_json="$(swarm_packet_collect_bead_json)"
     bead_id="$("$jq_bin" -r --arg fallback "$SWARM_PACKET_BEAD_ID" '.id // $fallback' <<<"$bead_json")"
     bead_title="$("$jq_bin" -r '.title // "Untitled Bead"' <<<"$bead_json")"
+    bead_title="$(swarm_packet_sanitize_context_text "$bead_title")"
     bead_status="$("$jq_bin" -r '.status // "unknown"' <<<"$bead_json")"
     bead_priority="$("$jq_bin" -r '(.priority // "unknown") | tostring' <<<"$bead_json")"
     bead_labels_json="$("$jq_bin" -c '.labels // []' <<<"$bead_json")"
-    bead_labels_text="$("$jq_bin" -r '(.labels // []) | if length == 0 then "none" else join(", ") end' <<<"$bead_json")"
+    while IFS= read -r label_json; do
+        label="$("$jq_bin" -r . <<<"$label_json")"
+        safe_labels+=("$(swarm_packet_sanitize_context_text "$label")")
+    done < <("$jq_bin" -c '.[]' <<<"$bead_labels_json")
+    bead_labels_json="$(swarm_packet_json_array_from_args "$jq_bin" "${safe_labels[@]}")"
+    bead_labels_text="$("$jq_bin" -r 'if length == 0 then "none" else join(", ") end' <<<"$bead_labels_json")"
 
     if [[ -z "$bead_id" || "$bead_id" == "null" ]]; then
         echo "Error: Beads JSON did not include an issue id" >&2
@@ -612,6 +627,8 @@ swarm_packet_build_report() {
         packet_markdown="$(printf '%s' "$packet_markdown" | LC_ALL=C head -c "$truncate_limit")"$'\n\n[truncated: rerun with a larger --max-chars for more context]'
     fi
 
+    # The task brief above carries description/design/acceptance criteria.
+    # Do not duplicate the raw Bead object into the shareable JSON packet.
     "$jq_bin" -n \
         --arg generated_at "$(date -Iseconds)" \
         --arg status "$status_value" \
@@ -620,7 +637,6 @@ swarm_packet_build_report() {
         --arg repo_root "$SWARM_PACKET_REPO_ROOT" \
         --arg agents_file "$SWARM_PACKET_AGENTS_FILE" \
         --arg readme_file "$SWARM_PACKET_README_FILE" \
-        --argjson bead "$bead_json" \
         --arg bead_id "$bead_id" \
         --arg bead_title "$bead_title" \
         --arg bead_status "$bead_status" \
@@ -645,8 +661,7 @@ swarm_packet_build_report() {
             title: $bead_title,
             status: $bead_status,
             priority: $bead_priority,
-            labels: $bead_labels,
-            source: $bead
+            labels: $bead_labels
           },
           source_priority: [
             "Current AGENTS.md, README.md, and live code in this repository",

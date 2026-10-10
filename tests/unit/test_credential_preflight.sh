@@ -441,6 +441,53 @@ test_public_pwd_and_api_key_counters_are_not_credentials() {
     pass "public_pwd_and_api_key_counters_are_not_credentials"
 }
 
+test_bare_service_patterns_are_detected_without_values_or_mutation() {
+    local fixture="$ARTIFACT_DIR/service-shapes/input.log"
+    local output="$ARTIFACT_DIR/service-shapes.json"
+    local secret
+    write_fixture "$fixture" 'Observed tskey-auth-fixture1234567890
+Observed tskey-api-fixture0987654321
+GOOGLE_API_KEY=AIza0123456789abcdefghijklmnopqrstuvwxy
+Observed https://hooks.slack.com/services/T12345678/B12345678/fixtureSlackWebhook123456
+WEBHOOK_TOKEN=https://hooks.slack-gov.com/services/T12345678/B12345678/fixtureGovWebhook123456
+Observed https://discord.com/api/webhooks/123456789012345678/fixtureDiscordWebhook123456?wait=true
+{"message":"https:\/\/hooks.slack.com\/services\/T12345678\/B12345678\/fixtureEscapedWebhook123456"}
+Observed HTTPS://HOOKS.SLACK.COM/services/T12345678/B12345678/fixtureUpperWebhook123456
+Observed https://canary.discord.com/api/v10/webhooks/123456789012345678/fixtureVersionedWebhook123456'
+    cp "$fixture" "$fixture.before"
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output"; then
+        return 1
+    else
+        [[ $? -eq 1 ]] || return 1
+    fi
+    jq -e '.status == "warn" and .summary.findings == 9 and
+      ([.findings[] | select(.category == "tailscale_key")] | length) == 2 and
+      ([.findings[] | select(.category == "google_api_key")] | length) == 1 and
+      ([.findings[] | select(.category == "webhook_url")] | length) == 6 and
+      .safety.raw_secret_values_printed == false and .safety.user_files_mutated == false' "$output" >/dev/null || return 1
+    for secret in tskey-auth-fixture1234567890 tskey-api-fixture0987654321 \
+        AIza0123456789abcdefghijklmnopqrstuvwxy fixtureSlackWebhook123456 \
+        fixtureGovWebhook123456 fixtureDiscordWebhook123456 \
+        fixtureEscapedWebhook123456 fixtureUpperWebhook123456 fixtureVersionedWebhook123456; do
+        assert_no_raw_secret "$output" "$secret" || return 1
+    done
+    cmp -s "$fixture" "$fixture.before" || return 1
+    pass "bare_service_patterns_are_detected_without_values_or_mutation"
+}
+
+test_public_service_urls_and_short_labels_pass() {
+    local fixture="$ARTIFACT_DIR/public-service/input.log"
+    local output="$ARTIFACT_DIR/public-service.json"
+    write_fixture "$fixture" 'https://hooks.slack.com/services/
+https://discord.com/api/webhooks/123456789012345678
+https://example.com/api/webhooks/123456789012345678/publicEndpoint123456
+https://hooks.slack.com.evil.test/services/T12345678/B12345678/publicEndpoint123456
+tskey-short AIza-short'
+    bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output" || return 1
+    jq -e '.status == "pass" and .summary.findings == 0' "$output" >/dev/null || return 1
+    pass "public_service_urls_and_short_labels_pass"
+}
+
 run_test() {
     local name="$1"
 
@@ -469,6 +516,8 @@ main() {
     run_test test_credential_aliases_detected_without_values_or_mutation
     run_test test_camel_key_family_is_detected_without_value_leaks
     run_test test_public_pwd_and_api_key_counters_are_not_credentials
+    run_test test_bare_service_patterns_are_detected_without_values_or_mutation
+    run_test test_public_service_urls_and_short_labels_pass
 
     echo ""
     echo "Tests passed: $TESTS_PASSED"

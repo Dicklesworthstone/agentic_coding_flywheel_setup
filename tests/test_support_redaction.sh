@@ -341,6 +341,31 @@ assert_contains "Vault token redacted" "$result" "<REDACTED:vault_token>"
 result=$(redact_and_read "slack.txt" "SLACK_BOT_TOKEN=xoxb-123456789012-abcdefghijkl")
 assert_contains "Slack bot token redacted" "$result" "<REDACTED:slack_token>"
 
+# Bare credentials in logs do not necessarily have a secret-looking field name.
+result=$(redact_and_read "service_shapes.json" '{"message":"tskey-auth-fixture1234567890 AIza0123456789abcdefghijklmnopqrstuvwxy https://hooks.slack.com/services/T12345678/B12345678/fixtureSlackWebhook123456","api":"tskey-api-fixture0987654321","gov":"https://hooks.slack-gov.com/services/T12345678/B12345678/fixtureGovWebhook123456","discord":"https://discord.com/api/webhooks/123456789012345678/fixtureDiscordWebhook123456?wait=true","escaped":"https:\/\/hooks.slack.com\/services\/T12345678\/B12345678\/fixtureEscapedWebhook123456","case":"HTTPS://HOOKS.SLACK.COM/services/T12345678/B12345678/fixtureUpperWebhook123456","versioned":"https://canary.discord.com/api/v10/webhooks/123456789012345678/fixtureVersionedWebhook123456"}')
+assert_contains "Bare Tailscale keys redacted" "$result" "<REDACTED:tailscale_key>"
+assert_contains "Bare Google API key redacted" "$result" "<REDACTED:google_api_key>"
+assert_contains "Credential-bearing webhook URLs redacted" "$result" "<REDACTED:webhook_url>"
+service_secret_number=0
+for service_secret in \
+    tskey-auth-fixture1234567890 tskey-api-fixture0987654321 \
+    AIza0123456789abcdefghijklmnopqrstuvwxy fixtureSlackWebhook123456 \
+    fixtureGovWebhook123456 fixtureDiscordWebhook123456 \
+    fixtureEscapedWebhook123456 fixtureUpperWebhook123456 fixtureVersionedWebhook123456; do
+    service_secret_number=$((service_secret_number + 1))
+    assert_not_contains "Service credential payload $service_secret_number removed" "$result" "$service_secret"
+done
+if jq -e 'type == "object" and (.escaped == "<REDACTED:webhook_url>")' <<<"$result" >/dev/null; then
+    pass "Service redaction preserves valid JSON and handles escaped slashes"
+else
+    fail "Service redaction preserves valid JSON and handles escaped slashes"
+fi
+public_service_text='Docs: https://hooks.slack.com/services/ https://discord.com/api/webhooks/123456789012345678 https://example.com/api/webhooks/123456789012345678/publicEndpoint123456 tskey-short AIza-short https://hooks.slack.com.evil.test/services/T12345678/B12345678/publicEndpoint123456'
+result=$(redact_and_read "public_service_shapes.txt" "$public_service_text")
+assert_equals "Public URLs, short format labels and unrelated hosts are preserved" "$result" "$public_service_text"
+result=$(redact_and_read "webhook_markup.txt" 'Before [hook](https://hooks.slack.com/services/T12345678/B12345678/fixtureLinkedWebhook123456?wait=true) then `https://discord.com/api/webhooks/123456789012345678/fixtureCodeWebhook123456` after')
+assert_equals "Webhook redaction preserves surrounding Markdown delimiters" "$result" 'Before [hook](<REDACTED:webhook_url>) then `<REDACTED:webhook_url>` after'
+
 # ============================================================
 # Tests: Bearer tokens and JWTs
 # ============================================================

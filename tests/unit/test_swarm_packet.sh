@@ -266,6 +266,75 @@ test_generated_content_lint_blocks_unsafe_templates() {
     pass "generated_content_lint_blocks_unsafe_templates"
 }
 
+test_context_service_credentials_are_redacted_before_packet_output() {
+    local bead agents readme cm cass output markdown_output secret
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/service-cm.json"
+    cass="$ARTIFACT_DIR/service-cass.json"
+    # The JSON packet must not bypass its sanitized task brief through bead.source.
+    local secret_bead="$ARTIFACT_DIR/service-bead.json"
+    jq '.[0].title = "Review AIza0123456789abcdefghijklmnopqrstuvwxy" |
+        .[0].description = ("Captured https://hooks." + "slack.com/services/T12345678/B12345678/fixtureBeadWebhook123456") |
+        .[0].labels = ["coordination", "tskey-auth-fixtureLabel1234567890"] |
+        .[0].acceptance_criteria = "Keep the real acceptance criterion in the delivered task brief"' "$bead" > "$secret_bead"
+    bead="$secret_bead"
+    cp "$bead" "$bead.before"
+    printf '%s\n' '{"message":"AIza0123456789abcdefghijklmnopqrstuvwxy https:\/\/hooks.slack.com\/services\/T12345678\/B12345678\/fixturePacketSlack123456 https://hooks.slack-gov.com/services/T12345678/B12345678/fixturePacketGov123456 `https://discord.com/api/webhooks/123456789012345678/fixturePacketCode123456`"}' > "$cm"
+    printf '%s\n' '{"message":"tskey-auth-fixture1234567890 HTTPS://DISCORD.COM/api/webhooks/123456789012345678/fixturePacketDiscord123456 https://canary.discord.com/api/v10/webhooks/123456789012345678/fixturePacketVersioned123456","public":"https://example.com/guide"}' > "$cass"
+    cp "$cm" "$cm.before"
+    cp "$cass" "$cass.before"
+    output="$(run_packet_json service-creds \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/service-creds.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and
+      (.bead.labels | index("coordination")) and
+      (.packet_markdown | contains("[google api key redacted]")) and
+      (.packet_markdown | contains("[webhook url redacted]")) and
+      (.packet_markdown | contains("Captured [webhook url redacted]")) and
+      (.packet_markdown | contains("`[webhook url redacted]`")) and
+      (.packet_markdown | contains("Keep the real acceptance criterion in the delivered task brief")) and
+      (.packet_markdown | contains("https://example.com/guide"))' <<<"$output" >/dev/null || return 1
+    markdown_output="$(run_packet_markdown service-creds-markdown \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/service-creds-markdown.exit")" -eq 0 ]] || return 1
+    [[ "$markdown_output" == *"Keep the real acceptance criterion in the delivered task brief"* ]] || return 1
+    for secret in AIza0123456789abcdefghijklmnopqrstuvwxy tskey-auth-fixture1234567890 \
+        fixturePacketSlack123456 fixturePacketGov123456 \
+        fixturePacketDiscord123456 fixturePacketVersioned123456 fixtureBeadWebhook123456 \
+        tskey-auth-fixtureLabel1234567890 fixturePacketCode123456; do
+        [[ "$output" != *"$secret"* ]] || return 1
+        [[ "$markdown_output" != *"$secret"* ]] || return 1
+    done
+    cmp -s "$bead" "$bead.before" || return 1
+    cmp -s "$cm" "$cm.before" || return 1
+    cmp -s "$cass" "$cass.before" || return 1
+    pass "context_service_credentials_are_redacted_before_packet_output"
+}
+
+test_packet_preserves_empty_labels() {
+    local bead="$ARTIFACT_DIR/empty-label-bead.json"
+    local source_bead agents readme cm cass output
+    source_bead="$(bead_fixture)"
+    jq '.[0].labels = []' "$source_bead" > "$bead"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$(cm_fixture)"
+    cass="$(cass_fixture)"
+    output="$(run_packet_json empty-labels \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 9000)"
+    [[ "$(cat "$ARTIFACT_DIR/empty-labels.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and .bead.labels == []' <<<"$output" >/dev/null || return 1
+    pass "packet_preserves_empty_labels"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -284,6 +353,8 @@ main() {
     run_test test_markdown_packet_is_bounded
     run_test test_missing_cm_and_cass_warn_without_failing
     run_test test_generated_content_lint_blocks_unsafe_templates
+    run_test test_context_service_credentials_are_redacted_before_packet_output
+    run_test test_packet_preserves_empty_labels
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

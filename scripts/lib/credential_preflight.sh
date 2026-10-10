@@ -28,6 +28,10 @@ CRED_PREFLIGHT_FINDINGS=()
 CRED_PREFLIGHT_SKIPPED=()
 CRED_PREFLIGHT_FILES_SCANNED=0
 CRED_PREFLIGHT_JQ_BIN=""
+# Webhook paths carry credentials even when the surrounding field is not secret-like.
+# Match raw URLs and JSON's optional escaped forward slashes, only on known hosts.
+CRED_PREFLIGHT_URL_SLASH='(/|\\/)'
+CRED_PREFLIGHT_WEBHOOK_PATTERN="https?:${CRED_PREFLIGHT_URL_SLASH}{2}(hooks[.]slack(-gov)?[.]com${CRED_PREFLIGHT_URL_SLASH}services${CRED_PREFLIGHT_URL_SLASH}[a-z0-9_-]+${CRED_PREFLIGHT_URL_SLASH}[a-z0-9_-]+${CRED_PREFLIGHT_URL_SLASH}|(canary[.]|ptb[.])?discord(app)?[.]com${CRED_PREFLIGHT_URL_SLASH}api${CRED_PREFLIGHT_URL_SLASH}(v[0-9]+${CRED_PREFLIGHT_URL_SLASH})?webhooks${CRED_PREFLIGHT_URL_SLASH}[0-9]+${CRED_PREFLIGHT_URL_SLASH})[a-z0-9_-]{8,}"
 
 credential_preflight_usage() {
     cat <<'EOF'
@@ -307,7 +311,8 @@ credential_preflight_remediation() {
     case "$category" in
         private_key) printf 'Move private keys out of shareable logs/configs and rotate the key if it was exposed.\n' ;;
         credential_url) printf 'Move credentials into a secret manager or local env file excluded from sharing.\n' ;;
-        aws_key|github_token|github_pat|vault_token|slack_token|bearer_token|jwt|api_key) printf 'Rotate the token and move it to the intended provider secret store or shell profile outside shared artifacts.\n' ;;
+        aws_key|github_token|github_pat|vault_token|slack_token|tailscale_key|google_api_key|bearer_token|jwt|api_key) printf 'Rotate the token and move it to the intended provider secret store or shell profile outside shared artifacts.\n' ;;
+        webhook_url) printf 'Revoke or regenerate the webhook URL and keep its secret path outside shared artifacts.\n' ;;
         password|generic_secret) printf 'Replace the literal value with a secret reference and rotate it if it has been shared.\n' ;;
         *) printf 'Remove the sensitive value from shareable files and rotate if exposed.\n' ;;
     esac
@@ -403,6 +408,9 @@ credential_preflight_value_has_specific_pattern() {
     [[ "$lower" =~ github_pat_[a-z0-9_]{22,} ]] && return 0
     [[ "$lower" =~ hvs\.[a-z0-9]{20,} ]] && return 0
     [[ "$lower" =~ xox[bpsar]-[a-z0-9-]{10,} ]] && return 0
+    [[ "$lower" =~ tskey-[a-z0-9-]{10,} ]] && return 0
+    [[ "$lower" =~ aiza[a-z0-9_-]{35,} ]] && return 0
+    [[ "$lower" =~ $CRED_PREFLIGHT_WEBHOOK_PATTERN ]] && return 0
     [[ "$lower" =~ eyj[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,} ]] && return 0
     [[ "$lower" =~ [a-z][a-z0-9+.-]*://[^/@[:space:]]+:[^/@[:space:]]+@ ]] && return 0
 
@@ -443,6 +451,15 @@ credential_preflight_scan_line() {
     fi
     if [[ "$line" =~ xox[bpsar]-[A-Za-z0-9-]{10,} ]]; then
         credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "slack_token" "Slack token pattern"
+    fi
+    if [[ "$line" =~ tskey-[A-Za-z0-9-]{10,} ]]; then
+        credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "tailscale_key" "Tailscale key pattern"
+    fi
+    if [[ "$line" =~ AIza[A-Za-z0-9_-]{35,} ]]; then
+        credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "google_api_key" "Google API key pattern"
+    fi
+    if [[ "$lower" =~ $CRED_PREFLIGHT_WEBHOOK_PATTERN ]]; then
+        credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "webhook_url" "URL with a secret webhook path"
     fi
     if [[ "$line" =~ Bearer[[:space:]][A-Za-z0-9._/-]{20,} ]]; then
         credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "bearer_token" "Bearer token pattern"
