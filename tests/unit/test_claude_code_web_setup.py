@@ -470,7 +470,7 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
             self.assertEqual(args[args.index('--proto') + 1], '=https')
             self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
 
-    def run_generated_rerun(self, content):
+    def run_generated_rerun(self, content, bootstrap_exit=0, bootstrap_body=None):
         match = re.search(r'Re-run:\s*(?:```bash\n([^\n]+)\n```|`([^`]+)`)', content)
         self.assertIsNotNone(match, 'Generated guide lacks its runnable command')
         rerun = match.group(1) or match.group(2)
@@ -482,7 +482,9 @@ import json, os, pathlib, sys
 args=sys.argv[1:]
 if '-o' not in args:
     pathlib.Path({str(self.root / 'bootstrap-args')!r}).write_text(json.dumps(args))
-    sys.stdout.buffer.write(pathlib.Path({str(SCRIPT)!r}).read_bytes())
+    body = {bootstrap_body!r}
+    sys.stdout.buffer.write(pathlib.Path({str(SCRIPT)!r}).read_bytes() if body is None else body)
+    sys.exit({bootstrap_exit})
 else:
     os.execv({str(internal)!r}, ['curl', *args])
 ''')
@@ -514,10 +516,28 @@ else:
         self.assertEqual(args[0], '-q')
         self.assertEqual(args[args.index('--proto') + 1], '=https')
         self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
+        self.assertEqual(args[args.index('--connect-timeout') + 1], '5')
+        self.assertEqual(args[args.index('--max-time') + 1], '20')
         self.assertEqual(args[args.index('-A') + 1], 'OpenAI File Downloader, XaiImageApiFetch/1.0')
         self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
         self.assertEqual(guide.read_text(), content)
         self.assertFalse((self.home / '.claude/CLAUDE.md').exists())
+
+    def test_generated_rerun_reports_failed_bootstrap_download(self):
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+        result, _ = self.run_generated_rerun(guide, bootstrap_exit=22, bootstrap_body=b'')
+        self.assertNotEqual(result.returncode, 0, 'Failed bootstrap download was reported as success')
+
+    def test_generated_rerun_never_executes_partial_bootstrap(self):
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+        body = b'printf partial > partial-bootstrap-ran\n'
+        result, _ = self.run_generated_rerun(guide, bootstrap_exit=22, bootstrap_body=body)
+        self.assertFalse((self.root / 'partial-bootstrap-ran').exists(), 'Failed download bytes executed')
+        self.assertNotEqual(result.returncode, 0)
 
     def check_generated_rerun_ref(self, ref):
         manifest_url = MANIFEST_URL.replace('/main/', '/' + ref + '/')
@@ -790,6 +810,19 @@ else:
                 self.assertEqual(probe.returncode, 0, probe.stderr)
                 self.assertEqual(probe.stdout.strip(), binary + '-existing')
         self.assertEqual((self.root / 'requests').read_text().splitlines(), [MANIFEST_URL])
+
+    def test_existing_caller_path_takes_priority_over_private_fallback(self):
+        self.command('br', '#!/bin/sh\necho br-caller\n')
+        fallback = self.home / '.cargo/bin/br'
+        fallback.parent.mkdir(parents=True)
+        fallback.write_text('#!/bin/sh\necho br-private\n')
+        fallback.chmod(0o755)
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('br-caller (already installed)', output)
+        self.assertEqual((self.home / '.local/bin/br').resolve(), self.bin / 'br')
+        probe = self.probe_from_guide('br')
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout.strip(), 'br-caller')
 
     def test_unselected_existing_go_tool_is_callable_from_guide(self):
         binary = self.home / 'go/bin/bv'

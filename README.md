@@ -475,10 +475,13 @@ The public [cloud agent setup guide](https://agent-flywheel.com/cloud-agents) se
 
 ```bash
 #!/bin/bash
-curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
+(
+acfs_cloud_setup="$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh)" || { printf '%s\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit 0; }
+printf '%s\n' "$acfs_cloud_setup" | bash
+)
 ```
 
-Full access enables the public binary mirror. Custom and restricted-mode behavior are described below. Pasting the whole script into the field works too.
+The bootstrap downloads completely before it runs, with a 20-second transfer limit. If that download fails, Claude reports the failure and still starts the session. Full access enables the public binary mirror. Custom and restricted-mode behavior are described below. Pasting the whole script into the field works too.
 
 | Tool | Command | In a cloud session |
 |------|---------|--------------------|
@@ -534,7 +537,8 @@ The same public bundles work in a Linux x86_64 Codex cloud environment. In **Wor
 #!/bin/bash
 set -o pipefail
 acfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1
-curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1
+acfs_cloud_setup="$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh)" || { printf '%s\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit 1; }
+printf '%s\n' "$acfs_cloud_setup" | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1
 acfs_cloud_exclude="$(git rev-parse --git-path info/exclude)" || exit 1
 mkdir -p "$(dirname "$acfs_cloud_exclude")" || exit 1
 printf '/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$acfs_cloud_exclude"
@@ -566,7 +570,8 @@ The provider-neutral template writes `$HOME/.acfs/cloud/AGENTS.md` and does not 
 ```bash
 #!/bin/bash
 set -o pipefail
-curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | ACFS_CLOUD_AGENT=generic bash
+acfs_cloud_setup="$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh)" || { printf '%s\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit 1; }
+printf '%s\n' "$acfs_cloud_setup" | ACFS_CLOUD_AGENT=generic bash
 ```
 
 Include these instructions in each task:

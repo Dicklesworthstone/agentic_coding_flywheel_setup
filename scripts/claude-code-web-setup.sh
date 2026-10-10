@@ -12,7 +12,10 @@
 # Use it as the environment's "Setup script" (environment settings dialog):
 #
 #   #!/bin/bash
-#   curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh | bash
+#   (
+#   acfs_cloud_setup="$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh)" || { printf '%s\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit 0; }
+#   printf '%s\n' "$acfs_cloud_setup" | bash
+#   )
 #
 # or paste this whole file into the field. Network access "Full" is recommended
 # (or Custom allowing raw.githubusercontent.com and downloads.agent-flywheel.com).
@@ -102,8 +105,8 @@ cloud_record() {
 }
 
 cloud_find_binary() {
-    # Resolve a binary across the directories upstream installers write to.
-    PATH="$ACFS_CLOUD_BIN_DIR:/usr/local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/go/bin:$PATH" \
+    # Honor the caller's chosen tools before looking in private install paths.
+    PATH="$ACFS_CLOUD_BIN_DIR:$PATH:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/go/bin" \
         command -v "$1" 2>/dev/null
 }
 
@@ -464,7 +467,9 @@ cloud_write_guide() {
     fi
     block+=$'\n'"Setup log: \`$ACFS_CLOUD_STATE_DIR/setup.log\` (per-tool logs in \`$ACFS_CLOUD_STATE_DIR/logs/\`)."
     block+=$'\n\nRe-run:\n\n```bash\n'
-    block+="curl -q -fsSL --proto '=https' --proto-redir '=https' -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' $(printf '%q' "$ACFS_CLOUD_SCRIPT_URL") | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_TOOLS=$(printf '%q' "$ACFS_CLOUD_TOOLS") ACFS_CLOUD_TIMEOUT=$ACFS_CLOUD_TIMEOUT ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash"$'\n```\n'
+    # Buffer the complete successful bootstrap before executing any bytes.
+    # The subshell contains the temporary variable and preserves curl failure.
+    block+="( acfs_cloud_setup=\"\$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' $(printf '%q' "$ACFS_CLOUD_SCRIPT_URL"))\" && printf '%s\\n' \"\$acfs_cloud_setup\" | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_TOOLS=$(printf '%q' "$ACFS_CLOUD_TOOLS") ACFS_CLOUD_TIMEOUT=$ACFS_CLOUD_TIMEOUT ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash )"$'\n```\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
     elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then
@@ -622,7 +627,7 @@ cloud_main() {
         cloud_warn "Cannot write the install directories; choose a writable ACFS_CLOUD_ROOT"
         return 0
     fi
-    export PATH="$ACFS_CLOUD_BIN_DIR:/usr/local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"
+    export PATH="$ACFS_CLOUD_BIN_DIR:$PATH"
     export ACFS_CLOUD_WORK ACFS_CLOUD_ROOT ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
     export -f cloud_install_tool_job cloud_version cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
 

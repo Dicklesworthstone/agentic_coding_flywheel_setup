@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -284,6 +284,48 @@ describe("cloud agent page data", () => {
     expect(readFileSync(exclude, "utf8")).toContain("/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n");
   });
 
+  test("failed bootstrap downloads never execute partial content in full and subset recipes", () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-failed-bootstrap-")));
+    const bin = join(workspace, "bin");
+    const template = join(workspace, "empty-template");
+    mkdirSync(bin);
+    mkdirSync(template);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+    env.GIT_CONFIG_NOSYSTEM = "1";
+    env.GIT_CONFIG_GLOBAL = "/dev/null";
+    env.GIT_TEMPLATE_DIR = template;
+    env.PATH = `${bin}:${process.env.PATH}`;
+    const failures: string[] = [];
+    for (const partial of [false, true]) {
+      writeFileSync(join(bin, "curl"), `#!/bin/sh
+${partial ? "printf '%s\\n' 'printf partial > partial-bootstrap-ran'" : ""}
+printf '%s\\n' 'curl: simulated download failure' >&2
+exit 22
+`, { mode: 0o755 });
+      for (const agent of CLOUD_AGENTS.filter((entry) => entry.script)) {
+        for (const [kind, recipe] of [["full", agent.script!], ["subset", cloudSubsetRecipe(agent.id)]]) {
+          const repo = join(workspace, `${agent.id}-${kind}-${partial} with spaces`);
+          mkdirSync(repo);
+          expect(spawnSync("git", ["init", "--quiet", repo], { env, encoding: "utf8" }).status).toBe(0);
+          const exclude = join(repo, ".git/info/exclude");
+          mkdirSync(dirname(exclude), { recursive: true });
+          writeFileSync(exclude, "# Keep my exclusions\n");
+          const source = agent.id === "claude" ? `${recipe}\nprintf continued > existing-setup-ran\n` : recipe;
+          const result = spawnSync("bash", ["-c", source], { cwd: repo, env, encoding: "utf8" });
+          const label = `${agent.id}-${kind}-${partial ? "partial" : "missing"}`;
+          if (existsSync(join(repo, "partial-bootstrap-ran"))) failures.push(`${label}: failed download bytes executed`);
+          if (!result.stderr.includes("bootstrap download failed")) failures.push(`${label}: missing bootstrap diagnostic`);
+          if (agent.id === "claude" ? result.status !== 0 : result.status === 0 || result.status === null) {
+            failures.push(`${label}: unexpected exit ${result.status}`);
+          }
+          if (agent.id === "claude" && !existsSync(join(repo, "existing-setup-ran"))) failures.push(`${label}: following setup command skipped`);
+          if (readFileSync(exclude, "utf8") !== "# Keep my exclusions\n") failures.push(`${label}: exclusions changed`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
   test("full and subset recipes pass hardened download arguments through real Bash quoting", () => {
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-fetch-recipe-")));
     const bin = join(workspace, "bin");
@@ -314,7 +356,7 @@ BOOTSTRAP
         expect(result.status).toBe(0);
         expect(result.stderr).toBe("");
         expect(readFileSync(argsPath, "utf8").split("\0").slice(0, -1)).toEqual([
-          "-q", "-fsSL", "--proto", "=https", "--proto-redir", "=https",
+          "-q", "-fsSL", "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "5", "--max-time", "20",
           "-A", "OpenAI File Downloader, XaiImageApiFetch/1.0", "-H", "Accept-Encoding: identity",
           CLAUDE_CODE_WEB_SCRIPT_URL,
         ]);
