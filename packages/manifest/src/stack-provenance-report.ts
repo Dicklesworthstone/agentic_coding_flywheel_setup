@@ -685,6 +685,19 @@ function evaluateArchitecture(
   }
   const present = linux.x86_64 ? "x86_64" : "aarch64";
   const absent = linux.x86_64 ? "aarch64" : "x86_64";
+  const absentToken = absent === "aarch64" ? AARCH64_TOKEN : X86_64_TOKEN;
+  const maybeAbsent = osUnlabeledArchitectureAssets(latest.assetNames).filter((name) =>
+    absentToken.test(name.toLowerCase()),
+  );
+  if (maybeAbsent.length > 0) {
+    // An unlabeled asset may be the missing Linux build; do not claim it is absent.
+    return {
+      status: "unknown",
+      detail: `${tag} publishes an ${present} Linux build; ${maybeAbsent.slice(0, 3).join(", ")} may be the ${absent} one but names no operating system`,
+      tagName: latest.tagName,
+      linux,
+    };
+  }
   return {
     status: "warn",
     detail: `${tag} publishes an ${present} Linux build but no ${absent} one; ${absent} installs build from source or fail`,

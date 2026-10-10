@@ -201,6 +201,16 @@ describe("stack provenance report", () => {
     expect(osUnlabeled.tools[0].architecture.status).toBe("unknown");
     expect(osUnlabeled.tools[0].architecture.detail).toContain("ubs-x86_64.tar.gz");
 
+    // A labeled x86_64 Linux build next to an unlabeled aarch64 asset is not
+    // proof that the aarch64 build is missing.
+    const halfLabeled = await run({
+      ...base,
+      assetNames: ["ubs-linux-x86_64.tar.gz", "ubs-aarch64.tar.gz"],
+    });
+    expect(halfLabeled.tools[0].architecture.status).toBe("unknown");
+    expect(halfLabeled.tools[0].architecture.detail).toContain("ubs-aarch64.tar.gz");
+    expect(halfLabeled.tools[0].advisories.join("\n")).not.toContain("publish an aarch64");
+
     const unlisted = await run(base);
     expect(unlisted.tools[0].architecture.status).toBe("unknown");
 
