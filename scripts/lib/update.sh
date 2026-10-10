@@ -3658,19 +3658,22 @@ update_normalize_runtime_modes() {
     chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
     [[ -n "$find_bin" && -n "$chmod_bin" ]] || return 0
 
-    # The fleet tools accept runtime files owned by root or by the runtime's
-    # user. A user can only fix its own files; root (sudo acfs update) fixes
-    # both kinds, never anyone else's.
-    owner_test=(-user "$EUID")
+    # Root never changes modes inside a tree another user can write: between
+    # find and chmod that user could swap an entry for a symlink, and root's
+    # chmod would follow it (e.g. to /tmp). A user-owned runtime is repaired by
+    # its owner's own update (the nightly runs as that user); root repairs
+    # only a runtime that root owns.
     if [[ "$EUID" == 0 ]]; then
         stat_bin="$(update_system_binary_path stat 2>/dev/null || true)"
         if [[ -n "$stat_bin" ]]; then
             runtime_owner="$("$stat_bin" -c '%u' "$acfs_home" 2>/dev/null || "$stat_bin" -f '%u' "$acfs_home" 2>/dev/null || true)"
         fi
-        if [[ "$runtime_owner" =~ ^[0-9]+$ && "$runtime_owner" != 0 ]]; then
-            owner_test=(\( -user 0 -o -user "$runtime_owner" \))
+        if [[ "$runtime_owner" != 0 ]]; then
+            log_to_file "Skipped runtime mode repair under $acfs_home as root (owner uid ${runtime_owner:-unknown}); the owner's own acfs update repairs it"
+            return 0
         fi
     fi
+    owner_test=(-user "$EUID")
 
     while IFS= read -r -d '' path; do
         writable+=("$path")

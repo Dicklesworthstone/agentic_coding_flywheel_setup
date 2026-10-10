@@ -9509,6 +9509,33 @@ EOF
     [[ "$(mode_of "$runtime/scripts/a.sh")" == "644" ]]
 }
 
+@test "update_normalize_runtime_modes as root repairs only a root-owned runtime" {
+    [[ "$EUID" -eq 0 ]] || skip "needs root (root must not chmod inside a user-writable tree)"
+    local temp_root user_runtime root_runtime other_uid
+    mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+
+    temp_root="$(create_temp_dir)"
+    user_runtime="$temp_root/user-acfs"
+    root_runtime="$temp_root/root-acfs"
+    umask 022
+    mkdir -p "$user_runtime/scripts" "$root_runtime/scripts"
+    : > "$user_runtime/scripts/a.sh"
+    : > "$root_runtime/scripts/a.sh"
+    chmod 664 "$user_runtime/scripts/a.sh" "$root_runtime/scripts/a.sh"
+    other_uid=65534
+    chown -R "$other_uid" "$user_runtime"
+    UPDATE_LOG_FILE="$temp_root/update.log"
+    DRY_RUN=false
+
+    update_normalize_runtime_modes "$user_runtime"
+    [[ "$(mode_of "$user_runtime/scripts/a.sh")" == "664" ]]
+    run grep -F "Skipped runtime mode repair under $user_runtime as root (owner uid $other_uid)" "$UPDATE_LOG_FILE"
+    assert_success
+
+    update_normalize_runtime_modes "$root_runtime"
+    [[ "$(mode_of "$root_runtime/scripts/a.sh")" == "644" ]]
+}
+
 @test "update_normalize_runtime_modes fixes more paths than one chmod batch and keeps .git with a trailing slash" {
     local temp_root runtime i
     mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
