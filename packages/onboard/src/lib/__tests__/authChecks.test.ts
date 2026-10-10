@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { createAuthChecks } from "../authChecks";
+import { createAuthChecks, PLACEHOLDER_SECRETS } from "../authChecks";
 
 const HOME = "/home/tester";
 
@@ -596,5 +596,30 @@ describe("authChecks", () => {
         "cloudflare",
       ].sort(),
     );
+  });
+});
+
+describe("placeholder secret vocabulary", () => {
+  // The same list is copied into three shell entry points; services-setup's
+  // copy had silently dropped "your-gemini-api-key", so it accepted a value
+  // doctor and onboarding rejected.
+  const repoRoot = path.resolve(import.meta.dir, "../../../../..");
+
+  function shellPlaceholders(file: string, fn: string): string[] {
+    const text = fs.readFileSync(path.join(repoRoot, file), "utf8");
+    const start = text.indexOf(`\n${fn}() {\n`);
+    expect(start).toBeGreaterThan(-1);
+    const body = text.slice(start, text.indexOf("\n}\n", start));
+    const match = body.match(/case "\$normalized" in\n\s*([^\n]+)\)\n/);
+    expect(match).not.toBeNull();
+    return match![1].split("|").map((entry) => entry.replace(/^"(.*)"$/, "$1"));
+  }
+
+  test.each([
+    ["scripts/lib/doctor.sh", "is_placeholder_secret"],
+    ["packages/onboard/onboard.sh", "is_placeholder_secret"],
+    ["scripts/services-setup.sh", "services_setup_is_placeholder_secret"],
+  ])("%s %s matches authChecks.ts", (file, fn) => {
+    expect(shellPlaceholders(file, fn).sort()).toEqual([...PLACEHOLDER_SECRETS].sort());
   });
 });

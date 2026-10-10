@@ -656,7 +656,7 @@ services_setup_is_placeholder_secret() {
     normalized="${normalized,,}"
 
     case "$normalized" in
-        your-token-here|your_token_here|your-token|your_token|your_api_key|your-api-key|your_github_token|your_openai_api_key|your_claude_token|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
+        your-token-here|your_token_here|your-token|your_token|your_api_key|your-api-key|your_github_token|your_openai_api_key|your_claude_token|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your-gemini-api-key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
             return 0
             ;;
     esac

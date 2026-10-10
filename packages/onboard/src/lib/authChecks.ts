@@ -123,7 +123,9 @@ function hasUnresolvedShellExpression(value: string): boolean {
   return value.includes("$") || value.includes("`");
 }
 
-const PLACEHOLDER_SECRETS = new Set([
+// Mirrored by is_placeholder_secret in doctor.sh and onboard.sh and by
+// services_setup_is_placeholder_secret; authChecks.test.ts pins all four.
+export const PLACEHOLDER_SECRETS = new Set([
   "your-token-here",
   "your_token_here",
   "your-token",
