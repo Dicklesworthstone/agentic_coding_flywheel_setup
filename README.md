@@ -3892,8 +3892,12 @@ acfs swarm packet --json --bead bd-1234 --agent-name BlueLake
 The packet is designed for NTM prompt injection. It prioritizes live AGENTS.md,
 README.md, Beads, and Agent Mail state over memory-derived hints, includes drift
 checks, and preserves exact `bv --robot-*`, `br`, Agent Mail MCP, `rch exec --`,
-and UBS workflow guidance. It is read-only: it does not claim work, reserve
-files, send messages, start agents, run builds, or edit generated files.
+and UBS workflow guidance. It does not claim work, reserve files, send messages,
+start agents, run builds, or edit generated files. CASS retrieval uses lexical
+search with `--no-maintenance` and includes session snippets. Live `cm context`
+can update memory/history caches, so packets that invoke it report
+`safety.read_only: false`. For read-only generation, use `--no-live-context`;
+saved `--cm-file` and `--cass-file` context remains available in that mode.
 
 Before launching a large real swarm, ACFS can run an offline simulation of the control plane:
 

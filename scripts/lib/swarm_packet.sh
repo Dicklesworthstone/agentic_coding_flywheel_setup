@@ -2,7 +2,7 @@
 # ============================================================
 # ACFS Swarm Packet - per-agent startup packet generator
 #
-# Builds a bounded, read-only prompt packet for one Beads issue. The packet
+# Builds a bounded prompt packet for one Beads issue. The packet
 # packages current repo instructions, Beads metadata, bounded CASS/CM context,
 # and Agent Mail/RCH/UBS workflow commands for NTM prompt injection.
 # ============================================================
@@ -47,8 +47,9 @@ Options:
   --no-live-context     Do not run cm or cass when fixture files are absent
   --help, -h            Show this help
 
-The generator is read-only. It does not update Beads, send Agent Mail, reserve
-files, start agents, run builds, or edit generated files.
+The generator does not update Beads, send Agent Mail, reserve files, start agents,
+run builds, or edit generated files. Live CM retrieval may update memory/history
+caches. Use --no-live-context or saved context files to avoid those backend writes.
 EOF
 }
 
@@ -311,6 +312,7 @@ swarm_packet_collect_tool_context() {
     local output=""
     local status=0
     local timeout_bin=""
+    local -a context_command=()
 
     if [[ -n "$fixture_file" ]]; then
         swarm_packet_read_file_excerpt "$fixture_file" "$tool_name context fixture" "$max_bytes"
@@ -328,29 +330,27 @@ swarm_packet_collect_tool_context() {
     fi
 
     timeout_bin="$(swarm_packet_binary_path timeout 2>/dev/null || true)"
-    set +e
     if [[ "$tool_name" == "cm" ]]; then
-        if [[ -n "$timeout_bin" ]]; then
-            output="$("$timeout_bin" 12s cm context "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5 --history 3 --json 2>&1)"
-        else
-            output="$(cm context "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5 --history 3 --json 2>&1)"
-        fi
+        context_command=(cm context "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5 --history 3 --json)
     else
-        if [[ -n "$timeout_bin" ]]; then
-            output="$("$timeout_bin" 12s cass search "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5 --fields summary --json --max-tokens 1200 2>&1)"
-        else
-            output="$(cass search "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5 --fields summary --json --max-tokens 1200 2>&1)"
-        fi
+        # Startup retrieval must not launch index maintenance or model work.
+        # The summary preset omits snippets, which agents need for useful hints.
+        context_command=(cass search "$query" --workspace "$SWARM_PACKET_REPO_ROOT" --limit 5
+            --fields "title,snippet,source_path,line_number,agent" --json --max-tokens 1200
+            --mode lexical --no-maintenance)
     fi
-    status=$?
-    set -e
-
-    if [[ $status -ne 0 ]]; then
-        SWARM_PACKET_WARNINGS+=("$tool_name context unavailable: command exited $status")
-        return 0
+    if [[ -n "$timeout_bin" ]]; then
+        context_command=("$timeout_bin" 12s "${context_command[@]}")
     fi
 
-    swarm_packet_limit_text "$output" "$max_bytes"
+    # Keep CLI diagnostics on stderr, not in agent prompts. The caller records
+    # failures: an array mutation here would be lost in command substitution.
+    if output="$("${context_command[@]}")"; then
+        swarm_packet_limit_text "$output" "$max_bytes"
+    else
+        status=$?
+        return "$status"
+    fi
 }
 
 swarm_packet_collect_bead_json() {
@@ -414,6 +414,7 @@ swarm_packet_build_markdown() {
     local cass_context="$9"
     local warnings_block="${10}"
     local task_brief="${11}"
+    local context_safety_note="${12}"
     local agents_block=""
     local readme_block=""
     local cm_block=""
@@ -446,6 +447,8 @@ $task_brief
 2. Current Beads output for $bead_id.
 3. Agent Mail reservations and inbox state.
 4. Bounded CM and CASS context below, used only as hints because it may drift.
+
+$context_safety_note
 
 ## Start Checks
 
@@ -550,6 +553,9 @@ swarm_packet_build_report() {
     local status_value="pass"
     local cm_warning_count_before=0
     local cass_warning_count_before=0
+    local context_status=0
+    local live_cm_context=false
+    local context_safety_note="Generation uses read-only context retrieval."
 
     jq_bin="$(swarm_packet_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
@@ -616,8 +622,16 @@ swarm_packet_build_report() {
         SWARM_PACKET_WARNINGS+=("cm context unavailable: no fixture file supplied and live context disabled")
     elif [[ -z "$SWARM_PACKET_CM_FILE" ]] && ! swarm_packet_binary_path cm >/dev/null 2>&1; then
         SWARM_PACKET_WARNINGS+=("cm context unavailable: command not found")
+    elif [[ -z "$SWARM_PACKET_CM_FILE" ]]; then
+        live_cm_context=true
+        context_safety_note="Generation leaves repository and Beads unchanged. Live CM retrieval may update memory/history caches."
     fi
-    cm_context="$(swarm_packet_collect_tool_context cm "$SWARM_PACKET_CM_FILE" "$query" 1800)"
+    if cm_context="$(swarm_packet_collect_tool_context cm "$SWARM_PACKET_CM_FILE" "$query" 1800)"; then
+        :
+    else
+        context_status=$?
+        SWARM_PACKET_WARNINGS+=("cm context unavailable: command exited $context_status")
+    fi
     cm_context="$(swarm_packet_sanitize_context_text "$cm_context")"
     if [[ -z "$cm_context" ]]; then
         if (( ${#SWARM_PACKET_WARNINGS[@]} == cm_warning_count_before )); then
@@ -634,7 +648,12 @@ swarm_packet_build_report() {
     elif [[ -z "$SWARM_PACKET_CASS_FILE" ]] && ! swarm_packet_binary_path cass >/dev/null 2>&1; then
         SWARM_PACKET_WARNINGS+=("cass context unavailable: command not found")
     fi
-    cass_context="$(swarm_packet_collect_tool_context cass "$SWARM_PACKET_CASS_FILE" "$query" 1800)"
+    if cass_context="$(swarm_packet_collect_tool_context cass "$SWARM_PACKET_CASS_FILE" "$query" 1800)"; then
+        :
+    else
+        context_status=$?
+        SWARM_PACKET_WARNINGS+=("cass context unavailable: command exited $context_status")
+    fi
     cass_context="$(swarm_packet_sanitize_context_text "$cass_context")"
 
     if [[ -z "$cass_context" ]]; then
@@ -663,7 +682,8 @@ swarm_packet_build_report() {
         "$cm_context" \
         "$cass_context" \
         "$warnings_block" \
-        "$task_brief")"
+        "$task_brief" \
+        "$context_safety_note")"
 
     if (( ${#packet_markdown} > SWARM_PACKET_MAX_CHARS )); then
         output_truncated=true
@@ -697,6 +717,7 @@ swarm_packet_build_report() {
         --arg packet_markdown "$packet_markdown" \
         --argjson max_chars "$SWARM_PACKET_MAX_CHARS" \
         --arg output_truncated "$output_truncated" \
+        --arg live_cm_context "$live_cm_context" \
         '{
           schema_version: 1,
           generated_at: $generated_at,
@@ -746,7 +767,8 @@ swarm_packet_build_report() {
             "Treat CM and CASS context as stale unless current files confirm it"
           ],
           safety: {
-            read_only: true,
+            read_only: ($live_cm_context != "true"),
+            live_cm_context_requested: ($live_cm_context == "true"),
             launches_agents: false,
             mutates_beads: false,
             sends_agent_mail: false,
@@ -795,7 +817,7 @@ swarm_packet_main() {
     "$jq_bin" -r '.packet_markdown' <<<"$report"
 }
 
-# Delivery is an explicitly separate execution path. Ordinary generation stays read-only.
+# Delivery is a separate execution path; ordinary generation does not send prompts.
 swarm_packet_deliver() {
     command -v python3 >/dev/null 2>&1 || { echo 'Error: python3 is required for packet delivery' >&2; return 2; }
     python3 -I - "${BASH_SOURCE[0]}" "$@" <<'PY_ACFS_PACKET_DELIVERY'

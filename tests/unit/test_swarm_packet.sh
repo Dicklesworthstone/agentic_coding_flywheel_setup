@@ -426,6 +426,147 @@ Public context after' > "$cm"
     pass "packet_removes_private_key_bodies_and_keeps_public_context"
 }
 
+run_live_context_packet() {
+    local name="$1" bin_dir="$2"
+    shift 2
+    local status=0
+    PATH="$bin_dir:$PATH" bash "$SWARM_PACKET_SH" --json "$@" \
+        > "$ARTIFACT_DIR/$name.output.json" 2> "$ARTIFACT_DIR/$name.stderr" || status=$?
+    printf '%s\n' "$status" > "$ARTIFACT_DIR/$name.exit"
+    cat "$ARTIFACT_DIR/$name.output.json"
+}
+
+test_live_search_requests_read_only_snippets() {
+    local bead agents readme cm output bin_dir="$ARTIFACT_DIR/read-only-cli"
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$(cm_fixture)"
+    mkdir -p "$bin_dir"
+    # CLI double: require the read-only protocol, not a canned success path.
+    cat > "$bin_dir/cass" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "$(dirname "$0")/argv"
+[[ "$1" == search && "$3" == --workspace ]] || exit 64
+readonly_search=false lexical=false snippets=false
+while (( $# )); do
+    case "$1" in
+        --no-maintenance) readonly_search=true ;;
+        --mode) [[ "${2:-}" == lexical ]] && lexical=true ;;
+        --fields) [[ "${2:-}" == *snippet* ]] && snippets=true ;;
+    esac
+    shift
+done
+[[ "$readonly_search" == true && "$lexical" == true && "$snippets" == true ]] || exit 65
+printf '%s\n' '{"hits":[{"snippet":"Useful retrieved session detail","title":"Private test session"}]}'
+EOF
+    chmod +x "$bin_dir/cass"
+    output="$(run_live_context_packet read-only-cli "$bin_dir" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --repo "$REPO_ROOT" --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/read-only-cli.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and .context.cass.status == "available" and
+      .safety.read_only == true and .safety.live_cm_context_requested == false and
+      (.context.cass.text | contains("Useful retrieved session detail"))' <<<"$output" >/dev/null || return 1
+    [[ "$(sed -n '4p' "$bin_dir/argv")" == "$REPO_ROOT" ]] || return 1
+    pass "live_search_requests_read_only_snippets"
+}
+
+test_live_context_failures_keep_exit_status() {
+    local bead agents readme output bin_dir="$ARTIFACT_DIR/failing-cli"
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/cm" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"error":"Failed CM output must not become context"}'
+printf '%s\n' 'CM command diagnostic' >&2
+exit 23
+EOF
+    cat > "$bin_dir/cass" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'Failed CASS output must not become context'
+exit 124
+EOF
+    chmod +x "$bin_dir/cm" "$bin_dir/cass"
+    output="$(run_live_context_packet failing-cli "$bin_dir" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/failing-cli.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "warn" and .context.cm.status == "missing" and
+      .context.cass.status == "missing" and
+      (.warnings | index("cm context unavailable: command exited 23")) != null and
+      (.warnings | index("cass context unavailable: command exited 124")) != null' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *"Failed CM output"* && "$output" != *"Failed CASS output"* ]] || return 1
+    pass "live_context_failures_keep_exit_status"
+}
+
+test_live_context_keeps_diagnostics_out_of_prompts() {
+    local bead agents readme output bin_dir="$ARTIFACT_DIR/diagnostic-cli"
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/cm" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"relevantBullets":[{"content":"Actual rule payload"}]}'
+printf '%s\n' 'CLI diagnostic separate from CM payload' >&2
+EOF
+    cat > "$bin_dir/cass" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"hits":[{"snippet":"Actual history payload"}]}'
+printf '%s\n' 'CLI diagnostic separate from CASS payload' >&2
+EOF
+    chmod +x "$bin_dir/cm" "$bin_dir/cass"
+    output="$(run_live_context_packet diagnostic-cli "$bin_dir" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/diagnostic-cli.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and
+      .safety.read_only == false and .safety.live_cm_context_requested == true and
+      (.packet_markdown | contains("Live CM retrieval may update memory/history caches.")) and
+      (.context.cm.text | fromjson | .relevantBullets[0].content) == "Actual rule payload" and
+      (.context.cass.text | fromjson | .hits[0].snippet) == "Actual history payload"' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *"CLI diagnostic"* ]] || return 1
+    [[ "$(cat "$ARTIFACT_DIR/diagnostic-cli.stderr")" == *"separate from CM payload"* ]] || return 1
+    [[ "$(cat "$ARTIFACT_DIR/diagnostic-cli.stderr")" == *"separate from CASS payload"* ]] || return 1
+    pass "live_context_keeps_diagnostics_out_of_prompts"
+}
+
+test_empty_and_disabled_live_context_remain_distinct() {
+    local bead agents readme output bin_dir="$ARTIFACT_DIR/empty-cli"
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/cm" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' called >> "$(dirname "$0")/calls"
+EOF
+    cp "$bin_dir/cm" "$bin_dir/cass"
+    chmod +x "$bin_dir/cm" "$bin_dir/cass"
+    output="$(run_live_context_packet empty-cli "$bin_dir" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --max-chars 12000)"
+    jq -e '.status == "warn" and
+      (.warnings | index("cm context unavailable: command returned no output")) != null and
+      (.warnings | index("cass context unavailable: command returned no output")) != null' <<<"$output" >/dev/null || return 1
+    [[ "$(wc -l < "$bin_dir/calls")" -eq 2 ]] || return 1
+    output="$(run_live_context_packet disabled-cli "$bin_dir" \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --no-live-context --max-chars 12000)"
+    jq -e '.status == "warn" and
+      (.warnings | index("cm context unavailable: no fixture file supplied and live context disabled")) != null and
+      (.warnings | index("cass context unavailable: no fixture file supplied and live context disabled")) != null and
+      .safety.read_only == true and .safety.live_cm_context_requested == false' <<<"$output" >/dev/null || return 1
+    [[ "$(cat "$ARTIFACT_DIR/empty-cli.exit")" -eq 0 &&
+       "$(cat "$ARTIFACT_DIR/disabled-cli.exit")" -eq 0 ]] || return 1
+    [[ "$(wc -l < "$bin_dir/calls")" -eq 2 ]] || return 1
+    pass "empty_and_disabled_live_context_remain_distinct"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -450,6 +591,10 @@ main() {
     run_test test_packet_preserves_label_string_boundaries
     run_test test_packet_metadata_keeps_tool_names
     run_test test_packet_removes_private_key_bodies_and_keeps_public_context
+    run_test test_live_search_requests_read_only_snippets
+    run_test test_live_context_failures_keep_exit_status
+    run_test test_live_context_keeps_diagnostics_out_of_prompts
+    run_test test_empty_and_disabled_live_context_remain_distinct
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
