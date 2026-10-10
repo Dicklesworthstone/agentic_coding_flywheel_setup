@@ -68,10 +68,25 @@ setup_e2e_env() {
     E2E_ARTIFACT_DIR="$E2E_TEST_DIR/artifacts"
     mkdir -p "$E2E_ARTIFACT_DIR"
 
-    # Set environment for TUI
-    export TERM="${TERM:-xterm-256color}"
+    # Set environment for TUI. An unset or dumb TERM (e.g. `su -` in a
+    # container) makes newproj refuse interactive mode.
+    if [[ -z "${TERM:-}" || "$TERM" == dumb ]]; then
+        export TERM="xterm-256color"
+    fi
     export COLUMNS="${COLUMNS:-80}"
     export LINES="${LINES:-24}"
+
+    # Keep wizard defaults inside the test dir. Without this the directory
+    # screen proposes /data/projects/<name>: on a host without it the wizard
+    # cannot advance, and on an ACFS host it is the developer's real tree.
+    export ACFS_PROJECTS_DIR="$E2E_TEST_DIR/projects"
+    mkdir -p "$ACFS_PROJECTS_DIR"
+
+    # newproj skips the initial commit without a git identity; give the
+    # tests their own instead of depending on (or reading) the caller's.
+    export GIT_CONFIG_GLOBAL="$E2E_TEST_DIR/gitconfig"
+    git config --file "$GIT_CONFIG_GLOBAL" user.name "ACFS E2E"
+    git config --file "$GIT_CONFIG_GLOBAL" user.email "acfs-e2e@example.invalid"
 
     # Disable CI detection for testing
     unset CI GITHUB_ACTIONS GITLAB_CI JENKINS_URL TRAVIS CIRCLECI
