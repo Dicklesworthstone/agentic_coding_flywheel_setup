@@ -2777,6 +2777,8 @@ bash scripts/stack-provenance-report.sh --network=check --json
 
 Offline mode reports local manifest/checksum consistency for stack tools. Network mode also checks GitHub latest release metadata and generates a checksum candidate without writing `checksums.yaml`. Changed stack installer hashes fail the report, unrelated checksum diffs are called out separately, and `rch` release changes are flagged as mandatory checksum-refresh review items.
 
+Network mode also records, per tool, which Linux architectures the latest release ships a build for (`architecture.linux`). A release with an x86_64 Linux build but no aarch64 one is a warning, because ARM64 installs then compile from source or fail. As of 2026-10-09, `rch` is the only such stack tool (upstream issue [remote_compilation_helper#96](https://github.com/Dicklesworthstone/remote_compilation_helper/issues/96)).
+
 ### Agent Readiness Audit (`scripts/agent-readiness-audit.sh`)
 
 Run the local agent readiness audit before launching a swarm on a freshly installed VPS (the installer ships it; from a checkout, `bash scripts/agent-readiness-audit.sh` is equivalent):
@@ -5103,7 +5105,8 @@ ACFS is actively developed. Here's what's coming:
 
 ### Mid-Term (Q2 2025)
 
-- [ ] **ARM64 optimization**: Native Apple Silicon and ARM VPS support
+- [x] **ARM64 (aarch64) Linux VPS**: native release builds for every stack tool except `rch`, which compiles from source; an emulated full arm64 install completes, its only smoke failures caused by the emulator's missing setuid support (not yet run on native ARM hardware) ✓
+- [ ] **Apple Silicon (macOS) hosts**
 - [ ] **Offline mode**: Pre-downloaded package bundles
 - [ ] **Team mode**: Shared configurations across team members
 - [ ] **Plugin system**: Third-party tool integrations
