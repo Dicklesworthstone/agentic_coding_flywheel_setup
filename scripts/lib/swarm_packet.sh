@@ -230,6 +230,16 @@ swarm_packet_limit_text() {
 
 swarm_packet_sanitize_context_text() {
     local text="$1"
+    local -a context_rules=()
+    # Tool names in titles/tags are data. Keep them intact while instructional
+    # excerpts still receive the recommended br/bv/rch command forms.
+    if [[ "${2:-}" != "metadata" ]]; then
+        context_rules=(
+            -e 's/^([[:space:]]*)bv([[:space:]]*)$/\1bv --robot-next\2/g'
+            -e 's/^([[:space:]]*)bd[[:space:]]+/\1br /g'
+            -e 's/^([[:space:]]*)cargo[[:space:]]+(test|build|clippy)/\1rch exec -- cargo \2/g'
+        )
+    fi
     # Public endpoint metadata is safe; webhook token paths are credentials.
     # Handle raw and JSON-escaped URLs before packet JSON adds another escape layer.
     local webhook_slash='(/|\\/)'
@@ -244,13 +254,40 @@ swarm_packet_sanitize_context_text() {
     #     past sessions; a work packet is handed to other agents and must
     #     not carry live credentials. Cover inventory token shapes and the
     #     additional provider keys and secret-bearing webhook paths below.
-    printf '%s' "$text" | sed -E \
+    # A header-only substitution leaves the key body in replayed history.
+    # Track exact END markers; an incomplete block remains redacted through EOF.
+    # Inline blocks also cover JSON excerpts with escaped newline characters.
+    printf '%s' "$text" | awk '
+      {
+        line = $0
+        output = ""
+        emit_line = !redacting
+        while (length(line)) {
+          if (redacting) {
+            end_pos = index(line, end_marker)
+            if (!end_pos) break
+            line = substr(line, end_pos + length(end_marker))
+            redacting = 0
+          } else if (match(line, /-----BEGIN [^-]*PRIVATE KEY[^-]*-----/)) {
+            header_start = RSTART
+            header_length = RLENGTH
+            header = substr(line, header_start, header_length)
+            output = output substr(line, 1, header_start - 1) "[private key redacted]"
+            end_marker = header
+            sub(/BEGIN/, "END", end_marker)
+            line = substr(line, header_start + header_length)
+            redacting = 1
+          } else {
+            output = output line
+            break
+          }
+        }
+        if (emit_line || length(output)) print output
+      }
+    ' | sed -E "${context_rules[@]}" \
         -e 's/rm[[:space:]]+-rf/[unsafe cleanup command redacted]/g' \
         -e 's/git[[:space:]]+reset[[:space:]]+--hard/[destructive git command redacted]/g' \
         -e 's/git[[:space:]]+clean[[:space:]]+-fd/[destructive git cleanup command redacted]/g' \
-        -e 's/^([[:space:]]*)bv([[:space:]]*)$/\1bv --robot-next\2/g' \
-        -e 's/^([[:space:]]*)bd[[:space:]]+/\1br /g' \
-        -e 's/^([[:space:]]*)cargo[[:space:]]+(test|build|clippy)/\1rch exec -- cargo \2/g' \
         -e 's/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/[github token redacted]/g' \
         -e 's/github_pat_[A-Za-z0-9_]{20,}/[github token redacted]/g' \
         -e 's/tskey-[A-Za-z0-9-]{10,}/[tailscale key redacted]/g' \
@@ -361,7 +398,8 @@ swarm_packet_json_array_from_args() {
         return 0
     fi
 
-    printf '%s\n' "$@" | "$jq_bin" -R . | "$jq_bin" -s .
+    # Preserve each argument, including embedded newlines, as one JSON string.
+    printf '%s\0' "$@" | "$jq_bin" -Rs 'split("\u0000")[:-1]'
 }
 
 swarm_packet_build_markdown() {
@@ -522,13 +560,22 @@ swarm_packet_build_report() {
     bead_json="$(swarm_packet_collect_bead_json)"
     bead_id="$("$jq_bin" -r --arg fallback "$SWARM_PACKET_BEAD_ID" '.id // $fallback' <<<"$bead_json")"
     bead_title="$("$jq_bin" -r '.title // "Untitled Bead"' <<<"$bead_json")"
-    bead_title="$(swarm_packet_sanitize_context_text "$bead_title")"
+    bead_title="$(swarm_packet_sanitize_context_text "$bead_title" metadata)"
     bead_status="$("$jq_bin" -r '.status // "unknown"' <<<"$bead_json")"
     bead_priority="$("$jq_bin" -r '(.priority // "unknown") | tostring' <<<"$bead_json")"
-    bead_labels_json="$("$jq_bin" -c '.labels // []' <<<"$bead_json")"
+    # Validate before process substitution: a jq failure in its producer would
+    # otherwise become an apparently successful empty label list.
+    if ! bead_labels_json="$("$jq_bin" -c '
+      (if .labels == null then [] else .labels end) |
+      if type != "array" then error("Bead labels must be an array of strings")
+      elif all(.[]; type == "string") then .
+      else error("Bead labels must be an array of strings") end
+    ' <<<"$bead_json")"; then
+        return 2
+    fi
     while IFS= read -r label_json; do
         label="$("$jq_bin" -r . <<<"$label_json")"
-        safe_labels+=("$(swarm_packet_sanitize_context_text "$label")")
+        safe_labels+=("$(swarm_packet_sanitize_context_text "$label" metadata)")
     done < <("$jq_bin" -c '.[]' <<<"$bead_labels_json")
     bead_labels_json="$(swarm_packet_json_array_from_args "$jq_bin" "${safe_labels[@]}")"
     bead_labels_text="$("$jq_bin" -r 'if length == 0 then "none" else join(", ") end' <<<"$bead_labels_json")"

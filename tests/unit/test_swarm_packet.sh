@@ -335,6 +335,97 @@ test_packet_preserves_empty_labels() {
     pass "packet_preserves_empty_labels"
 }
 
+test_packet_rejects_malformed_labels_without_echoing_values() {
+    local source_bead bead agents readme cm cass output labels
+    source_bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$(cm_fixture)"
+    cass="$(cass_fixture)"
+    for labels in '"fixtureLabelPrivateValue123456"' \
+        '{"field":"fixtureLabelPrivateValue123456"}' \
+        '["coordination",{"field":"fixtureLabelPrivateValue123456"}]' \
+        'false' '42' '[null]'; do
+        bead="$(mktemp "$ARTIFACT_DIR/malformed-labels.XXXXXX.json")"
+        jq --argjson labels "$labels" '.[0].labels = $labels' "$source_bead" > "$bead"
+        output="$(run_packet_json malformed-labels \
+            --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+            --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+            --agent-name FixtureAgent --max-chars 9000)"
+        [[ "$(cat "$ARTIFACT_DIR/malformed-labels.exit")" -eq 2 ]] || return 1
+        [[ "$output" != *"fixtureLabelPrivateValue123456"* ]] || return 1
+        [[ "$output" == *"Bead labels must be an array of strings"* ]] || return 1
+    done
+    pass "packet_rejects_malformed_labels_without_echoing_values"
+}
+
+test_packet_preserves_label_string_boundaries() {
+    local source_bead bead agents readme cm cass output
+    source_bead="$(bead_fixture)"
+    bead="$ARTIFACT_DIR/label-boundaries.json"
+    jq '.[0].labels = ["first\nsecond", "--label"]' "$source_bead" > "$bead"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$(cm_fixture)"
+    cass="$(cass_fixture)"
+    output="$(run_packet_json label-boundaries \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 9000)"
+    [[ "$(cat "$ARTIFACT_DIR/label-boundaries.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and .bead.labels == ["first\nsecond", "--label"]' <<<"$output" >/dev/null || return 1
+    pass "packet_preserves_label_string_boundaries"
+}
+
+test_packet_metadata_keeps_tool_names() {
+    local source_bead bead agents readme cm cass output
+    source_bead="$(bead_fixture)"
+    bead="$ARTIFACT_DIR/tool-name-bead.json"
+    jq '.[0].title = "cargo build cache" | .[0].labels = ["bv", "br"]' "$source_bead" > "$bead"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$(cm_fixture)"
+    cass="$(cass_fixture)"
+    output="$(run_packet_json tool-name-metadata \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 9000)"
+    [[ "$(cat "$ARTIFACT_DIR/tool-name-metadata.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and .bead.title == "cargo build cache" and
+      .bead.labels == ["bv", "br"] and
+      (.context.agents_excerpt | contains("rch exec -- cargo test"))' <<<"$output" >/dev/null || return 1
+    pass "packet_metadata_keeps_tool_names"
+}
+
+test_packet_removes_private_key_bodies_and_keeps_public_context() {
+    local bead agents readme cm cass output
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/private-key-cm.txt"
+    cass="$ARTIFACT_DIR/private-key-cass.json"
+    printf '%s\n' 'Public context before
+-----BEGIN OPENSSH PRIVATE KEY-----
+fixtureCompletePrivateMaterial123456
+-----END OPENSSH PRIVATE KEY-----
+Public context after' > "$cm"
+    printf '%s\n' '{"summary":"before -----BEGIN RSA PRIVATE KEY-----\nfixtureInlinePrivateMaterial123456\n-----END RSA PRIVATE KEY----- after; -----BEGIN PRIVATE KEY-----\nfixtureTruncatedPrivateMaterial123456"}' > "$cass"
+    output="$(run_packet_json private-key-body \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/private-key-body.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and
+      (.context.cm.text | contains("Public context before")) and
+      (.context.cm.text | contains("Public context after")) and
+      (.context.cm.text | contains("[private key redacted]")) and
+      (.context.cass.text | contains("before [private key redacted] after;"))' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *"fixtureCompletePrivateMaterial123456"* ]] || return 1
+    [[ "$output" != *"fixtureInlinePrivateMaterial123456"* ]] || return 1
+    [[ "$output" != *"fixtureTruncatedPrivateMaterial123456"* ]] || return 1
+    pass "packet_removes_private_key_bodies_and_keeps_public_context"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -355,6 +446,10 @@ main() {
     run_test test_generated_content_lint_blocks_unsafe_templates
     run_test test_context_service_credentials_are_redacted_before_packet_output
     run_test test_packet_preserves_empty_labels
+    run_test test_packet_rejects_malformed_labels_without_echoing_values
+    run_test test_packet_preserves_label_string_boundaries
+    run_test test_packet_metadata_keeps_tool_names
+    run_test test_packet_removes_private_key_bodies_and_keeps_public_context
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
