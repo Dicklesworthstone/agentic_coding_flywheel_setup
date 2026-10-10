@@ -96,6 +96,20 @@ describe("cloud agent page data", () => {
     }
   });
 
+  test("custom-root task instructions connect writable search and memory state", () => {
+    for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {
+      expect(text).toContain("CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell");
+      expect(text).toContain("preserve existing overrides");
+      expect(text).toContain("XDG_DATA_HOME/XDG_CONFIG_HOME writable");
+      expect(readme).toContain(text);
+    }
+    for (const provider of ["codex", "amp", "devin", "grok", "generic"]) {
+      expect(getCloudAgentSetupInstructions(provider)).toContain("CASS_MEMORY_HOME");
+      expect(getCloudAgentSetupInstructions(provider)).toContain("CASS_DATA_DIR");
+    }
+    expect(script).toContain('if [[ -z "${XDG_DATA_HOME:-}" ]]; then');
+  });
+
   test("walkthroughs cover every provider with stable, unique step anchors", () => {
     expect(Object.keys(CLOUD_WALKTHROUGHS).sort()).toEqual(CLOUD_AGENTS.map((agent) => agent.id).sort());
     for (const walkthrough of Object.values(CLOUD_WALKTHROUGHS)) {

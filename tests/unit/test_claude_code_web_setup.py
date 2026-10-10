@@ -1218,6 +1218,39 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertFalse((self.root / 'jfp-injected').exists())
         self.assertEqual(list(self.home.iterdir()), [])
 
+    def test_custom_root_guide_selects_writable_search_and_memory_state(self):
+        self.bundle()
+        self.home.chmod(0o555)
+        writable = self.root / "workspace tools ' quoted ` ticks $ dollars$(touch state-injected)"
+        runtime = self.root / 'readonly codex'
+        runtime.mkdir()
+        (runtime / 'config.toml').write_text('Keep provider config.\n')
+        runtime.chmod(0o555)
+        self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable), CODEX_HOME=str(runtime))
+        guide = (writable / '.codex/AGENTS.md').read_text()
+        blocks = re.findall(r'```bash\n(.*?)\n```', guide, re.S)
+        commands = [block for block in blocks if 'export CASS_MEMORY_HOME=' in block]
+        self.assertEqual(len(commands), 1, 'Guide must configure writable memory in each task shell')
+        self.assertIn('export CASS_DATA_DIR=', commands[0])
+        script = self.root / 'memory-state-guide.sh'
+        with script.open('x') as output:
+            output.write(commands[0] + '\nprintf "%s\\0%s\\0%s\\0%s\\0%s" "${CASS_DATA_DIR-}" "${CASS_MEMORY_HOME-}" "$HOME" "$CODEX_HOME" "${XDG_DATA_HOME-}"')
+        cases = [('', '', ''), (str(self.root / 'existing search'), '', ''), ('', str(self.root / 'existing memory'), ''),
+                 (str(self.root / 'existing search'), str(self.root / 'existing memory'), ''),
+                 ('', '', str(self.root / 'existing XDG')), (str(self.root / 'existing search'), str(self.root / 'existing memory'), str(self.root / 'existing XDG'))]
+        for data, memory, xdg in cases:
+            with self.subTest(data=data, memory=memory, xdg=xdg):
+                result = subprocess.run(['bash', str(script)], cwd=self.root,
+                                        env={**self.env, 'CODEX_HOME': str(runtime), 'CASS_DATA_DIR': data, 'CASS_MEMORY_HOME': memory, 'XDG_DATA_HOME': xdg},
+                                        capture_output=True, timeout=5, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.split(b'\0'), [
+                    (data or ('' if xdg else str(writable / '.local/share/coding-agent-search'))).encode(),
+                    (memory or ('' if xdg else str(writable / '.cass-memory'))).encode(), str(self.home).encode(), str(runtime).encode(), xdg.encode()])
+        self.assertFalse((self.root / 'state-injected').exists())
+        self.assertEqual(list(self.home.iterdir()), [])
+        self.assertEqual((runtime / 'config.toml').read_text(), 'Keep provider config.\n')
+
     def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
         self.bundle()
         writable = self.root / 'workspace tools ` quoted'
@@ -1229,6 +1262,7 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertIn(str(writable / '.codex/AGENTS.md').encode(), content)
         self.assertIn(str(writable / '.acfs/cloud/setup.log').encode(), content)
         self.assertIn(b'export PATH=', content)
+        self.assertIn(b'CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports', content)
         spans = re.findall(r'```bash\n([^\n]+)\n```|`(export PATH=[^`]+)`', content.decode())
         commands = [fenced or inline for fenced, inline in spans if (fenced or inline).startswith('export PATH=')]
         self.assertEqual(len(commands), 1)

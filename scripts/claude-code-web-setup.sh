@@ -452,6 +452,12 @@ cloud_write_guide() {
     block+=$'In each task shell, run:\n\n```bash\n'
     block+="export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH"$'\n```\n\n'
     if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+        block+=$'For CASS search data and CASS Memory in this writable data root, run in each task shell:\n\n```bash\n'
+        block+=$'if [[ -z "${XDG_DATA_HOME:-}" ]]; then\n'
+        block+="    export CASS_DATA_DIR=\${CASS_DATA_DIR:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share/coding-agent-search")}"$'\n'
+        block+="    export CASS_MEMORY_HOME=\${CASS_MEMORY_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.cass-memory")}"$'\n'
+        block+=$'fi\n```\n\n'
+        block+=$'These preserve existing tool overrides and an explicit XDG_DATA_HOME. Any configured state paths must be writable. HOME and provider configuration stay unchanged.\n\n'
         block+=$'For JFP\'s prompt cache in this writable data root, run:\n\n```bash\n'
         block+="export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}"$'\n```\n\n'
         block+=$'This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable.\n\n'
@@ -575,7 +581,7 @@ export PATH={bins}:"$PATH"
 
 Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
 Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
-When the home directory is read-only, use the guide's JFP_HOME export for the prompt cache.
+For a custom data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.
 '''.format(guide=shlex.quote(guide), log=shlex.quote(str(pathlib.Path(state) / 'setup.log')), bins=shlex.quote(bins))
