@@ -320,9 +320,16 @@ check_context() {
         assert_eq "$status" 1
     fi
 }
-for scenario in valid missing syntax error symlink; do
-    run "continuation context: $scenario" check_context "$scenario"
-done
+# load_continue_context accepts only a root-owned context file, so as any
+# other user every case fails at the ownership check: "valid" fails and the
+# refusal cases pass without reaching the condition they name.
+if [[ $EUID -eq 0 ]]; then
+    for scenario in valid missing syntax error symlink; do
+        run "continuation context: $scenario" check_context "$scenario"
+    done
+else
+    printf 'SKIP 5 continuation context cases: run as root for the root-owned context reader\n'
+fi
 
 check_handoff() {
     local scenario="$1" WORK ACFS_RESUME_DIR ACFS_CONTINUE_CONTEXT_FILE ACFS_LOG
@@ -411,10 +418,15 @@ CONTEXT
         *) assert_eq "$status" 1; [[ ! -f "$WORK/argv" ]] ;;
     esac
 }
-for scenario in success log-failure already-active rejected occupied-unit missing-run missing-systemctl \
-    missing-script bad-script linked-script missing-context bad-context; do
-    run "supervised continuation handoff: $scenario" check_handoff "$scenario"
-done
+# The handoff loads the same root-owned context before launching.
+if [[ $EUID -eq 0 ]]; then
+    for scenario in success log-failure already-active rejected occupied-unit missing-run missing-systemctl \
+        missing-script bad-script linked-script missing-context bad-context; do
+        run "supervised continuation handoff: $scenario" check_handoff "$scenario"
+    done
+else
+    printf 'SKIP 12 supervised continuation handoff cases: run as root for the root-owned context reader\n'
+fi
 
 check_args() {
     local expected="$1"; shift
