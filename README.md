@@ -5107,7 +5107,7 @@ ACFS is actively developed. Here's what's coming:
 
 ### Mid-Term (Q2 2025)
 
-- [x] **ARM64 (aarch64) Linux VPS**: native release builds for every stack tool except `rch`, which compiles from source; an emulated full arm64 install completes, its only smoke failures caused by the emulator's missing setuid support (not yet run on native ARM hardware) ✓
+- [x] **ARM64 (aarch64) Linux VPS**: of the 29 stack tools, 20 publish native aarch64 Linux builds and 5 ship scripts; `rch` compiles from source; `pcr`, `pfr` and `jfp` have no release the provenance report can inspect. An emulated full arm64 install completes, its only smoke failures caused by the emulator's missing setuid support (not yet run on native ARM hardware) ✓
 - [ ] **Apple Silicon (macOS) hosts**
 - [ ] **Offline mode**: Pre-downloaded package bundles
 - [ ] **Team mode**: Shared configurations across team members
