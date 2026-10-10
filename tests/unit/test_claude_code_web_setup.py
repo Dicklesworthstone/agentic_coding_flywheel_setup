@@ -211,7 +211,8 @@ class MirrorPublisher(unittest.TestCase):
     def test_jsm_public_fallback_creation_preserves_normal_latest_release(self):
         data, entry, release = self.jsm_fallback()
         missing = subprocess.CalledProcessError(1, ["gh", "api"], output='{"status":"404"}')
-        with mock.patch.object(publisher, "run", side_effect=[missing, "created", json.dumps(release)]) as run, \
+        with mock.patch.object(publisher, "run", side_effect=[missing, "created", json.dumps({**release, "assets": []}),
+                                                             "uploaded", json.dumps(release)]) as run, \
                 mock.patch.object(publisher, "fetch", return_value=data):
             publisher.publish_jsm_fallback(entry, self.stage)
         args = run.call_args_list[1].args
@@ -221,7 +222,11 @@ class MirrorPublisher(unittest.TestCase):
         self.assertEqual(body["target_commitish"], "main")
         self.assertEqual(body["make_latest"], "false")
         self.assertIs(body["prerelease"], True)
-        self.assertEqual(run.call_count, 3)
+        self.assertEqual(run.call_count, 5)
+        upload = run.call_args_list[3].args
+        self.assertTrue(upload[2].startswith(f"https://uploads.github.com/repos/{publisher.FALLBACK_REPO}/releases/123/assets?name=jsm-"))
+        self.assertEqual(upload[3:5], ("--method", "POST"))
+        self.assertEqual(Path(upload[8]).read_bytes(), data)
 
     def test_jsm_public_fallback_auth_error_never_creates_release(self):
         _, entry, _ = self.jsm_fallback()
