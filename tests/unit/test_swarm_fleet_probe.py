@@ -508,15 +508,26 @@ class FleetTests(unittest.TestCase):
         base = self.file("inventory.json", m.encoded(inventory()))
         targets = self.file("targets.json", m.encoded({"schema": "acfs.swarm-probe-targets.v1", "targets": [target()]}))
         known = self.file("known_hosts", "operator-known-key\n")
+        # Byte-identical canonical runtime with installed modes; the checkout's
+        # own modes follow the developer's umask (664 under Ubuntu's 0002).
+        library = Path(tempfile.mkdtemp(prefix="acfs-fleet-lib-"))
+        self.addCleanup(shutil.rmtree, library, True)
+        for name in ("swarm_fleet_probe.sh", "swarm_inventory.sh"):
+            (library / name).write_bytes((ROOT / "scripts/lib" / name).read_bytes())
+            (library / name).chmod(0o644)
+        args = ["--inventory", str(base), "--targets", str(targets), "--known-hosts", str(known)]
         before = {p.name: p.read_bytes() for p in self.directory.iterdir()}
-        report, code = m.main(["--inventory", str(base), "--targets", str(targets), "--known-hosts", str(known)], ROOT / "scripts/lib")
+        report, code = m.main(args, library)
         self.assertEqual(code, 0)
         self.assertEqual(report["status"], "planned")
         self.assertNotIn(b"alpha.example", m.encoded(report))
         self.assertEqual({p.name: p.read_bytes() for p in self.directory.iterdir()}, before)
         bad = inventory()
         bad["hosts"][0]["notes"] = "IP is 192.0.2.3"
-        self.rejects("inventory_validation_failed", m.validate_inventory, bad, ROOT / "scripts/lib")
+        self.rejects("inventory_validation_failed", m.validate_inventory, bad, library)
+        # A writable runtime is the installation's fault, named as such.
+        (library / "swarm_inventory.sh").chmod(0o664)
+        self.rejects("unsafe_runtime_file", m.main, args, library)
 
 
 def live_ssh():

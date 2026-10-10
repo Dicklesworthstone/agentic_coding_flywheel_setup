@@ -9437,6 +9437,76 @@ EOF
     assert_success
 }
 
+@test "sync_acfs_deployed strips group/other write from the runtime it owns" {
+    local temp_root repo_root deployed_home
+    mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+
+    temp_root="$(create_temp_dir)"
+    repo_root="$temp_root/repo"
+    deployed_home="$temp_root/deployed-acfs"
+    mkdir -p "$repo_root/scripts/lib" "$deployed_home/scripts/lib" "$deployed_home/.git/objects"
+
+    # What a self-managed checkout looks like after `git pull` under a
+    # per-user-group umask of 0002.
+    umask 002
+    printf "inventory-runtime\n" > "$repo_root/scripts/lib/swarm_inventory.sh"
+    printf "probe-runtime\n" > "$deployed_home/scripts/lib/swarm_fleet_probe.sh"
+    printf "#!/usr/bin/env bash\n" > "$deployed_home/install.sh"
+    printf "ref: refs/heads/main\n" > "$deployed_home/.git/HEAD"
+    chmod 664 "$deployed_home/scripts/lib/swarm_fleet_probe.sh" "$deployed_home/.git/HEAD"
+    chmod 666 "$deployed_home/install.sh"
+    chmod 775 "$deployed_home" "$deployed_home/scripts" "$deployed_home/scripts/lib" \
+        "$deployed_home/.git" "$deployed_home/.git/objects"
+
+    ACFS_REPO_ROOT="$repo_root"
+    UPDATE_LOG_FILE="$temp_root/update.log"
+    DRY_RUN=false
+    update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+
+    run sync_acfs_deployed
+    assert_success
+
+    [[ "$(mode_of "$deployed_home/scripts/lib/swarm_fleet_probe.sh")" == "644" ]]
+    [[ "$(mode_of "$deployed_home/scripts/lib/swarm_inventory.sh")" == "755" ]]
+    [[ "$(mode_of "$deployed_home/install.sh")" == "644" ]]
+    [[ "$(mode_of "$deployed_home")" == "755" ]]
+    [[ "$(mode_of "$deployed_home/scripts")" == "755" ]]
+    [[ "$(mode_of "$deployed_home/scripts/lib")" == "755" ]]
+    # git owns its own metadata; it is left exactly as it was.
+    [[ "$(mode_of "$deployed_home/.git")" == "775" ]]
+    [[ "$(mode_of "$deployed_home/.git/HEAD")" == "664" ]]
+    run grep -F "Removed group/other write from" "$temp_root/update.log"
+    assert_success
+}
+
+@test "update_normalize_runtime_modes leaves modes alone in dry-run and outside a runtime home" {
+    local temp_root runtime
+    mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+
+    temp_root="$(create_temp_dir)"
+    runtime="$temp_root/acfs"
+    mkdir -p "$runtime/scripts"
+    printf "x\n" > "$runtime/scripts/a.sh"
+    chmod 664 "$runtime/scripts/a.sh"
+    UPDATE_LOG_FILE="$temp_root/update.log"
+
+    DRY_RUN=true
+    update_normalize_runtime_modes "$runtime"
+    [[ "$(mode_of "$runtime/scripts/a.sh")" == "664" ]]
+    run grep -F "Would remove group/other write from 1 path(s) under $runtime" "$UPDATE_LOG_FILE"
+    assert_success
+
+    DRY_RUN=false
+    HOME="$runtime" update_normalize_runtime_modes "$runtime"
+    [[ "$(mode_of "$runtime/scripts/a.sh")" == "664" ]]
+    ln -s "$runtime" "$temp_root/acfs-link"
+    update_normalize_runtime_modes "$temp_root/acfs-link"
+    [[ "$(mode_of "$runtime/scripts/a.sh")" == "664" ]]
+
+    update_normalize_runtime_modes "$runtime"
+    [[ "$(mode_of "$runtime/scripts/a.sh")" == "644" ]]
+}
+
 @test "self-update syncs deployed scripts when repo is already current" {
     local temp_root
     local seed_repo

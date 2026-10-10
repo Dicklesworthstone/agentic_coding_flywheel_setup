@@ -108,6 +108,17 @@ def read_snapshot(path, private=False):
         os.close(fd)
 
 
+def read_runtime(path):
+    # A refused runtime file is the installation's fault, not the operator's
+    # inputs; say so instead of reporting unsafe_input_file.
+    try:
+        return read_snapshot(path)
+    except Refused as exc:
+        if exc.code == "unsafe_input_file":
+            refuse("unsafe_runtime_file")
+        raise
+
+
 def count(value, maximum=1000000, minimum=0):
     if type(value) is not int or not minimum <= value <= maximum:
         refuse("invalid_probe_counter")
@@ -400,8 +411,8 @@ def main(args, library):
             "identity_sha256": identity_hash, "parallel": options.parallel, "timeout_seconds": options.timeout,
             "hosts": [{"id": t["id"], "workload": t["workload"]} for t in targets],
             "protocol": "ssh-strict-probe-local-v1", "advisory_only": True,
-            "runtime_sha256": digest(read_snapshot(library / "swarm_fleet_probe.sh")),
-            "inventory_policy_sha256": digest(read_snapshot(library / "swarm_inventory.sh"))}
+            "runtime_sha256": digest(read_runtime(library / "swarm_fleet_probe.sh")),
+            "inventory_policy_sha256": digest(read_runtime(library / "swarm_inventory.sh"))}
     plan_hash = digest(encoded(plan))
     if not options.probe:
         return {"status": "planned", "plan_sha256": plan_hash, "plan": plan,

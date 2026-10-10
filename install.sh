@@ -11800,6 +11800,10 @@ acfs_guard_ubuntu_install_checkpoint() {
 }
 
 main() {
+    # The fleet tools refuse group/other-writable runtime files, and a login
+    # user's per-user-group umask (0002 on Ubuntu) would make every installed
+    # file 664. Nothing ACFS writes is meant to be group-writable.
+    umask 022
     parse_args "$@"
     acfs_require_ref_arg_value "ACFS_REF" "${ACFS_REF:-}" "main"
     acfs_require_ref_arg_value "ACFS_CHECKSUMS_REF" "${ACFS_CHECKSUMS_REF:-}" "main"

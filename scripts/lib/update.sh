@@ -3628,6 +3628,47 @@ sync_acfs_deployed() {
             log_to_file "Synced $synced file(s) from repo to $acfs_home"
         fi
     fi
+
+    update_normalize_runtime_modes "$acfs_home"
+}
+
+# The fleet tools refuse group/other-writable runtime files and directories,
+# since another writer could swap reviewed code. Under a per-user-group umask
+# (0002, Ubuntu's default for login users) installer copies, git pulls of a
+# self-managed ~/.acfs and the syncs above all leave 664/775 modes, so
+# `acfs swarm inventory probe-fleet` refused ACFS's own runtime as
+# unsafe_input_file. Strip group/other write from what this user owns there.
+update_normalize_runtime_modes() {
+    local acfs_home="${1:-}"
+    local find_bin=""
+    local chmod_bin=""
+    local path=""
+    local -a writable=()
+
+    [[ -n "$acfs_home" && "$acfs_home" == /* && "$acfs_home" != "/" ]] || return 0
+    [[ "${acfs_home%/}" != "${HOME%/}" ]] || return 0
+    [[ -d "$acfs_home" && ! -L "$acfs_home" ]] || return 0
+    find_bin="$(update_system_binary_path find 2>/dev/null || true)"
+    chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
+    [[ -n "$find_bin" && -n "$chmod_bin" ]] || return 0
+
+    while IFS= read -r -d '' path; do
+        writable+=("$path")
+    done < <("$find_bin" "$acfs_home" -xdev -path "$acfs_home/.git" -prune -o \
+        \( -type f -o -type d \) -user "$EUID" \( -perm -020 -o -perm -002 \) -print0 2>/dev/null)
+    [[ ${#writable[@]} -gt 0 ]] || return 0
+
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log_to_file "Would remove group/other write from ${#writable[@]} path(s) under $acfs_home"
+        return 0
+    fi
+    # Paths are absolute (find starts from one), so no option terminator is
+    # needed; BSD chmod would read a "--" after the mode as a file name.
+    if "$chmod_bin" go-w "${writable[@]}" 2>/dev/null; then
+        log_to_file "Removed group/other write from ${#writable[@]} path(s) under $acfs_home"
+    else
+        log_to_file "Unable to remove group/other write from every path under $acfs_home"
+    fi
 }
 
 sync_acfs_global_wrapper() {

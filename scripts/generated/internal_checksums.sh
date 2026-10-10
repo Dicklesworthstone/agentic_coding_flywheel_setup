@@ -10,14 +10,14 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="957351868bdcf782fbbf6e8dd68d1b2f88cc88215a3e0288b30d9dad8b6709b9"
+  [install.sh]="87beef1061485c10f5f7cea323d1b2dda7df8edeca0e874283b303b503e60575"
   [checksums.yaml]="c19263fe3c9a67dd9923946d66066da61d4f20368836e9cc1ff62a86d03cb9f6"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="992f977020e5dedfa6c0e03c686406c27fa43fa76000062f5c8f8d05d77c00ac"
   [scripts/lib/holds.sh]="7aca60222e56ce4034739b92ed3332c7118d918526d60ce189f59c595a930015"
   [scripts/lib/github_api.sh]="80699922df2e924694f5682457e614dedf9181d7c071472cc8a6db4f17373d3d"
   [scripts/lib/contract.sh]="22c148f44ddbaccd559196196ef903f26f65fc77e3b1b6b4efc62b77d3b97aa3"
-  [scripts/lib/update.sh]="c0858c651c6ac63a0edd4ef583092f25b45e4b077e75ba0ddfe5af5dd203e41e"
+  [scripts/lib/update.sh]="020ef175dc1683c249d8d6322dc9b835103a44a5549b8b3a48ec19df298895d1"
   [scripts/lib/doctor.sh]="844ef41c37b9834ba6fa35f076dcba0ca10e864c6a96e4a4bd6000d37e2e257e"
   [scripts/lib/acfs-services.sh]="01e543d418c0ca5c45d42acb81510fce03150ff98e8bfd05438c863708daf359"
   [scripts/lib/doctor_fix.sh]="91e3aa1558c1b8e65279de79d95e0af37316c459fbe7c09e37eaa21635ccd754"
@@ -102,7 +102,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/swarm_calibration.sh]="9bd7b445238b5303c8e19fb623ca66bd9302bfa669a170914a4d09213ef4f668"
   [scripts/lib/swarm_convergence.sh]="d99b146456987988eb10798470893a5c0157ff6573c9b3010cbc35ce836394af"
   [scripts/lib/swarm_doctor.sh]="f41c452efb92617044dd29b7318ed9b27b6877b2e5945b8a5dec3b00eb2af163"
-  [scripts/lib/swarm_fleet_probe.sh]="99f7f212ea53ee411cd2a9c70cad3bb17ec94c5d109226db684048e94eca93f2"
+  [scripts/lib/swarm_fleet_probe.sh]="0d8a5d6b36e3e9d8e44abc482ef690586f5101d770a14cff91bcddb7e2107f04"
   [scripts/lib/swarm_inventory.sh]="9c220bee327a566f52576be74080b3f27fb9869fe3e51dbd61b1545154f76e14"
   [scripts/lib/swarm_launch.sh]="34d1f00cd66d79613b1ebd583fc5b46fe9400c5ee8b58a0fc1b74cb95ba072a1"
   [scripts/lib/swarm_launch_recovery.py]="033b49cbb54830dffe94f388dbe7a9f4b5438e1a4647fbbb0252360070733be7"
