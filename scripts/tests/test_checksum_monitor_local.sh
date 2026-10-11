@@ -204,6 +204,90 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     IFS=$'\t' read -r rec_epoch rec_reason < "$FAIL_ALERT_FILE"
     [[ "$rec_reason" == "reason B" ]] || fail "alert record not updated to the posted reason (got: $rec_reason)"
     unset -f date
+
+    # ---- independent channel delivery and retries -----------------------
+    # Both network entry points are intercepted before enabling a fake topic.
+    # No unit test may send a real push or invoke the authenticated gh CLI.
+    CURL_CALLS="$STATE_TMP/curl-calls"
+    : > "$CURL_CALLS"
+    : > "$GH_CALLS"
+    : > "$FAIL_ALERT_FILE"
+    push_record="$STATE_DIR/fail_closed_push_alert"
+    fake_time=$((now + 120))
+    CURL_RESULT=0
+    GH_RESULT=1
+    curl() {
+        printf '%s\n' "$*" >> "$CURL_CALLS"
+        return "$CURL_RESULT"
+    }
+    run_failure_bounded() {
+        printf '%s\n' "$*" >> "$GH_CALLS"
+        [[ "$GH_RESULT" == 0 ]] || return "$GH_RESULT"
+        [[ "$*" == "gh issue list "* ]] && printf '355\n'
+        return 0
+    }
+    date() { printf '%s\n' "$fake_time"; }
+    export ACFS_NTFY_TOPIC=private-test-topic
+    call_count() { grep -c '^-' "$CURL_CALLS" || true; }
+    gh_count() { grep -c '^gh issue' "$GH_CALLS" || true; }
+
+    _alert_fail_closed_streak 3 "push-only reason"
+    first_gh_count=$(gh_count)
+    fake_time=$((fake_time + 60))
+    _alert_fail_closed_streak 4 "push-only reason"
+    [[ "$(call_count)" == 1 ]] || fail "successful push repeated while GitHub failed"
+    (( $(gh_count) > first_gh_count )) || fail "push cooldown silenced failed GitHub retries"
+    IFS=$'\t' read -r rec_epoch rec_reason < "$push_record"
+    [[ "$rec_reason" == "push-only reason" ]] || fail "push success was not recorded"
+    [[ ! -s "$FAIL_ALERT_FILE" ]] || fail "failed GitHub delivery was recorded as success"
+
+    GH_RESULT=0
+    _alert_fail_closed_streak 5 "push-only reason"
+    [[ "$(call_count)" == 1 ]] || fail "GitHub recovery repeated a delivered push"
+    IFS=$'\t' read -r rec_epoch rec_reason < "$FAIL_ALERT_FILE"
+    [[ "$rec_reason" == "push-only reason" ]] || fail "successful GitHub retry was not recorded"
+    delivered_gh_count=$(gh_count)
+    _alert_fail_closed_streak 6 "push-only reason"
+    [[ "$(gh_count)" == "$delivered_gh_count" && "$(call_count)" == 1 ]] \
+        || fail "delivered channels were retried inside their cooldowns"
+
+    _alert_fail_closed_streak 7 "changed reason"
+    [[ "$(call_count)" == 2 ]] || fail "changed reason did not notify push channel"
+    changed_gh_count=$(gh_count)
+    fake_time=$((fake_time + 86399))
+    _alert_fail_closed_streak 8 "changed reason"
+    [[ "$(call_count)" == 2 && "$(gh_count)" == "$changed_gh_count" ]] \
+        || fail "channel cooldown expired before 24h"
+    fake_time=$((fake_time + 1))
+    _alert_fail_closed_streak 9 "changed reason"
+    [[ "$(call_count)" == 3 ]] || fail "push channel did not repeat at daily boundary"
+    (( $(gh_count) > changed_gh_count )) || fail "GitHub channel did not repeat at daily boundary"
+
+    CURL_RESULT=22
+    GH_RESULT=1
+    _alert_fail_closed_streak 10 "failed reason"
+    failed_gh_count=$(gh_count)
+    _alert_fail_closed_streak 11 "failed reason"
+    [[ "$(call_count)" == 5 ]] || fail "failed pushes were not retried"
+    (( $(gh_count) > failed_gh_count )) || fail "failed GitHub posts were not retried"
+    IFS=$'\t' read -r rec_epoch rec_reason < "$push_record"
+    [[ "$rec_reason" == "changed reason" ]] || fail "failed push advanced the cooldown"
+
+    GH_RESULT=0
+    _alert_fail_closed_streak 12 "GitHub-only reason"
+    github_only_count=$(gh_count)
+    _alert_fail_closed_streak 13 "GitHub-only reason"
+    [[ "$(call_count)" == 7 ]] || fail "GitHub success silenced failed push retries"
+    [[ "$(gh_count)" == "$github_only_count" ]] || fail "failed push repeated a delivered GitHub post"
+    _announce_recovery 13
+    [[ -f "$push_record" && ! -s "$push_record" && ! -s "$FAIL_ALERT_FILE" ]] \
+        || fail "recovery did not reset both channel cooldowns"
+    CURL_RESULT=0
+    GH_RESULT=1
+    _alert_fail_closed_streak 3 "GitHub-only reason"
+    [[ "$(call_count)" == 8 ]] || fail "new streak was suppressed by the previous push cooldown"
+    unset ACFS_NTFY_TOPIC
+    unset -f date
 ) || exit 1
 
 # The service unit still executes this script directly from the clone.

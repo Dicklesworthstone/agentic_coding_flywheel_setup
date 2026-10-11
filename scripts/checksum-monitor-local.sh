@@ -523,21 +523,23 @@ FAIL_STREAK_FILE="$STATE_DIR/fail_closed_streak"
 # every 24 runs (the old cadence posted the identical text every ~6h for
 # two weeks on #355).
 FAIL_ALERT_FILE="$STATE_DIR/fail_closed_alert"
+FAIL_PUSH_ALERT_FILE="$STATE_DIR/fail_closed_push_alert"
 FAIL_ALERT_REPEAT_SECONDS=86400
 FAIL_ALERT_MIN_STREAK=3
 
-# _fail_alert_due STREAK REASON [NOW_EPOCH]
+# _fail_alert_due STREAK REASON [NOW_EPOCH [RECORD_FILE]]
 # True when an alert should be posted for this failure: the streak has just
 # reached the alert threshold, the reason differs from the last posted alert,
 # or the last alert is older than FAIL_ALERT_REPEAT_SECONDS. Never true below
-# the threshold. Pure: reads FAIL_ALERT_FILE, never writes it.
+# the threshold. Pure: reads the selected channel record, never writes it.
 _fail_alert_due() {
     local streak="$1" reason="$2" now="${3:-}"
+    local record_file="${4:-$FAIL_ALERT_FILE}"
     local last_epoch="" last_reason=""
     (( streak >= FAIL_ALERT_MIN_STREAK )) || return 1
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
-    if [[ -f "$FAIL_ALERT_FILE" && ! -L "$FAIL_ALERT_FILE" ]]; then
-        IFS=$'\t' read -r last_epoch last_reason < "$FAIL_ALERT_FILE" || true
+    if [[ -f "$record_file" && ! -L "$record_file" ]]; then
+        IFS=$'\t' read -r last_epoch last_reason < "$record_file" || true
     fi
     [[ "$last_epoch" =~ ^[0-9]+$ ]] || return 0      # nothing posted yet (or unreadable)
     [[ "$last_reason" == "$reason" ]] || return 0    # the failure changed: say so
@@ -546,20 +548,33 @@ _fail_alert_due() {
 
 _fail_alert_record() {
     local reason="$1" now="${2:-}"
+    local record_file="${3:-$FAIL_ALERT_FILE}"
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
-    printf '%s\t%s\n' "$now" "$reason" > "$FAIL_ALERT_FILE" 2>/dev/null || true
+    printf '%s\t%s\n' "$now" "$reason" > "$record_file" 2>/dev/null || true
 }
 
 _alert_fail_closed_streak() {
     local streak="$1" reason="$2"
-    _fail_alert_due "$streak" "$reason" || return 0
+    local github_due=false push_due=false
+    if _fail_alert_due "$streak" "$reason"; then
+        github_due=true
+    fi
+    if [[ -n "${ACFS_NTFY_TOPIC:-}" ]] && _fail_alert_due "$streak" "$reason" "" "$FAIL_PUSH_ALERT_FILE"; then
+        push_due=true
+    fi
+    [[ "$github_due" == true || "$push_due" == true ]] || return 0
     local alert_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
     # Optional push notification
-    if [[ -n "${ACFS_NTFY_TOPIC:-}" ]]; then
-        curl -fsS -m 10 -A "OpenAI File Downloader, XaiImageApiFetch/1.0" \
+    if [[ "$push_due" == true ]]; then
+        if curl -fsS -m 10 -A "OpenAI File Downloader, XaiImageApiFetch/1.0" \
             -d "$alert_msg" "https://ntfy.sh/${ACFS_NTFY_TOPIC}" \
-            >>"$LOG_FILE" 2>&1 || true
+            >>"$LOG_FILE" 2>&1; then
+            _fail_alert_record "$reason" "" "$FAIL_PUSH_ALERT_FILE"
+        fi
     fi
+    # A delivered push has its own cooldown. Failed GitHub posts still retry,
+    # and a delivered GitHub post must not silence retries of a failed push.
+    [[ "$github_due" == true ]] || return 0
     # GitHub issue (deduped by label + search, same pattern as the
     # external-change review issue below)
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
@@ -618,6 +633,7 @@ _announce_recovery() {
     # Reset the dedupe window: an empty record reads as "nothing posted yet",
     # so the next streak's first alert is not suppressed by this one's.
     : > "$FAIL_ALERT_FILE" 2>/dev/null || true
+    : > "$FAIL_PUSH_ALERT_FILE" 2>/dev/null || true
 }
 
 fail_closed() {
@@ -719,7 +735,7 @@ bun_unsafe_reason="$(bun_binary_unsafe_reason "$BUN_BIN")" \
     || fail_closed "$bun_unsafe_reason"
 
 [[ -d "$MONITOR_REPO/.git" ]] || fail_closed "monitor clone not found at $MONITOR_REPO"
-cd "$MONITOR_REPO"
+cd "$MONITOR_REPO" || fail_closed "could not enter monitor clone at $MONITOR_REPO"
 origin_url="$(git remote get-url origin 2>/dev/null || true)"
 case "$origin_url" in
     https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup|\
