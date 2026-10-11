@@ -825,19 +825,19 @@ test_services_setup_setup_flows_tolerate_unset_status_keys() {
     ln -sf /bin/true "$target_home/.bun/bin/wrangler"
 
     output=$(bash -c '
-        set -u
+        set -eu
         source "$1"
         TARGET_USER="$(whoami)"
         TARGET_HOME="$2"
         BUN_BIN=/bin/true
         HAS_GUM=false
-        gum_confirm() { return 1; }
+        # Consent to the simulated Wrangler login so every setup branch runs.
+        gum_confirm() { return 0; }
         gum_box() { :; }
         gum_detail() { :; }
         gum_error() { :; }
         gum_warn() { :; }
         gum_success() { :; }
-        read() { return 0; }
         find_user_bin() { printf "/bin/true\n"; }
         run_as_user() { return 0; }
         check_claude_status() { SERVICE_STATUS[claude]=configured; }
@@ -846,12 +846,16 @@ test_services_setup_setup_flows_tolerate_unset_status_keys() {
         check_vercel_status() { SERVICE_STATUS[vercel]=configured; }
         check_supabase_status() { SERVICE_STATUS[supabase]=configured; }
         check_wrangler_status() { SERVICE_STATUS[wrangler]=configured; }
-        setup_claude </dev/null
-        setup_codex </dev/null
-        setup_gemini </dev/null
-        setup_vercel </dev/null
-        setup_supabase </dev/null
-        setup_wrangler </dev/null
+        unset VERCEL_TOKEN SUPABASE_ACCESS_TOKEN CLOUDFLARE_API_TOKEN
+        setup_claude <<< ""
+        setup_codex <<< ""
+        setup_gemini <<< ""
+        setup_vercel <<< ""
+        setup_supabase <<< ""
+        setup_wrangler <<< ""
+        for service in claude codex gemini vercel supabase wrangler; do
+            [[ "${SERVICE_STATUS[$service]:-unknown}" == configured ]] || exit 1
+        done
         printf "setup-ok\n"
     ' _ "$SERVICES_SETUP_SH" "$target_home" 2>&1 || true)
 
@@ -6375,7 +6379,7 @@ test_continue_failed_state_prints_resume_hint() {
     setup_installed_layout_env
     setup_poisoned_acfs_home
 
-    local resume_cmd="curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/2463b6a6e4338d74502c7bb34cb02ab8ca8e2ad4/install.sh | bash -s -- --resume --ref 2463b6a6e4338d74502c7bb34cb02ab8ca8e2ad4 --yes"
+    local resume_cmd="bash ./install.sh --resume --ref 2463b6a6e4338d74502c7bb34cb02ab8ca8e2ad4 --yes"
     cat > "$TEST_INSTALLED_ACFS/state.json" <<JSON
 {
   "mode": "safe",
@@ -8531,6 +8535,8 @@ EOF
 
 test_selected_system_binary_resolvers_reject_pathlike_names() {
     local failures=""
+    local probe_dir="$HARNESS_ARTIFACT_DIR/resolver-probes"
+    mkdir -p "$probe_dir"
 
     while IFS='|' read -r label script_path function_name; do
         [[ -n "$label" ]] || continue
@@ -8548,17 +8554,20 @@ test_selected_system_binary_resolvers_reject_pathlike_names() {
             continue
         fi
 
-        if ! resolver_output="$(
-            FUNCTION_BODY="$function_body" FUNCTION_NAME="$function_name" bash -c '
-                set -euo pipefail
-                eval "$FUNCTION_BODY"
+        local probe_script="$probe_dir/$label.sh"
+        {
+            printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "$function_body"
+            cat <<'PROBE'
                 for unsafe_name in "." ".." "../bash" "/bin/bash" "bash/../sh" "bash name"; do
                     if "$FUNCTION_NAME" "$unsafe_name" >/dev/null 2>&1; then
                         printf "%s accepted unsafe name: %s\n" "$FUNCTION_NAME" "$unsafe_name" >&2
                         exit 1
                     fi
                 done
-            ' 2>&1
+PROBE
+        } > "$probe_script"
+        if ! resolver_output="$(
+            FUNCTION_NAME="$function_name" bash "$probe_script" 2>&1
         )"; then
             printf -v failures '%s%s accepted pathlike system binary names: %s\n' "$failures" "$label" "$resolver_output"
         fi
@@ -12039,10 +12048,20 @@ run_status_protocol_tests() {
 }
 
 main() {
-    if [[ "${1:-}" == "--status-protocol-only" && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--ubs-regressions-only" ]]; then
+        harness_section "UBS finding regression coverage"
+        test_services_setup_setup_flows_tolerate_unset_status_keys || true
+        test_continue_failed_state_prints_resume_hint || true
+        test_selected_system_binary_resolvers_reject_pathlike_names || true
+        run_status_protocol_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--status-protocol-only" ]]; then
         harness_section "Editor status protocol"

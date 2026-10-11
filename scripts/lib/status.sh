@@ -1354,7 +1354,7 @@ status_main() {
 
     for cmd in "${_CORE_TOOLS[@]}"; do
         if _status_binary_exists "$cmd"; then
-            ((_tool_count++)) || true
+            _tool_count=$((_tool_count + 1))
         else
             _warnings+=("missing: $cmd")
         fi
@@ -1362,7 +1362,7 @@ status_main() {
 
     for cmd in "${_OPTIONAL_TOOLS[@]}"; do
         if _status_binary_exists "$cmd"; then
-            ((_tool_count++)) || true
+            _tool_count=$((_tool_count + 1))
         fi
     done
 
@@ -1466,7 +1466,9 @@ status_main() {
 
         if [[ ${#_warnings[@]} -gt 0 ]]; then
             for w in "${_warnings[@]}"; do
-                [[ "$w" == missing:* ]] && ((_missing_count++)) || true
+                if [[ "$w" == missing:* ]]; then
+                    _missing_count=$((_missing_count + 1))
+                fi
             done
             [[ $_missing_count -gt 0 ]] && _msg="$_msg, $_missing_count missing tool(s)"
             [[ -n "$_update_available" ]] && _msg="$_msg, update available"
