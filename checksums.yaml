@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-09T21:45:51-04:00
+# checksums.yaml - Auto-generated 2026-10-10T22:42:19-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "dad3e8330c57bd6bc78c5b80b53746a51883e155962b5d685745419c7129102c"
+    sha256: "855a4f5c61df5fe4db71d710000c08e911401ed57ba569d516b4992374946741"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
