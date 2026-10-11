@@ -871,6 +871,8 @@ dashboard_serve() {
                 echo "Notes:"
                 echo "  - Local-only is safer on VPS (prevents accidental internet exposure)."
                 echo "  - Use --public to bind 0.0.0.0 (all interfaces)."
+                echo "  - Network access has NO authentication; use an SSH tunnel on untrusted networks."
+                echo "  - Only the published index.html is served; other dashboard files are private."
                 return 0
                 ;;
             *)
@@ -909,7 +911,9 @@ dashboard_serve() {
     # Auto-generate dashboard if missing
     if [[ ! -f "$html_file" ]]; then
         echo "Dashboard not found. Generating..."
-        dashboard_generate --force
+        if ! dashboard_generate --force; then
+            return 1
+        fi
     fi
 
     # Get IP for display
@@ -934,23 +938,16 @@ dashboard_serve() {
         ssh_user="$(dashboard_resolve_current_user 2>/dev/null || echo "ubuntu")"
     fi
 
-    # Check if port is in use
-    local lsof_bin=""
-    lsof_bin="$(dashboard_system_binary_path lsof 2>/dev/null || true)"
-    if [[ -n "$lsof_bin" ]] && "$lsof_bin" -i :"$port" &>/dev/null; then
-        echo "Warning: Port $port appears to be in use." >&2
-        echo "Try a different port: acfs dashboard serve --port 8081" >&2
-        return 1
-    fi
-
     # Show banner
-    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" ]]; then
+    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
+        local local_url_host="localhost"
+        [[ "$host" == "::1" ]] && local_url_host="[::1]"
         cat <<EOF
 
 ╭─────────────────────────────────────────────────────────────╮
 │  📊 ACFS Dashboard Server                                   │
 ├─────────────────────────────────────────────────────────────┤
-│  Local URL:   http://localhost:${port} (server-side only)      │
+│  Local URL:   http://${local_url_host}:${port} (server-side only) │
 │                                                             │
 │  Press Ctrl+C to stop                                       │
 │                                                             │
@@ -958,24 +955,27 @@ dashboard_serve() {
 │  It stops when you close this terminal.                     │
 │                                                             │
 │  To view from your laptop (recommended):                     │
-│    ssh -L ${port}:localhost:${port} ${ssh_user}@${ip}                │
+│    ssh -L ${port}:${local_url_host}:${port} ${ssh_user}@${ip}        │
 │    then open: http://localhost:${port}                         │
 ╰─────────────────────────────────────────────────────────────╯
 
 EOF
     else
+        local network_host="$host"
+        [[ "$host" == "0.0.0.0" || "$host" == "::" ]] && network_host="$ip"
+        [[ "$network_host" == *:* ]] && network_host="[$network_host]"
         cat <<EOF
 
 ╭─────────────────────────────────────────────────────────────╮
 │  📊 ACFS Dashboard Server                                   │
 ├─────────────────────────────────────────────────────────────┤
 │  Local URL:   http://localhost:${port}                         │
-│  Network URL: http://${ip}:${port}
+│  Network URL: http://${network_host}:${port}
 │                                                             │
 │  Press Ctrl+C to stop                                       │
 │                                                             │
-│  ⚠️  --public serves this dashboard with NO authentication. │
-│  Anyone who can reach ${ip}:${port} can read everything
+│  ⚠️  Network access has NO authentication.                 │
+│  Anyone who can reach ${network_host}:${port} can read everything
 │  on it, including hostnames and install state. Prefer the   │
 │  default localhost mode with an SSH tunnel on networks      │
 │  you don't fully trust (e.g. anything beyond your tailnet). │
@@ -988,18 +988,85 @@ EOF
     fi
 
     # Start server
-    cd "$dashboard_dir" || {
-        echo "Error: Cannot cd to $dashboard_dir" >&2
-        return 1
-    }
-
     local python_bin=""
-    python_bin="$(dashboard_system_binary_path python3 2>/dev/null || dashboard_system_binary_path python 2>/dev/null || true)"
+    python_bin="$(dashboard_system_binary_path python3 2>/dev/null || true)"
     if [[ -n "$python_bin" ]]; then
-        "$python_bin" -m http.server --bind "$host" "$port"
+        # The HTML is self-contained. Never expose the directory, interrupted
+        # generation files, or symlink targets through a general file server.
+        "$python_bin" - "$host" "$port" "$html_file" <<'PY'
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import os
+import shutil
+import socket
+import stat
+import sys
+from urllib.parse import urlsplit
+
+host, port, html_file = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.serve_page(send_body=True)
+
+    def do_HEAD(self):
+        self.serve_page(send_body=False)
+
+    def serve_page(self, *, send_body):
+        try:
+            path = urlsplit(self.path).path
+        except ValueError:
+            self.send_error(404)
+            return
+        if path not in ("/", "/index.html"):
+            self.send_error(404)
+            return
+        try:
+            # Open the published file for each request so atomic regenerations
+            # remain visible. Reject symlinks and non-regular files without
+            # blocking on a FIFO substituted for index.html.
+            descriptor = os.open(html_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except FileNotFoundError:
+            self.send_error(404)
+            return
+        except OSError:
+            self.send_error(403)
+            return
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            os.close(descriptor)
+            self.send_error(403)
+            return
+        with os.fdopen(descriptor, "rb") as page:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(metadata.st_size))
+            self.send_header("Last-Modified", self.date_time_string(metadata.st_mtime))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            if send_body:
+                shutil.copyfileobj(page, self.wfile)
+
+
+class DashboardServer(ThreadingHTTPServer):
+    address_family = socket.getaddrinfo(
+        host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)[0][0]
+
+
+try:
+    with DashboardServer((host, port), DashboardHandler) as server:
+        print(f"Serving published dashboard on {host}:{port}", flush=True)
+        server.serve_forever()
+except KeyboardInterrupt:
+    pass
+except OSError as error:
+    print(f"Error: cannot serve dashboard on {host}:{port}: {error}", file=sys.stderr)
+    sys.exit(1)
+PY
     else
-        echo "Error: Python not found. Cannot start HTTP server." >&2
-        echo "Install Python or open the dashboard directly: $html_file" >&2
+        echo "Error: Python 3 not found. Cannot start HTTP server." >&2
+        echo "Install Python 3 or open the dashboard directly: $html_file" >&2
         return 1
     fi
 }

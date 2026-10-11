@@ -1192,6 +1192,14 @@ acfs dashboard serve --port 3000     # Custom port
 acfs dashboard serve --public        # Bind to 0.0.0.0
 ```
 
+The default server accepts local connections. To view it from your laptop, use
+the SSH tunnel command printed at startup, then open `http://localhost:8080`.
+`--public` and a non-loopback `--host` expose the dashboard **without authentication**
+to anyone who can reach the port, including its hostnames and install state.
+Use an SSH tunnel on untrusted networks. The server publishes only `index.html`;
+temporary files, timestamps, other files, and directory listings are not served.
+Python 3 is required for HTTP serving; you can also open the generated HTML directly.
+
 The dashboard provides:
 - System health at a glance
 - Tool versions and status

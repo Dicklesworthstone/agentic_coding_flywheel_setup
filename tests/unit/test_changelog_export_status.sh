@@ -4,6 +4,7 @@
 # Targeted regression tests for changelog, export-config, and
 # status output handling.
 # Usage: bash tests/unit/test_changelog_export_status.sh
+# Dashboard only: bash tests/unit/test_changelog_export_status.sh --dashboard-only
 # ============================================================
 set -euo pipefail
 
@@ -4457,6 +4458,14 @@ test_dashboard_rejects_invalid_ports_before_serving() {
     fi
 
     cleanup_mock_env
+}
+
+test_dashboard_http_surface() {
+    if python3 -B "$REPO_ROOT/tests/unit/test_dashboard_http.py" -v; then
+        harness_pass "dashboard serves published HTML without exposing private files"
+    else
+        harness_fail "dashboard serves published HTML without exposing private files"
+    fi
 }
 
 test_dashboard_help_does_not_require_target_context() {
@@ -11764,8 +11773,33 @@ test_cheatsheet_prefers_live_home_adjacent_acfs_path_over_stale_state_target_hom
     cleanup_mock_env
 }
 
+run_dashboard_tests() {
+    test_dashboard_generation_is_atomic_on_failure || true
+    test_dashboard_rejects_invalid_ports_before_serving || true
+    test_dashboard_http_surface || true
+    test_dashboard_help_does_not_require_target_context || true
+    test_dashboard_prefers_repo_local_info_script || true
+    test_dashboard_uses_installed_layout_under_root_home || true
+    test_dashboard_serve_uses_target_user_in_ssh_hint || true
+    test_dashboard_copy_install_uses_target_home_only_system_state || true
+    test_dashboard_repo_local_ignores_poisoned_explicit_acfs_home || true
+    test_dashboard_repo_local_prefers_system_state_target_user_over_stale_installed_state || true
+    test_dashboard_prefers_live_home_adjacent_acfs_path_over_stale_state_target_home || true
+    test_dashboard_uses_explicit_target_home_when_state_is_missing || true
+    test_dashboard_does_not_fall_back_to_current_home_when_explicit_target_is_unresolved || true
+    test_dashboard_can_be_sourced_without_mutating_caller_env || true
+    test_dashboard_copy_install_ignores_relative_home_trap || true
+}
+
 main() {
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--dashboard-only" ]]; then
+        harness_section "Dashboard"
+        run_dashboard_tests
+        harness_summary
+        return
+    fi
 
     if ! command -v jq >/dev/null 2>&1; then
         harness_warn "jq not available — skipping JSON validation tests"
@@ -11932,20 +11966,7 @@ main() {
     test_continue_scans_nonstandard_homes_via_getent || true
 
     harness_section "Dashboard"
-    test_dashboard_generation_is_atomic_on_failure || true
-    test_dashboard_rejects_invalid_ports_before_serving || true
-    test_dashboard_help_does_not_require_target_context || true
-    test_dashboard_prefers_repo_local_info_script || true
-    test_dashboard_uses_installed_layout_under_root_home || true
-    test_dashboard_serve_uses_target_user_in_ssh_hint || true
-    test_dashboard_copy_install_uses_target_home_only_system_state || true
-    test_dashboard_repo_local_ignores_poisoned_explicit_acfs_home || true
-    test_dashboard_repo_local_prefers_system_state_target_user_over_stale_installed_state || true
-    test_dashboard_prefers_live_home_adjacent_acfs_path_over_stale_state_target_home || true
-    test_dashboard_uses_explicit_target_home_when_state_is_missing || true
-    test_dashboard_does_not_fall_back_to_current_home_when_explicit_target_is_unresolved || true
-    test_dashboard_can_be_sourced_without_mutating_caller_env || true
-    test_dashboard_copy_install_ignores_relative_home_trap || true
+    run_dashboard_tests
 
     harness_section "Cheatsheet"
     test_state_library_ignores_relative_home_target_resolution || true
