@@ -4488,6 +4488,35 @@ By default, sensitive data is automatically redacted:
 | Passwords | `"password": "..."` | `"password": "<REDACTED:password>"` |
 | Private key blocks | `-----BEGIN ... PRIVATE KEY-----` | `<REDACTED:private_key>` |
 
+### Offline credential source checks
+
+Inspect local credential metadata without running login, `whoami`, setup steps
+or provider requests:
+
+```bash
+acfs services-setup --credential-status
+acfs services-setup --credential-status --require vercel --require supabase
+```
+
+The version-1 `acfs.credential_status` JSON covers Claude, Codex, Gemini, Vercel,
+Supabase and Wrangler. Each entry reports `state`, `source`, `requirement`,
+`authentication` and a remediation ID. All services are optional unless named
+with repeatable `--require`; unmet presence requirements return exit 1. Exit 0
+means the declared **storage** requirements are met, not successful authentication.
+Invalid options, unresolved target context or missing `jq` return exit 2.
+
+States distinguish `missing`, `placeholder`, `shell_configured`, `file_configured`
+and `unknown`. An environment placeholder takes precedence over a cached file
+so a shadowing export stays visible. Malformed JSON or credential shapes,
+unreadable or oversized files (over 1 MiB), and the
+currently unsupported Wrangler OAuth TOML format report `unknown`. Expiry,
+refreshability and Vault-backed credentials still need the broader lifecycle
+integration; every entry explicitly marks authentication `unverified`.
+
+The JSON report reuses the existing local credential paths and placeholder policy,
+omits secret values and file paths, and does not change credential files. It
+cannot be combined with setup flags such as `--yes` or `--install-claude-guard`.
+
 ### Status JSON for editor integrations
 
 `acfs status --ide` emits the version-1 `acfs.editor_status` contract for local

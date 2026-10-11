@@ -12047,11 +12047,178 @@ run_status_protocol_tests() {
     test_status_editor_readme_examples_match_cli_snapshots
 }
 
+credential_report_setup() {
+    status_protocol_setup "$1"
+    local tool=""
+    for tool in gemini vercel supabase wrangler; do
+        cat > "$PROTOCOL_HOME/.local/bin/$tool" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' called >> "$ACFS_PROTOCOL_POISON_MARKER"
+exit 99
+EOF
+        chmod +x "$PROTOCOL_HOME/.local/bin/$tool"
+    done
+}
+
+credential_report_run() {
+    local expected="$1" actual=0
+    shift
+    CREDENTIAL_REPORT_OUTPUT="$PROTOCOL_HOME/report.json"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+        -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+        "$@" bash "$SERVICES_SETUP_SH" --credential-status > "$CREDENTIAL_REPORT_OUTPUT" 2> "$CREDENTIAL_REPORT_OUTPUT.stderr" || actual=$?
+    [[ "$actual" == "$expected" ]] || return 1
+    jq -e '.kind == "acfs.credential_status" and .read_only == true and
+      .safety.provider_validation_performed == false and (.services | length) == 6 and
+      all(.services[]; .authentication == "unverified")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null
+}
+
+test_credential_report_optional_missing_is_passive() {
+    credential_report_setup credential-missing
+    if credential_report_run 0 &&
+        jq -e '.status == "pass" and all(.services[]; .state == "missing" and .requirement == "optional")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+        [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "offline credential report keeps optional missing services distinct from auth"
+    else harness_fail "offline credential report keeps optional missing services distinct from auth"; fi
+}
+
+test_credential_report_environment_and_placeholder_states() {
+    credential_report_setup credential-env
+    mkdir -p "$PROTOCOL_HOME/.config/vercel"
+    printf '%s\n' '{"token":"fixture-cached-vercel-secret"}' > "$PROTOCOL_HOME/.config/vercel/auth.json"
+    cp "$PROTOCOL_HOME/.config/vercel/auth.json" "$PROTOCOL_HOME/vercel.before"
+    if credential_report_run 0 ANTHROPIC_API_KEY=fixture-env-claude-secret VERCEL_TOKEN=your_vercel_token &&
+        jq -e '(.services[] | select(.service == "claude") | .state == "shell_configured" and .source == "environment") and
+          (.services[] | select(.service == "vercel") | .state == "placeholder" and .source == "environment")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture- "$CREDENTIAL_REPORT_OUTPUT" &&
+        cmp -s "$PROTOCOL_HOME/.config/vercel/auth.json" "$PROTOCOL_HOME/vercel.before"; then
+        harness_pass "environment provenance and placeholder shadowing remain redacted"
+    else harness_fail "environment provenance and placeholder shadowing remain redacted"; fi
+}
+
+test_credential_report_cached_files_and_bad_formats() {
+    credential_report_setup credential-files
+    mkdir -p "$PROTOCOL_HOME/.codex" "$PROTOCOL_HOME/.supabase" "$PROTOCOL_HOME/.config/.wrangler/config" "$PROTOCOL_HOME/.claude"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-codex-cached-secret"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    printf 'fixture-supabase-cached-secret\n' > "$PROTOCOL_HOME/.supabase/access-token"
+    printf 'oauth_token = "fixture-wrangler-cached-secret"\n' > "$PROTOCOL_HOME/.config/.wrangler/config/default.toml"
+    printf 'invalid-json fixture-private-claude-secret\n' > "$PROTOCOL_HOME/.claude/.credentials.json"
+    if credential_report_run 0 &&
+        jq -e '(.services[] | select(.service == "codex") | .state == "file_configured") and
+          (.services[] | select(.service == "supabase") | .state == "file_configured") and
+          (.services[] | select(.service == "claude") | .state == "unknown") and
+          (.services[] | select(.service == "wrangler") | .state == "unknown")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture- "$CREDENTIAL_REPORT_OUTPUT" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "cached credential metadata distinguishes candidates from unreadable formats"
+    else harness_fail "cached credential metadata distinguishes candidates from unreadable formats"; fi
+}
+
+test_credential_report_requirement_flags_and_nonmutation() {
+    credential_report_setup credential-required
+    local output="$PROTOCOL_HOME/required.json" actual=0
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        bash "$SERVICES_SETUP_SH" --credential-status --require vercel --require vercel > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 1 ]] && jq -e '.status == "warn" and .summary.required_unmet == 1 and
+        (.services[] | select(.service == "vercel") | .requirement == "required" and .state == "missing")' "$output" >/dev/null; then
+        harness_pass "explicit requirements warn once without configuring a service"
+    else harness_fail "explicit requirements warn once without configuring a service"; fi
+    local flags=""
+    for flags in '--credential-status --yes' '--yes --credential-status' '--credential-status --install-claude-guard' '--require vercel' '--credential-status --require invalid' '--credential-status --unknown'; do
+        actual=0
+        local -a args=()
+        read -r -a args <<< "$flags"
+        bash "$SERVICES_SETUP_SH" "${args[@]}" > "$PROTOCOL_HOME/rejected.stdout" 2> "$PROTOCOL_HOME/rejected.stderr" || actual=$?
+        if [[ "$actual" != 2 || -s "$PROTOCOL_HOME/rejected.stdout" ]]; then
+            harness_fail "credential metadata flags reject setup and invalid requirements"
+            return
+        fi
+    done
+    harness_pass "credential metadata flags reject setup and invalid requirements"
+}
+
+test_credential_report_required_presence_is_not_authentication() {
+    credential_report_setup credential-satisfied
+    local output="$PROTOCOL_HOME/required.json" actual=0
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        VERCEL_TOKEN=fixture-required-vercel-secret TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+        bash "$SERVICES_SETUP_SH" --credential-status --require vercel > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 ]] && jq -e '.summary.required_unmet == 0 and
+        (.services[] | select(.service == "vercel") | .requirement == "required" and .state == "shell_configured" and .authentication == "unverified")' "$output" >/dev/null &&
+        ! grep -Fq fixture-required-vercel-secret "$output" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "required stored candidate passes without claiming verified authentication"
+    else harness_fail "required stored candidate passes without claiming verified authentication"; fi
+}
+
+test_credential_report_expression_errors_remain_unknown() {
+    credential_report_setup credential-shape
+    mkdir -p "$PROTOCOL_HOME/.codex"
+    printf '%s\n' '{"tokens":"fixture-invalid-token-object"}' > "$PROTOCOL_HOME/.codex/auth.json"
+    cp "$PROTOCOL_HOME/.codex/auth.json" "$PROTOCOL_HOME/codex.before"
+    if credential_report_run 0 && jq -e '(.services[] | select(.service == "codex") | .state == "unknown" and .source == "file")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture-invalid-token-object "$CREDENTIAL_REPORT_OUTPUT" &&
+        cmp -s "$PROTOCOL_HOME/.codex/auth.json" "$PROTOCOL_HOME/codex.before"; then
+        harness_pass "JSON extraction errors stay unknown and preserve credential files"
+    else harness_fail "JSON extraction errors stay unknown and preserve credential files"; fi
+}
+
+test_credential_report_tracing_does_not_expose_values() {
+    credential_report_setup credential-trace
+    local output="$PROTOCOL_HOME/trace.json" actual=0
+    env -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        ANTHROPIC_API_KEY=fixture-traced-private-secret TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+        bash -x "$SERVICES_SETUP_SH" --credential-status > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 ]] && jq -e '.kind == "acfs.credential_status"' "$output" >/dev/null &&
+        ! grep -Fq fixture-traced-private-secret "$output" "$output.stderr" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "credential collection prevents value leaks under shell tracing"
+    else harness_fail "credential collection prevents value leaks under shell tracing"; fi
+}
+
+test_credential_report_oversized_files_are_bounded() {
+    local fill=""
+    for fill in x newline; do
+        credential_report_setup "credential-large-$fill"
+        mkdir -p "$PROTOCOL_HOME/.supabase"
+        python3 - "$PROTOCOL_HOME/.supabase/access-token" "$fill" <<'PY'
+from pathlib import Path
+import sys
+with Path(sys.argv[1]).open("xb") as output:
+    output.write((b"\n" if sys.argv[2] == "newline" else b"x") * 1048577)
+PY
+        if credential_report_run 0 && jq -e '(.services[] | select(.service == "supabase") | .state == "unknown")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+            [[ "$(wc -c < "$PROTOCOL_HOME/.supabase/access-token" | tr -d ' ')" == 1048577 ]]; then
+            harness_pass "oversized $fill credential snapshots stay bounded and unmodified"
+        else harness_fail "oversized $fill credential snapshots stay bounded and unmodified"; fi
+    done
+}
+
+run_credential_report_tests() {
+    test_credential_report_optional_missing_is_passive
+    test_credential_report_environment_and_placeholder_states
+    test_credential_report_cached_files_and_bad_formats
+    test_credential_report_requirement_flags_and_nonmutation
+    test_credential_report_required_presence_is_not_authentication
+    test_credential_report_expression_errors_remain_unknown
+    test_credential_report_tracing_does_not_expose_values
+    test_credential_report_oversized_files_are_bounded
+}
+
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--credential-report-only" ]]; then
+        harness_section "Offline credential provenance"
+        run_credential_report_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--ubs-regressions-only" ]]; then
         harness_section "UBS finding regression coverage"
@@ -12091,6 +12258,7 @@ main() {
     run_status_protocol_tests
 
     harness_section "Services Setup"
+    run_credential_report_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true

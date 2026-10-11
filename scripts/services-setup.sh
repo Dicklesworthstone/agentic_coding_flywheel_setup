@@ -220,6 +220,7 @@ fi
 TARGET_USER="${TARGET_USER:-${SUDO_USER:-${_SERVICES_SETUP_CURRENT_USER:-}}}"
 SERVICES_SETUP_ACTION="${SERVICES_SETUP_ACTION:-}"
 SERVICES_SETUP_NONINTERACTIVE="${SERVICES_SETUP_NONINTERACTIVE:-false}"
+SERVICES_SETUP_REQUIRED=()
 
 services_setup_valid_target_user() {
     local user="${1:-}"
@@ -720,6 +721,90 @@ file_has_usable_secret() {
     value="$(cat "$path" 2>/dev/null || true)"
     services_setup_has_usable_secret "$value"
 }
+
+# Emit metadata only. These states describe stored candidate credentials;
+# they never assert that a provider accepts them or that OAuth can refresh.
+services_setup_credential_file_state() {
+    local path="$1" expression="$2" jq_bin="$3"
+    local candidate="" values="" contents="" size="" head_bin="" wc_bin="" placeholder=false
+    [[ -f "$path" ]] || { printf 'missing\n'; return; }
+    [[ -r "$path" ]] || { printf 'unknown\n'; return; }
+    [[ -s "$path" ]] || { printf 'missing\n'; return; }
+    [[ "$expression" != unsupported ]] || { printf 'unknown\n'; return; }
+    head_bin="$(services_setup_system_binary_path head 2>/dev/null || true)"
+    wc_bin="$(services_setup_system_binary_path wc 2>/dev/null || true)"
+    [[ -n "$head_bin" && -n "$wc_bin" ]] || { printf 'unknown\n'; return; }
+    # Bound both reads. Count raw bytes before command substitution can strip
+    # trailing newlines; oversized files never become candidate credentials.
+    size="$("$head_bin" -c 1048577 -- "$path" 2>/dev/null | "$wc_bin" -c)" || { printf 'unknown\n'; return; }
+    [[ "$size" =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]] || { printf 'unknown\n'; return; }
+    (( BASH_REMATCH[1] <= 1048576 )) || { printf 'unknown\n'; return; }
+    contents="$("$head_bin" -c 1048577 -- "$path" 2>/dev/null)" || { printf 'unknown\n'; return; }
+    if [[ "$expression" == plaintext ]]; then
+        candidate="$contents"
+        if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'
+        elif services_setup_is_placeholder_secret "$candidate"; then printf 'placeholder\n'
+        else printf 'missing\n'; fi
+        return
+    fi
+    printf '%s' "$contents" | "$jq_bin" -e 'type == "object"' >/dev/null 2>&1 || { printf 'unknown\n'; return; }
+    values="$(printf '%s' "$contents" | "$jq_bin" -r "$expression" 2>/dev/null)" || { printf 'unknown\n'; return; }
+    while IFS= read -r candidate; do
+        if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'; return; fi
+        if services_setup_is_placeholder_secret "$candidate"; then placeholder=true; fi
+    done <<< "$values"
+    if [[ "$placeholder" == true ]]; then printf 'placeholder\n'; else printf 'missing\n'; fi
+}
+
+services_setup_credential_status_json() (
+    # A subshell preserves the caller's tracing options without tracing values.
+    set +x
+    local jq_bin="" service="" env_name="" value="" state="" source=""
+    local requirement="" file_state="" required="" i=0 unmet=0
+    local -a services=(claude codex gemini vercel supabase wrangler) env_names=() candidates=() records=()
+    jq_bin="$(services_setup_system_binary_path jq 2>/dev/null || true)"
+    if [[ -z "$jq_bin" ]]; then
+        printf '%s\n' '{"schema_version":1,"kind":"acfs.credential_status","status":"error","error":"jq_unavailable","read_only":true}'
+        return 2
+    fi
+    for service in "${services[@]}"; do
+        case "$service" in
+            claude) env_names=(ANTHROPIC_API_KEY); candidates=("$TARGET_HOME/.claude/.credentials.json" '.claudeAiOauth.accessToken // empty | strings') ;;
+            codex) env_names=(OPENAI_API_KEY); candidates=("$TARGET_HOME/.codex/auth.json" '[.tokens.access_token, .access_token, .accessToken, .OPENAI_API_KEY] | .[]? | strings') ;;
+            gemini) env_names=(GEMINI_API_KEY GOOGLE_API_KEY); candidates=("$TARGET_HOME/.gemini/oauth_creds.json" '[.access_token, .refresh_token] | .[]? | strings') ;;
+            vercel) env_names=(VERCEL_TOKEN); candidates=("$TARGET_HOME/.config/vercel/auth.json" '.token // empty | strings' "$TARGET_HOME/.vercel/auth.json" '.token // empty | strings') ;;
+            supabase) env_names=(SUPABASE_ACCESS_TOKEN); candidates=("$TARGET_HOME/.supabase/access-token" plaintext "$TARGET_HOME/.config/supabase/access-token" plaintext) ;;
+            wrangler) env_names=(CLOUDFLARE_API_TOKEN); candidates=("$TARGET_HOME/.config/.wrangler/config/default.toml" unsupported "$TARGET_HOME/.wrangler/config/default.toml" unsupported) ;;
+        esac
+        state=missing; source=none; requirement=optional
+        for required in "${SERVICES_SETUP_REQUIRED[@]}"; do
+            [[ "$required" != "$service" ]] || requirement=required
+        done
+        for env_name in "${env_names[@]}"; do
+            value="${!env_name-}"
+            [[ -n "${value//[[:space:]]/}" ]] || continue
+            source=environment
+            if services_setup_has_usable_secret "$value"; then state=shell_configured; else state=placeholder; fi
+            break
+        done
+        if [[ "$source" == none ]]; then
+            for ((i = 0; i < ${#candidates[@]}; i += 2)); do
+                file_state="$(services_setup_credential_file_state "${candidates[i]}" "${candidates[i+1]}" "$jq_bin")"
+                if [[ "$file_state" == file_configured ]]; then state=file_configured; source="file"; break; fi
+                if [[ "$state" == missing && "$file_state" != missing ]]; then state="$file_state"; source="file"; fi
+            done
+        fi
+        value=""
+        if [[ "$requirement" == required && "$state" != shell_configured && "$state" != file_configured ]]; then
+            unmet=$((unmet + 1))
+        fi
+        records+=("$("$jq_bin" -cn --arg service "$service" --arg state "$state" --arg source "$source" --arg requirement "$requirement" \
+            '{service:$service,state:$state,source:$source,requirement:$requirement,authentication:"unverified",remediation:(if $state == "placeholder" then "replace_or_unset_placeholder" elif $state == "unknown" then "inspect_local_config" elif $state == "missing" then "configure_when_needed" else "validate_before_use" end)}')")
+    done
+    printf '%s\n' "${records[@]}" | "$jq_bin" -s --argjson unmet "$unmet" \
+        '{schema_version:1,kind:"acfs.credential_status",status:(if $unmet > 0 then "warn" else "pass" end),read_only:true,services:.,summary:{required_unmet:$unmet},safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false}}'
+    [[ "$unmet" == 0 ]]
+)
 
 claude_settings_has_command_hook() {
     local settings_file="${1:-}"
@@ -1507,31 +1592,55 @@ Interactive:
 Options:
   --yes, -y    Configure all services that have non-interactive credentials
   --install-claude-guard  Install DCG hook for Claude Code (non-interactive)
+  --credential-status   Offline credential-source JSON; no login/provider probes
+  --require SERVICE     Require stored credentials for a named service (repeatable)
   --help, -h   Show this help
 EOF
 }
 
 maybe_run_cli_action() {
     local arg
+    local credential_query=false mutating_action=false
+    SERVICES_SETUP_REQUIRED=()
 
     while [[ $# -gt 0 ]]; do
         arg="$1"
         case "$arg" in
             --yes|-y)
                 SERVICES_SETUP_NONINTERACTIVE="true"
+                mutating_action=true
                 ;;
             --install-claude-guard)
                 SERVICES_SETUP_ACTION="install-claude-guard"
                 SERVICES_SETUP_NONINTERACTIVE="true"
+                mutating_action=true
+                ;;
+            --credential-status)
+                SERVICES_SETUP_ACTION="credential-status"
+                credential_query=true
+                ;;
+            --require)
+                case "${2:-}" in
+                    claude|codex|gemini|vercel|supabase|wrangler) SERVICES_SETUP_REQUIRED+=("$2"); shift ;;
+                    *) echo "Error: --require needs a supported service name" >&2; return 2 ;;
+                esac
                 ;;
             --help|-h)
                 SERVICES_SETUP_ACTION="help"
                 ;;
             *)
+                echo "Error: unsupported services-setup option; run --help" >&2
+                return 2
                 ;;
         esac
         shift || true
     done
+
+    if [[ "$credential_query" == true && "$mutating_action" == true ]] ||
+       [[ ${#SERVICES_SETUP_REQUIRED[@]} -gt 0 && "$credential_query" != true ]]; then
+        echo "Error: --credential-status cannot configure services; --require needs --credential-status" >&2
+        return 2
+    fi
 
     if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" && -z "$SERVICES_SETUP_ACTION" ]]; then
         SERVICES_SETUP_ACTION="setup-all"
@@ -1545,6 +1654,11 @@ run_cli_action() {
         help)
             print_cli_help
             return 0
+            ;;
+        credential-status)
+            init_target_context || return 2
+            services_setup_credential_status_json
+            return $?
             ;;
         install-claude-guard)
             if ! init_target_context; then
