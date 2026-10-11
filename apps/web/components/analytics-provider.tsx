@@ -376,7 +376,6 @@ function PrivacyControlledScripts() {
 
     scrubCurrentLocation();
     if (!documentTainted.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAnalyticsAllowed(true);
     }
 

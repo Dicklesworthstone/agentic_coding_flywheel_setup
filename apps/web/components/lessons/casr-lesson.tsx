@@ -333,6 +333,7 @@ function InteractiveSessionHandoffImpl() {
 
   // Animate terminal lines appearing one by one when step changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restart the line-by-line animation for the new step
     setTerminalVisibleLines(0);
     const totalLines = SCENARIO_STEPS[currentStep].terminalLines.length;
     const timers: ReturnType<typeof setTimeout>[] = [];

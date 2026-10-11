@@ -623,6 +623,7 @@ function useTypingEffect(text: string, isActive: boolean, speed: number = 20) {
 
   useEffect(() => {
     if (!isActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the typing animation when it is deactivated
       setDisplayed("");
       setIsDone(false);
       return;
@@ -761,6 +762,7 @@ function InteractiveCloudDownload() {
         }, 50);
       }, 0);
     } else if (phase === "done" && activeProvider) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- record the finished download when the phase machine reaches done
       setCompletedDownloads((prev) => {
         if (prev.includes(activeProvider.id)) return prev;
         return [...prev, activeProvider.id];

@@ -350,7 +350,6 @@ function CapacityPlanner() {
       hasHydratedPlannerSelection.current = true;
       if (hasLocalPlannerInteraction.current) return;
       const hydratedSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlannerSelection(hydratedSelection);
       // Persist canonical labels without replacing unknown or unsafe host facts
       // with recommendations. Existing hosts still need an explicit OS upgrade.

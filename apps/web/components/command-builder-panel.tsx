@@ -303,10 +303,12 @@ function SavedCommandBuilderPanel() {
   const refErrorId = `${panelId}-ref-error`;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resync the draft when the saved value changes
     setUsernameDraft(username);
   }, [username]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resync the draft when the saved value changes
     setRefDraft(ref ?? "");
   }, [ref]);
 

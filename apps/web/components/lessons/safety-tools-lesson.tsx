@@ -466,6 +466,7 @@ function useTypewriter(text: string, isActive: boolean, speed = 40): string {
 
   useEffect(() => {
     if (!isActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the typewriter when it is deactivated
       setDisplayed("");
       prevTextRef.current = "";
       return;

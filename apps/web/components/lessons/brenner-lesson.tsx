@@ -661,6 +661,7 @@ function InteractiveResearchPipeline() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the mount-time terminal animation
     animateTerminal(0);
     return () => {
       if (terminalTimerRef.current) clearTimeout(terminalTimerRef.current);
