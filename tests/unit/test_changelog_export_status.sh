@@ -12503,6 +12503,73 @@ run_credential_report_tests() {
     test_credential_report_oversized_files_are_bounded
 }
 
+test_credential_report_rejects_multiple_json_documents() {
+    local index=0 input="" output="" actual=0
+    for input in '{} {"tokens":{"access_token":"fixture-stream-secret"}}' '{"tokens":{"access_token":"fixture-stream-secret"}} {}'; do
+        index=$((index + 1))
+        credential_report_setup "credential-stream-$index"
+        mkdir -p "$PROTOCOL_HOME/.codex"
+        printf '%s\n' "$input" > "$PROTOCOL_HOME/.codex/auth.json"
+        cp "$PROTOCOL_HOME/.codex/auth.json" "$PROTOCOL_HOME/auth.before"
+        output="$PROTOCOL_HOME/stream.json"; actual=0
+        env -u OPENAI_API_KEY TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            bash "$SERVICES_SETUP_SH" --credential-status --require codex > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 1 ]] && jq -e '.status == "warn" and .summary.required_unmet == 1 and
+            (.services[] | select(.service == "codex") | .state == "unknown" and .authentication == "unverified")' "$output" >/dev/null &&
+            ! grep -Fq fixture-stream-secret "$output" && cmp -s "$PROTOCOL_HOME/auth.before" "$PROTOCOL_HOME/.codex/auth.json"; then
+            harness_pass "credential input stream $index is unknown, redacted and unchanged"
+        else harness_fail "credential input stream $index is unknown, redacted and unchanged"; fi
+    done
+}
+
+test_webhook_rejections_do_not_print_credentials() {
+    credential_report_setup webhook-rejection-privacy
+    local output="$PROTOCOL_HOME/rejection.stdout" actual=0
+    bash -c '
+        source "$2"
+        source "$1"
+        webhook_validate_url "http://fixture-user:fixture-webhook-secret@example.invalid/private-token"
+    ' _ "$WEBHOOK_SH" "$REPO_ROOT/scripts/lib/logging.sh" > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 1 ]] && grep -Fq 'HTTPS required' "$output.stderr" &&
+        ! grep -Fq fixture-webhook-secret "$output.stderr" && ! grep -Fq private-token "$output.stderr"; then
+        harness_pass "rejected webhook diagnostics omit credential-bearing URL values"
+    else harness_fail "rejected webhook diagnostics omit credential-bearing URL values"; fi
+}
+
+run_fresh_input_tests() {
+    test_credential_report_rejects_multiple_json_documents
+    test_webhook_rejections_do_not_print_credentials
+    test_webhook_ip_boundaries_reject_malformed_literals
+}
+
+test_webhook_ip_boundaries_reject_malformed_literals() {
+    credential_report_setup webhook-ip-boundaries
+    local output=""
+    cat > "$PROTOCOL_HOME/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$ACFS_FIXTURE_IP"
+EOF
+    chmod +x "$PROTOCOL_HOME/curl"
+    output="$(bash -c '
+        source "$1"
+        fixture_curl="$2"
+        webhook_system_binary_path() {
+            if [[ "$1" == curl ]]; then printf "%s\n" "$fixture_curl"; else command -v "$1"; fi
+        }
+        for ip in "1:2:3:4:5:6:7:8:" "::1:2:3:4:5:6:7:" "18446744073709551616.0.0.1" "256.0.0.1"; do
+            ACFS_FIXTURE_IP="$ip"; export ACFS_FIXTURE_IP
+            printf "%s\n" "$(webhook_public_ip)"
+        done
+        ACFS_FIXTURE_IP=203.0.113.7; export ACFS_FIXTURE_IP
+        webhook_public_ip
+        ACFS_FIXTURE_IP=2001:db8::5; export ACFS_FIXTURE_IP
+        webhook_public_ip
+    ' _ "$WEBHOOK_SH" "$PROTOCOL_HOME/curl")"
+    if [[ "$output" == $'unknown\nunknown\nunknown\nunknown\n203.0.113.7\n2001:db8::5' ]]; then
+        harness_pass "webhook IP validation rejects trailing IPv6 colons and overflowing IPv4 octets while retaining valid addresses"
+    else harness_fail "webhook IP validation rejects trailing IPv6 colons and overflowing IPv4 octets while retaining valid addresses" "$output"; fi
+}
+
 run_credential_support_tests() {
     test_credential_support_preserves_states_without_values
     test_credential_support_context_and_dependency_controls
@@ -12511,10 +12578,17 @@ run_credential_support_tests() {
 }
 
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--fresh-input-only" ]]; then
+        harness_section "Fresh input-boundary regressions"
+        run_fresh_input_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--credential-doctor-only" ]]; then
         harness_section "Doctor credential integration"
@@ -12578,6 +12652,7 @@ main() {
     run_credential_report_tests
     run_credential_support_tests
     run_credential_doctor_tests
+    run_fresh_input_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true

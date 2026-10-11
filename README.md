@@ -4534,6 +4534,17 @@ warnings. Stored candidates are reported with authentication explicitly
 check performs no login, refresh, `whoami` or provider validation; `--deep`
 continues to request doctor's separate functional checks.
 
+Credential JSON files must contain exactly one object. Concatenated documents
+remain `unknown` and cannot satisfy a declared storage requirement. Rejected
+webhook URLs are logged without echoing the URL or any credentials it contains.
+
+The read-only `acfs rescue --json` advisor also requires single-object checkpoint
+and doctor reports. Invalid phase lists, schema versions, or diagnostic counters
+cannot produce healthy advice. Timing overrides use bounded nonnegative decimal
+seconds, including leading-zero values; expressions are rejected before any
+arithmetic. Relative search directories are passed to filesystem tools as
+absolute paths so option-like names remain filenames.
+
 ### Status JSON for editor integrations
 
 `acfs status --ide` emits the version-1 `acfs.editor_status` contract for local

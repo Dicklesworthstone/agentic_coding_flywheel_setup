@@ -399,6 +399,7 @@ rescue_latest_summary_file() {
     local latest=""
 
     [[ -n "$logs_dir" && -d "$logs_dir" ]] || return 1
+    [[ "$logs_dir" == /* ]] || logs_dir="$PWD/$logs_dir"
     latest="$(find "$logs_dir" -maxdepth 1 -type f -name 'install_summary_*.json' 2>/dev/null | sort | tail -n 1)"
     [[ -n "$latest" ]] || return 1
     printf '%s\n' "$latest"
@@ -409,6 +410,7 @@ rescue_latest_support_path() {
     local latest=""
 
     [[ -n "$support_dir" && -d "$support_dir" ]] || return 1
+    [[ "$support_dir" == /* ]] || support_dir="$PWD/$support_dir"
     latest="$(find "$support_dir" -maxdepth 1 \( -type d -o -type f \) \( -name 'acfs-support-*' -o -name 'support-*' -o -name '*.tar.gz' \) 2>/dev/null | sort | tail -n 1)"
     [[ -n "$latest" ]] || return 1
     printf '%s\n' "$latest"
@@ -451,7 +453,7 @@ rescue_json_file_valid() {
     [[ -n "$path" && -f "$path" && -r "$path" ]] || return 1
     jq_bin="$(rescue_jq 2>/dev/null || true)"
     [[ -n "$jq_bin" ]] || return 1
-    "$jq_bin" -e . "$path" >/dev/null 2>&1
+    "$jq_bin" -es 'length == 1 and (.[0] | type == "object")' -- "$path" >/dev/null 2>&1
 }
 
 rescue_json_get() {
@@ -461,7 +463,85 @@ rescue_json_get() {
 
     jq_bin="$(rescue_jq 2>/dev/null || true)"
     [[ -n "$jq_bin" ]] || return 0
-    "$jq_bin" -r "$query" "$path" 2>/dev/null || true
+    "$jq_bin" -r "$query" -- "$path" 2>/dev/null || true
+}
+
+# Normalize decimal seconds before they reach Bash arithmetic. Never interpret
+# input as an expression or let leading zeroes select Bash's octal notation.
+rescue_decimal_seconds() {
+    local value="${1:-}"
+    [[ "$value" =~ ^[0-9]+$ && ${#value} -le 19 ]] || return 1
+    value="${value#"${value%%[!0]*}"}"
+    [[ -n "$value" ]] || value=0
+    # Compare the 18-digit prefix and final digit separately: evaluating the
+    # entire unchecked 19-digit value could overflow the integer we bound.
+    if [[ ${#value} -eq 19 ]] && {
+        [[ "${value:0:18}" -gt 922337203685477580 ]] ||
+        [[ "${value:0:18}" -eq 922337203685477580 && "${value:18:1}" -gt 7 ]];
+    }; then return 1; fi
+    printf '%s\n' "$value"
+}
+
+rescue_validate_timing() {
+    local normalized=""
+    normalized="$(rescue_decimal_seconds "$RESCUE_STALE_SECONDS")" || {
+        printf 'Error: --stale-seconds must be bounded nonnegative decimal seconds\n' >&2
+        return 2
+    }
+    RESCUE_STALE_SECONDS="$normalized"
+    if [[ -n "$RESCUE_NOW_EPOCH" ]]; then
+        normalized="$(rescue_decimal_seconds "$RESCUE_NOW_EPOCH")" || {
+            printf 'Error: --now-epoch must be bounded nonnegative decimal seconds\n' >&2
+            return 2
+        }
+        RESCUE_NOW_EPOCH="$normalized"
+    fi
+}
+
+rescue_state_snapshot() {
+    local jq_bin=""
+    jq_bin="$(rescue_jq 2>/dev/null || true)"
+    [[ -n "$jq_bin" ]] || return 1
+    "$jq_bin" -ces '
+        select(length == 1 and (.[0] | type == "object")) | .[0] |
+        select(
+        (if has("schema_version") then (.schema_version | type == "number" and . == floor and . >= 1 and . <= 2147483647) else true end) and
+        (.completed_phases | . == null or (type == "array" and all(.[]; type == "string"))) and
+        (.current_phase | . == null or type == "string" or (type == "object" and (.id | type == "string"))) and
+        all([.failed_phase,.failed_step,.failed_error,.resume_hint,.current_step][]; . == null or type == "string")) |
+        {schema_version,completed_phases,current_phase,current_step,failed_phase,failed_step,resume_hint,
+            failed_error:(if (.failed_error // "") == "" then null else "recorded" end),
+            last_updated:(.last_updated // .updated_at // .last_update)}
+    ' -- "$1" 2>/dev/null
+}
+
+rescue_doctor_snapshot() {
+    local jq_bin=""
+    jq_bin="$(rescue_jq 2>/dev/null || true)"
+    [[ -n "$jq_bin" ]] || return 1
+    "$jq_bin" -ces '
+        def counter: type == "number" and . == floor and . >= 0 and . <= 2147483647;
+        select(length == 1 and (.[0] | type == "object")) | .[0] |
+        select(
+        (.summary | type == "object") and
+        (.summary | all(to_entries[]; if (.key == "fail" or .key == "failed" or .key == "warn" or .key == "warnings") then (.value | counter) else true end)) and
+        (.status | . == null or type == "string")) |
+        {status,summary:{fail:((.summary.fail // .summary.failed // 0) | floor),warn:((.summary.warn // .summary.warnings // 0) | floor)}}
+    ' -- "$1" 2>/dev/null
+}
+
+rescue_json_value() {
+    local jq_bin=""
+    jq_bin="$(rescue_jq 2>/dev/null || true)"
+    [[ -n "$jq_bin" ]] || return 1
+    printf '%s' "$1" | "$jq_bin" -r "$2" 2>/dev/null
+}
+
+rescue_doctor_unavailable() {
+    if [[ "$RESCUE_STATUS" != fail ]]; then
+        rescue_set_decision warn needs_doctor_evidence \
+            "The supplied doctor report cannot establish health; collect fresh doctor evidence before proceeding." "acfs doctor --json"
+    fi
 }
 
 rescue_timestamp_epoch() {
@@ -470,13 +550,14 @@ rescue_timestamp_epoch() {
 
     [[ -n "$value" && "$value" != "null" ]] || return 1
     if [[ "$value" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$value"
-        return 0
+        rescue_decimal_seconds "$value"
+        return $?
     fi
 
     date_bin="$(rescue_system_binary_path date 2>/dev/null || true)"
     [[ -n "$date_bin" ]] || return 1
-    "$date_bin" -u -d "$value" +%s 2>/dev/null
+    value="$("$date_bin" -u -d "$value" +%s 2>/dev/null)" || return 1
+    rescue_decimal_seconds "$value"
 }
 
 rescue_file_mtime_epoch() {
@@ -486,7 +567,7 @@ rescue_file_mtime_epoch() {
     [[ -n "$path" && -e "$path" ]] || return 1
     stat_bin="$(rescue_system_binary_path stat 2>/dev/null || true)"
     [[ -n "$stat_bin" ]] || return 1
-    "$stat_bin" -c %Y "$path" 2>/dev/null
+    "$stat_bin" -c %Y -- "$path" 2>/dev/null
 }
 
 rescue_now_epoch() {
@@ -549,6 +630,7 @@ rescue_next_phase_after() {
 
 rescue_analyze_state() {
     local state_file="$RESCUE_STATE_FILE"
+    local state_snapshot=""
     local schema_version=""
     local failed_phase=""
     local failed_step=""
@@ -585,19 +667,26 @@ rescue_analyze_state() {
         return 0
     fi
 
+    if ! state_snapshot="$(rescue_state_snapshot "$state_file")"; then
+        RESCUE_STATE_STATUS="malformed"
+        rescue_add_evidence "State fields do not match the supported checkpoint shape."
+        rescue_set_decision fail blocked "The checkpoint has invalid field types or schema version; capture diagnostics before changing installer state." "acfs support-bundle"
+        return 0
+    fi
+
     RESCUE_STATE_STATUS="valid"
-    schema_version="$(rescue_json_get "$state_file" '.schema_version // empty')"
-    failed_phase="$(rescue_json_get "$state_file" '.failed_phase // empty')"
-    failed_step="$(rescue_json_get "$state_file" '.failed_step // empty')"
-    failed_error="$(rescue_json_get "$state_file" '.failed_error // empty')"
-    resume_hint="$(rescue_json_get "$state_file" '.resume_hint // empty')"
-    current_phase="$(rescue_json_get "$state_file" '.current_phase.id? // .current_phase // empty')"
-    current_step="$(rescue_json_get "$state_file" '.current_step // empty')"
-    completed_finalize="$(rescue_json_get "$state_file" '(.completed_phases // []) | index("finalize") != null')"
-    completed_count="$(rescue_json_get "$state_file" '(.completed_phases // []) | length')"
-    last_completed_phase="$(rescue_json_get "$state_file" '(.completed_phases // [] | map(select(type == "string")) | .[-1]) // empty')"
+    schema_version="$(rescue_json_value "$state_snapshot" '.schema_version // empty | floor')"
+    failed_phase="$(rescue_json_value "$state_snapshot" '.failed_phase // empty')"
+    failed_step="$(rescue_json_value "$state_snapshot" '.failed_step // empty')"
+    failed_error="$(rescue_json_value "$state_snapshot" '.failed_error // empty')"
+    resume_hint="$(rescue_json_value "$state_snapshot" '.resume_hint // empty')"
+    current_phase="$(rescue_json_value "$state_snapshot" '.current_phase.id? // .current_phase // empty')"
+    current_step="$(rescue_json_value "$state_snapshot" '.current_step // empty')"
+    completed_finalize="$(rescue_json_value "$state_snapshot" '(.completed_phases // []) | index("finalize") != null')"
+    completed_count="$(rescue_json_value "$state_snapshot" '(.completed_phases // []) | length')"
+    last_completed_phase="$(rescue_json_value "$state_snapshot" '(.completed_phases // [] | map(select(type == "string")) | .[-1]) // empty')"
     next_phase="$(rescue_next_phase_after "$last_completed_phase")"
-    last_updated="$(rescue_json_get "$state_file" '.last_updated // .updated_at // .last_update // empty')"
+    last_updated="$(rescue_json_value "$state_snapshot" '.last_updated // empty')"
 
     RESCUE_CHECKPOINT_SCHEMA_VERSION="$schema_version"
     RESCUE_CHECKPOINT_COMPLETED_COUNT="$completed_count"
@@ -644,7 +733,7 @@ rescue_analyze_state() {
         return 0
     fi
 
-    if [[ "$completed_finalize" == "true" ]]; then
+    if [[ "$completed_finalize" == "true" && ( -z "$current_phase" || "$current_phase" == "null" ) ]]; then
         RESCUE_INSTALL_STATUS="healthy"
         rescue_add_evidence "Finalize phase is marked complete."
         rescue_set_decision "pass" "healthy" "ACFS appears installed; continue with onboarding." "onboard"
@@ -664,7 +753,7 @@ rescue_analyze_state() {
         fi
         now_epoch="$(rescue_now_epoch 2>/dev/null || true)"
 
-        if [[ -n "$updated_epoch" && -n "$now_epoch" && "$now_epoch" =~ ^[0-9]+$ && "$updated_epoch" =~ ^[0-9]+$ ]]; then
+        if updated_epoch="$(rescue_decimal_seconds "$updated_epoch")" && now_epoch="$(rescue_decimal_seconds "$now_epoch")"; then
             age_seconds=$((now_epoch - updated_epoch))
             RESCUE_CHECKPOINT_AGE_SECONDS="$age_seconds"
             rescue_add_evidence "Checkpoint age seconds: $age_seconds"
@@ -754,6 +843,7 @@ rescue_analyze_summary() {
 
 rescue_analyze_doctor() {
     local doctor_file="$RESCUE_DOCTOR_FILE"
+    local doctor_snapshot=""
     local doctor_status=""
     local fail_count=""
     local warn_count=""
@@ -767,25 +857,28 @@ rescue_analyze_doctor() {
     if [[ ! -e "$doctor_file" ]]; then
         RESCUE_DOCTOR_STATUS="missing"
         rescue_add_evidence "Doctor JSON not found: $doctor_file"
+        rescue_doctor_unavailable
         return 0
     fi
 
     if [[ ! -r "$doctor_file" ]]; then
         RESCUE_DOCTOR_STATUS="unreadable"
         rescue_add_evidence "Doctor JSON exists but is not readable: $doctor_file"
+        rescue_doctor_unavailable
         return 0
     fi
 
-    if ! rescue_json_file_valid "$doctor_file"; then
+    if ! doctor_snapshot="$(rescue_doctor_snapshot "$doctor_file")"; then
         RESCUE_DOCTOR_STATUS="malformed"
-        rescue_add_evidence "Doctor JSON is not valid JSON: $doctor_file"
+        rescue_add_evidence "Doctor JSON is malformed or has unsupported summary fields."
+        rescue_doctor_unavailable
         return 0
     fi
 
     RESCUE_DOCTOR_STATUS="valid"
-    doctor_status="$(rescue_json_get "$doctor_file" '.status // empty')"
-    fail_count="$(rescue_json_get "$doctor_file" '.summary.fail // .summary.failed // 0')"
-    warn_count="$(rescue_json_get "$doctor_file" '.summary.warn // .summary.warnings // 0')"
+    doctor_status="$(rescue_json_value "$doctor_snapshot" '.status // empty')"
+    fail_count="$(rescue_json_value "$doctor_snapshot" '.summary.fail')"
+    warn_count="$(rescue_json_value "$doctor_snapshot" '.summary.warn')"
     [[ "$fail_count" =~ ^[0-9]+$ ]] || fail_count=0
     [[ "$warn_count" =~ ^[0-9]+$ ]] || warn_count=0
     rescue_add_evidence "Doctor JSON is valid: $doctor_file"
@@ -975,7 +1068,7 @@ rescue_parse_args() {
                 exit 0
                 ;;
             *)
-                echo "Error: unknown rescue option: $1" >&2
+                echo "Error: unknown rescue option (see: acfs rescue --help)" >&2
                 echo "Try 'acfs rescue --help' for usage." >&2
                 return 2
                 ;;
@@ -994,6 +1087,7 @@ rescue_main() {
         esac
     done
     rescue_parse_args "$@"
+    rescue_validate_timing || return $?
     rescue_resolve_defaults
     rescue_probe_support
     rescue_analyze_state

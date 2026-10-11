@@ -97,7 +97,7 @@ test_failed_phase_uses_recorded_resume_hint() {
   "failed_phase": "cli_tools",
   "failed_step": "install rch",
   "failed_error": "installer exited 1",
-  "resume_hint": "curl -fsSL https://acfs.sh | bash -s -- --resume --yes"
+  "resume_hint": "bash /tmp/acfs-rescue-install.sh --resume --yes"
 }
 JSON
 
@@ -109,7 +109,7 @@ JSON
       .status == "fail" and
       .severity == "blocked" and
       .install_status == "failed" and
-      .next_command == "curl -fsSL https://acfs.sh | bash -s -- --resume --yes" and
+      .next_command == "bash /tmp/acfs-rescue-install.sh --resume --yes" and
       .checkpoint.last_completed_phase == "bootstrap" and
       (.evidence[] | select(. == "Failed phase recorded: cli_tools")) and
       (.evidence[] | select(. == "Failed step recorded: install rch"))
@@ -325,6 +325,170 @@ run_test() {
     fi
 }
 
+test_invalid_checkpoint_shapes_never_look_healthy() {
+    local case_name="" value="" home="" output="" status=""
+    while IFS='|' read -r case_name value; do
+        home="$ARTIFACT_DIR/invalid-$case_name/.acfs"
+        mkdir -p "$home"
+        printf '%s\n' "$value" > "$home/state.json"
+        output="$(run_rescue_json "invalid_$case_name" --acfs-home "$home")"
+        status="$(cat "$ARTIFACT_DIR/invalid_$case_name.exit")"
+        if [[ "$status" == 2 ]] && jq -e '.status == "fail" and .sources.state.status == "malformed" and .next_command == "acfs support-bundle"' <<< "$output" >/dev/null; then
+            pass "invalid checkpoint $case_name cannot become healthy"
+        else fail "invalid checkpoint $case_name cannot become healthy"; fi
+    done <<'CASES'
+phase_string|{"schema_version":3,"completed_phases":"finalize"}
+schema_wrap|{"schema_version":"18446744073709551619","completed_phases":["finalize"]}
+schema_fraction|{"schema_version":3.5,"completed_phases":["finalize"]}
+schema_boolean|{"schema_version":true,"completed_phases":["finalize"]}
+current_boolean|{"schema_version":3,"completed_phases":["finalize"],"current_phase":false}
+phase_object|{"schema_version":3,"completed_phases":[{"phase":"finalize"}]}
+array_root|[{"schema_version":3,"completed_phases":["finalize"]}]
+two_documents|{"schema_version":3,"completed_phases":["finalize"]} {"schema_version":3,"completed_phases":[]}
+CASES
+}
+
+test_timing_options_are_literal_bounded_decimals() {
+    local home="$ARTIFACT_DIR/timing-input/.acfs" value="" output="" status="" index=0
+    write_json "$home/state.json" <<'JSON'
+{"schema_version":3,"completed_phases":[],"current_phase":"languages","last_updated":1000}
+JSON
+    cp "$home/state.json" "$ARTIFACT_DIR/timing-state.before"
+    for value in 'RESCUE_EVIDENCE[$(printf unsafe_fixture_executed >&2)0]' '1+1' '-1' '9223372036854775808' ''; do
+        index=$((index + 1))
+        output="$(run_rescue_json "bad_timing_$index" --acfs-home "$home" --now-epoch 5000 --stale-seconds "$value")"
+        status="$(cat "$ARTIFACT_DIR/bad_timing_$index.exit")"
+        if [[ "$status" == 2 ]] && [[ "$output" != *unsafe_fixture_executed* ]] && cmp -s "$home/state.json" "$ARTIFACT_DIR/timing-state.before"; then
+            pass "invalid timing input $index is rejected without evaluation or mutation"
+        else fail "invalid timing input $index is rejected without evaluation or mutation"; fi
+    done
+    output="$(run_rescue_json decimal_timing --acfs-home "$home" --now-epoch 0005000 --stale-seconds 00060)"
+    status="$(cat "$ARTIFACT_DIR/decimal_timing.exit")"
+    if [[ "$status" == 1 ]] && jq -e '.severity == "stale_checkpoint" and .checkpoint.age_seconds == 4000' <<< "$output" >/dev/null; then
+        pass "leading-zero timing values are decimal seconds"
+    else fail "leading-zero timing values are decimal seconds"; fi
+}
+
+test_invalid_doctor_counters_do_not_clear_warnings() {
+    local home="$ARTIFACT_DIR/invalid-doctor/.acfs" value="" index=0 output="" status=""
+    write_json "$home/state.json" <<'JSON'
+{"schema_version":3,"completed_phases":["finalize"]}
+JSON
+    for value in '"18446744073709551616"' '-1' '0.5' '"1+1"' 'true'; do
+        index=$((index + 1))
+        printf '{"summary":{"fail":%s,"warn":0}}\n' "$value" > "$ARTIFACT_DIR/invalid-doctor/doctor.json"
+        output="$(run_rescue_json "bad_doctor_$index" --acfs-home "$home" --doctor-file "$ARTIFACT_DIR/invalid-doctor/doctor.json")"
+        status="$(cat "$ARTIFACT_DIR/bad_doctor_$index.exit")"
+        if [[ "$status" == 1 ]] && jq -e '.status == "warn" and .sources.doctor.status == "malformed" and .next_command == "acfs doctor --json"' <<< "$output" >/dev/null; then
+            pass "invalid doctor counter $index remains unknown evidence"
+        else fail "invalid doctor counter $index remains unknown evidence"; fi
+    done
+}
+
+test_option_like_search_paths_remain_paths() {
+    local probe="$ARTIFACT_DIR/path-probe" output=""
+    mkdir -p "$probe/-delete" "$probe/-exec"
+    output="$(bash -c '
+        source "$1"
+        cd "$2" || exit 2
+        find() { printf "%s\n" "$1"; }
+        rescue_latest_support_path -delete
+        rescue_latest_summary_file -exec
+    ' _ "$RESCUE_SH" "$probe")"
+    if [[ "$output" == "$probe/-delete"$'\n'"$probe/-exec" ]]; then
+        pass "search helpers prefix relative option-like directories before find"
+    else fail "search helpers prefix relative option-like directories before find" "$output"; fi
+    mkdir -p "$probe/-true/support-only" "$probe/support-outside"
+    output="$(bash -c 'source "$1"; cd "$2" || exit 2; rescue_latest_support_path -true' _ "$RESCUE_SH" "$probe")"
+    if [[ "$output" == "$probe/-true/support-only" ]]; then
+        pass "native find stays inside the option-like directory"
+    else fail "native find stays inside the option-like directory" "$output"; fi
+}
+
+test_option_like_json_filename_is_literal() {
+    local probe="$ARTIFACT_DIR/json-filename" output="" actual=0
+    mkdir -p "$probe/.acfs"
+    printf '%s\n' '{"schema_version":3,"completed_phases":["finalize"]}' > "$probe/-r"
+    output="$(bash -c 'cd "$2" || exit 2; bash "$1" --json --state-file -r --acfs-home "$2/.acfs"' _ "$RESCUE_SH" "$probe" </dev/null)" || actual=$?
+    if [[ "$actual" == 0 ]] && jq -e '.status == "pass" and .sources.state.status == "valid"' <<< "$output" >/dev/null; then
+        pass "native jq reads an option-like state filename as a file"
+    else fail "native jq reads an option-like state filename as a file"; fi
+    output="$(bash -c 'source "$1"; cd "$2" || exit 2; rescue_file_mtime_epoch -r' _ "$RESCUE_SH" "$probe")" || output=""
+    if [[ "$output" =~ ^[0-9]+$ ]]; then
+        pass "native stat reads an option-like state filename as a file"
+    else fail "native stat reads an option-like state filename as a file"; fi
+}
+
+test_integer_json_notation_and_failure_precedence() {
+    local home="$ARTIFACT_DIR/integer-notation/.acfs" output=""
+    write_json "$home/state.json" <<'JSON'
+{"schema_version":99.0,"completed_phases":["finalize"]}
+JSON
+    output="$(run_rescue_json future_notation --acfs-home "$home")"
+    if [[ "$(cat "$ARTIFACT_DIR/future_notation.exit")" == 2 ]] && jq -e '.severity == "future_state" and .checkpoint.state_schema_version == 99' <<< "$output" >/dev/null; then
+        pass "integer-valued future JSON schema cannot skip the version guard"
+    else fail "integer-valued future JSON schema cannot skip the version guard"; fi
+    write_json "$home/state.json" <<'JSON'
+{"schema_version":3,"completed_phases":["finalize"]}
+JSON
+    write_json "$ARTIFACT_DIR/integer-notation/doctor.json" <<'JSON'
+{"summary":{"fail":1e1,"warn":0}}
+JSON
+    output="$(run_rescue_json doctor_notation --acfs-home "$home" --doctor-file "$ARTIFACT_DIR/integer-notation/doctor.json")"
+    if [[ "$(cat "$ARTIFACT_DIR/doctor_notation.exit")" == 2 ]] && jq -e '.severity == "doctor_failed"' <<< "$output" >/dev/null; then
+        pass "integer-valued doctor counters are normalized before comparison"
+    else fail "integer-valued doctor counters are normalized before comparison"; fi
+    write_json "$home/state.json" <<'JSON'
+{"schema_version":3,"completed_phases":[],"failed_phase":"agents"}
+JSON
+    printf '{bad-report\n' > "$ARTIFACT_DIR/integer-notation/doctor.json"
+    output="$(run_rescue_json failed_precedence --acfs-home "$home" --doctor-file "$ARTIFACT_DIR/integer-notation/doctor.json")"
+    if [[ "$(cat "$ARTIFACT_DIR/failed_precedence.exit")" == 2 ]] && jq -e '.severity == "blocked" and .install_status == "failed" and .sources.doctor.status == "malformed"' <<< "$output" >/dev/null; then
+        pass "invalid doctor evidence does not replace a persisted installer failure"
+    else fail "invalid doctor evidence does not replace a persisted installer failure"; fi
+}
+
+test_doctor_decision_uses_validated_snapshot() {
+    local probe="$ARTIFACT_DIR/snapshot-probe" output=""
+    mkdir -p "$probe"
+    printf '%s\n' '{"summary":{"fail":2,"warn":0}}' > "$probe/doctor.json"
+    cat > "$probe/jq" <<'SCRIPT'
+#!/usr/bin/env bash
+# Fault injection changes the producer file when field extraction begins;
+# parsing still delegates to the actual system jq with unchanged arguments.
+if [[ "${1:-}" == -r && "${2:-}" == '.status'* ]]; then
+    printf '%s\n' '{"summary":{"fail":"18446744073709551616","warn":0}}' > "$ACFS_SNAPSHOT_DOCTOR_FILE"
+fi
+exec /usr/bin/jq "$@"
+SCRIPT
+    chmod +x "$probe/jq"
+    output="$(ACFS_SNAPSHOT_DOCTOR_FILE="$probe/doctor.json" bash -c '
+        source "$1"
+        probe="$2"
+        rescue_jq() { printf "%s/jq\n" "$probe"; }
+        RESCUE_DOCTOR_FILE="$probe/doctor.json"
+        RESCUE_INSTALL_STATUS=healthy; RESCUE_STATUS=pass
+        rescue_analyze_doctor
+        printf "%s|%s\n" "$RESCUE_STATUS" "$RESCUE_SEVERITY"
+    ' _ "$RESCUE_SH" "$probe")"
+    if [[ "$output" == 'fail|doctor_failed' ]] && grep -Fq '18446744073709551616' "$probe/doctor.json"; then
+        pass "doctor decision keeps validated failure counters when producer file changes"
+    else fail "doctor decision keeps validated failure counters when producer file changes" "$output"; fi
+}
+
+test_active_phase_beats_previous_finalize() {
+    local home="$ARTIFACT_DIR/active-after-finalize/.acfs" output=""
+    write_json "$home/state.json" <<'JSON'
+{"schema_version":3,"completed_phases":["user_setup","finalize"],"current_phase":{"id":"agents"},"last_updated":1000}
+JSON
+    output="$(run_rescue_json active_after_finalize --acfs-home "$home" --now-epoch 5000 --stale-seconds 60)"
+    if [[ "$(cat "$ARTIFACT_DIR/active_after_finalize.exit")" == 1 ]] &&
+        jq -e '.status == "warn" and .install_status == "running" and .severity == "stale_checkpoint" and
+            .checkpoint.current_phase == "agents" and .next_command == "acfs continue --status"' <<< "$output" >/dev/null; then
+        pass "active checkpoint takes precedence over finalize from a previous run"
+    else fail "active checkpoint takes precedence over finalize from a previous run"; fi
+}
+
 main() {
     if ! command -v jq >/dev/null 2>&1; then
         echo "SKIP: jq is required for rescue tests"
@@ -340,6 +504,14 @@ main() {
     run_test test_support_bundle_hint_includes_latest_report
     run_test test_doctor_failure_prefers_support_bundle
     run_test test_doctor_dispatches_rescue_subcommand
+    run_test test_invalid_checkpoint_shapes_never_look_healthy
+    run_test test_timing_options_are_literal_bounded_decimals
+    run_test test_invalid_doctor_counters_do_not_clear_warnings
+    run_test test_option_like_search_paths_remain_paths
+    run_test test_option_like_json_filename_is_literal
+    run_test test_integer_json_notation_and_failure_precedence
+    run_test test_doctor_decision_uses_validated_snapshot
+    run_test test_active_phase_beats_previous_finalize
 
     echo
     echo "Passed: $TESTS_PASSED"

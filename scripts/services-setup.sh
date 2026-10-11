@@ -747,7 +747,7 @@ services_setup_credential_file_state() {
         else printf 'missing\n'; fi
         return
     fi
-    printf '%s' "$contents" | "$jq_bin" -e 'type == "object"' >/dev/null 2>&1 || { printf 'unknown\n'; return; }
+    printf '%s' "$contents" | "$jq_bin" -es 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1 || { printf 'unknown\n'; return; }
     values="$(printf '%s' "$contents" | "$jq_bin" -r "$expression" 2>/dev/null)" || { printf 'unknown\n'; return; }
     while IFS= read -r candidate; do
         if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'; return; fi

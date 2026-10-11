@@ -223,6 +223,9 @@ webhook_is_ipv6_literal() {
 
     [[ "$ip" == *:* ]] || return 1
     [[ "$ip" != *:::* ]] || return 1
+    # A lone edge colon is invalid; IFS read otherwise drops an empty tail.
+    [[ "$ip" != :* || "$ip" == ::* ]] || return 1
+    [[ "$ip" != *: || "$ip" == *:: ]] || return 1
 
     if [[ "$ip" == *::* ]]; then
         [[ "$ip" != *::*::* ]] || return 1
@@ -288,7 +291,7 @@ webhook_public_ip() {
             return 0
         fi
         for octet in "${octets[@]}"; do
-            if [[ ! "$octet" =~ ^[0-9]+$ ]] || (( 10#$octet > 255 )); then
+            if [[ ! "$octet" =~ ^[0-9]{1,3}$ ]] || (( 10#$octet > 255 )); then
                 printf 'unknown\n'
                 return 0
             fi
@@ -318,7 +321,7 @@ webhook_validate_url() {
 
     # Must start with https://
     if [[ ! "$url" =~ ^https:// ]]; then
-        log_warn "Webhook URL rejected: HTTPS required (got: ${url:0:50}...)"
+        log_warn "Webhook URL rejected: HTTPS required"
         return 1
     fi
 
