@@ -27,7 +27,7 @@
     "@radix-ui/react-checkbox": "^1.3.12",
     "@radix-ui/react-slot": "^1.4.0",
     "@tanstack/query-sync-storage-persister": "^5.104.1",
-    "@tanstack/react-form": "^1.27.5",
+    "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-query-persist-client": "^5.104.1",
     "@tanstack/zod-form-adapter": "^0.42.1",
