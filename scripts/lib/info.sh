@@ -13,12 +13,11 @@
 #
 # Design Philosophy:
 #   - Speed: Must complete in <1 second
-#   - Read-only: Never verify/test anything (doctor does that). One benign
-#     write exception: successful IP lookups are cached for an hour at
-#     <acfs_home>/cache/ip_address so repeat runs stay fast. The swarm
-#     summary shells out to swarm_status.sh --json under tight timeouts,
-#     which is itself read-only.
-#   - Offline: No network calls required (IP discovery reads local
+#   - Read-only by default: Does not verify/test anything (doctor does that),
+#     invoke coordination tools, or write caches.
+#     --live explicitly collects swarm telemetry and may cause optional
+#     tools to update their own local state; it can take longer.
+#   - Offline by default: No network calls (IP discovery reads local
 #     interfaces/routing tables only)
 #   - Fallback: Graceful degradation if data missing
 #
@@ -1066,7 +1065,6 @@ info_get_ip() {
     local date_bin=""
     local hostname_bin=""
     local ip_bin=""
-    local mkdir_bin=""
 
     date_bin="$(info_system_binary_path date 2>/dev/null || true)"
     if [[ -n "$date_bin" ]]; then
@@ -1114,15 +1112,6 @@ info_get_ip() {
 
     if [[ -z "$ip" ]]; then
         ip="unknown"
-    fi
-
-    # Cache successful lookups, but do not pin transient failures for an hour.
-    if [[ "$ip" != "unknown" ]] && [[ -n "$cache_file" ]]; then
-        mkdir_bin="$(info_system_binary_path mkdir 2>/dev/null || true)"
-        if [[ -n "$mkdir_bin" ]]; then
-            "$mkdir_bin" -p "${data_home}/cache" 2>/dev/null
-            echo "$ip" > "$cache_file" 2>/dev/null
-        fi
     fi
 
     echo "$ip"
@@ -1429,7 +1418,7 @@ info_get_lessons_completed() {
             for completed_item in "${completed_items[@]}"; do
                 completed_item="${completed_item//[[:space:]]/}"
                 [[ -n "$completed_item" ]] || continue
-                ((completed_count++)) || true
+            completed_count=$((completed_count + 1))
             done
             echo "$completed_count"
         fi
@@ -1457,7 +1446,7 @@ info_get_lessons_total() {
 
     while IFS= read -r lesson_path; do
         [[ -n "$lesson_path" ]] || continue
-        ((lesson_count++)) || true
+        lesson_count=$((lesson_count + 1))
     done < <("$find_bin" "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null)
 
     echo "$lesson_count"
@@ -1645,7 +1634,8 @@ info_json_escape() {
 
 info_swarm_summary_fallback() {
     local next_action="${1:-Swarm telemetry unavailable}"
-    printf 'unknown\t%s\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\t1\n' "$next_action"
+    local warning_count="${2:-1}"
+    printf 'unknown\t%s\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\t%s\n' "$next_action" "$warning_count"
 }
 
 info_collect_swarm_status_json() {
@@ -1662,14 +1652,19 @@ info_collect_swarm_status_json() {
     [[ -n "$bash_bin" ]] || return 1
 
     timeout_bin="$(info_system_binary_path timeout 2>/dev/null || true)"
-    set +e
     if [[ -n "$timeout_bin" ]]; then
-        output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$timeout_bin" "$deadline" "$bash_bin" "$status_script" --json 2>/dev/null)"
+        if output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$timeout_bin" "$deadline" "$bash_bin" "$status_script" --json 2>/dev/null)"; then
+            :
+        else
+            exit_status=$?
+        fi
     else
-        output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$bash_bin" "$status_script" --json 2>/dev/null)"
+        if output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$bash_bin" "$status_script" --json 2>/dev/null)"; then
+            :
+        else
+            exit_status=$?
+        fi
     fi
-    exit_status=$?
-    set -e
 
     [[ $exit_status -eq 0 && -n "$output" ]] || return 1
     printf '%s\n' "$output"
@@ -1679,6 +1674,11 @@ info_get_swarm_summary() {
     local jq_bin=""
     local status_json=""
     local summary=""
+
+    if [[ "${_INFO_LIVE_SWARM:-false}" != true ]]; then
+        info_swarm_summary_fallback "Run acfs swarm status --json for live telemetry" 0
+        return 0
+    fi
 
     jq_bin="$(info_binary_path jq 2>/dev/null || true)"
     [[ -n "$jq_bin" ]] || {
@@ -2185,6 +2185,7 @@ info_main() {
     local output_mode="terminal"
     _INFO_OUTPUT_FORMAT=""
     _INFO_SHOW_STATS=false
+    _INFO_LIVE_SWARM=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -2230,6 +2231,9 @@ info_main() {
             --minimal|-m)
                 output_mode="minimal"
                 ;;
+            --live)
+                _INFO_LIVE_SWARM=true
+                ;;
             --help|-h)
                 echo "Usage: acfs info [OPTIONS]"
                 echo ""
@@ -2242,6 +2246,7 @@ info_main() {
                 echo "  --stats            Show token savings statistics (JSON vs TOON bytes)"
                 echo "  --html, -H         Output as self-contained HTML"
                 echo "  --minimal, -m      Show only essentials"
+                echo "  --live             Collect live swarm telemetry (may update tool state; takes longer)"
                 echo "  --help, -h         Show this help"
                 return 0
                 ;;

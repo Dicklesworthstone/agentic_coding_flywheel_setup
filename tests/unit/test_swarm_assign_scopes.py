@@ -229,7 +229,7 @@ class ScopeAssignmentTests(unittest.TestCase):
         tools = self.work / "bin"
         tools.mkdir()
         marker = self.work / "calls"
-        for name, args, payload in (("br", "ready --json", self.ready),
+        for name, args, payload in (("br", "ready --json --no-db", self.ready),
                                     ("bv", "--robot-triage", self.triage)):
             tool = tools / name
             tool.write_text('#!/bin/sh\n[ "$*" = "' + args + '" ] || exit 91\n'

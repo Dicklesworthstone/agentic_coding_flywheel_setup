@@ -367,7 +367,7 @@ swarm_packet_collect_bead_json() {
             echo "Error: br is required when --bead-file is not supplied" >&2
             return 2
         fi
-        raw_json="$(cd "$SWARM_PACKET_REPO_ROOT" && br show "$SWARM_PACKET_BEAD_ID" --json)"
+        raw_json="$(cd "$SWARM_PACKET_REPO_ROOT" && br show "$SWARM_PACKET_BEAD_ID" --json --no-db)"
     fi
 
     if ! jq -e . >/dev/null 2>&1 <<<"$raw_json"; then
@@ -1437,7 +1437,7 @@ def preparation_main(arguments):
     for item in items:
         value = saved_beads
         if br:
-            code, data = run([br, "show", item["bead_id"], "--json"], repo)
+            code, data = run([br, "show", item["bead_id"], "--json", "--no-db"], repo)
             require(code == 0, "Unable to read an assigned Bead; no bundle was written.")
             value = parse(data)
         selected.append(preparation_bead(value, item["bead_id"]))

@@ -302,7 +302,7 @@ def unique(pairs):
     return result
 
 def probe():
-    argv = ["br", "ready", "--json"] if kind == "ready" else ["bv", "--robot-triage"]
+    argv = ["br", "ready", "--json", "--no-db"] if kind == "ready" else ["bv", "--robot-triage"]
     executable = shutil.which(argv[0])
     if not executable:
         if kind == "triage":

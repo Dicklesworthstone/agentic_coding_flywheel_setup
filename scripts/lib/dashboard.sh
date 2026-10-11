@@ -2,7 +2,7 @@
 # ============================================================
 # ACFS Dashboard - Static HTML Generation & Serving
 #
-# Generates a local HTML dashboard using `acfs info --html`
+# Generates a local HTML dashboard using `acfs info --html --live`
 # and optionally serves it via a temporary HTTP server.
 #
 # Usage:
@@ -809,7 +809,7 @@ dashboard_generate() {
         return 1
     }
 
-    if ! bash "$info_script" --html > "$tmp_file"; then
+    if ! bash "$info_script" --html --live > "$tmp_file"; then
         echo "Error: dashboard generation failed" >&2
         dashboard_remove_temp_file "$tmp_file"
         return 1

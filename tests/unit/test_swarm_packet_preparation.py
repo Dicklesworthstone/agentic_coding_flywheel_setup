@@ -22,10 +22,12 @@ with (root / "calls.jsonl").open("a") as stream:
 beads = json.loads((root / "beads.json").read_text())
 if name == "br":
     assert pathlib.Path.cwd() == root / "repo"
-    if args == ["ready", "--json"]:
+    if args in (["ready", "--json"], ["ready", "--json", "--no-db"]):
         print(json.dumps(beads))
     else:
-        assert args[0] == "show" and args[2:] == ["--json"], args
+        # Generation reads exported JSONL; delivery rechecks current live state.
+        # The generation tests assert the exact JSONL-only calls below.
+        assert args[0] == "show" and args[2:] in (["--json"], ["--json", "--no-db"]), args
         print(json.dumps([b for b in beads if b["id"] == args[1]]))
     sys.exit(0)
 if name == "bv":
@@ -202,7 +204,7 @@ class PreparationTests(unittest.TestCase):
     def test_live_reads_selected_beads_and_does_not_send(self):
         code, report = self.invoke(offline=False)
         self.assertEqual(code, 0, report)
-        self.assertEqual(self.calls(), [["br", ["show", "bd-api", "--json"]], ["br", ["show", "bd-doc", "--json"]]])
+        self.assertEqual(self.calls(), [["br", ["show", "bd-api", "--json", "--no-db"]], ["br", ["show", "bd-doc", "--json", "--no-db"]]])
         self.assertEqual(self.packet(1)["bead"]["title"], "Implement endpoint")
 
     def test_prepared_batch_dispatches_and_reconciles_without_resends(self):
@@ -320,8 +322,8 @@ class PreparationTests(unittest.TestCase):
     def test_automatic_live_selection_reads_queue_then_full_tasks(self):
         code, report = self.invoke_auto(offline=False)
         self.assertEqual(code, 0, report)
-        self.assertEqual(self.calls(), [["br", ["ready", "--json"]], ["bv", ["--robot-triage"]],
-            ["br", ["show", "bd-api", "--json"]], ["br", ["show", "bd-doc", "--json"]]])
+        self.assertEqual(self.calls(), [["br", ["ready", "--json", "--no-db"]], ["bv", ["--robot-triage"]],
+            ["br", ["show", "bd-api", "--json", "--no-db"]], ["br", ["show", "bd-doc", "--json", "--no-db"]]])
         self.assertEqual([a["bead_id"] for a in report["assignments"]], ["bd-api", "bd-doc"])
         self.assertEqual(report["selection"]["mode"], "scoped-allocation")
         self.assertFalse(report["sends_prompt"])

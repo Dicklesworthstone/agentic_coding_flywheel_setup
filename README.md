@@ -1109,13 +1109,14 @@ Tool detection always runs in the target user's context (including under `sudo`,
 
 ### `acfs info` — System Overview
 
-Displays installation status in under 1 second by reading cached state (no verification).
+Quickly displays installation and onboarding state without verification or live probes by default.
 
 ```bash
 acfs info                # Terminal output (default)
 acfs info --json         # JSON output for scripting
 acfs info --html         # Self-contained HTML page
 acfs info --minimal      # Just essentials (IP, key commands)
+acfs info --live         # Include live coordination probes; can take longer
 ```
 
 Example output:
@@ -1137,9 +1138,10 @@ Example output:
 ```
 
 **Design Philosophy:**
-- **Speed**: Must complete in <1 second
-- **Read-only**: Never verifies or tests (that's doctor's job). The one write it makes is benign: successful IP lookups are cached for an hour at `~/.acfs/cache/ip_address` so repeat runs stay fast
-- **Offline**: No network calls; IP discovery reads local interfaces and routing tables only
+- **Speed**: Reads local state without waiting for coordination probes; live telemetry is opt-in
+- **Read-only by default**: Reads installation/onboarding state and local interfaces without invoking coordination tools or writing caches. Swarm values remain unknown until live telemetry is requested
+- **Live telemetry**: `--live` probes the optional coordination tools, which may update their own local state. Dashboard generation requests this mode explicitly to populate its operations panel
+- **Offline by default**: No network calls; IP discovery reads local interfaces and routing tables only
 - **Fallback**: Graceful degradation if data missing
 
 ### `acfs cheatsheet` — Alias Discovery
@@ -3898,6 +3900,10 @@ search with `--no-maintenance` and includes session snippets. Live `cm context`
 can update memory/history caches, so packets that invoke it report
 `safety.read_only: false`. For read-only generation, use `--no-live-context`;
 saved `--cm-file` and `--cass-file` context remains available in that mode.
+
+Automatic packet and assignment reads use `br --no-db` to read exported JSONL
+without opening or importing into the tracker database. Run `br sync --flush-only`
+explicitly before generating packets when you have unexported Beads changes.
 
 Before launching a large real swarm, ACFS can run an offline simulation of the control plane:
 

@@ -575,6 +575,28 @@ run_test() {
     fail "$name"
 }
 
+test_live_bead_reader_uses_jsonl_only() {
+    local bead agents readme output bin_dir="$ARTIFACT_DIR/jsonl-reader-cli"
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/br" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$(dirname "$0")/argv"
+[[ "$#" -eq 4 && "$1" == show && "$3" == --json && "$4" == --no-db ]] || exit 65
+cat "$ACFS_PACKET_BEAD_FIXTURE"
+EOF
+    chmod +x "$bin_dir/br"
+    output="$(ACFS_PACKET_BEAD_FIXTURE="$bead" run_live_context_packet jsonl-reader-cli "$bin_dir" \
+        --bead bd-n968h --agents-file "$agents" --readme-file "$readme" \
+        --repo "$REPO_ROOT" --no-live-context --max-chars 12000)"
+    [[ "$(cat "$ARTIFACT_DIR/jsonl-reader-cli.exit")" -eq 0 ]] || return 1
+    jq -e '.bead.id == "bd-n968h" and .safety.read_only == true and
+      .safety.mutates_beads == false' <<<"$output" >/dev/null || return 1
+    pass "live_bead_reader_uses_jsonl_only"
+}
+
 main() {
     command -v jq >/dev/null 2>&1 || {
         echo "jq is required for swarm packet tests" >&2
@@ -595,6 +617,7 @@ main() {
     run_test test_live_context_failures_keep_exit_status
     run_test test_live_context_keeps_diagnostics_out_of_prompts
     run_test test_empty_and_disabled_live_context_remain_distinct
+    run_test test_live_bead_reader_uses_jsonl_only
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

@@ -2,6 +2,7 @@
 # ============================================================
 # Unit tests for acfs info swarm operations summary
 # ============================================================
+# shellcheck source-path=SCRIPTDIR
 
 set -euo pipefail
 
@@ -119,16 +120,98 @@ run_info() {
 
     env \
         HOME="$ARTIFACT_DIR/home" \
+        TARGET_HOME="$ARTIFACT_DIR/home" \
+        ACFS_HOME="$ARTIFACT_DIR/home/.acfs" \
         ACFS_INFO_SWARM_STATUS_SCRIPT="$status_script" \
         ACFS_INFO_SWARM_STATUS_DEADLINE=1 \
         ACFS_INFO_SWARM_STATUS_TIMEOUT=1 \
         bash "$INFO_SH" "$@"
 }
 
+test_default_info_does_not_invoke_live_collector() {
+    local marker="$ARTIFACT_DIR/default-collector-called" status_script output
+    status_script="$ARTIFACT_DIR/default_probe.sh"
+    cat > "$status_script" <<'EOF'
+#!/usr/bin/env bash
+printf called > "$ACFS_INFO_PROBE_MARKER"
+printf '%s\n' '{"schema_version":1,"status":"pass","warnings":[],"probes":{},"host":{}}'
+EOF
+    chmod +x "$status_script"
+    output="$(ACFS_INFO_PROBE_MARKER="$marker" run_info "$status_script" --json)"
+    printf '%s\n' "$output" > "$ARTIFACT_DIR/default-passive.json"
+    [[ ! -e "$marker" ]] || return 1
+    jq -e '.swarm.status == "unknown" and .swarm.ready_beads == "unknown" and
+      (.swarm.next_action | contains("acfs swarm status"))' <<<"$output" >/dev/null || return 1
+    pass "default_info_does_not_invoke_live_collector"
+}
+
+test_ip_discovery_does_not_create_cache() {
+    local fixture_home="$ARTIFACT_DIR/ip-discovery-home" bin_dir="$ARTIFACT_DIR/ip-discovery-bin" output
+    mkdir -p "$fixture_home" "$bin_dir"
+    printf '%s\n' '#!/usr/bin/env bash' 'printf "203.0.113.23\\n"' > "$bin_dir/hostname"
+    chmod +x "$bin_dir/hostname"
+    output="$(
+        export TARGET_HOME="$fixture_home" ACFS_HOME="$fixture_home/.acfs"
+        # shellcheck source=../../scripts/lib/info.sh
+        source "$INFO_SH"
+        info_get_data_home() { printf '%s\n' "$fixture_home/.acfs"; }
+        info_system_binary_path() {
+            if [[ "$1" == hostname ]]; then
+                printf '%s\n' "$bin_dir/hostname"
+            else
+                command -v "$1"
+            fi
+        }
+        info_get_ip
+    )"
+    [[ "$output" == "203.0.113.23" ]] || return 1
+    [[ ! -e "$fixture_home/.acfs/cache/ip_address" ]] || return 1
+    pass "ip_discovery_does_not_create_cache"
+}
+
+test_live_collector_preserves_callers_errexit() {
+    local status_script
+    status_script="$(pass_status_script)"
+    (
+        export TARGET_HOME="$ARTIFACT_DIR/home" ACFS_HOME="$ARTIFACT_DIR/home/.acfs"
+        export ACFS_INFO_SWARM_STATUS_SCRIPT="$status_script"
+        # shellcheck source=../../scripts/lib/info.sh
+        source "$INFO_SH"
+        set +e
+        info_collect_swarm_status_json > "$ARTIFACT_DIR/errexit-disabled.json"
+        [[ "$-" != *e* ]] || exit 1
+        set -e
+        info_collect_swarm_status_json > "$ARTIFACT_DIR/errexit-enabled.json"
+        [[ "$-" == *e* ]] || exit 1
+    ) || return 1
+    pass "live_collector_preserves_callers_errexit"
+}
+
+test_sourced_info_resets_live_flag_for_each_call() {
+    local marker="$ARTIFACT_DIR/sourced-collector-calls" status_script="$ARTIFACT_DIR/sourced-probe.sh"
+    cat > "$status_script" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' called >> "$ACFS_INFO_PROBE_MARKER"
+printf '%s\n' '{"schema_version":1,"status":"pass","warnings":[],"probes":{},"host":{}}'
+EOF
+    chmod +x "$status_script"
+    (
+        export TARGET_HOME="$ARTIFACT_DIR/home" ACFS_HOME="$ARTIFACT_DIR/home/.acfs"
+        export ACFS_INFO_SWARM_STATUS_SCRIPT="$status_script" ACFS_INFO_PROBE_MARKER="$marker"
+        # shellcheck source=../../scripts/lib/info.sh
+        source "$INFO_SH"
+        info_main --json --live > "$ARTIFACT_DIR/sourced-live.json"
+        info_main --json > "$ARTIFACT_DIR/sourced-passive.json"
+    ) || return 1
+    [[ "$(wc -l < "$marker")" -eq 1 ]] || return 1
+    jq -e '.swarm.status == "unknown" and .swarm.warning_count == 0' "$ARTIFACT_DIR/sourced-passive.json" >/dev/null || return 1
+    pass "sourced_info_resets_live_flag_for_each_call"
+}
+
 test_terminal_includes_swarm_panel() {
     local status_script output
     status_script="$(pass_status_script)"
-    output="$(run_info "$status_script")"
+    output="$(run_info "$status_script" --live)"
     printf '%s\n' "$output" > "$ARTIFACT_DIR/terminal.txt"
 
     grep -Fq "Swarm Operations" <<<"$output" || return 1
@@ -141,7 +224,7 @@ test_terminal_includes_swarm_panel() {
 test_json_includes_swarm_summary() {
     local status_script output
     status_script="$(warn_status_script)"
-    output="$(run_info "$status_script" --json)"
+    output="$(run_info "$status_script" --json --live)"
     printf '%s\n' "$output" > "$ARTIFACT_DIR/info.json"
 
     jq -e '
@@ -158,7 +241,7 @@ test_json_includes_swarm_summary() {
 test_html_includes_dashboard_panel() {
     local status_script output
     status_script="$(pass_status_script)"
-    output="$(run_info "$status_script" --html)"
+    output="$(run_info "$status_script" --html --live)"
     printf '%s\n' "$output" > "$ARTIFACT_DIR/info.html"
 
     grep -Fq "<h2>Swarm Operations</h2>" <<<"$output" || return 1
@@ -171,7 +254,7 @@ test_html_includes_dashboard_panel() {
 test_partial_resource_data_is_labeled() {
     local status_script output
     status_script="$(partial_resource_status_script)"
-    output="$(run_info "$status_script" --json)"
+    output="$(run_info "$status_script" --json --live)"
     printf '%s\n' "$output" > "$ARTIFACT_DIR/partial-resources.json"
 
     jq -e '
@@ -184,7 +267,7 @@ test_partial_resource_data_is_labeled() {
 test_pressure_json_keeps_dashboard_decision_visible() {
     local status_script output
     status_script="$(pressure_status_script)"
-    output="$(run_info "$status_script" --json)"
+    output="$(run_info "$status_script" --json --live)"
     printf '%s\n' "$output" > "$ARTIFACT_DIR/pressure-info.json"
 
     jq -e '
@@ -229,7 +312,7 @@ test_dashboard_generate_writes_swarm_panel() {
 
 test_missing_collector_is_labeled() {
     local output
-    output="$(run_info "$ARTIFACT_DIR/missing-swarm-status.sh" --json)"
+    output="$(run_info "$ARTIFACT_DIR/missing-swarm-status.sh" --json --live)"
     printf '%s\n' "$output" > "$ARTIFACT_DIR/missing.json"
 
     jq -e '
@@ -263,6 +346,10 @@ main() {
     run_test test_pressure_json_keeps_dashboard_decision_visible
     run_test test_dashboard_generate_writes_swarm_panel
     run_test test_missing_collector_is_labeled
+    run_test test_default_info_does_not_invoke_live_collector
+    run_test test_ip_discovery_does_not_create_cache
+    run_test test_live_collector_preserves_callers_errexit
+    run_test test_sourced_info_resets_live_flag_for_each_call
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
