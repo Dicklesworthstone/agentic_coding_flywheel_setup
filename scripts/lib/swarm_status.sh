@@ -10,6 +10,7 @@
 set -euo pipefail
 
 SWARM_STATUS_JSON=false
+SWARM_STATUS_NTM_ONLY=false
 SWARM_STATUS_TIMEOUT="${ACFS_SWARM_STATUS_TIMEOUT:-3}"
 SWARM_STATUS_GENERATED_AT="$(date -Iseconds 2>/dev/null || date)"
 SWARM_STATUS_OVERALL="pass"
@@ -30,6 +31,7 @@ NTM_DURATION_MS=0
 NTM_AVAILABLE=false
 NTM_ROBOT_STATUS_OK=false
 NTM_TMUX_AVAILABLE=false
+NTM_TMUX_QUERY_OK=false
 NTM_TMUX_SESSION_COUNT="null"
 NTM_TMUX_WINDOW_COUNT="null"
 
@@ -77,6 +79,7 @@ Usage: acfs swarm status [OPTIONS]
 
 Options:
   --json       Emit machine-readable JSON
+  --ntm-only   Query only NTM/tmux; skip host, Beads, mail, BV and RCH probes
   --help, -h   Show this help
 
 Environment:
@@ -88,6 +91,11 @@ swarm_status_parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --json)
+                SWARM_STATUS_JSON=true
+                shift
+                ;;
+            --ntm-only)
+                SWARM_STATUS_NTM_ONLY=true
                 SWARM_STATUS_JSON=true
                 shift
                 ;;
@@ -354,8 +362,9 @@ swarm_status_collect_ntm() {
         exit_status=0
         output="$(swarm_status_run_with_timeout "$SWARM_STATUS_TIMEOUT" "$tmux_bin" list-sessions -F '#S	#{session_windows}')" || exit_status=$?
         if [[ $exit_status -eq 0 && -n "$output" ]]; then
+            NTM_TMUX_QUERY_OK=true
             NTM_TMUX_SESSION_COUNT="$(printf '%s\n' "$output" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
-            NTM_TMUX_WINDOW_COUNT="$(printf '%s\n' "$output" | awk '{sum += $2} END {print sum + 0}')"
+            NTM_TMUX_WINDOW_COUNT="$(printf '%s\n' "$output" | awk -F '\t' '{sum += $2} END {print sum + 0}')"
         else
             NTM_TMUX_SESSION_COUNT=0
             NTM_TMUX_WINDOW_COUNT=0
@@ -605,6 +614,7 @@ swarm_status_emit_json() {
         --argjson ntm_available "$NTM_AVAILABLE" \
         --argjson ntm_robot_status_ok "$NTM_ROBOT_STATUS_OK" \
         --argjson ntm_tmux_available "$NTM_TMUX_AVAILABLE" \
+        --argjson ntm_tmux_query_ok "$NTM_TMUX_QUERY_OK" \
         --argjson ntm_tmux_session_count "$NTM_TMUX_SESSION_COUNT" \
         --argjson ntm_tmux_window_count "$NTM_TMUX_WINDOW_COUNT" \
         --arg agent_mail_status "$AGENT_MAIL_STATUS" \
@@ -662,6 +672,7 @@ swarm_status_emit_json() {
                     available: $ntm_available,
                     robot_status_ok: $ntm_robot_status_ok,
                     tmux_available: $ntm_tmux_available,
+                    tmux_query_ok: $ntm_tmux_query_ok,
                     tmux_session_count: $ntm_tmux_session_count,
                     tmux_window_count: $ntm_tmux_window_count,
                     duration_ms: $ntm_duration_ms,
@@ -731,6 +742,14 @@ swarm_status_emit_human() {
 
 swarm_status_main() {
     swarm_status_parse_args "$@"
+    if [[ "$SWARM_STATUS_NTM_ONLY" == true ]]; then
+        local jq_bin=""
+        jq_bin="$(swarm_status_binary_path jq 2>/dev/null || true)"
+        [[ -n "$jq_bin" ]] || { echo "Error: jq is required for NTM-only JSON" >&2; return 2; }
+        swarm_status_collect_ntm
+        swarm_status_emit_json | "$jq_bin" '{schema_version, generated_at, status: .probes.ntm.status, probes: {ntm: .probes.ntm}}'
+        return
+    fi
     swarm_status_collect_all
     if [[ "$SWARM_STATUS_JSON" == true ]]; then
         swarm_status_emit_json

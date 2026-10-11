@@ -4488,6 +4488,53 @@ By default, sensitive data is automatically redacted:
 | Passwords | `"password": "..."` | `"password": "<REDACTED:password>"` |
 | Private key blocks | `-----BEGIN ... PRIVATE KEY-----` | `<REDACTED:private_key>` |
 
+### Status JSON for editor integrations
+
+`acfs status --ide` emits the version-1 `acfs.editor_status` contract for local
+editor extensions and scripts. It reads the existing install state and checks
+binary presence. It makes no network requests and runs no installed agent tools.
+Add `--live` to query NTM/tmux through the existing swarm collector, with a
+one-second timeout per tool and a five-second overall deadline. Other swarm
+tools, credential stores and provider APIs are not queried.
+
+```bash
+acfs status --ide          # Passive install snapshot
+acfs status --ide --live   # Also query local session counts
+```
+
+The payload includes `schema_version`, `kind`, `status`, `generated_at`,
+`freshness`, `install`, `provider`, `sessions`, `collectors`, `redaction`,
+`commands`, `next_actions` and `support`. Clients should reject unknown schema
+versions and ignore additional fields within version 1. Exit codes are 0 for
+OK, 1 for incomplete state/tools or unavailable requested session data, and 2
+for failed, missing or invalid install state. A missing `jq` dependency returns
+2 with a minimal versioned envelope and `error: "jq_unavailable"`.
+
+Every invocation collects a new snapshot; `freshness.cache` is `"none"`.
+`state_updated_at` is the validated persisted timestamp, not the query time.
+Missing or failed session queries have **null counts**, not zero. Provider
+names come only from recognized `provider`/`vps_provider` values in local state;
+missing or unrecognized metadata remains unknown. The phase-completion summary
+describes recorded install progress; tool counts describe executable presence,
+not authenticated or operational tools.
+
+Raw state, errors, session names, usernames, paths, addresses, provider IDs and
+credentials are omitted. `redaction.count` counts recognized sensitive field
+names omitted from state; it is not a count of validated or leaked credentials.
+Command snippets are argument arrays from a fixed catalog. They are advisory:
+`execute_automatically` is false, and the support-bundle hint explicitly says
+that creating a bundle writes files. `--ide` rejects `--check-updates` and
+`--short`; the existing human, short and `--json` status formats remain available.
+
+These selected-field examples are checked against the CLI regression fixtures:
+
+```json
+{"scenario":"complete","status":"ok","install_status":"complete","sessions_status":"not_requested","session_count":null}
+{"scenario":"partial","status":"warn","install_status":"partial","sessions_status":"not_requested","session_count":null}
+{"scenario":"failed","status":"error","install_status":"failed","sessions_status":"not_requested","session_count":null}
+{"scenario":"live","status":"ok","install_status":"complete","sessions_status":"ok","session_count":2}
+```
+
 Before launching a large agent swarm or sharing a support bundle, run a local credential preflight:
 
 ```bash

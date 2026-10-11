@@ -11791,8 +11791,265 @@ run_dashboard_tests() {
     test_dashboard_copy_install_ignores_relative_home_trap || true
 }
 
+# Editor contract tests retain their fixtures and invoke the actual status CLI.
+# Stand-in tool outputs exercise collector filtering; they are not live NTM proof.
+status_protocol_setup() {
+    local scenario="$1" tool=""
+    PROTOCOL_HOME="$HARNESS_ARTIFACT_DIR/editor/$scenario/home"
+    mkdir -p "$PROTOCOL_HOME/.acfs" "$PROTOCOL_HOME/.local/bin"
+    printf '1.2.3\n' > "$PROTOCOL_HOME/.acfs/VERSION"
+    for tool in zsh git tmux bun cargo go rg claude codex agy gh uv fzf zoxide atuin bat lsd ntm bv br cass cm slb ubs dcg am rch; do
+        cat > "$PROTOCOL_HOME/.local/bin/$tool" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' called >> "$ACFS_PROTOCOL_POISON_MARKER"
+exit 99
+EOF
+        chmod +x "$PROTOCOL_HOME/.local/bin/$tool"
+    done
+}
+
+status_protocol_run() {
+    local expected="$1" name="$2" actual=0
+    shift 2
+    PROTOCOL_OUTPUT="$HARNESS_ARTIFACT_DIR/editor/$name.json"
+    env TARGET_USER=acfs_proto_fixture TARGET_HOME="$PROTOCOL_HOME" \
+        ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/missing-system-state.json" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+        bash "$STATUS_SH" "$@" > "$PROTOCOL_OUTPUT" 2> "$PROTOCOL_OUTPUT.stderr" || actual=$?
+    [[ "$actual" == "$expected" ]] || return 1
+    jq -e '.schema_version == 1 and .kind == "acfs.editor_status" and .read_only == true' "$PROTOCOL_OUTPUT" >/dev/null
+}
+
+test_status_editor_complete_snapshot_and_no_mutation() {
+    status_protocol_setup complete
+    cat > "$PROTOCOL_HOME/.acfs/state.json" <<'JSON'
+{"completed_phases":["user_setup","finalize"],"current_phase":null,"failed_phase":null,"mode":"vibe","provider":"hetzner","last_updated":"2026-10-11T10:00:00Z"}
+JSON
+    cp "$PROTOCOL_HOME/.acfs/state.json" "$PROTOCOL_HOME/state.before"
+    if status_protocol_run 0 complete --ide &&
+        jq -e '{schema_version, status, install_status: .install.status, phases: .install.completed_phases, provider: .provider.name, sessions: .sessions.status, automatic: .execute_automatically} ==
+          {schema_version:1,status:"ok",install_status:"complete",phases:["finalize","user_setup"],provider:"hetzner",sessions:"not_requested",automatic:false} and
+          .freshness.cache == "none" and .freshness.state_updated_at == "2026-10-11T10:00:00Z" and
+          .generated_at != null and .install.tools_present == 25 and .sessions.session_count == null' "$PROTOCOL_OUTPUT" >/dev/null &&
+        cmp -s "$PROTOCOL_HOME/.acfs/state.json" "$PROTOCOL_HOME/state.before" &&
+        [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "editor complete snapshot is passive and preserves state"
+    else harness_fail "editor complete snapshot is passive and preserves state"; fi
+}
+
+test_status_editor_partial_and_failed_snapshots() {
+    local kind="" expected=1
+    for kind in partial failed; do
+        status_protocol_setup "$kind"
+        if [[ "$kind" == partial ]]; then
+            printf '%s\n' '{"completed_phases":["user_setup"],"current_phase":"agents"}' > "$PROTOCOL_HOME/.acfs/state.json"
+        else
+            expected=2
+            printf '%s\n' '{"completed_phases":["user_setup"],"failed_phase":"agents","failed_error":"fixture-private-failure-token","api_token":"fixture-private-api-token","provider":"fixture-private-provider-id"}' > "$PROTOCOL_HOME/.acfs/state.json"
+        fi
+        if status_protocol_run "$expected" "$kind" --ide &&
+            jq -e --arg kind "$kind" '.install.status == $kind and
+              .next_actions[0].command_id == "diagnose" and .support.creates_files == true and
+              .execute_automatically == false and .provider.name == null' "$PROTOCOL_OUTPUT" >/dev/null &&
+            ! grep -Fq fixture-private "$PROTOCOL_OUTPUT"; then
+            harness_pass "editor $kind snapshot provides redacted advisory recovery"
+        else harness_fail "editor $kind snapshot provides redacted advisory recovery"; fi
+    done
+}
+
+test_status_editor_missing_and_invalid_state() {
+    local kind=""
+    for kind in missing invalid; do
+        status_protocol_setup "$kind"
+        [[ "$kind" != invalid ]] || printf 'not-json fixture-private-state\n' > "$PROTOCOL_HOME/.acfs/state.json"
+        if status_protocol_run 2 "$kind" --ide &&
+            jq -e --arg kind "$kind" '.install.status == $kind and .collectors.install == $kind and .status == "error"' "$PROTOCOL_OUTPUT" >/dev/null &&
+            ! grep -Fq fixture-private "$PROTOCOL_OUTPUT"; then
+            harness_pass "editor $kind state emits a structured failure"
+        else harness_fail "editor $kind state emits a structured failure"; fi
+    done
+}
+
+test_status_editor_active_phase_beats_prior_completion() {
+    status_protocol_setup active-phase
+    printf '%s\n' '{"completed_phases":["finalize"],"current_phase":"agents"}' > "$PROTOCOL_HOME/.acfs/state.json"
+    if status_protocol_run 1 active-phase --ide &&
+        jq -e '.install.status == "partial" and .install.current_phase == "agents"' "$PROTOCOL_OUTPUT" >/dev/null; then
+        harness_pass "active install phase takes precedence over prior completion"
+    else harness_fail "active install phase takes precedence over prior completion"; fi
+}
+
+test_status_editor_live_counts_skip_unrelated_tools() {
+    status_protocol_setup live
+    printf '%s\n' '{"completed_phases":["finalize"]}' > "$PROTOCOL_HOME/.acfs/state.json"
+    cat > "$PROTOCOL_HOME/.local/bin/ntm" <<'EOF'
+#!/usr/bin/env bash
+[[ "$*" == --robot-status ]] || exit 99
+printf '%s\n' '{"session":"fixture-private-session-token"}'
+EOF
+    cat > "$PROTOCOL_HOME/.local/bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" == list-sessions ]] || exit 99
+[[ "$3" == $'#S\t#{session_windows}' ]] || exit 99
+printf 'fixture private session one\t2\nfixture private session two\t3\n'
+EOF
+    if status_protocol_run 0 live --ide --live &&
+        jq -e '.sessions.status == "ok" and .sessions.ntm_available == true and
+          .sessions.session_count == 2 and .sessions.window_count == 5' "$PROTOCOL_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture-private "$PROTOCOL_OUTPUT" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "editor live snapshot reuses NTM/tmux and skips unrelated tools"
+    else harness_fail "editor live snapshot reuses NTM/tmux and skips unrelated tools"; fi
+}
+
+test_status_editor_advice_is_constant_and_not_executed() {
+    status_protocol_setup poisoned
+    cat > "$PROTOCOL_HOME/.acfs/state.json" <<'JSON'
+{"failed_phase":"fixture-private-phase","current_phase":"fixture-private-current","completed_phases":["user_setup","fixture-private-completed"],"provider":{"token":"fixture-private-provider-token"},"mode":"fixture-private-mode","last_updated":"fixture-private-date","commands":["touch \"$ACFS_PROTOCOL_POISON_MARKER\""],"target_home":"/fixture-private-home"}
+JSON
+    if status_protocol_run 2 poisoned --ide &&
+        jq -e '.install.failed_phase == null and .install.current_phase == null and .install.completed_phases == ["user_setup"] and
+          .install.mode == null and .freshness.state_updated_at == null and .redaction.count >= 2 and
+          [.commands[].argv] == [["acfs","status","--ide"],["acfs","status","--ide","--live"],["acfs","doctor","--json"],["acfs","support","--help"]]' "$PROTOCOL_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture-private "$PROTOCOL_OUTPUT" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "editor advice and exposed metadata reject arbitrary state strings"
+    else harness_fail "editor advice and exposed metadata reject arbitrary state strings"; fi
+}
+
+test_status_editor_options_do_not_affect_legacy_output() {
+    status_protocol_setup legacy
+    printf '%s\n' '{"completed_phases":["finalize"]}' > "$PROTOCOL_HOME/.acfs/state.json"
+    local output="" actual=0
+    output="$(TARGET_USER=acfs_proto_fixture TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/missing-system-state.json" bash "$STATUS_SH" --json)" || actual=$?
+    if [[ "$actual" == 0 ]] && jq -e '.status == "ok" and .schema_version == null' <<<"$output" >/dev/null; then
+        harness_pass "existing status JSON keeps its established shape"
+    else harness_fail "existing status JSON keeps its established shape"; fi
+    actual=0
+    TARGET_USER=acfs_proto_fixture TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" bash "$STATUS_SH" --ide --check-updates > "$PROTOCOL_HOME/rejected.stdout" 2> "$PROTOCOL_HOME/rejected.stderr" || actual=$?
+    if [[ "$actual" == 1 && ! -s "$PROTOCOL_HOME/rejected.stdout" ]]; then
+        harness_pass "editor mode rejects network update probing"
+    else harness_fail "editor mode rejects network update probing"; fi
+    actual=0
+    bash "$STATUS_SH" --live > "$PROTOCOL_HOME/live-rejected.stdout" 2> "$PROTOCOL_HOME/live-rejected.stderr" || actual=$?
+    if [[ "$actual" == 1 && ! -s "$PROTOCOL_HOME/live-rejected.stdout" ]]; then
+        harness_pass "live status probes require explicit editor mode"
+    else harness_fail "live status probes require explicit editor mode"; fi
+}
+
+test_status_editor_missing_dependencies_are_explicit() {
+    local dependency="" expected=2
+    for dependency in jq timeout; do
+        status_protocol_setup "missing-$dependency"
+        printf '%s\n' '{"completed_phases":["finalize"]}' > "$PROTOCOL_HOME/.acfs/state.json"
+        if [[ "$dependency" == timeout ]]; then expected=1; fi
+        local actual=0 output="$HARNESS_ARTIFACT_DIR/editor/missing-$dependency.json"
+        (
+            export TARGET_USER=acfs_proto_fixture TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs"
+            export ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/missing-system-state.json"
+            # shellcheck source=../../scripts/lib/status.sh
+            source "$STATUS_SH"
+            _status_system_binary_path() {
+                [[ "$1" != "$dependency" ]] || return 1
+                command -v "$1"
+            }
+            if _status_system_binary_path "$dependency" >/dev/null; then exit 1; fi
+            status_main --ide --live
+        ) > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == "$expected" ]] &&
+            jq -e --arg dependency "$dependency" 'if $dependency == "jq" then .error == "jq_unavailable" and .status == "error"
+              else .sessions.status == "unavailable" and .sessions.session_count == null and .status == "warn" end' "$output" >/dev/null; then
+            harness_pass "editor missing $dependency dependency is explicit"
+        else harness_fail "editor missing $dependency dependency is explicit"; fi
+    done
+}
+
+test_status_editor_timeout_counts_stay_unknown() {
+    status_protocol_setup timeout
+    printf '%s\n' '{"completed_phases":["finalize"]}' > "$PROTOCOL_HOME/.acfs/state.json"
+    cat > "$PROTOCOL_HOME/.local/bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+exec sleep 10
+EOF
+    local started="$SECONDS" elapsed=0
+    if status_protocol_run 1 timeout --ide --live; then
+        elapsed=$((SECONDS - started))
+        if (( elapsed <= 7 )) && jq -e '.sessions.status == "warn" and .sessions.session_count == null and
+            .sessions.window_count == null and .next_actions[0].reason == "session_query_unavailable"' "$PROTOCOL_OUTPUT" >/dev/null; then
+            harness_pass "timed-out session query stays bounded and reports unknown counts"
+            return
+        fi
+    fi
+    harness_fail "timed-out session query stays bounded and reports unknown counts"
+}
+
+test_status_editor_sourced_calls_reset_live_option() {
+    status_protocol_setup reset
+    printf '%s\n' '{"completed_phases":["finalize"]}' > "$PROTOCOL_HOME/.acfs/state.json"
+    cat > "$PROTOCOL_HOME/.local/bin/ntm" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' probe >> "$ACFS_PROTOCOL_POISON_MARKER"
+printf '{}\n'
+EOF
+    cat > "$PROTOCOL_HOME/.local/bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+printf 'fixture-session\t1\n'
+EOF
+    if (
+        export TARGET_USER=acfs_proto_fixture TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs"
+        export ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/missing-system-state.json"
+        export ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/probes"
+        # shellcheck source=../../scripts/lib/status.sh
+        source "$STATUS_SH"
+        status_main --ide --live > "$PROTOCOL_HOME/live.json"
+        status_main --ide > "$PROTOCOL_HOME/passive.json"
+    ) && jq -e '.sessions.status == "not_requested"' "$PROTOCOL_HOME/passive.json" >/dev/null &&
+        [[ "$(wc -l < "$PROTOCOL_HOME/probes" | tr -d ' ')" == 1 ]]; then
+        harness_pass "sourced editor calls reset live probing between invocations"
+    else harness_fail "sourced editor calls reset live probing between invocations"; fi
+}
+
+test_status_editor_readme_examples_match_cli_snapshots() {
+    if python3 - "$REPO_ROOT/README.md" "$HARNESS_ARTIFACT_DIR/editor" <<'PY'
+from pathlib import Path
+import json, re, sys
+readme = Path(sys.argv[1]).read_text()
+examples = [json.loads(line) for line in re.findall(r'^\{"scenario":"(?:complete|partial|failed|live)"[^\n]*\}$', readme, re.M)]
+assert len(examples) == 4, "Expected four documented editor snapshots"
+for example in examples:
+    scenario = example["scenario"]
+    payload = json.loads((Path(sys.argv[2]) / (scenario + ".json")).read_text())
+    observed = {"scenario": scenario, "status": payload["status"], "install_status": payload["install"]["status"], "sessions_status": payload["sessions"]["status"], "session_count": payload["sessions"]["session_count"]}
+    assert observed == example, scenario + " README/CLI drift"
+PY
+    then harness_pass "documented editor snapshots match actual CLI outputs"
+    else harness_fail "documented editor snapshots match actual CLI outputs"; fi
+}
+
+run_status_protocol_tests() {
+    test_status_editor_complete_snapshot_and_no_mutation
+    test_status_editor_partial_and_failed_snapshots
+    test_status_editor_missing_and_invalid_state
+    test_status_editor_active_phase_beats_prior_completion
+    test_status_editor_live_counts_skip_unrelated_tools
+    test_status_editor_advice_is_constant_and_not_executed
+    test_status_editor_options_do_not_affect_legacy_output
+    test_status_editor_missing_dependencies_are_explicit
+    test_status_editor_timeout_counts_stay_unknown
+    test_status_editor_sourced_calls_reset_live_option
+    test_status_editor_readme_examples_match_cli_snapshots
+}
+
 main() {
+    if [[ "${1:-}" == "--status-protocol-only" && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+        HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
+    fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--status-protocol-only" ]]; then
+        harness_section "Editor status protocol"
+        run_status_protocol_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--dashboard-only" ]]; then
         harness_section "Dashboard"
@@ -11810,6 +12067,9 @@ main() {
     test_changelog_defaults_to_last_updated || true
     test_changelog_rejects_invalid_duration || true
     test_changelog_accepts_documented_since_forms || true
+
+    harness_section "Editor status protocol"
+    run_status_protocol_tests
 
     harness_section "Services Setup"
     test_services_setup_prefers_target_home_libs_under_root_home || true
