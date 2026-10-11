@@ -4496,6 +4496,13 @@ acfs credential-preflight --json
 
 The preflight scans bounded ACFS state/log files plus shell config/history surfaces and reports only categories, counts, file labels, and remediation guidance. It never prints raw secret values or snippets.
 
+Numeric passwords and literals containing words like `example` or `dummy` are
+checked under credential fields. Complete placeholder markers, environment
+references, and empty parameter defaults stay exempt; a plaintext parameter
+default is checked as a literal. Documented numeric token counters and limits
+are classified by their field names. The scan reads expressions as data and
+does not execute them or verify provider authentication or credential expiry.
+
 **Example workflow:**
 
 ```bash

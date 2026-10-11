@@ -353,25 +353,55 @@ credential_preflight_value_is_placeholder() {
 
     lower="${value,,}"
     [[ -z "$lower" ]] && return 0
-    [[ "$lower" =~ ^[0-9]+$ ]] && return 0
-    # Shell/env references ($VAR, ${VAR...}, $(cmd)) are the secret-reference
-    # form the remediation asks for, not literals. "$ecret@99" stays a literal.
-    [[ "$lower" =~ ^\$\{[a-z_][a-z0-9_]* || "$lower" == '$('* || "$lower" =~ ^\$[a-z_][a-z0-9_]*$ ]] && return 0
-    [[ "$lower" == *"<redacted"* ||
-       "$lower" == *"redacted"* ||
-       "$lower" == *"example"* ||
-       "$lower" == *"placeholder"* ||
-       "$lower" == *"changeme"* ||
-       "$lower" == *"change-me"* ||
-       "$lower" == *"replace-me"* ||
-       "$lower" == *"your-token"* ||
-       "$lower" == *"your_token"* ||
-       "$lower" == *"your-api-key"* ||
-       "$lower" == *"your_api_key"* ||
-       "$lower" == *"dummy"* ||
-       "$lower" == *"notasecret"* ||
-       "$lower" == *"test-token"* ||
-       "$lower" == *"test_token"* ]]
+    # Only complete markers are placeholders. A real literal may contain one
+    # of these words, and numeric passwords are still credentials.
+    [[ "$lower" =~ ^\<redacted(:[a-z0-9_/-]+)?\>$ ]] && return 0
+    case "$lower" in
+        redacted|example|placeholder|dummy|notasecret|test-token|test_token|\
+        changeme|change-me|replace-me|your-token-here|your_token_here|\
+        your-token|your_token|your-api-key|your_api_key|your_github_token|\
+        your_openai_api_key|your_claude_token|your_vercel_token|\
+        your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|\
+        your-gemini-api-key|your_google_api_key|your_project_id|your_project_location|\
+        "<token>"|"<api-key>"|"<secret>") return 0 ;;
+    esac
+    return 1
+}
+
+credential_preflight_value_is_reference() {
+    local candidate="${1,,}"
+    local depth=0
+    local parameter_default='^\$\{[a-z_][a-z0-9_]*:?[-+=?](.*)\}$'
+
+    # Inspect defaults as data, never evaluate them. A default is nonliteral
+    # only when it is empty, another reference, or a complete placeholder.
+    while (( depth < 16 )); do
+        [[ "$candidate" =~ ^\$[a-z_][a-z0-9_]*$ || "$candidate" =~ ^\$\{[a-z_][a-z0-9_]*\}$ ]] && return 0
+        # Keep the existing treatment of command-substitution fragments in
+        # bounded assignment scanning (e.g. passwd_entry="$(getent ...)").
+        [[ "$candidate" == '$('* ]] && return 0
+        if [[ "$candidate" =~ $parameter_default ]]; then
+            candidate="${BASH_REMATCH[1]}"
+            credential_preflight_value_is_placeholder "$candidate" && return 0
+            depth=$((depth + 1))
+        else
+            return 1
+        fi
+    done
+    return 1
+}
+
+credential_preflight_value_is_public_counter() {
+    local key="${1,,}" value="$2"
+    [[ "$value" =~ ^[0-9]+$ ]] || return 1
+    # Public counts are identified by their field role, not by excluding all
+    # numeric values from credential detection.
+    case "$key" in
+        max_tokens|max-tokens|maxtokens|token_count|token-count|tokencount|\
+        token_limit|token-limit|tokenlimit|api_key_count|api-key-count|apikeycount|\
+        password_length|password-length|passwordlength) return 0 ;;
+    esac
+    return 1
 }
 
 credential_preflight_key_is_secret_like() {
@@ -428,6 +458,10 @@ credential_preflight_scan_line() {
     local match=""
     local key=""
     local value=""
+    local json_pattern='"([a-z][a-z0-9_-]*)"[[:space:]]*:[[:space:]]*("([^"]{4,})"|([0-9]{4,})[[:space:]]*[,}])'
+    # Prefer a complete quoted value, including spaces. Retain the bounded
+    # fragment alternative for unquoted and unfinished assignments.
+    local assignment_pattern="(^|[^a-z0-9_-])([a-z][a-z0-9_-]*)[[:space:]]*[:=][[:space:]]*(\"([^\"]{4,})\"|'([^']{4,})'|[\"']?([^\"'<>[:space:]]{4,}))"
 
     lower="${line,,}"
 
@@ -472,12 +506,14 @@ credential_preflight_scan_line() {
     fi
 
     rest="$lower"
-    while [[ "$rest" =~ \"([a-z][a-z0-9_-]*)\"[[:space:]]*:[[:space:]]*\"([^\"]{4,})\" ]]; do
+    while [[ "$rest" =~ $json_pattern ]]; do
         match="${BASH_REMATCH[0]}"
         key="${BASH_REMATCH[1]:-}"
-        value="${BASH_REMATCH[2]:-}"
+        value="${BASH_REMATCH[3]:-${BASH_REMATCH[4]:-}}"
         if credential_preflight_key_is_secret_like "$key" &&
             ! credential_preflight_value_is_placeholder "$value" &&
+            ! credential_preflight_value_is_reference "$value" &&
+            ! credential_preflight_value_is_public_counter "$key" "$value" &&
             ! credential_preflight_value_has_specific_pattern "$value"; then
             if [[ "$key" == *"password"* || "$key" == *"passwd"* || "$key" == mysql_pwd ]]; then
                 credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like JSON key"
@@ -489,12 +525,14 @@ credential_preflight_scan_line() {
     done
 
     rest="$lower"
-    while [[ "$rest" =~ (^|[^a-z0-9_-])([a-z][a-z0-9_-]*)[[:space:]]*[:=][[:space:]]*[\"\']?([^\"\'\<\>\ 	]{4,}) ]]; do
+    while [[ "$rest" =~ $assignment_pattern ]]; do
         match="${BASH_REMATCH[0]}"
         key="${BASH_REMATCH[2]:-}"
-        value="${BASH_REMATCH[3]:-}"
+        value="${BASH_REMATCH[4]:-${BASH_REMATCH[5]:-${BASH_REMATCH[6]:-}}}"
         if credential_preflight_key_is_secret_like "$key" &&
             ! credential_preflight_value_is_placeholder "$value" &&
+            ! credential_preflight_value_is_reference "$value" &&
+            ! credential_preflight_value_is_public_counter "$key" "$value" &&
             ! credential_preflight_value_has_specific_pattern "$value"; then
             case "$key" in
                 *password*|*passwd*|mysql_pwd) credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like assignment key" ;;
