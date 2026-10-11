@@ -15,8 +15,8 @@ import {
   FileCode,
   FileEdit,
   FilePlus,
+  FolderGit2,
   GitBranch,
-  Github,
   GitMerge,
   GitPullRequest,
   KeyRound,
@@ -57,7 +57,7 @@ export function GithubCliLesson() {
       </GoalBanner>
 
       {/* What Is GitHub CLI */}
-      <Section title="What Is GitHub CLI?" icon={<Github className="h-5 w-5" />} delay={0.1}>
+      <Section title="What Is GitHub CLI?" icon={<Terminal className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>GitHub CLI (gh)</Highlight> lets you interact with GitHub directly from your
           terminal. No more switching between your editor and browser for common tasks.
@@ -355,7 +355,7 @@ $ gh run view 123456 --job 789 --log`}
       <Divider />
 
       {/* Repository Info */}
-      <Section title="Repository Operations" icon={<Github className="h-5 w-5" />} delay={0.4}>
+      <Section title="Repository Operations" icon={<FolderGit2 className="h-5 w-5" />} delay={0.4}>
         <CommandList
           commands={[
             {
