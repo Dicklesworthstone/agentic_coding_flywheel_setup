@@ -12196,6 +12196,135 @@ PY
     done
 }
 
+credential_support_run() {
+    local expected="$1" acfs_home="${2:-$REPO_ROOT}" actual=0
+    shift 2
+    CREDENTIAL_SUPPORT_BUNDLE="$PROTOCOL_HOME/bundle"
+    mkdir -p "$CREDENTIAL_SUPPORT_BUNDLE"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+        -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$acfs_home" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" "$@" \
+        bash -c '
+            source "$1"
+            SUPPORT_TARGET_USER="$2"; SUPPORT_TARGET_HOME="$3"; _SUPPORT_ACFS_HOME="$4"
+            case "${FIXTURE_CONTROL:-}" in
+                context) SUPPORT_TARGET_HOME="$3/unresolved-home" ;;
+                dependency) support_system_binary_path() { return 1; } ;;
+                trace) set -x ;;
+            esac
+            [[ "${FIXTURE_NO_REDACT:-false}" != true ]] || REDACT=false
+            BUNDLE_FILES=()
+            result=0
+            capture_credential_status_json "$5" || result=$?
+            record_bundle_file credential_status.json
+            write_manifest "$5"
+            write_support_report_index "$5"
+            exit "$result"
+        ' _ "$SUPPORT_SH" "$(id -un)" "$PROTOCOL_HOME" "$acfs_home" "$CREDENTIAL_SUPPORT_BUNDLE" \
+        > "$PROTOCOL_HOME/capture.stdout" 2> "$PROTOCOL_HOME/capture.stderr" || actual=$?
+    [[ "$actual" == "$expected" ]]
+}
+
+test_credential_support_preserves_states_without_values() {
+    credential_report_setup credential-support-real
+    mkdir -p "$PROTOCOL_HOME/.codex"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-support-codex-secret"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    cp "$PROTOCOL_HOME/.codex/auth.json" "$PROTOCOL_HOME/auth.before"
+    if credential_report_run 0 VERCEL_TOKEN=your_vercel_token ANTHROPIC_API_KEY=fixture-support-env-secret &&
+        credential_support_run 0 "$REPO_ROOT" VERCEL_TOKEN=your_vercel_token ANTHROPIC_API_KEY=fixture-support-env-secret \
+            FIXTURE_CONTROL=trace FIXTURE_NO_REDACT=true &&
+        jq -e --slurpfile direct "$CREDENTIAL_REPORT_OUTPUT" '.services == $direct[0].services and
+            .read_only == true and .capture.status == "pass" and .safety.provider_validation_performed == false' \
+            "$CREDENTIAL_SUPPORT_BUNDLE/credential_status.json" >/dev/null &&
+        jq -e '.files | index("credential_status.json") != null' "$CREDENTIAL_SUPPORT_BUNDLE/manifest.json" >/dev/null &&
+        jq -e '.diagnostics.credential_status | .included == true and .source_status == "pass" and
+            .paths_redacted == true and .raw_paths_collected == false' "$CREDENTIAL_SUPPORT_BUNDLE/manifest.json" >/dev/null &&
+        grep -Fq '[credential_status.json](credential_status.json)' "$CREDENTIAL_SUPPORT_BUNDLE/support-report.md" &&
+        ! grep -RFq fixture-support- "$CREDENTIAL_SUPPORT_BUNDLE" &&
+        ! grep -Fq fixture-support-env-secret "$PROTOCOL_HOME/capture.stderr" &&
+        ! grep -RFq "$PROTOCOL_HOME" "$CREDENTIAL_SUPPORT_BUNDLE" &&
+        [[ ! -e "$PROTOCOL_HOME/tool-called" ]] && cmp -s "$PROTOCOL_HOME/auth.before" "$PROTOCOL_HOME/.codex/auth.json"; then
+        harness_pass "support exports reuse actual credential metadata, with values/paths absent and authentication unverified"
+    else harness_fail "support exports reuse actual credential metadata, with values/paths absent and authentication unverified"; fi
+}
+
+test_credential_support_context_and_dependency_controls() {
+    local mode=""
+    for mode in context dependency; do
+        credential_report_setup "credential-support-$mode"
+        if credential_support_run 1 "$REPO_ROOT" FIXTURE_CONTROL="$mode" &&
+            jq -e '.status == "warn" and .capture.status == "warn" and .services == null' \
+                "$CREDENTIAL_SUPPORT_BUNDLE/credential_status.json" >/dev/null &&
+            ! grep -RFq "$PROTOCOL_HOME" "$CREDENTIAL_SUPPORT_BUNDLE" &&
+            [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+            harness_pass "credential support $mode failure avoids fallback credential inspection"
+        else harness_fail "credential support $mode failure avoids fallback credential inspection"; fi
+    done
+}
+
+test_credential_support_schema_and_failure_controls() {
+    local mode="" expected=1
+    for mode in extra invalid duplicate failed timeout; do
+        credential_report_setup "credential-support-$mode"
+        credential_report_run 0 || { harness_fail "prepare $mode credential source"; continue; }
+        mkdir -p "$PROTOCOL_HOME/installed/scripts"
+        cat > "$PROTOCOL_HOME/installed/scripts/services-setup.sh" <<'EOF'
+#!/usr/bin/env bash
+services_setup_credential_status_json() {
+case "$FIXTURE_MODE" in
+    extra) jq --arg secret fixture-support-private-secret '.extra=$secret | .services[0].token=$secret' "$FIXTURE_REPORT" ;;
+    invalid) jq '.services[0].state="fixture-support-private-secret"' "$FIXTURE_REPORT" ;;
+    duplicate) cat "$FIXTURE_REPORT" "$FIXTURE_REPORT" ;;
+    failed) printf 'fixture-support-private-secret\n' >&2; cat "$FIXTURE_REPORT"; exit 2 ;;
+    timeout) sleep 3; cat "$FIXTURE_REPORT" ;;
+esac
+}
+EOF
+        expected=1
+        [[ "$mode" != extra ]] || expected=0
+        if credential_support_run "$expected" "$PROTOCOL_HOME/installed" FIXTURE_MODE="$mode" \
+            FIXTURE_REPORT="$CREDENTIAL_REPORT_OUTPUT" SUPPORT_BUNDLE_CREDENTIAL_STATUS_TIMEOUT=1 &&
+            jq -e --arg mode "$mode" 'if $mode == "extra" then .capture.status == "pass" and .extra == null and
+                all(.services[]; .token == null) else .status == "warn" and .capture.status == "warn" and
+                .services == null end' "$CREDENTIAL_SUPPORT_BUNDLE/credential_status.json" >/dev/null &&
+            ! grep -RFq fixture-support-private-secret "$CREDENTIAL_SUPPORT_BUNDLE" &&
+            ! grep -Fq fixture-support-private-secret "$PROTOCOL_HOME/capture.stderr" &&
+            [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+            harness_pass "credential support $mode capture retains only trustworthy metadata"
+        else harness_fail "credential support $mode capture retains only trustworthy metadata"; fi
+    done
+}
+
+test_credential_support_is_collected_by_real_bundle_cli() {
+    credential_report_setup credential-support-cli
+    mkdir -p "$PROTOCOL_HOME/.supabase"
+    jq -n --arg user "$(id -un)" --arg home "$PROTOCOL_HOME" \
+        '{target_user:$user,target_home:$home,mode:"safe",completed_phases:[]}' > "$PROTOCOL_HOME/.acfs/state.json"
+    printf 'fixture-support-cli-secret\n' > "$PROTOCOL_HOME/.supabase/access-token"
+    local archive="" bundle=""
+    if archive="$(env -u TARGET_USER -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+        -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$REPO_ROOT" \
+        ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        SUPPORT_BUNDLE_DOCTOR_TIMEOUT=1 SUPPORT_BUNDLE_SWARM_STATUS_TIMEOUT=1 \
+        SUPPORT_BUNDLE_SWARM_TIMELINE_TIMEOUT=1 SUPPORT_BUNDLE_PROVENANCE_TIMEOUT=1 \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+        bash "$SUPPORT_SH" --output "$PROTOCOL_HOME/full-bundle" 2> "$PROTOCOL_HOME/full-bundle.stderr")"; then
+        bundle="${archive%.tar.gz}"
+        if [[ -f "$archive" ]] && jq -e '(.services[] | select(.service == "supabase") |
+            .state == "file_configured" and .authentication == "unverified")' "$bundle/credential_status.json" >/dev/null &&
+            jq -e '.diagnostics.credential_status.included == true and
+                (.files | index("credential_status.json") != null)' "$bundle/manifest.json" >/dev/null &&
+            grep -Fq '[credential_status.json](credential_status.json)' "$bundle/support-report.md" &&
+            ! grep -RFq fixture-support-cli-secret "$bundle"; then
+            harness_pass "real support-bundle CLI collects and indexes passive credential metadata"
+            return
+        fi
+    fi
+    harness_fail "real support-bundle CLI collects and indexes passive credential metadata"
+}
+
 run_credential_report_tests() {
     test_credential_report_optional_missing_is_passive
     test_credential_report_environment_and_placeholder_states
@@ -12207,11 +12336,25 @@ run_credential_report_tests() {
     test_credential_report_oversized_files_are_bounded
 }
 
+run_credential_support_tests() {
+    test_credential_support_preserves_states_without_values
+    test_credential_support_context_and_dependency_controls
+    test_credential_support_schema_and_failure_controls
+    test_credential_support_is_collected_by_real_bundle_cli
+}
+
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--credential-support-only" ]]; then
+        harness_section "Credential support integration"
+        run_credential_support_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--credential-report-only" ]]; then
         harness_section "Offline credential provenance"
@@ -12259,6 +12402,7 @@ main() {
 
     harness_section "Services Setup"
     run_credential_report_tests
+    run_credential_support_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true

@@ -262,6 +262,7 @@ SWARM_STATUS_TIMEOUT="${SUPPORT_BUNDLE_SWARM_STATUS_TIMEOUT:-10}"
 SWARM_TIMELINE_TIMEOUT="${SUPPORT_BUNDLE_SWARM_TIMELINE_TIMEOUT:-5}"
 PROVENANCE_TIMEOUT="${SUPPORT_BUNDLE_PROVENANCE_TIMEOUT:-10}"
 RESOURCE_PROFILE_TIMEOUT="${SUPPORT_BUNDLE_RESOURCE_PROFILE_TIMEOUT:-5}"
+CREDENTIAL_STATUS_TIMEOUT="${SUPPORT_BUNDLE_CREDENTIAL_STATUS_TIMEOUT:-5}"
 SWARM_INVENTORY_TIMEOUT="${SUPPORT_BUNDLE_SWARM_INVENTORY_TIMEOUT:-5}"
 SUPPORT_SYSTEM_STATE_WAS_EXPLICIT=false
 [[ -n "${ACFS_SYSTEM_STATE_FILE:-}" ]] && [[ "${ACFS_SYSTEM_STATE_FILE%/}" != "/var/lib/acfs/state.json" ]] && SUPPORT_SYSTEM_STATE_WAS_EXPLICIT=true
@@ -2201,6 +2202,70 @@ capture_resource_profile_json() {
     [[ "$capture_status" == "pass" ]]
 }
 
+# Capture the existing passive credential report; retain only its fixed vocabulary.
+# Raw command output is never persisted, including malformed/error responses.
+# Usage: capture_credential_status_json <bundle_dir>
+capture_credential_status_json() (
+    set +x
+    local credential_file="$1/credential_status.json"
+    local jq_bin="" services_script="" bash_bin="" output="" sanitized=""
+    local reason="credential report unavailable"
+
+    jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
+    bash_bin="$(support_system_binary_path bash 2>/dev/null || true)"
+    if [[ -n "$_SUPPORT_ACFS_HOME" && -f "$_SUPPORT_ACFS_HOME/scripts/services-setup.sh" ]]; then
+        services_script="$_SUPPORT_ACFS_HOME/scripts/services-setup.sh"
+    elif [[ -f "$_SUPPORT_SCRIPT_DIR/../services-setup.sh" ]]; then
+        services_script="$_SUPPORT_SCRIPT_DIR/../services-setup.sh"
+    fi
+
+    if [[ -z "$jq_bin" || -z "$bash_bin" || -z "$services_script" ]]; then
+        reason="credential report dependency unavailable"
+    elif [[ -z "${SUPPORT_TARGET_HOME:-}" || ! -d "$SUPPORT_TARGET_HOME" ]] ||
+        ! support_is_valid_username "${SUPPORT_TARGET_USER:-}"; then
+        reason="credential report target context unresolved"
+    elif ! output="$(TARGET_HOME="$SUPPORT_TARGET_HOME" TARGET_USER="$SUPPORT_TARGET_USER" \
+        ACFS_HOME="$_SUPPORT_ACFS_HOME" support_run_with_timeout "$CREDENTIAL_STATUS_TIMEOUT" \
+        "$bash_bin" -c '
+            set +x
+            source "$1" >/dev/null || exit 2
+            # Support has already resolved this home. Do not resolve it again.
+            TARGET_HOME="$2"
+            services_setup_credential_status_json
+        ' _ "$services_script" "$SUPPORT_TARGET_HOME")"; then
+        reason="credential report failed or timed out"
+    elif sanitized="$(printf '%s' "$output" | "$jq_bin" -ces '
+        def member($allowed): . as $v | $allowed | index($v) != null;
+        if length != 1 then error("invalid report count") else .[0] end
+        | select(.schema_version == 1 and .kind == "acfs.credential_status" and
+            .read_only == true and .status == "pass" and .summary.required_unmet == 0 and
+            .safety.provider_validation_performed == false and
+            (.services | type) == "array" and (.services | length) == 6)
+        | select(([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"])
+        | select(all(.services[];
+            (.state | member(["missing","placeholder","shell_configured","file_configured","unknown"])) and
+            (.source | member(["none","environment","file"])) and
+            .requirement == "optional" and .authentication == "unverified" and
+            (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use"]))))
+        | {schema_version:1,kind:"acfs.credential_status",status:"pass",read_only:true,
+            capture:{status:"pass",reason:"passive credential source metadata collected"},
+            services:[.services[] | {service,state,source,requirement,authentication,remediation}],
+            summary:{required_unmet:0},
+            safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false},
+            redaction:{paths_redacted:true,raw_paths_collected:false,raw_hosts_collected:false,secrets_collected:false}}
+        ' 2>/dev/null)"; then
+        printf '%s\n' "$sanitized" > "$credential_file" || return 1
+        return 0
+    else
+        reason="credential report schema invalid"
+    fi
+
+    # All reasons above are constant metadata, never provider output or paths.
+    printf '{"schema_version":1,"kind":"acfs.credential_status","status":"warn","read_only":true,"capture":{"status":"warn","reason":"%s"},"redaction":{"paths_redacted":true,"raw_paths_collected":false,"raw_hosts_collected":false,"secrets_collected":false}}\n' \
+        "$reason" > "$credential_file"
+    return 1
+)
+
 # Capture a sanitized ACFS team-profile snapshot if one exists on the machine.
 # All secret values and raw credentials are strictly scrubbed.
 # Usage: capture_team_profile_json <bundle_dir>
@@ -2782,6 +2847,7 @@ write_manifest() {
     local swarm_timeline_manifest=""
     local provenance_manifest=""
     local resource_profile_manifest=""
+    local credential_status_manifest=""
     local local_progress_manifest=""
     local checkpoint_summary_manifest=""
     local swarm_inventory_manifest=""
@@ -2793,6 +2859,7 @@ write_manifest() {
     swarm_timeline_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_timeline.json" "swarm_timeline" '["agent_mail_bodies","terminal_history","tmux_panes","command_output","local_paths"]' "$jq_bin")"
     provenance_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "provenance.json" "provenance" '["tool_versions","install_sources","local_paths"]' "$jq_bin")"
     resource_profile_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "resource_profile.json" "resource_profile" '["local_paths","wrapper_commands","secret_values"]' "$jq_bin")"
+    credential_status_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "credential_status.json" "credential_status" '["secret_values","local_paths","raw_credentials"]' "$jq_bin")"
     team_profile_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "team_profile.json" "team_profile" '["secret_values","raw_credentials"]' "$jq_bin")"
     local_progress_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "local_progress.json" "local_progress" '["local_milestones","wizard_steps","installer_phase_ids","onboard_lesson_numbers"]' "$jq_bin")"
     checkpoint_summary_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "checkpoint_summary.json" "checkpoint_summary" '["state_schema_version","installer_phase_ids","checkpoint_status"]' "$jq_bin")"
@@ -2816,6 +2883,7 @@ write_manifest() {
         --argjson swarm_timeline_manifest "$swarm_timeline_manifest" \
         --argjson provenance_manifest "$provenance_manifest" \
         --argjson resource_profile_manifest "$resource_profile_manifest" \
+        --argjson credential_status_manifest "$credential_status_manifest" \
         --argjson team_profile_manifest "$team_profile_manifest" \
         --argjson local_progress_manifest "$local_progress_manifest" \
         --argjson checkpoint_summary_manifest "$checkpoint_summary_manifest" \
@@ -2846,6 +2914,7 @@ write_manifest() {
                 swarm_timeline: $swarm_timeline_manifest,
                 provenance: $provenance_manifest,
                 resource_profile: $resource_profile_manifest,
+                credential_status: $credential_status_manifest,
                 team_profile: $team_profile_manifest,
                 local_progress: $local_progress_manifest,
                 checkpoint_summary: $checkpoint_summary_manifest,
@@ -2972,6 +3041,8 @@ write_support_report_index() {
     support_report_write_link_line "$bundle_dir" "provenance.json" "Tool provenance" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "resource_profile.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "resource_profile.json" "Resource profile" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "credential_status.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "credential_status.json" "Credential sources (authentication unverified)" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "team_profile.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "team_profile.json" "Team profile" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "local_progress.json" "$jq_bin")"
@@ -3566,6 +3637,8 @@ main() {
     capture_swarm_status_json "$bundle_dir" || true
     capture_provenance_json "$bundle_dir" || true
     capture_resource_profile_json "$bundle_dir" || true
+    capture_credential_status_json "$bundle_dir" || true
+    record_bundle_file "credential_status.json"
     capture_team_profile_json "$bundle_dir" || true
     capture_swarm_inventory_json "$bundle_dir" || true
     capture_swarm_timeline_json "$bundle_dir" || true

@@ -4466,6 +4466,7 @@ acfs support-bundle [options]
 | `logs/install-*.log` | Recent install logs (up to 10) |
 | `logs/install_summary_*.json` | Recent install summaries |
 | `doctor.json` | Health check results |
+| `credential_status.json` | Passive credential-source metadata; authentication remains unverified |
 | `versions.json` | Installed tool versions |
 | `environment.json` | OS, memory, disk, user info |
 | `os-release` | Linux distribution info |
@@ -4516,6 +4517,14 @@ integration; every entry explicitly marks authentication `unverified`.
 The JSON report reuses the existing local credential paths and placeholder policy,
 omits secret values and file paths, and does not change credential files. It
 cannot be combined with setup flags such as `--yes` or `--install-claude-guard`.
+
+`acfs support-bundle` includes the same optional-service metadata in
+`credential_status.json`, its manifest, and the linked support report. It checks
+the resolved target user's credential files and the collecting process's exported
+environment, without invoking provider commands for this capture. Only the fixed
+state/source/remediation vocabulary is retained; extra fields, tokens and paths
+are omitted even with `--no-redact`. Failed, timed-out or invalid captures produce
+a warning record rather than an authentication claim.
 
 ### Status JSON for editor integrations
 
