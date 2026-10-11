@@ -12325,6 +12325,173 @@ test_credential_support_is_collected_by_real_bundle_cli() {
     harness_fail "real support-bundle CLI collects and indexes passive credential metadata"
 }
 
+credential_doctor_setup() {
+    credential_report_setup "$1"
+    mkdir -p "$PROTOCOL_HOME/.acfs/bin" "$PROTOCOL_HOME/.acfs/scripts/lib"
+    cp "$SERVICES_SETUP_SH" "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh"
+    cp "$REPO_ROOT/scripts/lib/logging.sh" "$REPO_ROOT/scripts/lib/gum_ui.sh" "$PROTOCOL_HOME/.acfs/scripts/lib/"
+    cp "$DOCTOR_SH" "$PROTOCOL_HOME/.acfs/bin/acfs"
+    # Existing doctor tests source its real definitions without the final main.
+    sed '$d' "$DOCTOR_SH" > "$PROTOCOL_HOME/.acfs/scripts/lib/sourceable-doctor.sh"
+    jq -n --arg home "$PROTOCOL_HOME" \
+        '{target_user:"acfs_credential_fixture",target_home:$home,bin_dir:($home+"/.local/bin"),mode:"safe"}' \
+        > "$PROTOCOL_HOME/.acfs/state.json"
+}
+
+credential_doctor_run() {
+    DOCTOR_CREDENTIAL_OUTPUT="$PROTOCOL_HOME/doctor-credentials.json"
+    env -u TARGET_USER -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+        -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ACFS_STATE_FILE="$PROTOCOL_HOME/.acfs/state.json" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" "$@" \
+        bash -c '
+            source "$1"
+            TARGET_HOME="$2"; TARGET_USER=acfs_credential_fixture
+            JSON_MODE=true; PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0; SKIP_COUNT=0; JSON_CHECKS=()
+            case "${FIXTURE_CONTROL:-}" in
+                context) TARGET_HOME="$2/missing-home" ;;
+                dependency) _acfs_doctor_system_binary_path() { return 1; } ;;
+                trace) set -x ;;
+            esac
+            check_credential_sources
+            print_json
+        ' _ "$PROTOCOL_HOME/.acfs/scripts/lib/sourceable-doctor.sh" "$PROTOCOL_HOME" \
+        > "$DOCTOR_CREDENTIAL_OUTPUT" 2> "$DOCTOR_CREDENTIAL_OUTPUT.stderr"
+}
+
+test_credential_doctor_matches_canonical_source_states() {
+    credential_doctor_setup credential-doctor-states
+    mkdir -p "$PROTOCOL_HOME/.codex" "$PROTOCOL_HOME/.supabase" "$PROTOCOL_HOME/.config/.wrangler/config"
+    printf '{invalid fixture-doctor-private-codex\n' > "$PROTOCOL_HOME/.codex/auth.json"
+    printf 'fixture-doctor-private-supabase\n' > "$PROTOCOL_HOME/.supabase/access-token"
+    printf 'oauth_token="fixture-doctor-private-wrangler"\n' > "$PROTOCOL_HOME/.config/.wrangler/config/default.toml"
+    cp "$PROTOCOL_HOME/.supabase/access-token" "$PROTOCOL_HOME/token.before"
+    if credential_report_run 0 ANTHROPIC_API_KEY=fixture-doctor-private-env VERCEL_TOKEN=your_vercel_token &&
+        credential_doctor_run ANTHROPIC_API_KEY=fixture-doctor-private-env VERCEL_TOKEN=your_vercel_token FIXTURE_CONTROL=trace &&
+        jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '
+            .summary == {pass:2,skip:1,warn:3,fail:0} and (.checks | length) == 6 and
+            all(.checks[]; . as $check | ($canonical[0].services[] | select($check.id == ("credential.source."+.service))) as $source |
+                $check.details == ("state="+$source.state+"; source="+$source.source+"; requirement=optional; authentication=unverified; remediation="+$source.remediation)) and
+            (.checks[] | select(.id == "credential.source.gemini") | .status == "skip") and
+            (.checks[] | select(.id == "credential.source.vercel") | .status == "warn")
+        ' "$DOCTOR_CREDENTIAL_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture-doctor-private- "$DOCTOR_CREDENTIAL_OUTPUT" &&
+        ! grep -Fq fixture-doctor-private- "$DOCTOR_CREDENTIAL_OUTPUT.stderr" &&
+        [[ ! -e "$PROTOCOL_HOME/tool-called" ]] &&
+        cmp -s "$PROTOCOL_HOME/token.before" "$PROTOCOL_HOME/.supabase/access-token"; then
+        harness_pass "doctor reuses canonical storage states/remediation, optional skips and unverified authentication without values or probes"
+    else harness_fail "doctor reuses canonical storage states/remediation, optional skips and unverified authentication without values or probes"; fi
+}
+
+test_credential_doctor_capture_controls() {
+    local mode=""
+    for mode in context dependency extra invalid duplicate failed timeout; do
+        credential_doctor_setup "credential-doctor-$mode"
+        credential_report_run 0 || { harness_fail "prepare $mode doctor report"; continue; }
+        if [[ "$mode" != context && "$mode" != dependency ]]; then
+            cat > "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh" <<'EOF'
+#!/usr/bin/env bash
+services_setup_credential_status_json() {
+    case "$FIXTURE_MODE" in
+        extra) jq --arg secret fixture-doctor-private-value '.extra=$secret | .services[0].token=$secret' "$FIXTURE_REPORT" ;;
+        invalid) jq '.services[0].remediation="fixture-doctor-private-value"' "$FIXTURE_REPORT" ;;
+        duplicate) cat "$FIXTURE_REPORT" "$FIXTURE_REPORT" ;;
+        failed) printf 'fixture-doctor-private-value\n' >&2; cat "$FIXTURE_REPORT"; return 2 ;;
+        timeout) sleep 3; cat "$FIXTURE_REPORT" ;;
+    esac
+}
+EOF
+        fi
+        if credential_doctor_run FIXTURE_CONTROL="$mode" FIXTURE_MODE="$mode" \
+            FIXTURE_REPORT="$CREDENTIAL_REPORT_OUTPUT" ACFS_DOCTOR_CREDENTIAL_TIMEOUT=1 &&
+            jq -e --arg mode "$mode" 'if $mode == "extra" then .summary.skip == 6 and (.checks|length)==6
+                else .summary.warn == 1 and (.checks|length)==1 and .checks[0].id == "credential.sources" and
+                    (.checks[0].details | contains("authentication=unverified")) end' "$DOCTOR_CREDENTIAL_OUTPUT" >/dev/null &&
+            ! grep -Fq fixture-doctor-private-value "$DOCTOR_CREDENTIAL_OUTPUT" &&
+            ! grep -Fq fixture-doctor-private-value "$DOCTOR_CREDENTIAL_OUTPUT.stderr" &&
+            [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+            harness_pass "doctor credential $mode control preserves warning/privacy semantics"
+        else harness_fail "doctor credential $mode control preserves warning/privacy semantics"; fi
+    done
+}
+
+test_credential_doctor_is_in_normal_cli_reports() {
+    local mode="" actual=0 output=""
+    for mode in json human; do
+        credential_doctor_setup "credential-doctor-cli-$mode"
+        output="$PROTOCOL_HOME/doctor-$mode.output"
+        actual=0
+        local -a args=(doctor)
+        [[ "$mode" != json ]] || args+=(--json)
+        env -u TARGET_USER -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+            -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+            HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_STATE_FILE="$PROTOCOL_HOME/.acfs/state.json" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+            ACFS_DOCTOR_CI=true VERCEL_TOKEN=your_vercel_token ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+            bash "$PROTOCOL_HOME/.acfs/bin/acfs" "${args[@]}" > "$output" 2> "$output.stderr" || actual=$?
+        # This incomplete synthetic install may fail other doctor checks. These
+        # assertions qualify credential collection, not installation health.
+        if [[ "$actual" == 0 || "$actual" == 1 ]] && ! grep -Fq fixture-doctor-private- "$output"; then
+            if [[ "$mode" == json ]] && jq -e '[.checks[] | select(.id | startswith("credential.source."))] |
+                length == 6 and any(.[]; .id == "credential.source.vercel" and .status == "warn" and
+                    (.details | contains("state=placeholder; source=environment; requirement=optional; authentication=unverified")))' "$output" >/dev/null; then
+                harness_pass "normal doctor JSON CLI includes credential-source checks"
+                continue
+            elif [[ "$mode" == human ]] && grep -Fq 'vercel credential source: placeholder' "$output" &&
+                grep -Fq 'authentication unverified' "$output"; then
+                harness_pass "normal doctor human CLI includes credential-source states and remediation"
+                continue
+            fi
+        fi
+        harness_fail "normal doctor $mode CLI includes credential-source checks"
+    done
+}
+
+run_credential_doctor_tests() {
+    test_credential_doctor_matches_canonical_source_states
+    test_credential_doctor_capture_controls
+    test_credential_doctor_is_in_normal_cli_reports
+    test_doctor_manifest_preserves_caller_options_and_path
+}
+
+test_doctor_manifest_preserves_caller_options_and_path() {
+    local profile="" output=""
+    for profile in on off; do
+        credential_doctor_setup "credential-doctor-options-$profile"
+        mkdir -p "$PROTOCOL_HOME/.acfs/scripts/generated"
+        cat > "$PROTOCOL_HOME/.acfs/scripts/generated/doctor_checks.sh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$FIXTURE_PROFILE" == on ]]; then
+    set +e +u +C
+    set +o pipefail
+else
+    set -e -u -C -o pipefail
+fi
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+declare -a MANIFEST_CHECKS=(fixture.keep)
+EOF
+        output="$(env -u TARGET_USER HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_STATE_FILE="$PROTOCOL_HOME/.acfs/state.json" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+            PATH="$PROTOCOL_HOME/.local/bin:/usr/bin:/bin" FIXTURE_PROFILE="$profile" bash -c '
+                if [[ "$FIXTURE_PROFILE" == on ]]; then set -e -u -C -o pipefail; else set +e +u +C; set +o pipefail; fi
+                sourceable="$1"
+                set -- "keep first" "literal ; \$(false)"
+                source "$sourceable"
+                e=off; u=off; c=off; p=off
+                [[ $- != *e* ]] || e=on
+                [[ $- != *u* ]] || u=on
+                [[ $- != *C* ]] || c=on
+                if shopt -qo pipefail; then p=on; fi
+                printf "%s|%s|%s|%s|%s|%s|%s|%s\n" "$e" "$u" "$c" "$p" "$1" "$2" "$MANIFEST_CHECKS_LOADED" "${MANIFEST_CHECKS[0]}"
+                [[ "$PATH" == *"/.local/bin:"* ]]
+            ' _ "$PROTOCOL_HOME/.acfs/scripts/lib/sourceable-doctor.sh" 2> "$PROTOCOL_HOME/options.stderr")"
+        if [[ "$output" == "$profile|$profile|$profile|$profile|keep first|literal ; \$(false)|true|fixture.keep" ]]; then
+            harness_pass "doctor preserves $profile caller options, positional args, PATH and global manifest arrays"
+        else harness_fail "doctor preserves $profile caller options, positional args, PATH and global manifest arrays" "$output"; fi
+    done
+}
+
 run_credential_report_tests() {
     test_credential_report_optional_missing_is_passive
     test_credential_report_environment_and_placeholder_states
@@ -12344,10 +12511,17 @@ run_credential_support_tests() {
 }
 
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--credential-doctor-only" ]]; then
+        harness_section "Doctor credential integration"
+        run_credential_doctor_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--credential-support-only" ]]; then
         harness_section "Credential support integration"
@@ -12403,6 +12577,7 @@ main() {
     harness_section "Services Setup"
     run_credential_report_tests
     run_credential_support_tests
+    run_credential_doctor_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true

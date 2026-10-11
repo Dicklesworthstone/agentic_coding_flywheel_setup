@@ -4526,6 +4526,14 @@ state/source/remediation vocabulary is retained; extra fields, tokens and paths
 are omitted even with `--no-redact`. Failed, timed-out or invalid captures produce
 a warning record rather than an authentication claim.
 
+Normal `acfs doctor` output also includes these credential-source states, and
+`acfs doctor --json` exposes them as `credential.source.<service>` checks. Missing
+optional credentials are skipped; placeholders and unknown storage formats are
+warnings. Stored candidates are reported with authentication explicitly
+`unverified` and the same remediation IDs as the passive report. This storage
+check performs no login, refresh, `whoami` or provider validation; `--deep`
+continues to request doctor's separate functional checks.
+
 ### Status JSON for editor integrations
 
 `acfs status --ide` emits the version-1 `acfs.editor_status` contract for local

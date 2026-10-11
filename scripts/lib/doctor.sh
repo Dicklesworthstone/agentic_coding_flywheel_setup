@@ -978,7 +978,16 @@ if [[ -n "$_MANIFEST_CHECKS_FILE" ]]; then
     # that PATH hid every per-user tool from the helpers dispatched below
     # (swarm doctor reported am/br/ntm unavailable). ensure_path already chose
     # this process's PATH, the privileged one for root.
-    _MANIFEST_SAVED_OPTS=$(set +o)
+    # Read each option in this shell. Capturing `set +o` in a command
+    # substitution can lose errexit, and replaying its text requires eval.
+    _MANIFEST_SAVED_OPTS=()
+    while IFS= read -r _MANIFEST_OPTION; do
+        if [[ -o "$_MANIFEST_OPTION" ]]; then
+            _MANIFEST_SAVED_OPTS+=(-o "$_MANIFEST_OPTION")
+        else
+            _MANIFEST_SAVED_OPTS+=(+o "$_MANIFEST_OPTION")
+        fi
+    done < <(compgen -A setopt)
     _MANIFEST_SAVED_PATH="$PATH"
 
     # shellcheck source=/dev/null
@@ -987,9 +996,11 @@ if [[ -n "$_MANIFEST_CHECKS_FILE" ]]; then
     fi
 
     # Restore original shell options and PATH
-    eval "$_MANIFEST_SAVED_OPTS" 2>/dev/null
+    for ((_MANIFEST_OPTION_INDEX = 0; _MANIFEST_OPTION_INDEX < ${#_MANIFEST_SAVED_OPTS[@]}; _MANIFEST_OPTION_INDEX += 2)); do
+        set "${_MANIFEST_SAVED_OPTS[_MANIFEST_OPTION_INDEX]}" "${_MANIFEST_SAVED_OPTS[_MANIFEST_OPTION_INDEX + 1]}"
+    done
     export PATH="$_MANIFEST_SAVED_PATH"
-    unset _MANIFEST_SAVED_OPTS _MANIFEST_SAVED_PATH
+    unset _MANIFEST_SAVED_OPTS _MANIFEST_SAVED_PATH _MANIFEST_OPTION _MANIFEST_OPTION_INDEX
 fi
 unset _MANIFEST_CHECKS_FILE
 
@@ -2748,6 +2759,64 @@ check_dcg_hook_status() {
     fi
 }
 
+# Report credential storage metadata through the same passive collector as
+# services setup. These checks do not authenticate, refresh, or invoke providers.
+check_credential_sources() {
+    local services_script="" runtime_home="" jq_bin="" bash_bin="" timeout_bin=""
+    local metadata="" raw="" service="" state="" source="" remediation="" status="" guidance=""
+    services_script="$(_acfs_doctor_find_scripts_script "services-setup.sh" 2>/dev/null || true)"
+    runtime_home="$(_acfs_doctor_existing_abs_nonroot_dir "${TARGET_HOME:-}" 2>/dev/null || true)"
+    jq_bin="$(_acfs_doctor_system_binary_path jq 2>/dev/null || true)"
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+
+    if [[ -z "$services_script" || -z "$runtime_home" || -z "$jq_bin" || -z "$bash_bin" || -z "$timeout_bin" ]] ||
+        ! metadata="$(
+            set +x
+            set -o pipefail
+            raw="$("$timeout_bin" -k 1 "${ACFS_DOCTOR_CREDENTIAL_TIMEOUT:-5}" "$bash_bin" -c '
+                set +x
+                source "$1" >/dev/null || exit 2
+                TARGET_HOME="$2"
+                services_setup_credential_status_json
+            ' _ "$services_script" "$runtime_home" 2>/dev/null)" || exit 1
+            printf '%s' "$raw" | "$jq_bin" -ers '
+                def member($allowed): . as $v | $allowed | index($v) != null;
+                if length != 1 then error("invalid report count") else .[0] end
+                | select(.schema_version == 1 and .kind == "acfs.credential_status" and
+                    .read_only == true and .status == "pass" and .summary.required_unmet == 0 and
+                    .safety.provider_validation_performed == false and
+                    (.services | type) == "array" and (.services | length) == 6)
+                | select(([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"])
+                | select(all(.services[];
+                    (.state | member(["missing","placeholder","shell_configured","file_configured","unknown"])) and
+                    (.source | member(["none","environment","file"])) and
+                    .requirement == "optional" and .authentication == "unverified" and
+                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use"]))))
+                | .services[] | [.service,.state,.source,.remediation] | @tsv
+            ' 2>/dev/null
+        )"; then
+        check "credential.sources" "Credential source metadata: unknown (authentication unverified)" "warn" \
+            "state=unknown; authentication=unverified; capture_failed" \
+            "inspect_local_config: run acfs services-setup --credential-status; check collector dependencies and target context"
+        return 0
+    fi
+
+    section "Credential sources (authentication unverified)"
+    while IFS=$'\t' read -r service state source remediation; do
+        case "$state" in
+            missing) status=skip; guidance="optional; configure this service when needed" ;;
+            placeholder) status=warn; guidance="replace or unset the placeholder before using this service" ;;
+            unknown) status=warn; guidance="inspect local credential config; storage status is unknown" ;;
+            *) status=pass; guidance="stored candidate found; validate authentication before use" ;;
+        esac
+        check "credential.source.$service" "$service credential source: $state ($source; authentication unverified)" "$status" \
+            "state=$state; source=$source; requirement=optional; authentication=unverified; remediation=$remediation" \
+            "$remediation: $guidance"
+    done <<< "$metadata"
+    blank_line
+}
+
 # Check cloud tools
 check_cloud() {
     section "Cloud/DB"
@@ -3226,7 +3295,7 @@ check_stack() {
             ;;
         no_systemd)
             check "acfs.nightly" "Nightly auto-update timer" "skip" \
-                "no systemd or no user session (expected for curl|bash root installs)"
+                "no systemd or no user session (expected for noninteractive root installs)"
             ;;
         *)
             check "acfs.nightly" "Nightly auto-update timer" "warn" \
@@ -6026,6 +6095,7 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     check_shell
     check_core_tools
     check_agents
+    check_credential_sources
     check_cloud
     check_stack
     check_service_binary_drift
