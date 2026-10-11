@@ -52,7 +52,11 @@ teardown() {
 }
 
 @test "init_logging handles missing directory gracefully" {
-    export ACFS_LOG_DIR="/nonexistent/path/that/should/not/exist"
+    # A file cannot be used as a directory, even when tests run as root.
+    # Keep the failure fixture inside this test's private scratch.
+    local blocked="$TEST_LOG_DIR/blocked-directory"
+    printf 'retained-file\n' > "$blocked"
+    export ACFS_LOG_DIR="$blocked"
 
     # Should fall back to the temp dir and still create a log
     init_logging
@@ -61,6 +65,13 @@ teardown() {
     [[ "$ACFS_LOG_DIR" == "${TMPDIR:-/tmp}" ]]
     # And the log file should exist
     [[ -f "$ACFS_SESSION_LOG" ]]
+    [[ "$(cat "$blocked")" == retained-file ]]
+}
+
+@test "standalone logging privacy and recovery regressions pass" {
+    run bash "$PROJECT_ROOT/scripts/lib/test_newproj_logging.sh"
+    assert_success
+    assert_output --partial "Results: 32/32 passed"
 }
 
 @test "newproj_logging sources and initializes under set -u without HOME" {

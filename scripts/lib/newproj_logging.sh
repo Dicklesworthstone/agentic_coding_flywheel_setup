@@ -74,6 +74,18 @@ ACFS_LOG_RETENTION_DAYS="${ACFS_LOG_RETENTION_DAYS:-7}"
 # Initialization
 # ============================================================
 
+# Allocate a private session directory containing one ordinary .log file.
+newproj_logging_create_session() (
+    # An exclusively created private directory makes the .log file's parent
+    # unique. Keep the existing log namespace and retention selection unchanged.
+    umask 077
+    local session_dir log_path
+    session_dir=$(mktemp -d "$1/newproj_session.XXXXXX") || return 1
+    log_path="$session_dir/newproj_$(date +%Y%m%d_%H%M%S)_$$.log"
+    : > "$log_path" || return 1
+    printf '%s\n' "$log_path"
+)
+
 # Initialize logging - call at start of wizard
 # Usage: init_logging [--verbose]
 init_logging() {
@@ -94,20 +106,19 @@ init_logging() {
         esac
     done
 
-    # Create log directory
-    if ! mkdir -p "$ACFS_LOG_DIR" 2>/dev/null; then
+    # Keep newly created directories and session files private without changing
+    # the caller's umask or permissions on an existing user-selected directory.
+    if ! (umask 077; mkdir -p "$ACFS_LOG_DIR") 2>/dev/null \
+        || ! ACFS_SESSION_LOG=$(newproj_logging_create_session "$ACFS_LOG_DIR" 2>/dev/null); then
         fallback_log_dir="${TMPDIR:-/tmp}"
-        echo "Warning: Could not create log directory $ACFS_LOG_DIR, falling back to $fallback_log_dir" >&2
+        echo "Warning: Could not create session log in $ACFS_LOG_DIR, falling back to $fallback_log_dir" >&2
         ACFS_LOG_DIR="$fallback_log_dir"
         export ACFS_LOG_DIR
-        ACFS_SESSION_LOG=$(mktemp "${TMPDIR:-/tmp}/newproj_XXXXXX.log" 2>/dev/null) || {
+        ACFS_SESSION_LOG=$(newproj_logging_create_session "$fallback_log_dir" 2>/dev/null) || {
             echo "Error: Could not create temp log file" >&2
             # Still set it to /dev/null so logging functions don't fail, just discard
             ACFS_SESSION_LOG="/dev/null"
         }
-    else
-        # Generate session log filename with timestamp and PID for uniqueness
-        ACFS_SESSION_LOG="$ACFS_LOG_DIR/newproj_$(date +%Y%m%d_%H%M%S)_$$.log"
     fi
     export ACFS_SESSION_LOG
 
@@ -213,6 +224,18 @@ log_error() {
 # Specialized Logging Functions
 # ============================================================
 
+# Agent instructions remain in wizard state and the generated AGENTS.md. Logs
+# need only their length to diagnose edits, not a second copy of private policy.
+newproj_logging_state_value() {
+    local key="$1"
+    local value="$2"
+    if [[ "$key" == agents_md_custom ]]; then
+        printf '[AGENTS.md content omitted; length=%s]' "${#value}"
+    else
+        printf '%s' "$value"
+    fi
+}
+
 # Log state changes (always logged regardless of level)
 # Usage: log_state "key" "old_value" "new_value"
 log_state() {
@@ -221,6 +244,11 @@ log_state() {
     local new_value="$3"
 
     [[ -z "$ACFS_SESSION_LOG" ]] && return 0
+
+    if [[ "$key" == agents_md_custom ]]; then
+        old_value=$(newproj_logging_state_value "$key" "$old_value")
+        new_value=$(newproj_logging_state_value "$key" "$new_value")
+    fi
 
     local timestamp
     timestamp=$(date +"%H:%M:%S.%3N" 2>/dev/null || date +"%H:%M:%S")
@@ -480,6 +508,7 @@ list_recent_logs() {
 # Usage: log_dump_state STATE_ARRAY
 log_dump_state() {
     local -n state_ref="$1"
+    local key value
 
     [[ -z "$ACFS_SESSION_LOG" ]] && return 0
 
@@ -489,7 +518,11 @@ log_dump_state() {
     {
         echo "[$timestamp] [DUMP ] Current wizard state:"
         for key in "${!state_ref[@]}"; do
-            echo "    $key = '${state_ref[$key]}'"
+            value="${state_ref[$key]}"
+            if [[ "$key" == agents_md_custom ]]; then
+                value=$(newproj_logging_state_value "$key" "$value")
+            fi
+            echo "    $key = '$value'"
         done
     } >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }

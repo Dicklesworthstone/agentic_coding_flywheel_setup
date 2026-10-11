@@ -1000,6 +1000,11 @@ The wizard guides you through:
 - Feature selection (br/beads, Claude settings, AGENTS.md, UBS ignore)
 - AGENTS.md customization preview
 
+Wizard diagnostics use private session files (mode `0600`) and create new log
+directories with mode `0700`, without changing your shell's umask or existing
+directory permissions. Repeated sessions get distinct files. Edited `AGENTS.md`
+contents remain in the project; state logs record only their length.
+
 <details>
 <summary><strong>TUI Wizard Screenshots</strong></summary>
 
