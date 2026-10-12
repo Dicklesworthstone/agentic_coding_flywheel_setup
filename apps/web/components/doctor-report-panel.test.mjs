@@ -69,6 +69,7 @@ function report(
 function fixture(panelProps = {}) {
   const findings = [];
   const onFindingsChange = (value) => findings.push(value);
+  let findingsCallback = onFindingsChange;
   const health = {
     ready: true,
     vpsIP: "203.0.113.7",
@@ -192,7 +193,7 @@ function fixture(panelProps = {}) {
         nodes.push(node);
         visit(node.props.children, `${path}/children`);
       }
-      visit(jsx(panelModule.DoctorReportPanel, { ...panelProps, onFindingsChange }), "root");
+      visit(jsx(panelModule.DoctorReportPanel, { ...panelProps, onFindingsChange: findingsCallback }), "root");
       for (const [key, instance] of instances) {
         if (!instance.seen) {
           dispose(instance);
@@ -249,6 +250,9 @@ function fixture(panelProps = {}) {
     render,
     choose,
     settled,
+    replaceFindingsCallback(callback) {
+      findingsCallback = callback;
+    },
     unmount() {
       for (const instance of instances.values()) dispose(instance);
       instances.clear();
@@ -401,6 +405,52 @@ test("account, mode, timestamp and OS mismatches receive explicit warnings", asy
   value.timestamp = new Date(Date.now() + 3600 * 1000).toISOString();
   f.choose(value);
   assert.match((await f.settled()).errors(), /five minutes in the future/);
+});
+
+for (const os of [{ id: "ubuntu", version: "24.04" }, { id: "debian", version: "12" }]) {
+  test(`an otherwise passing ${os.id} ${os.version} report projects its visible OS warning`, async () => {
+    const f = fixture();
+    const value = report([
+      { id: "agent.claude", status: "pass" },
+      { id: "tool.bun", status: "pass" },
+    ]);
+    f.choose(value);
+    assert.doesNotMatch((await f.settled()).errors(), /differs from the recommended Ubuntu/);
+    assert.equal(f.findings.at(-1), false);
+    value.os = os;
+    f.choose(value);
+    assert.match((await f.settled()).errors(), /differs from the recommended Ubuntu/);
+    assert.equal(f.findings.at(-1), true);
+  });
+}
+
+test("replacing the findings listener preserves a current review and replays its signal", async () => {
+  const f = fixture();
+  f.choose();
+  const before = (await f.settled()).text();
+  const replacement = [];
+  f.replaceFindingsCallback((value) => replacement.push(value));
+  assert.equal(f.render().text(), before);
+  assert.equal(replacement.at(-1), true);
+  f.unmount();
+  assert.equal(replacement.at(-1), null);
+  assert.equal(f.updatesAfterUnmount(), 0);
+});
+
+test("replacing the findings listener does not abandon a pending file read", async () => {
+  const f = fixture();
+  const slow = delayed();
+  f.choose(slow.file);
+  assert.equal(f.render().busy(), true);
+  const replacement = [];
+  f.replaceFindingsCallback((value) => replacement.push(value));
+  assert.equal(f.render().busy(), true);
+  slow.release();
+  const view = await f.settled();
+  assert.equal(view.busy(), false);
+  assert.match(view.text(), /Report SHA-256:/);
+  assert.equal(replacement.at(-1), true);
+  assert.equal(f.updatesAfterUnmount(), 0);
 });
 
 test("invalid replacement clears a prior report and never leaks parser input or filename", async () => {

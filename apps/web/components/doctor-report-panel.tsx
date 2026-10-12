@@ -46,17 +46,28 @@ function DoctorReportContent({ context, onFindingsChange }: {
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
   const mounted = useRef(false);
+  const findingsListener = useRef(onFindingsChange);
   const id = useId();
+  const current = doctorReportMatches(review, context) ? review : null;
+  const destinationDiffers = Boolean(
+    current &&
+    (current.reportedOS.id !== "ubuntu" || current.reportedOS.version !== ACFS_RECOMMENDED_UBUNTU),
+  );
+  const needsAttention = current ? current.needsAttention || destinationDiffers : null;
+  // A listener change is not a new installation or a reason to abandon a read.
+  // Project exactly the findings shown by this reader, including OS differences.
+  useEffect(() => {
+    findingsListener.current = onFindingsChange;
+    onFindingsChange?.(needsAttention);
+  }, [onFindingsChange, needsAttention]);
   useEffect(() => {
     mounted.current = true;
-    onFindingsChange?.(null);
     return () => {
       mounted.current = false;
       generation.current++;
-      onFindingsChange?.(null);
+      findingsListener.current?.(null);
     };
-  }, [onFindingsChange]);
-  const current = doctorReportMatches(review, context) ? review : null;
+  }, []);
 
   function clear(): void {
     if (!mounted.current) return;
@@ -64,7 +75,7 @@ function DoctorReportContent({ context, onFindingsChange }: {
     setReview(null);
     setError(null);
     setBusy(false);
-    onFindingsChange?.(null);
+    findingsListener.current?.(null);
   }
   async function read(file: File | undefined): Promise<void> {
     if (!file || !mounted.current) return;
@@ -72,12 +83,11 @@ function DoctorReportContent({ context, onFindingsChange }: {
     setReview(null);
     setError(null);
     setBusy(true);
-    onFindingsChange?.(null);
+    findingsListener.current?.(null);
     try {
       const next = await reviewDoctorReportFile(file, context);
       if (mounted.current && request === generation.current) {
         setReview(next);
-        onFindingsChange?.(next.needsAttention);
       }
     } catch (failure) {
       if (mounted.current && request === generation.current) {
@@ -91,9 +101,6 @@ function DoctorReportContent({ context, onFindingsChange }: {
       if (mounted.current && request === generation.current) setBusy(false);
     }
   }
-  const destinationDiffers =
-    current &&
-    (current.reportedOS.id !== "ubuntu" || current.reportedOS.version !== ACFS_RECOMMENDED_UBUNTU);
   const selectedFailures = current?.modules.filter((module) => module.status === "fail") ?? [];
 
   return (
@@ -152,7 +159,7 @@ function DoctorReportContent({ context, onFindingsChange }: {
           <div className="space-y-4 border-t border-border/50 pt-4">
             <h2 className="text-lg font-semibold">Reported findings for your selection</h2>
             <p role="status" className="text-sm">
-              {current.needsAttention || destinationDiffers
+              {needsAttention
                 ? "Findings, coverage gaps or context differences need review."
                 : "Mapped checks report passes. This is not a complete or authenticated verification of the installation."}
             </p>

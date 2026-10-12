@@ -790,6 +790,25 @@ describe("passive credential lifecycle parity", () => {
     expect(checks.checkClaude()).toEqual({ authenticated: false });
   });
 
+  test("offline credential status does not block on a named pipe without a writer", async () => {
+    const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-credential-fifo-"));
+    await fs.promises.mkdir(path.join(home, ".claude"));
+    const file = path.join(home, ".claude", ".credentials.json");
+    childProcess.execFileSync("mkfifo", [file]);
+    const result = childProcess.spawnSync(process.execPath, ["-e", `
+      import { createAuthChecks } from ${JSON.stringify(new URL("../authChecks.ts", import.meta.url).href)};
+      const checks = createAuthChecks({ homedir: () => ${JSON.stringify(home)}, env: {}, commandExists: () => false });
+      process.stdout.write(JSON.stringify(checks.getCredentialStatus(["claude"])));
+    `], { encoding: "utf8", timeout: 1000 });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.status).toBe("warn");
+    expect(report.services.find((service: { service: string }) => service.service === "claude").state).toBe("missing");
+    expect(fs.lstatSync(file).isFIFO()).toBe(true);
+  });
+
   test("checkAllServices derives metadata and readiness from one credential snapshot", () => {
     let reads = 0;
     const file = path.join(HOME, ".claude", ".credentials.json");

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { resolveModuleSelection } from "../lib/moduleSelection";
+import { ACFS_RECOMMENDED_UBUNTU } from "../lib/vpsProviders";
 
 test.describe
   .serial("Learning Hub", () => {
@@ -38,6 +40,49 @@ test.describe
         const rect = element.getBoundingClientRect(); return { width: rect.width, height: rect.height };
       }));
       expect(links.every((rect) => rect.width >= 44 && rect.height >= 44)).toBe(true);
+    });
+
+    test("local doctor OS warnings drive recovery recommendations and clear on replacement", async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem("agent-flywheel-vps-ip", "203.0.113.7");
+        localStorage.setItem("agent-flywheel-ssh-username", "developer");
+        localStorage.setItem("agent-flywheel-install-mode", "safe");
+        localStorage.setItem("agent-flywheel-module-profile", "minimal");
+      });
+      const plan = resolveModuleSelection({ profile: "minimal" });
+      expect(plan.ok).toBe(true);
+      const report = {
+        acfs_version: "0.9.0", timestamp: new Date().toISOString(), mode: "safe", deep_mode: false,
+        user: "developer", os: { id: "ubuntu", version: ACFS_RECOMMENDED_UBUNTU },
+        summary: { pass: plan.included.length, fail: 0, warn: 0, skip: 0 },
+        checks: plan.included.map((module) => ({ id: module.id, status: "pass",
+          label: "PRIVATE_REPORT_LABEL", details: "PRIVATE_REPORT_DETAIL", fix: null })),
+      };
+      await page.goto("/learn");
+      const steps = page.getByTestId("learning-recommendations");
+      await expect(steps).toHaveAttribute("data-persona", "minimal");
+      await page.getByText("Diagnose a doctor JSON report locally", { exact: true }).click();
+      const input = page.getByLabel("Doctor JSON report (maximum 1 MiB)");
+      const upload = async () => input.setInputFiles({
+        name: "doctor.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(report)),
+      });
+      await upload();
+      await expect(page.getByText("Mapped checks report passes.", { exact: false })).toBeVisible();
+      await expect(steps).toHaveAttribute("data-persona", "minimal");
+      report.os.version = "24.04";
+      await upload();
+      await expect(page.getByText("differs from the recommended Ubuntu", { exact: false })).toBeVisible();
+      await expect(steps).toHaveAttribute("data-persona", "recovery");
+      await expect(steps.getByRole("link").first()).toHaveAttribute("href", "/wizard/status-check");
+      report.os.version = ACFS_RECOMMENDED_UBUNTU;
+      await upload();
+      await expect(page.getByText("Mapped checks report passes.", { exact: false })).toBeVisible();
+      await expect(steps).toHaveAttribute("data-persona", "minimal");
+      await expect(page.locator("body")).not.toContainText("PRIVATE_REPORT_");
+      await page.getByRole("button", { name: "Clear doctor report", exact: true }).click();
+      await expect(page.getByText("Report SHA-256:", { exact: false })).toHaveCount(0);
+      await expect(steps).toHaveAttribute("data-persona", "minimal");
+      expect(await page.evaluate(() => localStorage.getItem("acfs-learning-hub-completed-lessons"))).toBeNull();
     });
 
     test("complete lesson progress offers references without an inaccessible next lesson", async ({ page }) => {

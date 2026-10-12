@@ -107,7 +107,8 @@ function optionalCredentialString(value: unknown): string {
 }
 
 function readCredentialSnapshot(filePath: string): string {
-  const descriptor = fs.openSync(filePath, "r");
+  // Opening a FIFO in blocking mode would hang before fstat can reject it.
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
   try {
     if (!fs.fstatSync(descriptor).isFile()) return "";
     const bytes = Buffer.alloc(CREDENTIAL_BYTE_LIMIT + 1);
