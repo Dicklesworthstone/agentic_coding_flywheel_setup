@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as childProcess from "child_process";
 import { createAuthChecks, PLACEHOLDER_SECRETS } from "../authChecks";
 
 const HOME = "/home/tester";
@@ -60,7 +61,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkClaude()).toEqual({ authenticated: true, details: "user@example.com" });
+    expect(checks.checkClaude()).toEqual({ authenticated: false, configured: true, details: "user@example.com" });
   });
 
   test("checkClaude rejects config-only state without OAuth credentials", () => {
@@ -125,7 +126,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkClaude()).toEqual({ authenticated: true, details: "fallback@example.com" });
+    expect(checks.checkClaude()).toEqual({ authenticated: false, configured: true, details: "fallback@example.com" });
   });
 
   test("checkClaude rejects stale credentials when claude is not installed", () => {
@@ -150,7 +151,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkCodex()).toEqual({ authenticated: true });
+    expect(checks.checkCodex()).toEqual({ authenticated: false, configured: true });
   });
 
   test("checkCodex accepts legacy API-key auth in auth.json", () => {
@@ -163,7 +164,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkCodex()).toEqual({ authenticated: true });
+    expect(checks.checkCodex()).toEqual({ authenticated: false, configured: true });
   });
 
   test("checkCodex rejects stale auth when codex is not installed", () => {
@@ -226,7 +227,7 @@ describe("authChecks", () => {
       expect(checks.checkCodex()).toEqual({ authenticated: false });
     } finally {
       process.env.PATH = originalPath;
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      // Retain the isolated fixture for diagnosis; repository policy forbids deletion.
     }
   });
 
@@ -240,7 +241,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkAntigravity()).toEqual({ authenticated: true });
+    expect(checks.checkAntigravity()).toEqual({ authenticated: false, configured: true });
   });
 
   test("checkAntigravity rejects placeholder Antigravity token values", () => {
@@ -280,7 +281,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkAntigravity()).toEqual({ authenticated: true });
+    expect(checks.checkAntigravity()).toEqual({ authenticated: false, configured: true });
   });
 
   test("checkGitHub reads gh auth status when available", () => {
@@ -319,7 +320,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkGitHub()).toEqual({ authenticated: true, details: "octocat" });
+    expect(checks.checkGitHub()).toEqual({ authenticated: false, configured: true, details: "octocat" });
   });
 
   test("checkGitHub rejects hosts files without a github.com oauth token", () => {
@@ -365,7 +366,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkVercel()).toEqual({ authenticated: true, details: "me@example.com" });
+    expect(checks.checkVercel()).toEqual({ authenticated: false, configured: true, details: "me@example.com" });
   });
 
   test("checkVercel rejects auth.json without a token", () => {
@@ -388,7 +389,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkVercel()).toEqual({ authenticated: true, details: "via VERCEL_TOKEN" });
+    expect(checks.checkVercel()).toEqual({ authenticated: false, configured: true, details: "via VERCEL_TOKEN" });
   });
 
   test("checkVercel rejects blank VERCEL_TOKEN values", () => {
@@ -437,7 +438,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkVercel()).toEqual({ authenticated: true, details: "via VERCEL_TOKEN" });
+    expect(checks.checkVercel()).toEqual({ authenticated: false, configured: true, details: "via VERCEL_TOKEN" });
   });
 
   test("checkVercel rejects shell config tokens overwritten by placeholders", () => {
@@ -495,7 +496,7 @@ describe("authChecks", () => {
       }),
     );
 
-    expect(checks.checkSupabase()).toEqual({ authenticated: true });
+    expect(checks.checkSupabase()).toEqual({ authenticated: false, configured: true });
   });
 
   test("checkSupabase uses SUPABASE_ACCESS_TOKEN when set", () => {
@@ -506,7 +507,8 @@ describe("authChecks", () => {
     );
 
     expect(checks.checkSupabase()).toEqual({
-      authenticated: true,
+      authenticated: false,
+      configured: true,
       details: "via SUPABASE_ACCESS_TOKEN",
     });
   });
@@ -589,6 +591,7 @@ describe("authChecks", () => {
         "tailscale",
         "claude-code",
         "codex-cli",
+        "gemini-cli",
         "antigravity-cli",
         "github",
         "vercel",
@@ -621,5 +624,91 @@ describe("placeholder secret vocabulary", () => {
     ["scripts/services-setup.sh", "services_setup_is_placeholder_secret"],
   ])("%s %s matches authChecks.ts", (file, fn) => {
     expect(shellPlaceholders(file, fn).sort()).toEqual([...PLACEHOLDER_SECRETS].sort());
+  });
+});
+
+describe("passive credential lifecycle parity", () => {
+  const repoRoot = path.resolve(import.meta.dir, "../../../../..");
+  const vaultRef = "vault://secret/fixture-private-path#fixture-private-field";
+  const knownEnv = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "VERCEL_TOKEN",
+    "SUPABASE_ACCESS_TOKEN", "CLOUDFLARE_API_TOKEN", "CODEX_HOME", ...["CLAUDE", "CODEX", "GEMINI", "VERCEL", "SUPABASE", "WRANGLER"].map((id) => `ACFS_${id}_VAULT_REF`)];
+  const scenarios: { name: string; file?: string; contents?: string; env?: NodeJS.ProcessEnv;
+    service: "claude" | "codex" | "gemini" | "vercel" | "supabase" | "wrangler"; state: string }[] = [
+    { name: "optional missing", service: "claude", state: "missing" },
+    { name: "exported key", service: "claude", state: "shell_configured", env: { ANTHROPIC_API_KEY: "fixture-private-key" } },
+    { name: "quoted placeholder", service: "vercel", state: "placeholder", env: { VERCEL_TOKEN: '"your_vercel_token"' } },
+    { name: "expired Claude", service: "claude", state: "expired", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"accessToken":"fixture-private-key","expiresAt":0}}' },
+    { name: "future Claude", service: "claude", state: "file_configured", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"accessToken":"fixture-private-key","expiresAt":4102444800000}}' },
+    { name: "refresh-only Claude", service: "claude", state: "refresh_required", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"refreshToken":"fixture-private-key"}}' },
+    { name: "expired Gemini", service: "gemini", state: "expired", file: ".gemini/oauth_creds.json", contents: '{"access_token":"fixture-private-key","expiry_date":0}' },
+    { name: "refresh-only Gemini", service: "gemini", state: "refresh_required", file: ".gemini/oauth_creds.json", contents: '{"refresh_token":"fixture-private-key"}' },
+    { name: "invalid expiry", service: "gemini", state: "unknown", file: ".gemini/oauth_creds.json", contents: '{"access_token":"fixture-private-key","expiry_date":"4102444800000"}' },
+    { name: "fraction expiry", service: "gemini", state: "unknown", file: ".gemini/oauth_creds.json", contents: '{"access_token":"fixture-private-key","expiry_date":0.5}' },
+    { name: "null expiry", service: "gemini", state: "file_configured", file: ".gemini/oauth_creds.json", contents: '{"access_token":"fixture-private-key","expiry_date":null}' },
+    { name: "wrong token type", service: "claude", state: "unknown", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"accessToken":42}}' },
+    { name: "malformed token container", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"tokens":"fixture-private-key"}' },
+    { name: "cached Codex", service: "codex", state: "file_configured", file: ".codex/auth.json", contents: '{"tokens":{"access_token":"fixture-private-key"}}' },
+    { name: "cached Vercel", service: "vercel", state: "file_configured", file: ".vercel/auth.json", contents: '{"token":"fixture-private-key"}' },
+    { name: "plain Supabase", service: "supabase", state: "file_configured", file: ".supabase/access-token", contents: "fixture-private-key\n" },
+    { name: "unsupported Wrangler", service: "wrangler", state: "unknown", file: ".wrangler/config/default.toml", contents: 'oauth_token="fixture-private-key"' },
+    { name: "multiple JSON documents", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"access_token":"fixture-private-key"}\n{}' },
+    { name: "raw NUL", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"access_token":"fixture-private-key"}\0' },
+    { name: "escaped NUL", service: "vercel", state: "unknown", file: ".vercel/auth.json", contents: '{"token":"fixture-private\\u0000-key"}' },
+    { name: "oversized newlines", service: "supabase", state: "unknown", file: ".supabase/access-token", contents: "\n".repeat(1048577) },
+    { name: "Vault annotation", service: "claude", state: "vault_backed", env: { ACFS_CLAUDE_VAULT_REF: vaultRef } },
+    { name: "quoted Vault annotation", service: "supabase", state: "vault_backed", env: { ACFS_SUPABASE_VAULT_REF: `"${vaultRef}"` } },
+    { name: "Vault token literal", service: "codex", state: "vault_backed", env: { OPENAI_API_KEY: vaultRef } },
+    { name: "Vault file literal", service: "supabase", state: "vault_backed", file: ".supabase/access-token", contents: vaultRef },
+    { name: "Vault OAuth literal", service: "gemini", state: "vault_backed", file: ".gemini/oauth_creds.json", contents: JSON.stringify({ access_token: vaultRef }) },
+    { name: "invalid Vault traversal", service: "vercel", state: "unknown", env: { ACFS_VERCEL_VAULT_REF: "vault://secret/../private#token" } },
+    { name: "invalid Vault placeholder", service: "vercel", state: "unknown", env: { ACFS_VERCEL_VAULT_REF: "vault://secret/your_token#token" } },
+    { name: "invalid Vault credentials", service: "vercel", state: "unknown", env: { ACFS_VERCEL_VAULT_REF: "vault://user:password@private/path#token" } },
+    { name: "invalid Vault expression", service: "vercel", state: "unknown", env: { ACFS_VERCEL_VAULT_REF: "$(touch fixture-private-marker)" } },
+    { name: "materialized key overrides Vault", service: "claude", state: "shell_configured", env: { ANTHROPIC_API_KEY: "fixture-private-key", ACFS_CLAUDE_VAULT_REF: vaultRef } },
+    { name: "placeholder shadows Vault and cached file", service: "vercel", state: "placeholder", env: { VERCEL_TOKEN: "your_vercel_token", ACFS_VERCEL_VAULT_REF: vaultRef }, file: ".vercel/auth.json", contents: '{"token":"fixture-private-key"}' },
+    { name: "Vault annotation shadows cached file", service: "vercel", state: "vault_backed", env: { ACFS_VERCEL_VAULT_REF: vaultRef }, file: ".vercel/auth.json", contents: '{"token":"fixture-private-key"}' },
+  ];
+
+  test.each(scenarios)("$name: actual file/environment reports match Bash", (scenario) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-credential-parity-"));
+    const env: NodeJS.ProcessEnv = { ...process.env, ...scenario.env, HOME: home };
+    for (const key of knownEnv) if (!(key in (scenario.env ?? {}))) delete env[key];
+    if (scenario.file) {
+      const file = path.join(home, scenario.file);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, scenario.contents!);
+    }
+    let invoked = false;
+    const checks = createAuthChecks({ homedir: () => home, env, execSync: () => { invoked = true; throw new Error("provider invocation forbidden"); } });
+    const report = checks.getCredentialStatus([scenario.service, scenario.service]);
+    const shell = childProcess.execFileSync(env.ACFS_TEST_BASH ?? "/usr/bin/bash", ["-c",
+      'source "$1" >/dev/null || exit 2; TARGET_HOME="$2"; SERVICES_SETUP_REQUIRED=("$3" "$3"); services_setup_credential_status_json || [[ $? == 1 ]]',
+      "_", path.join(repoRoot, "scripts/services-setup.sh"), home, scenario.service], { env, encoding: "utf8", timeout: 10000 });
+    expect(report).toEqual(JSON.parse(shell));
+    expect(report.services.find((entry) => entry.service === scenario.service)?.state).toBe(scenario.state);
+    expect(report.summary.required_unmet).toBe(["shell_configured", "file_configured"].includes(scenario.state) ? 0 : 1);
+    expect(JSON.stringify(report)).not.toContain("fixture-private");
+    expect(invoked).toBe(false);
+    if (scenario.file) expect(fs.readFileSync(path.join(home, scenario.file), "utf8")).toBe(scenario.contents!);
+  });
+
+  test("CODEX_HOME and normal TypeScript consumers use canonical source metadata", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-credential-consumer-"));
+    const codexHome = path.join(home, "custom-codex");
+    fs.mkdirSync(codexHome);
+    fs.writeFileSync(path.join(codexHome, "auth.json"), '{"tokens":{"access_token":"fixture-private-key"}}');
+    const checks = createAuthChecks({ homedir: () => home, env: { CODEX_HOME: codexHome }, commandExists: (name) => name === "codex" });
+    expect(checks.checkCodex()).toEqual({ authenticated: false, configured: true });
+    expect(checks.checkAllServices()["codex-cli"]).toEqual({ authenticated: false, configured: true,
+      credential: { service: "codex", state: "file_configured", source: "file", requirement: "optional", authentication: "unverified", remediation: "validate_before_use" } });
+  });
+
+  test.each(["expired", "refresh_required", "vault_backed"])("normal Claude check rejects %s readiness", (state) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-credential-attention-"));
+    fs.mkdirSync(path.join(home, ".claude"));
+    fs.writeFileSync(path.join(home, ".claude", ".credentials.json"), state === "refresh_required" ?
+      '{"claudeAiOauth":{"refreshToken":"fixture-private-key"}}' : '{"claudeAiOauth":{"accessToken":"fixture-private-key","expiresAt":0}}');
+    const checks = createAuthChecks({ homedir: () => home, env: state === "vault_backed" ? { ACFS_CLAUDE_VAULT_REF: vaultRef } : {}, commandExists: () => true });
+    expect(checks.checkClaude()).toEqual({ authenticated: false });
   });
 });

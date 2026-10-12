@@ -2260,9 +2260,9 @@ onboard_credential_status_json() (
                 .safety.provider_validation_performed == false and (.services | type == "array") and
                 ([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"] and
                 all(.services[]; .requirement == "optional" and .authentication == "unverified" and
-                    (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","unknown"])) and
-                    (.source | member(["none","environment","file"])) and
-                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate"]))))
+                    (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","vault_backed","unknown"])) and
+                    (.source | member(["none","environment","file","vault"])) and
+                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate","resolve_vault_reference"]))))
             | {schema_version:1,kind:"acfs.credential_status",status:"pass",read_only:true,
                 services:[.services[] | {service,state,source,requirement,authentication,remediation}],
                 summary:{required_unmet:0},safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false}}
@@ -2293,6 +2293,7 @@ show_credential_status() {
             configure_when_needed) guidance="Configure this service when your project needs it." ;;
             validate_before_use) guidance="Validate with a read-only provider command before use." ;;
             refresh_or_reauthenticate) guidance="Use the provider CLI to refresh or sign in again; stored refresh tokens are unverified." ;;
+            resolve_vault_reference) guidance="Resolve the declared Vault reference into the provider environment or credential file, then validate before use." ;;
         esac
         printf '  %s: state=%s; source=%s; remediation=%s\n    %s\n' "$service" "$state" "$source" "$remediation" "$guidance"
     done < <(printf '%s' "$metadata" | "$jq_bin" -r '.services[] | [.service,.state,.source,.remediation] | @tsv')
@@ -2338,7 +2339,7 @@ show_auth_flow() {
             [[ "$credential_service" != cloudflare ]] || credential_service=wrangler
             if [[ "$status" != 2 ]]; then
                 case "${_ONBOARD_CREDENTIAL_STATES[$credential_service]:-}" in
-                    expired|refresh_required) status=1 ;;
+                    expired|refresh_required|vault_backed) status=1 ;;
                 esac
             fi
             auth_statuses[$service]="$status"

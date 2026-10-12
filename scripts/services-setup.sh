@@ -668,7 +668,26 @@ services_setup_is_placeholder_secret() {
 services_setup_has_usable_secret() {
     local normalized=""
     normalized="$(services_setup_normalize_config_value "${1-}")"
-    [[ -n "${normalized//[[:space:]]/}" ]] && ! services_setup_is_placeholder_secret "$normalized"
+    [[ -n "${normalized//[[:space:]]/}" && "${normalized,,}" != vault://* ]] && ! services_setup_is_placeholder_secret "$normalized"
+}
+
+# ACFS provenance annotation, not a URI accepted by provider CLIs or Vault.
+# This parses metadata only. Never resolve a reference during diagnostics.
+services_setup_vault_reference_state() {
+    local value="" component="" location="" field=""
+    local -a components=()
+    value="$(services_setup_normalize_config_value "${1-}")"
+    [[ "$value" == vault://* && ${#value} -le 2048 ]] || { printf 'unknown\n'; return; }
+    location="${value#vault://}"; field="${location##*#}"; location="${location%#*}"
+    [[ "$location" != "$field" && "$location" == */* && "$field" =~ ^[a-zA-Z0-9_.-]+$ && "$location" =~ ^[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)+$ ]] || { printf 'unknown\n'; return; }
+    IFS=/ read -r -a components <<< "$location"
+    components+=("$field")
+    for component in "${components[@]}"; do
+        if [[ "$component" == . || "$component" == .. ]] || services_setup_is_placeholder_secret "$component"; then
+            printf 'unknown\n'; return
+        fi
+    done
+    printf 'vault_backed\n'
 }
 
 json_file_has_usable_jq_value() {
@@ -752,7 +771,8 @@ services_setup_credential_file_state() {
     (( BASH_REMATCH[1] <= 1048576 )) || { printf 'unknown\n'; return; }
     if [[ "$expression" == plaintext ]]; then
         candidate="$contents"
-        if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'
+        if [[ "$(services_setup_normalize_config_value "$candidate")" == [vV][aA][uU][lL][tT]://* ]]; then services_setup_vault_reference_state "$candidate"
+        elif services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'
         elif services_setup_is_placeholder_secret "$candidate"; then printf 'placeholder\n'
         else printf 'missing\n'; fi
         return
@@ -778,7 +798,9 @@ services_setup_credential_file_state() {
               elif $expiry < 0 or $expiry > 253402300799999 or ($expiry | floor) != $expiry then "invalid"
               elif $expiry <= (now * 1000) then "expired" else "not_expired" end
         ' 2>/dev/null)" || { printf 'unknown\n'; return; }
-        if services_setup_has_usable_secret "$access"; then
+        if [[ "$(services_setup_normalize_config_value "$access")" == [vV][aA][uU][lL][tT]://* ]]; then
+            services_setup_vault_reference_state "$access"
+        elif services_setup_has_usable_secret "$access"; then
             case "$expiration" in
                 invalid) printf 'unknown\n' ;;
                 expired) printf 'expired\n' ;;
@@ -786,6 +808,8 @@ services_setup_credential_file_state() {
             esac
         elif services_setup_is_placeholder_secret "$access"; then
             printf 'placeholder\n'
+        elif [[ "$(services_setup_normalize_config_value "$refresh")" == [vV][aA][uU][lL][tT]://* ]]; then
+            services_setup_vault_reference_state "$refresh"
         elif services_setup_has_usable_secret "$refresh"; then
             if [[ "$expiration" == invalid ]]; then printf 'unknown\n'; else printf 'refresh_required\n'; fi
         elif services_setup_is_placeholder_secret "$refresh"; then
@@ -797,6 +821,7 @@ services_setup_credential_file_state() {
     fi
     values="$(printf '%s' "$contents" | "$jq_bin" -r "$expression" 2>/dev/null)" || { printf 'unknown\n'; return; }
     while IFS= read -r candidate; do
+        if [[ "$(services_setup_normalize_config_value "$candidate")" == [vV][aA][uU][lL][tT]://* ]]; then services_setup_vault_reference_state "$candidate"; return; fi
         if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'; return; fi
         if services_setup_is_placeholder_secret "$candidate"; then placeholder=true; fi
     done <<< "$values"
@@ -807,7 +832,7 @@ services_setup_credential_status_json() (
     # A subshell preserves the caller's tracing options without tracing values.
     set +x
     local jq_bin="" service="" env_name="" value="" state="" source=""
-    local requirement="" file_state="" required="" i=0 unmet=0
+    local requirement="" file_state="" required="" vault_env="" codex_home="" i=0 unmet=0
     local -a services=(claude codex gemini vercel supabase wrangler) env_names=() candidates=() records=()
     jq_bin="$(services_setup_system_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
@@ -817,7 +842,11 @@ services_setup_credential_status_json() (
     for service in "${services[@]}"; do
         case "$service" in
             claude) env_names=(ANTHROPIC_API_KEY); candidates=("$TARGET_HOME/.claude/.credentials.json" '' claude) ;;
-            codex) env_names=(OPENAI_API_KEY); candidates=("$TARGET_HOME/.codex/auth.json" '[.tokens.access_token, .access_token, .accessToken, .OPENAI_API_KEY] | .[]? | strings' none) ;;
+            codex)
+                env_names=(OPENAI_API_KEY)
+                codex_home="${CODEX_HOME:-$TARGET_HOME/.codex}"
+                candidates=("$codex_home/auth.json" '[.tokens.access_token, .access_token, .accessToken, .OPENAI_API_KEY] | .[]? | strings' none)
+                ;;
             gemini) env_names=(GEMINI_API_KEY GOOGLE_API_KEY); candidates=("$TARGET_HOME/.gemini/oauth_creds.json" '' gemini) ;;
             vercel) env_names=(VERCEL_TOKEN); candidates=("$TARGET_HOME/.config/vercel/auth.json" '.token // empty | strings' none "$TARGET_HOME/.vercel/auth.json" '.token // empty | strings' none) ;;
             supabase) env_names=(SUPABASE_ACCESS_TOKEN); candidates=("$TARGET_HOME/.supabase/access-token" plaintext none "$TARGET_HOME/.config/supabase/access-token" plaintext none) ;;
@@ -831,9 +860,17 @@ services_setup_credential_status_json() (
             value="${!env_name-}"
             [[ -n "${value//[[:space:]]/}" ]] || continue
             source=environment
-            if services_setup_has_usable_secret "$value"; then state=shell_configured; else state=placeholder; fi
+            if [[ "$(services_setup_normalize_config_value "$value")" == [vV][aA][uU][lL][tT]://* ]]; then
+                state="$(services_setup_vault_reference_state "$value")"; source=vault
+            elif services_setup_has_usable_secret "$value"; then state=shell_configured; else state=placeholder; fi
             break
         done
+        if [[ "$source" == none ]]; then
+            vault_env="ACFS_${service^^}_VAULT_REF"; value="${!vault_env-}"
+            if [[ -n "${value//[[:space:]]/}" ]]; then
+                state="$(services_setup_vault_reference_state "$value")"; source=vault
+            fi
+        fi
         if [[ "$source" == none ]]; then
             for ((i = 0; i < ${#candidates[@]}; i += 3)); do
                 file_state="$(services_setup_credential_file_state "${candidates[i]}" "${candidates[i+1]}" "$jq_bin" "${candidates[i+2]}")"
@@ -841,12 +878,13 @@ services_setup_credential_status_json() (
                 if [[ "$state" == missing && "$file_state" != missing ]]; then state="$file_state"; source="file"; fi
             done
         fi
+        [[ "$state" != vault_backed ]] || source=vault
         value=""
         if [[ "$requirement" == required && "$state" != shell_configured && "$state" != file_configured ]]; then
             unmet=$((unmet + 1))
         fi
         records+=("$("$jq_bin" -cn --arg service "$service" --arg state "$state" --arg source "$source" --arg requirement "$requirement" \
-            '{service:$service,state:$state,source:$source,requirement:$requirement,authentication:"unverified",remediation:(if $state == "placeholder" then "replace_or_unset_placeholder" elif $state == "unknown" then "inspect_local_config" elif $state == "expired" or $state == "refresh_required" then "refresh_or_reauthenticate" elif $state == "missing" then "configure_when_needed" else "validate_before_use" end)}')")
+            '{service:$service,state:$state,source:$source,requirement:$requirement,authentication:"unverified",remediation:(if $state == "placeholder" then "replace_or_unset_placeholder" elif $state == "unknown" then "inspect_local_config" elif $state == "vault_backed" then "resolve_vault_reference" elif $state == "expired" or $state == "refresh_required" then "refresh_or_reauthenticate" elif $state == "missing" then "configure_when_needed" else "validate_before_use" end)}')")
     done
     printf '%s\n' "${records[@]}" | "$jq_bin" -s --argjson unmet "$unmet" \
         '{schema_version:1,kind:"acfs.credential_status",status:(if $unmet > 0 then "warn" else "pass" end),read_only:true,services:.,summary:{required_unmet:$unmet},safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false}}'

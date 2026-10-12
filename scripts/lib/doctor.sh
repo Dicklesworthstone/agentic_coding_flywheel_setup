@@ -2789,10 +2789,10 @@ check_credential_sources() {
                     (.services | type) == "array" and (.services | length) == 6)
                 | select(([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"])
                 | select(all(.services[];
-                    (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","unknown"])) and
-                    (.source | member(["none","environment","file"])) and
+                    (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","vault_backed","unknown"])) and
+                    (.source | member(["none","environment","file","vault"])) and
                     .requirement == "optional" and .authentication == "unverified" and
-                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate"]))))
+                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate","resolve_vault_reference"]))))
                 | .services[] | [.service,.state,.source,.remediation] | @tsv
             ' 2>/dev/null
         )"; then
@@ -2809,6 +2809,7 @@ check_credential_sources() {
             placeholder) status=warn; guidance="replace or unset the placeholder before using this service" ;;
             unknown) status=warn; guidance="inspect local credential config; storage status is unknown" ;;
             expired|refresh_required) status=warn; guidance="use the provider CLI to refresh or sign in again; stored refresh tokens are unverified" ;;
+            vault_backed) status=warn; guidance="resolve the declared Vault reference into the provider environment or credential file, then validate before use" ;;
             *) status=pass; guidance="stored candidate found; validate authentication before use" ;;
         esac
         check "credential.source.$service" "$service credential source: $state ($source; authentication unverified)" "$status" \

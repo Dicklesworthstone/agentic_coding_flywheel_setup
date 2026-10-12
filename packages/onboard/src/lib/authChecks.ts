@@ -4,8 +4,56 @@ import * as os from "os";
 import * as path from "path";
 
 export interface AuthStatus {
+  // True only after a successful provider check. Stored candidates use configured.
   authenticated: boolean;
+  configured?: boolean;
   details?: string;
+  credential?: CredentialMetadata;
+}
+
+export type CredentialService = "claude" | "codex" | "gemini" | "vercel" | "supabase" | "wrangler";
+export type CredentialState = "missing" | "placeholder" | "shell_configured" | "file_configured" |
+  "expired" | "refresh_required" | "vault_backed" | "unknown";
+export interface CredentialMetadata {
+  service: CredentialService;
+  state: CredentialState;
+  source: "none" | "environment" | "file" | "vault";
+  requirement: "optional" | "required";
+  authentication: "unverified";
+  remediation: "replace_or_unset_placeholder" | "inspect_local_config" | "configure_when_needed" |
+    "validate_before_use" | "refresh_or_reauthenticate" | "resolve_vault_reference";
+}
+export interface CredentialReport {
+  schema_version: 1;
+  kind: "acfs.credential_status";
+  status: "pass" | "warn";
+  read_only: true;
+  services: CredentialMetadata[];
+  summary: { required_unmet: number };
+  safety: { raw_secret_values_printed: false; files_mutated: false; provider_validation_performed: false };
+}
+
+const CREDENTIAL_SERVICES: readonly CredentialService[] = ["claude", "codex", "gemini", "vercel", "supabase", "wrangler"];
+const CREDENTIAL_BYTE_LIMIT = 1048576;
+
+function readCredentialSnapshot(filePath: string): string {
+  const descriptor = fs.openSync(filePath, "r");
+  try {
+    if (!fs.fstatSync(descriptor).isFile()) throw new Error("invalid credential file");
+    const bytes = Buffer.alloc(CREDENTIAL_BYTE_LIMIT + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const count = fs.readSync(descriptor, bytes, length, bytes.length - length, null);
+      if (count === 0) break;
+      length += count;
+    }
+    if (length > CREDENTIAL_BYTE_LIMIT || bytes.subarray(0, length).includes(0)) {
+      throw new Error("invalid credential bytes");
+    }
+    return bytes.subarray(0, length).toString("utf8");
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
 
 type ExecSync = (
@@ -20,6 +68,8 @@ interface AuthCheckDeps {
   homedir: () => string;
   env: NodeJS.ProcessEnv;
   commandExists: (command: string) => boolean;
+  readCredentialSnapshot: (filePath: string) => string;
+  now: () => number;
 }
 
 function isExecutable(filePath: string): boolean {
@@ -63,12 +113,16 @@ const defaultDeps: AuthCheckDeps = {
   homedir: os.homedir,
   env: process.env,
   commandExists: (command) => defaultCommandExists(process.env, command),
+  readCredentialSnapshot,
+  now: Date.now,
 };
 
 function safeReadJson<T>(readFileSync: typeof fs.readFileSync, filePath: string): T | null {
   try {
     const raw = readFileSync(filePath, "utf-8");
-    return JSON.parse(raw) as T;
+    if (Buffer.byteLength(raw, "utf8") > CREDENTIAL_BYTE_LIMIT || raw.includes("\0")) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return hasNulString(parsed) ? null : parsed as T;
   } catch {
     return null;
   }
@@ -159,7 +213,30 @@ function isPlaceholderSecret(value: unknown): boolean {
 }
 
 function hasUsableSecret(value: unknown): value is string {
-  return hasNonBlankString(value) && !isPlaceholderSecret(value);
+  return hasNonBlankString(value) && !value.includes("\0") &&
+    !normalizeConfigValue(value).toLowerCase().startsWith("vault://") && !isPlaceholderSecret(value);
+}
+
+function vaultReferenceState(raw: string): CredentialState {
+  const value = normalizeConfigValue(raw);
+  const match = value.match(/^vault:\/\/([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+)#([a-zA-Z0-9_.-]+)$/);
+  if (!match || value.length > 2048) return "unknown";
+  const components = [...match[1].split("/"), match[2]];
+  return components.some((part) => part === "." || part === ".." || isPlaceholderSecret(part)) ? "unknown" : "vault_backed";
+}
+
+function candidateState(candidate: string): CredentialState {
+  if (candidate.includes("\0")) return "unknown";
+  const normalized = normalizeConfigValue(candidate);
+  if (/^vault:\/\//i.test(normalized)) return vaultReferenceState(candidate);
+  if (hasUsableSecret(candidate)) return "file_configured";
+  return isPlaceholderSecret(candidate) ? "placeholder" : "missing";
+}
+
+function hasNulString(value: unknown): boolean {
+  if (typeof value === "string") return value.includes("\0");
+  if (Array.isArray(value)) return value.some(hasNulString);
+  return value !== null && typeof value === "object" && Object.values(value).some(hasNulString);
 }
 
 function escapeRegex(value: string): string {
@@ -217,11 +294,14 @@ function parseGitHubHostsEntry(contents: string): AuthStatus | null {
 
   const userMatch = block.match(/^[ \t]+user:\s*(["']?)([^"'\n#]+)\1\s*$/m);
   const username = userMatch?.[2]?.trim();
-  return username ? { authenticated: true, details: username } : { authenticated: true };
+  return username ? { authenticated: false, configured: true, details: username } : { authenticated: false, configured: true };
 }
 
 export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   const deps: AuthCheckDeps = { ...defaultDeps, ...overrides };
+  if (overrides.readFileSync && !overrides.readCredentialSnapshot) {
+    deps.readCredentialSnapshot = (filePath) => overrides.readFileSync!(filePath, "utf8");
+  }
   if (!overrides.commandExists) {
     deps.commandExists = (command: string) => defaultCommandExists(deps.env, command);
   }
@@ -234,6 +314,114 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   ];
   const antigravityHome =
     deps.env.ANTIGRAVITY_HOME ?? path.join(homedir, ".gemini", "antigravity-cli");
+
+  const credentialFileState = (filePath: string, format: CredentialService): CredentialState => {
+    if (!deps.existsSync(filePath)) return "missing";
+    try {
+      const contents = deps.readCredentialSnapshot(filePath);
+      if (contents.includes("\0") || Buffer.byteLength(contents, "utf8") > CREDENTIAL_BYTE_LIMIT) return "unknown";
+      if (!contents) return "missing";
+      if (format === "wrangler") return "unknown"; // OAuth TOML parsing is not claimed.
+      if (format === "supabase") return candidateState(contents);
+      const document: unknown = JSON.parse(contents);
+      if (!document || typeof document !== "object" || Array.isArray(document) || hasNulString(document)) return "unknown";
+      const object = document as Record<string, unknown>;
+      if (format === "claude" || format === "gemini") {
+        const oauth = format === "claude" ? object.claudeAiOauth : object;
+        if (oauth != null && (typeof oauth !== "object" || Array.isArray(oauth))) return "unknown";
+        const fields = (oauth ?? {}) as Record<string, unknown>;
+        const access = fields[format === "claude" ? "accessToken" : "access_token"];
+        const refresh = fields[format === "claude" ? "refreshToken" : "refresh_token"];
+        const expiry = fields[format === "claude" ? "expiresAt" : "expiry_date"];
+        if ((access != null && typeof access !== "string") || (refresh != null && typeof refresh !== "string")) return "unknown";
+        const accessState = candidateState((access ?? "") as string);
+        const refreshState = candidateState((refresh ?? "") as string);
+        const invalidExpiry = expiry != null && (typeof expiry !== "number" || !Number.isInteger(expiry) || expiry < 0 || expiry > 253402300799999);
+        if (accessState === "vault_backed" || accessState === "unknown") return accessState;
+        if (accessState === "file_configured") {
+          if (invalidExpiry) return "unknown";
+          return typeof expiry === "number" && expiry <= deps.now() ? "expired" : "file_configured";
+        }
+        if (accessState === "placeholder") return "placeholder";
+        if (refreshState === "vault_backed" || refreshState === "unknown") return refreshState;
+        if (refreshState === "file_configured") return invalidExpiry ? "unknown" : "refresh_required";
+        return refreshState;
+      }
+      let candidates: unknown[];
+      if (format === "codex") {
+        if (object.tokens != null && (typeof object.tokens !== "object" || Array.isArray(object.tokens))) return "unknown";
+        const tokens = object.tokens as Record<string, unknown> | null | undefined;
+        candidates = [tokens?.access_token, object.access_token, object.accessToken, object.OPENAI_API_KEY];
+      } else candidates = [object.token];
+      let placeholder = false;
+      for (const value of candidates) {
+        if (typeof value !== "string") continue;
+        const state = candidateState(value);
+        if (state === "file_configured" || state === "vault_backed" || state === "unknown") return state;
+        if (state === "placeholder") placeholder = true;
+      }
+      return placeholder ? "placeholder" : "missing";
+    } catch {
+      return "unknown";
+    }
+  };
+
+  const credentialMetadata = (service: CredentialService, required = false): CredentialMetadata => {
+    const envNames: Record<CredentialService, string[]> = {
+      claude: ["ANTHROPIC_API_KEY"], codex: ["OPENAI_API_KEY"], gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+      vercel: ["VERCEL_TOKEN"], supabase: ["SUPABASE_ACCESS_TOKEN"], wrangler: ["CLOUDFLARE_API_TOKEN"],
+    };
+    const files: Record<CredentialService, string[]> = {
+      claude: [path.join(homedir, ".claude", ".credentials.json")],
+      codex: [path.join(deps.env.CODEX_HOME || path.join(homedir, ".codex"), "auth.json")],
+      gemini: [path.join(homedir, ".gemini", "oauth_creds.json")],
+      vercel: [path.join(homedir, ".config", "vercel", "auth.json"), path.join(homedir, ".vercel", "auth.json")],
+      supabase: [path.join(homedir, ".supabase", "access-token"), path.join(homedir, ".config", "supabase", "access-token")],
+      wrangler: [path.join(homedir, ".config", ".wrangler", "config", "default.toml"), path.join(homedir, ".wrangler", "config", "default.toml")],
+    };
+    let state: CredentialState = "missing";
+    let source: CredentialMetadata["source"] = "none";
+    for (const name of envNames[service]) {
+      const value = deps.env[name];
+      if (!hasNonBlankString(value)) continue;
+      state = candidateState(value);
+      source = /^vault:\/\//i.test(normalizeConfigValue(value)) ? "vault" : "environment";
+      if (state === "file_configured") state = "shell_configured";
+      break;
+    }
+    const vaultRef = deps.env[`ACFS_${service.toUpperCase()}_VAULT_REF`];
+    if (source === "none" && hasNonBlankString(vaultRef)) {
+      state = vaultReferenceState(vaultRef); source = "vault";
+    }
+    if (source === "none") {
+      for (const file of files[service]) {
+        const fileState = credentialFileState(file, service);
+        if (fileState === "file_configured") { state = fileState; source = "file"; break; }
+        if (state === "missing" && fileState !== "missing") { state = fileState; source = "file"; }
+      }
+    }
+    if (state === "vault_backed") source = "vault";
+    const remediation: CredentialMetadata["remediation"] = state === "placeholder" ? "replace_or_unset_placeholder" :
+      state === "unknown" ? "inspect_local_config" : state === "vault_backed" ? "resolve_vault_reference" :
+      state === "expired" || state === "refresh_required" ? "refresh_or_reauthenticate" :
+      state === "missing" ? "configure_when_needed" : "validate_before_use";
+    return { service, state, source, requirement: required ? "required" : "optional", authentication: "unverified", remediation };
+  };
+
+  const getCredentialStatus = (required: readonly CredentialService[] = []): CredentialReport => {
+    if (required.some((service) => !CREDENTIAL_SERVICES.includes(service))) throw new Error("invalid credential requirement");
+    const services = CREDENTIAL_SERVICES.map((service) => credentialMetadata(service, required.includes(service)));
+    const required_unmet = services.filter((entry) => entry.requirement === "required" &&
+      entry.state !== "shell_configured" && entry.state !== "file_configured").length;
+    return { schema_version: 1, kind: "acfs.credential_status", status: required_unmet ? "warn" : "pass", read_only: true,
+      services, summary: { required_unmet }, safety: { raw_secret_values_printed: false, files_mutated: false, provider_validation_performed: false } };
+  };
+
+  const configuredStatus = (service: CredentialService): AuthStatus => {
+    const metadata = credentialMetadata(service);
+    return metadata.state === "shell_configured" || metadata.state === "file_configured" ?
+      { authenticated: false, configured: true } : { authenticated: false };
+  };
 
   const runCommand = (
     command: string,
@@ -313,12 +501,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       return { authenticated: false };
     }
 
-    const credentialsPath = path.join(homedir, ".claude", ".credentials.json");
-    const credentials = safeReadJson<{ claudeAiOauth?: { accessToken?: string } }>(
-      deps.readFileSync,
-      credentialsPath,
-    );
-    if (!hasUsableSecret(credentials?.claudeAiOauth?.accessToken)) {
+    const candidate = configuredStatus("claude");
+    if (!candidate.configured) {
       return { authenticated: false };
     }
 
@@ -331,11 +515,11 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (deps.existsSync(configPath)) {
         const config = safeReadJson<{ user?: { email?: string } }>(deps.readFileSync, configPath);
         if (hasNonBlankString(config?.user?.email)) {
-          return { authenticated: true, details: config?.user?.email.trim() };
+          return { ...candidate, details: config?.user?.email.trim() };
         }
       }
     }
-    return { authenticated: true };
+    return candidate;
   };
 
   const checkCodex = (): AuthStatus => {
@@ -343,29 +527,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       return { authenticated: false };
     }
 
-    const codexHome = deps.env.CODEX_HOME ?? path.join(homedir, ".codex");
-    const authPath = path.join(codexHome, "auth.json");
-    if (!deps.existsSync(authPath)) {
-      return { authenticated: false };
-    }
-    const auth = safeReadJson<{
-      tokens?: { access_token?: string };
-      access_token?: string;
-      accessToken?: string;
-      OPENAI_API_KEY?: string | null;
-    }>(deps.readFileSync, authPath);
-    if (
-      [
-        auth?.tokens?.access_token,
-        auth?.access_token,
-        auth?.accessToken,
-        auth?.OPENAI_API_KEY,
-      ].some(hasUsableSecret)
-    ) {
-      return { authenticated: true };
-    }
-    return { authenticated: false };
+    return configuredStatus("codex");
   };
+
+  const checkGemini = (): AuthStatus => deps.commandExists("gemini") ? configuredStatus("gemini") : { authenticated: false };
 
   const checkAntigravity = (): AuthStatus => {
     if (!deps.commandExists("agy")) {
@@ -379,7 +544,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     try {
       const token = deps.readFileSync(tokenPath, "utf-8");
       if (hasUsableSecret(token)) {
-        return { authenticated: true };
+        return { authenticated: false, configured: true };
       }
     } catch {
       return { authenticated: false };
@@ -410,9 +575,11 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkVercel = (): AuthStatus => {
+    const state = credentialMetadata("vercel").state;
+    if (state !== "missing" && state !== "file_configured" && state !== "shell_configured") return { authenticated: false };
     if (deps.commandExists("vercel")) {
       if (getConfiguredSecret("VERCEL_TOKEN", shellConfigPaths)) {
-        return { authenticated: true, details: "via VERCEL_TOKEN" };
+        return { authenticated: false, configured: true, details: "via VERCEL_TOKEN" };
       }
 
       const output = runCommand("vercel whoami");
@@ -435,9 +602,9 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       );
       if (hasUsableSecret(auth?.token)) {
         if (hasNonBlankString(auth?.user?.email)) {
-          return { authenticated: true, details: auth.user.email.trim() };
+          return { authenticated: false, configured: true, details: auth.user.email.trim() };
         }
-        return { authenticated: true };
+        return { authenticated: false, configured: true };
       }
       // File exists but contains no valid token - not authenticated
     }
@@ -445,8 +612,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkSupabase = (): AuthStatus => {
+    const state = credentialMetadata("supabase").state;
+    if (state !== "missing" && state !== "file_configured" && state !== "shell_configured") return { authenticated: false };
     if (getConfiguredSecret("SUPABASE_ACCESS_TOKEN", shellConfigPaths)) {
-      return { authenticated: true, details: "via SUPABASE_ACCESS_TOKEN" };
+      return { authenticated: false, configured: true, details: "via SUPABASE_ACCESS_TOKEN" };
     }
 
     const tokenPaths = [
@@ -460,7 +629,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       try {
         const token = deps.readFileSync(tokenPath, "utf-8").trim();
         if (hasUsableSecret(token)) {
-          return { authenticated: true };
+          return { authenticated: false, configured: true };
         }
       } catch {}
     }
@@ -470,8 +639,12 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkWrangler = (): AuthStatus => {
+    const state = credentialMetadata("wrangler").state;
+    // Unsupported cached TOML remains unknown; live whoami may validate it.
+    if (state === "vault_backed" || state === "placeholder" || (state === "unknown" &&
+      (hasNonBlankString(deps.env.CLOUDFLARE_API_TOKEN) || hasNonBlankString(deps.env.ACFS_WRANGLER_VAULT_REF)))) return { authenticated: false };
     if (getConfiguredSecret("CLOUDFLARE_API_TOKEN", shellConfigPaths)) {
-      return { authenticated: true, details: "via CLOUDFLARE_API_TOKEN" };
+      return { authenticated: false, configured: true, details: "via CLOUDFLARE_API_TOKEN" };
     }
     if (deps.commandExists("wrangler")) {
       const output = runCommand("wrangler whoami");
@@ -494,6 +667,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     tailscale: checkTailscale,
     "claude-code": checkClaude,
     "codex-cli": checkCodex,
+    "gemini-cli": checkGemini,
     "antigravity-cli": checkAntigravity,
     github: checkGitHub,
     vercel: checkVercel,
@@ -510,6 +684,11 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
         results[id] = { authenticated: false };
       }
     }
+    const ids: Record<CredentialService, string> = { claude: "claude-code", codex: "codex-cli", gemini: "gemini-cli",
+      vercel: "vercel", supabase: "supabase", wrangler: "cloudflare" };
+    for (const credential of getCredentialStatus().services) {
+      results[ids[credential.service]].credential = credential;
+    }
     return results;
   };
 
@@ -517,6 +696,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     checkTailscale,
     checkClaude,
     checkCodex,
+    checkGemini,
     checkAntigravity,
     checkGitHub,
     checkVercel,
@@ -524,6 +704,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     checkWrangler,
     AUTH_CHECKS,
     checkAllServices,
+    getCredentialStatus,
   };
 }
 
@@ -531,6 +712,7 @@ const {
   checkTailscale,
   checkClaude,
   checkCodex,
+  checkGemini,
   checkAntigravity,
   checkGitHub,
   checkVercel,
@@ -538,6 +720,7 @@ const {
   checkWrangler,
   AUTH_CHECKS,
   checkAllServices,
+  getCredentialStatus,
 } = createAuthChecks();
 
 export {
@@ -546,9 +729,11 @@ export {
   checkAntigravity,
   checkClaude,
   checkCodex,
+  checkGemini,
   checkGitHub,
   checkSupabase,
   checkTailscale,
   checkVercel,
   checkWrangler,
+  getCredentialStatus,
 };
