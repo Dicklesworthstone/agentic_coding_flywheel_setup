@@ -648,9 +648,10 @@ describe("passive credential lifecycle parity", () => {
   const repoRoot = path.resolve(import.meta.dir, "../../../../..");
   const vaultRef = "vault://secret/fixture-private-path#fixture-private-field";
   const knownEnv = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "VERCEL_TOKEN",
-    "SUPABASE_ACCESS_TOKEN", "CLOUDFLARE_API_TOKEN", "CODEX_HOME", ...["CLAUDE", "CODEX", "GEMINI", "VERCEL", "SUPABASE", "WRANGLER"].map((id) => `ACFS_${id}_VAULT_REF`)];
+    "SUPABASE_ACCESS_TOKEN", "CLOUDFLARE_API_TOKEN", "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", ...["CLAUDE", "CODEX", "GEMINI", "VERCEL", "SUPABASE", "WRANGLER"].map((id) => `ACFS_${id}_VAULT_REF`)];
+  const jwt = (claims: unknown) => `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.fixture`;
   const scenarios: { name: string; file?: string; contents?: string; env?: NodeJS.ProcessEnv;
-    service: "claude" | "codex" | "gemini" | "vercel" | "supabase" | "wrangler"; state: string }[] = [
+    service: "claude" | "codex" | "gemini" | "vercel" | "supabase" | "wrangler"; state: string; additionalFiles?: Record<string, string> }[] = [
     { name: "optional missing", service: "claude", state: "missing" },
     { name: "empty credential file", service: "supabase", state: "missing", file: ".supabase/access-token", contents: "" },
     { name: "exported key", service: "claude", state: "shell_configured", env: { ANTHROPIC_API_KEY: "fixture-private-key" } },
@@ -669,8 +670,55 @@ describe("passive credential lifecycle parity", () => {
     { name: "cached Codex", service: "codex", state: "file_configured", file: ".codex/auth.json", contents: '{"tokens":{"access_token":"fixture-private-key"}}' },
     { name: "cached Vercel", service: "vercel", state: "file_configured", file: ".vercel/auth.json", contents: '{"token":"fixture-private-key"}' },
     { name: "plain Supabase", service: "supabase", state: "file_configured", file: ".supabase/access-token", contents: "fixture-private-key\n" },
-    { name: "unsupported Wrangler", service: "wrangler", state: "unknown", file: ".wrangler/config/default.toml", contents: 'oauth_token="fixture-private-key"' },
+    { name: "missing Wrangler expiry", service: "wrangler", state: "expired", file: ".wrangler/config/default.toml", contents: 'oauth_token="fixture-private-key"' },
+    ...[
+      { name: "expired", claims: { exp: 0 }, state: "expired" },
+      { name: "future", claims: { exp: 4102444800 }, state: "file_configured" },
+      { name: "absent", claims: {}, state: "file_configured" },
+      { name: "null", claims: { exp: null }, state: "file_configured" },
+      { name: "string", claims: { exp: "4102444800" }, state: "unknown" },
+      { name: "negative", claims: { exp: -1 }, state: "unknown" },
+      { name: "fraction", claims: { exp: 0.5 }, state: "unknown" },
+      { name: "oversized", claims: { exp: 253402300800 }, state: "unknown" },
+      { name: "boolean", claims: { exp: false }, state: "unknown" },
+      { name: "array", claims: [], state: "unknown" },
+      { name: "escaped NUL claim", claims: { exp: 4102444800, extra: "fixture\0key" }, state: "unknown" },
+    ].map(({ name, claims, state }) => ({ name: `Codex JWT ${name}`, service: "codex" as const, state,
+      file: ".codex/auth.json", contents: JSON.stringify({ tokens: { access_token: jwt(claims), refresh_token: "fixture-private-refresh" } }) })),
+    { name: "Codex refresh-only", service: "codex", state: "refresh_required", file: ".codex/auth.json", contents: '{"tokens":{"refresh_token":"fixture-private-key"}}' },
+    { name: "Codex wrong refresh type", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"tokens":{"refresh_token":false}}' },
+    { name: "Codex malformed JWT", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"tokens":{"access_token":"e30.!.fixture"}}' },
+    { name: "Codex embedded-LF JWT", service: "codex", state: "unknown", file: ".codex/auth.json", contents: JSON.stringify({ tokens: { access_token: `${jwt({exp:0})}\nfixture-private-key` } }) },
+    { name: "API key does not inherit JWT expiry", service: "codex", state: "file_configured", file: ".codex/auth.json", contents: JSON.stringify({ OPENAI_API_KEY: jwt({ exp: 0 }) }) },
+    ...[
+      { expiry: 0, state: "expired" }, { expiry: 4102444800, state: "file_configured" },
+      { expiry: "4102444800", state: "unknown" }, { expiry: 0.5, state: "unknown" },
+      { expiry: -1, state: "unknown" }, { expiry: 253402300800, state: "unknown" },
+      { expiry: false, state: "unknown" }, { expiry: null, state: "file_configured" },
+    ].map(({ expiry, state }) => ({ name: `Vercel expiry ${String(expiry)}`, service: "vercel" as const, state,
+      file: ".vercel/auth.json", contents: JSON.stringify({ token: "fixture-private-key", expiresAt: expiry }) })),
+    { name: "Vercel refresh-only", service: "vercel", state: "refresh_required", file: ".vercel/auth.json", contents: '{"refreshToken":"fixture-private-key"}' },
+    { name: "current expired file shadows older Vercel token", service: "vercel", state: "expired", file: ".config/vercel/auth.json", contents: '{"token":"fixture-private-key","expiresAt":0}', additionalFiles: { ".vercel/auth.json": '{"token":"fixture-private-older-key"}' } },
+    { name: "current Vercel native data directory", service: "vercel", state: "expired", file: process.platform === "darwin" ? "Library/Application Support/com.vercel.cli/auth.json" : ".local/share/com.vercel.cli/auth.json", contents: '{"token":"fixture-private-key","expiresAt":0}' },
+    ...[
+      { name: "expired", time: '"2000-01-01T00:00:00Z"', state: "expired" },
+      { name: "future", time: '"2100-01-01T00:00:00.123Z"', state: "file_configured" },
+      { name: "offset", time: '"2100-01-01T02:00:00+02:00"', state: "file_configured" },
+      { name: "invalid calendar", time: '"2100-02-30T00:00:00Z"', state: "unknown" },
+      { name: "invalid offset", time: '"2100-01-01T00:00:00+99:00"', state: "unknown" },
+      { name: "overflowing offset minutes", time: '"2100-01-01T00:00:00+00:99"', state: "unknown" },
+      { name: "native TOML timestamp", time: "2100-01-01T00:00:00Z", state: "unknown" },
+      { name: "boolean", time: "false", state: "unknown" },
+      { name: "numeric", time: "4102444800", state: "unknown" },
+    ].map(({ name, time, state }) => ({ name: `Wrangler expiry ${name}`, service: "wrangler" as const, state,
+      file: ".wrangler/config/default.toml", contents: `oauth_token = "fixture-private-key"\nrefresh_token = "fixture-private-refresh"\nexpiration_time = ${time}\nscopes = ["account:read"]\n` })),
+    { name: "Wrangler refresh-only", service: "wrangler", state: "refresh_required", file: ".wrangler/config/default.toml", contents: 'refresh_token = "fixture-private-key"' },
+    { name: "Wrangler duplicate TOML key", service: "wrangler", state: "unknown", file: ".wrangler/config/default.toml", contents: 'oauth_token="fixture-private-key"\noauth_token="fixture-private-other"' },
+    { name: "Wrangler deprecated API token", service: "wrangler", state: "unknown", file: ".wrangler/config/default.toml", contents: 'api_token="fixture-private-key"' },
+    { name: "Wrangler escaped NUL", service: "wrangler", state: "unknown", file: ".wrangler/config/default.toml", contents: 'oauth_token="fixture-private\\u0000key"' },
     { name: "multiple JSON documents", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"access_token":"fixture-private-key"}\n{}' },
+    { name: "null credential document", service: "codex", state: "unknown", file: ".codex/auth.json", contents: 'null' },
+    { name: "array credential document", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '[]' },
     { name: "raw NUL", service: "codex", state: "unknown", file: ".codex/auth.json", contents: '{"access_token":"fixture-private-key"}\0' },
     { name: "escaped NUL", service: "vercel", state: "unknown", file: ".vercel/auth.json", contents: '{"token":"fixture-private\\u0000-key"}' },
     { name: "oversized newlines", service: "supabase", state: "unknown", file: ".supabase/access-token", contents: "\n".repeat(1048577) },
@@ -698,6 +746,12 @@ describe("passive credential lifecycle parity", () => {
       if (!file.startsWith(`${home}${path.sep}`)) throw new Error("fixture path escapes temporary home");
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
       await fs.promises.writeFile(file, scenario.contents!);
+    }
+    for (const [relative, contents] of Object.entries(scenario.additionalFiles ?? {})) {
+      const file = path.resolve(home, relative);
+      if (!file.startsWith(`${home}${path.sep}`)) throw new Error("fixture path escapes temporary home");
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(file, contents);
     }
     let invoked = false;
     const checks = createAuthChecks({ homedir: () => home, env, execSync: () => { invoked = true; throw new Error("provider invocation forbidden"); } });
@@ -770,5 +824,28 @@ describe("passive credential lifecycle parity", () => {
     await fs.promises.mkdir(path.join(home, ".supabase", "access-token"), { recursive: true });
     const checks = createAuthChecks({ homedir: () => home, env: {} });
     expect(checks.getCredentialStatus(["supabase"]).services.find((entry) => entry.service === "supabase")?.state).toBe("missing");
+  });
+
+  test("valid Wrangler file is configured without invoking whoami", async () => {
+    const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-wrangler-ready-"));
+    const file = path.join(home, ".wrangler", "config", "default.toml");
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(file, 'oauth_token="fixture-private-key"\nexpiration_time="2100-01-01T00:00:00Z"');
+    let invoked = false;
+    const checks = createAuthChecks({ homedir: () => home, env: {}, commandExists: () => true,
+      execSync: () => { invoked = true; throw new Error("provider invocation forbidden"); } });
+    expect(checks.checkWrangler()).toEqual({ authenticated: false, configured: true });
+    expect(invoked).toBe(false);
+  });
+
+  test("Wrangler parser failure remains unknown and cannot meet requirements", () => {
+    const file = path.join(HOME, ".wrangler", "config", "default.toml");
+    const checks = createAuthChecks(makeDeps({ directoryExists: () => true,
+      ...fixtureFiles([[file, 'oauth_token="fixture-private-key"']]),
+      parseWranglerCredentials: () => { throw new Error("parser unavailable"); } }));
+    const report = checks.getCredentialStatus(["wrangler"]);
+    expect(report.services.find((entry) => entry.service === "wrangler")?.state).toBe("unknown");
+    expect(report.summary.required_unmet).toBe(1);
+    expect(JSON.stringify(report)).not.toContain("fixture-private");
   });
 });

@@ -4489,7 +4489,20 @@ By default, sensitive data is automatically redacted:
 | Passwords | `"password": "..."` | `"password": "<REDACTED:password>"` |
 | Private key blocks | `-----BEGIN ... PRIVATE KEY-----` | `<REDACTED:private_key>` |
 
-### Offline credential source checks
+### Credential lifecycle guide
+
+Start by choosing which providers your project needs. ACFS installs tools without
+requiring credentials for every service. A missing optional credential is normal;
+make a provider required only when your workflow will use it. Keep API keys,
+OAuth access tokens and refresh tokens in a secret store or the provider's own
+credential storage. Never paste them into commits, support logs, chat or command
+arguments.
+
+Follow this sequence: **inspect → configure → validate → refresh or rotate**.
+The passive checks below cover inspect/configure readiness. Provider acceptance
+and permissions require a separate live check.
+
+#### Inspect readiness and declare requirements
 
 Inspect local credential metadata without running login, `whoami`, setup steps
 or provider requests:
@@ -4511,8 +4524,8 @@ States distinguish `missing`, `placeholder`, `shell_configured`, `file_configure
 `expired`, `refresh_required`, `vault_backed` and `unknown`. An environment placeholder takes
 precedence over a cached file
 so a shadowing export stays visible. Malformed JSON or credential shapes,
-unreadable or oversized files (over 1 MiB), and the
-currently unsupported Wrangler OAuth TOML format report `unknown`. Every entry
+unreadable or oversized files (over 1 MiB), invalid TOML and invalid expiry
+metadata report `unknown`. Every entry
 explicitly marks authentication `unverified`; a future expiry does not prove a
 token is accepted or has the permissions your project needs.
 
@@ -4526,13 +4539,117 @@ credential file. Refresh-token presence does not prove refreshability.
 Doctor marks both states as warnings. Onboarding keeps these installed services
 in its attention list and excludes them from the configured-service count.
 
-Absent or null expiry preserves an unverified stored candidate. Present expiry
+For JSON credential files, absent or null expiry preserves an unverified stored
+candidate. Present expiry
 must be a nonnegative integral number no later than year 9999; strings, negative
 values, fractions and oversized numbers report `unknown` for stored candidates.
 Placeholder access tokens remain placeholders. Exported API keys keep their
-environment precedence; no expiry is inferred from token strings, JWT claims,
-other providers or Vault. `--require` cannot pass on expired or refresh-only
-credentials. Other provider expiry formats remain part of the broader lifecycle work.
+environment precedence. `--require` cannot pass on expired or refresh-only
+credentials. The same lifecycle states reach normal service setup, doctor,
+support bundles and onboarding.
+
+| Provider / credential | Local expiry evidence | Meaning and recovery |
+|---|---|---|
+| Claude OAuth | `claudeAiOauth.expiresAt`, epoch milliseconds | Past: `expired`; refresh-only: `refresh_required`; use Claude's sign-in/refresh flow |
+| Codex OAuth | Unverified JWT payload `exp`, epoch seconds, from the stored access token | Past: `expired`; refresh-only: `refresh_required`; use Codex's auth flow; `last_refresh` is not an expiry |
+| Gemini OAuth | `expiry_date`, epoch milliseconds | Past: `expired`; refresh-only: `refresh_required`; use Gemini's sign-in/refresh flow |
+| Vercel OAuth | `expiresAt`, epoch **seconds**, with `token` and `refreshToken` | Past: `expired`; refresh-only: `refresh_required`; run Vercel's auth flow |
+| Wrangler OAuth | TOML `oauth_token`, `refresh_token`, RFC3339 string `expiration_time` | Past or absent OAuth expiry: `expired`, matching Wrangler; refresh-only: `refresh_required` |
+| Supabase PAT and exported API keys | No reliable local expiry field | Storage remains unverified; the provider decides validity, expiry and permissions |
+| Vault reference | Declared source, without fetching the value | `vault_backed`; resolve through your approved Vault workflow before validation |
+
+JWT inspection checks the payload's syntax and bounded integral expiry. It does
+**not** verify the signature, issuer, audience or permissions. A future or absent
+claim is not proof of authentication. API-key fields do not inherit expiry from
+JWT-looking text. Invalid claims remain `unknown`; private claims never appear
+in reports. Wrangler uses Python 3.11+ `tomllib` in an isolated, local stdin-only
+parser. If that parser is unavailable, the state remains `unknown`; ACFS does not
+install a parser or evaluate the TOML as shell code. Duplicate keys and malformed
+calendar/offset values are rejected. Wrangler v1's retired file `api_token` is
+`unknown`; migrate it to the current provider-supported environment workflow.
+
+Current Vercel file storage is checked in its application-data directory
+(`~/.local/share/com.vercel.cli` on Linux, honoring absolute `XDG_DATA_HOME`, or
+`~/Library/Application Support/com.vercel.cli` on macOS), then the existing ACFS
+and legacy credential locations. Codex honors `CODEX_HOME`. The first nonmissing
+file state wins: an expired or malformed current file is not hidden by an older
+stored token. Keyring-only credentials and custom provider `--global-config`
+locations may be invisible to passive checks; that does not mean you are logged
+out. Use a provider check in the exact project/account context.
+Wrangler prefers an existing `~/.wrangler` directory; otherwise it uses
+`$XDG_CONFIG_HOME/.wrangler`, defaulting to `~/.config/.wrangler` on Linux or
+`~/Library/Preferences/.wrangler` on macOS. `missing` describes the inspected
+environment and files, not every provider's native credential store.
+
+#### Configure the credential your project actually needs
+
+| Provider | Interactive setup | Headless / CI setup |
+|---|---|---|
+| Claude | `claude auth login`, or follow onboarding's Claude login prompt | Inject `ANTHROPIC_API_KEY` through your secret manager |
+| Codex | `codex login`; `codex login --device-auth` on a headless host | Use your approved API-key workflow; feed an existing `OPENAI_API_KEY` to `codex login --with-api-key` over stdin if persisting it is intended |
+| Gemini | Launch Gemini and choose its Google sign-in flow | Inject `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| Vercel | `vercel login` | Inject `VERCEL_TOKEN` |
+| Supabase | `supabase login` | Inject `SUPABASE_ACCESS_TOKEN` |
+| Cloudflare | `wrangler login` | Inject `CLOUDFLARE_API_TOKEN` with only the needed account/resource permissions |
+
+For interactive setup, run `acfs services-setup`, or run `onboard` and choose its
+service-authentication menu. Re-run the passive report afterward. A provider-rejected export can
+shadow a fresh file; a placeholder export always shadows the cached credential.
+Unset the shadowing variable in the current shell if file authentication is
+intended. Update its secret-manager/CI/startup-file source too, so a new shell
+does not restore the obsolete value. Startup files are parsed as text by ACFS,
+never sourced to discover secrets.
+
+For CI, inject secrets into the job environment, request only the providers the
+job needs, and run the passive `--require` check before deployment. Then perform
+the relevant live permission check. An exit0 presence check cannot prove that a
+token can deploy, administer a database or access a particular account.
+
+#### Validate provider acceptance separately
+
+| Provider | Useful check | What it proves / limits |
+|---|---|---|
+| Claude | `claude auth status`, then a provider-approved account/profile check | CLI status can be local only; account acceptance needs an actual provider response |
+| Codex | `codex login status`, then an account/usage check for OAuth or the OpenAI models-list API for an API key | Login status alone is local; no model request is needed for an auth probe |
+| Gemini | Google account/userinfo for OAuth, or Gemini models-list API for a key | Confirms that endpoint's access, not quota or permissions for every model |
+| Vercel | `vercel whoami` or Vercel's current-user API | Confirms the selected account; project/team authorization may still differ |
+| Supabase | `supabase projects list` or Management API projects-list | Confirms the token's permitted project listing, not database or migration permission |
+| Cloudflare | `wrangler whoami`, or token verification / permitted account listing | Token-active status and account/resource permissions are distinct |
+
+Provider CLIs may refresh OAuth credentials or write their own caches during
+these checks. Use direct, bounded **GET** requests to a fixed official endpoint
+when credential files must stay unchanged. Keep credentials in request headers
+in memory; do not put them in URLs or process arguments. Do not follow redirects
+with an authorization header. Retain only provider/probe names, HTTP status and
+fixed outcome categories. Discard response bodies containing account IDs,
+emails, project names, tokens or quota details. Do not use a paid model request
+as a login test.
+
+A 401 is authentication rejection for that endpoint. A 403 can mean missing
+scope, account restrictions or a network/security layer; it does not establish
+that a token expired. DNS/TLS/timeout errors establish no auth conclusion. A
+successful account-list response does not prove deployment permission. Record
+the endpoint, context and observed result separately from passive source state.
+
+#### Refresh, reauthenticate, rotate and revoke
+
+- For `expired` or `refresh_required`, let the provider CLI perform its supported
+  refresh/sign-in flow. ACFS's passive checks never send refresh requests.
+  Refresh-token presence does not prove that refresh will succeed. If refresh
+  is rejected, sign in again; do not repeatedly retry a revoked/reused token.
+- For `placeholder`, replace or unset the source before using the service.
+  For `unknown`, inspect the local format/permissions and parser availability
+  privately; do not paste the credential file into support.
+- For API-key/PAT rotation, create a least-privilege replacement through the
+  provider, update the secret store and each job/environment that consumes it,
+  validate the required operation, then revoke the old credential. Test existing
+  sessions and new shells so a stale export cannot keep the old key active.
+- If a credential was exposed, use the provider's incident/revocation process.
+  Removing a value from a working tree does not revoke it or erase Git history.
+  Coordinate cleanup explicitly rather than deleting files or rewriting history
+  as an automatic ACFS remediation.
+
+#### Vault-backed credentials
 
 Declare unresolved Vault provenance with `ACFS_<SERVICE>_VAULT_REF`, where
 `SERVICE` is `CLAUDE`, `CODEX`, `GEMINI`, `VERCEL`, `SUPABASE` or `WRANGLER`:

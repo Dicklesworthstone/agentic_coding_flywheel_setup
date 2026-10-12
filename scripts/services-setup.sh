@@ -741,6 +741,62 @@ file_has_usable_secret() {
     services_setup_has_usable_secret "$value"
 }
 
+# Parse the actual TOML document, not shell assignments or partial regexes.
+# Python's isolated stdlib parser reads only stdin; tokens never enter argv.
+services_setup_wrangler_credentials_json() {
+    local python_bin=""
+    local candidate=""
+    for candidate in /usr/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
+        if [[ -f "$candidate" && -x "$candidate" ]] && "$candidate" -I -c 'import tomllib' >/dev/null 2>&1; then
+            python_bin="$candidate"; break
+        fi
+    done
+    [[ -n "$python_bin" ]] || return 1
+    "$python_bin" -I -c '
+import datetime, json, re, sys, tomllib
+data = tomllib.loads(sys.stdin.read())
+def reject_nul(value):
+    if isinstance(value, str) and "\x00" in value:
+        raise ValueError("invalid credential bytes")
+    if isinstance(value, dict):
+        for item in value.values(): reject_nul(item)
+    if isinstance(value, list):
+        for item in value: reject_nul(item)
+reject_nul(data)
+expiry = data.get("expiration_time")
+stamp = 0
+if expiry is not None:
+    stamp = "invalid"
+    if isinstance(expiry, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", expiry):
+        try:
+            parsed = datetime.datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+            stamp = int(parsed.timestamp() * 1000)
+        except (ValueError, OverflowError):
+            pass
+print(json.dumps({"oauth_token":data.get("oauth_token"), "refresh_token":data.get("refresh_token"), "expiresAt":stamp, "api_token":data.get("api_token")}))
+' 2>/dev/null
+}
+
+# JWT payload expiry is unverified local metadata, never signature/auth proof.
+services_setup_jwt_expiry() {
+    local candidate="$1" jq_bin="$2"
+    printf '%s' "$candidate" | "$jq_bin" -Rsr '
+        split(".") as $parts
+        | if ($parts | length) != 3 then "unknown"
+          elif any($parts[]; length == 0 or (test("^[A-Za-z0-9_-]+$") | not)) then "invalid"
+          else ($parts[1] | gsub("-";"+") | gsub("_";"/") | @base64d) as $payload
+          | ($payload | @base64 | gsub("=+$";"") | gsub("\\+";"-") | gsub("/";"_")) as $encoded
+          | if $encoded != $parts[1] then "invalid" else ($payload | fromjson) as $claims
+          | if ($claims | type) != "object" or any($claims | .. | strings; contains("\u0000")) then "invalid"
+            elif $claims.exp == null then "unknown"
+            elif ($claims.exp | type) != "number" then "invalid"
+            elif $claims.exp < 0 or $claims.exp > 253402300799 or ($claims.exp | floor) != $claims.exp then "invalid"
+            elif $claims.exp <= now then "expired" else "not_expired" end
+          end
+          end
+    ' 2>/dev/null
+}
+
 # Emit metadata only. These states describe stored candidate credentials;
 # they never assert that a provider accepts them or that OAuth can refresh.
 services_setup_credential_file_state() {
@@ -769,6 +825,9 @@ services_setup_credential_file_state() {
     size="$(printf '%s' "$contents" | "$wc_bin" -c)" || { printf 'unknown\n'; return; }
     [[ "$size" =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]] || { printf 'unknown\n'; return; }
     (( BASH_REMATCH[1] <= 1048576 )) || { printf 'unknown\n'; return; }
+    if [[ "$oauth_format" == wrangler ]]; then
+        contents="$(printf '%s' "$contents" | services_setup_wrangler_credentials_json)" || { printf 'unknown\n'; return; }
+    fi
     if [[ "$expression" == plaintext ]]; then
         candidate="$contents"
         if [[ "$(services_setup_normalize_config_value "$candidate")" == [vV][aA][uU][lL][tT]://* ]]; then services_setup_vault_reference_state "$candidate"
@@ -779,24 +838,29 @@ services_setup_credential_file_state() {
     fi
     printf '%s' "$contents" | "$jq_bin" -es 'length == 1 and (.[0] | type == "object") and
         all(.[0] | .. | strings; contains("\u0000") | not)' >/dev/null 2>&1 || { printf 'unknown\n'; return; }
-    if [[ "$oauth_format" == claude || "$oauth_format" == gemini ]]; then
+    if [[ "$oauth_format" == claude || "$oauth_format" == gemini || "$oauth_format" == vercel || "$oauth_format" == wrangler ]]; then
         # Read fields from the same captured JSON snapshot. Millisecond expiry
         # metadata is passive evidence only; refresh token presence proves no
         # provider acceptance or refreshability. Never print either token.
         access="$(printf '%s' "$contents" | "$jq_bin" -r --arg format "$oauth_format" '
-            if $format == "claude" then .claudeAiOauth.accessToken else .access_token end
+            if $format == "claude" then .claudeAiOauth.accessToken
+            elif $format == "vercel" then .token
+            elif $format == "wrangler" then .oauth_token else .access_token end
             | if . == null then "" elif type == "string" then . else error("invalid token type") end
         ' 2>/dev/null)" || { printf 'unknown\n'; return; }
         refresh="$(printf '%s' "$contents" | "$jq_bin" -r --arg format "$oauth_format" '
-            if $format == "claude" then .claudeAiOauth.refreshToken else .refresh_token end
+            if $format == "claude" then .claudeAiOauth.refreshToken
+            elif $format == "vercel" then .refreshToken else .refresh_token end
             | if . == null then "" elif type == "string" then . else error("invalid token type") end
         ' 2>/dev/null)" || { printf 'unknown\n'; return; }
         expiration="$(printf '%s' "$contents" | "$jq_bin" -r --arg format "$oauth_format" '
-            (if $format == "claude" then .claudeAiOauth.expiresAt else .expiry_date end) as $expiry
+            (if $format == "claude" then .claudeAiOauth.expiresAt
+             elif $format == "vercel" or $format == "wrangler" then .expiresAt else .expiry_date end) as $expiry
+            | (if $format == "vercel" then 1 else 1000 end) as $scale
             | if $expiry == null then "unknown"
               elif ($expiry | type) != "number" then "invalid"
-              elif $expiry < 0 or $expiry > 253402300799999 or ($expiry | floor) != $expiry then "invalid"
-              elif $expiry <= (now * 1000) then "expired" else "not_expired" end
+              elif $expiry < 0 or $expiry > (253402300800 * $scale - 1) or ($expiry | floor) != $expiry then "invalid"
+              elif $expiry <= (now * $scale) then "expired" else "not_expired" end
         ' 2>/dev/null)" || { printf 'unknown\n'; return; }
         if [[ "$(services_setup_normalize_config_value "$access")" == [vV][aA][uU][lL][tT]://* ]]; then
             services_setup_vault_reference_state "$access"
@@ -815,7 +879,9 @@ services_setup_credential_file_state() {
         elif services_setup_is_placeholder_secret "$refresh"; then
             printf 'placeholder\n'
         else
-            printf 'missing\n'
+            if [[ "$oauth_format" == wrangler ]] && printf '%s' "$contents" | "$jq_bin" -e '.api_token != null' >/dev/null; then
+                printf 'unknown\n'
+            else printf 'missing\n'; fi
         fi
         return
     fi
@@ -823,11 +889,28 @@ services_setup_credential_file_state() {
     # invalid reference into multiple apparently usable candidate tokens.
     values="$(printf '%s' "$contents" | "$jq_bin" -c "[$expression]" 2>/dev/null)" || { printf 'unknown\n'; return; }
     while IFS= read -r encoded_contents; do
-        candidate="$(printf '%s' "$encoded_contents" | "$jq_bin" -rj '.')" || { printf 'unknown\n'; return; }
+        if [[ "$oauth_format" == codex ]]; then
+            candidate="$(printf '%s' "$encoded_contents" | "$jq_bin" -rj '.value')" || { printf 'unknown\n'; return; }
+        else
+            candidate="$(printf '%s' "$encoded_contents" | "$jq_bin" -rj '.')" || { printf 'unknown\n'; return; }
+        fi
         if [[ "$(services_setup_normalize_config_value "$candidate")" == [vV][aA][uU][lL][tT]://* ]]; then services_setup_vault_reference_state "$candidate"; return; fi
-        if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'; return; fi
+        if services_setup_has_usable_secret "$candidate"; then
+            if [[ "$oauth_format" == codex ]] && printf '%s' "$encoded_contents" | "$jq_bin" -e '.oauth == true' >/dev/null; then
+                expiration="$(services_setup_jwt_expiry "$candidate" "$jq_bin")" || { printf 'unknown\n'; return; }
+                case "$expiration" in invalid) printf 'unknown\n'; return ;; expired) printf 'expired\n'; return ;; esac
+            fi
+            printf 'file_configured\n'; return
+        fi
         if services_setup_is_placeholder_secret "$candidate"; then placeholder=true; fi
     done < <(printf '%s' "$values" | "$jq_bin" -c '.[]')
+    if [[ "$oauth_format" == codex ]]; then
+        if [[ "$placeholder" == true ]]; then printf 'placeholder\n'; return; fi
+        refresh="$(printf '%s' "$contents" | "$jq_bin" -r '.tokens.refresh_token | if . == null then "" elif type == "string" then . else error("invalid token type") end' 2>/dev/null)" || { printf 'unknown\n'; return; }
+        if [[ "$(services_setup_normalize_config_value "$refresh")" == [vV][aA][uU][lL][tT]://* ]]; then services_setup_vault_reference_state "$refresh"; return; fi
+        if services_setup_has_usable_secret "$refresh"; then printf 'refresh_required\n'; return; fi
+        if services_setup_is_placeholder_secret "$refresh"; then placeholder=true; fi
+    fi
     if [[ "$placeholder" == true ]]; then printf 'placeholder\n'; else printf 'missing\n'; fi
 }
 
@@ -835,25 +918,36 @@ services_setup_credential_status_json() (
     # A subshell preserves the caller's tracing options without tracing values.
     set +x
     local jq_bin="" service="" env_name="" value="" state="" source=""
-    local requirement="" file_state="" required="" vault_env="" codex_home="" i=0 unmet=0
+    local requirement="" file_state="" required="" vault_env="" codex_home="" vercel_home="" wrangler_home="" config_home_default="" uname_bin="" i=0 unmet=0
     local -a services=(claude codex gemini vercel supabase wrangler) env_names=() candidates=() records=()
     jq_bin="$(services_setup_system_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
         printf '%s\n' '{"schema_version":1,"kind":"acfs.credential_status","status":"error","error":"jq_unavailable","read_only":true}'
         return 2
     fi
+    vercel_home="$(services_setup_sanitize_abs_nonroot_path "${XDG_DATA_HOME:-}" 2>/dev/null || true)"
+    vercel_home="${vercel_home:-$TARGET_HOME/.local/share}/com.vercel.cli"
+    config_home_default="$TARGET_HOME/.config"
+    uname_bin="$(services_setup_system_binary_path uname 2>/dev/null || true)"
+    if [[ -n "$uname_bin" && "$("$uname_bin" -s)" == Darwin ]]; then
+        vercel_home="$TARGET_HOME/Library/Application Support/com.vercel.cli"
+        config_home_default="$TARGET_HOME/Library/Preferences"
+    fi
+    wrangler_home="$(services_setup_sanitize_abs_nonroot_path "${XDG_CONFIG_HOME:-}" 2>/dev/null || true)"
+    wrangler_home="${wrangler_home:-$config_home_default}/.wrangler"
+    [[ ! -d "$TARGET_HOME/.wrangler" ]] || wrangler_home="$TARGET_HOME/.wrangler"
     for service in "${services[@]}"; do
         case "$service" in
             claude) env_names=(ANTHROPIC_API_KEY); candidates=("$TARGET_HOME/.claude/.credentials.json" '' claude) ;;
             codex)
                 env_names=(OPENAI_API_KEY)
                 codex_home="${CODEX_HOME:-$TARGET_HOME/.codex}"
-                candidates=("$codex_home/auth.json" '[.tokens.access_token, .access_token, .accessToken, .OPENAI_API_KEY] | .[]? | strings' none)
+                candidates=("$codex_home/auth.json" '[{value:.tokens.access_token,oauth:true},{value:.access_token,oauth:true},{value:.accessToken,oauth:true},{value:.OPENAI_API_KEY,oauth:false}] | .[] | select(.value | type == "string")' codex)
                 ;;
             gemini) env_names=(GEMINI_API_KEY GOOGLE_API_KEY); candidates=("$TARGET_HOME/.gemini/oauth_creds.json" '' gemini) ;;
-            vercel) env_names=(VERCEL_TOKEN); candidates=("$TARGET_HOME/.config/vercel/auth.json" '.token // empty | strings' none "$TARGET_HOME/.vercel/auth.json" '.token // empty | strings' none) ;;
+            vercel) env_names=(VERCEL_TOKEN); candidates=("$vercel_home/auth.json" '' vercel "$TARGET_HOME/.config/vercel/auth.json" '' vercel "$TARGET_HOME/.vercel/auth.json" '' vercel "$TARGET_HOME/.now/auth.json" '' vercel) ;;
             supabase) env_names=(SUPABASE_ACCESS_TOKEN); candidates=("$TARGET_HOME/.supabase/access-token" plaintext none "$TARGET_HOME/.config/supabase/access-token" plaintext none) ;;
-            wrangler) env_names=(CLOUDFLARE_API_TOKEN); candidates=("$TARGET_HOME/.config/.wrangler/config/default.toml" unsupported none "$TARGET_HOME/.wrangler/config/default.toml" unsupported none) ;;
+            wrangler) env_names=(CLOUDFLARE_API_TOKEN); candidates=("$wrangler_home/config/default.toml" '' wrangler) ;;
         esac
         state=missing; source=none; requirement=optional
         for required in "${SERVICES_SETUP_REQUIRED[@]}"; do
@@ -879,8 +973,7 @@ services_setup_credential_status_json() (
         if [[ "$source" == none ]]; then
             for ((i = 0; i < ${#candidates[@]}; i += 3)); do
                 file_state="$(services_setup_credential_file_state "${candidates[i]}" "${candidates[i+1]}" "$jq_bin" "${candidates[i+2]}")"
-                if [[ "$file_state" == file_configured ]]; then state=file_configured; source="file"; break; fi
-                if [[ "$state" == missing && "$file_state" != missing ]]; then state="$file_state"; source="file"; fi
+                if [[ "$file_state" != missing ]]; then state="$file_state"; source="file"; break; fi
             done
         fi
         [[ "$state" != vault_backed ]] || source=vault
@@ -1353,6 +1446,18 @@ check_all_status() {
     check_wrangler_status
     check_postgres_status
     check_dcg_status
+    # The interactive CLI's legacy configured indicator is storage readiness,
+    # never an exemption from the shared lifecycle model.
+    local metadata="" jq_bin="" service="" state=""
+    jq_bin="$(services_setup_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]] && metadata="$(services_setup_credential_status_json)"; then
+        while IFS=$'\t' read -r service state; do
+            case "$state" in
+                shell_configured|file_configured) [[ "${SERVICE_STATUS[$service]:-}" != installed ]] || SERVICE_STATUS[$service]=configured ;;
+                *) [[ "${SERVICE_STATUS[$service]:-}" != configured ]] || SERVICE_STATUS[$service]=installed ;;
+            esac
+        done < <(printf '%s' "$metadata" | "$jq_bin" -r '.services[] | [.service,.state] | @tsv')
+    fi
 }
 
 # ============================================================

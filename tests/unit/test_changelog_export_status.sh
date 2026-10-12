@@ -12109,7 +12109,7 @@ test_credential_report_cached_files_and_bad_formats() {
         jq -e '(.services[] | select(.service == "codex") | .state == "file_configured") and
           (.services[] | select(.service == "supabase") | .state == "file_configured") and
           (.services[] | select(.service == "claude") | .state == "unknown") and
-          (.services[] | select(.service == "wrangler") | .state == "unknown")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+          (.services[] | select(.service == "wrangler") | .state == "expired")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
         ! grep -Fq fixture- "$CREDENTIAL_REPORT_OUTPUT" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
         harness_pass "cached credential metadata distinguishes candidates from unreadable formats"
     else harness_fail "cached credential metadata distinguishes candidates from unreadable formats"; fi
@@ -12914,6 +12914,97 @@ run_credential_expiry_tests() {
     test_credential_oauth_snapshot_size_and_expiry_share_one_read
     test_credential_oauth_auth_screen_requires_attention
     test_credential_candidates_reject_nul_without_lossy_normalization
+    test_credential_remaining_provider_expiry_consumers
+    test_credential_normal_status_accepts_exported_candidates
+}
+
+test_credential_normal_status_accepts_exported_candidates() {
+    credential_report_setup credential-normal-env-ready
+    local output="$PROTOCOL_HOME/normal-ready.stdout" actual=0
+    env HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ANTHROPIC_API_KEY=fixture-normal-claude GEMINI_API_KEY=fixture-normal-gemini \
+        bash -c '
+            source "$1" >/dev/null || exit 2
+            TARGET_HOME="$2"
+            check_claude_status() { SERVICE_STATUS[claude]=installed; }
+            check_codex_status() { SERVICE_STATUS[codex]=not_installed; }
+            check_gemini_status() { SERVICE_STATUS[gemini]=installed; }
+            check_vercel_status() { SERVICE_STATUS[vercel]=installed; }
+            check_supabase_status() { SERVICE_STATUS[supabase]=installed; }
+            check_wrangler_status() { SERVICE_STATUS[wrangler]=installed; }
+            check_postgres_status() { SERVICE_STATUS[postgres]=running; }
+            check_dcg_status() { SERVICE_STATUS[dcg]=installed; }
+            check_all_status
+            [[ "${SERVICE_STATUS[claude]}" == configured && "${SERVICE_STATUS[gemini]}" == configured ]]
+            [[ "${SERVICE_STATUS[codex]}" == not_installed && "${SERVICE_STATUS[vercel]}" == installed && "${SERVICE_STATUS[postgres]}" == running ]]
+        ' _ "$SERVICES_SETUP_SH" "$PROTOCOL_HOME" > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 ]] && ! grep -Fq fixture-normal- "$output" "$output.stderr"; then
+        harness_pass "normal service status accepts canonical exported candidates and preserves absent CLI/database states"
+    else harness_fail "normal service status accepts canonical exported candidates and preserves absent CLI/database states" "exit=$actual"; fi
+}
+
+test_credential_remaining_provider_expiry_consumers() {
+    local service="" state="" file="" output="" actual=0
+    for service in codex vercel wrangler; do
+        for state in expired refresh_required; do
+            credential_doctor_setup "credential-provider-$service-$state"
+            case "$service" in
+                codex)
+                    mkdir -p "$PROTOCOL_HOME/.codex"; file="$PROTOCOL_HOME/.codex/auth.json"
+                    if [[ "$state" == expired ]]; then
+                        printf '%s\n' '{"tokens":{"access_token":"e30.eyJleHAiOjB9.fixture","refresh_token":"fixture-provider-refresh"}}' > "$file"
+                    else printf '%s\n' '{"tokens":{"refresh_token":"fixture-provider-refresh"}}' > "$file"; fi
+                    ;;
+                vercel)
+                    mkdir -p "$PROTOCOL_HOME/.vercel"; file="$PROTOCOL_HOME/.vercel/auth.json"
+                    if [[ "$state" == expired ]]; then
+                        printf '%s\n' '{"token":"fixture-provider-access","expiresAt":0,"refreshToken":"fixture-provider-refresh"}' > "$file"
+                    else printf '%s\n' '{"refreshToken":"fixture-provider-refresh"}' > "$file"; fi
+                    ;;
+                wrangler)
+                    mkdir -p "$PROTOCOL_HOME/.wrangler/config"; file="$PROTOCOL_HOME/.wrangler/config/default.toml"
+                    if [[ "$state" == expired ]]; then
+                        printf '%s\n' 'oauth_token="fixture-provider-access"' 'expiration_time="2000-01-01T00:00:00Z"' 'refresh_token="fixture-provider-refresh"' > "$file"
+                    else printf '%s\n' 'refresh_token="fixture-provider-refresh"' > "$file"; fi
+                    ;;
+            esac
+            cp "$file" "$PROTOCOL_HOME/credential.before"
+            if ! credential_report_run 0 || ! credential_doctor_run FIXTURE_CONTROL=trace ||
+                ! credential_support_run 0 "$REPO_ROOT" FIXTURE_CONTROL=trace FIXTURE_NO_REDACT=true; then
+                harness_fail "$service $state actual consumer execution"; continue
+            fi
+            credential_onboard_setup "credential-provider-$service-$state"
+            output="$PROTOCOL_HOME/normal-status.stdout"; actual=0
+            env HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+                bash -c '
+                    source "$1" >/dev/null || exit 2
+                    TARGET_HOME="$2"
+                    check_claude_status() { SERVICE_STATUS[claude]=configured; }
+                    check_codex_status() { SERVICE_STATUS[codex]=configured; }
+                    check_gemini_status() { SERVICE_STATUS[gemini]=configured; }
+                    check_vercel_status() { SERVICE_STATUS[vercel]=configured; }
+                    check_supabase_status() { SERVICE_STATUS[supabase]=configured; }
+                    check_wrangler_status() { SERVICE_STATUS[wrangler]=configured; }
+                    check_postgres_status() { SERVICE_STATUS[postgres]=configured; }
+                    check_dcg_status() { SERVICE_STATUS[dcg]=configured; }
+                    check_all_status
+                    [[ "${SERVICE_STATUS[$3]}" == installed ]]
+                    [[ "${SERVICE_STATUS[postgres]}" == configured && "${SERVICE_STATUS[dcg]}" == configured ]]
+                ' _ "$SERVICES_SETUP_SH" "$PROTOCOL_HOME" "$service" > "$output" 2> "$output.stderr" || actual=$?
+            if [[ "$actual" == 0 ]] && credential_onboard_run 0 provider-lifecycle &&
+                jq -e --arg service "$service" --arg state "$state" '.services[] | select(.service == $service) |
+                    .state == $state and .remediation == "refresh_or_reauthenticate" and .authentication == "unverified"' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+                jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '.services == $canonical[0].services' "$CREDENTIAL_ONBOARD_OUTPUT" >/dev/null &&
+                jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '.services == $canonical[0].services' "$CREDENTIAL_SUPPORT_BUNDLE/credential_status.json" >/dev/null &&
+                jq -e --arg id "credential.source.$service" --arg state "$state" '.checks[] | select(.id == $id) |
+                    .status == "warn" and (.details | contains("state="+$state))' "$DOCTOR_CREDENTIAL_OUTPUT" >/dev/null &&
+                cmp -s "$file" "$PROTOCOL_HOME/credential.before" &&
+                ! grep -Fq fixture-provider "$output" "$output.stderr" "$CREDENTIAL_REPORT_OUTPUT" "$CREDENTIAL_ONBOARD_OUTPUT" "$DOCTOR_CREDENTIAL_OUTPUT" &&
+                ! grep -RFq fixture-provider "$CREDENTIAL_SUPPORT_BUNDLE"; then
+                harness_pass "$service $state agrees across real passive/report/doctor/support/onboard and overrides stale normal configured state"
+            else harness_fail "$service $state agrees across real passive/report/doctor/support/onboard and overrides stale normal configured state" "exit=$actual"; fi
+        done
+    done
 }
 
 test_credential_candidates_reject_nul_without_lossy_normalization() {
