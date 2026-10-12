@@ -85,6 +85,24 @@ test.describe
       expect(await page.evaluate(() => localStorage.getItem("acfs-learning-hub-completed-lessons"))).toBeNull();
     });
 
+    test("clearing progress in another tab resets the current learning recommendations", async ({ page, context }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem("acfs-learning-hub-completed-lessons", "[0,1]");
+      });
+      await page.goto("/learn");
+      const next = page.getByTestId("learning-recommendations").getByRole("link").first();
+      await expect(next).toHaveAttribute("href", "/learn/ssh-basics");
+      const other = await context.newPage();
+      try {
+        await other.goto("/learn");
+        await other.evaluate(() => localStorage.clear());
+        await expect(next).toHaveAttribute("href", "/learn/welcome");
+        await expect(page.getByTestId("learning-recommendations")).toHaveAttribute("data-persona", "getting-started");
+      } finally {
+        await other.close();
+      }
+    });
+
     test("complete lesson progress offers references without an inaccessible next lesson", async ({ page }) => {
       await page.addInitScript(() => {
         localStorage.setItem("acfs-learning-hub-completed-lessons", JSON.stringify(Array.from({ length: 100 }, (_, index) => index)));

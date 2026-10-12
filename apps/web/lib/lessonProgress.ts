@@ -166,7 +166,8 @@ export function useCompletedLessons(): UseCompletedLessonsResult {
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== COMPLETED_LESSONS_KEY) return;
+      // localStorage.clear() in another tab emits a null key.
+      if (event.key !== null && event.key !== COMPLETED_LESSONS_KEY) return;
       queryClient.setQueryData(lessonProgressKeys.completedLessons, getCompletedLessons());
     };
 
