@@ -727,7 +727,7 @@ file_has_usable_secret() {
 services_setup_credential_file_state() {
     local path="$1" expression="$2" jq_bin="$3" oauth_format="${4:-none}"
     local candidate="" values="" contents="" size="" head_bin="" wc_bin="" placeholder=false
-    local access="" refresh="" expiration=""
+    local access="" refresh="" expiration="" encoded_contents=""
     [[ -f "$path" ]] || { printf 'missing\n'; return; }
     [[ -r "$path" ]] || { printf 'unknown\n'; return; }
     [[ -s "$path" ]] || { printf 'missing\n'; return; }
@@ -738,7 +738,14 @@ services_setup_credential_file_state() {
     # Capture once, including trailing newlines. A sentinel prevents command
     # substitution trimming them before we count the actual captured bytes.
     # Separate size/read operations let a producer replace the file in between.
-    contents="$("$head_bin" -c 1048577 -- "$path" 2>/dev/null && printf '.')" || { printf 'unknown\n'; return; }
+    # JSON-encode the bounded bytes before Bash can silently strip NULs.
+    encoded_contents="$(
+        set -o pipefail
+        "$head_bin" -c 1048577 -- "$path" 2>/dev/null | "$jq_bin" -Rs '
+            if contains("\u0000") then error("invalid credential bytes") else . end
+        ' 2>/dev/null
+    )" || { printf 'unknown\n'; return; }
+    contents="$(printf '%s' "$encoded_contents" | "$jq_bin" -rj '.' && printf '.')" || { printf 'unknown\n'; return; }
     contents="${contents%.}"
     size="$(printf '%s' "$contents" | "$wc_bin" -c)" || { printf 'unknown\n'; return; }
     [[ "$size" =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]] || { printf 'unknown\n'; return; }
@@ -750,7 +757,8 @@ services_setup_credential_file_state() {
         else printf 'missing\n'; fi
         return
     fi
-    printf '%s' "$contents" | "$jq_bin" -es 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1 || { printf 'unknown\n'; return; }
+    printf '%s' "$contents" | "$jq_bin" -es 'length == 1 and (.[0] | type == "object") and
+        all(.[0] | .. | strings; contains("\u0000") | not)' >/dev/null 2>&1 || { printf 'unknown\n'; return; }
     if [[ "$oauth_format" == claude || "$oauth_format" == gemini ]]; then
         # Read fields from the same captured JSON snapshot. Millisecond expiry
         # metadata is passive evidence only; refresh token presence proves no

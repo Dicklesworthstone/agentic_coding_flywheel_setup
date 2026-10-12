@@ -4565,7 +4565,9 @@ shown. This command accepts no setup flags or `--require` options; use
 `acfs services-setup --credential-status --require SERVICE` for presence requirements.
 
 Credential JSON files must contain exactly one object. Concatenated documents
-remain `unknown` and cannot satisfy a declared storage requirement. Rejected
+and raw or JSON-escaped NUL bytes remain `unknown` and cannot satisfy a declared
+storage requirement. The byte bound and parsed state use one captured snapshot,
+including its trailing newlines. Rejected
 webhook URLs are logged without echoing the URL or any credentials it contains.
 
 The read-only `acfs rescue --json` advisor also requires single-object checkpoint

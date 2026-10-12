@@ -69,6 +69,8 @@ run_and_capture() {
 make_stub_dir() {
     local stub_dir
     stub_dir="$(mktemp -d "$ARTIFACT_DIR/stubs.XXXXXX")"
+    # Restricted tool PATHs must still exercise the real timeout boundary.
+    ln -s "$(command -v timeout)" "$stub_dir/timeout"
     printf '%s\n' "$stub_dir"
 }
 
@@ -81,7 +83,7 @@ write_executable() {
 
 test_no_tool_environment_warns() {
     local output
-    output="$(run_and_capture no_tool_environment env PATH="/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture no_tool_environment env PATH="/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "no_tool_environment.json" "$output"
 
     jq -e '
@@ -133,7 +135,7 @@ case "$*" in
 esac'
 
     local output
-    output="$(run_and_capture stubbed_tools env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture stubbed_tools env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "stubbed_tools.json" "$output"
 
     jq -e '
@@ -186,7 +188,7 @@ JSON
 esac'
 
     local output
-    output="$(run_and_capture rch_queue_pressure env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture rch_queue_pressure env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "rch_queue_pressure.json" "$output"
 
     jq -e '
@@ -241,7 +243,7 @@ echo "{\"recommendation\":{\"id\":\"bd-ready\"}}"'
 echo "not json"'
 
     local output
-    output="$(run_and_capture partial_swarm env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture partial_swarm env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "partial_swarm.json" "$output"
 
     jq -e '
@@ -310,7 +312,7 @@ case "$*" in
 esac'
 
     local output
-    output="$(run_and_capture resource_pressure env HOME="$ARTIFACT_DIR/pressure-home" PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture resource_pressure env HOME="$ARTIFACT_DIR/pressure-home" PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "resource_pressure.json" "$output"
 
     jq -e '
@@ -337,7 +339,7 @@ sleep 2
 echo "{\"sessions\":[]}"'
 
     local output
-    output="$(run_and_capture timeout_warning env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture timeout_warning env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "timeout_warning.json" "$output"
 
     jq -e '
@@ -361,7 +363,7 @@ case "$*" in
 esac'
 
     local output
-    output="$(run_and_capture rch_queue_timeout env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture rch_queue_timeout env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
     write_artifact "rch_queue_timeout.json" "$output"
 
     jq -e '
@@ -377,7 +379,7 @@ esac'
 
 test_human_output() {
     local output
-    output="$(run_and_capture human_output env PATH="/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 bash "$SWARM_STATUS_SH")"
+    output="$(run_and_capture human_output env PATH="/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH")"
     write_artifact "human_output.txt" "$output"
 
     grep -Fq "ACFS Swarm Status" <<<"$output" || return 1
@@ -440,6 +442,10 @@ run_test() {
 main() {
     command -v jq >/dev/null 2>&1 || {
         echo "jq is required for swarm status tests" >&2
+        exit 1
+    }
+    command -v timeout >/dev/null 2>&1 || {
+        echo "timeout is required for swarm status tests" >&2
         exit 1
     }
 

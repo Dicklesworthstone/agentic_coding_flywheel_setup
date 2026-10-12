@@ -12913,6 +12913,47 @@ run_credential_expiry_tests() {
     test_credential_oauth_lifecycle_agrees_across_consumers
     test_credential_oauth_snapshot_size_and_expiry_share_one_read
     test_credential_oauth_auth_screen_requires_attention
+    test_credential_candidates_reject_nul_without_lossy_normalization
+}
+
+test_credential_candidates_reject_nul_without_lossy_normalization() {
+    local service="" file="" output="" actual=0
+    for service in codex gemini claude vercel supabase; do
+        credential_report_setup "credential-nul-$service"
+        case "$service" in
+            codex)
+                mkdir -p "$PROTOCOL_HOME/.codex"; file="$PROTOCOL_HOME/.codex/auth.json"
+                printf '{"tokens":{"access_token":"fixture-nul-secret"}}\0\n' > "$file"
+                ;;
+            gemini)
+                mkdir -p "$PROTOCOL_HOME/.gemini"; file="$PROTOCOL_HOME/.gemini/oauth_creds.json"
+                printf '%s\n' '{"access_token":"fixture-nul\u0000secret","expiry_date":4102444800000}' > "$file"
+                ;;
+            claude)
+                mkdir -p "$PROTOCOL_HOME/.claude"; file="$PROTOCOL_HOME/.claude/.credentials.json"
+                printf '%s\n' '{"claudeAiOauth":{"refreshToken":"fixture-nul\u0000secret"}}' > "$file"
+                ;;
+            vercel)
+                mkdir -p "$PROTOCOL_HOME/.config/vercel"; file="$PROTOCOL_HOME/.config/vercel/auth.json"
+                printf '%s\n' '{"token":"fixture-nul\u0000secret"}' > "$file"
+                ;;
+            supabase)
+                mkdir -p "$PROTOCOL_HOME/.supabase"; file="$PROTOCOL_HOME/.supabase/access-token"
+                printf 'fixture-nul\0secret\n' > "$file"
+                ;;
+        esac
+        cp "$file" "$PROTOCOL_HOME/nul.before"
+        output="$PROTOCOL_HOME/nul.json"; actual=0
+        env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+            TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+            bash "$SERVICES_SETUP_SH" --credential-status --require "$service" > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 1 && ! -s "$output.stderr" ]] && jq -e --arg service "$service" '.status == "warn" and .summary.required_unmet == 1 and
+            (.services[] | select(.service == $service) | .state == "unknown" and .source == "file" and .authentication == "unverified")' "$output" >/dev/null &&
+            ! grep -Fq fixture-nul "$output" && cmp -s "$file" "$PROTOCOL_HOME/nul.before" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+            harness_pass "$service raw or escaped NUL credentials remain unknown, unchanged, private and unable to satisfy requirements"
+        else harness_fail "$service raw or escaped NUL credentials remain unknown, unchanged, private and unable to satisfy requirements" "exit=$actual"; fi
+    done
 }
 
 test_credential_oauth_auth_screen_requires_attention() {
