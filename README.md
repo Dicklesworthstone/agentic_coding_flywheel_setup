@@ -4507,13 +4507,33 @@ with repeatable `--require`; unmet presence requirements return exit 1. Exit 0
 means the declared **storage** requirements are met, not successful authentication.
 Invalid options, unresolved target context or missing `jq` return exit 2.
 
-States distinguish `missing`, `placeholder`, `shell_configured`, `file_configured`
-and `unknown`. An environment placeholder takes precedence over a cached file
+States distinguish `missing`, `placeholder`, `shell_configured`, `file_configured`,
+`expired`, `refresh_required` and `unknown`. An environment placeholder takes
+precedence over a cached file
 so a shadowing export stays visible. Malformed JSON or credential shapes,
 unreadable or oversized files (over 1 MiB), and the
-currently unsupported Wrangler OAuth TOML format report `unknown`. Expiry,
-refreshability and Vault-backed credentials still need the broader lifecycle
-integration; every entry explicitly marks authentication `unverified`.
+currently unsupported Wrangler OAuth TOML format report `unknown`. Every entry
+explicitly marks authentication `unverified`; a future expiry does not prove a
+token is accepted or has the permissions your project needs.
+
+For cached Claude OAuth credentials, `claudeAiOauth.expiresAt` is interpreted as
+milliseconds since the Unix epoch. Gemini OAuth uses `expiry_date` in the same
+units. A stored access token with a past expiry reports `expired`, including when
+a refresh token is present. A refresh-only file reports `refresh_required`.
+Both use `refresh_or_reauthenticate`: let the provider CLI refresh or sign in
+again. The report never sends a refresh request, rotates a token or modifies the
+credential file. Refresh-token presence does not prove refreshability.
+Doctor marks both states as warnings. Onboarding keeps these installed services
+in its attention list and excludes them from the configured-service count.
+
+Absent or null expiry preserves an unverified stored candidate. Present expiry
+must be a nonnegative integral number no later than year 9999; strings, negative
+values, fractions and oversized numbers report `unknown` for stored candidates.
+Placeholder access tokens remain placeholders. Exported API keys keep their
+environment precedence; no expiry is inferred from token strings, JWT claims,
+other providers or Vault. `--require` cannot pass on expired or refresh-only
+credentials. Vault and other provider expiry formats remain part of the broader
+lifecycle work.
 
 The JSON report reuses the existing local credential paths and placeholder policy,
 omits secret values and file paths, and does not change credential files. It

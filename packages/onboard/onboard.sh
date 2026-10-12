@@ -2260,9 +2260,9 @@ onboard_credential_status_json() (
                 .safety.provider_validation_performed == false and (.services | type == "array") and
                 ([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"] and
                 all(.services[]; .requirement == "optional" and .authentication == "unverified" and
-                    (.state | member(["missing","placeholder","shell_configured","file_configured","unknown"])) and
+                    (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","unknown"])) and
                     (.source | member(["none","environment","file"])) and
-                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use"]))))
+                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate"]))))
             | {schema_version:1,kind:"acfs.credential_status",status:"pass",read_only:true,
                 services:[.services[] | {service,state,source,requirement,authentication,remediation}],
                 summary:{required_unmet:0},safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false}}
@@ -2274,8 +2274,11 @@ onboard_credential_status_json() (
     return 2
 )
 
+declare -gA _ONBOARD_CREDENTIAL_STATES=()
+
 show_credential_status() {
     local metadata="" jq_bin="" service="" state="" source="" remediation="" guidance=""
+    _ONBOARD_CREDENTIAL_STATES=()
     if ! metadata="$(onboard_credential_status_json)"; then
         printf '\nCredential sources unavailable; authentication remains unverified.\n'
         return 0
@@ -2283,11 +2286,13 @@ show_credential_status() {
     jq_bin="$(onboard_system_binary_path jq 2>/dev/null || true)"
     printf '\nCredential sources (all optional; authentication=unverified):\n'
     while IFS=$'\t' read -r service state source remediation; do
+        _ONBOARD_CREDENTIAL_STATES[$service]="$state"
         case "$remediation" in
             replace_or_unset_placeholder) guidance="Replace or unset the placeholder export or file value." ;;
             inspect_local_config) guidance="Inspect the local credential format before use." ;;
             configure_when_needed) guidance="Configure this service when your project needs it." ;;
             validate_before_use) guidance="Validate with a read-only provider command before use." ;;
+            refresh_or_reauthenticate) guidance="Use the provider CLI to refresh or sign in again; stored refresh tokens are unverified." ;;
         esac
         printf '  %s: state=%s; source=%s; remediation=%s\n    %s\n' "$service" "$state" "$source" "$remediation" "$guidance"
     done < <(printf '%s' "$metadata" | "$jq_bin" -r '.services[] | [.service,.state,.source,.remediation] | @tsv')
@@ -2322,12 +2327,20 @@ show_auth_flow() {
         local configured=0
         local total=0
         local -A auth_statuses=()
+        show_credential_status
 
         for service in "${AUTH_SERVICES[@]}"; do
             local name="${AUTH_SERVICE_NAMES[$service]}"
             local desc="${AUTH_SERVICE_DESCRIPTIONS[$service]}"
             local status
             status=$(get_auth_status_code "$service")
+            local credential_service="$service"
+            [[ "$credential_service" != cloudflare ]] || credential_service=wrangler
+            if [[ "$status" != 2 ]]; then
+                case "${_ONBOARD_CREDENTIAL_STATES[$credential_service]:-}" in
+                    expired|refresh_required) status=1 ;;
+                esac
+            fi
             auth_statuses[$service]="$status"
             local status_icon
             status_icon=$(get_auth_status_display "$service" "$status")
@@ -2348,7 +2361,6 @@ show_auth_flow() {
             echo -e "${CYAN}Progress: $configured/$total services configured or checked${NC}"
         fi
 
-        show_credential_status
         echo ""
         echo -e "${DIM}─────────────────────────────────────────${NC}"
 

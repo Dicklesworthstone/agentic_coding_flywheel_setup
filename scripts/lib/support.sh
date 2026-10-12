@@ -2243,10 +2243,10 @@ capture_credential_status_json() (
             (.services | type) == "array" and (.services | length) == 6)
         | select(([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"])
         | select(all(.services[];
-            (.state | member(["missing","placeholder","shell_configured","file_configured","unknown"])) and
+            (.state | member(["missing","placeholder","shell_configured","file_configured","expired","refresh_required","unknown"])) and
             (.source | member(["none","environment","file"])) and
             .requirement == "optional" and .authentication == "unverified" and
-            (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use"]))))
+            (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use","refresh_or_reauthenticate"]))))
         | {schema_version:1,kind:"acfs.credential_status",status:"pass",read_only:true,
             capture:{status:"pass",reason:"passive credential source metadata collected"},
             services:[.services[] | {service,state,source,requirement,authentication,remediation}],

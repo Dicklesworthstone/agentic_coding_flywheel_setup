@@ -88,7 +88,9 @@ _status_system_binary_path() {
         "/usr/local/bin/$name" \
         "/usr/local/sbin/$name" \
         "/usr/sbin/$name" \
-        "/sbin/$name"
+        "/sbin/$name" \
+        "/opt/homebrew/bin/$name" \
+        "/opt/homebrew/sbin/$name"
     do
         [[ -x "$candidate" ]] || continue
         printf '%s\n' "$candidate"
@@ -1241,7 +1243,9 @@ _status_editor_json() {
     if [[ "$_STATUS_LIVE" == true ]]; then
         live_status=unavailable
         timeout_bin="$(_status_system_binary_path timeout 2>/dev/null || true)"
-        bash_bin="$(_status_system_binary_path bash 2>/dev/null || true)"
+        # The caller already needs modern Bash. Reuse that interpreter rather
+        # than launching an older system Bash (notably /usr/bin/bash on macOS).
+        bash_bin="$BASH"
         if [[ -n "$timeout_bin" && -n "$bash_bin" && -r "$collector_script" ]]; then
             live_status=error
             if output="$(ACFS_SWARM_STATUS_TIMEOUT=1 "$timeout_bin" --kill-after=1 5 "$bash_bin" "$collector_script" --json --ntm-only 2>/dev/null)" &&

@@ -12777,11 +12777,220 @@ test_onboard_lock_retries_are_safe_under_errexit() {
     else harness_fail "real fallback progress lock survives contention under errexit and publishes ownership" "exit=$actual"; fi
 }
 
+test_credential_oauth_expiry_file_matrix() {
+    local service="" scenario="" document="" expected="" file="" remediation=""
+    for service in claude gemini; do
+        for scenario in expired future absent null string negative fraction oversized boolean refresh_only refresh_placeholder access_placeholder blank wrong_access wrong_refresh; do
+            credential_report_setup "credential-expiry-$service-$scenario"
+            case "$scenario" in
+                expired) document='{"access_token":"fixture-expiry-access-secret","refresh_token":"fixture-expiry-refresh-secret","expiry_date":0}'; expected=expired ;;
+                future) document='{"access_token":"fixture-expiry-access-secret","expiry_date":4102444800000}'; expected=file_configured ;;
+                absent) document='{"access_token":"fixture-expiry-access-secret"}'; expected=file_configured ;;
+                null) document='{"access_token":"fixture-expiry-access-secret","expiry_date":null}'; expected=file_configured ;;
+                string) document='{"access_token":"fixture-expiry-access-secret","expiry_date":"0"}'; expected=unknown ;;
+                negative) document='{"access_token":"fixture-expiry-access-secret","expiry_date":-1}'; expected=unknown ;;
+                fraction) document='{"access_token":"fixture-expiry-access-secret","expiry_date":0.5}'; expected=unknown ;;
+                oversized) document='{"access_token":"fixture-expiry-access-secret","expiry_date":1e30}'; expected=unknown ;;
+                boolean) document='{"access_token":"fixture-expiry-access-secret","expiry_date":true}'; expected=unknown ;;
+                refresh_only) document='{"refresh_token":"fixture-expiry-refresh-secret","expiry_date":0}'; expected=refresh_required ;;
+                refresh_placeholder) document='{"refresh_token":"changeme","expiry_date":0}'; expected=placeholder ;;
+                access_placeholder) document='{"access_token":"your-token-here","refresh_token":"fixture-expiry-refresh-secret","expiry_date":0}'; expected=placeholder ;;
+                blank) document='{"access_token":" ","refresh_token":" ","expiry_date":0}'; expected=missing ;;
+                wrong_access) document='{"access_token":{"token":"fixture-expiry-access-secret"},"expiry_date":0}'; expected=unknown ;;
+                wrong_refresh) document='{"access_token":"fixture-expiry-access-secret","refresh_token":42,"expiry_date":0}'; expected=unknown ;;
+            esac
+            if [[ "$service" == claude ]]; then
+                file="$PROTOCOL_HOME/.claude/.credentials.json"
+                mkdir -p "$PROTOCOL_HOME/.claude"
+                printf '%s' "$document" | jq '{claudeAiOauth:({accessToken:.access_token,refreshToken:.refresh_token} +
+                    (if has("expiry_date") then {expiresAt:.expiry_date} else {} end))}' > "$file"
+            else
+                file="$PROTOCOL_HOME/.gemini/oauth_creds.json"
+                mkdir -p "$PROTOCOL_HOME/.gemini"
+                printf '%s\n' "$document" > "$file"
+            fi
+            cp "$file" "$PROTOCOL_HOME/credentials.before"
+            case "$expected" in
+                expired|refresh_required) remediation=refresh_or_reauthenticate ;;
+                unknown) remediation=inspect_local_config ;;
+                placeholder) remediation=replace_or_unset_placeholder ;;
+                missing) remediation=configure_when_needed ;;
+                *) remediation=validate_before_use ;;
+            esac
+            if credential_report_run 0 && jq -e --arg service "$service" --arg state "$expected" --arg remediation "$remediation" '
+                .safety.provider_validation_performed == false and
+                (.services[] | select(.service == $service) | .state == $state and .remediation == $remediation and .authentication == "unverified")' \
+                "$CREDENTIAL_REPORT_OUTPUT" >/dev/null && ! grep -Fq fixture-expiry- "$CREDENTIAL_REPORT_OUTPUT" "$CREDENTIAL_REPORT_OUTPUT.stderr" &&
+                cmp -s "$file" "$PROTOCOL_HOME/credentials.before" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+                harness_pass "$service $scenario reports $expected without credential changes, leaks or provider calls"
+            else harness_fail "$service $scenario reports $expected without credential changes, leaks or provider calls"; fi
+        done
+    done
+}
+
+test_credential_oauth_expiry_required_and_environment_precedence() {
+    local state="" actual=0 output="" env_value="" expected=""
+    for state in expired refresh_required; do
+        credential_report_setup "credential-expiry-required-$state"
+        mkdir -p "$PROTOCOL_HOME/.gemini"
+        if [[ "$state" == expired ]]; then
+            printf '%s\n' '{"access_token":"fixture-required-expired-secret","refresh_token":"fixture-required-refresh-secret","expiry_date":0}' > "$PROTOCOL_HOME/.gemini/oauth_creds.json"
+        else
+            printf '%s\n' '{"refresh_token":"fixture-required-refresh-secret"}' > "$PROTOCOL_HOME/.gemini/oauth_creds.json"
+        fi
+        output="$PROTOCOL_HOME/required.json"; actual=0
+        env -u GEMINI_API_KEY -u GOOGLE_API_KEY TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            bash "$SERVICES_SETUP_SH" --credential-status --require gemini > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 1 ]] && jq -e --arg state "$state" '.status == "warn" and .summary.required_unmet == 1 and
+            (.services[] | select(.service == "gemini") | .state == $state and .requirement == "required" and .authentication == "unverified")' "$output" >/dev/null &&
+            ! grep -Fq fixture-required- "$output"; then
+            harness_pass "required $state OAuth candidate cannot claim storage readiness or authentication"
+        else harness_fail "required $state OAuth candidate cannot claim storage readiness or authentication"; fi
+    done
+    credential_report_setup credential-expiry-environment
+    mkdir -p "$PROTOCOL_HOME/.gemini"
+    printf '%s\n' '{"access_token":"fixture-shadowed-expired-secret","expiry_date":0}' > "$PROTOCOL_HOME/.gemini/oauth_creds.json"
+    for env_value in fixture-live-api-candidate your_gemini_api_key; do
+        expected=shell_configured
+        [[ "$env_value" != your_gemini_api_key ]] || expected=placeholder
+        if credential_report_run 0 GEMINI_API_KEY="$env_value" && jq -e --arg state "$expected" '(.services[] | select(.service == "gemini") |
+            .state == $state and .source == "environment" and .authentication == "unverified")' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+            ! grep -Fq fixture- "$CREDENTIAL_REPORT_OUTPUT"; then
+            harness_pass "exported Gemini $expected takes precedence over expired cached OAuth"
+        else harness_fail "exported Gemini $expected takes precedence over expired cached OAuth"; fi
+    done
+}
+
+test_credential_oauth_lifecycle_agrees_across_consumers() {
+    local state="" output="" actual=0
+    for state in expired refresh_required; do
+        credential_doctor_setup "credential-expiry-consumers-$state"
+        mkdir -p "$PROTOCOL_HOME/.claude" "$PROTOCOL_HOME/.gemini"
+        if [[ "$state" == expired ]]; then
+            printf '%s\n' '{"claudeAiOauth":{"accessToken":"fixture-consumer-access-secret","refreshToken":"fixture-consumer-refresh-secret","expiresAt":0}}' > "$PROTOCOL_HOME/.claude/.credentials.json"
+            printf '%s\n' '{"access_token":"fixture-consumer-access-secret","refresh_token":"fixture-consumer-refresh-secret","expiry_date":0}' > "$PROTOCOL_HOME/.gemini/oauth_creds.json"
+        else
+            printf '%s\n' '{"claudeAiOauth":{"refreshToken":"fixture-consumer-refresh-secret"}}' > "$PROTOCOL_HOME/.claude/.credentials.json"
+            printf '%s\n' '{"refresh_token":"fixture-consumer-refresh-secret"}' > "$PROTOCOL_HOME/.gemini/oauth_creds.json"
+        fi
+        cp "$PROTOCOL_HOME/.claude/.credentials.json" "$PROTOCOL_HOME/claude.before"
+        cp "$PROTOCOL_HOME/.gemini/oauth_creds.json" "$PROTOCOL_HOME/gemini.before"
+        if ! credential_report_run 0 || ! credential_doctor_run FIXTURE_CONTROL=trace ||
+            ! credential_support_run 0 "$REPO_ROOT" FIXTURE_CONTROL=trace FIXTURE_NO_REDACT=true; then
+            harness_fail "$state real collector/doctor/support consumer execution"
+            continue
+        fi
+        credential_onboard_setup "credential-expiry-consumers-$state"
+        output="$PROTOCOL_HOME/onboard-human.stdout"; actual=0
+        env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+            HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+            bash -c 'source "$1"; show_credential_status' _ "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" \
+            > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 0 ]] && credential_onboard_run 0 onboard-lifecycle &&
+            jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '.services == $canonical[0].services and .capture.status == "pass"' \
+                "$CREDENTIAL_SUPPORT_BUNDLE/credential_status.json" >/dev/null &&
+            jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '.services == $canonical[0].services' "$CREDENTIAL_ONBOARD_OUTPUT" >/dev/null &&
+            jq -e --arg state "$state" '.summary == {pass:0,skip:4,warn:2,fail:0} and
+                all(.checks[] | select(.id == "credential.source.claude" or .id == "credential.source.gemini");
+                    .status == "warn" and (.details | contains("state="+$state)) and (.details | contains("remediation=refresh_or_reauthenticate")))' \
+                "$DOCTOR_CREDENTIAL_OUTPUT" >/dev/null &&
+            grep -Fq "claude: state=$state; source=file; remediation=refresh_or_reauthenticate" "$output" &&
+            grep -Fq 'stored refresh tokens are unverified' "$output" &&
+            ! grep -Fq fixture-consumer- "$output" "$output.stderr" "$CREDENTIAL_ONBOARD_OUTPUT" "$DOCTOR_CREDENTIAL_OUTPUT" "$DOCTOR_CREDENTIAL_OUTPUT.stderr" "$PROTOCOL_HOME/capture.stderr" &&
+            ! grep -RFq fixture-consumer- "$CREDENTIAL_SUPPORT_BUNDLE" &&
+            cmp -s "$PROTOCOL_HOME/claude.before" "$PROTOCOL_HOME/.claude/.credentials.json" &&
+            cmp -s "$PROTOCOL_HOME/gemini.before" "$PROTOCOL_HOME/.gemini/oauth_creds.json" &&
+            [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+            harness_pass "$state canonical metadata and guidance agree across actual services/doctor/support/onboard without secrets or refreshes"
+        else harness_fail "$state canonical metadata and guidance agree across actual services/doctor/support/onboard without secrets or refreshes"; fi
+    done
+}
+
+run_credential_expiry_tests() {
+    test_credential_oauth_expiry_file_matrix
+    test_credential_oauth_expiry_required_and_environment_precedence
+    test_credential_oauth_lifecycle_agrees_across_consumers
+    test_credential_oauth_snapshot_size_and_expiry_share_one_read
+    test_credential_oauth_auth_screen_requires_attention
+}
+
+test_credential_oauth_auth_screen_requires_attention() {
+    local state="" output="" actual=0
+    for state in expired refresh_required; do
+        credential_onboard_setup "credential-expiry-auth-screen-$state"
+        mkdir -p "$PROTOCOL_HOME/.claude"
+        # Make the screen independent of the worker's logged-in Tailscale and
+        # Gum installation. All eight CLI dependencies are present but fail
+        # their live checks; use the existing basic terminal adapter.
+        cp "$PROTOCOL_HOME/.local/bin/gh" "$PROTOCOL_HOME/.local/bin/tailscale"
+        if [[ "$state" == expired ]]; then
+            printf '%s\n' '{"claudeAiOauth":{"accessToken":"fixture-expired-screen-secret","refreshToken":"fixture-refresh-screen-secret","expiresAt":0}}' > "$PROTOCOL_HOME/.claude/.credentials.json"
+        else
+            printf '%s\n' '{"claudeAiOauth":{"refreshToken":"fixture-refresh-screen-secret"}}' > "$PROTOCOL_HOME/.claude/.credentials.json"
+        fi
+        output="$PROTOCOL_HOME/auth-screen.stdout"; actual=0
+        env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+            HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" PATH="$PROTOCOL_HOME/.local/bin:/usr/bin:/bin" \
+            ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" TERM=dumb \
+            bash -c 'source "$1"; has_gum() { return 1; }; show_auth_flow' _ "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" \
+            </dev/null > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 0 ]] && grep -Fq "claude: state=$state; source=file; remediation=refresh_or_reauthenticate" "$output" &&
+            grep -Fq 'Progress: 0/8 services configured or checked' "$output" && grep -Fq '[2] Claude Code' "$output" &&
+            [[ "$(wc -l < "$PROTOCOL_HOME/tool-called" | tr -d ' ')" == 4 ]] &&
+            ! grep -Fq fixture-expired-screen-secret "$output" "$output.stderr" &&
+            ! grep -Fq fixture-refresh-screen-secret "$output" "$output.stderr"; then
+            harness_pass "normal auth screen puts $state installed Claude in attention menu without counting it ready"
+        else harness_fail "normal auth screen puts $state installed Claude in attention menu without counting it ready" "exit=$actual"; fi
+    done
+}
+
+test_credential_oauth_snapshot_size_and_expiry_share_one_read() {
+    credential_report_setup credential-expiry-one-snapshot
+    local output="$PROTOCOL_HOME/snapshot.stdout" actual=0
+    printf '%s\n' '{"access_token":"fixture-first-snapshot-secret","expiry_date":0}' > "$PROTOCOL_HOME/first.json"
+    printf '%s\n' '{"access_token":"fixture-second-snapshot-secret","expiry_date":4102444800000}' > "$PROTOCOL_HOME/second.json"
+    # The second producer response is beyond the limit. The old preflight-size
+    # read accepted it because it measured the first, smaller response instead.
+    head -c 1048577 /dev/zero | tr '\0' ' ' >> "$PROTOCOL_HOME/second.json"
+    printf '0\n' > "$PROTOCOL_HOME/read-count"
+    cat > "$PROTOCOL_HOME/producer-head" <<'EOF'
+#!/usr/bin/env bash
+count="$(cat "$ACFS_CREDENTIAL_PRODUCER_HOME/read-count")"
+count=$((count + 1))
+printf '%s\n' "$count" > "$ACFS_CREDENTIAL_PRODUCER_HOME/read-count"
+file="$ACFS_CREDENTIAL_PRODUCER_HOME/first.json"
+[[ "$count" == 1 ]] || file="$ACFS_CREDENTIAL_PRODUCER_HOME/second.json"
+/usr/bin/head -c 1048577 -- "$file"
+EOF
+    chmod +x "$PROTOCOL_HOME/producer-head"
+    ACFS_CREDENTIAL_PRODUCER_HOME="$PROTOCOL_HOME" bash -c '
+        source "$1"
+        services_setup_system_binary_path() {
+            if [[ "$1" == head ]]; then printf "%s/producer-head\n" "$ACFS_CREDENTIAL_PRODUCER_HOME"
+            else printf "/usr/bin/%s\n" "$1"; fi
+        }
+        services_setup_credential_file_state "$2/first.json" "" /usr/bin/jq gemini
+    ' _ "$SERVICES_SETUP_SH" "$PROTOCOL_HOME" > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 && "$(cat "$output")" == expired && "$(cat "$PROTOCOL_HOME/read-count")" == 1 ]] &&
+        ! grep -Fq fixture- "$output" "$output.stderr"; then
+        harness_pass "credential byte bound and expiry decision use one captured producer snapshot"
+    else harness_fail "credential byte bound and expiry decision use one captured producer snapshot" "exit=$actual"; fi
+}
+
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" || "${1:-}" == "--credential-onboard-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" || "${1:-}" == "--credential-onboard-only" || "${1:-}" == "--credential-expiry-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--credential-expiry-only" ]]; then
+        harness_section "OAuth lifecycle integration"
+        run_credential_expiry_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--credential-onboard-only" ]]; then
         harness_section "Onboarding credential integration"
@@ -12870,6 +13079,7 @@ main() {
     run_credential_doctor_tests
     run_fresh_input_tests
     run_credential_onboard_tests
+    run_credential_expiry_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true
