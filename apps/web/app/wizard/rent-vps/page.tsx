@@ -310,7 +310,7 @@ function readinessCopy(status: VPSReadinessStatus): { label: string; className: 
 function CapacityPlanner() {
   const [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded] =
     useVPSReadinessSelection();
-  const [plannerSelection, setPlannerSelection] = useState(DEFAULT_VPS_READINESS_SELECTION);
+  const plannerSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
   const hasLocalPlannerInteraction = useRef(false);
   const hasHydratedPlannerSelection = useRef(false);
   const {
@@ -350,21 +350,16 @@ function CapacityPlanner() {
       hasHydratedPlannerSelection.current = true;
       if (hasLocalPlannerInteraction.current) return;
       const hydratedSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
-      setPlannerSelection(hydratedSelection);
       // Persist canonical labels without replacing unknown or unsafe host facts
       // with recommendations. Existing hosts still need an explicit OS upgrade.
-      setVPSReadinessSelection(hydratedSelection);
+      void setVPSReadinessSelection(hydratedSelection);
       return;
     }
-    // Keep the controls usable when localStorage is unavailable while still
-    // accepting persisted or cross-tab updates when the query has a value.
-    setPlannerSelection(savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION);
   }, [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded]);
 
   const updatePlannerSelection = (selection: VPSReadinessSelection) => {
     hasLocalPlannerInteraction.current = true;
-    setPlannerSelection(selection);
-    setVPSReadinessSelection(selection);
+    void setVPSReadinessSelection(selection);
   };
 
   const handleReadinessProviderChange = (providerId: string) => {

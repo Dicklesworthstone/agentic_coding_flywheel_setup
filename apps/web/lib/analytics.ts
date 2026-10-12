@@ -66,6 +66,58 @@ type AnalyticsPrivacyWindow = {
   [key: `ga-disable-${string}`]: boolean | undefined;
 };
 
+const analyticsPrivacyBoundaries = new WeakMap<object, number>();
+const analyticsPrivacySubscribers = new WeakMap<object, Set<() => void>>();
+
+function notifyAnalyticsPrivacySubscribers(owner: object): void {
+  for (const listener of [...(analyticsPrivacySubscribers.get(owner) ?? [])]) listener();
+}
+
+/** Subscribe to the actual document boundary, rather than a second React cache. */
+export function subscribeAnalyticsPrivacyBoundary(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const owner = window;
+  let subscribers = analyticsPrivacySubscribers.get(owner);
+  if (!subscribers) {
+    subscribers = new Set();
+    analyticsPrivacySubscribers.set(owner, subscribers);
+  }
+  subscribers.add(listener);
+  const activeSubscribers = subscribers;
+  return () => {
+    activeSubscribers.delete(listener);
+  };
+}
+
+/** Register only after History guards and initial URL scrubbing are installed. */
+export function registerAnalyticsPrivacyBoundary(): () => void {
+  if (typeof window === "undefined") return () => {};
+  const owner = window;
+  analyticsPrivacyBoundaries.set(owner, (analyticsPrivacyBoundaries.get(owner) ?? 0) + 1);
+  notifyAnalyticsPrivacySubscribers(owner);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const count = analyticsPrivacyBoundaries.get(owner) ?? 0;
+    analyticsPrivacyBoundaries.set(owner, Math.max(0, count - 1));
+    notifyAnalyticsPrivacySubscribers(owner);
+  };
+}
+
+export function getAnalyticsPrivacyBoundarySnapshot(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (analyticsPrivacyBoundaries.get(window) ?? 0) > 0 &&
+    isAnalyticsPrivacyAllowed()
+  );
+}
+
+/** SSR and hydration both keep vendor scripts off until the boundary mounts. */
+export function getAnalyticsPrivacyBoundaryServerSnapshot(): boolean {
+  return false;
+}
+
 /** Permanently disable analytics for the lifetime of the current document. */
 export function disableAnalyticsForDocument(): void {
   if (typeof window === "undefined") return;
@@ -76,6 +128,7 @@ export function disableAnalyticsForDocument(): void {
   if (GA_MEASUREMENT_ID) {
     analyticsWindow[`ga-disable-${GA_MEASUREMENT_ID}`] = true;
   }
+  notifyAnalyticsPrivacySubscribers(window);
 }
 
 export function analyticsContextContainsSensitiveState(
@@ -112,7 +165,7 @@ export const isAnalyticsPrivacyAllowed = (): boolean => {
 };
 
 export const isAnalyticsEnabled = (): boolean => {
-  return isAnalyticsPrivacyAllowed() && !!GA_MEASUREMENT_ID && !!window.gtag;
+  return getAnalyticsPrivacyBoundarySnapshot() && !!GA_MEASUREMENT_ID && !!window.gtag;
 };
 
 export function sanitizeAnalyticsReferrer(value: string): {
@@ -331,7 +384,7 @@ export const sendServerEvent = async <TName extends ServerAnalyticsEventName>(
   eventName: TName,
   params: ServerAnalyticsEventParams[TName],
 ): Promise<void> => {
-  if (!isAnalyticsPrivacyAllowed()) return;
+  if (!getAnalyticsPrivacyBoundarySnapshot()) return;
   if (!GA_MEASUREMENT_ID) return;
   if (!/^[a-z][a-z0-9_]{0,39}$/.test(eventName)) return;
   if (!analyticsPayloadIsPrivacySafe(params ?? {})) return;
@@ -339,6 +392,7 @@ export const sendServerEvent = async <TName extends ServerAnalyticsEventName>(
   try {
     await fetch("/api/track", {
       method: "POST",
+      signal: AbortSignal.timeout(5000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_id: getClientId(),

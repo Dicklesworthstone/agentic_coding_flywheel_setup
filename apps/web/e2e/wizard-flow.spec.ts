@@ -2493,10 +2493,10 @@ test.describe("Command Builder Panel", () => {
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
-    await page.goto("/get-started?mode=safe");
+    await page.goto("/?mode=safe");
     await page.waitForLoadState("domcontentloaded");
 
-    const secret = "sk-proj-abcdefghijklmnopqrstuvwxyz012345";
+    const secret = "sk-proj-abcdefghijklmnopqrstuvwxyz012345"; // ubs:ignore[js.security.hardcoded-secrets] Public fabricated query payload exercises redaction; no provider-issued credential.
     // domcontentloaded precedes hydration. Pushing before the privacy guard's
     // layout effect patches History exercises Next's handling of a forged
     // router state (~30% of runs, sometimes a 404 that keeps it), not the guard.

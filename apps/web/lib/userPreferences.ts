@@ -5,7 +5,7 @@
  * Uses TanStack Query for React state management with localStorage persistence.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type ManifestSelectionProfileId,
@@ -440,6 +440,19 @@ export function useVPSIP(): [string | null, (ip: string) => void, boolean] {
   return [data ?? null, setIP, status === "success"];
 }
 
+/** Cancel stale initial hydration before applying an explicit selection. */
+export async function updateVPSReadinessQuery(
+  queryClient: QueryClient,
+  selection: VPSReadinessSelection,
+): Promise<void> {
+  const normalized = normalizeVPSReadinessSelection(selection);
+  if (!normalized) return;
+  await queryClient.cancelQueries({ queryKey: userPreferencesKeys.vpsReadinessSelection, exact: true });
+  if (setVPSReadinessSelection(normalized)) {
+    queryClient.setQueryData(userPreferencesKeys.vpsReadinessSelection, normalized);
+  }
+}
+
 export function useVPSReadinessSelection(): [
   VPSReadinessSelection | null,
   (selection: VPSReadinessSelection) => void,
@@ -456,12 +469,7 @@ export function useVPSReadinessSelection(): [
   });
 
   const setReadinessSelection = useCallback(
-    (selection: VPSReadinessSelection) => {
-      const normalized = normalizeVPSReadinessSelection(selection);
-      if (normalized && setVPSReadinessSelection(normalized)) {
-        queryClient.setQueryData(userPreferencesKeys.vpsReadinessSelection, normalized);
-      }
-    },
+    (selection: VPSReadinessSelection) => updateVPSReadinessQuery(queryClient, selection),
     [queryClient],
   );
 

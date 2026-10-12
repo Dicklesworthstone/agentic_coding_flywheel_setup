@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { QueryClient } from "@tanstack/react-query";
 import {
   analyticsContextContainsSensitiveState,
   analyticsPayloadIsPrivacySafe,
   commandCopyAnalyticsProperties,
   disableAnalyticsForDocument,
+  getAnalyticsPrivacyBoundarySnapshot,
+  getAnalyticsPrivacyBoundaryServerSnapshot,
+  GA_MEASUREMENT_ID,
   getFunnelData,
   getLessonFunnelData,
   getOrCreateUserId,
   isAnalyticsPrivacyAllowed,
+  registerAnalyticsPrivacyBoundary,
   sanitizeAnalyticsReferrer,
+  sendServerEvent,
+  subscribeAnalyticsPrivacyBoundary,
 } from "./analytics";
 import {
   addCompletedLesson,
@@ -35,6 +42,9 @@ import {
   setSSHUsername,
   setVPSIP,
   setVPSReadinessSelection,
+  updateVPSReadinessQuery,
+  userPreferencesKeys,
+  type VPSReadinessSelection,
   VPS_READINESS_SELECTION_KEY,
 } from "./userPreferences";
 import {
@@ -490,7 +500,7 @@ describe("progress persistence guards", () => {
     expect(normalizeGitRef("feature/1234-add-support-for-cloudflare-workers")).toBe(
       "feature/1234-add-support-for-cloudflare-workers",
     );
-    const fragmentedToken = "AbCdEfGhIjKlMnOpQrSt/1234567890aBcDeFgHiJ/UVWXYZabcdef01234567";
+    const fragmentedToken = "AbCdEfGhIjKlMnOpQrSt/1234567890aBcDeFgHiJ/UVWXYZabcdef01234567"; // ubs:ignore[js.security.hardcoded-secrets] Fabricated alphabet/number fixture exercises opaque-credential rejection; no live credential.
     expect(normalizeGitRef(fragmentedToken)).toBeNull();
     expect(queryContainsSensitiveState(`?utm_content=${encodeURIComponent(fragmentedToken)}`)).toBe(
       true,
@@ -530,6 +540,133 @@ describe("progress persistence guards", () => {
 
     disableAnalyticsForDocument();
     expect(isAnalyticsPrivacyAllowed()).toBe(false);
+  });
+
+  test("analytics readiness stays off through hydration until a boundary is installed", () => {
+    installMockBrowser({ url: "https://example.test/get-started?mode=safe" });
+    expect(getAnalyticsPrivacyBoundaryServerSnapshot()).toBe(false);
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(false);
+    const snapshots: boolean[] = [];
+    const unsubscribe = subscribeAnalyticsPrivacyBoundary(() => {
+      snapshots.push(getAnalyticsPrivacyBoundarySnapshot());
+    });
+    const releaseFirst = registerAnalyticsPrivacyBoundary();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(true);
+    expect(getAnalyticsPrivacyBoundaryServerSnapshot()).toBe(false);
+    const releaseSecond = registerAnalyticsPrivacyBoundary();
+    releaseFirst();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(true);
+    releaseFirst();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(true);
+    releaseSecond();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(false);
+    expect(snapshots).toEqual([true, true, true, false]);
+    unsubscribe();
+  });
+
+  test("taint immediately notifies analytics consumers and cannot be cleared by remounting", () => {
+    installMockBrowser({ url: "https://example.test/get-started" });
+    const snapshots: boolean[] = [];
+    const unsubscribe = subscribeAnalyticsPrivacyBoundary(() => {
+      snapshots.push(getAnalyticsPrivacyBoundarySnapshot());
+    });
+    const release = registerAnalyticsPrivacyBoundary();
+    disableAnalyticsForDocument();
+    expect(snapshots).toEqual([true, false]);
+    release();
+    const releaseRemount = registerAnalyticsPrivacyBoundary();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(false);
+    unsubscribe();
+    const notificationCount = snapshots.length;
+    releaseRemount();
+    expect(snapshots.length).toBe(notificationCount);
+  });
+
+  test("an installed boundary cannot admit a private document or enable another window", () => {
+    installMockBrowser({ url: "https://example.test/wizard/run-installer" });
+    const releasePrivate = registerAnalyticsPrivacyBoundary();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(false);
+    installMockBrowser({ url: "https://example.test/get-started" });
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(false);
+    releasePrivate();
+    const releasePublic = registerAnalyticsPrivacyBoundary();
+    expect(getAnalyticsPrivacyBoundarySnapshot()).toBe(true);
+    releasePublic();
+  });
+
+  test("explicit planner writes cancel stale hydration before it can overwrite a draft", async () => {
+    const oldSelection: VPSReadinessSelection = {
+      providerId: "contabo", planName: "Cloud VPS 16", ubuntuVersion: "25.10",
+      region: "us", targetAgents: 10, workloadId: "standard",
+    };
+    const chosenSelection: VPSReadinessSelection = { ...oldSelection, ubuntuVersion: "26.04", targetAgents: 15 };
+    // Same real QueryClient protocol with and without the repair: the old
+    // uncancelled initial query must visibly overwrite the cache as a control.
+    for (const cancelHydration of [false, true]) {
+      installMockBrowser({ url: "https://example.test/wizard/rent-vps" });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+      let finishOld: ((value: VPSReadinessSelection) => void) | undefined;
+      const pending = client.fetchQuery({
+        queryKey: userPreferencesKeys.vpsReadinessSelection,
+        queryFn: () => new Promise<VPSReadinessSelection>((resolve) => { finishOld = resolve; }),
+      });
+      // Cancellation is the expected negative outcome for the old request.
+      const settled = pending.catch(() => undefined);
+      expect(finishOld).toBeDefined();
+      if (cancelHydration) {
+        await updateVPSReadinessQuery(client, chosenSelection);
+      } else {
+        expect(setVPSReadinessSelection(chosenSelection)).toBe(true);
+        client.setQueryData(userPreferencesKeys.vpsReadinessSelection, chosenSelection);
+      }
+      finishOld!(oldSelection);
+      await settled;
+      await Promise.resolve();
+      expect(client.getQueryData(userPreferencesKeys.vpsReadinessSelection)).toEqual(
+        cancelHydration ? chosenSelection : oldSelection,
+      );
+      expect(getVPSReadinessSelection()).toEqual(chosenSelection);
+      client.clear();
+    }
+  });
+
+  test("planner query writes remain visible when durable storage is unavailable", async () => {
+    installMockBrowser({ url: "https://example.test/wizard/rent-vps", failSetItemForKey: VPS_READINESS_SELECTION_KEY });
+    const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+    const selection: VPSReadinessSelection = {
+      providerId: "contabo", planName: "Cloud VPS 16", ubuntuVersion: "24.04",
+      region: "us", targetAgents: 15, workloadId: "standard",
+    };
+    await updateVPSReadinessQuery(client, selection);
+    expect(client.getQueryData(userPreferencesKeys.vpsReadinessSelection)).toEqual(selection);
+    expect(getVPSReadinessSelection()).toEqual(selection);
+    client.clear();
+  });
+
+  test.skipIf(!GA_MEASUREMENT_ID)("server analytics waits for the boundary and sends a cancellable public request", async () => {
+    installMockBrowser({ url: "https://example.test/" });
+    const originalFetch = globalThis.fetch;
+    const requests: RequestInit[] = [];
+    let release: (() => void) | undefined;
+    try {
+      globalThis.fetch = (async (_input, init) => {
+        requests.push(init ?? {});
+        return new Response(null, { status: 204 });
+      }) as typeof fetch;
+      const params = { conversion_type: "wizard_start", conversion_value: 0 } as const;
+      await sendServerEvent("conversion", params);
+      expect(requests).toHaveLength(0);
+      release = registerAnalyticsPrivacyBoundary();
+      await sendServerEvent("conversion", params);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].signal).toBeInstanceOf(AbortSignal);
+      disableAnalyticsForDocument();
+      await sendServerEvent("conversion", params);
+      expect(requests).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      release?.();
+    }
   });
 
   test("analytics admission fails closed on sensitive referrer state", () => {
@@ -780,7 +917,7 @@ describe("progress persistence guards", () => {
     const token = `sk-proj-${"a".repeat(32)}`;
     expect(analyticsPayloadIsPrivacySafe({ source: "203.0.113.42" })).toBe(false);
     expect(analyticsPayloadIsPrivacySafe({ nested: { campaign: token } })).toBe(false);
-    expect(analyticsPayloadIsPrivacySafe({ token: "even-low-entropy" })).toBe(false);
+    expect(analyticsPayloadIsPrivacySafe({ token: "even-low-entropy" })).toBe(false); // ubs:ignore[js.security.hardcoded-secrets] Deliberately nonsensitive value proves token field names are rejected regardless of entropy.
     expect(
       analyticsPayloadIsPrivacySafe({
         user_id: "user_1787576346000_abc123xyz",
@@ -888,8 +1025,8 @@ describe("progress persistence guards", () => {
     expect(browser.dispatchCalls).toHaveLength(1);
   });
 
-  test("ACFS refs reject credential-shaped state while preserving public pins", () => {
-    const token = "hvs.0123456789abcdefghijklmnopqrstuvwxyz";
+  test("ACFS refs reject credential-shaped state while preserving public pins", () => { // ubs:ignore[js.security.hardcoded-secrets] Test title contains no secret; the test body remains scanned.
+    const token = "hvs.0123456789abcdefghijklmnopqrstuvwxyz"; // ubs:ignore[js.security.hardcoded-secrets] Public fabricated alphabet/number fixture, never a Vault-issued credential.
     const commit = "0123456789abcdef0123456789abcdef01234567";
     const browser = installMockBrowser({
       initialValues: { [ACFS_REF_KEY]: "feature/new-tool" },

@@ -9,17 +9,21 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
+  useSyncExternalStore,
 } from "react";
 import {
   analyticsContextContainsSensitiveState,
   disableAnalyticsForDocument,
+  getAnalyticsPrivacyBoundarySnapshot,
+  getAnalyticsPrivacyBoundaryServerSnapshot,
   GA_MEASUREMENT_ID,
   getOrCreateUserId,
   isAnalyticsPrivacyAllowed,
+  registerAnalyticsPrivacyBoundary,
   sanitizeAnalyticsReferrer,
   sendEvent,
   setUserProperties,
+  subscribeAnalyticsPrivacyBoundary,
   trackPagePerformance,
   trackScrollDepth,
   trackSessionStart,
@@ -274,7 +278,11 @@ function AnalyticsTracker() {
  * layout: an App Router document can later render an operator's host address.
  */
 function PrivacyControlledScripts() {
-  const [analyticsAllowed, setAnalyticsAllowed] = useState(false);
+  const analyticsAllowed = useSyncExternalStore(
+    subscribeAnalyticsPrivacyBoundary,
+    getAnalyticsPrivacyBoundarySnapshot,
+    getAnalyticsPrivacyBoundaryServerSnapshot,
+  );
   const documentTainted = useRef<boolean | null>(null);
 
   useLayoutEffect(() => {
@@ -375,11 +383,10 @@ function PrivacyControlledScripts() {
     window.addEventListener("hashchange", handlePopState);
 
     scrubCurrentLocation();
-    if (!documentTainted.current) {
-      setAnalyticsAllowed(true);
-    }
+    const releaseBoundary = registerAnalyticsPrivacyBoundary();
 
     return () => {
+      releaseBoundary();
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("hashchange", handlePopState);
       if (browserHistory.pushState === guardedPushState) {
