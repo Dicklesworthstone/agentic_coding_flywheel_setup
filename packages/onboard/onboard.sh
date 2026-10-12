@@ -9,6 +9,7 @@
 #   onboard                 # Launch interactive menu
 #   onboard N               # Jump to lesson number N from the lesson filenames
 #   onboard status|list|--status|--list   # Show completion status
+#   onboard credential-status             # Inspect stored credential metadata
 #   onboard reset|--reset                  # Reset progress
 #   onboard help|--help                    # Show help
 #   onboard version|--version              # Show version
@@ -1455,7 +1456,7 @@ onboard_acquire_progress_lock() {
             fi
         fi
         sleep 0.1 2>/dev/null || sleep 1 2>/dev/null || true
-        ((count++))
+        count=$((count + 1))
         if (( count >= 50 )); then
             return 1
         fi
@@ -2046,8 +2047,10 @@ reset_progress() {
 # Authentication Check Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Check if a service is authenticated
-# Returns: 0 = authenticated, 1 = not authenticated, 2 = not installed
+# Check service readiness using the existing credential and provider checks.
+# Returns: 0 = stored credentials or a successful live check,
+#          1 = needs attention, 2 = not installed.
+# Stored credentials alone do not prove that a provider accepts them.
 check_auth_status() {
     local service=$1
     local runtime_home=""
@@ -2202,7 +2205,7 @@ check_auth_status() {
 }
 
 # Fetch auth status without tripping `set -e`
-# Echoes: 0 (authed), 1 (needs auth), 2 (not installed)
+# Echoes: 0 (configured or checked), 1 (needs attention), 2 (not installed)
 get_auth_status_code() {
     local service=$1
     local status
@@ -2214,14 +2217,80 @@ get_auth_status_code() {
 # Get auth status display for a service
 get_auth_status_display() {
     local service=$1
-    local status
-    status=$(get_auth_status_code "$service")
+    local status="${2:-}"
+    if [[ -z "$status" ]]; then status=$(get_auth_status_code "$service"); fi
 
     case $status in
         0) echo -e "${GREEN}✓${NC}" ;;
         1) echo -e "${YELLOW}○${NC}" ;;
         2) echo -e "${DIM}—${NC}" ;;
     esac
+}
+
+# Reuse the passive services collector in an isolated child, preserving the
+# home already resolved by onboarding. Never invoke the setup CLI's separate
+# user/home resolver, source shell startup files, or print captured raw output.
+onboard_credential_status_json() (
+    set +x
+    local runtime_home="" collector="" candidate="" bash_bin="" jq_bin="" timeout_bin="" raw="" metadata=""
+    runtime_home="$(onboard_effective_runtime_home 2>/dev/null || true)"
+    bash_bin="$(onboard_system_binary_path bash 2>/dev/null || true)"
+    jq_bin="$(onboard_system_binary_path jq 2>/dev/null || true)"
+    timeout_bin="$(onboard_system_binary_path timeout 2>/dev/null || true)"
+    for candidate in \
+        "$_ONBOARD_ACFS_HOME/scripts/services-setup.sh" \
+        "$_ONBOARD_SCRIPT_DIR/../../scripts/services-setup.sh" \
+        "$_ONBOARD_SCRIPT_DIR/../scripts/services-setup.sh"; do
+        if [[ -f "$candidate" ]]; then collector="$candidate"; break; fi
+    done
+    if [[ -n "$runtime_home" && -n "$collector" && -n "$bash_bin" && -n "$jq_bin" && -n "$timeout_bin" ]] &&
+        raw="$("$timeout_bin" -k 1 5 "$bash_bin" -c '
+            set +x
+            source "$1" >/dev/null || exit 2
+            TARGET_HOME="$2"
+            SERVICES_SETUP_REQUIRED=()
+            services_setup_credential_status_json
+        ' _ "$collector" "$runtime_home" 2>/dev/null)" &&
+        metadata="$(printf '%s' "$raw" | "$jq_bin" -ces '
+            def member($values): . as $value | $values | index($value) != null;
+            select(length == 1) | .[0]
+            | select(.schema_version == 1 and .kind == "acfs.credential_status" and
+                .status == "pass" and .read_only == true and .summary.required_unmet == 0 and
+                .safety.raw_secret_values_printed == false and .safety.files_mutated == false and
+                .safety.provider_validation_performed == false and (.services | type == "array") and
+                ([.services[].service] | sort) == ["claude","codex","gemini","supabase","vercel","wrangler"] and
+                all(.services[]; .requirement == "optional" and .authentication == "unverified" and
+                    (.state | member(["missing","placeholder","shell_configured","file_configured","unknown"])) and
+                    (.source | member(["none","environment","file"])) and
+                    (.remediation | member(["replace_or_unset_placeholder","inspect_local_config","configure_when_needed","validate_before_use"]))))
+            | {schema_version:1,kind:"acfs.credential_status",status:"pass",read_only:true,
+                services:[.services[] | {service,state,source,requirement,authentication,remediation}],
+                summary:{required_unmet:0},safety:{raw_secret_values_printed:false,files_mutated:false,provider_validation_performed:false}}
+        ' 2>/dev/null)"; then
+        printf '%s\n' "$metadata"
+        return 0
+    fi
+    printf '%s\n' '{"schema_version":1,"kind":"acfs.credential_status","status":"error","read_only":true,"error":"credential_capture_unavailable"}'
+    return 2
+)
+
+show_credential_status() {
+    local metadata="" jq_bin="" service="" state="" source="" remediation="" guidance=""
+    if ! metadata="$(onboard_credential_status_json)"; then
+        printf '\nCredential sources unavailable; authentication remains unverified.\n'
+        return 0
+    fi
+    jq_bin="$(onboard_system_binary_path jq 2>/dev/null || true)"
+    printf '\nCredential sources (all optional; authentication=unverified):\n'
+    while IFS=$'\t' read -r service state source remediation; do
+        case "$remediation" in
+            replace_or_unset_placeholder) guidance="Replace or unset the placeholder export or file value." ;;
+            inspect_local_config) guidance="Inspect the local credential format before use." ;;
+            configure_when_needed) guidance="Configure this service when your project needs it." ;;
+            validate_before_use) guidance="Validate with a read-only provider command before use." ;;
+        esac
+        printf '  %s: state=%s; source=%s; remediation=%s\n    %s\n' "$service" "$state" "$source" "$remediation" "$guidance"
+    done < <(printf '%s' "$metadata" | "$jq_bin" -r '.services[] | [.service,.state,.source,.remediation] | @tsv')
 }
 
 # Show authentication flow
@@ -2250,34 +2319,36 @@ show_auth_flow() {
         echo -e "${BOLD}Service Status:${NC}"
         echo ""
 
-        local authed=0
+        local configured=0
         local total=0
+        local -A auth_statuses=()
 
         for service in "${AUTH_SERVICES[@]}"; do
             local name="${AUTH_SERVICE_NAMES[$service]}"
             local desc="${AUTH_SERVICE_DESCRIPTIONS[$service]}"
-            local status_icon
-            status_icon=$(get_auth_status_display "$service")
-
             local status
             status=$(get_auth_status_code "$service")
+            auth_statuses[$service]="$status"
+            local status_icon
+            status_icon=$(get_auth_status_display "$service" "$status")
 
             if [[ $status -ne 2 ]]; then
                 ((total += 1))
-                [[ $status -eq 0 ]] && ((authed += 1))
+                [[ $status -eq 0 ]] && ((configured += 1))
             fi
 
             printf "  %s  %-15s %s\n" "$status_icon" "$name" "${DIM}$desc${NC}"
         done
 
         echo ""
-        echo -e "${DIM}Legend: ${GREEN}✓${NC} authenticated  ${YELLOW}○${NC} needs auth  ${DIM}—${NC} not installed${NC}"
+        echo -e "${DIM}Legend: ${GREEN}✓${NC} configured or checked  ${YELLOW}○${NC} needs attention  ${DIM}—${NC} not installed${NC}"
         echo ""
 
         if [[ $total -gt 0 ]]; then
-            echo -e "${CYAN}Progress: $authed/$total services authenticated${NC}"
+            echo -e "${CYAN}Progress: $configured/$total services configured or checked${NC}"
         fi
 
+        show_credential_status
         echo ""
         echo -e "${DIM}─────────────────────────────────────────${NC}"
 
@@ -2285,8 +2356,7 @@ show_auth_flow() {
         if has_gum; then
             local -a items=()
             for service in "${AUTH_SERVICES[@]}"; do
-                local status
-                status=$(get_auth_status_code "$service")
+                local status="${auth_statuses[$service]}"
                 if [[ $status -eq 1 ]]; then
                     items+=("🔑 Authenticate ${AUTH_SERVICE_NAMES[$service]}")
                 fi
@@ -2328,8 +2398,7 @@ show_auth_flow() {
 
             local -a auth_menu_services=()
             for service in "${AUTH_SERVICES[@]}"; do
-                local status
-                status=$(get_auth_status_code "$service")
+                local status="${auth_statuses[$service]}"
                 if [[ $status -eq 1 ]]; then
                     auth_menu_services+=("$service")
                     echo "  [${#auth_menu_services[@]}] ${AUTH_SERVICE_NAMES[$service]}"
@@ -3247,6 +3316,14 @@ onboard_main() {
     fi
 
     case "$arg" in
+        credential-status|--credential-status)
+            if [[ $# -ne 1 ]]; then
+                printf 'Error: onboard credential-status does not accept setup or requirement flags\n' >&2
+                return 2
+            fi
+            onboard_credential_status_json
+            return $?
+            ;;
         --cheatsheet|cheatsheet)
             shift || true
             for candidate in \
@@ -3297,6 +3374,7 @@ Usage:
   onboard list      Alias for 'status'
   onboard --status  Alias for 'status'
   onboard --list    Alias for 'status'
+  onboard credential-status  Inspect optional credential sources as JSON (read-only)
   onboard reset     Reset all progress
   onboard --reset   Alias for 'reset'
   onboard help      Alias for '--help'

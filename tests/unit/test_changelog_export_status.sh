@@ -12577,11 +12577,227 @@ run_credential_support_tests() {
     test_credential_support_is_collected_by_real_bundle_cli
 }
 
+credential_onboard_setup() {
+    credential_report_setup "$1"
+    mkdir -p "$PROTOCOL_HOME/.acfs/onboard" "$PROTOCOL_HOME/.acfs/scripts/lib"
+    cp "$ONBOARD_SH" "$PROTOCOL_HOME/.acfs/onboard/onboard.sh"
+    cp "$SERVICES_SETUP_SH" "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh"
+    cp "$REPO_ROOT/scripts/lib/logging.sh" "$REPO_ROOT/scripts/lib/gum_ui.sh" "$PROTOCOL_HOME/.acfs/scripts/lib/"
+}
+
+credential_onboard_run() {
+    local expected="$1" name="$2" actual=0
+    shift 2
+    CREDENTIAL_ONBOARD_OUTPUT="$PROTOCOL_HOME/$name.json"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+        -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        HOME="$PROTOCOL_HOME" TARGET_USER=acfs_onboard_fixture TARGET_HOME="$PROTOCOL_HOME" \
+        ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" PATH="$PROTOCOL_HOME/.local/bin:/usr/bin:/bin" \
+        "$@" bash "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" credential-status \
+        > "$CREDENTIAL_ONBOARD_OUTPUT" 2> "$CREDENTIAL_ONBOARD_OUTPUT.stderr" || actual=$?
+    [[ "$actual" == "$expected" ]]
+}
+
+test_credential_onboard_cli_uses_real_collector_without_mutation() {
+    credential_onboard_setup credential-onboard-cli
+    mkdir -p "$PROTOCOL_HOME/.codex" "$PROTOCOL_HOME/.config/vercel" "$PROTOCOL_HOME/.claude"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-onboard-cached-secret"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    printf '%s\n' '{"token":"fixture-shadowed-vercel-secret"}' > "$PROTOCOL_HOME/.config/vercel/auth.json"
+    printf 'invalid fixture-onboard-malformed-secret\n' > "$PROTOCOL_HOME/.claude/.credentials.json"
+    cp "$PROTOCOL_HOME/.codex/auth.json" "$PROTOCOL_HOME/auth.before"
+    cp "$PROTOCOL_HOME/.config/vercel/auth.json" "$PROTOCOL_HOME/vercel.before"
+    if credential_onboard_run 0 candidate VERCEL_TOKEN=your_vercel_token SUPABASE_ACCESS_TOKEN=fixture-onboard-env-secret &&
+        jq -e '.kind == "acfs.credential_status" and .read_only == true and (.services | length) == 6 and
+          all(.services[]; .requirement == "optional" and .authentication == "unverified") and
+          (.services[] | select(.service == "codex") | .state == "file_configured" and .source == "file" and .remediation == "validate_before_use") and
+          (.services[] | select(.service == "supabase") | .state == "shell_configured" and .source == "environment") and
+          (.services[] | select(.service == "vercel") | .state == "placeholder" and .remediation == "replace_or_unset_placeholder") and
+          (.services[] | select(.service == "claude") | .state == "unknown" and .remediation == "inspect_local_config") and
+          (.services[] | select(.service == "gemini") | .state == "missing" and .remediation == "configure_when_needed")' "$CREDENTIAL_ONBOARD_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture- "$CREDENTIAL_ONBOARD_OUTPUT" && [[ ! -s "$CREDENTIAL_ONBOARD_OUTPUT.stderr" ]] &&
+        cmp -s "$PROTOCOL_HOME/auth.before" "$PROTOCOL_HOME/.codex/auth.json" &&
+        cmp -s "$PROTOCOL_HOME/vercel.before" "$PROTOCOL_HOME/.config/vercel/auth.json" &&
+        [[ ! -e "$PROTOCOL_HOME/tool-called" && ! -e "$PROTOCOL_HOME/.acfs/onboard_progress.json" && ! -e "$PROTOCOL_HOME/.acfs/local_progress.json" ]]; then
+        harness_pass "real onboarding CLI reuses canonical states, redacts values and preserves files/progress without provider probes"
+    else harness_fail "real onboarding CLI reuses canonical states, redacts values and preserves files/progress without provider probes"; fi
+}
+
+test_credential_onboard_screen_renders_states_and_probes_once() {
+    credential_onboard_setup credential-onboard-screen
+    mkdir -p "$PROTOCOL_HOME/.codex"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-screen-cached-secret"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    local output="$PROTOCOL_HOME/screen.stdout" actual=0
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+        VERCEL_TOKEN=your_vercel_token HOME="$PROTOCOL_HOME" TARGET_USER=acfs_onboard_fixture TARGET_HOME="$PROTOCOL_HOME" \
+        ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" PATH="$PROTOCOL_HOME/.local/bin:/usr/bin:/bin" TERM=dumb \
+        bash -c 'source "$1"; show_auth_flow' _ "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" \
+        </dev/null > "$output" 2> "$output.stderr" || actual=$?
+    # Only the existing GitHub, Vercel and Wrangler checks invoke a provider CLI.
+    # Their poisoned commands fail; the new passive collector must add no probe.
+    if [[ "$actual" == 0 ]] && grep -Fq 'authentication=unverified' "$output" &&
+        grep -Fq 'codex: state=file_configured; source=file; remediation=validate_before_use' "$output" &&
+        grep -Fq 'vercel: state=placeholder; source=environment; remediation=replace_or_unset_placeholder' "$output" &&
+        grep -Fq 'Validate with a read-only provider command before use.' "$output" &&
+        grep -Fq 'services configured or checked' "$output" && ! grep -Fq 'services authenticated' "$output" &&
+        ! grep -Fq fixture-screen-cached-secret "$output" && [[ "$(wc -l < "$PROTOCOL_HOME/tool-called" | tr -d ' ')" == 3 ]]; then
+        harness_pass "normal auth screen displays canonical guidance, avoids authenticated claims and probes each live service once"
+    else harness_fail "normal auth screen displays canonical guidance, avoids authenticated claims and probes each live service once" "exit=$actual"; fi
+}
+
+test_credential_onboard_preserves_resolved_home_over_setup_account() {
+    credential_onboard_setup credential-onboard-home
+    mkdir -p "$PROTOCOL_HOME/.codex"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-resolved-home-secret"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    if credential_onboard_run 0 target TARGET_USER="$(id -un)" &&
+        jq -e '(.services[] | select(.service == "codex") | .state == "file_configured")' "$CREDENTIAL_ONBOARD_OUTPUT" >/dev/null &&
+        ! grep -Fq "$PROTOCOL_HOME" "$CREDENTIAL_ONBOARD_OUTPUT"; then
+        harness_pass "onboarding collector preserves resolved fixture home instead of re-resolving the real account home"
+    else harness_fail "onboarding collector preserves resolved fixture home instead of re-resolving the real account home"; fi
+}
+
+test_credential_onboard_actual_collector_is_private_under_tracing() {
+    credential_onboard_setup credential-onboard-real-trace
+    mkdir -p "$PROTOCOL_HOME/.codex"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-real-trace-file-secret"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    local output="$PROTOCOL_HOME/real-trace.stdout" actual=0
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u CLOUDFLARE_API_TOKEN \
+        SUPABASE_ACCESS_TOKEN=fixture-real-trace-env-secret HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" \
+        ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" PATH="$PROTOCOL_HOME/.local/bin:/usr/bin:/bin" \
+        bash -x "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" credential-status > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 ]] && jq -e '(.services[] | select(.service == "codex") | .state == "file_configured") and
+        (.services[] | select(.service == "supabase") | .state == "shell_configured")' "$output" >/dev/null &&
+        ! grep -Fq fixture-real-trace-file-secret "$output" "$output.stderr" &&
+        ! grep -Fq fixture-real-trace-env-secret "$output" "$output.stderr" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "actual collector reads file/environment candidates without trace leaks or provider probes"
+    else harness_fail "actual collector reads file/environment candidates without trace leaks or provider probes"; fi
+}
+
+test_credential_onboard_failure_projection_and_tracing() {
+    local mode="" actual=0 output=""
+    for mode in extra malformed stream failure source-failure timeout; do
+        credential_onboard_setup "credential-onboard-$mode"
+        credential_report_run 0 || { harness_fail "prepare $mode onboarding report"; continue; }
+        case "$mode" in
+            extra) jq '.extra="fixture-hidden-secret" | .services[0].extra="fixture-hidden-secret"' "$CREDENTIAL_REPORT_OUTPUT" > "$PROTOCOL_HOME/payload.json" ;;
+            malformed) printf 'invalid fixture-hidden-secret\n' > "$PROTOCOL_HOME/payload.json" ;;
+            stream) cat "$CREDENTIAL_REPORT_OUTPUT" "$CREDENTIAL_REPORT_OUTPUT" > "$PROTOCOL_HOME/payload.json" ;;
+            *) cp "$CREDENTIAL_REPORT_OUTPUT" "$PROTOCOL_HOME/payload.json" ;;
+        esac
+        cat > "$PROTOCOL_HOME/.acfs/scripts/services-setup.sh" <<'EOF'
+services_setup_credential_status_json() {
+    if [[ "$ACFS_CREDENTIAL_FIXTURE_MODE" == timeout ]]; then sleep 30; fi
+    cat "$ACFS_CREDENTIAL_FIXTURE_PAYLOAD"
+    [[ "$ACFS_CREDENTIAL_FIXTURE_MODE" != failure ]]
+}
+[[ "$ACFS_CREDENTIAL_FIXTURE_MODE" != source-failure ]] || return 1
+EOF
+        output="$PROTOCOL_HOME/projected.stdout"; actual=0
+        env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY HOME="$PROTOCOL_HOME" TARGET_USER=acfs_onboard_fixture TARGET_HOME="$PROTOCOL_HOME" \
+            ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+            PATH="$PROTOCOL_HOME/.local/bin:/usr/bin:/bin" ACFS_CREDENTIAL_FIXTURE_MODE="$mode" \
+            ACFS_CREDENTIAL_FIXTURE_PAYLOAD="$PROTOCOL_HOME/payload.json" \
+            bash -x "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" credential-status > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$mode" == extra && "$actual" == 0 ]] && jq -e '.status == "pass" and (has("extra") | not) and all(.services[]; has("extra") | not)' "$output" >/dev/null &&
+            ! grep -Fq fixture-hidden-secret "$output" "$output.stderr"; then
+            harness_pass "onboarding projection retains known states while dropping secret-bearing extra fields under tracing"
+        elif [[ "$mode" != extra && "$actual" == 2 ]] &&
+            jq -e '.status == "error" and .error == "credential_capture_unavailable" and .read_only == true and (has("services") | not)' "$output" >/dev/null &&
+            ! grep -Fq fixture-hidden-secret "$output" "$output.stderr"; then
+            harness_pass "onboarding $mode capture fails honestly without printing raw data under tracing"
+        else harness_fail "onboarding $mode projection and tracing" "exit=$actual"; fi
+    done
+}
+
+test_credential_onboard_missing_dependency_and_option_controls() {
+    local dependency="" output="" actual=0
+    for dependency in jq bash timeout; do
+        credential_onboard_setup "credential-onboard-no-$dependency"
+        output="$PROTOCOL_HOME/dependency.stdout"; actual=0
+        env HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" ACFS_CREDENTIAL_MISSING_DEPENDENCY="$dependency" \
+            bash -c '
+                source "$1"
+                onboard_system_binary_path() {
+                    [[ "$1" != "$ACFS_CREDENTIAL_MISSING_DEPENDENCY" ]] || return 1
+                    command -v "$1"
+                }
+                onboard_credential_status_json
+            ' _ "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 2 ]] && jq -e '.status == "error" and .error == "credential_capture_unavailable"' "$output" >/dev/null; then
+            harness_pass "missing trusted $dependency reports unavailable onboarding metadata"
+        else harness_fail "missing trusted $dependency reports unavailable onboarding metadata"; fi
+    done
+    credential_onboard_setup credential-onboard-flags
+    actual=0
+    HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        bash "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" credential-status --require codex \
+        > "$PROTOCOL_HOME/flags.stdout" 2> "$PROTOCOL_HOME/flags.stderr" || actual=$?
+    if [[ "$actual" == 2 && ! -s "$PROTOCOL_HOME/flags.stdout" && ! -e "$PROTOCOL_HOME/.acfs/onboard_progress.json" ]]; then
+        harness_pass "onboarding metadata rejects flags before progress or authentication changes"
+    else harness_fail "onboarding metadata rejects flags before progress or authentication changes"; fi
+}
+
+run_credential_onboard_tests() {
+    test_credential_onboard_cli_uses_real_collector_without_mutation
+    test_credential_onboard_screen_renders_states_and_probes_once
+    test_credential_onboard_preserves_resolved_home_over_setup_account
+    test_credential_onboard_actual_collector_is_private_under_tracing
+    test_credential_onboard_failure_projection_and_tracing
+    test_credential_onboard_missing_dependency_and_option_controls
+    test_onboard_lock_retries_are_safe_under_errexit
+}
+
+test_onboard_lock_retries_are_safe_under_errexit() {
+    credential_onboard_setup credential-onboard-lock-retry
+    local output="$PROTOCOL_HOME/lock.stdout" actual=0
+    HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        bash -c '
+            source "$1"
+            set -e
+            _ONBOARD_DISABLE_FLOCK=true
+            ACFS_FIXTURE_LOCK_ATTEMPTS=0
+            mkdir() {
+                if [[ "$1" == "${PROGRESS_LOCK_FILE}.d" ]]; then
+                    ACFS_FIXTURE_LOCK_ATTEMPTS=$((ACFS_FIXTURE_LOCK_ATTEMPTS + 1))
+                    if (( ACFS_FIXTURE_LOCK_ATTEMPTS < 3 )); then return 1; fi
+                fi
+                command mkdir "$@"
+            }
+            onboard_acquire_progress_lock allocated_lock
+            [[ "$allocated_lock" == "dir:$BASHPID" && "$_ONBOARD_ACTIVE_PROGRESS_LOCK" == "$allocated_lock" ]]
+            [[ "$(cat "${PROGRESS_LOCK_FILE}.d/pid")" == "$BASHPID" ]]
+            printf "attempts=%s; ownership_published=true\n" "$ACFS_FIXTURE_LOCK_ATTEMPTS"
+        ' _ "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 && "$(cat "$output")" == 'attempts=3; ownership_published=true' ]]; then
+        harness_pass "real fallback progress lock survives contention under errexit and publishes ownership"
+    else harness_fail "real fallback progress lock survives contention under errexit and publishes ownership" "exit=$actual"; fi
+}
+
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" || "${1:-}" == "--credential-onboard-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--credential-onboard-only" ]]; then
+        harness_section "Onboarding credential integration"
+        run_credential_onboard_tests
+        test_onboard_auth_checks_use_installed_target_home_under_root_home
+        test_onboard_auth_checks_find_target_binaries_outside_current_path
+        test_onboard_auth_checks_reject_placeholder_credentials
+        test_onboard_auth_checks_reject_unresolved_shell_config_credentials
+        test_onboard_auth_checks_ignore_poisoned_current_path_and_env_bin_dir
+        test_onboard_auth_checks_ignore_other_user_home_bin_dir_from_state
+        test_onboard_auth_checks_use_explicit_target_user_when_no_authoritative_runtime_home_exists
+        test_onboard_auth_checks_do_not_fall_back_to_current_home_when_explicit_target_user_is_unresolved
+        test_onboard_antigravity_auth_respects_antigravity_home_override
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--fresh-input-only" ]]; then
         harness_section "Fresh input-boundary regressions"
@@ -12653,6 +12869,7 @@ main() {
     run_credential_support_tests
     run_credential_doctor_tests
     run_fresh_input_tests
+    run_credential_onboard_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true

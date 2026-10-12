@@ -4497,6 +4497,7 @@ or provider requests:
 ```bash
 acfs services-setup --credential-status
 acfs services-setup --credential-status --require vercel --require supabase
+onboard credential-status
 ```
 
 The version-1 `acfs.credential_status` JSON covers Claude, Codex, Gemini, Vercel,
@@ -4533,6 +4534,15 @@ warnings. Stored candidates are reported with authentication explicitly
 `unverified` and the same remediation IDs as the passive report. This storage
 check performs no login, refresh, `whoami` or provider validation; `--deep`
 continues to request doctor's separate functional checks.
+
+The Bash onboarding authentication screen shows the same six source states,
+remediation IDs and next steps. Its existing service indicators mean configured
+or checked; stored tokens remain explicitly `unverified`. `onboard credential-status`
+returns the optional-service JSON without running provider commands or recording
+tutorial progress. It uses onboarding's resolved target home. Failed, invalid or
+timed-out captures return a constant error record and exit 2; raw output is never
+shown. This command accepts no setup flags or `--require` options; use
+`acfs services-setup --credential-status --require SERVICE` for presence requirements.
 
 Credential JSON files must contain exactly one object. Concatenated documents
 remain `unknown` and cannot satisfy a declared storage requirement. Rejected
