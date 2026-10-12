@@ -819,12 +819,15 @@ services_setup_credential_file_state() {
         fi
         return
     fi
-    values="$(printf '%s' "$contents" | "$jq_bin" -r "$expression" 2>/dev/null)" || { printf 'unknown\n'; return; }
-    while IFS= read -r candidate; do
+    # Keep each string encoded until extraction; embedded LF must not turn one
+    # invalid reference into multiple apparently usable candidate tokens.
+    values="$(printf '%s' "$contents" | "$jq_bin" -c "[$expression]" 2>/dev/null)" || { printf 'unknown\n'; return; }
+    while IFS= read -r encoded_contents; do
+        candidate="$(printf '%s' "$encoded_contents" | "$jq_bin" -rj '.')" || { printf 'unknown\n'; return; }
         if [[ "$(services_setup_normalize_config_value "$candidate")" == [vV][aA][uU][lL][tT]://* ]]; then services_setup_vault_reference_state "$candidate"; return; fi
         if services_setup_has_usable_secret "$candidate"; then printf 'file_configured\n'; return; fi
         if services_setup_is_placeholder_secret "$candidate"; then placeholder=true; fi
-    done <<< "$values"
+    done < <(printf '%s' "$values" | "$jq_bin" -c '.[]')
     if [[ "$placeholder" == true ]]; then printf 'placeholder\n'; else printf 'missing\n'; fi
 }
 
@@ -862,7 +865,9 @@ services_setup_credential_status_json() (
             source=environment
             if [[ "$(services_setup_normalize_config_value "$value")" == [vV][aA][uU][lL][tT]://* ]]; then
                 state="$(services_setup_vault_reference_state "$value")"; source=vault
-            elif services_setup_has_usable_secret "$value"; then state=shell_configured; else state=placeholder; fi
+            elif services_setup_has_usable_secret "$value"; then state=shell_configured
+            elif services_setup_is_placeholder_secret "$value"; then state=placeholder
+            else state=missing; fi
             break
         done
         if [[ "$source" == none ]]; then

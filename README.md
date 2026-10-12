@@ -4508,7 +4508,7 @@ means the declared **storage** requirements are met, not successful authenticati
 Invalid options, unresolved target context or missing `jq` return exit 2.
 
 States distinguish `missing`, `placeholder`, `shell_configured`, `file_configured`,
-`expired`, `refresh_required` and `unknown`. An environment placeholder takes
+`expired`, `refresh_required`, `vault_backed` and `unknown`. An environment placeholder takes
 precedence over a cached file
 so a shadowing export stays visible. Malformed JSON or credential shapes,
 unreadable or oversized files (over 1 MiB), and the
@@ -4532,8 +4532,44 @@ values, fractions and oversized numbers report `unknown` for stored candidates.
 Placeholder access tokens remain placeholders. Exported API keys keep their
 environment precedence; no expiry is inferred from token strings, JWT claims,
 other providers or Vault. `--require` cannot pass on expired or refresh-only
-credentials. Vault and other provider expiry formats remain part of the broader
-lifecycle work.
+credentials. Other provider expiry formats remain part of the broader lifecycle work.
+
+Declare unresolved Vault provenance with `ACFS_<SERVICE>_VAULT_REF`, where
+`SERVICE` is `CLAUDE`, `CODEX`, `GEMINI`, `VERCEL`, `SUPABASE` or `WRANGLER`:
+
+```bash
+export ACFS_CLAUDE_VAULT_REF='vault://secret/acfs/claude#api_key'
+acfs services-setup --credential-status --require claude
+```
+
+This is an **ACFS annotation**, not a URI understood by Vault or the provider.
+It names a KV mount, secret path and field. Components use ASCII letters,
+digits, `_`, `-` and `.`; empty, `.`/`..`, placeholder components and references
+over 2048 characters are rejected as `unknown`. The annotation is optional.
+`VAULT_ADDR`, a Vault installation or a Vault token alone does not establish
+provider provenance. The collector never contacts Vault, reads its token helper,
+prints the reference or fetches a secret. Valid references report `vault_backed`,
+`source=vault`, `authentication=unverified`, `resolve_vault_reference` and do
+not satisfy `--require`. Doctor warns and onboarding keeps the service in its
+attention list. Materialize the secret through your approved Vault workflow
+into the provider environment or credential file, then validate provider access.
+
+A nonblank active provider export takes precedence, including placeholders.
+Without one, an explicit Vault annotation takes precedence over cached files.
+An actual exported key therefore overrides the annotation; remove the annotation
+when switching to file-based credentials. Literal `vault://...` references in
+provider token fields are also unresolved and cannot count as usable tokens.
+The annotation does not prove the secret exists or that Vault access is permitted.
+
+TypeScript onboarding exposes `getCredentialStatus(requiredServices)` with the
+same JSON metadata, state/remediation vocabulary and requirements as Bash.
+Both honor `CODEX_HOME` for Codex's `auth.json`. `checkAllServices()` attaches
+canonical credential metadata to its provider entries. Stored candidates use
+`configured: true` with `authenticated: false`; successful live checks may use
+`authenticated: true`. Expired, refresh-only, placeholder, invalid and unresolved
+Vault candidates cannot count as configured. Startup-file assignments are
+still parsed as text by the interactive checks, never evaluated; the passive
+report only examines exported variables and credential files.
 
 The JSON report reuses the existing local credential paths and placeholder policy,
 omits secret values and file paths, and does not change credential files. It

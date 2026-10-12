@@ -25,6 +25,25 @@ const makeDeps = (overrides: AuthCheckOverrides = {}) => ({
   ...overrides,
 });
 
+// A fixture filesystem records path-to-content mappings, just as a filesystem
+// does. Filename dispatch never compares credential values or grants auth.
+function fixtureFiles(entries: readonly (readonly [string, string])[]) {
+  const files = new Map(entries);
+  return {
+    existsSync: (file: fs.PathLike) => files.has(String(file)),
+    readFileSync: (file: fs.PathOrFileDescriptor) => {
+      const contents = files.get(String(file));
+      if (contents === undefined) throw new Error("missing fixture file");
+      return contents;
+    },
+  };
+}
+
+function installedCommands(...names: string[]) {
+  const installed = new Set(names);
+  return (command: string) => installed.has(command);
+}
+
 describe("authChecks", () => {
   test("checkTailscale returns IP details when running", () => {
     const execSync = (command: string) => {
@@ -52,12 +71,9 @@ describe("authChecks", () => {
     const configPath = path.join(HOME, ".claude", "config.json");
     const checks = createAuthChecks(
       makeDeps({
-        commandExists: (command) => command === "claude",
-        existsSync: (filePath) => filePath === credentialsPath || filePath === configPath,
-        readFileSync: (filePath) =>
-          filePath === credentialsPath
-            ? JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-            : JSON.stringify({ user: { email: "user@example.com" } }),
+        commandExists: installedCommands("claude"),
+        ...fixtureFiles([[credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: "token" } })],
+          [configPath, JSON.stringify({ user: { email: "user@example.com" } })]]),
       }),
     );
 
@@ -81,9 +97,8 @@ describe("authChecks", () => {
     const credentialsPath = path.join(HOME, ".claude", ".credentials.json");
     const checks = createAuthChecks(
       makeDeps({
-        commandExists: (command) => command === "claude",
-        existsSync: (filePath) => filePath === credentialsPath,
-        readFileSync: () => JSON.stringify({ claudeAiOauth: { accessToken: "   " } }),
+        commandExists: installedCommands("claude"),
+        ...fixtureFiles([[credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: "   " } })]]),
       }),
     );
 
@@ -94,9 +109,8 @@ describe("authChecks", () => {
     const credentialsPath = path.join(HOME, ".claude", ".credentials.json");
     const checks = createAuthChecks(
       makeDeps({
-        commandExists: (command) => command === "claude",
-        existsSync: (filePath) => filePath === credentialsPath,
-        readFileSync: () => JSON.stringify({ claudeAiOauth: { accessToken: "your-token-here" } }),
+        commandExists: installedCommands("claude"),
+        ...fixtureFiles([[credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: "your-token-here" } })]]),
       }),
     );
 
@@ -109,20 +123,10 @@ describe("authChecks", () => {
     const fallbackConfigPath = path.join(HOME, ".config", "claude", "config.json");
     const checks = createAuthChecks(
       makeDeps({
-        commandExists: (command) => command === "claude",
-        existsSync: (filePath) =>
-          filePath === credentialsPath ||
-          filePath === primaryConfigPath ||
-          filePath === fallbackConfigPath,
-        readFileSync: (filePath) => {
-          if (filePath === credentialsPath) {
-            return JSON.stringify({ claudeAiOauth: { accessToken: "token" } });
-          }
-          if (filePath === primaryConfigPath) {
-            return JSON.stringify({ user: {} });
-          }
-          return JSON.stringify({ user: { email: "fallback@example.com" } });
-        },
+        commandExists: installedCommands("claude"),
+        ...fixtureFiles([[credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: "token" } })],
+          [primaryConfigPath, JSON.stringify({ user: {} })],
+          [fallbackConfigPath, JSON.stringify({ user: { email: "fallback@example.com" } })]]),
       }),
     );
 
@@ -133,8 +137,7 @@ describe("authChecks", () => {
     const credentialsPath = path.join(HOME, ".claude", ".credentials.json");
     const checks = createAuthChecks(
       makeDeps({
-        existsSync: (filePath) => filePath === credentialsPath,
-        readFileSync: () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } }),
+        ...fixtureFiles([[credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: "token" } })]]),
       }),
     );
 
@@ -205,11 +208,11 @@ describe("authChecks", () => {
     expect(checks.checkCodex()).toEqual({ authenticated: false });
   });
 
-  test("checkCodex respects the injected PATH when using the default command lookup", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-auth-checks-"));
+  test("checkCodex respects the injected PATH when using the default command lookup", async () => {
+    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-auth-checks-"));
     const fakeCodexPath = path.join(tempDir, "codex");
-    fs.writeFileSync(fakeCodexPath, "#!/bin/sh\nexit 0\n", "utf-8");
-    fs.chmodSync(fakeCodexPath, 0o755);
+    await fs.promises.writeFile(fakeCodexPath, "#!/bin/sh\nexit 0\n", "utf-8");
+    await fs.promises.chmod(fakeCodexPath, 0o755);
 
     const authPath = path.join(HOME, ".codex", "auth.json");
     const originalPath = process.env.PATH;
@@ -231,7 +234,7 @@ describe("authChecks", () => {
     }
   });
 
-  test("checkAntigravity returns authenticated when the Antigravity OAuth token exists", () => {
+  test("checkAntigravity reports configured when the Antigravity OAuth token exists", () => {
     const tokenPath = path.join(HOME, ".gemini", "antigravity-cli", "antigravity-oauth-token");
     const checks = createAuthChecks(
       makeDeps({
@@ -355,7 +358,7 @@ describe("authChecks", () => {
     expect(checks.checkGitHub()).toEqual({ authenticated: false });
   });
 
-  test("checkVercel returns authenticated with legacy ~/.vercel/auth.json token", () => {
+  test("checkVercel reports configured with legacy ~/.vercel/auth.json token", () => {
     const authPath = path.join(HOME, ".vercel", "auth.json");
     const validVercelCredential = ["vercel", "credential"].join("-");
     const checks = createAuthChecks(
@@ -381,7 +384,7 @@ describe("authChecks", () => {
     expect(checks.checkVercel()).toEqual({ authenticated: false });
   });
 
-  test("checkVercel returns authenticated with VERCEL_TOKEN env var", () => {
+  test("checkVercel reports configured with VERCEL_TOKEN env var", () => {
     const checks = createAuthChecks(
       makeDeps({
         env: { VERCEL_TOKEN: "token-123" } as NodeJS.ProcessEnv,
@@ -456,11 +459,12 @@ describe("authChecks", () => {
   });
 
   test.each([
-    "export VERCEL_TOKEN=$VERCEL_TOKEN",
-    'export VERCEL_TOKEN="${VERCEL_TOKEN:-fallback}"',
-    "export VERCEL_TOKEN=$(read-token)",
-    "export VERCEL_TOKEN=`read-token`",
-  ])("checkVercel rejects unresolved shell config expression: %s", (assignment) => {
+    "$VERCEL_TOKEN",
+    '"${VERCEL_TOKEN:-fallback}"',
+    "$(read-token)",
+    "`read-token`",
+  ])("checkVercel rejects unresolved shell config expression: %s", (expression) => {
+    const assignment = `export VERCEL_TOKEN=${expression}`;
     const configPath = path.join(HOME, ".zshrc.local");
     const checks = createAuthChecks(
       makeDeps({
@@ -487,7 +491,7 @@ describe("authChecks", () => {
     expect(checks.checkVercel()).toEqual({ authenticated: false });
   });
 
-  test("checkSupabase returns authenticated with access token file", () => {
+  test("checkSupabase reports configured with access token file", () => {
     const tokenPath = path.join(HOME, ".supabase", "access-token");
     const checks = createAuthChecks(
       makeDeps({
@@ -608,8 +612,8 @@ describe("placeholder secret vocabulary", () => {
   // doctor and onboarding rejected.
   const repoRoot = path.resolve(import.meta.dir, "../../../../..");
 
-  function shellPlaceholders(file: string, fn: string): string[] {
-    const text = fs.readFileSync(path.join(repoRoot, file), "utf8");
+  async function shellPlaceholders(file: string, fn: string): Promise<string[]> {
+    const text = await fs.promises.readFile(path.join(repoRoot, file), "utf8");
     const start = text.indexOf(`\n${fn}() {\n`);
     expect(start).toBeGreaterThan(-1);
     const body = text.slice(start, text.indexOf("\n}\n", start));
@@ -622,8 +626,8 @@ describe("placeholder secret vocabulary", () => {
     ["scripts/lib/doctor.sh", "is_placeholder_secret"],
     ["packages/onboard/onboard.sh", "is_placeholder_secret"],
     ["scripts/services-setup.sh", "services_setup_is_placeholder_secret"],
-  ])("%s %s matches authChecks.ts", (file, fn) => {
-    expect(shellPlaceholders(file, fn).sort()).toEqual([...PLACEHOLDER_SECRETS].sort());
+  ])("%s %s matches authChecks.ts", async (file, fn) => {
+    expect((await shellPlaceholders(file, fn)).sort()).toEqual([...PLACEHOLDER_SECRETS].sort());
   });
 });
 
@@ -635,8 +639,10 @@ describe("passive credential lifecycle parity", () => {
   const scenarios: { name: string; file?: string; contents?: string; env?: NodeJS.ProcessEnv;
     service: "claude" | "codex" | "gemini" | "vercel" | "supabase" | "wrangler"; state: string }[] = [
     { name: "optional missing", service: "claude", state: "missing" },
+    { name: "empty credential file", service: "supabase", state: "missing", file: ".supabase/access-token", contents: "" },
     { name: "exported key", service: "claude", state: "shell_configured", env: { ANTHROPIC_API_KEY: "fixture-private-key" } },
     { name: "quoted placeholder", service: "vercel", state: "placeholder", env: { VERCEL_TOKEN: '"your_vercel_token"' } },
+    { name: "quoted empty export", service: "vercel", state: "missing", env: { VERCEL_TOKEN: '""' } },
     { name: "expired Claude", service: "claude", state: "expired", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"accessToken":"fixture-private-key","expiresAt":0}}' },
     { name: "future Claude", service: "claude", state: "file_configured", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"accessToken":"fixture-private-key","expiresAt":4102444800000}}' },
     { name: "refresh-only Claude", service: "claude", state: "refresh_required", file: ".claude/.credentials.json", contents: '{"claudeAiOauth":{"refreshToken":"fixture-private-key"}}' },
@@ -659,6 +665,7 @@ describe("passive credential lifecycle parity", () => {
     { name: "quoted Vault annotation", service: "supabase", state: "vault_backed", env: { ACFS_SUPABASE_VAULT_REF: `"${vaultRef}"` } },
     { name: "Vault token literal", service: "codex", state: "vault_backed", env: { OPENAI_API_KEY: vaultRef } },
     { name: "Vault file literal", service: "supabase", state: "vault_backed", file: ".supabase/access-token", contents: vaultRef },
+    { name: "embedded LF in Vault JSON literal", service: "codex", state: "unknown", file: ".codex/auth.json", contents: JSON.stringify({ access_token: `${vaultRef}\nfixture-private-extra` }) },
     { name: "Vault OAuth literal", service: "gemini", state: "vault_backed", file: ".gemini/oauth_creds.json", contents: JSON.stringify({ access_token: vaultRef }) },
     { name: "invalid Vault traversal", service: "vercel", state: "unknown", env: { ACFS_VERCEL_VAULT_REF: "vault://secret/../private#token" } },
     { name: "invalid Vault placeholder", service: "vercel", state: "unknown", env: { ACFS_VERCEL_VAULT_REF: "vault://secret/your_token#token" } },
@@ -669,14 +676,14 @@ describe("passive credential lifecycle parity", () => {
     { name: "Vault annotation shadows cached file", service: "vercel", state: "vault_backed", env: { ACFS_VERCEL_VAULT_REF: vaultRef }, file: ".vercel/auth.json", contents: '{"token":"fixture-private-key"}' },
   ];
 
-  test.each(scenarios)("$name: actual file/environment reports match Bash", (scenario) => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-credential-parity-"));
+  test.each(scenarios)("$name: actual file/environment reports match Bash", async (scenario) => {
+    const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-credential-parity-"));
     const env: NodeJS.ProcessEnv = { ...process.env, ...scenario.env, HOME: home };
     for (const key of knownEnv) if (!(key in (scenario.env ?? {}))) delete env[key];
     if (scenario.file) {
       const file = path.join(home, scenario.file);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, scenario.contents!);
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(file, scenario.contents!);
     }
     let invoked = false;
     const checks = createAuthChecks({ homedir: () => home, env, execSync: () => { invoked = true; throw new Error("provider invocation forbidden"); } });
@@ -684,31 +691,70 @@ describe("passive credential lifecycle parity", () => {
     const shell = childProcess.execFileSync(env.ACFS_TEST_BASH ?? "/usr/bin/bash", ["-c",
       'source "$1" >/dev/null || exit 2; TARGET_HOME="$2"; SERVICES_SETUP_REQUIRED=("$3" "$3"); services_setup_credential_status_json || [[ $? == 1 ]]',
       "_", path.join(repoRoot, "scripts/services-setup.sh"), home, scenario.service], { env, encoding: "utf8", timeout: 10000 });
-    expect(report).toEqual(JSON.parse(shell));
+    let bashReport: unknown;
+    try { bashReport = JSON.parse(shell); }
+    catch (error) { throw new Error("Bash credential report is not valid JSON", { cause: error }); }
+    expect(report).toEqual(bashReport);
     expect(report.services.find((entry) => entry.service === scenario.service)?.state).toBe(scenario.state);
     expect(report.summary.required_unmet).toBe(["shell_configured", "file_configured"].includes(scenario.state) ? 0 : 1);
     expect(JSON.stringify(report)).not.toContain("fixture-private");
     expect(invoked).toBe(false);
-    if (scenario.file) expect(fs.readFileSync(path.join(home, scenario.file), "utf8")).toBe(scenario.contents!);
+    if (scenario.file) expect(await fs.promises.readFile(path.join(home, scenario.file), "utf8")).toBe(scenario.contents!);
   });
 
-  test("CODEX_HOME and normal TypeScript consumers use canonical source metadata", () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-credential-consumer-"));
+  test("CODEX_HOME and normal TypeScript consumers use canonical source metadata", async () => {
+    const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-credential-consumer-"));
     const codexHome = path.join(home, "custom-codex");
-    fs.mkdirSync(codexHome);
-    fs.writeFileSync(path.join(codexHome, "auth.json"), '{"tokens":{"access_token":"fixture-private-key"}}');
+    await fs.promises.mkdir(codexHome);
+    await fs.promises.writeFile(path.join(codexHome, "auth.json"), '{"tokens":{"access_token":"fixture-private-key"}}');
     const checks = createAuthChecks({ homedir: () => home, env: { CODEX_HOME: codexHome }, commandExists: (name) => name === "codex" });
     expect(checks.checkCodex()).toEqual({ authenticated: false, configured: true });
     expect(checks.checkAllServices()["codex-cli"]).toEqual({ authenticated: false, configured: true,
       credential: { service: "codex", state: "file_configured", source: "file", requirement: "optional", authentication: "unverified", remediation: "validate_before_use" } });
   });
 
-  test.each(["expired", "refresh_required", "vault_backed"])("normal Claude check rejects %s readiness", (state) => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "acfs-credential-attention-"));
-    fs.mkdirSync(path.join(home, ".claude"));
-    fs.writeFileSync(path.join(home, ".claude", ".credentials.json"), state === "refresh_required" ?
+  test.each(["expired", "refresh_required", "vault_backed"])("normal Claude check rejects %s readiness", async (state) => {
+    const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-credential-attention-"));
+    await fs.promises.mkdir(path.join(home, ".claude"));
+    await fs.promises.writeFile(path.join(home, ".claude", ".credentials.json"), state === "refresh_required" ?
       '{"claudeAiOauth":{"refreshToken":"fixture-private-key"}}' : '{"claudeAiOauth":{"accessToken":"fixture-private-key","expiresAt":0}}');
     const checks = createAuthChecks({ homedir: () => home, env: state === "vault_backed" ? { ACFS_CLAUDE_VAULT_REF: vaultRef } : {}, commandExists: () => true });
     expect(checks.checkClaude()).toEqual({ authenticated: false });
+  });
+
+  test("checkAllServices derives metadata and readiness from one credential snapshot", () => {
+    let reads = 0;
+    const file = path.join(HOME, ".claude", ".credentials.json");
+    const snapshots = [4102444800000, 0].map((expiresAt) => JSON.stringify({ claudeAiOauth: { accessToken: "fixture-private-key", expiresAt } }));
+    const checks = createAuthChecks(makeDeps({ existsSync: (candidate) => candidate === file,
+      commandExists: (command) => command === "claude",
+      readFileSync: () => {
+        reads += 1;
+        const snapshot = snapshots.shift();
+        if (snapshot === undefined) throw new Error("credential snapshot read more than expected");
+        return snapshot;
+      } }));
+    const result = checks.checkAllServices()["claude-code"];
+    expect(reads).toBe(1);
+    expect(result.configured).toBe(true);
+    expect(result.authenticated).toBe(false);
+    expect(result.credential?.state).toBe("file_configured");
+    expect(checks.getCredentialStatus().services[0].state).toBe("expired");
+  });
+
+  test.each(["vercel", "supabase", "wrangler"])("%s does not fall back around an active quoted-empty export", (service) => {
+    const variable = { vercel: "VERCEL_TOKEN", supabase: "SUPABASE_ACCESS_TOKEN", wrangler: "CLOUDFLARE_API_TOKEN" }[service]!;
+    const checks = createAuthChecks(makeDeps({ env: { [variable]: '""' }, commandExists: () => true,
+      existsSync: (file) => file === path.join(HOME, ".zshrc.local"),
+      readFileSync: () => `export ${variable}=fixture-private-key` }));
+    const check = { vercel: checks.checkVercel, supabase: checks.checkSupabase, wrangler: checks.checkWrangler }[service]!;
+    expect(check()).toEqual({ authenticated: false });
+  });
+
+  test("a directory at the credential-file location is missing rather than configured", async () => {
+    const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), "acfs-credential-directory-"));
+    await fs.promises.mkdir(path.join(home, ".supabase", "access-token"), { recursive: true });
+    const checks = createAuthChecks({ homedir: () => home, env: {} });
+    expect(checks.getCredentialStatus(["supabase"]).services.find((entry) => entry.service === "supabase")?.state).toBe("missing");
   });
 });

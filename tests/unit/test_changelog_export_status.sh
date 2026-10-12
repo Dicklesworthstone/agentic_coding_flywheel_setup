@@ -12050,7 +12050,7 @@ run_status_protocol_tests() {
 credential_report_setup() {
     status_protocol_setup "$1"
     local tool=""
-    for tool in gemini vercel supabase wrangler; do
+    for tool in gemini vercel supabase wrangler vault; do
         cat > "$PROTOCOL_HOME/.local/bin/$tool" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' called >> "$ACFS_PROTOCOL_POISON_MARKER"
@@ -13020,11 +13020,82 @@ EOF
     else harness_fail "credential byte bound and expiry decision use one captured producer snapshot" "exit=$actual"; fi
 }
 
+test_credential_vault_annotations_and_required_presence() {
+    local service="" output="" actual=0 vault_env=""
+    for service in claude codex gemini vercel supabase wrangler; do
+        credential_report_setup "credential-vault-$service"
+        output="$PROTOCOL_HOME/vault-required.json"; actual=0
+        vault_env="ACFS_${service^^}_VAULT_REF"
+        env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY -u VERCEL_TOKEN -u SUPABASE_ACCESS_TOKEN -u CLOUDFLARE_API_TOKEN \
+            "$vault_env=vault://secret/fixture-private-vault-path#fixture-private-field" \
+            TARGET_USER="$(id -un)" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+            ACFS_PROTOCOL_POISON_MARKER="$PROTOCOL_HOME/tool-called" \
+            bash -x "$SERVICES_SETUP_SH" --credential-status --require "$service" > "$output" 2> "$output.stderr" || actual=$?
+        if [[ "$actual" == 1 ]] && jq -e --arg service "$service" '.summary.required_unmet == 1 and
+            (.services[] | select(.service == $service) | .state == "vault_backed" and .source == "vault" and
+                .authentication == "unverified" and .remediation == "resolve_vault_reference")' "$output" >/dev/null &&
+            ! grep -Fq fixture-private- "$output" "$output.stderr" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+            harness_pass "$service Vault metadata is redacted and cannot satisfy required credentials"
+        else harness_fail "$service Vault metadata is redacted and cannot satisfy required credentials" "exit=$actual"; fi
+    done
+}
+
+test_credential_vault_metadata_agrees_across_consumers() {
+    credential_doctor_setup credential-vault-consumers
+    local output="$PROTOCOL_HOME/onboard-vault.stdout" actual=0
+    export ACFS_CLAUDE_VAULT_REF='vault://secret/fixture-private-vault-path#fixture-private-field'
+    if ! credential_report_run 0 || ! credential_doctor_run FIXTURE_CONTROL=trace ||
+        ! credential_support_run 0 "$REPO_ROOT" FIXTURE_CONTROL=trace FIXTURE_NO_REDACT=true; then
+        unset ACFS_CLAUDE_VAULT_REF
+        harness_fail "Vault actual collector/doctor/support execution"; return
+    fi
+    credential_onboard_setup credential-vault-consumers
+    env HOME="$PROTOCOL_HOME" TARGET_HOME="$PROTOCOL_HOME" ACFS_HOME="$PROTOCOL_HOME/.acfs" \
+        ACFS_SYSTEM_STATE_FILE="$PROTOCOL_HOME/no-system-state.json" \
+        bash -c 'source "$1"; show_credential_status' _ "$PROTOCOL_HOME/.acfs/onboard/onboard.sh" > "$output" 2> "$output.stderr" || actual=$?
+    if [[ "$actual" == 0 ]] && credential_onboard_run 0 onboard-vault &&
+        jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '.services == $canonical[0].services and .capture.status == "pass"' \
+            "$CREDENTIAL_SUPPORT_BUNDLE/credential_status.json" >/dev/null &&
+        jq -e --slurpfile canonical "$CREDENTIAL_REPORT_OUTPUT" '.services == $canonical[0].services' "$CREDENTIAL_ONBOARD_OUTPUT" >/dev/null &&
+        jq -e '.checks[] | select(.id == "credential.source.claude") | .status == "warn" and (.details | contains("state=vault_backed"))' "$DOCTOR_CREDENTIAL_OUTPUT" >/dev/null &&
+        grep -Fq 'claude: state=vault_backed; source=vault; remediation=resolve_vault_reference' "$output" &&
+        ! grep -Fq fixture-private- "$output" "$output.stderr" "$CREDENTIAL_ONBOARD_OUTPUT" "$DOCTOR_CREDENTIAL_OUTPUT" "$DOCTOR_CREDENTIAL_OUTPUT.stderr" &&
+        ! grep -RFq fixture-private- "$CREDENTIAL_SUPPORT_BUNDLE" && [[ ! -e "$PROTOCOL_HOME/tool-called" ]]; then
+        harness_pass "Vault canonical metadata agrees across actual services/doctor/support/onboarding without lookup or path leaks"
+    else harness_fail "Vault canonical metadata agrees across actual services/doctor/support/onboarding without lookup or path leaks"; fi
+    unset ACFS_CLAUDE_VAULT_REF
+}
+
+test_credential_codex_home_report_override() {
+    credential_report_setup credential-codex-home
+    mkdir -p "$PROTOCOL_HOME/custom-codex" "$PROTOCOL_HOME/.codex"
+    printf '%s\n' '{"tokens":{"access_token":"fixture-private-codex-key"}}' > "$PROTOCOL_HOME/custom-codex/auth.json"
+    printf '%s\n' '{"tokens":{"access_token":"your_token"}}' > "$PROTOCOL_HOME/.codex/auth.json"
+    if credential_report_run 0 CODEX_HOME="$PROTOCOL_HOME/custom-codex" &&
+        jq -e '.services[] | select(.service == "codex") | .state == "file_configured" and .source == "file"' "$CREDENTIAL_REPORT_OUTPUT" >/dev/null &&
+        ! grep -Fq fixture-private- "$CREDENTIAL_REPORT_OUTPUT"; then
+        harness_pass "canonical Codex collector honors CODEX_HOME over default cached placeholder"
+    else harness_fail "canonical Codex collector honors CODEX_HOME over default cached placeholder"; fi
+}
+
+run_credential_vault_tests() {
+    test_credential_vault_annotations_and_required_presence
+    test_credential_vault_metadata_agrees_across_consumers
+    test_credential_codex_home_report_override
+}
+
 main() {
-    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" || "${1:-}" == "--credential-onboard-only" || "${1:-}" == "--credential-expiry-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
+    if [[ ( "${1:-}" == "--status-protocol-only" || "${1:-}" == "--ubs-regressions-only" || "${1:-}" == "--credential-report-only" || "${1:-}" == "--credential-support-only" || "${1:-}" == "--credential-doctor-only" || "${1:-}" == "--fresh-input-only" || "${1:-}" == "--credential-onboard-only" || "${1:-}" == "--credential-expiry-only" || "${1:-}" == "--credential-vault-only" ) && -n "${ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR:-}" ]]; then
         HARNESS_ARTIFACT_DIR="$ACFS_STATUS_PROTOCOL_TEST_ARTIFACTS_DIR"
     fi
     harness_init "ACFS Changelog/Export/Status Tests"
+
+    if [[ "${1:-}" == "--credential-vault-only" ]]; then
+        harness_section "Vault credential metadata integration"
+        run_credential_vault_tests
+        harness_summary
+        return
+    fi
 
     if [[ "${1:-}" == "--credential-expiry-only" ]]; then
         harness_section "OAuth lifecycle integration"
@@ -13121,6 +13192,7 @@ main() {
     run_fresh_input_tests
     run_credential_onboard_tests
     run_credential_expiry_tests
+    run_credential_vault_tests
     test_services_setup_prefers_target_home_libs_under_root_home || true
     test_services_setup_runs_target_user_commands_with_target_home || true
     test_services_setup_rejects_invalid_target_user_before_sudo || true

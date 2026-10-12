@@ -35,11 +35,21 @@ export interface CredentialReport {
 
 const CREDENTIAL_SERVICES: readonly CredentialService[] = ["claude", "codex", "gemini", "vercel", "supabase", "wrangler"];
 const CREDENTIAL_BYTE_LIMIT = 1048576;
+const READY_CREDENTIAL_STATES: ReadonlySet<CredentialState> = new Set(["shell_configured", "file_configured"]);
+const FINAL_FILE_STATES: ReadonlySet<CredentialState> = new Set(["file_configured", "vault_backed", "unknown"]);
+const INTERACTIVE_CANDIDATE_STATES: ReadonlySet<CredentialState> = new Set(["missing", "file_configured", "shell_configured"]);
+const ACTIVE_CREDENTIAL_SOURCES: ReadonlySet<CredentialMetadata["source"]> = new Set(["environment", "vault"]);
+const REMEDIATION_BY_STATE: Record<CredentialState, CredentialMetadata["remediation"]> = {
+  missing: "configure_when_needed", placeholder: "replace_or_unset_placeholder",
+  shell_configured: "validate_before_use", file_configured: "validate_before_use",
+  expired: "refresh_or_reauthenticate", refresh_required: "refresh_or_reauthenticate",
+  vault_backed: "resolve_vault_reference", unknown: "inspect_local_config",
+};
 
 function readCredentialSnapshot(filePath: string): string {
   const descriptor = fs.openSync(filePath, "r");
   try {
-    if (!fs.fstatSync(descriptor).isFile()) throw new Error("invalid credential file");
+    if (!fs.fstatSync(descriptor).isFile()) return "";
     const bytes = Buffer.alloc(CREDENTIAL_BYTE_LIMIT + 1);
     let length = 0;
     while (length < bytes.length) {
@@ -58,13 +68,13 @@ function readCredentialSnapshot(filePath: string): string {
 
 type ExecSync = (
   command: string,
-  options?: childProcess.ExecSyncOptions & { encoding?: "utf-8" },
+  options: childProcess.ExecSyncOptionsWithStringEncoding,
 ) => string;
 
 interface AuthCheckDeps {
   execSync: ExecSync;
-  existsSync: typeof fs.existsSync;
-  readFileSync: typeof fs.readFileSync;
+  existsSync: (filePath: string) => boolean;
+  readFileSync: (filePath: string, encoding: "utf8" | "utf-8") => string;
   homedir: () => string;
   env: NodeJS.ProcessEnv;
   commandExists: (command: string) => boolean;
@@ -117,7 +127,7 @@ const defaultDeps: AuthCheckDeps = {
   now: Date.now,
 };
 
-function safeReadJson<T>(readFileSync: typeof fs.readFileSync, filePath: string): T | null {
+function safeReadJson<T>(readFileSync: AuthCheckDeps["readFileSync"], filePath: string): T | null {
   try {
     const raw = readFileSync(filePath, "utf-8");
     if (Buffer.byteLength(raw, "utf8") > CREDENTIAL_BYTE_LIMIT || raw.includes("\0")) return null;
@@ -213,8 +223,9 @@ function isPlaceholderSecret(value: unknown): boolean {
 }
 
 function hasUsableSecret(value: unknown): value is string {
-  return hasNonBlankString(value) && !value.includes("\0") &&
-    !normalizeConfigValue(value).toLowerCase().startsWith("vault://") && !isPlaceholderSecret(value);
+  if (!hasNonBlankString(value) || value.includes("\0")) return false;
+  const normalized = normalizeConfigValue(value);
+  return normalized.length > 0 && !normalized.toLowerCase().startsWith("vault://") && !isPlaceholderSecret(value);
 }
 
 function vaultReferenceState(raw: string): CredentialState {
@@ -244,7 +255,7 @@ function escapeRegex(value: string): string {
 }
 
 function readConfiguredValueFromFile(
-  readFileSync: typeof fs.readFileSync,
+  readFileSync: AuthCheckDeps["readFileSync"],
   filePath: string,
   variableName: string,
 ): string | null {
@@ -357,8 +368,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       for (const value of candidates) {
         if (typeof value !== "string") continue;
         const state = candidateState(value);
-        if (state === "file_configured" || state === "vault_backed" || state === "unknown") return state;
-        if (state === "placeholder") placeholder = true;
+        if (FINAL_FILE_STATES.has(state)) return state;
+        switch (state) { case "placeholder": placeholder = true; }
       }
       return placeholder ? "placeholder" : "missing";
     } catch {
@@ -366,7 +377,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     }
   };
 
+  let metadataSnapshot: Map<CredentialService, CredentialMetadata> | null = null;
   const credentialMetadata = (service: CredentialService, required = false): CredentialMetadata => {
+    const captured = metadataSnapshot?.get(service);
+    if (captured) return { ...captured, requirement: required ? "required" : "optional" };
     const envNames: Record<CredentialService, string[]> = {
       claude: ["ANTHROPIC_API_KEY"], codex: ["OPENAI_API_KEY"], gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
       vercel: ["VERCEL_TOKEN"], supabase: ["SUPABASE_ACCESS_TOKEN"], wrangler: ["CLOUDFLARE_API_TOKEN"],
@@ -386,7 +400,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (!hasNonBlankString(value)) continue;
       state = candidateState(value);
       source = /^vault:\/\//i.test(normalizeConfigValue(value)) ? "vault" : "environment";
-      if (state === "file_configured") state = "shell_configured";
+      switch (state) { case "file_configured": state = "shell_configured"; }
       break;
     }
     const vaultRef = deps.env[`ACFS_${service.toUpperCase()}_VAULT_REF`];
@@ -396,30 +410,30 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     if (source === "none") {
       for (const file of files[service]) {
         const fileState = credentialFileState(file, service);
-        if (fileState === "file_configured") { state = fileState; source = "file"; break; }
-        if (state === "missing" && fileState !== "missing") { state = fileState; source = "file"; }
+        if (READY_CREDENTIAL_STATES.has(fileState)) { state = fileState; source = "file"; break; }
+        switch (state) {
+          case "missing":
+            switch (fileState) { case "missing": break; default: state = fileState; source = "file"; }
+            break;
+        }
       }
     }
-    if (state === "vault_backed") source = "vault";
-    const remediation: CredentialMetadata["remediation"] = state === "placeholder" ? "replace_or_unset_placeholder" :
-      state === "unknown" ? "inspect_local_config" : state === "vault_backed" ? "resolve_vault_reference" :
-      state === "expired" || state === "refresh_required" ? "refresh_or_reauthenticate" :
-      state === "missing" ? "configure_when_needed" : "validate_before_use";
+    switch (state) { case "vault_backed": source = "vault"; }
+    const remediation = REMEDIATION_BY_STATE[state];
     return { service, state, source, requirement: required ? "required" : "optional", authentication: "unverified", remediation };
   };
 
   const getCredentialStatus = (required: readonly CredentialService[] = []): CredentialReport => {
     if (required.some((service) => !CREDENTIAL_SERVICES.includes(service))) throw new Error("invalid credential requirement");
     const services = CREDENTIAL_SERVICES.map((service) => credentialMetadata(service, required.includes(service)));
-    const required_unmet = services.filter((entry) => entry.requirement === "required" &&
-      entry.state !== "shell_configured" && entry.state !== "file_configured").length;
+    const required_unmet = services.filter((entry) => entry.requirement === "required" && !READY_CREDENTIAL_STATES.has(entry.state)).length;
     return { schema_version: 1, kind: "acfs.credential_status", status: required_unmet ? "warn" : "pass", read_only: true,
       services, summary: { required_unmet }, safety: { raw_secret_values_printed: false, files_mutated: false, provider_validation_performed: false } };
   };
 
   const configuredStatus = (service: CredentialService): AuthStatus => {
     const metadata = credentialMetadata(service);
-    return metadata.state === "shell_configured" || metadata.state === "file_configured" ?
+    return READY_CREDENTIAL_STATES.has(metadata.state) ?
       { authenticated: false, configured: true } : { authenticated: false };
   };
 
@@ -575,8 +589,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkVercel = (): AuthStatus => {
-    const state = credentialMetadata("vercel").state;
-    if (state !== "missing" && state !== "file_configured" && state !== "shell_configured") return { authenticated: false };
+    const metadata = credentialMetadata("vercel");
+    const state = metadata.state;
+    if (ACTIVE_CREDENTIAL_SOURCES.has(metadata.source) && !READY_CREDENTIAL_STATES.has(state)) return { authenticated: false };
+    if (!INTERACTIVE_CANDIDATE_STATES.has(state)) return { authenticated: false };
     if (deps.commandExists("vercel")) {
       if (getConfiguredSecret("VERCEL_TOKEN", shellConfigPaths)) {
         return { authenticated: false, configured: true, details: "via VERCEL_TOKEN" };
@@ -612,8 +628,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkSupabase = (): AuthStatus => {
-    const state = credentialMetadata("supabase").state;
-    if (state !== "missing" && state !== "file_configured" && state !== "shell_configured") return { authenticated: false };
+    const metadata = credentialMetadata("supabase");
+    const state = metadata.state;
+    if (ACTIVE_CREDENTIAL_SOURCES.has(metadata.source) && !READY_CREDENTIAL_STATES.has(state)) return { authenticated: false };
+    if (!INTERACTIVE_CANDIDATE_STATES.has(state)) return { authenticated: false };
     if (getConfiguredSecret("SUPABASE_ACCESS_TOKEN", shellConfigPaths)) {
       return { authenticated: false, configured: true, details: "via SUPABASE_ACCESS_TOKEN" };
     }
@@ -639,10 +657,11 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkWrangler = (): AuthStatus => {
-    const state = credentialMetadata("wrangler").state;
+    const metadata = credentialMetadata("wrangler");
+    const state = metadata.state;
+    if (ACTIVE_CREDENTIAL_SOURCES.has(metadata.source) && !READY_CREDENTIAL_STATES.has(state)) return { authenticated: false };
     // Unsupported cached TOML remains unknown; live whoami may validate it.
-    if (state === "vault_backed" || state === "placeholder" || (state === "unknown" &&
-      (hasNonBlankString(deps.env.CLOUDFLARE_API_TOKEN) || hasNonBlankString(deps.env.ACFS_WRANGLER_VAULT_REF)))) return { authenticated: false };
+    switch (state) { case "vault_backed": case "placeholder": return { authenticated: false }; }
     if (getConfiguredSecret("CLOUDFLARE_API_TOKEN", shellConfigPaths)) {
       return { authenticated: false, configured: true, details: "via CLOUDFLARE_API_TOKEN" };
     }
@@ -677,16 +696,22 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
 
   const checkAllServices = (): Record<string, AuthStatus> => {
     const results: Record<string, AuthStatus> = {};
-    for (const [id, check] of Object.entries(AUTH_CHECKS)) {
-      try {
-        results[id] = check();
-      } catch {
-        results[id] = { authenticated: false };
+    const report = getCredentialStatus();
+    metadataSnapshot = new Map(report.services.map((entry) => [entry.service, entry]));
+    try {
+      for (const [id, check] of Object.entries(AUTH_CHECKS)) {
+        try {
+          results[id] = check();
+        } catch {
+          results[id] = { authenticated: false };
+        }
       }
+    } finally {
+      metadataSnapshot = null;
     }
     const ids: Record<CredentialService, string> = { claude: "claude-code", codex: "codex-cli", gemini: "gemini-cli",
       vercel: "vercel", supabase: "supabase", wrangler: "cloudflare" };
-    for (const credential of getCredentialStatus().services) {
+    for (const credential of report.services) {
       results[ids[credential.service]].credential = credential;
     }
     return results;
