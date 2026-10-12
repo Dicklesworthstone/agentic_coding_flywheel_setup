@@ -66,7 +66,9 @@ function report(
     })),
   };
 }
-function fixture() {
+function fixture(panelProps = {}) {
+  const findings = [];
+  const onFindingsChange = (value) => findings.push(value);
   const health = {
     ready: true,
     vpsIP: "203.0.113.7",
@@ -190,7 +192,7 @@ function fixture() {
         nodes.push(node);
         visit(node.props.children, `${path}/children`);
       }
-      visit(jsx(panelModule.DoctorReportPanel, {}), "root");
+      visit(jsx(panelModule.DoctorReportPanel, { ...panelProps, onFindingsChange }), "root");
       for (const [key, instance] of instances) {
         if (!instance.seen) {
           dispose(instance);
@@ -237,6 +239,7 @@ function fixture() {
     assert.fail("report did not settle");
   }
   return {
+    findings,
     health,
     mode,
     metadata,
@@ -409,6 +412,52 @@ test("invalid replacement clears a prior report and never leaks parser input or 
   const view = await f.settled();
   assert.match(view.errors(), /UTF-8 JSON/);
   assert.doesNotMatch(view.text(), /PRIVATE|TOKEN|Report SHA-256:/);
+});
+
+test("learning signal projects only a boolean and clears when the report is cleared or replaced", async () => {
+  const f = fixture();
+  f.choose();
+  await f.settled();
+  assert.equal(f.findings.at(-1), true);
+  assert.ok(f.findings.every((value) => value === null || typeof value === "boolean"));
+  f.render().clear().props.onClick();
+  assert.equal(f.findings.at(-1), null);
+  f.choose(new Blob(["invalid PRIVATE_TOKEN"]));
+  await f.settled();
+  assert.equal(f.findings.at(-1), null);
+  assert.doesNotMatch(JSON.stringify(f.findings), /PRIVATE/);
+});
+
+test("Learning Hub omits unavailable report UI without bypassing its context guards", () => {
+  const f = fixture({ showUnavailableContext: false });
+  f.health.ready = false;
+  assert.equal(f.render().file(), undefined);
+  assert.equal(f.render().text(), "");
+  f.health.ready = true;
+  f.health.vpsIP = null;
+  assert.equal(f.render().file(), undefined);
+  assert.equal(f.render().text(), "");
+  f.health.vpsIP = "203.0.113.7";
+  assert.ok(f.render().file());
+});
+
+test("a pending read cannot republish learning findings after target change or unmount", async () => {
+  const f = fixture();
+  const slow = delayed();
+  f.choose(slow.file);
+  f.health.vpsIP = "203.0.113.88";
+  f.render();
+  assert.equal(f.findings.at(-1), null);
+  slow.release();
+  await new Promise((done) => setTimeout(done, 20));
+  assert.equal(f.findings.at(-1), null);
+  const next = delayed();
+  f.choose(next.file);
+  f.unmount();
+  next.release();
+  await new Promise((done) => setTimeout(done, 20));
+  assert.equal(f.findings.at(-1), null);
+  assert.equal(f.updatesAfterUnmount(), 0);
 });
 
 function delayed(value = report()) {

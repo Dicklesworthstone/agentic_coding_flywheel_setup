@@ -1956,6 +1956,25 @@ The wizard guides beginners through a **13-step journey** from "I have a laptop"
 - **Confirmation Checkboxes:** "I ran this command" acknowledgments
 - **Troubleshooting:** Expandable help for common issues
 
+### Local learning recommendations
+
+The [Learning Hub](https://agent-flywheel.com/learn) suggests up to three useful
+next steps from the lessons completed in your browser and your selected stack.
+Each suggestion explains its reason. The next guided lesson respects sequential
+access; tool references are always available. The goal selector can prioritize
+installation recovery or coordination with multiple agents. These choices and
+the recommendations do not prove that tools are installed or authenticated.
+
+With a valid saved wizard target, the existing local doctor JSON reader appears
+on the hub. Use the recovery goal to reach setup guidance if no target is saved.
+Findings or coverage gaps prioritize a diagnostic action. Only an in-memory
+boolean reaches the recommender; report contents, private identifiers and raw
+fix commands are never persisted or sent to analytics. Clearing/replacing the
+report, changing installation context or leaving the page clears that signal.
+Recommendations do not run commands, mark lessons complete, change your stack
+selection or unlock gated lessons. Unknown selections prompt review; new users
+and completed courses retain useful reference links without requiring a backend.
+
 ### Wizard Handoff Runbook
 
 Step 9 can download a local handoff runbook in JSON or Markdown. The runbook is meant for the user and support loop when an SSH session drops, an install is interrupted, or the user needs to remember the exact command they ran.

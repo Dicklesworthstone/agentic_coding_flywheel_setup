@@ -37,7 +37,10 @@ function CountSummary({ value }: { value: Readonly<DoctorReportCounts> }) {
 }
 
 /** Keyed by the entire effective context: changed targets unmount pending readers. */
-function DoctorReportContent({ context }: { context: DoctorReportContext }) {
+function DoctorReportContent({ context, onFindingsChange }: {
+  context: DoctorReportContext;
+  onFindingsChange?: (needsAttention: boolean | null) => void;
+}) {
   const [review, setReview] = useState<DoctorReportReview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,11 +49,13 @@ function DoctorReportContent({ context }: { context: DoctorReportContext }) {
   const id = useId();
   useEffect(() => {
     mounted.current = true;
+    onFindingsChange?.(null);
     return () => {
       mounted.current = false;
       generation.current++;
+      onFindingsChange?.(null);
     };
-  }, []);
+  }, [onFindingsChange]);
   const current = doctorReportMatches(review, context) ? review : null;
 
   function clear(): void {
@@ -59,6 +64,7 @@ function DoctorReportContent({ context }: { context: DoctorReportContext }) {
     setReview(null);
     setError(null);
     setBusy(false);
+    onFindingsChange?.(null);
   }
   async function read(file: File | undefined): Promise<void> {
     if (!file || !mounted.current) return;
@@ -66,9 +72,13 @@ function DoctorReportContent({ context }: { context: DoctorReportContext }) {
     setReview(null);
     setError(null);
     setBusy(true);
+    onFindingsChange?.(null);
     try {
       const next = await reviewDoctorReportFile(file, context);
-      if (mounted.current && request === generation.current) setReview(next);
+      if (mounted.current && request === generation.current) {
+        setReview(next);
+        onFindingsChange?.(next.needsAttention);
+      }
     } catch (failure) {
       if (mounted.current && request === generation.current) {
         setError(
@@ -269,10 +279,15 @@ function DoctorReportContent({ context }: { context: DoctorReportContext }) {
 }
 
 /** The ordinary health workflow remains independent; file review never sets acknowledgements. */
-export function DoctorReportPanel() {
+export function DoctorReportPanel({ onFindingsChange, showUnavailableContext = true }: {
+  /** Only an in-memory boolean projection; never report contents or identifiers. */
+  onFindingsChange?: (needsAttention: boolean | null) => void;
+  showUnavailableContext?: boolean;
+} = {}) {
   const health = useInstallationHealth();
   const [mode, , modeLoaded] = useInstallMode();
   if (!health.ready || !modeLoaded) {
+    if (!showUnavailableContext) return null;
     return (
       <p role="status" className="text-sm text-muted-foreground">
         Loading installation context for local report review...
@@ -280,6 +295,7 @@ export function DoctorReportPanel() {
     );
   }
   if (!health.vpsIP || !health.reinstallCommand || !health.selectedPlan?.ok) {
+    if (!showUnavailableContext) return null;
     return (
       <p role="status" className="text-sm text-muted-foreground">
         Review the target and selected installation before loading a doctor report. No report is
@@ -299,5 +315,5 @@ export function DoctorReportPanel() {
   };
   // This key stays in React memory only. A change, including A -> B -> A, destroys
   // the old reader instead of letting a delayed result or previous review revive.
-  return <DoctorReportContent key={JSON.stringify(context)} context={context} />;
+  return <DoctorReportContent key={JSON.stringify(context)} context={context} onFindingsChange={onFindingsChange} />;
 }

@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "@/components/motion";
 import { Button } from "@/components/ui/button";
+import { DoctorReportPanel } from "@/components/doctor-report-panel";
 import { getLessonFunnelData, initLessonFunnel, sendEvent } from "@/lib/analytics";
 import { springs } from "@/lib/design-tokens";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
@@ -35,6 +36,9 @@ import {
   useCompletedLessons,
 } from "@/lib/lessonProgress";
 import { isInteractiveKeyboardTarget } from "@/lib/utils";
+import { recommendLearningPath, type LearningGoal } from "@/lib/learningPath";
+import { useModuleSelection } from "@/lib/userPreferences";
+import { useWizardInstallation } from "@/lib/wizardInstallation";
 
 type QuickReferenceItem = {
   href: string;
@@ -251,6 +255,15 @@ export default function LearnDashboard() {
   const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
   const hasTrackedPageView = useRef(false);
+  const [selection, selectionLoaded] = useModuleSelection();
+  const installation = useWizardInstallation();
+  const [learningGoal, setLearningGoal] = useState<LearningGoal>("learn");
+  const [doctorNeedsAttention, setDoctorNeedsAttention] = useState<boolean | null>(null);
+  const receiveDoctorFindings = useCallback((value: boolean | null) => setDoctorNeedsAttention(value), []);
+  const hasSelection = installation?.status === "active" || installation?.status === "saved" ||
+    selection.profile !== "full" || completedLessons.length > 0;
+  const learningPath = hasLoaded && selectionLoaded ? recommendLearningPath({ completedLessons,
+    selection: hasSelection ? selection : undefined, goal: learningGoal, doctorNeedsAttention: doctorNeedsAttention === true }) : null;
 
   // Track learning hub page view
   useEffect(() => {
@@ -420,6 +433,44 @@ export default function LearnDashboard() {
             </span>
           </p>
         </motion.section>
+
+        <section aria-labelledby="learning-next-actions" className="mb-10 border-y border-white/15 py-6 lg:mb-14">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 id="learning-next-actions" className="text-xl font-semibold">Your next useful steps</h2>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Based on this browser&apos;s progress and selected stack. A selection does not verify installation.
+              </p>
+            </div>
+            <label className="flex shrink-0 flex-col gap-2 text-sm font-medium">
+              What are you working on?
+              <select value={learningGoal} onChange={(event) => setLearningGoal(event.target.value as LearningGoal)}
+                className="min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-foreground">
+                <option value="learn">Learn the environment</option>
+                <option value="recover">Fix an installation problem</option>
+                <option value="swarm">Coordinate multiple agents</option>
+              </select>
+            </label>
+          </div>
+          {!learningPath ? <p role="status" className="mt-5 text-sm">Loading your local learning context...</p> : (
+            <ol className="mt-5 grid gap-3 md:grid-cols-3" data-testid="learning-recommendations" data-persona={learningPath.persona}
+              data-signals={learningPath.signalIds.join(",")} data-fallback={learningPath.fallbackReason ?? "none"}>
+              {learningPath.recommendations.map((recommendation, index) => (
+                <li key={recommendation.id} className="min-w-0">
+                  <Link href={recommendation.href} data-recommendation-id={recommendation.id}
+                    className="group flex h-full min-h-11 flex-col gap-3 rounded-xl border border-white/15 bg-white/[0.03] p-4 outline-none transition-colors hover:border-primary/60 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary">
+                    <span className="flex items-center justify-between gap-3 font-semibold">
+                      <span><span className="mr-2 font-mono text-sm text-primary">{index + 1}.</span>{recommendation.title}</span>
+                      <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </span>
+                    <span className="text-sm leading-relaxed text-muted-foreground">{recommendation.reason}</span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          )}
+          <div className="mt-5"><DoctorReportPanel onFindingsChange={receiveDoctorFindings} showUnavailableContext={false} /></div>
+        </section>
 
         {/* Progress card - glassmorphic */}
         <motion.section

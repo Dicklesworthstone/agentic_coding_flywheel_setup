@@ -2,6 +2,68 @@ import { expect, test } from "@playwright/test";
 
 test.describe
   .serial("Learning Hub", () => {
+    test("completion controls wait for saved progress hydration", async ({ browser, baseURL }) => {
+      const context = await browser.newContext({ javaScriptEnabled: false, baseURL });
+      try {
+        const page = await context.newPage();
+        await page.goto("/learn/welcome");
+        await expect(page.getByRole("button", { name: "Mark Complete", exact: true, includeHidden: true })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "Complete", exact: true, includeHidden: true })).toBeDisabled();
+      } finally {
+        await context.close();
+      }
+    });
+    test("local next steps explain their reasons and update for recovery and team goals", async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem("acfs-learning-hub-completed-lessons", "[0,1]");
+        localStorage.setItem("agent-flywheel-module-profile", "minimal");
+      });
+      await page.goto("/learn");
+      const steps = page.getByTestId("learning-recommendations");
+      await expect(steps).toBeVisible();
+      await expect(steps).toHaveAttribute("data-persona", "minimal");
+      await expect(steps.getByRole("link").first()).toHaveAttribute("href", "/learn/ssh-basics");
+      await expect(steps).toContainText("selected stack");
+      const goal = page.getByRole("combobox", { name: "What are you working on?" });
+      await goal.selectOption("recover");
+      await expect(steps).toHaveAttribute("data-persona", "recovery");
+      await expect(steps.getByRole("link").first()).toHaveAttribute("href", "/wizard/status-check");
+      await goal.selectOption("swarm");
+      await expect(steps).toHaveAttribute("data-persona", "team");
+      await expect(steps.getByRole("link").first()).toHaveAttribute("href", "/core-flywheel");
+      await expect(steps).toContainText("Agent Mail");
+      expect(await page.evaluate(() => localStorage.getItem("acfs-learning-hub-completed-lessons"))).toBe("[0,1]");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const links = await steps.getByRole("link").evaluateAll((elements) => elements.map((element) => {
+        const rect = element.getBoundingClientRect(); return { width: rect.width, height: rect.height };
+      }));
+      expect(links.every((rect) => rect.width >= 44 && rect.height >= 44)).toBe(true);
+    });
+
+    test("complete lesson progress offers references without an inaccessible next lesson", async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem("acfs-learning-hub-completed-lessons", JSON.stringify(Array.from({ length: 100 }, (_, index) => index)));
+      });
+      await page.goto("/learn");
+      const steps = page.getByTestId("learning-recommendations");
+      await expect(steps).toHaveAttribute("data-persona", "all-complete");
+      await expect(steps.locator('[data-recommendation-id^="lesson-"]')).toHaveCount(0);
+      await expect(steps.getByRole("link")).not.toHaveCount(0);
+    });
+
+    test("lesson sidebar follows the narrow and wide viewport layouts", async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem("acfs-learning-hub-completed-lessons", JSON.stringify(Array.from({ length: 50 }, (_, index) => index)));
+      });
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await page.goto("/learn/debugging-agents");
+      const sidebar = page.getByTestId("lesson-sidebar");
+      await expect(sidebar).toHaveCount(1);
+      await expect(sidebar).toBeHidden();
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(sidebar).toBeVisible();
+    });
+
     test("learn dashboard loads without JS errors", async ({ page }) => {
       const errors: string[] = [];
 
@@ -57,6 +119,8 @@ test.describe
         testInfo.project.name.startsWith("Mobile"),
         "The lesson sidebar is intentionally hidden on mobile",
       );
+      // WebKit's classic scrollbar makes a 1280px window narrower than xl.
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       await page.addInitScript(() => {
         localStorage.setItem(
@@ -86,6 +150,7 @@ test.describe
         testInfo.project.name.startsWith("Mobile"),
         "The lesson sidebar is intentionally hidden on mobile",
       );
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       await page.addInitScript(() => {
         localStorage.setItem(
@@ -119,6 +184,7 @@ test.describe
         testInfo.project.name.startsWith("Mobile"),
         "The lesson sidebar is intentionally hidden on mobile",
       );
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       await page.addInitScript(() => {
         localStorage.setItem(
@@ -200,7 +266,8 @@ test.describe
       // Lessons grid card both render a link, so each href appears twice.
       await expect(page.locator('a[href="/learn/agent-commands"]')).toHaveCount(2);
       await expect(page.locator('a[href="/learn/ntm-palette"]')).toHaveCount(2);
-      await expect(page.locator('a[href="/learn/commands"]')).toHaveCount(1);
+      // The next-action fallback and the existing Quick Reference both link here.
+      await expect(page.locator('a[href="/learn/commands"]')).toHaveCount(2);
       await expect(page.locator('a[href="/glossary"]')).toHaveCount(1);
     });
 

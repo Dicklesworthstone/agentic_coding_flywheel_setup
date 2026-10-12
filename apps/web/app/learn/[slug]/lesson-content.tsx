@@ -868,7 +868,7 @@ export function LessonContent({ lesson }: Props) {
                       onClick={() => {
                         void handleMarkComplete();
                       }}
-                      disabled={isMarkingComplete || (isCompleted && !accessibleNextLesson)}
+                      disabled={!hasLoaded || isMarkingComplete || (isCompleted && !accessibleNextLesson)}
                       size="lg"
                       className={`shrink-0 h-14 px-8 text-lg font-semibold rounded-xl transition duration-500 ${
                         isCompleted
@@ -990,7 +990,7 @@ export function LessonContent({ lesson }: Props) {
               onClick={() => {
                 void handleMarkComplete();
               }}
-              disabled={isMarkingComplete || (isCompleted && !accessibleNextLesson)}
+              disabled={!hasLoaded || isMarkingComplete || (isCompleted && !accessibleNextLesson)}
             >
               {isCompleted ? (
                 accessibleNextLesson ? (
