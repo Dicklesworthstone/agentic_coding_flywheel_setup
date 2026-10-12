@@ -288,6 +288,71 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     [[ "$(call_count)" == 8 ]] || fail "new streak was suppressed by the previous push cooldown"
     unset ACFS_NTFY_TOPIC
     unset -f date
+
+    # ---- external changes are deferred, not blocking (bd-6rm0l) ---------
+    hx() { printf '%064d\n' "$1"; }
+    report_with() {
+        # report_with TRUSTED_ACTUAL EXTERNAL_ACTUAL -> report path
+        local out="$STATE_TMP/report-$1-$2.json"
+        jq -cn --arg ta "$(hx "$1")" --arg ea "$(hx "$2")" --arg te "$(hx 1)" --arg ee "$(hx 2)" '{
+          mismatches: [
+            {name: "ext", url: "https://example.com/ext.sh", expected: $ee, actual: $ea},
+            {name: "own", url: "https://raw.githubusercontent.com/Dicklesworthstone/own/main/install.sh", expected: $te, actual: $ta}
+          ]}' > "$out"
+        printf '%s\n' "$out"
+    }
+    d1="$(external_authorization_digest "$(report_with 3 4)" ext)"
+    [[ "$d1" =~ ^[0-9a-f]{64}$ ]] || fail "external digest is not a sha256: $d1"
+    [[ "$(external_authorization_digest "$(report_with 5 4)" ext)" == "$d1" ]] \
+        || fail "a trusted repin changed the pending external authorization digest"
+    [[ "$(external_authorization_digest "$(report_with 3 6)" ext)" != "$d1" ]] \
+        || fail "different external bytes reused an authorization digest"
+
+    policy() {
+        # policy FILE EXT_HASH OWN_HASH STABLE_HASH
+        printf '# checksums.yaml - Auto-generated %s\n# Run: ./scripts/lib/security.sh --update-checksums\n\ninstallers:\n' "$1" > "$1"
+        printf '  ext:\n    url: "https://example.com/ext.sh"\n    sha256: "%s"\n\n' "$(hx "$2")" >> "$1"
+        printf '  own:\n    url: "https://raw.githubusercontent.com/Dicklesworthstone/own/main/install.sh"\n    sha256: "%s"\n\n' "$(hx "$3")" >> "$1"
+        printf '  stable:\n    url: "https://example.com/stable.sh"\n    sha256: "%s"\n' "$(hx "$4")" >> "$1"
+    }
+    cur="$STATE_TMP/cur.yaml"; raw="$STATE_TMP/raw.yaml"; want="$STATE_TMP/want.yaml"
+    policy "$cur" 2 1 7
+    # Second fetch: ext moved, own moved, stable flapped to another variant.
+    policy "$raw" 4 3 8
+    restrict_checksum_candidate "$cur" "$raw" own > "$STATE_TMP/got.yaml" \
+        || fail "restrict_checksum_candidate failed"
+    policy "$want" 2 3 7
+    # Headers differ only by the file name used as the fake timestamp.
+    diff <(tail -n +2 "$STATE_TMP/got.yaml") <(tail -n +2 "$want") >/dev/null \
+        || fail "restricted candidate did not keep unapplied installers at their current pins"
+    [[ "$(head -1 "$STATE_TMP/got.yaml")" == "$(head -1 "$raw")" ]] \
+        || fail "restricted candidate lost the generator header"
+    restrict_checksum_candidate "$cur" "$raw" ext own > "$STATE_TMP/got-both.yaml"
+    policy "$want" 4 3 7
+    diff <(tail -n +2 "$STATE_TMP/got-both.yaml") <(tail -n +2 "$want") >/dev/null \
+        || fail "authorized external change was not applied"
+
+    # A pending authorization is requested once per digest, never re-posted.
+    run_bounded() {
+        printf '%s\n' "$*" >> "$GH_CALLS"
+        case "$*" in
+            "45 gh issue list "*) [[ -n "${OPEN_ISSUE:-}" ]] && printf '%s\n' "$OPEN_ISSUE" ;;
+        esac
+        return 0
+    }
+    EXTERNAL_CHANGED=(ext)
+    BASE_HEAD=0000000000000000000000000000000000000000
+    VERIFICATION_REPORT_SHA256="$(hx 9)"
+    RUN_TS=unit
+    : > "$GH_CALLS"; OPEN_ISSUE=""
+    record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
+    grep -q -- '--state all' "$GH_CALLS" || fail "authorization lookup ignores closed issues"
+    [[ "$(grep -c ' gh issue create ' "$GH_CALLS")" == 1 ]] || fail "first pending request did not open one issue"
+    : > "$GH_CALLS"; OPEN_ISSUE=446
+    record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
+    ! grep -qE ' gh issue (comment|create) ' "$GH_CALLS" || fail "a still-pending authorization was re-posted"
+    record_external_review "$(report_with 3 4)" "$d1" authorized || fail "record_external_review failed"
+    [[ "$(grep -c ' gh issue comment 446 ' "$GH_CALLS")" == 1 ]] || fail "authorized use was not recorded on the issue"
 ) || exit 1
 
 # The service unit still executes this script directly from the clone.
@@ -295,4 +360,4 @@ grep -q '^ExecStart=%h/acfs-monitor/scripts/checksum-monitor-local.sh$' \
     "$REPO_ROOT/scripts/templates/acfs-checksum-monitor.service" \
     || fail "service template no longer runs the monitor script"
 
-printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fail-closed alerts\n'
+printf 'PASS: checksum monitor accepts newer same-major Bun, deduplicates fail-closed alerts, and defers external changes\n'

@@ -573,6 +573,52 @@ test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence() {
     fi
 }
 
+test_checksum_candidate_validation_defers_only_observed_mismatches() {
+    local name="checksum candidate proof keeps deferred mismatches at their current pins"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/defer-current.yaml"
+    local partial="$TEST_TMP_DIR/defer-partial.yaml"
+    local full="$TEST_TMP_DIR/defer-full.yaml"
+    local unchanged="$TEST_TMP_DIR/defer-unchanged.yaml"
+    local report="$TEST_TMP_DIR/defer-report.json"
+    local single_report="$TEST_TMP_DIR/defer-single-report.json"
+    local current_digest=""
+    local validated=""
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$current" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    write_strict_policy_fixture "$partial" "$STRICT_HASH_D" "$STRICT_HASH_B"
+    write_strict_policy_fixture "$full" "$STRICT_HASH_D" "$STRICT_HASH_C"
+    write_strict_policy_fixture "$unchanged" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    current_digest="$(calculate_file_sha256 "$current")"
+    cat > "$report" << EOF
+{"schema":"acfs.installer-checksum-verification.v1","schemaVersion":1,"timestamp":"2026-10-12T16:00:00Z","checksumsYamlSha256":"$current_digest","total":2,"matches":[],"mismatches":[{"name":"alpha","url":"https://example.com/alpha.sh","expected":"$STRICT_HASH_A","actual":"$STRICT_HASH_D"},{"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$STRICT_HASH_C"}],"errors":[],"skipped":[]}
+EOF
+    write_strict_mismatch_report_fixture "$single_report" "$current_digest" "$STRICT_HASH_C"
+
+    # Apply alpha, defer beta: accepted with the exact candidate bytes.
+    if validated="$(acfs_validate_checksum_candidate "$current" "$partial" "$report" beta 2>/dev/null)" \
+        && [[ "$validated" == "$(acfs_security_cat_file "$partial")" ]] \
+        && acfs_validate_checksum_candidate "$current" "$full" "$report" >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$full" "$report" beta >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$partial" "$report" >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$unchanged" "$single_report" alpha >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$unchanged" "$single_report" gamma >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$partial" "$report" beta beta >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$partial" "$report" 'be ta' >/dev/null 2>&1 \
+        && acfs_validate_checksum_candidate "$current" "$unchanged" "$single_report" beta >/dev/null 2>&1; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "Deferral changed a deferred pin, deferred a matched/unknown tool, or rejected a valid partial candidate"
+    fi
+}
+
 test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift() {
     local name="checksum report rejects duplicate JSON keys and stale policy digests"
     local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
@@ -913,6 +959,7 @@ test_versioned_checksum_report_binds_urls_hashes_and_exit_status
 test_checksum_candidate_validation_is_exact_and_network_free
 test_checksum_candidate_validation_rejects_cross_wired_hashes
 test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence
+test_checksum_candidate_validation_defers_only_observed_mismatches
 test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift
 
 if bash "$PROJECT_ROOT/tests/unit/test_security_fd_identity.sh"; then

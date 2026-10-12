@@ -3383,10 +3383,23 @@ acfs_verify_all_installers_json_from_file() {
 # Validate, without network access, that a reviewed candidate changes exactly
 # the mismatch set observed in a bound verification report.  On success stdout
 # is the exact private snapshot of CANDIDATE, suitable for an atomic install.
+# Optional trailing DEFERRED tool names must be observed mismatches; the
+# candidate must keep each of them at its current pin (published later, once
+# authorized), so deferral can only withhold a change, never invent one.
 acfs_validate_checksum_candidate() {
     local current_file="$1"
     local candidate_file="$2"
     local report_file="$3"
+    shift 3
+    local -A deferred=()
+    local deferred_tool=""
+    for deferred_tool in "$@"; do
+        if [[ ! "$deferred_tool" =~ ^[A-Za-z0-9_.-]+$ || -n "${deferred[$deferred_tool]+present}" ]]; then
+            log_error "Invalid or duplicate deferred installer name: $deferred_tool"
+            return 1
+        fi
+        deferred[$deferred_tool]=1
+    done
     local current_snapshot="" current_fd="" current_digest=""
     local candidate_snapshot="" candidate_fd="" candidate_digest=""
     local report_snapshot="" report_fd="" report_digest=""
@@ -3447,6 +3460,16 @@ acfs_validate_checksum_candidate() {
         return 1
     fi
 
+    for deferred_tool in "${!deferred[@]}"; do
+        if [[ -z "${report_mismatch_actual[$deferred_tool]+present}" ]]; then
+            log_error "Deferred installer is not an observed mismatch: $deferred_tool"
+            acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+            acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+            acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+            return 1
+        fi
+    done
+
     for tool in "${!current_checksums[@]}"; do
         if [[ "${candidate_urls[$tool]:-}" != "${current_urls[$tool]}" ]]; then
             log_error "Checksum candidate changes installer URL or set: $tool"
@@ -3459,6 +3482,15 @@ acfs_validate_checksum_candidate() {
         if [[ -n "${report_matches[$tool]+present}" ]]; then
             if [[ "${candidate_checksums[$tool]:-}" != "${current_checksums[$tool]}" ]]; then
                 log_error "Checksum candidate changes a report-matched installer: $tool"
+                acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+                acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+                acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+                return 1
+            fi
+        elif [[ -n "${deferred[$tool]+present}" ]]; then
+            if [[ "${report_mismatch_expected[$tool]}" != "${current_checksums[$tool]}" ]] \
+                || [[ "${candidate_checksums[$tool]:-}" != "${current_checksums[$tool]}" ]]; then
+                log_error "Checksum candidate changes a deferred installer: $tool"
                 acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
                 acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
                 acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
@@ -3522,8 +3554,9 @@ Commands:
   --print                                      Print all upstream URLs
   --update-checksums                           Generate checksums.yaml content
   --verify                                     Verify all installers against saved checksums
-  --validate-checksum-candidate CURRENT CANDIDATE REPORT
+  --validate-checksum-candidate CURRENT CANDIDATE REPORT [DEFERRED_TOOL...]
                                                Prove candidate equals the observed mismatch set
+                                               (deferred mismatches must keep their current pin)
   --checksum URL                               Calculate SHA256 of a URL
   --help                                       Show this help
 
@@ -3610,11 +3643,12 @@ main() {
             fi
             ;;
         --validate-checksum-candidate)
-            if [[ "$#" -ne 4 ]]; then
-                echo "Usage: security.sh --validate-checksum-candidate CURRENT CANDIDATE REPORT" >&2
+            if [[ "$#" -lt 4 ]]; then
+                echo "Usage: security.sh --validate-checksum-candidate CURRENT CANDIDATE REPORT [DEFERRED_TOOL...]" >&2
                 return 1
             fi
-            acfs_validate_checksum_candidate "$2" "$3" "$4"
+            shift
+            acfs_validate_checksum_candidate "$@"
             ;;
         --checksum)
             if [[ "$#" -ne 2 || -z "${2:-}" ]]; then
