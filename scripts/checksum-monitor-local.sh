@@ -6,12 +6,12 @@
 # This monitor is an explicit fail-closed publication state machine:
 #   CLEAN_BASE -> OBSERVED -> CANDIDATE_VALIDATED -> AUTHORIZED ->
 #   GENERATED -> STAGED -> COMMITTED -> ATOMIC_PUBLISHED ->
-#   REMOTE_VERIFIED -> HEALTHY.
+#   REMOTE_VERIFIED -> HEALTHY (or DEFERRED when external review is pending).
 #
 # A run starts only from a clean main checkout whose HEAD and both remote refs
 # are identical. Verification is bound to the exact checksums.yaml bytes it
-# observed. A second network snapshot is data only until security.sh proves it
-# is the exact candidate implied by that first report. External-owner changes
+# observed. Candidates are built offline from that report and security.sh
+# proves they apply exactly the selected observations. External-owner changes
 # additionally require a human authorization digest before repository bytes
 # are mutated; until then they stay at their current pins (deferred) while
 # trusted-owner changes still publish. Publication is a closed-path commit
@@ -334,8 +334,8 @@ is_trusted_installer_url() {
 }
 
 # sha256 of the external mismatch evidence (name, url, expected, actual) only.
-# Trusted repins and unrelated commits therefore leave a pending authorization
-# valid; any change to the external bytes themselves yields a new digest.
+# Trusted repins and unrelated commits leave a pending authorization valid;
+# changes to the external bytes themselves yield a new digest.
 external_authorization_digest() {
     local report="$1" names_json=""
     shift
@@ -346,12 +346,8 @@ external_authorization_digest() {
     ' "$report" | sha256sum | awk '{print $1}'
 }
 
-# Print RAW (a --update-checksums snapshot) with every installer outside the
-# named apply set reset to its CURRENT pin. Only the applied mismatches come
-# from the second network snapshot, so a deferred external change, or an
-# installer that serves a different variant on the second fetch, can neither
-# ride along nor fail the run. This output is not trusted: the candidate
-# validator still has to prove it is exactly the reviewed change.
+# Constrain an independently obtained raw policy to a reviewed apply set.
+# This is data projection only; the strict validator must still authorize it.
 restrict_checksum_candidate() {
     local current="$1" raw="$2" apply_csv=""
     shift 2
@@ -385,6 +381,13 @@ authorization_is_valid() {
     [[ ${#lines[@]} -eq 1 && "${lines[0]}" == "authorize:$digest" ]]
 }
 
+require_selected_external_authorization() {
+    if [[ "$authorization_consumed" == "true" ]]; then
+        authorization_is_valid "$authorization_digest" \
+            || fail_closed "selected external authorization changed before acceptance"
+    fi
+}
+
 record_external_review() {
     local report="$1" digest="$2" authorization_status="$3"
     local body_file="" existing="" external_names_json="[]" external_evidence="" repo_slug=""
@@ -410,15 +413,13 @@ record_external_review() {
         printf '```text\nauthorize:%s\n```\n' "$digest"
     } > "$body_file" || return 1
 
-    # One issue per digest, open or closed: a deferred request recurs every
-    # run, and a maintainer closing it must not make the next run reopen it.
+    # One issue per digest, open or closed; identical pending evidence is
+    # already recorded, so only an authorized use warrants another comment.
     existing="$(run_bounded 45 gh issue list --repo "$repo_slug" --state all \
         --label security --label checksum-update \
         --search "$digest" --json number -q '.[0].number' \
         2>>"$LOG_FILE" || true)"
     if [[ -n "$existing" && "$existing" != "null" ]]; then
-        # The digest names identical evidence, so a still-pending request is
-        # already on that issue; only its use is news.
         if [[ "$authorization_status" != "authorized" ]]; then
             log "external authorization still pending on #$existing"
             return 0
@@ -436,6 +437,98 @@ record_external_review() {
     run_bounded 45 gh issue create --repo "$repo_slug" \
         --title "External installer checksum authorization ${digest:0:12}" \
         --body-file "$body_file" >>"$LOG_FILE" 2>&1
+}
+
+# Called only after the complete report is validated against the clean base.
+# Keep its original mismatch partition intact while selecting what may publish.
+prepare_checksum_candidate() {
+    local report="$1" mismatch_rows="" name="" url=""
+    local -a deferred_names=()
+    TRUSTED_CHANGED=()
+    EXTERNAL_CHANGED=()
+    mismatch_rows="$(jq -r '.mismatches[] | [.name, .url] | @tsv' "$report")" \
+        || fail_closed "could not classify validated checksum mismatches"
+    while IFS=$'\t' read -r name url; do
+        [[ -n "$name" ]] || continue
+        if is_trusted_installer_url "$url"; then
+            TRUSTED_CHANGED+=("$name")
+        else
+            EXTERNAL_CHANGED+=("$name")
+        fi
+    done <<< "$mismatch_rows"
+    (( ${#TRUSTED_CHANGED[@]} + ${#EXTERNAL_CHANGED[@]} == mismatches )) \
+        || fail_closed "mismatch classification did not cover the full validated report"
+    changed_tools="$(jq -r '.mismatches[].name' "$report" | paste -sd, -)" \
+        || fail_closed "could not summarize validated checksum mismatches"
+    trusted_changed="$(printf '%s\n' "${TRUSTED_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
+    external_changed="$(printf '%s\n' "${EXTERNAL_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
+    applicable_changed="$trusted_changed"
+    deferred_changed=""
+    external_deferred=false
+    authorization_digest=""
+    authorization_status="not-required"
+    authorization_consumed=false
+    [[ "$(sha256_file "$report")" == "$VERIFICATION_REPORT_SHA256" ]] \
+        || fail_closed "verification report changed before authorization selection"
+    if (( ${#EXTERNAL_CHANGED[@]} > 0 )); then
+        authorization_digest="$(external_authorization_digest "$report" "${EXTERNAL_CHANGED[@]}")" \
+            || fail_closed "could not hash external-change authorization evidence"
+        [[ "$authorization_digest" =~ ^[0-9a-f]{64}$ ]] \
+            || fail_closed "could not derive external-change authorization digest"
+        if authorization_is_valid "$authorization_digest"; then
+            authorization_status="authorized"
+            applicable_changed="$changed_tools"
+            authorization_consumed=true
+        else
+            authorization_status="required"
+            external_deferred=true
+            deferred_changed="$external_changed"
+            deferred_names=("${EXTERNAL_CHANGED[@]}")
+            log "external pins deferred: ${external_changed}; review authorize:$authorization_digest"
+        fi
+        if ! record_external_review "$report" "$authorization_digest" "$authorization_status"; then
+            if [[ "$authorization_status" == "authorized" ]]; then
+                fail_closed "could not record authorized external checksum evidence before mutation"
+            fi
+            # The bound local report is retained even when GitHub is unavailable.
+            # No external pin is allowed to change; trusted publication can proceed.
+            log "WARNING: external review issue could not be recorded; evidence retained at $report"
+        fi
+    fi
+    log "changed tools: ${changed_tools:-none} (selected: ${applicable_changed:-none}; deferred external: $external_deferred)"
+
+    raw_candidate=""
+    validated_candidate=""
+    CANDIDATE_SHA256="$CURRENT_CHECKSUMS_SHA256"
+    if [[ -n "$applicable_changed" ]]; then
+        raw_candidate="$(mktemp "$STATE_DIR/checksums-raw-$RUN_TS.XXXXXX.yaml")" \
+            || fail_closed "could not allocate raw candidate evidence file"
+        validated_candidate="$(mktemp "$STATE_DIR/checksums-validated-$RUN_TS.XXXXXX.yaml")" \
+            || fail_closed "could not allocate validated candidate evidence file"
+        run_clean_bounded 60 bash scripts/lib/security.sh \
+            --build-checksum-candidate checksums.yaml "$report" "${deferred_names[@]}" \
+            >"$raw_candidate" 2>>"$LOG_FILE" \
+            || fail_closed "offline checksum candidate generation failed"
+        run_clean_bounded 60 bash scripts/lib/security.sh \
+            --validate-checksum-candidate checksums.yaml "$raw_candidate" "$report" "${deferred_names[@]}" \
+            >"$validated_candidate" 2>>"$LOG_FILE" \
+            || fail_closed "candidate is not exactly implied by the selected first observations"
+        cmp -s -- "$raw_candidate" "$validated_candidate" \
+            || fail_closed "candidate validator did not reproduce the exact reviewed candidate bytes"
+        CANDIDATE_SHA256="$(sha256_file "$validated_candidate")" \
+            || fail_closed "validated checksum candidate is empty or unsafe"
+        [[ "$CANDIDATE_SHA256" != "$CURRENT_CHECKSUMS_SHA256" ]] \
+            || fail_closed "selected mismatch produced a byte-identical candidate"
+    else
+        log "no authorized checksum changes to publish"
+    fi
+    [[ "$(sha256_file "$report")" == "$VERIFICATION_REPORT_SHA256" ]] \
+        || fail_closed "verification report changed during candidate preparation"
+    [[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]] \
+        || fail_closed "checksums.yaml changed while validating the candidate"
+    require_clean_tree || fail_closed "repository changed while validating the candidate"
+    advance_state OBSERVED CANDIDATE_VALIDATED
+    advance_state CANDIDATE_VALIDATED AUTHORIZED
 }
 
 assert_closed_publication_worktree() {
@@ -693,11 +786,7 @@ fail_closed() {
     exit 1
 }
 
-# Test hook: source the definitions above without running the monitor.
-if [[ "${ACFS_MONITOR_LIBRARY_ONLY:-0}" == "1" ]]; then
-    return 0 2>/dev/null || exit 0
-fi
-
+checksum_monitor_main() {
 # ---- single-instance lock (timer overlap is a silent no-op) ----
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
@@ -875,105 +964,11 @@ fi
 require_clean_tree || fail_closed "repository changed during observation"
 advance_state CLEAN_BASE OBSERVED
 
-TRUSTED_CHANGED=()
-EXTERNAL_CHANGED=()
-if [[ "$mismatches" -gt 0 ]]; then
-    mismatch_rows="$(jq -r '.mismatches[] | [.name, .url] | @tsv' "$verify_json")" \
-        || fail_closed "could not classify validated checksum mismatches"
-    while IFS=$'\t' read -r name url; do
-        [[ -n "$name" ]] || continue
-        if is_trusted_installer_url "$url"; then
-            TRUSTED_CHANGED+=("$name")
-        else
-            EXTERNAL_CHANGED+=("$name")
-        fi
-    done <<< "$mismatch_rows"
-    (( ${#TRUSTED_CHANGED[@]} + ${#EXTERNAL_CHANGED[@]} == mismatches )) \
-        || fail_closed "mismatch classification did not cover the full validated report"
-fi
-changed_tools="$(jq -r '.mismatches[].name' "$verify_json" | paste -sd, -)" \
-    || fail_closed "could not summarize validated checksum mismatches"
-trusted_changed="$(printf '%s\n' "${TRUSTED_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
-external_changed="$(printf '%s\n' "${EXTERNAL_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
-log "changed tools: ${changed_tools:-none} (trusted: ${trusted_changed:-none}; external: ${external_changed:-none})"
-
-# External changes publish only with a valid human authorization. Without one
-# they are deferred: kept at their current pins and requested on GitHub, while
-# trusted changes publish instead of waiting behind them (bd-6rm0l).
-APPLIED_CHANGED=("${TRUSTED_CHANGED[@]}")
-DEFERRED_CHANGED=()
-authorization_digest=""
-authorization_status="not-required"
-if [[ ${#EXTERNAL_CHANGED[@]} -gt 0 ]]; then
-    authorization_digest="$(external_authorization_digest "$verify_json" "${EXTERNAL_CHANGED[@]}")" \
-        || fail_closed "could not hash the external-change authorization evidence"
-    [[ "$authorization_digest" =~ ^[0-9a-f]{64}$ ]] \
-        || fail_closed "could not derive the external-change authorization digest"
-    if authorization_is_valid "$authorization_digest"; then
-        authorization_status="authorized"
-        APPLIED_CHANGED+=("${EXTERNAL_CHANGED[@]}")
-    else
-        authorization_status="required"
-        DEFERRED_CHANGED=("${EXTERNAL_CHANGED[@]}")
-    fi
-fi
-applied_changed="$(printf '%s\n' "${APPLIED_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
-deferred_changed="$(printf '%s\n' "${DEFERRED_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
-
-raw_candidate=""
-restricted_candidate=""
-validated_candidate=""
-CANDIDATE_SHA256="$CURRENT_CHECKSUMS_SHA256"
-if [[ ${#APPLIED_CHANGED[@]} -gt 0 ]]; then
-    raw_candidate="$(mktemp "$STATE_DIR/checksums-raw-$RUN_TS.XXXXXX.yaml")" \
-        || fail_closed "could not allocate raw candidate evidence file"
-    restricted_candidate="$(mktemp "$STATE_DIR/checksums-restricted-$RUN_TS.XXXXXX.yaml")" \
-        || fail_closed "could not allocate restricted candidate evidence file"
-    validated_candidate="$(mktemp "$STATE_DIR/checksums-validated-$RUN_TS.XXXXXX.yaml")" \
-        || fail_closed "could not allocate validated candidate evidence file"
-    run_clean_bounded 300 bash scripts/lib/security.sh --update-checksums \
-        >"$raw_candidate" 2>>"$LOG_FILE" \
-        || fail_closed "canonical checksum candidate generation failed"
-    restrict_checksum_candidate checksums.yaml "$raw_candidate" "${APPLIED_CHANGED[@]}" \
-        >"$restricted_candidate" 2>>"$LOG_FILE" \
-        || fail_closed "could not restrict the candidate to the applied changes"
-    run_clean_bounded 60 bash scripts/lib/security.sh \
-        --validate-checksum-candidate checksums.yaml "$restricted_candidate" "$verify_json" \
-        "${DEFERRED_CHANGED[@]}" \
-        >"$validated_candidate" 2>>"$LOG_FILE" \
-        || fail_closed "candidate is not exactly implied by the first verification report"
-    cmp -s -- "$restricted_candidate" "$validated_candidate" \
-        || fail_closed "candidate validator did not reproduce the exact reviewed candidate bytes"
-    CANDIDATE_SHA256="$(sha256_file "$validated_candidate")" \
-        || fail_closed "validated checksum candidate is empty or unsafe"
-    [[ "$CANDIDATE_SHA256" != "$CURRENT_CHECKSUMS_SHA256" ]] \
-        || fail_closed "verification reported mismatch but the validated candidate is byte-identical"
-elif [[ "$mismatches" -gt 0 ]]; then
-    log "every observed mismatch awaits external authorization; nothing to publish"
-else
-    log "all checksums match the first upstream observation"
-fi
-[[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]] \
-    || fail_closed "checksums.yaml changed while validating the candidate"
-require_clean_tree || fail_closed "repository changed while validating the candidate"
-advance_state OBSERVED CANDIDATE_VALIDATED
-
-authorization_consumed=false
-if [[ "$authorization_status" == "authorized" ]]; then
-    record_external_review "$verify_json" "$authorization_digest" "$authorization_status" \
-        || fail_closed "could not record external checksum evidence before mutation"
-    authorization_consumed=true
-elif [[ "$authorization_status" == "required" ]]; then
-    # Deferred bytes are not published, so the request is a notification; a
-    # GitHub outage must not hold back the trusted publication.
-    record_external_review "$verify_json" "$authorization_digest" "$authorization_status" \
-        || log "WARNING: could not record the external authorization request on GitHub"
-    log "deferred ${deferred_changed}: needs authorize:$authorization_digest in $AUTHORIZATION_FILE"
-fi
-advance_state CANDIDATE_VALIDATED AUTHORIZED
+prepare_checksum_candidate "$verify_json"
 
 publication_required=false
-if [[ ${#APPLIED_CHANGED[@]} -gt 0 ]]; then
+if [[ -n "$applicable_changed" ]]; then
+    require_selected_external_authorization
     command cp -- "$validated_candidate" checksums.yaml \
         || fail_closed "could not place the validated checksum candidate"
     [[ "$(sha256_file checksums.yaml)" == "$CANDIDATE_SHA256" ]] \
@@ -1009,6 +1004,7 @@ for publication_path in "${PUBLICATION_PATHS[@]}"; do
 done
 
 if [[ "$publication_required" == "true" ]]; then
+    require_selected_external_authorization
     assert_closed_publication_worktree \
         || fail_closed "worktree contains bytes outside the closed publication set"
     git add -- "${PUBLICATION_PATHS[@]}" \
@@ -1047,7 +1043,7 @@ if [[ "$publication_required" == "true" ]]; then
         -c core.hooksPath=/dev/null \
         -c commit.gpgsign=false \
         commit --quiet \
-        -m "chore(security): publish validated checksums for ${applied_changed}" \
+        -m "chore(security): publish validated checksums for ${applicable_changed}" \
         -m "Observed checksums policy: ${CURRENT_CHECKSUMS_SHA256}" \
         -m "Verification evidence: ${VERIFICATION_REPORT_SHA256}" \
         -m "Validated candidate: ${CANDIDATE_SHA256}" \
@@ -1122,6 +1118,7 @@ require_clean_tree || fail_closed "repository is not clean at remote acceptance"
 advance_state ATOMIC_PUBLISHED REMOTE_VERIFIED
 
 if [[ "$authorization_consumed" == "true" ]]; then
+    require_selected_external_authorization
     printf 'used:%s:%s\n' "$authorization_digest" "$PUBLISH_HEAD" \
         > "$AUTHORIZATION_FILE" \
         || fail_closed "remote publication succeeded but authorization consumption could not be recorded"
@@ -1132,7 +1129,19 @@ previous_fail_streak="$(command cat "$FAIL_STREAK_FILE" 2>/dev/null || echo 0)"
 [[ "$previous_fail_streak" =~ ^[0-9]+$ ]] || previous_fail_streak=0
 printf '0\n' > "$FAIL_STREAK_FILE" \
     || fail_closed "remote publication is verified but the healthy-state marker could not be written"
-_announce_recovery "$previous_fail_streak" || true
-advance_state REMOTE_VERIFIED HEALTHY
+if [[ "$external_deferred" == "true" ]]; then
+    advance_state REMOTE_VERIFIED DEFERRED
+    result="deferred"
+else
+    _announce_recovery "$previous_fail_streak" || true
+    advance_state REMOTE_VERIFIED HEALTHY
+    result="ok"
+fi
 
-log "summary: result=ok state=$STATE base=$BASE_HEAD published=$PUBLISH_HEAD push=$push_result mismatches=$mismatches errors=$errors skipped=$skipped trusted=${trusted_changed:-none} external=${external_changed:-none} deferred=${deferred_changed:-none} committed=$committed"
+log "summary: result=$result state=$STATE base=$BASE_HEAD published=$PUBLISH_HEAD push=$push_result mismatches=$mismatches errors=$errors skipped=$skipped trusted=${trusted_changed:-none} external=${external_changed:-none} deferred=${deferred_changed:-none} selected=${applicable_changed:-none} committed=$committed"
+}
+
+# Source the real helpers and state machine without taking the lock in tests.
+if [[ "${ACFS_MONITOR_LIBRARY_ONLY:-0}" != "1" ]]; then
+    checksum_monitor_main
+fi

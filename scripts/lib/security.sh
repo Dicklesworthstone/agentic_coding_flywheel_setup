@@ -3380,26 +3380,32 @@ acfs_verify_all_installers_json_from_file() {
     return "$verify_status"
 }
 
-# Validate, without network access, that a reviewed candidate changes exactly
-# the mismatch set observed in a bound verification report.  On success stdout
-# is the exact private snapshot of CANDIDATE, suitable for an atomic install.
-# Optional trailing DEFERRED tool names must be observed mismatches; the
-# candidate must keep each of them at its current pin (published later, once
-# authorized), so deferral can only withhold a change, never invent one.
-acfs_validate_checksum_candidate() {
-    local current_file="$1"
-    local candidate_file="$2"
-    local report_file="$3"
-    shift 3
-    local -A deferred=()
-    local deferred_tool=""
-    for deferred_tool in "$@"; do
-        if [[ ! "$deferred_tool" =~ ^[A-Za-z0-9_.-]+$ || -n "${deferred[$deferred_tool]+present}" ]]; then
-            log_error "Invalid or duplicate deferred installer name: $deferred_tool"
+# Deferral is never inferred from candidate bytes: each withheld tool must be
+# a unique mismatch in the already validated, complete report.
+acfs_collect_checksum_deferrals() {
+    local -n observed_mismatches="$1"
+    local -n deferred_mismatches="$2"
+    local tool=""
+    shift 2
+    deferred_mismatches=()
+    for tool in "$@"; do
+        if [[ ! "$tool" =~ ^[A-Za-z0-9_.-]+$ || -z "${observed_mismatches[$tool]+present}" \
+            || -n "${deferred_mismatches[$tool]+present}" ]]; then
+            log_error "Invalid, duplicate or unobserved deferred mismatch: $tool"
             return 1
         fi
-        deferred[$deferred_tool]=1
+        deferred_mismatches["$tool"]=1
     done
+}
+
+# Validate, without network access, that a reviewed candidate changes exactly
+# the selected mismatch set observed in a bound verification report. Omitting
+# optional trailing deferred names retains the strict full-set contract. On success stdout
+# is the exact private snapshot of CANDIDATE, suitable for an atomic install.
+acfs_validate_checksum_candidate() {
+    local current_file="${1:-}"
+    local candidate_file="${2:-}"
+    local report_file="${3:-}"
     local current_snapshot="" current_fd="" current_digest=""
     local candidate_snapshot="" candidate_fd="" candidate_digest=""
     local report_snapshot="" report_fd="" report_digest=""
@@ -3411,6 +3417,15 @@ acfs_validate_checksum_candidate() {
     local -A report_mismatch_actual=()
     local -A report_errors=()
     local -A report_skipped=()
+    local -A deferred=()
+    local -a deferred_names=()
+
+    if (( $# < 3 )); then
+        log_error "Checksum candidate validation requires three paths"
+        return 1
+    fi
+    shift 3
+    deferred_names=("$@")
 
     if [[ -e "$current_file" && -e "$candidate_file" && "$current_file" -ef "$candidate_file" ]] \
         || [[ -e "$current_file" && -e "$report_file" && "$current_file" -ef "$report_file" ]] \
@@ -3460,15 +3475,12 @@ acfs_validate_checksum_candidate() {
         return 1
     fi
 
-    for deferred_tool in "${!deferred[@]}"; do
-        if [[ -z "${report_mismatch_actual[$deferred_tool]+present}" ]]; then
-            log_error "Deferred installer is not an observed mismatch: $deferred_tool"
-            acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
-            acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
-            acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
-            return 1
-        fi
-    done
+    if ! acfs_collect_checksum_deferrals report_mismatch_actual deferred "${deferred_names[@]}"; then
+        acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+        acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    fi
 
     for tool in "${!current_checksums[@]}"; do
         if [[ "${candidate_urls[$tool]:-}" != "${current_urls[$tool]}" ]]; then
@@ -3487,16 +3499,20 @@ acfs_validate_checksum_candidate() {
                 acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
                 return 1
             fi
-        elif [[ -n "${deferred[$tool]+present}" ]]; then
-            if [[ "${report_mismatch_expected[$tool]}" != "${current_checksums[$tool]}" ]] \
-                || [[ "${candidate_checksums[$tool]:-}" != "${current_checksums[$tool]}" ]]; then
-                log_error "Checksum candidate changes a deferred installer: $tool"
+        elif [[ -n "${report_mismatch_actual[$tool]+present}" ]]; then
+            # Unselected mismatches remain pinned; they are not reclassified as
+            # matches and the original report remains the authorization evidence.
+            if [[ -n "${deferred[$tool]+present}" ]]; then
+                if [[ "${report_mismatch_expected[$tool]}" == "${current_checksums[$tool]}" ]] \
+                    && [[ "${candidate_checksums[$tool]}" == "${current_checksums[$tool]}" ]]; then
+                    continue
+                fi
+                log_error "Checksum candidate changes a deferred mismatch: $tool"
                 acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
                 acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
                 acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
                 return 1
             fi
-        elif [[ -n "${report_mismatch_actual[$tool]+present}" ]]; then
             if [[ "${report_mismatch_expected[$tool]}" != "${current_checksums[$tool]}" ]] \
                 || [[ "${candidate_checksums[$tool]:-}" != "${report_mismatch_actual[$tool]}" ]] \
                 || [[ "${candidate_checksums[$tool]}" == "${current_checksums[$tool]}" ]]; then
@@ -3539,6 +3555,76 @@ acfs_validate_checksum_candidate() {
     return 0
 }
 
+# Construct a candidate from the first bound report, without another download.
+# Use retained descriptors and the same validator as publication; neither an
+# incomplete report nor a later change to a source file can authorize output.
+acfs_build_checksum_candidate() (
+    local current_file="${1:-}" report_file="${2:-}"
+    local current_snapshot="" current_fd="" current_digest=""
+    local report_snapshot="" report_fd="" report_digest="" candidate="" validated=""
+    local tool="" checksum="" wrote_entry=false
+    local -A build_urls=() build_checksums=() build_matches=() build_mismatch_expected=() build_mismatch_actual=()
+    local -A build_errors=() build_skipped=() deferred=()
+    local -a names=() deferred_names=()
+    if (( $# < 2 )); then
+        log_error "Checksum candidate construction requires policy and report"
+        return 1
+    fi
+    shift 2
+    deferred_names=("$@")
+    trap 'acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd";
+          acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd";
+          if [[ -n "$candidate" ]]; then _acfs_remove_temp_files "$candidate"; fi;
+          if [[ -n "$validated" ]]; then _acfs_remove_temp_files "$validated"; fi' EXIT
+    if [[ -e "$current_file" && -e "$report_file" && "$current_file" -ef "$report_file" ]]; then
+        log_error "Current policy and report must be distinct files"
+        return 1
+    fi
+    acfs_security_open_bound_snapshot "$current_file" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-build-current.XXXXXX" "current checksums policy" \
+        current_snapshot current_fd current_digest || return 1
+    acfs_security_open_bound_snapshot "$report_file" "$ACFS_CHECKSUM_REPORT_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-build-report.XXXXXX" "checksum verification report" \
+        report_snapshot report_fd report_digest || return 1
+    acfs_load_checksums_strict "$current_snapshot" build_urls build_checksums || return 1
+    acfs_validate_installer_checksum_report "$report_snapshot" build_urls build_checksums "$current_digest" \
+        build_matches build_mismatch_expected build_mismatch_actual build_errors build_skipped || return 1
+    if (( ${#build_errors[@]} > 0 || ${#build_skipped[@]} > 0 )); then
+        log_error "Checksum candidate cannot be built from errors or skipped installers"
+        return 1
+    fi
+    acfs_collect_checksum_deferrals build_mismatch_actual deferred "${deferred_names[@]}" || return 1
+    candidate="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-build-candidate.XXXXXX")" || return 1
+    for tool in "${!build_checksums[@]}"; do names+=("$tool"); done
+    mapfile -t names < <(printf '%s\n' "${names[@]}" | acfs_security_sort_lines)
+    {
+        printf '# checksums.yaml - Auto-generated %s\n' "$(acfs_security_date -Iseconds)"
+        printf '# Run: ./scripts/lib/security.sh --update-checksums\n\ninstallers:\n'
+        for tool in "${names[@]}"; do
+            checksum="${build_checksums[$tool]}"
+            if [[ -n "${build_mismatch_actual[$tool]+present}" && -z "${deferred[$tool]+present}" ]]; then
+                checksum="${build_mismatch_actual[$tool]}"
+            fi
+            if [[ "$wrote_entry" == "true" ]]; then printf '\n'; fi
+            printf '  %s:\n    url: "%s"\n    sha256: "%s"\n' "$tool" "${build_urls[$tool]}" "$checksum"
+            wrote_entry=true
+        done
+    } > "$candidate" || return 1
+    acfs_security_bound_snapshot_is_current "$current_file" "$current_fd" "$current_digest" \
+        "$ACFS_CHECKSUMS_YAML_MAX_BYTES" "current checksums policy" || return 1
+    acfs_security_bound_snapshot_is_current "$report_file" "$report_fd" "$report_digest" \
+        "$ACFS_CHECKSUM_REPORT_MAX_BYTES" "checksum verification report" || return 1
+    validated="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-build-validated.XXXXXX")" || return 1
+    acfs_validate_checksum_candidate "$current_file" "$candidate" "$report_file" \
+        "${deferred_names[@]}" > "$validated" || return 1
+    # Check the original handles again after validation, before emitting bytes.
+    acfs_security_bound_snapshot_is_current "$current_file" "$current_fd" "$current_digest" \
+        "$ACFS_CHECKSUMS_YAML_MAX_BYTES" "current checksums policy" || return 1
+    acfs_security_bound_snapshot_is_current "$report_file" "$report_fd" "$report_digest" \
+        "$ACFS_CHECKSUM_REPORT_MAX_BYTES" "checksum verification report" || return 1
+    acfs_security_cat_file "$validated"
+)
+
 # ============================================================
 # CLI Interface
 # ============================================================
@@ -3557,6 +3643,8 @@ Commands:
   --validate-checksum-candidate CURRENT CANDIDATE REPORT [DEFERRED_TOOL...]
                                                Prove candidate equals the observed mismatch set
                                                (deferred mismatches must keep their current pin)
+  --build-checksum-candidate CURRENT REPORT [DEFERRED_TOOL...]
+                                               Build candidate from bound observations, offline
   --checksum URL                               Calculate SHA256 of a URL
   --help                                       Show this help
 
@@ -3600,7 +3688,7 @@ main() {
 
     if [[ "$ACFS_SECURITY_RETAIN_TEMP_FILES" == "true" ]]; then
         case "${1:-}" in
-            --update-checksums|--verify|--validate-checksum-candidate|--checksum) ;;
+            --update-checksums|--verify|--validate-checksum-candidate|--build-checksum-candidate|--checksum) ;;
             *)
                 echo "--retain-temp-files requires a checksum metadata command" >&2
                 return 1
@@ -3649,6 +3737,14 @@ main() {
             fi
             shift
             acfs_validate_checksum_candidate "$@"
+            ;;
+        --build-checksum-candidate)
+            if [[ "$#" -lt 3 ]]; then
+                echo "Usage: security.sh --build-checksum-candidate CURRENT REPORT [DEFERRED_TOOL...]" >&2
+                return 1
+            fi
+            shift
+            acfs_build_checksum_candidate "$@"
             ;;
         --checksum)
             if [[ "$#" -ne 2 || -z "${2:-}" ]]; then

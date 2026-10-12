@@ -23,7 +23,7 @@ TESTS_FAILED=0
 test_pass() {
     local name="$1"
     echo -e "\033[32m[PASS]\033[0m $name"
-    ((++TESTS_PASSED))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 test_fail() {
@@ -31,7 +31,7 @@ test_fail() {
     local reason="${2:-}"
     echo -e "\033[31m[FAIL]\033[0m $name"
     [[ -n "$reason" ]] && echo "       Reason: $reason"
-    ((++TESTS_FAILED))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
 # Create temp directory for test fixtures
@@ -254,7 +254,7 @@ test_load_checksums_multiple_tools() {
 
     local count=0
     for key in "${!LOADED_CHECKSUMS[@]}"; do
-        ((++count))
+        count=$((count + 1))
     done
 
     if [[ $count -eq 2 ]]; then
@@ -789,7 +789,7 @@ test_known_installers_has_entries() {
 
     local count=0
     for key in "${!KNOWN_INSTALLERS[@]}"; do
-        ((++count))
+        count=$((count + 1))
     done
 
     if [[ $count -gt 5 ]]; then

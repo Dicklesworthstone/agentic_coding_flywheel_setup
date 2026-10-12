@@ -24,7 +24,7 @@ if [[ ! -x /usr/bin/date || ! -x /usr/bin/mkdir || ! -x /usr/bin/tee ]]; then
 fi
 
 STATE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/acfs-monitor-test.XXXXXX")"
-trap 'rm -rf "$STATE_TMP"' EXIT
+printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
 
 # Sourcing forces PATH to the monitor's system prefixes; run in a subshell so
 # the assertions below keep this shell's environment.
@@ -289,10 +289,9 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     unset ACFS_NTFY_TOPIC
     unset -f date
 
-    # ---- external changes are deferred, not blocking (bd-6rm0l) ---------
+    # Preserve the landed deferral/deduplication regression cases.
     hx() { printf '%064d\n' "$1"; }
     report_with() {
-        # report_with TRUSTED_ACTUAL EXTERNAL_ACTUAL -> report path
         local out="$STATE_TMP/report-$1-$2.json"
         jq -cn --arg ta "$(hx "$1")" --arg ea "$(hx "$2")" --arg te "$(hx 1)" --arg ee "$(hx 2)" '{
           mismatches: [
@@ -309,7 +308,6 @@ trap 'rm -rf "$STATE_TMP"' EXIT
         || fail "different external bytes reused an authorization digest"
 
     policy() {
-        # policy FILE EXT_HASH OWN_HASH STABLE_HASH
         printf '# checksums.yaml - Auto-generated %s\n# Run: ./scripts/lib/security.sh --update-checksums\n\ninstallers:\n' "$1" > "$1"
         printf '  ext:\n    url: "https://example.com/ext.sh"\n    sha256: "%s"\n\n' "$(hx "$2")" >> "$1"
         printf '  own:\n    url: "https://raw.githubusercontent.com/Dicklesworthstone/own/main/install.sh"\n    sha256: "%s"\n\n' "$(hx "$3")" >> "$1"
@@ -317,12 +315,10 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     }
     cur="$STATE_TMP/cur.yaml"; raw="$STATE_TMP/raw.yaml"; want="$STATE_TMP/want.yaml"
     policy "$cur" 2 1 7
-    # Second fetch: ext moved, own moved, stable flapped to another variant.
     policy "$raw" 4 3 8
     restrict_checksum_candidate "$cur" "$raw" own > "$STATE_TMP/got.yaml" \
         || fail "restrict_checksum_candidate failed"
     policy "$want" 2 3 7
-    # Headers differ only by the file name used as the fake timestamp.
     diff <(tail -n +2 "$STATE_TMP/got.yaml") <(tail -n +2 "$want") >/dev/null \
         || fail "restricted candidate did not keep unapplied installers at their current pins"
     [[ "$(head -1 "$STATE_TMP/got.yaml")" == "$(head -1 "$raw")" ]] \
@@ -332,7 +328,6 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     diff <(tail -n +2 "$STATE_TMP/got-both.yaml") <(tail -n +2 "$want") >/dev/null \
         || fail "authorized external change was not applied"
 
-    # A pending authorization is requested once per digest, never re-posted.
     run_bounded() {
         printf '%s\n' "$*" >> "$GH_CALLS"
         case "$*" in
@@ -355,9 +350,347 @@ trap 'rm -rf "$STATE_TMP"' EXIT
     [[ "$(grep -c ' gh issue comment 446 ' "$GH_CALLS")" == 1 ]] || fail "authorized use was not recorded on the issue"
 ) || exit 1
 
+# Opt-in full state-machine qualification uses an immutable source archive.
+# Git's real SSH transport protocol is redirected to disposable bare fixtures;
+# dependencies, cleanliness, strict validators, generation, atomic pushes and
+# remote acceptance remain real. Upstream observations and issue delivery are
+# deterministic fixtures, so this does not assert live GitHub acceptance.
+if [[ -n "${ACFS_MONITOR_TEST_ARCHIVE:-}" ]]; then
+    [[ -f "$ACFS_MONITOR_TEST_ARCHIVE" ]] || fail 'integration source archive missing'
+    integration_root="$STATE_TMP/integration"
+    mkdir -p "$integration_root/seed" "$integration_root/home/.bun/bin"
+    command cp "$HOME/.bun/bin/bun" "$integration_root/home/.bun/bin/bun"
+    chmod 755 "$integration_root/home/.bun/bin" "$integration_root/home/.bun/bin/bun"
+    tar -xzf "$ACFS_MONITOR_TEST_ARCHIVE" -C "$integration_root/seed"
+    cat > "$integration_root/transport.sh" <<'TRANSPORT'
+#!/usr/bin/env bash
+set -euo pipefail
+bare="$1"
+shift
+case "${!#}" in
+    'git-upload-pack '*) exec git-upload-pack "$bare" ;;
+    'git-receive-pack '*) exec git-receive-pack "$bare" ;;
+    *) exit 1 ;;
+esac
+TRANSPORT
+    cat > "$integration_root/retain.sh" <<'RETAIN'
+rm() { return 0; }
+export -f rm
+RETAIN
+    (
+        cd "$integration_root/seed" || exit 1
+        "$HOME/.bun/bin/bun" install --cwd packages/manifest --frozen-lockfile --ignore-scripts --silent
+        "$HOME/.bun/bin/bun" run packages/manifest/src/generate.ts > "$integration_root/seed-generation.log"
+        git -c init.templateDir= init -q -b main
+        git add -- .
+        git -c core.hooksPath=/dev/null -c user.name='Monitor Test' -c user.email='monitor-test@example.invalid' \
+            commit -qm 'Clean generated base'
+        git branch master
+    ) || fail 'could not prepare clean integration base'
+    for integration_case in pending external-only approved review-unavailable approved-review-unavailable push-rejected fetch-error; do
+        (
+            case_root="$integration_root/$integration_case"
+            mkdir -p "$case_root/state/tmp"
+            git clone --quiet --bare --no-hardlinks "$integration_root/seed" "$case_root/remote.git"
+            git clone --quiet --no-hardlinks "$case_root/remote.git" "$case_root/repo"
+            git -C "$case_root/repo" remote set-url origin git@github.com:Dicklesworthstone/agentic_coding_flywheel_setup.git
+            git -C "$case_root/repo" config core.sshCommand "bash '$integration_root/transport.sh' '$case_root/remote.git'"
+            git -C "$case_root/repo" config ssh.variant ssh
+            export ACFS_MONITOR_REPO="$case_root/repo" ACFS_MONITOR_STATE="$case_root/state"
+            HOME="$integration_root/home"
+            export HOME
+            unset ACFS_NTFY_TOPIC
+            ACFS_MONITOR_LIBRARY_ONLY=1
+            # shellcheck source=../checksum-monitor-local.sh
+            source "$MONITOR"
+            # shellcheck source=../lib/security.sh
+            source "$REPO_ROOT/scripts/lib/security.sh"
+            export ACFS_SECURITY_RETAIN_TEMP_FILES=true
+            declare -A integration_urls=() integration_hashes=()
+            acfs_load_checksums_strict "$case_root/repo/checksums.yaml" integration_urls integration_hashes
+            integration_base="$(git -C "$case_root/repo" rev-parse HEAD)"
+            integration_policy_digest="$(sha256_file "$case_root/repo/checksums.yaml")"
+            br_actual="$(printf 'a%.0s' {1..64})"
+            omp_actual="$(printf 'b%.0s' {1..64})"
+            for integration_tool in "${!integration_hashes[@]}"; do
+                integration_actual="${integration_hashes[$integration_tool]}"
+                if [[ "$integration_tool" == br && "$integration_case" != external-only ]]; then integration_actual="$br_actual"; fi
+                if [[ "$integration_tool" == omp ]]; then integration_actual="$omp_actual"; fi
+                jq -cn --arg name "$integration_tool" --arg url "${integration_urls[$integration_tool]}" \
+                    --arg expected "${integration_hashes[$integration_tool]}" --arg actual "$integration_actual" \
+                    '{name:$name,url:$url,expected:$expected,actual:$actual}'
+            done > "$case_root/state/observations.jsonl"
+            integration_report="$case_root/state/report.json"
+            jq -cs --arg digest "$integration_policy_digest" '{
+                schema:"acfs.installer-checksum-verification.v1", schemaVersion:1,
+                timestamp:"2026-10-12T00:00:00Z", checksumsYamlSha256:$digest, total:length,
+                matches:[.[] | select(.actual == .expected) | {name,url,checksum:.expected}],
+                mismatches:[.[] | select(.actual != .expected)], errors:[], skipped:[]
+            }' "$case_root/state/observations.jsonl" > "$integration_report"
+            integration_digest="$(external_authorization_digest "$integration_report" omp)"
+            case "$integration_case" in
+                approved|approved-review-unavailable|push-rejected)
+                    printf 'authorize:%s\n' "$integration_digest" > "$AUTHORIZATION_FILE"
+                    chmod 600 "$AUTHORIZATION_FILE"
+                    ;;
+            esac
+            if [[ "$integration_case" == push-rejected ]]; then
+                printf '#!/usr/bin/env bash\nexit 1\n' > "$case_root/remote.git/hooks/pre-receive"
+                chmod 755 "$case_root/remote.git/hooks/pre-receive"
+            fi
+            if [[ "$integration_case" == fetch-error ]]; then
+                jq -c '.errors = [{name:.matches[0].name,url:.matches[0].url,error:"network failure"}] |
+                    .matches |= .[1:]' "$integration_report" > "$case_root/state/error-report.json"
+                integration_report="$case_root/state/error-report.json"
+            fi
+            record_external_review() {
+                printf '%s\t%s\n' "$2" "$3" >> "$case_root/state/reviews.tsv"
+                [[ "$integration_case" != review-unavailable && "$integration_case" != approved-review-unavailable ]]
+            }
+            _alert_fail_closed_streak() { return 0; }
+            _announce_recovery() { return 0; }
+            run_clean_bounded() {
+                local budget="$1"
+                shift
+                if [[ "${1:-}" == bash && "${2:-}" == scripts/lib/security.sh ]]; then
+                    if [[ "${3:-}" == --verify ]]; then
+                        printf 'observation\n' >> "$case_root/state/network-calls"
+                        cat "$integration_report"
+                        return 1
+                    fi
+                    [[ "${3:-}" != --update-checksums ]] || fail 'monitor fetched a second installer snapshot'
+                    set -- "$@" --retain-temp-files
+                fi
+                run_bounded "$budget" env -i HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" \
+                    PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" LANG=C LC_ALL=C TZ=UTC CI=1 NO_COLOR=1 \
+                    TMPDIR="$case_root/state/tmp" BASH_ENV="$integration_root/retain.sh" \
+                    ACFS_SECURITY_RETAIN_TEMP_FILES=true "$@"
+            }
+            run_bun_clean_bounded() {
+                local budget="$1"
+                shift
+                run_bounded "$budget" env -i HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" \
+                    PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" LANG=C LC_ALL=C TZ=UTC CI=1 NO_COLOR=1 \
+                    TMPDIR="$case_root/state/tmp" BASH_ENV="$integration_root/retain.sh" "$BUN_BIN" "$@"
+            }
+            # Run in a fresh strict shell: putting a function/subshell on the
+            # left of || would disable errexit inside the tested state machine.
+            export case_root integration_root integration_case integration_report
+            export ACFS_MONITOR_LIBRARY_ONLY=1
+            {
+                printf '#!/usr/bin/env bash\nset -euo pipefail\nsource %q\n' "$MONITOR"
+                declare -f record_external_review _alert_fail_closed_streak _announce_recovery \
+                    run_clean_bounded run_bun_clean_bounded
+                printf 'checksum_monitor_main\n'
+            } > "$case_root/state/runner.sh"
+            monitor_exit=0
+            bash "$case_root/state/runner.sh" > "$case_root/state/full-run.log" 2>&1 || monitor_exit=$?
+            remote_main="$(git --git-dir="$case_root/remote.git" rev-parse main)"
+            remote_master="$(git --git-dir="$case_root/remote.git" rev-parse master)"
+            [[ "$remote_main" == "$remote_master" ]] || fail "$integration_case published mixed refs"
+            [[ "$(wc -l < "$case_root/state/network-calls")" -eq 1 ]] || fail "$integration_case did not observe exactly once"
+            case "$integration_case" in
+                approved-review-unavailable|push-rejected|fetch-error)
+                    [[ "$monitor_exit" -ne 0 && "$remote_main" == "$integration_base" ]] \
+                        || fail "$integration_case did not fail closed before remote acceptance"
+                    if [[ -f "$AUTHORIZATION_FILE" ]]; then
+                        [[ "$(cat "$AUTHORIZATION_FILE")" == "authorize:$integration_digest" ]] \
+                            || fail "$integration_case consumed an unaccepted authorization"
+                    fi
+                    ;;
+                *)
+                    [[ "$monitor_exit" -eq 0 ]] || { tail -15 "$case_root/state/full-run.log" >&2; fail "$integration_case failed"; }
+                    git --git-dir="$case_root/remote.git" show "$remote_main:checksums.yaml" > "$case_root/state/published.yaml"
+                    declare -A published_urls=() published_hashes=()
+                    acfs_load_checksums_strict "$case_root/state/published.yaml" published_urls published_hashes
+                    if [[ "$integration_case" == external-only ]]; then
+                        [[ "$remote_main" == "$integration_base" && "${published_hashes[br]}" == "${integration_hashes[br]}" ]] \
+                            || fail 'external-only pending review created a commit'
+                    else
+                        [[ "$remote_main" != "$integration_base" && "${published_hashes[br]}" == "$br_actual" ]] \
+                            || fail "$integration_case did not publish the trusted observation"
+                    fi
+                    if [[ "$integration_case" == approved ]]; then
+                        [[ "${published_hashes[omp]}" == "$omp_actual" \
+                            && "$(cat "$AUTHORIZATION_FILE")" == "used:$integration_digest:$remote_main" ]] \
+                            || fail 'approved external publication was not accepted and consumed exactly once'
+                        grep -q 'result=ok state=HEALTHY' "$case_root/state/full-run.log" || fail 'approved run not healthy'
+                    else
+                        [[ "${published_hashes[omp]}" == "${integration_hashes[omp]}" ]] || fail 'unapproved external pin changed'
+                        grep -q 'result=deferred state=DEFERRED' "$case_root/state/full-run.log" || fail 'pending review falsely reported healthy'
+                    fi
+                    [[ -z "$(git -C "$case_root/repo" status --porcelain --untracked-files=all)" ]] \
+                        || fail "$integration_case accepted a dirty clone"
+                    ;;
+            esac
+            printf 'PASS: full publication state machine: %s\n' "$integration_case"
+        ) || exit 1
+    done
+else
+    printf 'SKIP: full publication qualification requires ACFS_MONITOR_TEST_ARCHIVE\n'
+fi
+
 # The service unit still executes this script directly from the clone.
 grep -q '^ExecStart=%h/acfs-monitor/scripts/checksum-monitor-local.sh$' \
     "$REPO_ROOT/scripts/templates/acfs-checksum-monitor.service" \
     || fail "service template no longer runs the monitor script"
 
-printf 'PASS: checksum monitor accepts newer same-major Bun, deduplicates fail-closed alerts, and defers external changes\n'
+printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fail-closed alerts\n'
+
+# Real policy/report validation, candidate selection and Git cleanliness. Only
+# delivery to GitHub is replaced here; no external messages may leave this test.
+(
+    export ACFS_MONITOR_REPO="$STATE_TMP/selection-repo"
+    export ACFS_MONITOR_STATE="$STATE_TMP/selection-state"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    mkdir -p "$MONITOR_REPO/scripts/lib"
+    command cp "$REPO_ROOT/scripts/lib/security.sh" "$MONITOR_REPO/scripts/lib/security.sh"
+    command cp "$REPO_ROOT/checksums.yaml" "$MONITOR_REPO/checksums.yaml"
+    cd "$MONITOR_REPO" || exit 1
+    git -c init.templateDir= init -q
+    git add -- checksums.yaml scripts/lib/security.sh
+    git -c core.hooksPath=/dev/null -c user.name='Monitor Test' -c user.email='monitor-test@example.invalid' \
+        commit -qm 'Initial policy fixture'
+    BASE_HEAD="$(git rev-parse HEAD)"
+    CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)"
+    # shellcheck source=../lib/security.sh
+    source "$REPO_ROOT/scripts/lib/security.sh"
+    export ACFS_SECURITY_RETAIN_TEMP_FILES=true
+    declare -A test_urls=() test_hashes=()
+    acfs_load_checksums_strict checksums.yaml test_urls test_hashes
+    test_br_actual="$(printf 'a%.0s' {1..64})"
+    test_omp_actual="$(printf 'b%.0s' {1..64})"
+    for test_tool in "${!test_hashes[@]}"; do
+        test_actual="${test_hashes[$test_tool]}"
+        if [[ "$test_tool" == br ]]; then test_actual="$test_br_actual"; fi
+        if [[ "$test_tool" == omp ]]; then test_actual="$test_omp_actual"; fi
+        jq -cn --arg name "$test_tool" --arg url "${test_urls[$test_tool]}" \
+            --arg expected "${test_hashes[$test_tool]}" --arg actual "$test_actual" \
+            '{name:$name,url:$url,expected:$expected,actual:$actual}'
+    done > "$STATE_DIR/observations.jsonl"
+    report="$STATE_DIR/report.json"
+    jq -cs --arg digest "$CURRENT_CHECKSUMS_SHA256" '{
+        schema:"acfs.installer-checksum-verification.v1", schemaVersion:1,
+        timestamp:"2026-10-12T00:00:00Z", checksumsYamlSha256:$digest, total:length,
+        matches:[.[] | select(.actual == .expected) | {name,url,checksum:.expected}],
+        mismatches:[.[] | select(.actual != .expected)], errors:[], skipped:[]
+    }' "$STATE_DIR/observations.jsonl" > "$report"
+    VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
+    mismatches=2
+    external_deferred=false
+    authorization_consumed=false
+    changed_tools=""
+    review_exit=0
+    record_external_review() {
+        printf '%s\t%s\n' "$2" "$3" >> "$STATE_DIR/reviews.tsv"
+        return "$review_exit"
+    }
+    _alert_fail_closed_streak() { return 0; }
+    run_clean_bounded() {
+        shift
+        # Execute the real security CLI, retaining its temporary snapshots.
+        "$@" --retain-temp-files
+    }
+    validate_verification_report "$report" "$CURRENT_CHECKSUMS_SHA256" \
+        || fail 'complete report did not validate'
+    first_digest="$(external_authorization_digest "$report" omp)"
+    jq -c '.mismatches |= map(if .name == "br" then .actual = ("c" * 64) else . end)' \
+        "$report" > "$STATE_DIR/trusted-changed.json"
+    [[ "$(external_authorization_digest "$STATE_DIR/trusted-changed.json" omp)" == "$first_digest" ]] \
+        || fail 'trusted changes invalidate external authorization'
+    BASE_HEAD="$(printf 'd%.0s' {1..40})"
+    [[ "$(external_authorization_digest "$report" omp)" == "$first_digest" ]] \
+        || fail 'unrelated base changes invalidate external authorization'
+    jq -c '.mismatches |= map(if .name == "omp" then .actual = ("e" * 64) else . end)' \
+        "$report" > "$STATE_DIR/external-changed.json"
+    [[ "$(external_authorization_digest "$STATE_DIR/external-changed.json" omp)" != "$first_digest" ]] \
+        || fail 'changed external bytes reuse an approval'
+    ! is_trusted_installer_url 'https://raw.githubusercontent.com/DicklesworthstoneEvil/tool/main/install.sh' \
+        || fail 'owner-prefix impersonation is trusted'
+
+    STATE=OBSERVED
+    prepare_checksum_candidate "$report"
+    [[ "$STATE" == AUTHORIZED && "$applicable_changed" == br && "$external_deferred" == true \
+        && "$authorization_consumed" == false ]] || fail 'pending external review blocked trusted selection'
+    declare -A selected_urls=() selected_hashes=()
+    acfs_load_checksums_strict "$validated_candidate" selected_urls selected_hashes
+    [[ "${selected_hashes[br]}" == "$test_br_actual" && "${selected_hashes[omp]}" == "${test_hashes[omp]}" ]] \
+        || fail 'trusted-only candidate changed the wrong pins'
+    require_clean_tree || fail 'candidate preparation mutated the repository'
+
+    review_exit=1
+    STATE=OBSERVED
+    prepare_checksum_candidate "$report"
+    [[ "$applicable_changed" == br && "$external_deferred" == true ]] \
+        || fail 'failed review delivery prevented trusted selection'
+    grep -q 'WARNING: external review issue could not be recorded' "$LOG_FILE" \
+        || fail 'failed review delivery was hidden'
+    review_exit=0
+    jq -c '.matches += [.mismatches[] | select(.name == "br") | {name,url,checksum:.expected}] |
+        .mismatches |= map(select(.name != "br"))' "$report" > "$STATE_DIR/external-only.json"
+    (
+        mismatches=1
+        VERIFICATION_REPORT_SHA256="$(sha256_file "$STATE_DIR/external-only.json")"
+        STATE=OBSERVED
+        prepare_checksum_candidate "$STATE_DIR/external-only.json"
+        [[ -z "$applicable_changed" && -z "$validated_candidate" && "$external_deferred" == true \
+            && "$authorization_consumed" == false ]] || fail 'external-only review mutated a candidate'
+    ) || fail 'external-only pending review failed'
+
+    printf 'authorize:%s\n' "$first_digest" > "$AUTHORIZATION_FILE"
+    chmod 600 "$AUTHORIZATION_FILE"
+    authorization_is_valid "$first_digest" || fail 'exact owner-only authorization rejected'
+    STATE=OBSERVED
+    prepare_checksum_candidate "$report"
+    [[ "$external_deferred" == false && "$authorization_consumed" == true \
+        && "$applicable_changed" == "$changed_tools" ]] || fail 'approved external observation was not selected'
+    acfs_load_checksums_strict "$validated_candidate" selected_urls selected_hashes
+    [[ "${selected_hashes[omp]}" == "$test_omp_actual" ]] || fail 'approved external pin did not advance'
+    [[ "$(cat "$AUTHORIZATION_FILE")" == "authorize:$first_digest" ]] \
+        || fail 'authorization consumed before publication'
+    review_exit=1
+    if ( STATE=OBSERVED; prepare_checksum_candidate "$report" ) > "$STATE_DIR/approved-review-failure.log" 2>&1; then
+        fail 'authorized external publication ignored failed evidence recording'
+    fi
+    chmod 644 "$AUTHORIZATION_FILE"
+    ! authorization_is_valid "$first_digest" || fail 'non-owner-only authorization accepted'
+    chmod 600 "$AUTHORIZATION_FILE"
+    ! authorization_is_valid "$(printf 'f%.0s' {1..64})" || fail 'wrong authorization digest accepted'
+    ln -s "$AUTHORIZATION_FILE" "$STATE_DIR/authorization-symlink"
+    (
+        AUTHORIZATION_FILE="$STATE_DIR/authorization-symlink"
+        ! authorization_is_valid "$first_digest" || fail 'authorization symlink accepted'
+    ) || fail 'symlink authorization check failed'
+    require_clean_tree || fail 'selection tests mutated the repository'
+    printf 'PASS: bound offline candidates, independent external approval, pending review and authority guards\n'
+    if [[ -n "${ACFS_MONITOR_TEST_INCUMBENT:-}" ]]; then
+        acfs_build_checksum_candidate checksums.yaml "$report" > "$STATE_DIR/first-full.yaml"
+        # Runtime fixture data only: simulate an applied installer changing
+        # between first observation and the incumbent's second download.
+        awk '/^  br:$/ { in_br=1; print; next }
+             /^  [a-z0-9_]+:$/ { in_br=0 }
+             in_br && /^    sha256:/ { print "    sha256: \"" sprintf("%064d", 3) "\""; next }
+             { print }' "$STATE_DIR/first-full.yaml" > "$STATE_DIR/flapping-second.yaml"
+        (
+            legacy_state="$STATE_DIR"
+            legacy_report="$report"
+            ACFS_MONITOR_LIBRARY_ONLY=1
+            source "$ACFS_MONITOR_TEST_INCUMBENT/scripts/checksum-monitor-local.sh"
+            source "$ACFS_MONITOR_TEST_INCUMBENT/scripts/lib/security.sh"
+            export ACFS_SECURITY_RETAIN_TEMP_FILES=true
+            restrict_checksum_candidate checksums.yaml "$legacy_state/flapping-second.yaml" br \
+                > "$legacy_state/incumbent-restricted.yaml"
+            if acfs_validate_checksum_candidate checksums.yaml "$legacy_state/incumbent-restricted.yaml" \
+                "$legacy_report" omp > "$legacy_state/incumbent-rejected.yaml"; then
+                fail 'incumbent unexpectedly accepted a second-fetch applied variant'
+            fi
+        ) || fail 'incumbent counterfactual failed'
+        acfs_build_checksum_candidate checksums.yaml "$report" omp > "$STATE_DIR/stable-first.yaml"
+        acfs_validate_checksum_candidate checksums.yaml "$STATE_DIR/stable-first.yaml" "$report" omp \
+            > "$STATE_DIR/stable-first-validated.yaml" || fail 'first-report candidate rejected'
+        printf 'PASS: same-fixture incumbent rejects second-fetch variant; offline candidate accepts first observation\n'
+    fi
+) || exit 1
