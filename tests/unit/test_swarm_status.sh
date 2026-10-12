@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SWARM_STATUS_SH="$REPO_ROOT/scripts/lib/swarm_status.sh"
+EDITOR_STATUS_SH="${ACFS_EDITOR_STATUS_TEST_SCRIPT:-$REPO_ROOT/scripts/lib/status.sh}"
 
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -386,6 +387,48 @@ test_human_output() {
     pass "human_output"
 }
 
+test_editor_collector_uses_calling_bash() {
+    local stub_dir jq_bin timeout_bin output
+    stub_dir="$(make_stub_dir)"
+    jq_bin="$(command -v jq)"
+    timeout_bin="$(command -v timeout)" || return 1
+    printf '%s\n' '{"completed_phases":["finalize"]}' > "$stub_dir/state.json"
+    write_executable "$stub_dir/ntm" '#!/usr/bin/env bash
+printf "{}\n"'
+    write_executable "$stub_dir/tmux" '#!/usr/bin/env bash
+printf "fixture-session\t3\n"'
+    write_executable "$stub_dir/older-bash" '#!/usr/bin/env bash
+printf "called\n" > "$EDITOR_OLD_BASH_MARKER"
+exit 99'
+
+    # Execute the actual editor function and collector. The resolver deliberately
+    # offers an unusable older Bash; a modern caller must keep its interpreter.
+    output="$(run_and_capture editor_interpreter env \
+        PATH="$stub_dir:$(dirname "$BASH"):$PATH" \
+        EDITOR_OLD_BASH_MARKER="$stub_dir/older-bash-called" \
+        "$BASH" -c '
+            source "$1"
+            editor_timeout="$4"
+            editor_old_bash="$5"
+            _status_system_binary_path() {
+                case "$1" in
+                    bash) printf "%s\n" "$editor_old_bash" ;;
+                    timeout) printf "%s\n" "$editor_timeout" ;;
+                    date) command -v date ;;
+                    *) return 1 ;;
+                esac
+            }
+            _STATUS_LIVE=true
+            _status_editor_json "$2" 25 OK "$3"
+        ' _ "$EDITOR_STATUS_SH" "$stub_dir/state.json" "$jq_bin" "$timeout_bin" "$stub_dir/older-bash")"
+
+    [[ "$(cat "$ARTIFACT_DIR/editor_interpreter.exit")" == 0 ]] || return 1
+    jq -e '.status == "ok" and .sessions.status == "ok" and
+        .sessions.session_count == 1 and .sessions.window_count == 3' <<<"$output" >/dev/null || return 1
+    [[ ! -e "$stub_dir/older-bash-called" ]] || return 1
+    pass "editor_collector_uses_calling_bash"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -399,6 +442,14 @@ main() {
         echo "jq is required for swarm status tests" >&2
         exit 1
     }
+
+    run_test test_editor_collector_uses_calling_bash
+    if [[ "${1:-}" == "--editor-interpreter-only" ]]; then
+        echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
+        echo "Artifacts: $ARTIFACT_DIR"
+        [[ $TESTS_FAILED -eq 0 ]]
+        return
+    fi
 
     run_test test_no_tool_environment_warns
     run_test test_stubbed_tools_pass
