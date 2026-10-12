@@ -444,6 +444,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     try {
       const output = deps.execSync(command, {
         encoding: "utf-8",
+        env: deps.env,
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 5000,
       });
@@ -456,6 +457,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (options.allowStderrFallback) {
         const mergedOutput = deps.execSync(`${command} 2>&1`, {
           encoding: "utf-8",
+          env: deps.env,
           stdio: ["ignore", "pipe", "ignore"],
           timeout: 5000,
         });

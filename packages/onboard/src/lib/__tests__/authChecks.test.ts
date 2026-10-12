@@ -305,6 +305,19 @@ describe("authChecks", () => {
     expect(checks.checkGitHub()).toEqual({ authenticated: true, details: "octocat" });
   });
 
+  test("provider execution and stderr fallback retain the injected environment", () => {
+    const env = { PATH: "/isolated/tools", GH_TOKEN: "fixture-private-key" };
+    const calls: string[] = [];
+    const checks = createAuthChecks(makeDeps({ env, commandExists: installedCommands("gh"),
+      execSync: (command, options) => {
+        expect(options.env).toBe(env);
+        calls.push(command);
+        return command.endsWith("2>&1") ? "Logged in to github.com as fixture-user" : "";
+      } }));
+    expect(checks.checkGitHub()).toEqual({ authenticated: true, details: "fixture-user" });
+    expect(calls).toEqual(["gh auth status -h github.com", "gh auth status -h github.com 2>&1"]);
+  });
+
   test("checkGitHub falls back to the github.com hosts entry when gh is unavailable", () => {
     const hostsPath = path.join(HOME, ".config", "gh", "hosts.yml");
     const checks = createAuthChecks(
