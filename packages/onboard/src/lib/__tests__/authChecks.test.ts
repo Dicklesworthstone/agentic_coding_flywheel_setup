@@ -681,7 +681,8 @@ describe("passive credential lifecycle parity", () => {
     const env: NodeJS.ProcessEnv = { ...process.env, ...scenario.env, HOME: home };
     for (const key of knownEnv) if (!(key in (scenario.env ?? {}))) delete env[key];
     if (scenario.file) {
-      const file = path.join(home, scenario.file);
+      const file = path.resolve(home, scenario.file);
+      if (!file.startsWith(`${home}${path.sep}`)) throw new Error("fixture path escapes temporary home");
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
       await fs.promises.writeFile(file, scenario.contents!);
     }
