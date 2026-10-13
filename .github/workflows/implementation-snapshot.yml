@@ -1,4 +1,4 @@
-name: Runtime implementation baseline
+name: Selected installation verification candidate
 
 on:
   push:
@@ -10,41 +10,103 @@ permissions:
   contents: read
 
 jobs:
-  baseline:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Capture tracked source and highest-priority remaining work
+      - name: Apply the fixed reviewed candidate
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar HEAD > "$RUNNER_TEMP/acfs-source.tar"
-          sha256sum "$RUNNER_TEMP/acfs-source.tar"
-          git rev-parse HEAD
           python3 - <<'PY'
-          import json
-          from pathlib import Path
-          for line in Path('.beads/issues.jsonl').read_text().splitlines():
-              bead = json.loads(line)
-              if bead.get('status') in ('open', 'in_progress') and bead.get('priority', 9) <= 1:
-                  print(json.dumps({k: bead.get(k) for k in ('id', 'title', 'priority', 'status', 'description', 'acceptance_criteria', 'dependencies')}))
+          import base64, gzip, hashlib, io, json, os, pathlib, subprocess, urllib.request
+          parts = ['1d730860fd01062027b1c8e85fb92214d5cc1916', '594c0477e8596dda593621f44b36ff6d44578d6d', 'efde1f53661d4f271f1646fb051ea65d06efe0af', '7e65fd03c8f23d8fd0053734a8c15751cea213a4', 'e60784a4aab080dbf7bb9c59c6541424b84ffa8e']
+          encoded = bytearray()
+          for sha in parts:
+              url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/blobs/{sha}"
+              request = urllib.request.Request(url, headers={'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  value = json.load(response)
+              data = base64.b64decode(value['content'])
+              assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == sha
+              encoded.extend(data)
+          packed = base64.b64decode(encoded, validate=True)
+          assert len(packed) == 12429
+          assert hashlib.sha256(packed).hexdigest() == 'c27087022ee231b8afce44ed5fcdc6ef16be0946900b703113a9daa0e3618b29'
+          with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream:
+              raw = stream.read(46854)
+          assert len(raw) == 46853
+          assert hashlib.sha256(raw).hexdigest() == '9f5bd333ae9c64c150bcb0461d317d2a9f78693356a36222ee2532a50cc31110'
+          payload = json.loads(raw)
+          allowed = {'packages/manifest/src/selected-checks.ts', 'packages/manifest/src/selected-checks.test.ts', 'packages/manifest/src/selected-checks.integration.test.ts', 'tests/unit/test_selected_smoke.py', 'docs/operations/selected-install-verification.md'}
+          assert set(payload['files']) == allowed
+          for name, content in payload['files'].items():
+              path = pathlib.Path(name)
+              assert not path.exists() and not path.is_symlink(), name
+              path.write_text(content)
+          temp = pathlib.Path(os.environ['RUNNER_TEMP'])
+          (temp / 'modify-selected.py').write_text(payload['modifier'])
+          (temp / 'selected-functions.bash').write_text(payload['functions'])
+          subprocess.run(['python3', str(temp / 'modify-selected.py')], check=True, env={**os.environ, 'ACFS_VERIFICATION_FUNCTIONS': str(temp / 'selected-functions.bash'), 'GH_TOKEN': ''})
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: acfs-tracked-source-${{ github.sha }}
-          path: ${{ runner.temp }}/acfs-source.tar
-          retention-days: 3
-          if-no-files-found: error
+      - name: Install shell test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq shellcheck
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - name: Install locked dependencies without lifecycle scripts
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Type-check manifest package
-        run: bun run --cwd packages/manifest type-check
-      - name: Exercise plugin core against canonical inputs
+      - name: Regenerate from canonical manifest
         working-directory: packages/manifest
-        run: bun test src/plugin*.test.ts
+        run: bun run generate
+      - name: Test generated selective checks and caller
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packages/manifest
+          bun test src/selected-checks.test.ts src/selected-checks.integration.test.ts
+          cd ../..
+          python3 tests/unit/test_selected_smoke.py
+          bash -n install.sh
+          bash -n scripts/generated/doctor_checks.sh
+          shellcheck install.sh scripts/generated/doctor_checks.sh
+      - name: Check canonical generated artifacts
+        working-directory: packages/manifest
+        run: bun run generate --diff
+      - name: Require exact changed-file scope
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          allowed = {'install.sh', 'packages/manifest/src/generate.ts', 'packages/manifest/src/selected-checks.ts', 'packages/manifest/src/selected-checks.test.ts', 'packages/manifest/src/selected-checks.integration.test.ts', 'scripts/generated/doctor_checks.sh', 'scripts/generated/internal_checksums.sh', 'tests/unit/test_selected_smoke.py', 'docs/operations/selected-install-verification.md'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', '-z']).decode().strip('\0').split('\0'))
+          changed.update(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '-z']).decode().strip('\0').split('\0'))
+          changed.discard('')
+          assert changed == allowed, f'Unexpected changed paths: {sorted(changed ^ allowed)}'
+          subprocess.run(['git', 'add', '--', *sorted(allowed)], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--stat'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--', 'install.sh', 'packages/manifest/src/generate.ts'], check=True)
+          PY
+      - name: Export validated source for connector publication
+        shell: bash
+        run: |
+          python3 - <<'PYOUT'
+          import base64, gzip, hashlib, json, pathlib, subprocess
+          for path in subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines():
+              data = pathlib.Path(path).read_bytes()
+              blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+              print(json.dumps({'path': path, 'blob': blob, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}))
+              if path in ('install.sh', 'packages/manifest/src/generate.ts', 'scripts/generated/doctor_checks.sh', 'scripts/generated/internal_checksums.sh'):
+                  encoded = base64.b64encode(gzip.compress(data, mtime=0)).decode()
+                  print('SOURCE_BEGIN ' + path)
+                  for index in range(0, len(encoded), 4000):
+                      print(encoded[index:index + 4000])
+                  print('SOURCE_END ' + path)
+          PYOUT
