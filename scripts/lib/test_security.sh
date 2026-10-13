@@ -843,17 +843,42 @@ subprocess.run([
 ], check=True, timeout=30)
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
     def do_GET(self):
-        if self.path != "/install.sh":
+        identity = self.headers.get("Accept-Encoding") == "identity"
+        if self.path == "/install.sh":
+            coding = None if identity else "gzip"
+        elif self.path == "/stubborn.sh":
+            # A CDN answering from a cached gzip object whatever was asked.
+            coding = "gzip"
+        elif self.path in ("/brotli.sh", "/corrupt.sh"):
+            coding = "br" if self.path == "/brotli.sh" else "gzip"
+            body = b"not a script, not gzip"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Encoding", coding)
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        elif self.path == "/hop.sh":
+            # Only the final response describes the saved body.
+            self.send_response(302)
+            self.send_header("Location", "/install.sh")
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        else:
             self.send_error(404)
             return
-        identity = self.headers.get("Accept-Encoding") == "identity"
-        body = script if identity else gzip.compress(script, mtime=0)
+        body = gzip.compress(script, mtime=0) if coding else script
         self.send_response(200)
         self.send_header("Content-Type", "text/x-sh")
         self.send_header("Content-Length", str(len(body)))
-        if not identity:
-            self.send_header("Content-Encoding", "gzip")
+        if coding:
+            self.send_header("Content-Encoding", coding)
         self.end_headers()
         self.wfile.write(body)
 
@@ -888,6 +913,23 @@ try:
     actual = output.read_bytes()
     if actual != script or hashlib.sha256(actual).digest() != hashlib.sha256(script).digest():
         raise AssertionError("downloaded compression envelope instead of executable bytes")
+    base = f"https://localhost:{server.server_port}"
+    # Exercise both the retained-evidence path and the normal retry path.
+    for mode, mode_env in (("retained", env), ("standard", dict(env, ACFS_SECURITY_RETAIN_TEMP_FILES="false"))):
+        for path, expect_ok in (("/stubborn.sh", True), ("/hop.sh", True),
+                                ("/brotli.sh", False), ("/corrupt.sh", False)):
+            out = root / f"{mode}{path.replace('/', '-')}"
+            done = subprocess.run([
+                bash, "-c", 'source "$1"; acfs_download_to_file "$2" "$3" coding',
+                "transport-test", library, base + path, str(out),
+            ], env=mode_env, timeout=60, capture_output=True)
+            if expect_ok:
+                if done.returncode != 0:
+                    raise AssertionError(f"{mode}{path}: download failed: {done.stderr!r}")
+                if out.read_bytes() != script:
+                    raise AssertionError(f"{mode}{path}: saved bytes are not the identity script")
+            elif done.returncode == 0:
+                raise AssertionError(f"{mode}{path}: accepted an undecodable content coding")
     print(f"Verified {len(actual)} executable bytes over TLS; evidence retained at {root}")
 finally:
     server.shutdown()

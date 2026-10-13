@@ -260,6 +260,71 @@ acfs_retry_after_seconds() {
     printf '%s' "$value"
 }
 
+# Bound on a body decoded because the server ignored the identity request.
+ACFS_DOWNLOAD_MAX_DECODED_BYTES="${ACFS_DOWNLOAD_MAX_DECODED_BYTES:-16777216}"
+
+# Print the content coding of the final response in a curl -D dump. With -L the
+# dump holds every hop; only the last status block describes the saved body.
+acfs_response_content_encoding() {
+    local headers_file="${1:-}"
+    [[ -s "$headers_file" ]] || return 0
+    awk '
+        { line = $0; sub(/\r$/, "", line) }
+        line ~ /^HTTP\// { encoding = "" }
+        tolower(line) ~ /^content-encoding:/ {
+            sub(/^[^:]*:[ \t]*/, "", line)
+            sub(/[ \t]+$/, "", line)
+            encoding = tolower(line)
+        }
+        END { print encoding }
+    ' "$headers_file"
+}
+
+# acfs_curl asks for identity, but a CDN can still answer from a cached gzip
+# object: antigravity.google did on ~1 in 6 fetches (2026-10-12), so its pin
+# looked like it flapped between two installers. Pins cover the decoded
+# representation, so undo a declared gzip coding in place and refuse any other.
+acfs_decode_content_encoding() {
+    local headers_file="$1"
+    local body_file="$2"
+    local name="${3:-download}"
+    local encoding="" gzip_bin="" head_bin="" mv_bin="" decoded="" size=""
+    local decoded_ok=false
+
+    encoding="$(acfs_response_content_encoding "$headers_file")" || return 1
+    case "$encoding" in
+        ""|identity) return 0 ;;
+        gzip|x-gzip) ;;
+        *)
+            log_error "$name: server sent Content-Encoding '$encoding' instead of identity bytes"
+            return 1
+            ;;
+    esac
+
+    gzip_bin="$(acfs_security_required_binary_path gzip)" || return 1
+    head_bin="$(acfs_security_required_binary_path head)" || return 1
+    mv_bin="$(acfs_security_required_binary_path mv)" || return 1
+    decoded="$(acfs_security_mktemp "${body_file}.decoded.XXXXXX")" || return 1
+
+    # The subshell owns pipefail so a corrupt body fails here, not the caller.
+    if ( set -o pipefail
+         "$gzip_bin" -dc < "$body_file" \
+             | "$head_bin" -c "$((ACFS_DOWNLOAD_MAX_DECODED_BYTES + 1))" > "$decoded" ); then
+        decoded_ok=true
+    fi
+    size="$(acfs_security_file_size "$decoded" 2>/dev/null || echo 0)"
+    if (( size > ACFS_DOWNLOAD_MAX_DECODED_BYTES )); then
+        log_error "$name: gzip-coded response decodes past ${ACFS_DOWNLOAD_MAX_DECODED_BYTES} bytes"
+    elif [[ "$decoded_ok" != true ]]; then
+        log_error "$name: server declared gzip coding but the body did not decode"
+    elif "$mv_bin" -f -- "$decoded" "$body_file"; then
+        log_info "$name: decoded an unrequested gzip response to its identity bytes"
+        return 0
+    fi
+    _acfs_remove_temp_files "$decoded"
+    return 1
+}
+
 acfs_is_github_download_url() {
     local url="${1:-}"
     local authority=""
@@ -316,7 +381,8 @@ acfs_download_to_file() {
             --proto '=https' --proto-redir '=https' \
             --connect-timeout 15 --max-time 45 --max-filesize 1048576 \
             "$url" -o "$output_path" -D "$retained_headers"; then
-            return 0
+            acfs_decode_content_encoding "$retained_headers" "$output_path" "$name"
+            return $?
         else
             return $?
         fi
@@ -364,6 +430,10 @@ acfs_download_to_file() {
         status=$?
 
         if (( status == 0 )); then
+            if [[ -n "$hdr_file" ]] && ! acfs_decode_content_encoding "$hdr_file" "$output_path" "$name"; then
+                _acfs_remove_temp_files "$hdr_file"
+                return 1
+            fi
             (( attempt > 0 )) && log_info "Succeeded on retry ${attempt} for fetching ${name}"
             [[ -n "$hdr_file" ]] && _acfs_remove_temp_files "$hdr_file"
             return 0
