@@ -16230,3 +16230,44 @@ _tmpdir_probe_under_file_size_limit() {
 
     [ ! -e "$probed" ]
 }
+
+# A head that refuses its first write, like /tmp at a spent per-user tmpfs
+# quota (mktemp succeeds, the data write fails), then behaves normally.
+_staging_head_refusing_first_write() {
+    local real_head stub_dir
+    real_head="$(update_system_binary_path head)"
+    stub_dir="$(create_temp_dir)"
+    STAGING_HEAD_CALLS="$stub_dir/calls"
+    : > "$STAGING_HEAD_CALLS"
+    STAGING_FAKE_HEAD="$stub_dir/head"
+    printf '#!/bin/bash\nn=$(wc -l < "%s")\necho x >> "%s"\n[[ "$n" -ge 1 ]] || exit 1\nexec "%s" "$@"\n' \
+        "$STAGING_HEAD_CALLS" "$STAGING_HEAD_CALLS" "$real_head" > "$STAGING_FAKE_HEAD"
+    chmod 0755 "$STAGING_FAKE_HEAD"
+    eval "$(declare -f update_system_binary_path | sed '1s/update_system_binary_path/_staging_real_binary_path/')"
+    update_system_binary_path() {
+        if [[ "$1" == head ]]; then printf '%s\n' "$STAGING_FAKE_HEAD"; else _staging_real_binary_path "$@"; fi
+    }
+}
+
+@test "verified installer staging: /tmp that takes mktemp but refuses the write falls back to /var/tmp" {
+    [[ ! -L /tmp && -d /var/tmp && -k /var/tmp ]] || skip "needs a real /tmp and a sticky /var/tmp"
+    local prefix="acfs-bats-stage-$$" file=""
+    _staging_head_refusing_first_write
+    update_run_in_target_context() { shift; "$@"; }
+
+    file="$(update_create_target_readable_temp_file "$prefix")"
+
+    [[ "$file" == /var/tmp/"$prefix".* && -f "$file" && ! -s "$file" ]] || fail "got: $file"
+    rm -f -- "$file"
+    [[ -z "$(compgen -G "/tmp/$prefix.*")" ]] || fail "probe file left in /tmp"
+}
+
+@test "verified installer staging: fails closed when no system temp dir takes the write" {
+    local prefix="acfs-bats-stage-full-$$" out="" rc=0
+    update_run_in_target_context() { shift; "$@"; }
+
+    out="$(ulimit -f 64; update_create_target_readable_temp_file "$prefix" 2>/dev/null)" || rc=$?
+
+    [[ "$rc" -ne 0 && -z "$out" ]] || fail "rc=$rc out=$out"
+    [[ -z "$(compgen -G "/tmp/$prefix.*")$(compgen -G "/var/tmp/$prefix.*")" ]] || fail "probe file left behind"
+}

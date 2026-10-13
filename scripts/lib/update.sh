@@ -1791,6 +1791,8 @@ update_create_target_readable_temp_file() {
         echo "Trusted temp-file helpers unavailable" >&2
         return 1
     fi
+    local head_bin=""
+    head_bin="$(update_system_binary_path head 2>/dev/null || true)"
 
     # Verified bytes are executed later under a different user identity. Keep
     # the pathname anchored below fixed system-owned temp roots: validating
@@ -1858,6 +1860,14 @@ update_create_target_readable_temp_file() {
             "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
             continue
         fi
+        # Once a per-user tmpfs quota on /tmp is spent (systemd 256+ usrquota)
+        # mktemp still succeeds and only the data write fails, which broke
+        # every verified installer on fmd. Test a write before choosing a dir.
+        if [[ -n "$head_bin" ]] && ! "$head_bin" -c 1048576 /dev/zero > "$tmp_file" 2>/dev/null; then
+            "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
+            continue
+        fi
+        : > "$tmp_file"
         if update_run_in_target_context "" test -r "$tmp_file" >/dev/null 2>&1; then
             printf '%s\n' "$tmp_file"
             return 0
