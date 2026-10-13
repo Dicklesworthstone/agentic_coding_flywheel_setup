@@ -15404,6 +15404,103 @@ _backoff_installer_fixture() {
     assert_success
 }
 
+@test "rollback backoff: a new upstream release lifts it; the same, an unknown or an unrecorded release keeps it" {
+    _backoff_installer_fixture
+    local state_file="$HOME/.local/state/acfs/update-rollback.state"
+    update_tool_latest_release_tag() {
+        echo asked >> "$HOME/tag-lookups"
+        [[ -n "$BACKOFF_LATEST_TAG" ]] && printf '%s\n' "$BACKOFF_LATEST_TAG"
+    }
+    printf 'xf 6 %s %s v0.4.2\n' "$(/bin/date +%s)" "$BACKOFF_OLD_SHA" > "$state_file"
+
+    BACKOFF_LATEST_TAG=v0.4.2
+    run update_tool_rollback_backoff_details xf "$BACKOFF_OLD_SHA"
+    assert_success
+    BACKOFF_LATEST_TAG=v0.4.3
+    run update_tool_rollback_backoff_details xf "$BACKOFF_OLD_SHA"
+    assert_failure
+    # A lookup that fails (offline, rate limited) lifts nothing.
+    BACKOFF_LATEST_TAG=""
+    run update_tool_rollback_backoff_details xf "$BACKOFF_OLD_SHA"
+    assert_success
+    [[ "$(wc -l < "$HOME/tag-lookups")" -eq 3 ]]
+
+    # No recorded release, or a backoff that already ran out: upstream is not asked.
+    BACKOFF_LATEST_TAG=v9.9.9
+    printf 'xf 6 %s %s\n' "$(/bin/date +%s)" "$BACKOFF_OLD_SHA" > "$state_file"
+    run update_tool_rollback_backoff_details xf "$BACKOFF_OLD_SHA"
+    assert_success
+    printf 'xf 1 %s %s v0.4.2\n' "$(( $(/bin/date +%s) - 10 * 86400 ))" "$BACKOFF_OLD_SHA" > "$state_file"
+    run update_tool_rollback_backoff_details xf "$BACKOFF_OLD_SHA"
+    assert_failure
+    [[ "$(wc -l < "$HOME/tag-lookups")" -eq 3 ]]
+}
+
+@test "rollback backoff: a tool fixed by a new release behind an unchanged installer is retried" {
+    # xf v0.4.3 fixed ts2's glibc failure with a byte-identical install.sh,
+    # so the pin never changed and ts2 stayed backed off.
+    _backoff_installer_fixture
+    BACKOFF_PINNED_SHA="$BACKOFF_OLD_SHA"
+    update_tool_latest_release_tag() { printf 'v0.4.3\n'; }
+    printf 'br 6 %s %s v0.4.2\n' "$(/bin/date +%s)" "$BACKOFF_OLD_SHA" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    run update_run_verified_installer_with_env br ""
+    [[ "$status" -ne 94 ]]
+    refute_output --partial "SKIPPED (rollback backoff)"
+    assert_output --partial "VERIFY br $BACKOFF_OLD_SHA"
+}
+
+@test "rollback: a failed verification records the release that was latest" {
+    _backoff_installer_fixture
+    local state_file="$HOME/.local/state/acfs/update-rollback.state"
+
+    update_rollback_state_record_failure xf "$BACKOFF_OLD_SHA" v0.4.2
+    run grep -E "^xf 1 [0-9]+ $BACKOFF_OLD_SHA v0\.4\.2\$" "$state_file"
+    assert_success
+    # The tag is the fifth field, so an unknown pin gets a placeholder...
+    update_rollback_state_record_failure rano "" v0.2.0
+    run grep -E '^rano 1 [0-9]+ - v0\.2\.0$' "$state_file"
+    assert_success
+    # ...which still counts as a different pin once one is known.
+    run update_tool_rollback_backoff_details rano "$BACKOFF_NEW_SHA"
+    assert_failure
+    # Anything that is not a plain tag is not stored.
+    update_rollback_state_record_failure ntm "$BACKOFF_OLD_SHA" 'v1 x;y'
+    run grep -E "^ntm 1 [0-9]+ $BACKOFF_OLD_SHA\$" "$state_file"
+    assert_success
+}
+
+@test "rollback: the release tag comes from the installer repo's releases/latest redirect" {
+    declare -gA KNOWN_INSTALLERS=(
+        [xf]="https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
+        [claude]="https://claude.ai/install.sh"
+        [norel]="https://raw.githubusercontent.com/someone/norel/main/install.sh"
+        [odd]="https://raw.githubusercontent.com/someone/odd/main/install.sh"
+        [down]="https://raw.githubusercontent.com/someone/down/main/install.sh"
+    )
+    update_curl() {
+        case "${*: -1}" in
+            https://github.com/Dicklesworthstone/xf/releases/latest)
+                printf 'https://github.com/Dicklesworthstone/xf/releases/tag/v0.4.3' ;;
+            https://github.com/someone/norel/releases/latest)
+                printf 'https://github.com/someone/norel/releases' ;;
+            https://github.com/someone/odd/releases/latest)
+                printf 'https://github.com/someone/odd/releases/tag/v1%%20x' ;;
+            *) return 22 ;;
+        esac
+    }
+
+    run update_tool_latest_release_tag xf
+    assert_success
+    assert_output "v0.4.3"
+    # Not a GitHub raw installer, no release yet, an odd tag, a failed request.
+    for tool in claude norel odd down; do
+        run update_tool_latest_release_tag "$tool"
+        assert_failure
+        assert_output ""
+    done
+}
+
 # ============================================================
 # Unmanaged atuin init cleanup (issue #359 item 3)
 # ============================================================
@@ -15656,6 +15753,23 @@ esac'
     grep -q 'echo old' "$bin"
     [[ ! -f "$bin.prev" ]]
     update_rollback_state_lookup brokentool
+}
+
+@test "verify-or-rollback: the backoff entry names the pin and the release that failed" {
+    # The setup() for this file stubs `date`; the entry needs a real epoch.
+    date() { /bin/date "$@"; }
+    export XDG_STATE_HOME="$HOME/.local/state"
+    mkdir -p "$HOME/bin"
+    local bin="$HOME/bin/brokentool" sha=""
+    sha="$(printf 'c%.0s' {1..64})"
+    write_smoke_fake_binary "$bin" 'echo "Traceback (most recent call last):" >&2; exit 1'
+    update_tool_binary_path() { printf '%s\n' "$HOME/bin/brokentool"; }
+    update_tool_latest_release_tag() { [[ "$1" == brokentool ]] && printf 'v1.2.3\n'; }
+
+    run update_verify_tool_or_rollback brokentool "$sha"
+    assert_failure
+    run grep -E "^brokentool 1 [0-9]+ $sha v1\.2\.3\$" "$XDG_STATE_HOME/acfs/update-rollback.state"
+    assert_success
 }
 
 @test "verify-or-rollback: a healthy fsfs-style install clears a previous backoff" {

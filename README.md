@@ -917,7 +917,8 @@ Verdicts:
 
 `acfs doctor` reports rolled back tools; `acfs-update --force` retries
 immediately. A backoff also ends as soon as the tool's pinned installer
-changes, because a new pin is a new release that has not failed yet.
+changes or its GitHub repo publishes a new release, because neither has
+failed yet.
 
 `acfs-update` exit codes distinguish partial from total failure: `0` all
 succeeded, `1` total failure (nothing updated), `2` partial failure (some tools

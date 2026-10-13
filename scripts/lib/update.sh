@@ -5007,9 +5007,10 @@ update_tool_smoke_check() {
 
 # State file recording post-install verification failures per tool, so the
 # nightly backs off instead of retry-looping a broken release. Plain text,
-# one `tool count last_failure_epoch [installer_sha256]` line per tool; the
-# sha is the pinned installer that failed (absent in lines written before
-# pins were tracked).
+# one `tool count last_failure_epoch [installer_sha256 [release_tag]]` line
+# per tool: the pinned installer that failed and the upstream release that was
+# latest at the time (`-` for an unknown sha before a tag; both absent in
+# lines written before they were tracked).
 update_rollback_state_file() {
     local state_home="${XDG_STATE_HOME:-}"
     if [[ -z "$state_home" ]]; then
@@ -5026,7 +5027,22 @@ update_rollback_state_lookup() {
     local state_file=""
     state_file="$(update_rollback_state_file 2>/dev/null || true)"
     [[ -n "$state_file" && -f "$state_file" ]] || return 1
-    awk -v tool="$tool" '$1 == tool { print $2, $3, $4; found = 1 } END { exit found ? 0 : 1 }' "$state_file"
+    awk -v tool="$tool" '$1 == tool { print $2, $3, $4, $5; found = 1 } END { exit found ? 0 : 1 }' "$state_file"
+}
+
+# Latest release tag of the GitHub repo a tool's pinned installer lives in
+# (raw.githubusercontent.com/OWNER/REPO/...), read from the releases/latest
+# redirect: no API token, no rate limit. Fails for any other installer, a repo
+# without a release, and network errors.
+update_tool_latest_release_tag() {
+    local tool="${1:-}" url="" effective=""
+    declare -p KNOWN_INSTALLERS >/dev/null 2>&1 || return 1
+    url="${KNOWN_INSTALLERS[$tool]:-}"
+    [[ "$url" =~ ^https://raw\.githubusercontent\.com/([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)/ ]] || return 1
+    effective="$(update_curl --connect-timeout 5 --max-time 15 -o /dev/null -w '%{url_effective}' \
+        "https://github.com/${BASH_REMATCH[1]}/releases/latest" 2>/dev/null)" || return 1
+    [[ "$effective" =~ ^https://github\.com/[^/]+/[^/]+/releases/tag/([A-Za-z0-9._+-]{1,64})$ ]] || return 1
+    printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
 _update_rollback_state_rewrite() {
@@ -5061,14 +5077,18 @@ _update_rollback_state_rewrite() {
 update_rollback_state_record_failure() {
     local tool="${1:-}"
     local installer_sha="${2:-}"
+    local release_tag="${3:-}"
     [[ -n "$tool" ]] || return 1
     [[ "$installer_sha" =~ ^[[:xdigit:]]{64}$ ]] || installer_sha=""
+    [[ "$release_tag" =~ ^[A-Za-z0-9._+-]{1,64}$ ]] || release_tag=""
+    # The tag is the fifth field, so an unknown sha needs a placeholder.
+    [[ -z "$release_tag" || -n "$installer_sha" ]] || installer_sha="-"
     local count=0
     local entry=""
     entry="$(update_rollback_state_lookup "$tool" 2>/dev/null || true)"
     [[ -n "$entry" ]] && count="${entry%% *}"
     [[ "$count" =~ ^[0-9]+$ ]] || count=0
-    _update_rollback_state_rewrite "$tool" "$tool $((count + 1)) $(date +%s)${installer_sha:+ $installer_sha}"
+    _update_rollback_state_rewrite "$tool" "$tool $((count + 1)) $(date +%s)${installer_sha:+ $installer_sha}${release_tag:+ $release_tag}"
 }
 
 update_rollback_state_clear() {
@@ -5085,6 +5105,10 @@ update_rollback_state_clear() {
 # reaches the host the next run instead of up to a week later (csctf on the
 # non-AVX2 yto stayed broken in backoff after its fixed installer was pinned,
 # 2026-10-13). A failure recorded without a pin counts as a different pin.
+# Most fixes ship as a new release behind an unchanged installer, so a latest
+# release tag that differs from the one recorded at the failure lifts the
+# backoff too (xf v0.4.3 fixed ts2's glibc failure, but ts2 stayed backed off
+# another six days). An unknown tag on either side lifts nothing.
 update_tool_rollback_backoff_details() {
     local tool="${1:-}"
     local current_sha="${2:-}"
@@ -5092,10 +5116,10 @@ update_tool_rollback_backoff_details() {
     [[ -n "$tool" ]] || return 1
     [[ "${FORCE_MODE:-false}" == "true" ]] && return 1
 
-    local entry="" count=0 last_epoch=0 failed_sha=""
+    local entry="" count=0 last_epoch=0 failed_sha="" failed_tag="" current_tag=""
     entry="$(update_rollback_state_lookup "$tool" 2>/dev/null || true)"
     [[ -n "$entry" ]] || return 1
-    read -r count last_epoch failed_sha <<<"$entry"
+    read -r count last_epoch failed_sha failed_tag <<<"$entry"
     [[ "$count" =~ ^[0-9]+$ && "$last_epoch" =~ ^[0-9]+$ ]] || return 1
     ((count > 0)) || return 1
 
@@ -5112,6 +5136,14 @@ update_tool_rollback_backoff_details() {
     # A broken clock fails open: better to retry the update than to wedge.
     [[ "$now_epoch" =~ ^[0-9]+$ ]] || return 1
     ((now_epoch < retry_epoch)) || return 1
+
+    if [[ -n "$failed_tag" ]]; then
+        current_tag="$(update_tool_latest_release_tag "$tool" 2>/dev/null || true)"
+        if [[ -n "$current_tag" && "$current_tag" != "$failed_tag" ]]; then
+            log_to_file "Rollback backoff lifted for $tool: a new release was published since the last failed verification ($failed_tag -> $current_tag)"
+            return 1
+        fi
+    fi
 
     local retry_display=""
     retry_display="$(date -d "@$retry_epoch" +%F 2>/dev/null || date -r "$retry_epoch" +%F 2>/dev/null || echo "later")"
@@ -5201,7 +5233,8 @@ update_verify_tool_or_rollback() {
         log_to_file "No previous $tool binary retained for rollback"
     fi
 
-    update_rollback_state_record_failure "$tool" "$installer_sha" || true
+    update_rollback_state_record_failure "$tool" "$installer_sha" \
+        "$(update_tool_latest_release_tag "$tool" 2>/dev/null || true)" || true
     return 1
 }
 
