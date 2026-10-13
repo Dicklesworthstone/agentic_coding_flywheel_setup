@@ -1851,6 +1851,25 @@ agent_mail_readiness_ready() {
     return 1
 }
 
+# The mail server is shared by every agent on the host and reloads its whole
+# message DB on start (90s+ on large mailboxes), so an update that changed
+# nothing must not bounce it: every nightly and every manual `acfs update`
+# used to restart it unconditionally. Keep it running only when the unit was
+# not rewritten, the caller saw it healthy and ready, it is active, and its
+# running executable is byte-identical to the installed binary.
+# ACFS_AM_PROC_DIR is a sandbox hook for the test harness; production uses /proc.
+agent_mail_restart_needed() {
+    local main_pid=""
+    local proc_dir="${ACFS_AM_PROC_DIR:-/proc}"
+
+    [[ "$write_unit" != "true" && "${ACFS_AM_ALREADY_READY:-0}" == "1" ]] || return 0
+    systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || return 0
+    main_pid="$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+    [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || return 0
+    cmp -s "$proc_dir/$main_pid/exe" "$am_bin" 2>/dev/null || return 0
+    return 1
+}
+
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
     enable_state="$(systemctl --user is-enabled agent-mail.service 2>/dev/null || true)"
     case "$enable_state" in
@@ -1897,7 +1916,11 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
     stop_agent_mail_fallback || exit 1
     systemctl --user daemon-reload >/dev/null 2>&1 || true
     systemctl --user enable agent-mail.service >/dev/null 2>&1 || exit 1
-    systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
+    if agent_mail_restart_needed; then
+        systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
+    else
+        echo "Agent Mail: service already runs the installed binary with the current unit and is ready; not restarting" >&2
+    fi
     active_waited=0
     active_max_wait=30
     until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do
@@ -1934,8 +1957,14 @@ EOF
 )"
 
     # _stack_run_as_user builds a fresh environment for the target user, so
-    # forward the force-regenerate opt-in explicitly.
-    service_cmd="export ACFS_FORCE_AGENT_MAIL_UNIT=$(printf %q "${ACFS_FORCE_AGENT_MAIL_UNIT:-0}"); $service_cmd"
+    # forward the force-regenerate opt-in explicitly, and whether the service
+    # answers healthy and ready right now (probed here, with this caller's
+    # probes; anything else means the service script restarts it as before).
+    local am_already_ready=0
+    if _stack_agent_mail_healthy && _stack_agent_mail_readiness; then
+        am_already_ready=1
+    fi
+    service_cmd="export ACFS_FORCE_AGENT_MAIL_UNIT=$(printf %q "${ACFS_FORCE_AGENT_MAIL_UNIT:-0}"); export ACFS_AM_ALREADY_READY=$am_already_ready; $service_cmd"
     _stack_run_as_user "$service_cmd"
 }
 

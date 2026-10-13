@@ -209,6 +209,9 @@ case "$cmd" in
             i=$((i + 1))
         done
         case "$prop" in
+            MainPID)
+                cat "$state/main-pid" 2>/dev/null || echo 0
+                ;;
             LoadState)
                 if [[ -f "$state/force-loadstate" ]]; then
                     cat "$state/force-loadstate"
@@ -250,6 +253,7 @@ run_configure() {
         TARGET_USER="$(id -un)" \
         ACFS_BIN_DIR="$FAKE_HOME/.local/bin" \
         ACFS_AM_RUNTIME_DIR="$FAKE_RTD" \
+        ACFS_AM_PROC_DIR="$SANDBOX/proc" \
         FAKE_STATE_DIR="$FAKE_STATE_DIR" \
         FAKE_RTD="$FAKE_RTD" \
         ACFS_SKIP_AGENT_MAIL="${ACFS_SKIP_AGENT_MAIL:-0}" \
@@ -266,6 +270,10 @@ run_configure() {
             log_fatal() { echo "[FATAL] $*" >&2; exit 1; }
             source "$LIB_DIR/stack.sh"
             _stack_run_as_user() { bash -c "$1"; }
+            # Never probe a real Agent Mail on this machine: the service is
+            # healthy and ready only when the test says so.
+            _stack_agent_mail_healthy() { [[ -f "$FAKE_STATE_DIR/healthy" ]]; }
+            _stack_agent_mail_readiness() { [[ -f "$FAKE_STATE_DIR/healthy" ]]; }
             _stack_configure_agent_mail_service
         ' 2> "$CONFIGURE_ERR_FILE"
     CONFIGURE_RC=$?
@@ -430,6 +438,64 @@ unset ACFS_SKIP_AGENT_MAIL
 check "rc is 75" test "$CONFIGURE_RC" -eq 75
 check_not "unit file not written" test -e "$UNIT_FILE"
 check_not "service was never started" service_active
+
+# ------------------------------------------------------------
+# Tests 12-16: an update that changed nothing must not bounce the shared
+# mail server. Every nightly and every manual `acfs update` used to restart
+# it; on 2026-10-13 a forced xf retry on one host restarted it mid-day.
+# ------------------------------------------------------------
+
+# First run writes the unit and starts the service; then describe it as the
+# running, healthy service whose executable is the installed binary.
+settle_running_service() {
+    run_configure
+    echo 4242 > "$FAKE_STATE_DIR/main-pid"
+    mkdir -p "$SANDBOX/proc/4242"
+    cp "$FAKE_HOME/mcp_agent_mail/am" "$SANDBOX/proc/4242/exe"
+    touch "$FAKE_STATE_DIR/healthy"
+    : > "$FAKE_STATE_DIR/calls.log"
+}
+
+begin_test "unchanged, healthy service: not restarted"
+settle_running_service
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check_not "no restart issued" calls_match "restart agent-mail.service"
+check "service is still active" service_active
+check "skip was announced" grep -q "not restarting" "$CONFIGURE_ERR_FILE"
+check "post-update assertion still ran" calls_match "show agent-mail.service -p LoadState"
+
+begin_test "installed binary differs from the running one: restarted"
+settle_running_service
+printf '#!/usr/bin/env bash\necho "am 0.0.1-new"\n' > "$FAKE_HOME/mcp_agent_mail/am"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "restart issued" calls_match "restart agent-mail.service"
+
+begin_test "service not healthy or ready: restarted"
+settle_running_service
+rm -f "$FAKE_STATE_DIR/healthy"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "restart issued" calls_match "restart agent-mail.service"
+
+begin_test "unit rewritten: restarted"
+settle_running_service
+rm -f "$UNIT_FILE"
+run_configure
+check "rc is 0" test "$CONFIGURE_RC" -eq 0
+check "unit file written again" test -f "$UNIT_FILE"
+check "restart issued" calls_match "restart agent-mail.service"
+
+begin_test "service inactive or without a main pid: restarted"
+settle_running_service
+rm -f "$FAKE_STATE_DIR/active"
+run_configure
+check "inactive: restart issued" calls_match "restart agent-mail.service"
+settle_running_service
+rm -f "$FAKE_STATE_DIR/main-pid"
+run_configure
+check "no main pid: restart issued" calls_match "restart agent-mail.service"
 
 # ------------------------------------------------------------
 # Summary
