@@ -299,17 +299,86 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
       svg.querySelector("text")!.setAttribute("fill", "var(--muted-foreground)");
       svg.style.removeProperty("opacity");
     });
-    expect(await scanContrast(page)).toEqual([]);
+    await expect.poll(() => scanContrast(page)).toEqual([]);
     await expect.poll(() => faintWhiteSvgLabels(page)).toEqual([]);
+  });
+
+  test("graph controls wait for hydration", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false, baseURL });
+    try {
+      const page = await context.newPage();
+      await page.goto("/learn/bv");
+      await expect(page.getByRole("button", { name: "Run Triage", exact: true, includeHidden: true })).toBeDisabled();
+      const database = page.getByRole("button", { name: /^DB:/, includeHidden: true });
+      await expect(database).toHaveAttribute("aria-disabled", "true");
+      await expect(database).toHaveAttribute("tabindex", "-1");
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("graph nodes support keyboard selection without lesson navigation", async ({ page }) => {
+    await page.goto("/learn/bv");
+    const region = page.getByRole("region", { name: "Beads dependency graph (scrolls sideways when needed)", exact: true });
+    const database = region.getByRole("button", { name: /^DB:/ });
+    await expect(database).toHaveAttribute("aria-disabled", "false");
+    await region.focus();
+    await page.keyboard.press("Tab");
+    await expect(database).toBeFocused();
+    const ring = database.locator('[data-node-focus-ring="DB"]');
+    await expect.poll(() => ring.evaluate((element) => Number(getComputedStyle(element).opacity))).toBe(1);
+    await expect(database).toHaveAttribute("aria-pressed", "false");
+    await page.keyboard.press("Enter");
+    await expect(database).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Space");
+    await expect(database).toHaveAttribute("aria-pressed", "false");
+    await expect(database).toBeFocused();
+    expect(new URL(page.url()).pathname).toBe("/learn/bv");
+    await page.keyboard.press("Tab");
+    const auth = region.getByRole("button", { name: /^AUTH:/ });
+    await expect(auth).toBeFocused();
+    // SVG node focus must stay local for both native arrow panning and the
+    // letter shortcut used by the surrounding lesson. Wait for asynchronous
+    // navigation, so an immediate URL check cannot hide a leaked shortcut.
+    const originalURL = page.url();
+    for (const key of ["ArrowRight", "l"]) {
+      await auth.press(key);
+      await expect(page.waitForURL((url) => url.href !== originalURL, { timeout: 1000 }))
+        .rejects.toBeInstanceOf(errors.TimeoutError);
+      await expect(auth).toBeFocused();
+    }
+    const run = page.getByRole("button", { name: "Run Triage", exact: true });
+    // Keep the control above the fixed phone lesson-navigation bar. A native
+    // click still has to pass visibility, stability and pointer-hit checks.
+    await run.evaluate((button) => button.scrollIntoView({ block: "center", behavior: "instant" }));
+    await run.click();
+    await expect(page.getByRole("button", { name: "Quick Wins", exact: true })).toBeVisible();
+    await auth.focus();
+    await page.keyboard.press("Enter");
+    await expect(auth).toHaveAttribute("aria-pressed", "true");
+    const details = page.getByRole("region", { name: "Details for AUTH", exact: true });
+    await expect(details).toContainText("Auth refactor");
+    await page.keyboard.press("Space");
+    await expect(auth).toHaveAttribute("aria-pressed", "false");
+    await expect(details).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe("/learn/bv");
   });
 
   test("graph analysis keeps dimmed node identifiers readable", async ({ page }) => {
     await page.goto("/learn/bv");
     await expect(page.locator("main article section").first()).toBeVisible();
-    await page.getByRole("button", { name: "Run Triage", exact: true }).click();
+    const run = page.getByRole("button", { name: "Run Triage", exact: true });
+    await run.evaluate((button) => button.scrollIntoView({ block: "center", behavior: "instant" }));
+    await run.click();
     await expect(page.getByRole("button", { name: "Quick Wins", exact: true })).toBeVisible();
     for (const mode of ["Quick Wins", "Critical Path", "Bottlenecks", "Cycles"]) {
-      await page.getByRole("button", { name: mode, exact: true }).click();
+      const control = page.getByRole("button", { name: mode, exact: true });
+      await control.evaluate((button) => button.scrollIntoView({ block: "center", behavior: "instant" }));
+      await control.click();
+      await expect(control).toHaveAttribute("aria-pressed", "true");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+        await page.evaluate(() => document.documentElement.clientWidth),
+      );
       const dimmedShapes = page.locator('main svg g[opacity="0.3"], main svg g[opacity="0.25"]');
       expect(await dimmedShapes.count()).toBeGreaterThan(0);
       // The analysis still dims non-matching shapes, but their identifiers

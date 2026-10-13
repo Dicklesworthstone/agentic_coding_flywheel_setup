@@ -867,8 +867,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
         <text
           x={clientX + 80}
           y={midY - 28}
-          fill="white"
-          fillOpacity={0.3}
+          fill="var(--muted-foreground)"
           fontSize={12}
           fontFamily="monospace"
         >
@@ -1031,7 +1030,7 @@ function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${
               rule.matched
                 ? "border-white/[0.1] bg-white/[0.04]"
-                : "border-white/[0.04] bg-white/[0.01] opacity-40"
+                : "border-white/[0.04] bg-white/[0.01]"
             }`}
           >
             {rule.matched ? (

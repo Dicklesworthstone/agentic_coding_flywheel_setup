@@ -29,7 +29,7 @@ import {
   Trophy,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
@@ -748,7 +748,16 @@ const TERMINAL_COMMANDS: Record<AnalysisMode, string[]> = {
 // InteractiveGraphTriage — The Main Visualization
 // ---------------------------------------------------------------------------
 
+// Server-rendered controls must wait for their client event handlers. The client
+// snapshot changes only when React hydrates this component, with no timer delay.
+const subscribeToClientReadiness = () => () => undefined;
+const getClientReadiness = () => true;
+const getServerReadiness = () => false;
+
 function InteractiveGraphTriage() {
+  const clientReady = useSyncExternalStore(
+    subscribeToClientReadiness, getClientReadiness, getServerReadiness,
+  );
   const [triageRun, setTriageRun] = useState(false);
   const [animatingPhase, setAnimatingPhase] = useState<"idle" | "computing" | "done">("idle");
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -950,51 +959,96 @@ function InteractiveGraphTriage() {
           </p>
         </div>
 
-        {/* Analysis Mode Tabs */}
-        <AnimatePresence>
+        {/* Keep the starting action beside the choices it reveals, above the graph. */}
+        <div className="flex flex-wrap justify-center gap-3">
+          <motion.button
+            type="button"
+            onClick={handleRunTriage}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 200, damping: 25 }}
+            disabled={!clientReady || animatingPhase === "computing"}
+            className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
+              animatingPhase === "computing"
+                ? "border-white/[0.06] bg-white/[0.02] text-muted-foreground cursor-wait"
+                : "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+            }`}
+          >
+            {animatingPhase === "computing" ? (
+              <>
+                <motion.div
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={
+                    inView
+                      ? { duration: 1, repeat: Infinity, ease: "linear" }
+                      : { duration: 0.2 }
+                  }
+                >
+                  <Network className="h-4 w-4" />
+                </motion.div>
+                Computing...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4" />
+                Run Triage
+              </>
+            )}
+          </motion.button>
           {triageRun && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+            <motion.button
+              type="button"
+              onClick={handleReset}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-muted-foreground hover:text-white/70 transition-colors"
             >
-              <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
-                {(
-                  Object.entries(MODE_CONFIG) as [
-                    AnalysisMode,
-                    (typeof MODE_CONFIG)[AnalysisMode],
-                  ][]
-                ).map(([mode, config]) => {
-                  const ModeIcon = config.icon;
-                  const isActive = analysisMode === mode;
-                  return (
-                    <motion.button
-                      key={mode}
-                      type="button"
-                      onClick={() => handleAnalysisModeChange(mode)}
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.96 }}
-                      transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                      className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                        isActive
-                          ? "border border-violet-500/40 bg-violet-500/15 text-violet-300 shadow-lg shadow-violet-500/10"
-                          : "border border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <ModeIcon className="h-3 w-3" />
-                      <span className="hidden sm:inline">{config.label}</span>
-                    </motion.button>
-                  );
-                })}
-              </div>
-              {/* Mode description */}
-              <p className="text-center text-xs text-muted-foreground mt-2">
-                {MODE_CONFIG[analysisMode].description}
-              </p>
-            </motion.div>
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </motion.button>
           )}
-        </AnimatePresence>
+        </div>
+
+        {/* Keep mode controls readable and stationary as soon as they appear. */}
+        {triageRun && (
+          <div>
+            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+              {(
+                Object.entries(MODE_CONFIG) as [
+                  AnalysisMode,
+                  (typeof MODE_CONFIG)[AnalysisMode],
+                ][]
+              ).map(([mode, config]) => {
+                const ModeIcon = config.icon;
+                const isActive = analysisMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => handleAnalysisModeChange(mode)}
+                    aria-label={config.label}
+                    aria-pressed={isActive}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors ${
+                      isActive
+                        ? "border border-violet-500/40 bg-violet-500/15 text-violet-300 shadow-lg shadow-violet-500/10"
+                        : "border border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    <ModeIcon className="h-3 w-3" />
+                    <span>{config.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Mode description */}
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              {MODE_CONFIG[analysisMode].description}
+            </p>
+          </div>
+        )}
 
         {/* Legend */}
         <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
@@ -1299,9 +1353,33 @@ function InteractiveGraphTriage() {
                   return (
                     <g
                       key={node.id}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setSelectedNode(node.id === selectedNode ? null : node.id)}
+                      className="group/graph-node outline-none"
+                      role="button"
+                      tabIndex={clientReady ? 0 : -1}
+                      aria-disabled={!clientReady}
+                      aria-label={`${node.id}: ${node.label} (${color.label})`}
+                      aria-pressed={isSelected}
+                      style={{ cursor: clientReady ? "pointer" : "wait" }}
+                      onClick={() => {
+                        if (clientReady) setSelectedNode(node.id === selectedNode ? null : node.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (clientReady) setSelectedNode(node.id === selectedNode ? null : node.id);
+                      }}
                     >
+                      <circle
+                        data-node-focus-ring={node.id}
+                        cx={node.x}
+                        cy={node.y}
+                        r={radius + 4}
+                        fill="none"
+                        stroke="var(--foreground)"
+                        strokeWidth={2}
+                        className="pointer-events-none opacity-0 group-focus-visible/graph-node:opacity-100"
+                      />
                       {/* Dim non-matching shapes while keeping their labels readable. */}
                       <g opacity={nodeOpacity}>
                       {/* Top recommendation pulsing glow */}
@@ -1522,60 +1600,6 @@ function InteractiveGraphTriage() {
               </DiagramScroller>
             </div>
 
-            {/* Controls */}
-            <div className="flex flex-wrap justify-center gap-3">
-              <motion.button
-                type="button"
-                onClick={handleRunTriage}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                disabled={animatingPhase === "computing"}
-                className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
-                  animatingPhase === "computing"
-                    ? "border-white/[0.06] bg-white/[0.02] text-muted-foreground cursor-wait"
-                    : "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
-                }`}
-              >
-                {animatingPhase === "computing" ? (
-                  <>
-                    <motion.div
-                      animate={inView ? { rotate: 360 } : { rotate: 0 }}
-                      transition={
-                        inView
-                          ? { duration: 1, repeat: Infinity, ease: "linear" }
-                          : { duration: 0.2 }
-                      }
-                    >
-                      <Network className="h-4 w-4" />
-                    </motion.div>
-                    Computing...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4" />
-                    Run Triage
-                  </>
-                )}
-              </motion.button>
-
-              {triageRun && (
-                <motion.button
-                  type="button"
-                  onClick={handleReset}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.96 }}
-                  className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-muted-foreground hover:text-white/70 transition-colors"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Reset
-                </motion.button>
-              )}
-            </div>
-
             {/* Mini Terminal */}
             <AnimatePresence>
               {triageRun && (
@@ -1670,6 +1694,8 @@ function InteractiveGraphTriage() {
                   {selectedData && selectedData.id !== topNode.id && (
                     <motion.div
                       key={selectedData.id}
+                      role="region"
+                      aria-label={`Details for ${selectedData.id}`}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
@@ -1688,7 +1714,7 @@ function InteractiveGraphTriage() {
                         <button
                           type="button"
                           onClick={() => setShowMetricsDetail(!showMetricsDetail)}
-                          className="text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
                           {showMetricsDetail ? "hide" : "metrics"}
                         </button>

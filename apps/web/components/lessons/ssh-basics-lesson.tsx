@@ -384,7 +384,7 @@ function CloudIcon({ x, y }: { x: number; y: number }) {
         height={24}
         strokeWidth={1}
       />
-      <text x={x} y={y + 24} textAnchor="middle" fill="white" fontSize="12" opacity="0.4">
+      <text x={x} y={y + 24} textAnchor="middle" fill="var(--muted-foreground)" fontSize="12">
         Internet
       </text>
     </motion.g>

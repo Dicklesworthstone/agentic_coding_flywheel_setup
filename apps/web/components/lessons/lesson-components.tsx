@@ -390,7 +390,7 @@ export function BulletList({ items }: BulletListProps) {
       {items.map((item, i) => (
         <motion.li
           key={i}
-          initial={{ opacity: 0, x: -10 }}
+          initial={{ opacity: 1, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.1 }}
           className="flex items-start gap-3"

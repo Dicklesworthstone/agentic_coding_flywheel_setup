@@ -2072,15 +2072,16 @@ function InteractiveFlywheelCycle() {
           />
         </div>
 
-        {/* Tab content */}
+        {/* Autoplay refreshes these reading panels on every stage. Keep text
+            opaque while translating the panel so it stays readable mid-change. */}
         <AnimatePresence mode="wait">
           {activeTab === "details" && (
             <motion.div
               {...{
                 key: `details-${displayStageIdx}`,
-                initial: { opacity: 0, y: 10, scale: 0.97 },
+                initial: { opacity: 1, y: 10, scale: 1 },
                 animate: { opacity: 1, y: 0, scale: 1 },
-                exit: { opacity: 0, y: -10, scale: 0.97 },
+                exit: { opacity: 1, y: -10, scale: 1 },
                 transition: { type: "spring", stiffness: 200, damping: 25 },
                 className:
                   "rounded-2xl border border-white/[0.08] bg-black/30 backdrop-blur-xl p-5",
@@ -2114,7 +2115,7 @@ function InteractiveFlywheelCycle() {
                   <span className="ml-auto text-xs text-muted-foreground">click again to deselect</span>
                 )}
               </div>
-              <p className="text-sm text-white/60 mb-4 leading-relaxed">
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                 {displayStage.description}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -2135,9 +2136,9 @@ function InteractiveFlywheelCycle() {
             <motion.div
               {...{
                 key: `terminal-${displayStageIdx}`,
-                initial: { opacity: 0, y: 10, scale: 0.97 },
+                initial: { opacity: 1, y: 10, scale: 1 },
                 animate: { opacity: 1, y: 0, scale: 1 },
-                exit: { opacity: 0, y: -10, scale: 0.97 },
+                exit: { opacity: 1, y: -10, scale: 1 },
                 transition: { type: "spring", stiffness: 200, damping: 25 },
               }}
             >
@@ -2153,9 +2154,9 @@ function InteractiveFlywheelCycle() {
             <motion.div
               {...{
                 key: "metrics",
-                initial: { opacity: 0, y: 10, scale: 0.97 },
+                initial: { opacity: 1, y: 10, scale: 1 },
                 animate: { opacity: 1, y: 0, scale: 1 },
-                exit: { opacity: 0, y: -10, scale: 0.97 },
+                exit: { opacity: 1, y: -10, scale: 1 },
                 transition: { type: "spring", stiffness: 200, damping: 25 },
                 className:
                   "rounded-2xl border border-white/[0.08] bg-black/30 backdrop-blur-xl p-5",
@@ -2193,9 +2194,9 @@ function InteractiveFlywheelCycle() {
             <motion.div
               {...{
                 key: `agents-${displayStageIdx}`,
-                initial: { opacity: 0, y: 10, scale: 0.97 },
+                initial: { opacity: 1, y: 10, scale: 1 },
                 animate: { opacity: 1, y: 0, scale: 1 },
-                exit: { opacity: 0, y: -10, scale: 0.97 },
+                exit: { opacity: 1, y: -10, scale: 1 },
                 transition: { type: "spring", stiffness: 200, damping: 25 },
                 className:
                   "rounded-2xl border border-white/[0.08] bg-black/30 backdrop-blur-xl p-5",

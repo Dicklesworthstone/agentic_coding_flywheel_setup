@@ -1891,7 +1891,7 @@ function InteractiveSwarmTimeline() {
   return (
     <motion.div
       ref={rootRef}
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 1, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 200, damping: 25 }}
       className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden"
@@ -2091,7 +2091,7 @@ function SwarmTimelineView({
         return (
           <motion.div
             key={evt.id}
-            initial={{ opacity: 0, x: -16 }}
+            initial={{ opacity: 1, x: -16 }}
             // Unreached events stay legible (muted text, dashed border) rather than
             // fading the whole card below WCAG AA contrast.
             animate={{ opacity: 1, x: 0 }}
@@ -2875,8 +2875,8 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
       {steps.map((step, i) => (
         <motion.div
           key={i}
-          initial={{ opacity: 0, x: -12 }}
-          animate={{ opacity: step.reached ? 1 : 0.25, x: 0 }}
+          initial={{ opacity: 1, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
           transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.1 }}
           className={`rounded-xl border p-4 transition duration-300 ${
             step.reached
