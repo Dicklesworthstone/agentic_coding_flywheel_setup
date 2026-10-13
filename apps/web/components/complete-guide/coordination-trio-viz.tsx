@@ -3,6 +3,7 @@
 import { Repeat } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Hl } from "@/components/complete-guide/guide-components";
+import { DiagramScroller } from "@/components/lessons/lesson-components";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 const EXHIBIT_PANEL_CLASS =
@@ -71,7 +72,7 @@ export function CoordinationTrioViz() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="flex flex-col gap-10 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <div className="text-[0.65rem] font-black uppercase tracking-[0.4em] text-violet-400 flex items-center gap-3">
+          <div className="text-xs font-black uppercase tracking-[0.4em] text-violet-400 flex items-center gap-3">
             <div className="w-8 h-px bg-violet-400/30" />
             Coordination Logic
           </div>
@@ -90,7 +91,7 @@ export function CoordinationTrioViz() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => setDisabledTool(null)}
-              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-[0.7rem] font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition duration-500"
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-xs font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition duration-500"
             >
               <Repeat className="h-3 w-3" />
               Restore Machine
@@ -100,12 +101,13 @@ export function CoordinationTrioViz() {
       </div>
 
       <div className="mt-16 grid gap-12 xl:grid-cols-[1.2fr_0.8fr] items-center">
-        <div className="relative aspect-square sm:aspect-video xl:aspect-square flex items-center justify-center p-4">
+        <div className="relative min-w-0">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(167,139,250,0.05),transparent_70%)]" />
 
+          <DiagramScroller label="Coordination triangle diagram" minWidth={600}>
           <motion.svg
             viewBox="0 0 600 380"
-            className="relative z-10 w-full h-full max-h-[500px]"
+            className="relative z-10 w-full h-auto"
             initial={reducedMotion ? false : { opacity: 0 }}
             animate={isInView ? { opacity: 1 } : undefined}
             transition={{ duration: 0.8 }}
@@ -203,7 +205,7 @@ export function CoordinationTrioViz() {
                     x={tool.x}
                     y={tool.y - 25}
                     textAnchor="middle"
-                    className={`text-[12px] font-black uppercase tracking-[0.2em] transition duration-500 ${isHovered ? "fill-white" : "fill-white/20"}`}
+                    className={`text-xs font-black uppercase tracking-[0.2em] transition duration-500 ${isHovered ? "fill-white" : "fill-white/20"}`}
                   >
                     {tool.label}
                   </text>
@@ -211,11 +213,12 @@ export function CoordinationTrioViz() {
               );
             })}
           </motion.svg>
+          </DiagramScroller>
         </div>
 
         <div className="flex flex-col gap-8">
           <div className="p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03]">
-            <span className="text-[0.6rem] font-black text-white/20 uppercase tracking-[0.4em]">
+            <span className="text-xs font-black text-white/20 uppercase tracking-[0.4em]">
               Capability Map
             </span>
             <div className="mt-8 flex flex-col gap-6">
@@ -229,7 +232,7 @@ export function CoordinationTrioViz() {
                 { l: "bv", t: "The graph-theory compass for triage.", c: "text-[#FFBD2E]" },
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
-                  <span className={`text-[0.7rem] font-bold tracking-wide ${item.c} `}>
+                  <span className={`text-xs font-bold tracking-wide ${item.c} `}>
                     {item.l}
                   </span>
                   <p className="text-sm text-zinc-400 font-extralight leading-relaxed">{item.t}</p>
@@ -248,7 +251,7 @@ export function CoordinationTrioViz() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="p-10 rounded-[2.5rem] bg-[#100505] border border-red-500/10 shadow-inner"
               >
-                <span className="text-[0.6rem] font-black text-red-500/60 uppercase tracking-[0.5em] block mb-6">
+                <span className="text-xs font-black text-red-500/60 uppercase tracking-[0.5em] block mb-6">
                   Failure Mode Analysis
                 </span>
                 <div className="text-lg font-black text-white mb-2">
@@ -268,7 +271,7 @@ export function CoordinationTrioViz() {
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
                 <div
-                  className="text-[0.6rem] font-black uppercase tracking-[0.5em] block mb-6 opacity-90"
+                  className="text-xs font-black uppercase tracking-[0.5em] block mb-6 opacity-90"
                   style={{ color: TOOL_MAP.get(hoveredTool)?.color }}
                 >
                   Component Analysis
@@ -289,7 +292,7 @@ export function CoordinationTrioViz() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
-                <span className="text-[0.6rem] font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">
+                <span className="text-xs font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">
                   System Architecture
                 </span>
                 <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">

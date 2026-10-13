@@ -1951,7 +1951,7 @@ function InteractiveSwarmTimeline() {
         {/* Time labels */}
         <div className="flex justify-between mt-1">
           {["0h", "1h", "2h", "3h", "4h", "5h"].map((t) => (
-            <span key={t} className="text-[10px] text-white/25 font-mono">
+            <span key={t} className="text-xs text-white/25 font-mono">
               {t}
             </span>
           ))}
@@ -2122,7 +2122,7 @@ function SwarmTimelineView({
                   >
                     {evt.icon}
                   </div>
-                  <span className="text-[10px] font-mono text-white/30">{evt.time}</span>
+                  <span className="text-xs font-mono text-white/30">{evt.time}</span>
                 </div>
 
                 {/* Content */}
@@ -2134,7 +2134,7 @@ function SwarmTimelineView({
                       {evt.title}
                     </h4>
                     <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                         reached ? "bg-white/10 text-white/60" : "bg-white/[0.03] text-white/20"
                       }`}
                     >
@@ -2156,14 +2156,14 @@ function SwarmTimelineView({
                         return (
                           <span
                             key={aid}
-                            className={`text-[10px] px-1.5 py-0.5 rounded-full border ${ag.borderColor} ${ag.bgColor} ${ag.textColor}`}
+                            className={`text-xs px-1.5 py-0.5 rounded-full border ${ag.borderColor} ${ag.bgColor} ${ag.textColor}`}
                           >
                             {ag.name}
                           </span>
                         );
                       })}
                       {evt.agentIds.length > 5 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.04] text-white/30">
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/[0.04] text-white/30">
                           +{evt.agentIds.length - 5} more
                         </span>
                       )}
@@ -2185,14 +2185,14 @@ function SwarmTimelineView({
 
                           {/* Files touched */}
                           <div>
-                            <span className="text-[10px] text-white/30 uppercase tracking-wider font-semibold">
+                            <span className="text-xs text-white/30 uppercase tracking-wider font-semibold">
                               Files
                             </span>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {evt.files.map((f) => (
                                 <span
                                   key={f}
-                                  className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/30 text-white/40 border border-white/[0.06]"
+                                  className="text-xs font-mono px-1.5 py-0.5 rounded bg-black/30 text-white/40 border border-white/[0.06]"
                                 >
                                   {f}
                                 </span>
@@ -2201,7 +2201,7 @@ function SwarmTimelineView({
                           </div>
 
                           {/* Command */}
-                          <div className="rounded-lg bg-black/30 border border-white/[0.06] px-3 py-2 font-mono text-[11px] text-white/60 overflow-x-auto">
+                          <div className="rounded-lg bg-black/30 border border-white/[0.06] px-3 py-2 font-mono text-xs text-white/60 overflow-x-auto">
                             <span className="text-emerald-400/70 select-none">$ </span>
                             {evt.command}
                           </div>
@@ -2268,20 +2268,20 @@ function GanttChartView({
       <div className="flex gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] text-white/40">
+          <span className="text-xs text-white/40">
             <span className="text-emerald-400 font-semibold">{activeAgentCount}</span> agents active
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-primary" />
-          <span className="text-[10px] text-white/40">
+          <span className="text-xs text-white/40">
             <span className="text-primary font-semibold">{completedSegmentCount}</span>/
             {totalSegmentCount} tasks done
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <Clock className="h-2.5 w-2.5 text-white/30" />
-          <span className="text-[10px] font-mono text-white/30">
+          <span className="text-xs font-mono text-white/30">
             T+{Math.floor(playheadMin / 60)}h{String(playheadMin % 60).padStart(2, "0")}m
           </span>
         </div>
@@ -2305,7 +2305,7 @@ function GanttChartView({
                 "4:30",
                 "5:00",
               ].map((t) => (
-                <span key={t} className="text-[10px] font-mono text-white/20">
+                <span key={t} className="text-xs font-mono text-white/20">
                   {t}
                 </span>
               ))}
@@ -2333,7 +2333,7 @@ function GanttChartView({
                     className={`h-2 w-2 rounded-full ${ag.color} ${isRowActive ? "animate-pulse" : ""}`}
                   />
                   <span
-                    className={`text-[10px] font-medium ${isRowActive ? ag.textColor : "text-white/30"} truncate transition-colors`}
+                    className={`text-xs font-medium ${isRowActive ? ag.textColor : "text-white/30"} truncate transition-colors`}
                   >
                     {ag.name}
                   </span>
@@ -2397,7 +2397,7 @@ function GanttChartView({
                         )}
 
                         {/* Label */}
-                        <span className="relative z-[1] px-1 text-[10px] font-medium text-white/50 whitespace-nowrap leading-5 group-hover:text-white/80 transition-colors">
+                        <span className="relative z-[1] px-1 text-xs font-medium text-white/50 whitespace-nowrap leading-5 group-hover:text-white/80 transition-colors">
                           {width > 8 ? seg.label : ""}
                         </span>
 
@@ -2405,20 +2405,20 @@ function GanttChartView({
                         {isHovered && (
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-30 pointer-events-none">
                             <div className="rounded-lg bg-black/90 border border-white/[0.15] px-2.5 py-1.5 shadow-xl whitespace-nowrap">
-                              <div className={`text-[10px] font-semibold ${ag.textColor}`}>
+                              <div className={`text-xs font-semibold ${ag.textColor}`}>
                                 {ag.name}
                               </div>
-                              <div className="text-[10px] text-white/70 font-medium">
+                              <div className="text-xs text-white/70 font-medium">
                                 {seg.label}
                               </div>
-                              <div className="text-[10px] text-white/30 font-mono mt-0.5">
+                              <div className="text-xs text-white/30 font-mono mt-0.5">
                                 {Math.floor(seg.startMin / 60)}:
                                 {String(seg.startMin % 60).padStart(2, "0")} -{" "}
                                 {Math.floor(seg.endMin / 60)}:
                                 {String(seg.endMin % 60).padStart(2, "0")} (
                                 {seg.endMin - seg.startMin}m)
                               </div>
-                              <div className="text-[10px] text-white/25 mt-0.5">
+                              <div className="text-xs text-white/25 mt-0.5">
                                 {isComplete
                                   ? "Complete"
                                   : reached
@@ -2440,23 +2440,23 @@ function GanttChartView({
           <div className="flex flex-wrap gap-3 mt-4 pl-24">
             <div className="flex items-center gap-1.5">
               <div className="h-2 w-6 rounded-sm bg-gradient-to-r from-emerald-500/30 to-emerald-500/10 border border-emerald-500/20" />
-              <span className="text-[10px] text-white/25">Development</span>
+              <span className="text-xs text-white/25">Development</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-2 w-6 rounded-sm bg-gradient-to-r from-rose-500/30 to-rose-500/10 border border-rose-500/20" />
-              <span className="text-[10px] text-white/25">Conflict</span>
+              <span className="text-xs text-white/25">Conflict</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-2 w-6 rounded-sm bg-gradient-to-r from-sky-500/30 to-sky-500/10 border border-sky-500/20" />
-              <span className="text-[10px] text-white/25">Integration</span>
+              <span className="text-xs text-white/25">Integration</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-2 w-6 rounded-sm bg-gradient-to-r from-teal-500/30 to-teal-500/10 border border-teal-500/20" />
-              <span className="text-[10px] text-white/25">Testing</span>
+              <span className="text-xs text-white/25">Testing</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-2 w-6 rounded-sm bg-gradient-to-r from-orange-500/30 to-orange-500/10 border border-orange-500/20" />
-              <span className="text-[10px] text-white/25">Review</span>
+              <span className="text-xs text-white/25">Review</span>
             </div>
           </div>
         </div>
@@ -2514,7 +2514,7 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-center"
             >
-              <span className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">
+              <span className="text-xs text-white/40 font-semibold uppercase tracking-wider">
                 {group.label}
               </span>
               <div className="flex justify-center gap-4 mt-2">
@@ -2522,17 +2522,17 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                   <div className="text-sm font-bold text-white">
                     {Math.round(progress * totalBeads)}
                   </div>
-                  <div className="text-[10px] text-white/25">beads</div>
+                  <div className="text-xs text-white/25">beads</div>
                 </div>
                 <div>
                   <div className="text-sm font-bold text-white">
                     {Math.round(progress * totalLines).toLocaleString()}
                   </div>
-                  <div className="text-[10px] text-white/25">lines</div>
+                  <div className="text-xs text-white/25">lines</div>
                 </div>
                 <div>
                   <div className="text-sm font-bold text-white">{group.agents.length}</div>
-                  <div className="text-[10px] text-white/25">agents</div>
+                  <div className="text-xs text-white/25">agents</div>
                 </div>
               </div>
             </motion.div>
@@ -2581,12 +2581,12 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                     />
                     <span className={`text-xs font-semibold ${ag.textColor}`}>{ag.name}</span>
                     {isActive && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium ml-auto">
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium ml-auto">
                         ACTIVE
                       </span>
                     )}
                     {!isActive && playheadMin > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.05] text-white/25 font-medium ml-auto">
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/[0.05] text-white/25 font-medium ml-auto">
                         IDLE
                       </span>
                     )}
@@ -2601,12 +2601,12 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
 
                   {/* Current activity */}
                   {activeSegments.map((s, i) => (
-                    <p key={i} className="text-[10px] text-white/50">
+                    <p key={i} className="text-xs text-white/50">
                       Working on: <span className="text-white/70 font-medium">{s.label}</span>
                     </p>
                   ))}
                   {completedSegments.length > 0 && (
-                    <p className="text-[10px] text-white/30 mt-1">
+                    <p className="text-xs text-white/30 mt-1">
                       Completed: {completedSegments.length} task
                       {completedSegments.length !== 1 ? "s" : ""}
                     </p>
@@ -2615,13 +2615,13 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                   {/* Quick stats */}
                   {accomplishment && (
                     <div className="flex gap-3 mt-2">
-                      <span className="text-[10px] text-white/20">
+                      <span className="text-xs text-white/20">
                         {Math.round(progress * accomplishment.beadsClosed)} beads
                       </span>
-                      <span className="text-[10px] text-white/20">
+                      <span className="text-xs text-white/20">
                         {Math.round(progress * accomplishment.linesWritten).toLocaleString()} lines
                       </span>
-                      <span className="text-[10px] text-white/20">
+                      <span className="text-xs text-white/20">
                         {Math.round(progress * accomplishment.filesCreated)} files
                       </span>
                     </div>
@@ -2638,7 +2638,7 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                         className="overflow-hidden"
                       >
                         <div className="mt-3 pt-3 border-t border-white/[0.06]">
-                          <span className="text-[10px] text-white/30 uppercase tracking-wider font-semibold">
+                          <span className="text-xs text-white/30 uppercase tracking-wider font-semibold">
                             Key Contributions
                           </span>
                           <ul className="mt-1.5 space-y-1">
@@ -2667,7 +2667,7 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                               <div className={`text-xs font-bold ${ag.textColor}`}>
                                 {Math.round(progress * accomplishment.beadsClosed)}
                               </div>
-                              <div className="text-[10px] text-white/20">Beads</div>
+                              <div className="text-xs text-white/20">Beads</div>
                             </div>
                             <div className="text-center p-1.5 rounded-lg bg-black/20">
                               <div className={`text-xs font-bold ${ag.textColor}`}>
@@ -2675,13 +2675,13 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                                   progress * accomplishment.linesWritten,
                                 ).toLocaleString()}
                               </div>
-                              <div className="text-[10px] text-white/20">Lines</div>
+                              <div className="text-xs text-white/20">Lines</div>
                             </div>
                             <div className="text-center p-1.5 rounded-lg bg-black/20">
                               <div className={`text-xs font-bold ${ag.textColor}`}>
                                 {Math.round(progress * accomplishment.filesCreated)}
                               </div>
-                              <div className="text-[10px] text-white/20">Files</div>
+                              <div className="text-xs text-white/20">Files</div>
                             </div>
                           </div>
                         </div>
@@ -2717,11 +2717,11 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                   transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.05 }}
                   className="flex items-center gap-2"
                 >
-                  <span className="text-[10px] text-white/20 w-4 text-right font-mono">
+                  <span className="text-xs text-white/20 w-4 text-right font-mono">
                     {i + 1}
                   </span>
                   <div className={`h-2 w-2 rounded-full ${ag.color}`} />
-                  <span className={`text-[10px] font-medium ${ag.textColor} w-20 truncate`}>
+                  <span className={`text-xs font-medium ${ag.textColor} w-20 truncate`}>
                     {ag.name}
                   </span>
                   <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden">
@@ -2731,7 +2731,7 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     />
                   </div>
-                  <span className="text-[10px] font-mono text-white/30 w-8 text-right">
+                  <span className="text-xs font-mono text-white/30 w-8 text-right">
                     {Math.round(progress * acc.beadsClosed)}
                   </span>
                 </motion.div>
@@ -2767,23 +2767,23 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
             GmiReview-1 detects that both{" "}
             <span className="text-blue-400 font-medium">BlueLake</span> and{" "}
             <span className="text-rose-400 font-medium">RedFox</span> have modified{" "}
-            <code className="text-[10px] bg-black/30 px-1 rounded">src/types/index.ts</code>.
+            <code className="text-xs bg-black/30 px-1 rounded">src/types/index.ts</code>.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-lg bg-blue-500/5 border border-blue-500/20 p-2">
-              <span className="text-[10px] text-blue-400 font-semibold">
+              <span className="text-xs text-blue-400 font-semibold">
                 BlueLake&apos;s changes:
               </span>
-              <pre className="text-[10px] text-white/40 mt-1 font-mono">
+              <pre className="text-xs text-white/40 mt-1 font-mono">
                 + confidenceDecay: number;{"\n"}+ halfLifeDays: number;{"\n"}+ harmfulWeight:
                 number;
               </pre>
             </div>
             <div className="rounded-lg bg-rose-500/5 border border-rose-500/20 p-2">
-              <span className="text-[10px] text-rose-400 font-semibold">
+              <span className="text-xs text-rose-400 font-semibold">
                 RedFox&apos;s changes:
               </span>
-              <pre className="text-[10px] text-white/40 mt-1 font-mono">
+              <pre className="text-xs text-white/40 mt-1 font-mono">
                 + outputFormat: &quot;json&quot; | &quot;table&quot;;{"\n"}+ verboseMode: boolean;
                 {"\n"}+ colorOutput: boolean;
               </pre>
@@ -2805,7 +2805,7 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
           <div className="rounded-lg bg-black/30 border border-white/[0.06] p-3">
             <div className="flex items-center gap-2 mb-2">
               <MessageSquare className="h-3 w-3 text-orange-400" />
-              <span className="text-[10px] font-semibold text-orange-400">
+              <span className="text-xs font-semibold text-orange-400">
                 GmiReview-1 &rarr; RedFox
               </span>
             </div>
@@ -2819,7 +2819,7 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
           <div className="rounded-lg bg-black/30 border border-white/[0.06] p-3 mt-2">
             <div className="flex items-center gap-2 mb-2">
               <MessageSquare className="h-3 w-3 text-blue-400" />
-              <span className="text-[10px] font-semibold text-blue-400">
+              <span className="text-xs font-semibold text-blue-400">
                 BlueLake &rarr; GmiReview-1
               </span>
             </div>
@@ -2848,8 +2848,8 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
             , zero human intervention.
           </p>
           <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-2">
-            <span className="text-[10px] text-emerald-400 font-semibold">Final merged schema:</span>
-            <pre className="text-[10px] text-white/40 mt-1 font-mono">
+            <span className="text-xs text-emerald-400 font-semibold">Final merged schema:</span>
+            <pre className="text-xs text-white/40 mt-1 font-mono">
               {`interface BulletSchema {
   // ... existing fields
   confidenceDecay: number;   // BlueLake
@@ -2896,10 +2896,10 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
               >
                 {step.label}
               </h4>
-              <span className="text-[10px] font-mono text-white/30">{step.time}</span>
+              <span className="text-xs font-mono text-white/30">{step.time}</span>
             </div>
             {step.reached && i === steps.length - 1 && (
-              <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">
                 RESOLVED
               </span>
             )}
@@ -2951,7 +2951,7 @@ function MetricsDashboardView({ playheadMin }: { playheadMin: number }) {
           >
             <div className={`flex items-center justify-center gap-1.5 mb-2 ${m.color}`}>
               {m.icon}
-              <span className="text-[10px] font-semibold uppercase tracking-wider">{m.label}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{m.label}</span>
             </div>
             <motion.div
               key={m.liveValue}
@@ -2962,7 +2962,7 @@ function MetricsDashboardView({ playheadMin }: { playheadMin: number }) {
             >
               {m.liveValue}
             </motion.div>
-            <div className="text-[10px] text-white/25 mt-1">Final: {m.value}</div>
+            <div className="text-xs text-white/25 mt-1">Final: {m.value}</div>
           </motion.div>
         ))}
       </div>
@@ -2981,9 +2981,9 @@ function MetricsDashboardView({ playheadMin }: { playheadMin: number }) {
           />
         </div>
         <div className="flex justify-between mt-2">
-          <span className="text-[10px] text-white/20">0%</span>
-          <span className="text-[10px] text-white/20">85% target</span>
-          <span className="text-[10px] text-white/20">100%</span>
+          <span className="text-xs text-white/20">0%</span>
+          <span className="text-xs text-white/20">85% target</span>
+          <span className="text-xs text-white/20">100%</span>
         </div>
       </div>
 
@@ -3004,7 +3004,7 @@ function MetricsDashboardView({ playheadMin }: { playheadMin: number }) {
                   animate={{ height: `${scaledHeight}%` }}
                   transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 />
-                <span className="text-[10px] text-white/20 font-mono">{i}h</span>
+                <span className="text-xs text-white/20 font-mono">{i}h</span>
               </div>
             );
           })}
@@ -3040,8 +3040,8 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
                 key={c.label}
                 className="flex justify-between items-center py-1 border-b border-white/[0.04] last:border-0"
               >
-                <span className="text-[11px] text-white/40">{c.label}</span>
-                <span className="text-[11px] font-mono text-white/20">{c.before}</span>
+                <span className="text-xs text-white/40">{c.label}</span>
+                <span className="text-xs font-mono text-white/20">{c.before}</span>
               </div>
             ))}
           </div>
@@ -3068,12 +3068,12 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
                   key={c.label}
                   className="flex justify-between items-center py-1 border-b border-emerald-500/10 last:border-0"
                 >
-                  <span className="text-[11px] text-white/60">{c.label}</span>
+                  <span className="text-xs text-white/60">{c.label}</span>
                   <motion.span
                     key={displayVal}
                     initial={{ opacity: 0.5 }}
                     animate={{ opacity: 1 }}
-                    className="text-[11px] font-mono text-emerald-400 font-semibold"
+                    className="text-xs font-mono text-emerald-400 font-semibold"
                   >
                     {displayVal}
                   </motion.span>
@@ -3089,8 +3089,8 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
         <h4 className="text-xs font-semibold text-white/60 mb-3">Project Structure Growth</h4>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">T=0h</span>
-            <div className="mt-2 rounded-lg bg-black/30 border border-white/[0.06] p-3 font-mono text-[10px] text-white/30 leading-relaxed">
+            <span className="text-xs text-white/30 uppercase tracking-wider">T=0h</span>
+            <div className="mt-2 rounded-lg bg-black/30 border border-white/[0.06] p-3 font-mono text-xs text-white/30 leading-relaxed">
               <div>cass-memory/</div>
               <div className="ml-3">package.json</div>
               <div className="ml-3">PLAN.md</div>
@@ -3098,8 +3098,8 @@ function BeforeAfterView({ playheadMin }: { playheadMin: number }) {
             </div>
           </div>
           <div>
-            <span className="text-[10px] text-emerald-400/60 uppercase tracking-wider">T=5h</span>
-            <div className="mt-2 rounded-lg bg-black/30 border border-emerald-500/10 p-3 font-mono text-[10px] text-emerald-400/60 leading-relaxed">
+            <span className="text-xs text-emerald-400/60 uppercase tracking-wider">T=5h</span>
+            <div className="mt-2 rounded-lg bg-black/30 border border-emerald-500/10 p-3 font-mono text-xs text-emerald-400/60 leading-relaxed">
               <div>cass-memory/</div>
               <div className="ml-3 text-white/40">src/</div>
               <div className="ml-5 text-emerald-400/50">types/ cli/ storage/</div>
@@ -3142,13 +3142,13 @@ function TerminalReplayView({ playheadMin, active }: { playheadMin: number; acti
             <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
             <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
           </div>
-          <span className="text-[10px] text-white/30 font-mono ml-2">
+          <span className="text-xs text-white/30 font-mono ml-2">
             cass-memory - agent swarm session
           </span>
         </div>
 
         {/* Command log */}
-        <div className="p-4 max-h-[360px] overflow-y-auto space-y-2 font-mono text-[11px]">
+        <div className="p-4 max-h-[360px] overflow-y-auto space-y-2 font-mono text-xs">
           {visibleCommands.length === 0 && (
             <div className="text-white/20 text-center py-8">
               Press play or advance the timeline to see commands...
@@ -3164,7 +3164,7 @@ function TerminalReplayView({ playheadMin, active }: { playheadMin: number; acti
               <div className="flex items-start gap-2">
                 <span className="text-white/15 shrink-0 w-10 text-right">{c.time}</span>
                 <span
-                  className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
+                  className={`shrink-0 text-xs px-1.5 py-0.5 rounded ${
                     c.agent === "operator"
                       ? "bg-primary/20 text-primary"
                       : c.agent === "BlueLake"

@@ -790,7 +790,7 @@ function InteractiveWebToMarkdown() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   transition={SPRING}
-                  className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                  className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${
                     isActive
                       ? `${pColors.border} ${pColors.bg} ${pColors.text}`
                       : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
@@ -823,7 +823,7 @@ function InteractiveWebToMarkdown() {
         >
           <Globe className={`h-3.5 w-3.5 shrink-0 ${colors.text}`} />
           <span className="text-xs font-mono text-white/60 truncate">{page.url}</span>
-          <span className={`ml-auto text-[10px] font-medium ${colors.text} shrink-0`}>
+          <span className={`ml-auto text-xs font-medium ${colors.text} shrink-0`}>
             {(page.htmlBytes / 1024).toFixed(1)} KB
           </span>
         </motion.div>
@@ -839,10 +839,10 @@ function InteractiveWebToMarkdown() {
                 <div className="w-2 h-2 rounded-full bg-amber-400/50" />
                 <div className="w-2 h-2 rounded-full bg-emerald-400/50" />
               </div>
-              <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider ml-2">
+              <span className="text-xs font-semibold text-white/40 uppercase tracking-wider ml-2">
                 HTML Source
               </span>
-              <span className="ml-auto text-[10px] font-mono text-white/30">
+              <span className="ml-auto text-xs font-mono text-white/30">
                 {page.elements.length} elements
               </span>
             </div>
@@ -872,7 +872,7 @@ function InteractiveWebToMarkdown() {
                       scale: isHighlighted ? 1.02 : 1,
                     }}
                     transition={SPRING}
-                    className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-mono transition-colors ${
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-mono transition-colors ${
                       isHighlighted
                         ? el.isNoise
                           ? "border-red-500/40 bg-red-500/10"
@@ -907,7 +907,7 @@ function InteractiveWebToMarkdown() {
                         <motion.span
                           initial={{ opacity: 0, scale: 0.5 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                          className={`ml-auto shrink-0 text-xs font-bold px-1.5 py-0.5 rounded-md ${
                             el.isNoise
                               ? "bg-red-500/20 text-red-300"
                               : "bg-emerald-500/20 text-emerald-300"
@@ -931,7 +931,7 @@ function InteractiveWebToMarkdown() {
             {/* Markdown header */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
               <FileText className="h-3 w-3 text-emerald-400/60" />
-              <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                 Markdown Output
               </span>
               <AnimatePresence>
@@ -940,7 +940,7 @@ function InteractiveWebToMarkdown() {
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0 }}
-                    className="ml-auto text-[10px] font-mono text-emerald-400"
+                    className="ml-auto text-xs font-mono text-emerald-400"
                   >
                     {convertedTokens.length} / {contentCount} blocks
                   </motion.span>
@@ -982,7 +982,7 @@ function InteractiveWebToMarkdown() {
                         animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                         transition={{ ...SPRING, delay: 0.05 }}
                       >
-                        <pre className="text-[11px] font-mono text-emerald-300/80 leading-relaxed whitespace-pre-wrap">
+                        <pre className="text-xs font-mono text-emerald-300/80 leading-relaxed whitespace-pre-wrap">
                           {token}
                         </pre>
                       </motion.div>
@@ -1064,7 +1064,7 @@ function InteractiveWebToMarkdown() {
               transition={{ duration: 0.4 }}
               className="absolute inset-0 pointer-events-none flex items-center justify-center"
             >
-              <div className="rounded-lg bg-emerald-400/20 border border-emerald-400/30 px-3 py-1 text-[10px] font-mono text-emerald-300">
+              <div className="rounded-lg bg-emerald-400/20 border border-emerald-400/30 px-3 py-1 text-xs font-mono text-emerald-300">
                 md
               </div>
             </motion.div>
@@ -1084,16 +1084,16 @@ function InteractiveWebToMarkdown() {
               {/* Size comparison */}
               <div className="sm:col-span-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                     Size Comparison
                   </span>
-                  <span className="text-[10px] font-mono text-emerald-400">
+                  <span className="text-xs font-mono text-emerald-400">
                     {reductionPct}% reduction
                   </span>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-white/40 w-8 shrink-0 text-right">HTML</span>
+                    <span className="text-xs text-white/40 w-8 shrink-0 text-right">HTML</span>
                     <div className="flex-1 h-5 rounded-full bg-white/[0.04] overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
@@ -1101,14 +1101,14 @@ function InteractiveWebToMarkdown() {
                         transition={{ ...SPRING, delay: 0.1 }}
                         className="h-full rounded-full bg-gradient-to-r from-red-400/30 to-red-500/40 flex items-center justify-end pr-2"
                       >
-                        <span className="text-[10px] font-mono text-red-200/70">
+                        <span className="text-xs font-mono text-red-200/70">
                           {(page.htmlBytes / 1024).toFixed(1)} KB
                         </span>
                       </motion.div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-white/40 w-8 shrink-0 text-right">MD</span>
+                    <span className="text-xs text-white/40 w-8 shrink-0 text-right">MD</span>
                     <div className="flex-1 h-5 rounded-full bg-white/[0.04] overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
@@ -1116,14 +1116,14 @@ function InteractiveWebToMarkdown() {
                         transition={{ ...SPRING, delay: 0.25 }}
                         className="h-full rounded-full bg-gradient-to-r from-emerald-400/40 to-emerald-500/50 flex items-center justify-end pr-2"
                       >
-                        <span className="text-[10px] font-mono text-emerald-200/80">
+                        <span className="text-xs font-mono text-emerald-200/80">
                           {(page.mdBytes / 1024).toFixed(1)} KB
                         </span>
                       </motion.div>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-center gap-4 text-[10px] text-white/40 pt-1">
+                <div className="flex items-center justify-center gap-4 text-xs text-white/40 pt-1">
                   <span>
                     Noise removed: <span className="text-red-300/70 font-medium">{noiseCount}</span>
                   </span>
@@ -1143,7 +1143,7 @@ function InteractiveWebToMarkdown() {
               {/* Quality score meter */}
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 flex flex-col items-center justify-center gap-2">
                 <Gauge className="h-4 w-4 text-white/30" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Quality
                 </span>
                 <motion.div
@@ -1224,7 +1224,7 @@ function InteractiveWebToMarkdown() {
             >
               <div className="flex items-center gap-2 mb-2.5">
                 <Terminal className="h-3.5 w-3.5 text-violet-400/60" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   MDWB Commands
                 </span>
               </div>
@@ -1237,10 +1237,10 @@ function InteractiveWebToMarkdown() {
                     transition={{ ...SPRING, delay: 0.1 + i * 0.06 }}
                     className="flex items-center gap-2 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2.5 py-1.5"
                   >
-                    <code className="text-[10px] font-mono text-violet-300/80 shrink-0">
+                    <code className="text-xs font-mono text-violet-300/80 shrink-0">
                       {c.cmd}
                     </code>
-                    <span className="text-[10px] text-white/30 ml-auto">{c.desc}</span>
+                    <span className="text-xs text-white/30 ml-auto">{c.desc}</span>
                   </motion.div>
                 ))}
               </div>
@@ -1268,7 +1268,7 @@ function InteractiveWebToMarkdown() {
                       opacity: isActive || isPast ? 1 : 0.25,
                     }}
                     transition={SPRING}
-                    className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium ${
+                    className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium ${
                       isActive
                         ? "border-white/20 bg-white/[0.06] text-white/80"
                         : isPast

@@ -111,7 +111,7 @@ export function ConvergenceViz() {
       {/* HEADER */}
       <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
         <div>
-          <div className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
+          <div className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FFBD2E] animate-pulse shadow-[0_0_8px_rgba(255,189,46,0.8)]" />
             Interactive Simulator
           </div>
@@ -131,7 +131,7 @@ export function ConvergenceViz() {
 
         {/* PRESETS */}
         <div className="mt-6 sm:mt-0 flex flex-wrap gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/[0.05] shadow-inner">
-          <span className="text-[0.6rem] text-white/30 self-center mx-2 uppercase tracking-widest font-bold">
+          <span className="text-xs text-white/30 self-center mx-2 uppercase tracking-widest font-bold">
             Presets
           </span>
           {CONVERGENCE_PRESETS.map((preset) => (
@@ -155,7 +155,7 @@ export function ConvergenceViz() {
             <div key={signal.label} className="relative z-10">
               <div className="flex items-baseline justify-between mb-3">
                 <span className="text-sm font-bold text-white/90">{signal.label}</span>
-                <span className="text-[0.65rem] text-white/40 uppercase tracking-widest font-bold bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05]">
+                <span className="text-xs text-white/40 uppercase tracking-widest font-bold bg-white/[0.03] px-2 py-0.5 rounded-md border border-white/[0.05]">
                   Weight: {signal.weightLabel}
                 </span>
               </div>
@@ -269,7 +269,7 @@ export function ConvergenceViz() {
           {/* Status HUD Footer */}
           <div className="p-5 sm:p-6 bg-white/[0.01] border-t border-white/[0.05] flex flex-col gap-4 backdrop-blur-md relative z-10">
             <div className="flex items-center justify-between">
-              <span className="text-[0.65rem] uppercase tracking-widest text-white/40 font-bold">
+              <span className="text-xs uppercase tracking-widest text-white/40 font-bold">
                 Overall Convergence
               </span>
               <span

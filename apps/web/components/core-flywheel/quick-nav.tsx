@@ -140,7 +140,7 @@ export function QuickNav() {
                       }}
                     />
                     <span
-                      className="relative z-10 text-[0.6rem] font-bold tracking-wide transition-colors duration-300 whitespace-nowrap"
+                      className="relative z-10 text-xs font-bold tracking-wide transition-colors duration-300 whitespace-nowrap"
                       style={{ color: isActive ? "#FF5500" : "rgba(255,255,255,0.25)" }}
                     >
                       {item.label}
@@ -183,13 +183,13 @@ export function QuickNav() {
                           key={item.id}
                           type="button"
                           onClick={() => handleClick(item.id)}
-                          className={`px-3 py-2.5 rounded-xl text-[0.65rem] font-bold tracking-wide transition duration-300 text-left ${
+                          className={`px-3 py-2.5 rounded-xl text-xs font-bold tracking-wide transition duration-300 text-left ${
                             isActive
                               ? "bg-[#FF5500]/10 text-[#FF5500] border border-[#FF5500]/20"
                               : "text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.03]"
                           }`}
                         >
-                          <span className="block text-[0.55rem] font-mono mb-0.5">
+                          <span className="block text-xs font-mono mb-0.5">
                             {item.number}
                           </span>
                           {item.label}
@@ -217,7 +217,7 @@ export function QuickNav() {
                   )}
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[0.55rem] font-bold uppercase tracking-widest text-white/30">
+                  <span className="text-xs font-bold uppercase tracking-widest text-white/30">
                     Section {activeIndex >= 0 ? activeIndex + 1 : "–"} of {NAV_ITEMS.length}
                   </span>
                   <span className="text-xs font-bold text-white truncate">

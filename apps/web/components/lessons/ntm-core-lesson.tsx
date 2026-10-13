@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { handleHorizontalScrollKeyDown } from "@/lib/utils";
 import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
@@ -327,13 +328,13 @@ const STEP_DURATIONS: Record<number, number> = {
   7: 2000,
 };
 
-// Hexagonal layout: panes arranged around a center hub. Panes are as large as
-// the 700x440 viewBox allows (>=15 units between neighbours) so pane text can
-// be 9-11 units: the cockpit renders at ~1:1 on phones (bd-k3qa5).
-const HUB_CX = 350;
-const HUB_CY = 220;
-const HEX_RADIUS = 175;
-const PANE_W = 160;
+// Keep terminal strings readable at 12 units within 210-unit panes. The larger
+// 800x540 canvas leaves at least 15 units between neighboring panes and keeps
+// the same 1:1 minimum scale inside the horizontal scroll region.
+const HUB_CX = 400;
+const HUB_CY = 270;
+const HEX_RADIUS = 225;
+const PANE_W = 210;
 const PANE_H = 120;
 
 function getPaneCenter(angle: number): { x: number; y: number } {
@@ -350,7 +351,7 @@ function InteractiveNtmOrchestrator() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { amount: 0.15 });
-  // On phones the 700-unit cockpit keeps desktop scale inside a horizontal
+  // In narrow containers the 800-unit cockpit keeps desktop scale in a horizontal
   // scroll region; start it centred on the hexagonal layout rather than on
   // the empty left third of the canvas.
   const cockpitScrollRef = useRef<HTMLDivElement>(null);
@@ -551,10 +552,11 @@ function InteractiveNtmOrchestrator() {
         tabIndex={0}
         role="region"
         aria-label="NTM cockpit diagram (scrolls sideways on small screens)"
+        onKeyDown={handleHorizontalScrollKeyDown}
       >
         <svg
-          viewBox="0 0 700 440"
-          className="w-full min-w-[700px] sm:min-w-0"
+          viewBox="0 0 800 540"
+          className="w-full min-w-[800px]"
           role="img"
           aria-label="NTM cockpit visualization showing hexagonal agent layout"
         >
@@ -731,7 +733,7 @@ function InteractiveNtmOrchestrator() {
               x={HUB_CX}
               y={HUB_CY + 66}
               fill="rgba(255,255,255,0.35)"
-              fontSize="9"
+              fontSize="12"
               fontFamily="monospace"
               textAnchor="middle"
             >
@@ -769,7 +771,7 @@ function InteractiveNtmOrchestrator() {
                 x={HUB_CX}
                 y={HUB_CY + 120}
                 fill="rgba(255,255,255,0.2)"
-                fontSize="11"
+                fontSize="12"
                 fontFamily="system-ui"
                 textAnchor="middle"
               >
@@ -840,7 +842,7 @@ function InteractiveNtmOrchestrator() {
                     x={px + 44}
                     y={py + 17}
                     fill={agent.colorLight}
-                    fontSize="11"
+                    fontSize="12"
                     fontWeight="600"
                     fontFamily="system-ui"
                   >
@@ -872,7 +874,7 @@ function InteractiveNtmOrchestrator() {
                     x={px + 10}
                     y={py + 45}
                     fill="rgba(255,255,255,0.5)"
-                    fontSize="8.5"
+                    fontSize="12"
                     fontFamily="monospace"
                   >
                     {agent.model}
@@ -884,7 +886,7 @@ function InteractiveNtmOrchestrator() {
                       x={px + 10}
                       y={py + 63}
                       fill="rgba(255,255,255,0.45)"
-                      fontSize="9"
+                      fontSize="12"
                       fontFamily="monospace"
                     >
                       Waiting for task...
@@ -898,7 +900,7 @@ function InteractiveNtmOrchestrator() {
                         y={py + 63}
                         fill={agent.colorLight}
                         fillOpacity={0.85}
-                        fontSize="9"
+                        fontSize="12"
                         fontFamily="monospace"
                       >
                         {agent.terminalLines[Math.min(termLine, agent.terminalLines.length - 1)]}
@@ -946,7 +948,7 @@ function InteractiveNtmOrchestrator() {
                         x={px + PANE_W - 10}
                         y={py + PANE_H - 12}
                         fill="rgba(255,255,255,0.55)"
-                        fontSize="8.5"
+                        fontSize="12"
                         fontFamily="monospace"
                         textAnchor="end"
                       >
@@ -971,7 +973,7 @@ function InteractiveNtmOrchestrator() {
                         y={py + 80}
                         fill={agent.colorLight}
                         fillOpacity={0.9}
-                        fontSize="9"
+                        fontSize="12"
                         fontWeight="bold"
                         fontFamily="monospace"
                       >
@@ -985,7 +987,7 @@ function InteractiveNtmOrchestrator() {
           </AnimatePresence>
 
           {/* Minimap in bottom-right corner */}
-          <g transform="translate(590, 350)">
+          <g transform="translate(690, 450)">
             <rect
               x={0}
               y={0}
@@ -996,7 +998,7 @@ function InteractiveNtmOrchestrator() {
               stroke="rgba(255,255,255,0.08)"
               strokeWidth={1}
             />
-            <text x={8} y={14} fill="rgba(255,255,255,0.5)" fontSize="9" fontFamily="system-ui">
+            <text x={8} y={14} fill="rgba(255,255,255,0.5)" fontSize="12" fontFamily="system-ui">
               tmux layout
             </text>
             {/* Minimap panes */}

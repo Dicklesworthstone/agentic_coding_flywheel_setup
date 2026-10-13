@@ -1059,7 +1059,7 @@ function Hero() {
 
       <div className="relative mx-auto text-center px-6 z-10 max-w-5xl">
         {/* Badge with shimmer effect */}
-        <div className="relative inline-flex items-center gap-3 rounded-full border border-[#FF5500]/20 bg-[#FF5500]/5 px-6 py-2.5 text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#FF5500] mb-10 shadow-[0_0_20px_rgba(255,85,0,0.15)] backdrop-blur-xl overflow-hidden">
+        <div className="relative inline-flex items-center gap-3 rounded-full border border-[#FF5500]/20 bg-[#FF5500]/5 px-6 py-2.5 text-xs font-black uppercase tracking-[0.3em] text-[#FF5500] mb-10 shadow-[0_0_20px_rgba(255,85,0,0.15)] backdrop-blur-xl overflow-hidden">
           <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_25%,rgba(255,85,0,0.12)_50%,transparent_75%)] bg-[length:200%_100%] animate-[shimmer_3s_ease-in-out_infinite] pointer-events-none" />
           <Sparkles className="h-4 w-4 relative z-10" />
           <span className="relative z-10">The Focused Version</span>
@@ -1095,7 +1095,7 @@ function Hero() {
 
         {/* Scroll indicator */}
         <div className="mt-16 md:mt-20 flex flex-col items-center gap-2 animate-[float_3s_ease-in-out_infinite]">
-          <span className="text-[0.6rem] font-bold uppercase tracking-[0.3em] text-white/20">
+          <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/20">
             Scroll to explore
           </span>
           <ChevronDown className="h-4 w-4 text-white/20" />
@@ -1158,7 +1158,7 @@ function HelperCard({
         </div>
 
         <div>
-          <div className="text-[0.6rem] font-bold uppercase tracking-[0.2em]" style={{ color }}>
+          <div className="text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>
             {fullName}
           </div>
           <h3 className="text-2xl font-black text-white tracking-tight mt-1">{name}</h3>
@@ -1170,7 +1170,7 @@ function HelperCard({
 
         <div className="pt-5 border-t border-white/[0.04] space-y-3">
           <div>
-            <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] block mb-1.5">
+            <span className="text-xs font-bold text-white/30 uppercase tracking-[0.15em] block mb-1.5">
               Usage
             </span>
             <p className="text-[0.85rem] text-zinc-400 font-light leading-relaxed">{usage}</p>
@@ -1201,7 +1201,7 @@ function FooterCTA() {
 
       <div className="relative mx-auto text-center px-6 z-10">
         {/* Badge with shimmer */}
-        <div className="relative inline-flex items-center gap-3 rounded-full border border-[#FF5500]/30 bg-[#FF5500]/10 px-6 py-2.5 text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#FF5500] mb-10 shadow-inner overflow-hidden">
+        <div className="relative inline-flex items-center gap-3 rounded-full border border-[#FF5500]/30 bg-[#FF5500]/10 px-6 py-2.5 text-xs font-black uppercase tracking-[0.3em] text-[#FF5500] mb-10 shadow-inner overflow-hidden">
           <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_25%,rgba(255,85,0,0.15)_50%,transparent_75%)] bg-[length:200%_100%] animate-[shimmer_3s_ease-in-out_infinite] pointer-events-none" />
           <Rocket className="h-4 w-4 relative z-10" />
           <span className="relative z-10">Ready for More?</span>

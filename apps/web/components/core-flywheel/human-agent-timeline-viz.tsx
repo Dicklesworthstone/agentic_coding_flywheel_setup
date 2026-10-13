@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
+import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -236,7 +237,7 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <span
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[0.6rem] font-bold uppercase tracking-widest"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
             style={{
               backgroundColor:
                 stage.actor === "agent"
@@ -277,7 +278,7 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
         {/* Who */}
         <div className="flex flex-col gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.015] to-transparent pointer-events-none" />
-          <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
             <User size={10} className="opacity-50" />
             Who
           </span>
@@ -287,7 +288,7 @@ function DetailCard({ stage, reducedMotion }: { stage: TimelineStage; reducedMot
         {/* Tools */}
         <div className="flex flex-col gap-2 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-          <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
             <Wrench size={10} className="opacity-50" />
             Tools
           </span>
@@ -432,7 +433,7 @@ function DesktopTimeline({
 
               {/* Label */}
               <span
-                className="text-[0.55rem] font-bold uppercase tracking-wider text-center leading-tight max-w-[80px] transition-colors duration-300"
+                className="text-xs font-bold uppercase tracking-wider text-center leading-tight max-w-[80px] transition-colors duration-300"
                 style={{
                   color: isActive
                     ? "#fff"
@@ -446,7 +447,7 @@ function DesktopTimeline({
 
               {/* Step number */}
               <span
-                className="text-[0.5rem] font-mono font-bold"
+                className="text-xs font-mono font-bold"
                 style={{
                   color: isActive ? nodeColor : "rgba(255,255,255,0.15)",
                 }}
@@ -549,7 +550,7 @@ function MobileTimeline({
                 {stage.label}
               </span>
               <span
-                className={`text-[0.65rem] transition-colors duration-300 ${
+                className={`text-xs transition-colors duration-300 ${
                   isActive ? "text-white/40" : "text-white/20 truncate"
                 }`}
               >
@@ -560,7 +561,7 @@ function MobileTimeline({
             {/* Actor badge + step number */}
             <div className="ml-auto flex flex-col items-end gap-1 shrink-0">
               <span
-                className="text-[0.5rem] font-bold uppercase tracking-widest"
+                className="text-xs font-bold uppercase tracking-widest"
                 style={{
                   color: isActive
                     ? stage.actor === "agent"
@@ -572,7 +573,7 @@ function MobileTimeline({
                 {actorLabel(stage.actor)}
               </span>
               <span
-                className="text-[0.55rem] font-mono font-bold"
+                className="text-xs font-mono font-bold"
                 style={{
                   color: isActive ? nodeColor : "rgba(255,255,255,0.12)",
                 }}
@@ -617,6 +618,10 @@ export function HumanAgentTimelineViz() {
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey
+        || isInteractiveKeyboardTarget(e.target)) return;
+      const bounds = ref.current?.getBoundingClientRect();
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
         setActiveIndex((cur) => Math.min(cur + 1, STAGE_COUNT - 1));
@@ -644,7 +649,7 @@ export function HumanAgentTimelineViz() {
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-xl">
-            <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#a78bfa]/80 flex items-center gap-3 mb-4">
+            <div className="text-xs font-bold uppercase tracking-widest text-[#a78bfa]/80 flex items-center gap-3 mb-4">
               <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] animate-pulse shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
               Interactive Exhibit
             </div>
@@ -659,7 +664,7 @@ export function HumanAgentTimelineViz() {
 
           {/* Proportion summary */}
           <div className="shrink-0 flex flex-col gap-2 px-5 py-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
-            <span className="text-[0.55rem] font-bold uppercase tracking-widest text-white/25">
+            <span className="text-xs font-bold uppercase tracking-widest text-white/25">
               Breakdown
             </span>
             <div className="flex items-center gap-4 text-sm font-mono">
@@ -695,7 +700,7 @@ export function HumanAgentTimelineViz() {
         <div className="flex items-center justify-between pt-6 border-t border-white/[0.04]">
           {/* Stage indicator dots */}
           <div className="flex items-center gap-2">
-            <span className="text-[0.6rem] font-bold uppercase tracking-[0.3em] text-white/20 mr-2 hidden sm:inline">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mr-2 hidden sm:inline">
               Stage
             </span>
             {STAGES.map((stage, index) => {

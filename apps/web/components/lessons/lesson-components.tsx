@@ -7,7 +7,7 @@ import {
   CodeBlock as SharedCodeBlock,
   type CodeBlockProps as SharedCodeBlockProps,
 } from "@/components/ui/code-block";
-import { copyTextToClipboard } from "@/lib/utils";
+import { copyTextToClipboard, handleHorizontalScrollKeyDown } from "@/lib/utils";
 
 // =============================================================================
 // SECTION COMPONENT - Beautiful section dividers with gradient headers
@@ -324,7 +324,7 @@ export function DiagramBox({
 }
 
 /**
- * Keeps a fixed-layout SVG diagram at desktop scale on phones. Below `sm` the
+ * Keeps a fixed-layout SVG diagram readable in any narrow container. The
  * diagram keeps `minWidth` (its viewBox width) inside a labelled,
  * keyboard-focusable horizontal scroll region, instead of shrinking every
  * label to a few pixels (bd-k3qa5).
@@ -342,11 +342,12 @@ export function DiagramScroller({
     <div
       className="overflow-x-auto pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
       tabIndex={0}
+      onKeyDown={handleHorizontalScrollKeyDown}
       role="region"
-      aria-label={`${label} (scrolls sideways on small screens)`}
+      aria-label={`${label} (scrolls sideways when needed)`}
     >
       <div
-        className="min-w-[var(--diagram-min-width)] sm:min-w-0"
+        className="min-w-[var(--diagram-min-width)]"
         style={{ "--diagram-min-width": `${minWidth}px` } as CSSProperties}
       >
         {children}

@@ -156,7 +156,7 @@ export function RecursiveImprovementViz() {
             >
               <span className="relative z-10 flex items-center gap-2">
                 <span
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-black transition"
+                  className="flex h-5 w-5 items-center justify-center rounded-md text-xs font-black transition"
                   style={{
                     backgroundColor: i === activeLayer ? `${l.color}20` : "transparent",
                     color: i === activeLayer ? l.color : "inherit",
@@ -198,7 +198,7 @@ export function RecursiveImprovementViz() {
             <div className="text-xs font-bold" style={{ color: layer.color }}>
               Layer {activeLayer + 1} of {LAYERS.length}
             </div>
-            <div className="text-[11px] text-zinc-400 truncate mt-0.5">{layer.title}</div>
+            <div className="text-xs text-zinc-400 truncate mt-0.5">{layer.title}</div>
           </div>
           <button
             onClick={goNext}
@@ -286,7 +286,7 @@ export function RecursiveImprovementViz() {
                     style={{ backgroundColor: "rgba(255,255,255,0.02)" }}
                   >
                     <div
-                      className={`text-[10px] font-bold uppercase tracking-[0.15em] mb-2 ${card.labelColor}`}
+                      className={`text-xs font-bold uppercase tracking-[0.15em] mb-2 ${card.labelColor}`}
                       style={ci === 1 ? { color: `${layer.color}80` } : undefined}
                     >
                       {card.label}
@@ -295,10 +295,10 @@ export function RecursiveImprovementViz() {
                     {/* Desktop arrows between cards */}
                     {ci === 1 && (
                       <>
-                        <div className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-[10px]">
+                        <div className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-xs">
                           &rarr;
                         </div>
-                        <div className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-[10px]">
+                        <div className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 h-5 w-5 items-center justify-center rounded-full bg-[#0A0D14] border border-white/10 text-zinc-600 text-xs">
                           &rarr;
                         </div>
                       </>
@@ -340,7 +340,7 @@ export function RecursiveImprovementViz() {
                     }
                   />
                 </div>
-                <div className="flex justify-between mt-1.5 text-[10px] text-zinc-600">
+                <div className="flex justify-between mt-1.5 text-xs text-zinc-600">
                   <span>Unrefined skill</span>
                   <span>Production-grade</span>
                 </div>
@@ -351,7 +351,7 @@ export function RecursiveImprovementViz() {
                 className="rounded-xl border border-white/[0.06] p-4 backdrop-blur-sm"
                 style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
               >
-                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.15em] mb-2">
+                <div className="text-xs font-bold text-zinc-500 uppercase tracking-[0.15em] mb-2">
                   Example Finding
                 </div>
                 <p className="text-xs text-zinc-300 italic leading-relaxed">

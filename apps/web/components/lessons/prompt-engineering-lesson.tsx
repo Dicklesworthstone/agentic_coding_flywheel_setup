@@ -1278,7 +1278,7 @@ function PromptBuilderPanel({
               <div className={`rounded-lg border p-3 ${t.borderColor} ${t.bgColor}`}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className={`${t.dotColor} h-2 w-2 rounded-full`} />
-                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${t.color}`}>
+                  <span className={`text-xs uppercase tracking-wider font-semibold ${t.color}`}>
                     Layer {i + 1}: {t.label}
                   </span>
                 </div>
@@ -1300,7 +1300,7 @@ function PromptBuilderPanel({
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
               <div className="flex items-center gap-2 mb-1">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400">
+                <span className="text-xs uppercase tracking-wider font-semibold text-emerald-400">
                   User Task
                 </span>
               </div>
@@ -1344,16 +1344,16 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
         <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.03] p-4 backdrop-blur-xl">
           <div className="flex items-center gap-2 mb-3">
             <div className="h-2 w-2 rounded-full bg-rose-400" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-400">
+            <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">
               Without {technique.shortLabel}
             </span>
           </div>
           <div className="mb-3 rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">Prompt</span>
+            <span className="text-xs text-white/30 uppercase tracking-wider">Prompt</span>
             <p className="font-mono text-xs text-white/50 mt-1">{technique.withoutText}</p>
           </div>
           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">Agent Output</span>
+            <span className="text-xs text-white/30 uppercase tracking-wider">Agent Output</span>
             <pre className="font-mono text-xs text-rose-300/60 mt-1 whitespace-pre-wrap leading-relaxed">
               {technique.agentOutputBefore}
             </pre>
@@ -1364,16 +1364,16 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-4 backdrop-blur-xl">
           <div className="flex items-center gap-2 mb-3">
             <div className="h-2 w-2 rounded-full bg-emerald-400" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
               With {technique.shortLabel}
             </span>
           </div>
           <div className="mb-3 rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">Prompt</span>
+            <span className="text-xs text-white/30 uppercase tracking-wider">Prompt</span>
             <p className="font-mono text-xs text-white/50 mt-1">{technique.withText}</p>
           </div>
           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">Agent Output</span>
+            <span className="text-xs text-white/30 uppercase tracking-wider">Agent Output</span>
             <pre className="font-mono text-xs text-emerald-300/60 mt-1 whitespace-pre-wrap leading-relaxed">
               {technique.agentOutputAfter}
             </pre>
@@ -1385,7 +1385,7 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
       <div className="flex items-center gap-4 pt-2 border-t border-white/[0.06]">
         <div className="flex-1">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-rose-400 uppercase tracking-wider font-medium">
+            <span className="text-xs text-rose-400 uppercase tracking-wider font-medium">
               Without
             </span>
             <span className="text-xs text-rose-400/60">~40%</span>
@@ -1402,7 +1402,7 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
         <ChevronRight className="h-4 w-4 text-white/20 shrink-0" />
         <div className="flex-1">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-medium">
+            <span className="text-xs text-emerald-400 uppercase tracking-wider font-medium">
               With {technique.shortLabel}
             </span>
             <span className="text-xs text-emerald-400/60">{technique.effectiveness}%</span>
@@ -1484,7 +1484,7 @@ function AnatomyPanel({
           {techniques.map((t) => (
             <div
               key={t.id}
-              className={`flex items-center gap-1 text-[10px] ${
+              className={`flex items-center gap-1 text-xs ${
                 enabledTechniques.has(t.id) ? t.color : "text-white/20"
               }`}
             >
@@ -1545,7 +1545,7 @@ function AnatomyPanel({
                   </div>
                 </div>
                 <span
-                  className={`text-[10px] font-mono w-12 text-right ${isEnabled ? "text-white/40" : "text-white/15"}`}
+                  className={`text-xs font-mono w-12 text-right ${isEnabled ? "text-white/40" : "text-white/15"}`}
                 >
                   {t.tokenCost}t
                 </span>
@@ -1560,14 +1560,14 @@ function AnatomyPanel({
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-center">
           <Gauge className="h-5 w-5 text-primary mx-auto mb-2" />
           <div className="text-2xl font-bold text-white">{avgEffectiveness}%</div>
-          <div className="text-[10px] text-white/40 uppercase tracking-wider mt-1">
+          <div className="text-xs text-white/40 uppercase tracking-wider mt-1">
             Avg Effectiveness
           </div>
         </div>
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-center">
           <BarChart3 className="h-5 w-5 text-violet-400 mx-auto mb-2" />
           <div className="text-2xl font-bold text-white">{enabledTechniques.size}</div>
-          <div className="text-[10px] text-white/40 uppercase tracking-wider mt-1">
+          <div className="text-xs text-white/40 uppercase tracking-wider mt-1">
             Active Techniques
           </div>
         </div>
@@ -1600,7 +1600,7 @@ function AnatomyPanel({
                 />
               </div>
               <span
-                className={`text-[10px] font-mono w-8 text-right ${isEnabled ? "text-white/50" : "text-white/15"}`}
+                className={`text-xs font-mono w-8 text-right ${isEnabled ? "text-white/50" : "text-white/15"}`}
               >
                 {t.effectiveness}%
               </span>
@@ -1671,7 +1671,7 @@ function TerminalPanel({
             <span className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
           </div>
-          <span className="text-[10px] text-white/30 font-mono ml-2">
+          <span className="text-xs text-white/30 font-mono ml-2">
             prompt-lab ~ agent-session
           </span>
         </div>

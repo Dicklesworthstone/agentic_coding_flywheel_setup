@@ -407,13 +407,13 @@ function VpsStateDiagram({
         animate={{ fill: vpsColor }}
         transition={{ type: "spring", stiffness: 200, damping: 25 }}
       />
-      <text x={100} y={52} textAnchor="middle" className="fill-white/70 text-[11px] font-semibold">
+      <text x={100} y={52} textAnchor="middle" className="fill-white/70 text-xs font-semibold">
         VPS System
       </text>
-      <text x={100} y={72} textAnchor="middle" className="fill-white/40 text-[9px] font-mono">
+      <text x={100} y={72} textAnchor="middle" className="fill-white/40 text-xs font-mono">
         {AGENTS.length} agent configs
       </text>
-      <text x={100} y={88} textAnchor="middle" className="fill-white/30 text-[9px] font-mono">
+      <text x={100} y={88} textAnchor="middle" className="fill-white/30 text-xs font-mono">
         {TOTAL_SIZE_MB.toFixed(1)} MB total
       </text>
       {/* Agent dots inside VPS */}
@@ -466,7 +466,7 @@ function VpsStateDiagram({
           animate={{ opacity: flowing ? [0.4, 1, 0.4] : arrowOpacity }}
           transition={flowing ? { duration: 1.0, repeat: Infinity } : {}}
         />
-        <text x={238} y={62} textAnchor="middle" className="fill-white/30 text-[8px] font-mono">
+        <text x={238} y={62} textAnchor="middle" className="fill-white/30 text-xs font-mono">
           {isRestore ? "restore" : isVerify ? "verify" : isMigration ? "export" : "snapshot"}
         </text>
       </g>
@@ -484,13 +484,13 @@ function VpsStateDiagram({
         animate={{ fill: snapshotColor }}
         transition={{ type: "spring", stiffness: 200, damping: 25 }}
       />
-      <text x={378} y={48} textAnchor="middle" className="fill-white/70 text-[11px] font-semibold">
+      <text x={378} y={48} textAnchor="middle" className="fill-white/70 text-xs font-semibold">
         {isMigration ? "Portable Archive" : "Snapshot Store"}
       </text>
-      <text x={378} y={66} textAnchor="middle" className="fill-white/40 text-[9px] font-mono">
+      <text x={378} y={66} textAnchor="middle" className="fill-white/40 text-xs font-mono">
         .tar.gz compressed
       </text>
-      <text x={378} y={82} textAnchor="middle" className="fill-white/30 text-[9px] font-mono">
+      <text x={378} y={82} textAnchor="middle" className="fill-white/30 text-xs font-mono">
         sha256 verified
       </text>
 
@@ -537,9 +537,9 @@ function VpsStateDiagram({
           transition={{ delay: 0.3, type: "spring", stiffness: 200, damping: 25 }}
         >
           <rect
-            x={330}
+            x={318}
             y={108}
-            width={96}
+            width={120}
             height={16}
             rx={4}
             fill="rgba(251,191,36,0.15)"
@@ -550,7 +550,7 @@ function VpsStateDiagram({
             x={378}
             y={120}
             textAnchor="middle"
-            className="fill-amber-400/80 text-[8px] font-mono"
+            className="fill-amber-400/80 text-xs font-mono"
           >
             1 drift detected
           </text>
@@ -585,7 +585,7 @@ const MAX_TIMELINE_SIZE = Math.max(...TIMELINE_DATA.map((e) => e.sizeMB));
 function StorageTimeline({ visible }: { visible: boolean }) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-[10px] text-white/40 font-mono px-1">
+      <div className="flex items-center justify-between text-xs text-white/40 font-mono px-1">
         <span>Backup History</span>
         <span>Retention: 30 days</span>
       </div>
@@ -600,7 +600,7 @@ function StorageTimeline({ visible }: { visible: boolean }) {
               transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.08 }}
               className="flex items-center gap-2"
             >
-              <span className="text-[10px] text-white/30 font-mono w-20 shrink-0 text-right">
+              <span className="text-xs text-white/30 font-mono w-24 shrink-0 text-right">
                 {entry.label}
               </span>
               <div className="flex-1 h-5 relative">
@@ -617,11 +617,11 @@ function StorageTimeline({ visible }: { visible: boolean }) {
                   }}
                 />
                 <div className="absolute inset-0 flex items-center px-2">
-                  <span className="text-[10px] font-mono text-white/50">{entry.sizeMB} MB</span>
+                  <span className="text-xs font-mono text-white/50">{entry.sizeMB} MB</span>
                 </div>
               </div>
               {entry.tagged && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/70 border border-emerald-500/20 font-semibold">
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/70 border border-emerald-500/20 font-semibold">
                   TAG
                 </span>
               )}
@@ -631,10 +631,10 @@ function StorageTimeline({ visible }: { visible: boolean }) {
       </div>
       {/* Usage summary */}
       <div className="flex items-center justify-between px-1 pt-1">
-        <span className="text-[10px] text-white/25 font-mono">
+        <span className="text-xs text-white/25 font-mono">
           {TIMELINE_DATA.length} snapshots stored
         </span>
-        <span className="text-[10px] text-white/25 font-mono">
+        <span className="text-xs text-white/25 font-mono">
           Total: {TIMELINE_DATA.reduce((s, e) => s + e.sizeMB, 0).toFixed(1)} MB
         </span>
       </div>
@@ -675,7 +675,7 @@ function ChecksumVerification({
   return (
     <div ref={rootRef} className="space-y-1.5">
       {/* Header */}
-      <div className="grid grid-cols-[80px_1fr_1fr_50px] gap-2 text-[10px] font-mono text-white/30 px-2">
+      <div className="grid grid-cols-[80px_1fr_1fr_50px] gap-2 text-xs font-mono text-white/30 px-2">
         <span>Agent</span>
         <span>Backup</span>
         <span>Live</span>
@@ -690,7 +690,7 @@ function ChecksumVerification({
             initial={{ opacity: 0, y: 6 }}
             animate={revealed ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
             transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.06 }}
-            className={`grid grid-cols-[80px_1fr_1fr_50px] gap-2 text-[10px] font-mono px-2 py-1 rounded-md ${
+            className={`grid grid-cols-[80px_1fr_1fr_50px] gap-2 text-xs font-mono px-2 py-1 rounded-md ${
               revealed && !row.match ? "bg-amber-500/[0.06]" : "bg-white/[0.01]"
             }`}
           >
@@ -739,7 +739,7 @@ function RetentionChart({ visible }: { visible: boolean }) {
 
   return (
     <div className="space-y-2">
-      <div className="text-[10px] text-white/40 font-mono px-1">Retention Policy</div>
+      <div className="text-xs text-white/40 font-mono px-1">Retention Policy</div>
       <div className="space-y-2">
         {bars.map((bar, i) => (
           <motion.div
@@ -749,7 +749,7 @@ function RetentionChart({ visible }: { visible: boolean }) {
             transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.1 }}
             className="flex items-center gap-2"
           >
-            <span className="text-[10px] text-white/40 font-mono w-14 text-right shrink-0">
+            <span className="text-xs text-white/40 font-mono w-16 text-right shrink-0">
               {bar.label}
             </span>
             <div className="flex-1 h-4 bg-white/[0.02] rounded-sm relative overflow-hidden">
@@ -760,7 +760,7 @@ function RetentionChart({ visible }: { visible: boolean }) {
                 transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.1 + 0.2 }}
               />
               <div className="absolute inset-0 flex items-center justify-end px-1.5">
-                <span className="text-[10px] font-mono text-white/40">
+                <span className="text-xs font-mono text-white/40">
                   {bar.count}/{bar.max}
                 </span>
               </div>
@@ -801,12 +801,12 @@ function MiniTerminal({ lines, visibleCount }: { lines: string[]; visibleCount: 
           <div className="h-2 w-2 rounded-full bg-yellow-500/60" />
           <div className="h-2 w-2 rounded-full bg-green-500/60" />
         </div>
-        <span className="text-[10px] text-white/30 font-mono ml-1">asb terminal</span>
+        <span className="text-xs text-white/30 font-mono ml-1">asb terminal</span>
       </div>
       {/* Body */}
       <div
         ref={scrollRef}
-        className="p-3 font-mono text-[10px] leading-relaxed space-y-0.5 max-h-48 overflow-y-auto"
+        className="p-3 font-mono text-xs leading-relaxed space-y-0.5 max-h-48 overflow-y-auto"
       >
         <AnimatePresence initial={false}>
           {displayed.map((line, i) => (
@@ -1019,7 +1019,7 @@ function InteractiveBackupRestoreImpl() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium whitespace-nowrap transition shrink-0 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition shrink-0 ${
                   isActive
                     ? "bg-white/[0.1] text-white/90 border border-white/[0.15] shadow-lg shadow-white/[0.02]"
                     : "bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.05] hover:text-white/60"
@@ -1053,7 +1053,7 @@ function InteractiveBackupRestoreImpl() {
                 <div className="text-sm font-semibold text-white/80">{scenario.label}</div>
                 <div className="text-xs text-white/40 mt-0.5">{scenario.description}</div>
                 <div className="mt-2 flex items-center gap-1.5">
-                  <span className="text-[10px] font-mono text-emerald-400/70 bg-emerald-500/[0.08] px-2 py-0.5 rounded-md border border-emerald-500/15">
+                  <span className="text-xs font-mono text-emerald-400/70 bg-emerald-500/[0.08] px-2 py-0.5 rounded-md border border-emerald-500/15">
                     {scenario.command}
                   </span>
                 </div>
@@ -1066,13 +1066,13 @@ function InteractiveBackupRestoreImpl() {
         <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
           <div className="flex items-center gap-2 mb-2 px-1">
             <Server className="h-3.5 w-3.5 text-white/30" />
-            <span className="text-[10px] text-white/30 font-medium">System State Diagram</span>
+            <span className="text-xs text-white/30 font-medium">System State Diagram</span>
             {phase === "done" && (
               <motion.span
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/80 border border-emerald-500/20"
+                className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/80 border border-emerald-500/20"
               >
                 Complete
               </motion.span>
@@ -1094,7 +1094,7 @@ function InteractiveBackupRestoreImpl() {
               <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Hash className="h-3.5 w-3.5 text-white/30" />
-                  <span className="text-[10px] text-white/30 font-medium">
+                  <span className="text-xs text-white/30 font-medium">
                     Integrity Verification
                   </span>
                 </div>
@@ -1106,7 +1106,7 @@ function InteractiveBackupRestoreImpl() {
               <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Layers className="h-3.5 w-3.5 text-white/30" />
-                  <span className="text-[10px] text-white/30 font-medium">Storage Timeline</span>
+                  <span className="text-xs text-white/30 font-medium">Storage Timeline</span>
                 </div>
                 <StorageTimeline visible={phase !== "idle"} />
               </div>
@@ -1122,7 +1122,7 @@ function InteractiveBackupRestoreImpl() {
               <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3 space-y-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Database className="h-3.5 w-3.5 text-white/30" />
-                  <span className="text-[10px] text-white/30 font-medium">Agent Config Status</span>
+                  <span className="text-xs text-white/30 font-medium">Agent Config Status</span>
                 </div>
                 {/* Agent status grid for restore/migration/selective */}
                 <div className="grid grid-cols-2 gap-2">
@@ -1171,12 +1171,12 @@ function InteractiveBackupRestoreImpl() {
                           }`}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className={`text-[10px] font-semibold ${agent.color}`}>
+                          <div className={`text-xs font-semibold ${agent.color}`}>
                             {agent.shortName}
                           </div>
-                          <div className="text-[10px] text-white/30">{statusLabel}</div>
+                          <div className="text-xs text-white/30">{statusLabel}</div>
                         </div>
-                        <span className="text-[10px] font-mono text-white/20">
+                        <span className="text-xs font-mono text-white/20">
                           {agent.sizeMB}MB
                         </span>
                       </motion.div>

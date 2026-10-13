@@ -3,6 +3,7 @@
 import { Lock, Play, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
+import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -312,7 +313,7 @@ function TaskBox({
       {showLock && <Lock size={10} className="ml-1 text-emerald-400/70" />}
       {isConflicted && (
         <motion.span
-          className="absolute -top-2 -right-2 rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-black text-white"
+          className="absolute -top-2 -right-2 rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-black text-white"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 400, damping: 15 }}
@@ -322,7 +323,7 @@ function TaskBox({
       )}
       {isBlocked && (
         <motion.span
-          className="absolute -top-2 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-[11px] font-black text-white"
+          className="absolute -top-2 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs font-black text-white"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 400, damping: 15 }}
@@ -363,10 +364,10 @@ function AgentDot({
             : { duration: 0.3 }
         }
       />
-      <span className="text-[10px] font-bold text-white/70">{agent.id}</span>
+      <span className="text-xs font-bold text-white/70">{agent.id}</span>
       {taskIndex !== null && (
         <motion.span
-          className="text-[10px] text-white/30"
+          className="text-xs text-white/30"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
@@ -391,7 +392,7 @@ function DependencyArrows({ reducedMotion }: { reducedMotion: boolean }) {
       {arrows.map((arrow) => (
         <motion.span
           key={`${arrow.from}-${arrow.to}`}
-          className="text-[11px] font-mono text-emerald-400/80"
+          className="text-xs font-mono text-emerald-400/80"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: reducedMotion ? 0 : 0.5 }}
@@ -406,7 +407,7 @@ function DependencyArrows({ reducedMotion }: { reducedMotion: boolean }) {
 function MetricBar({ label, value, isBad }: { label: string; value: string; isBad?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">{label}</span>
+      <span className="text-xs font-bold uppercase tracking-widest text-white/30">{label}</span>
       <span
         className={`text-xs font-black tabular-nums ${isBad ? "text-red-400" : "text-emerald-400"}`}
       >
@@ -468,14 +469,14 @@ function SimPanel({
 
       {/* Agents row */}
       <div className="mb-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
           Agents
         </p>
         <div className="grid grid-cols-2 gap-2">
           {snapshot.agents.map((agent) => (
             <div key={agent.id} className="flex flex-col gap-0.5">
               <AgentDot agent={agent} taskIndex={agent.targetTask} reducedMotion={reducedMotion} />
-              <span className="ml-5 text-[11px] text-white/25 truncate">{agent.status}</span>
+              <span className="ml-5 text-xs text-white/25 truncate">{agent.status}</span>
             </div>
           ))}
         </div>
@@ -483,7 +484,7 @@ function SimPanel({
 
       {/* Tasks row */}
       <div className="mb-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">Tasks</p>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/20 mb-2">Tasks</p>
         <div className="grid grid-cols-3 gap-2">
           {TASKS.map((task) => {
             const state = snapshot.tasks[task.id];
@@ -571,6 +572,10 @@ export function SwarmChaosViz() {
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey
+        || isInteractiveKeyboardTarget(e.target)) return;
+      const bounds = ref.current?.getBoundingClientRect();
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
       if (e.key === " ") {
         e.preventDefault();
         if (!isPlaying) play();
@@ -593,7 +598,7 @@ export function SwarmChaosViz() {
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-4">
-        <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3">
+        <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3">
           <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
           Interactive Comparison
         </div>
@@ -640,7 +645,7 @@ export function SwarmChaosViz() {
 
       {/* Phase indicator */}
       <div className="relative z-10 mt-6 flex items-center justify-center gap-2">
-        <span className="text-[0.6rem] font-bold uppercase tracking-[0.3em] text-white/20 mr-2">
+        <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mr-2">
           Phase
         </span>
         {PHASES.map((_, index) => (

@@ -338,12 +338,12 @@ function LaptopIcon({ x, y, active }: { x: number; y: number; active: boolean })
         opacity="0.7"
       />
       {/* Terminal prompt */}
-      <text x={x + 14} y={y + 22} fill="#60a5fa" fontSize="7" fontFamily="monospace" opacity="0.8">
+      <text x={x + 14} y={y + 22} fill="#60a5fa" fontSize="12" fontFamily="monospace" opacity="0.8">
         $ ssh
       </text>
       {/* Blinking cursor */}
       <motion.rect
-        x={x + 42}
+        x={x + 54}
         y={y + 14}
         width="6"
         height="12"
@@ -384,7 +384,7 @@ function CloudIcon({ x, y }: { x: number; y: number }) {
         height={24}
         strokeWidth={1}
       />
-      <text x={x} y={y + 24} textAnchor="middle" fill="white" fontSize="9" opacity="0.4">
+      <text x={x} y={y + 24} textAnchor="middle" fill="white" fontSize="12" opacity="0.4">
         Internet
       </text>
     </motion.g>
@@ -648,19 +648,19 @@ function DataPackets({
             />
             {/* Packet body */}
             <rect
-              x={x - 22}
-              y={y - 9}
-              width="44"
-              height="18"
+              x={x - 48}
+              y={y - 11}
+              width="96"
+              height="22"
               rx="4"
               fill={fillColor}
               opacity={0.15}
             />
             <rect
-              x={x - 22}
-              y={y - 9}
-              width="44"
-              height="18"
+              x={x - 48}
+              y={y - 11}
+              width="96"
+              height="22"
               rx="4"
               fill="none"
               stroke={fillColor}
@@ -672,7 +672,7 @@ function DataPackets({
               y={y + 3.5}
               textAnchor="middle"
               fill={fillColor}
-              fontSize="7"
+              fontSize="12"
               fontFamily="monospace"
               fontWeight="600"
             >
@@ -684,7 +684,7 @@ function DataPackets({
                 transition={active ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
               >
                 <rect
-                  x={x + 16}
+                  x={x + 38}
                   y={y - 7}
                   width="8"
                   height="7"
@@ -694,7 +694,7 @@ function DataPackets({
                   strokeWidth="0.7"
                 />
                 <path
-                  d={`M${x + 18} ${y - 7} V${y - 9.5} A2.5 2.5 0 0 1 ${x + 22.5} ${y - 9.5} V${y - 7}`}
+                  d={`M${x + 40} ${y - 7} V${y - 9.5} A2.5 2.5 0 0 1 ${x + 44.5} ${y - 9.5} V${y - 7}`}
                   fill="none"
                   stroke="#eab308"
                   strokeWidth="0.7"
@@ -707,7 +707,7 @@ function DataPackets({
                 transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
               >
                 <AlertTriangle
-                  x={x + 14}
+                  x={x + 36}
                   y={y - 10}
                   width={10}
                   height={10}
@@ -737,18 +737,18 @@ function StatusBadge({
   return (
     <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
       <rect
-        x="232"
+        x="200"
         y="218"
-        width="136"
+        width="200"
         height="24"
         rx="12"
         fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
         opacity="0.1"
       />
       <rect
-        x="232"
+        x="200"
         y="218"
-        width="136"
+        width="200"
         height="24"
         rx="12"
         fill="none"
@@ -757,7 +757,7 @@ function StatusBadge({
         opacity="0.4"
       />
       <motion.circle
-        cx="248"
+        cx="216"
         cy="230"
         r="3.5"
         fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
@@ -765,11 +765,11 @@ function StatusBadge({
         transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
       />
       <text
-        x="300"
+        x="312"
         y="234"
         textAnchor="middle"
         fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
-        fontSize="9"
+        fontSize="12"
         fontWeight="600"
       >
         {connected
@@ -895,7 +895,7 @@ function ScenarioConnect({ active }: { active: boolean }) {
                 y="134"
                 textAnchor="middle"
                 fill="#3b82f6"
-                fontSize="10"
+                fontSize="12"
                 fontWeight="bold"
               >
                 K
@@ -913,7 +913,7 @@ function ScenarioConnect({ active }: { active: boolean }) {
                 y="134"
                 textAnchor="middle"
                 fill="#06b6d4"
-                fontSize="10"
+                fontSize="12"
                 fontWeight="bold"
               >
                 K
@@ -1022,12 +1022,12 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, ...SPRING_SMOOTH }}
         >
-          <rect x="10" y="195" width="100" height="50" rx="8" fill="#8b5cf6" opacity="0.08" />
+          <rect x="10" y="195" width="180" height="70" rx="8" fill="#8b5cf6" opacity="0.08" />
           <rect
             x="10"
             y="195"
-            width="100"
-            height="50"
+            width="180"
+            height="70"
             rx="8"
             fill="none"
             stroke="#8b5cf6"
@@ -1042,13 +1042,13 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
             height={14}
             strokeWidth={1.5}
           />
-          <text x="38" y="213" fill="#a78bfa" fontSize="8" fontWeight="600">
+          <text x="38" y="213" fill="#a78bfa" fontSize="12" fontWeight="600">
             PRIVATE KEY
           </text>
-          <text x="18" y="228" fill="white" fontSize="6.5" fontFamily="monospace" opacity="0.5">
+          <text x="18" y="236" fill="white" fontSize="12" fontFamily="monospace" opacity="0.5">
             ~/.ssh/acfs_ed25519
           </text>
-          <text x="18" y="238" fill="#a78bfa" fontSize="6" fontFamily="monospace" opacity="0.4">
+          <text x="18" y="253" fill="#a78bfa" fontSize="12" fontFamily="monospace" opacity="0.4">
             SHA256:xR3...9kQ
           </text>
         </motion.g>
@@ -1059,26 +1059,26 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, ...SPRING_SMOOTH }}
         >
-          <rect x="490" y="195" width="100" height="50" rx="8" fill="#0ea5e9" opacity="0.08" />
+          <rect x="410" y="195" width="180" height="70" rx="8" fill="#0ea5e9" opacity="0.08" />
           <rect
-            x="490"
+            x="410"
             y="195"
-            width="100"
-            height="50"
+            width="180"
+            height="70"
             rx="8"
             fill="none"
             stroke="#0ea5e9"
             strokeWidth="0.8"
             opacity="0.4"
           />
-          <Lock x={500} y={203} className="text-sky-400" width={14} height={14} strokeWidth={1.5} />
-          <text x="518" y="213" fill="#38bdf8" fontSize="8" fontWeight="600">
+          <Lock x={420} y={203} className="text-sky-400" width={14} height={14} strokeWidth={1.5} />
+          <text x="438" y="213" fill="#38bdf8" fontSize="12" fontWeight="600">
             PUBLIC KEY
           </text>
-          <text x="498" y="228" fill="white" fontSize="6.5" fontFamily="monospace" opacity="0.5">
+          <text x="418" y="236" fill="white" fontSize="12" fontFamily="monospace" opacity="0.5">
             ~/.ssh/authorized_keys
           </text>
-          <text x="498" y="238" fill="#38bdf8" fontSize="6" fontFamily="monospace" opacity="0.4">
+          <text x="418" y="253" fill="#38bdf8" fontSize="12" fontFamily="monospace" opacity="0.4">
             SHA256:xR3...9kQ
           </text>
         </motion.g>
@@ -1143,7 +1143,7 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
               height={24}
               strokeWidth={1.5}
             />
-            <text x="300" y="168" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="600">
+            <text x="300" y="168" textAnchor="middle" fill="#22c55e" fontSize="12" fontWeight="600">
               KEYS MATCHED
             </text>
           </motion.g>
@@ -1239,11 +1239,11 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.5, ...SPRING_SMOOTH }}
         >
-          <rect x="8" y="170" width="104" height="36" rx="6" fill="#f59e0b" opacity="0.06" />
+          <rect x="0" y="170" width="120" height="36" rx="6" fill="#f59e0b" opacity="0.06" />
           <rect
-            x="8"
+            x="0"
             y="170"
-            width="104"
+            width="120"
             height="36"
             rx="6"
             fill="none"
@@ -1251,7 +1251,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
             strokeWidth="0.7"
             opacity="0.3"
           />
-          <text x="60" y="184" textAnchor="middle" fill="#f59e0b" fontSize="8" fontWeight="600">
+          <text x="60" y="184" textAnchor="middle" fill="#f59e0b" fontSize="12" fontWeight="600">
             LOCAL PORT
           </text>
           <text
@@ -1259,7 +1259,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
             y="198"
             textAnchor="middle"
             fill="#fbbf24"
-            fontSize="10"
+            fontSize="12"
             fontFamily="monospace"
             fontWeight="bold"
           >
@@ -1270,7 +1270,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
         {/* Arrow from local port into tunnel */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} transition={{ delay: 0.7 }}>
           <motion.line
-            x1="112"
+            x1="120"
             y1="188"
             x2="148"
             y2="135"
@@ -1291,11 +1291,11 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.6, ...SPRING_SMOOTH }}
         >
-          <rect x="488" y="170" width="104" height="36" rx="6" fill="#8b5cf6" opacity="0.06" />
+          <rect x="480" y="170" width="120" height="36" rx="6" fill="#8b5cf6" opacity="0.06" />
           <rect
-            x="488"
+            x="480"
             y="170"
-            width="104"
+            width="120"
             height="36"
             rx="6"
             fill="none"
@@ -1303,7 +1303,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
             strokeWidth="0.7"
             opacity="0.3"
           />
-          <text x="540" y="184" textAnchor="middle" fill="#8b5cf6" fontSize="8" fontWeight="600">
+          <text x="540" y="184" textAnchor="middle" fill="#8b5cf6" fontSize="12" fontWeight="600">
             REMOTE PORT
           </text>
           <text
@@ -1311,7 +1311,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
             y="198"
             textAnchor="middle"
             fill="#a78bfa"
-            fontSize="10"
+            fontSize="12"
             fontFamily="monospace"
             fontWeight="bold"
           >
@@ -1324,7 +1324,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           <motion.line
             x1="452"
             y1="135"
-            x2="488"
+            x2="480"
             y2="188"
             stroke="#8b5cf6"
             strokeWidth="1"
@@ -1334,7 +1334,7 @@ function ScenarioPortForward({ active }: { active: boolean }) {
               active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }
             }
           />
-          <polygon points="486,184 492,189 486,193" fill="#8b5cf6" opacity="0.6" />
+          <polygon points="478,184 484,189 478,193" fill="#8b5cf6" opacity="0.6" />
         </motion.g>
 
         {/* Command display */}
@@ -1343,21 +1343,21 @@ function ScenarioPortForward({ active }: { active: boolean }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.9, ...SPRING_SMOOTH }}
         >
-          <rect x="155" y="225" width="290" height="30" rx="6" fill="rgba(0,0,0,0.4)" />
+          <rect x="130" y="255" width="340" height="30" rx="6" fill="rgba(0,0,0,0.4)" />
           <rect
-            x="155"
-            y="225"
-            width="290"
+            x="130"
+            y="255"
+            width="340"
             height="30"
             rx="6"
             fill="none"
             stroke="rgba(255,255,255,0.08)"
             strokeWidth="1"
           />
-          <text x="168" y="244" fill="#22c55e" fontSize="8" fontFamily="monospace" opacity="0.6">
+          <text x="143" y="274" fill="#22c55e" fontSize="12" fontFamily="monospace" opacity="0.6">
             $
           </text>
-          <text x="178" y="244" fill="white" fontSize="8" fontFamily="monospace" opacity="0.7">
+          <text x="153" y="274" fill="white" fontSize="12" fontFamily="monospace" opacity="0.7">
             ssh -L 5432:localhost:5432 ubuntu@vps
           </text>
         </motion.g>
@@ -1535,11 +1535,11 @@ function ScenarioReconnect({ active }: { active: boolean }) {
             animate={{ opacity: 1, y: 0 }}
             transition={SPRING_SMOOTH}
           >
-            <rect x="195" y="172" width="210" height="30" rx="8" fill="#22c55e" opacity="0.06" />
+            <rect x="170" y="172" width="260" height="30" rx="8" fill="#22c55e" opacity="0.06" />
             <rect
-              x="195"
+              x="170"
               y="172"
-              width="210"
+              width="260"
               height="30"
               rx="8"
               fill="none"
@@ -1548,14 +1548,14 @@ function ScenarioReconnect({ active }: { active: boolean }) {
               opacity="0.3"
             />
             <ShieldCheck
-              x={205}
+              x={180}
               y={178}
               className="text-emerald-400"
               width={16}
               height={16}
               strokeWidth={1.5}
             />
-            <text x="230" y="192" fill="#22c55e" fontSize="9" fontWeight="600">
+            <text x="205" y="192" fill="#22c55e" fontSize="12" fontWeight="600">
               tmux session preserved on VPS
             </text>
           </motion.g>
@@ -1567,11 +1567,11 @@ function ScenarioReconnect({ active }: { active: boolean }) {
             animate={{ opacity: 1, scale: 1 }}
             transition={SPRING_SMOOTH}
           >
-            <rect x="220" y="172" width="160" height="26" rx="8" fill="#22c55e" opacity="0.08" />
+            <rect x="205" y="172" width="190" height="26" rx="8" fill="#22c55e" opacity="0.08" />
             <rect
-              x="220"
+              x="205"
               y="172"
-              width="160"
+              width="190"
               height="26"
               rx="8"
               fill="none"
@@ -1580,14 +1580,14 @@ function ScenarioReconnect({ active }: { active: boolean }) {
               opacity="0.4"
             />
             <CheckCircle2
-              x={230}
+              x={215}
               y={178}
               className="text-emerald-400"
               width={14}
               height={14}
               strokeWidth={1.5}
             />
-            <text x="250" y="190" fill="#22c55e" fontSize="9" fontWeight="600">
+            <text x="235" y="190" fill="#22c55e" fontSize="12" fontWeight="600">
               Session fully restored
             </text>
           </motion.g>
@@ -1828,7 +1828,7 @@ function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
               y="100"
               textAnchor="middle"
               fill="#ef4444"
-              fontSize="7.5"
+              fontSize="12"
               fontWeight="600"
             >
               EAVESDROPPER

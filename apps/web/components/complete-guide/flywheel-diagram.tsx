@@ -103,7 +103,7 @@ export function FlywheelDiagram() {
 
       <div className="relative z-10 flex flex-col gap-10 border-b border-white/[0.04] pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-primary/80 flex items-center gap-3 mb-4">
+          <div className="text-xs font-bold uppercase tracking-widest text-primary/80 flex items-center gap-3 mb-4">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)]" />
             Interactive Visualization
           </div>
@@ -123,7 +123,7 @@ export function FlywheelDiagram() {
 
         <div className="flex flex-col items-start lg:items-end gap-5">
           <div className="flex items-center gap-3">
-            <span className="text-[0.6rem] font-bold uppercase tracking-[0.3em] text-white/30">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/30">
               Simulation Depth
             </span>
             <div className="flex gap-2 p-1.5 rounded-2xl bg-[#020408] border border-white/[0.05] shadow-inner">
@@ -135,7 +135,7 @@ export function FlywheelDiagram() {
                     setCycleDepth(index);
                     setAutoTour(false);
                   }}
-                  className={`px-5 py-2 text-[0.65rem] font-black uppercase tracking-widest rounded-xl transition duration-500 ${
+                  className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition duration-500 ${
                     cycleDepth === index
                       ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.4)]"
                       : "text-white/40 hover:text-white/80 hover:bg-white/[0.03]"
@@ -158,7 +158,7 @@ export function FlywheelDiagram() {
             <div
               className={`w-2 h-2 rounded-full ${autoTour ? "bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)] animate-pulse" : "bg-white/20"}`}
             />
-            <span className="text-[0.65rem] font-bold uppercase tracking-widest">
+            <span className="text-xs font-bold uppercase tracking-widest">
               {autoTour ? "Auto-Tour Active" : "Tour Paused"}
             </span>
           </button>
@@ -166,10 +166,15 @@ export function FlywheelDiagram() {
       </div>
 
       <div className="relative z-10 mt-16 grid gap-12 xl:grid-cols-[1.2fr_0.8fr] items-center">
-        <div className="relative aspect-square sm:aspect-video xl:aspect-square flex items-center justify-center p-4">
+        <div
+          className="relative min-w-0 overflow-x-auto p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          role="region"
+          tabIndex={0}
+          aria-label="Flywheel loop diagram (scrolls sideways when needed)"
+        >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(var(--primary-rgb),0.03),transparent_60%)]" />
 
-          <svg viewBox="0 0 640 420" className="relative z-10 w-full h-full max-h-[500px]">
+          <svg viewBox="0 0 640 420" className="relative z-10 w-full min-w-[640px] h-auto">
             {/* Main structural orbits */}
             <ellipse
               cx="320"
@@ -267,7 +272,7 @@ export function FlywheelDiagram() {
                 x="320"
                 y="190"
                 textAnchor="middle"
-                className="fill-white/30 text-[10px] font-bold uppercase tracking-[0.4em]"
+                className="fill-white/30 text-xs font-bold uppercase tracking-[0.4em]"
               >
                 System Output
               </text>
@@ -346,7 +351,7 @@ export function FlywheelDiagram() {
             >
               <div className="flex flex-col gap-3">
                 <div
-                  className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
+                  className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
                   style={{ color: currentStage.color }}
                 >
                   <span
@@ -366,7 +371,7 @@ export function FlywheelDiagram() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div className="flex flex-col gap-2 p-5 sm:p-6 rounded-2xl bg-white/[0.02] border border-white/[0.04] shadow-sm relative overflow-hidden group/box">
                   <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-                  <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+                  <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
                     Input
                   </span>
                   <p className="text-sm sm:text-base text-white/90 font-medium">
@@ -375,7 +380,7 @@ export function FlywheelDiagram() {
                 </div>
                 <div className="flex flex-col gap-2 p-5 sm:p-6 rounded-2xl bg-white/[0.02] border border-white/[0.04] shadow-sm relative overflow-hidden group/box">
                   <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-                  <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+                  <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
                     Output
                   </span>
                   <p className="text-sm sm:text-base text-white/90 font-medium">
@@ -387,7 +392,7 @@ export function FlywheelDiagram() {
           </AnimatePresence>
 
           <div className="mt-auto pt-10 border-t border-white/[0.04] space-y-6">
-            <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
+            <div className="text-xs font-bold uppercase tracking-widest text-white/40">
               System Metrics{" "}
               <span className="text-[#FF5500] ml-1 font-mono bg-[#FF5500]/10 px-1.5 py-0.5 rounded">
                 L{cycleOptions[cycleDepth]}

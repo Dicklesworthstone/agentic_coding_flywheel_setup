@@ -646,7 +646,7 @@ function InteractiveSafetyDemo() {
               <span className="text-xs font-bold text-white/70 uppercase tracking-wider">
                 DCG Terminal
               </span>
-              <span className="ml-auto text-[10px] text-white/30 font-mono">
+              <span className="ml-auto text-xs text-white/30 font-mono">
                 destructive-command-guard v3.1
               </span>
             </div>
@@ -663,7 +663,7 @@ function InteractiveSafetyDemo() {
                 <div className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
                 <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/80" />
                 <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-                <span className="text-[10px] text-white/20 ml-1">bash</span>
+                <span className="text-xs text-white/20 ml-1">bash</span>
               </div>
 
               {activeDcgCmd ? (
@@ -753,7 +753,7 @@ function InteractiveSafetyDemo() {
                   key={command.cmd}
                   type="button"
                   onClick={() => handleDcgCommand(command)}
-                  className={`group relative rounded-xl px-3 py-2 text-left text-[11px] font-mono transition duration-200 border ${
+                  className={`group relative rounded-xl px-3 py-2 text-left text-xs font-mono transition duration-200 border ${
                     command.blocked
                       ? "border-red-500/20 bg-red-500/5 hover:border-red-500/40 hover:bg-red-500/10 text-red-300/80"
                       : "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10 text-emerald-300/80"
@@ -779,13 +779,13 @@ function InteractiveSafetyDemo() {
               <span className="text-xs font-bold text-white/70 uppercase tracking-wider">
                 SLB Launch Console
               </span>
-              <span className="ml-auto text-[10px] text-white/30 font-mono">two-person rule</span>
+              <span className="ml-auto text-xs text-white/30 font-mono">two-person rule</span>
             </div>
 
             <div className="p-4 space-y-4">
               {/* Critical command display */}
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                <p className="text-[10px] uppercase tracking-wider text-amber-400/60 font-semibold mb-1">
+                <p className="text-xs uppercase tracking-wider text-amber-400/60 font-semibold mb-1">
                   Critical Command Pending
                 </p>
                 <code className="text-sm text-amber-300 font-mono">{SLB_CRITICAL_CMD}</code>
@@ -830,11 +830,11 @@ function InteractiveSafetyDemo() {
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <span className="text-[11px] font-semibold text-white/60">
+                    <span className="text-xs font-semibold text-white/60">
                       {slbApproval1 ? "Approved" : "Approval 1"}
                     </span>
                     {!slbApproval1 && !slbExecuted && (
-                      <span className="text-[10px] text-primary/60">Click to approve</span>
+                      <span className="text-xs text-primary/60">Click to approve</span>
                     )}
                   </div>
                 </motion.button>
@@ -876,11 +876,11 @@ function InteractiveSafetyDemo() {
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <span className="text-[11px] font-semibold text-white/60">
+                    <span className="text-xs font-semibold text-white/60">
                       {slbApproval2 ? "Approved" : "Approval 2"}
                     </span>
                     {!slbApproval2 && !slbExecuted && (
-                      <span className="text-[10px] text-primary/60">Click to approve</span>
+                      <span className="text-xs text-primary/60">Click to approve</span>
                     )}
                   </div>
                 </motion.button>
@@ -913,7 +913,7 @@ function InteractiveSafetyDemo() {
                       <button
                         type="button"
                         onClick={resetSlb}
-                        className="mt-1 text-[10px] text-white/40 hover:text-white/70 transition-colors underline underline-offset-2"
+                        className="mt-1 text-xs text-white/40 hover:text-white/70 transition-colors underline underline-offset-2"
                       >
                         Reset demo
                       </button>
@@ -976,7 +976,7 @@ function InteractiveSafetyDemo() {
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.06] bg-white/[0.01]">
             <Activity className="h-3.5 w-3.5 text-primary/70" />
-            <span className="text-[10px] font-bold text-white/50 uppercase tracking-wider">
+            <span className="text-xs font-bold text-white/50 uppercase tracking-wider">
               Security Events
             </span>
             <motion.div
@@ -984,9 +984,9 @@ function InteractiveSafetyDemo() {
               transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
               className="ml-auto h-2 w-2 rounded-full bg-emerald-400"
             />
-            <span className="text-[10px] text-white/30">LIVE</span>
+            <span className="text-xs text-white/30">LIVE</span>
           </div>
-          <div className="max-h-[100px] overflow-hidden">
+          <div className="max-h-40 overflow-y-auto">
             <div className="p-3 space-y-1">
               <AnimatePresence initial={false}>
                 {events.slice(0, 5).map((event) => (
@@ -996,11 +996,11 @@ function InteractiveSafetyDemo() {
                     animate={{ opacity: 1, height: "auto", x: 0 }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={springSmooth}
-                    className="flex items-center gap-2 font-mono text-[11px] overflow-hidden"
+                    className="flex items-center gap-2 font-mono text-xs overflow-hidden"
                   >
                     <span className="text-white/20 shrink-0">[{event.time}]</span>
                     <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-bold uppercase ${
                         event.type === "blocked"
                           ? "bg-red-500/20 text-red-400"
                           : event.type === "allowed"

@@ -769,7 +769,7 @@ function MemorySessionArchive({
         <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
           Session Archive
         </span>
-        <span className="ml-auto text-[10px] text-white/30 font-mono">
+        <span className="ml-auto text-xs text-white/30 font-mono">
           {sessions.length} sessions
         </span>
       </div>
@@ -814,12 +814,12 @@ function MemorySessionArchive({
                   {session.icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] text-white/80 truncate leading-tight font-medium">
+                  <p className="text-xs text-white/80 truncate leading-tight font-medium">
                     {session.topic}
                   </p>
                   <div className="flex items-center gap-1 mt-0.5">
                     <Clock className="h-2.5 w-2.5 text-white/25" />
-                    <span className="text-[10px] text-white/30">{session.date}</span>
+                    <span className="text-xs text-white/30">{session.date}</span>
                   </div>
                 </div>
                 {isSelected && (
@@ -876,7 +876,7 @@ function MemoryAnalysisEngine({
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="ml-auto text-[10px] text-amber-400 font-mono"
+            className="ml-auto text-xs text-amber-400 font-mono"
           >
             Processing...
           </motion.span>
@@ -938,7 +938,7 @@ function MemoryAnalysisEngine({
                 animate={{ opacity: 1, x: 0, y: 0 }}
                 exit={{ opacity: 0, x: 30 }}
                 transition={SPRING_CONFIG}
-                className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px]"
+                className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs"
                 style={{
                   borderColor: `${feedSession.color}30`,
                   backgroundColor: `${feedSession.color}10`,
@@ -987,7 +987,7 @@ function MemoryAnalysisEngine({
                   )}
                 </motion.div>
                 <span
-                  className="text-[10px] font-medium"
+                  className="text-xs font-medium"
                   style={{
                     color: isDone || isActive ? "#8b5cf6" : "rgba(255,255,255,0.55)",
                   }}
@@ -1040,7 +1040,7 @@ function MemoryRuleBank({
         <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
           Memory Bank
         </span>
-        <span className="ml-auto text-[10px] text-white/30 font-mono">{rules.length} rules</span>
+        <span className="ml-auto text-xs text-white/30 font-mono">{rules.length} rules</span>
       </div>
 
       <div
@@ -1059,7 +1059,7 @@ function MemoryRuleBank({
               <div className="flex items-center gap-1.5 px-1.5 py-1">
                 <div style={{ color: meta.color }}>{meta.icon}</div>
                 <span
-                  className="text-[10px] font-semibold uppercase tracking-wider"
+                  className="text-xs font-semibold uppercase tracking-wider"
                   style={{ color: meta.color }}
                 >
                   {meta.label}
@@ -1107,11 +1107,11 @@ function MemoryRuleBank({
                           animate={{ opacity: 1, height: "auto" }}
                           className="flex items-center gap-1 mt-1"
                         >
-                          <span className="text-[10px] text-white/25">from:</span>
+                          <span className="text-xs text-white/25">from:</span>
                           {rule.sourceSessions.map((sId) => (
                             <span
                               key={sId}
-                              className="text-[10px] px-1.5 py-0.5 rounded-md font-mono"
+                              className="text-xs px-1.5 py-0.5 rounded-md font-mono"
                               style={{
                                 backgroundColor: `${meta.color}15`,
                                 color: meta.color,
@@ -1139,7 +1139,7 @@ function MemoryRuleBank({
                               style={{ backgroundColor: meta.color }}
                             />
                           </div>
-                          <span className="text-[10px] font-mono" style={{ color: meta.color }}>
+                          <span className="text-xs font-mono" style={{ color: meta.color }}>
                             {Math.round(score * 100)}%
                           </span>
                         </motion.div>
@@ -1150,7 +1150,7 @@ function MemoryRuleBank({
                         <motion.span
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className="absolute top-1 right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                          className="absolute top-1 right-1 text-xs font-bold px-1.5 py-0.5 rounded-md"
                           style={{
                             backgroundColor: `${meta.color}20`,
                             color: meta.color,
@@ -1195,7 +1195,7 @@ function MemoryContextQuery({
           <motion.span
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="text-[10px] font-medium text-emerald-400 shrink-0"
+            className="text-xs font-medium text-emerald-400 shrink-0"
           >
             {activeQuery.matchingRules.length} matches
           </motion.span>
@@ -1213,7 +1213,7 @@ function MemoryContextQuery({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => onQueryClick(example)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition duration-200"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition duration-200"
               style={{
                 borderColor: isActive ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.06)",
                 backgroundColor: isActive ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.02)",

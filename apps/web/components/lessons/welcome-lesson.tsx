@@ -592,7 +592,7 @@ function InteractiveArchitecture() {
                           {layer.label}
                         </span>
                         <div className="flex-1 h-px bg-white/[0.06]" />
-                        <span className="text-[10px] text-white/30 font-mono">L{layerIdx + 1}</span>
+                        <span className="text-xs text-white/30 font-mono">L{layerIdx + 1}</span>
                       </div>
 
                       {/* Component nodes */}
@@ -645,7 +645,7 @@ function InteractiveArchitecture() {
                               </div>
 
                               {/* Component name */}
-                              <span className="text-[11px] font-medium text-white/80 leading-tight">
+                              <span className="text-xs font-medium text-white/80 leading-tight">
                                 {comp.shortName}
                               </span>
 
@@ -715,7 +715,7 @@ function InteractiveArchitecture() {
                       <h4 className="text-sm font-semibold text-white leading-tight">
                         {selectedData.name}
                       </h4>
-                      <span className="text-[10px] text-white/40 font-mono">
+                      <span className="text-xs text-white/40 font-mono">
                         {selectedLayerData.label}
                       </span>
                     </div>
@@ -724,7 +724,7 @@ function InteractiveArchitecture() {
                   {/* Status badge */}
                   <div className="flex items-center gap-2">
                     <div
-                      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
                         selectedData.status === "active"
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                           : selectedData.status === "ready"
@@ -756,7 +756,7 @@ function InteractiveArchitecture() {
 
                   {/* Commands */}
                   <div>
-                    <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
                       Commands
                     </span>
                     <div className="mt-1.5 space-y-1">
@@ -766,7 +766,7 @@ function InteractiveArchitecture() {
                           className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/30 border border-white/[0.06]"
                         >
                           <ChevronRight className="h-2.5 w-2.5 text-primary/60 shrink-0" />
-                          <code className="text-[10px] font-mono text-white/60 truncate">
+                          <code className="text-xs font-mono text-white/60 truncate">
                             {cmd}
                           </code>
                         </div>
@@ -777,7 +777,7 @@ function InteractiveArchitecture() {
                   {/* Dependencies */}
                   {selectedData.dependencies.length > 0 && (
                     <div>
-                      <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+                      <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
                         Depends on
                       </span>
                       <div className="mt-1.5 flex flex-wrap gap-1">
@@ -789,7 +789,7 @@ function InteractiveArchitecture() {
                             <button
                               key={depId}
                               onClick={() => handleComponentClick(depId)}
-                              className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-[10px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition duration-200 cursor-pointer"
+                              className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition duration-200 cursor-pointer"
                             >
                               {dep?.shortName ?? depId}
                             </button>
@@ -822,10 +822,10 @@ function InteractiveArchitecture() {
                 <div className="h-2 w-2 rounded-full bg-red-500/60" />
                 <div className="h-2 w-2 rounded-full bg-amber-500/60" />
                 <div className="h-2 w-2 rounded-full bg-emerald-500/60" />
-                <span className="ml-2 text-[10px] text-white/30 font-mono">terminal</span>
+                <span className="ml-2 text-xs text-white/30 font-mono">terminal</span>
               </div>
               {/* Terminal content */}
-              <div className="p-3 font-mono text-[11px] space-y-1.5 min-h-[80px]">
+              <div className="p-3 font-mono text-xs space-y-1.5 min-h-[80px]">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={terminalLine}
@@ -857,7 +857,7 @@ function InteractiveArchitecture() {
 
             {/* Connection legend */}
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.01] p-3">
-              <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
                 Status Key
               </span>
               <div className="mt-2 space-y-1.5">
@@ -895,7 +895,7 @@ function InteractiveArchitecture() {
               <DataFlowArrow from="tmux" to="Agents" color="text-amber-400" />
               <DataFlowArrow from="NTM" to="All Agents" color="text-rose-400" />
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-white/25">
+            <div className="flex items-center gap-1.5 text-xs text-white/25">
               <Lock className="h-3 w-3" />
               <span>End-to-end encrypted</span>
             </div>
@@ -910,12 +910,12 @@ function InteractiveArchitecture() {
 function DataFlowArrow({ from, to, color }: { from: string; to: string; color: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[10px] text-white/40">{from}</span>
+      <span className="text-xs text-white/40">{from}</span>
       <div className="flex items-center gap-0.5">
         <div className={`w-4 h-px ${color} opacity-40`} />
         <ChevronRight className={`h-2.5 w-2.5 ${color} opacity-40`} />
       </div>
-      <span className="text-[10px] text-white/40">{to}</span>
+      <span className="text-xs text-white/40">{to}</span>
     </div>
   );
 }

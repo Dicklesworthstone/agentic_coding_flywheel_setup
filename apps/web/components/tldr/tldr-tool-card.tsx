@@ -434,7 +434,7 @@ export function TldrToolCard({ tool, allTools }: TldrToolCardProps) {
                   role="status"
                   aria-live="polite"
                   className={cn(
-                    "mt-1 text-[11px] leading-snug",
+                    "mt-1 text-xs leading-snug",
                     copyExample.failed ? "text-amber-400" : "text-success",
                     copyExample.state === "idle" && "sr-only",
                   )}

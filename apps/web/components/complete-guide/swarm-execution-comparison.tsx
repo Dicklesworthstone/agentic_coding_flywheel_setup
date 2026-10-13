@@ -313,7 +313,7 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
       <div className="flex flex-col xl:flex-row gap-4 xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div
-            className="text-[0.6rem] font-semibold uppercase tracking-[0.2em]"
+            className="text-xs font-semibold uppercase tracking-[0.2em]"
             style={{ color: accent }}
           >
             {scenario.badge}
@@ -326,19 +326,19 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
 
         <div className="flex gap-2 shrink-0">
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">conflicts</div>
+            <div className="text-xs uppercase tracking-[0.15em] text-white/40">conflicts</div>
             <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
               {frame.metrics.conflicts}
             </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">idle burn</div>
+            <div className="text-xs uppercase tracking-[0.15em] text-white/40">idle burn</div>
             <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
               {frame.metrics.idleBurn}
             </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">completed</div>
+            <div className="text-xs uppercase tracking-[0.15em] text-white/40">completed</div>
             <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">
               {frame.metrics.completed}
             </div>
@@ -369,25 +369,25 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
                 style={{ width: `${agentFrame.progress}%` }}
               />
               <div className="relative z-10 flex items-center gap-2 sm:gap-3">
-                <div className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-950/70 text-[11px] font-black text-white">
+                <div className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-950/70 text-xs font-black text-white">
                   {agent.id}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] sm:text-xs font-semibold text-white truncate max-w-[60px] sm:max-w-none">
+                    <span className="text-xs font-semibold text-white truncate max-w-[60px] sm:max-w-none">
                       {agent.role}
                     </span>
                     {agentFrame.target && (
-                      <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 whitespace-nowrap">
+                      <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/70 whitespace-nowrap">
                         {agentFrame.target}
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-white/75 truncate pr-2">
+                  <div className="mt-0.5 text-xs text-white/75 truncate pr-2">
                     {agentFrame.status}
                   </div>
                 </div>
-                <div className="text-[11px] sm:text-xs font-black tabular-nums text-white shrink-0 pr-1">
+                <div className="text-xs font-black tabular-nums text-white shrink-0 pr-1">
                   {agentFrame.progress}%
                 </div>
               </div>
@@ -403,7 +403,7 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
             className={cn("rounded-[14px] border p-2", getBeadToneClasses(bead.tone))}
           >
             <div className="flex items-center justify-between gap-1.5">
-              <span className="font-mono text-[11px] text-white/72 truncate">{bead.id}</span>
+              <span className="font-mono text-xs text-white/72 truncate">{bead.id}</span>
               {bead.tone === "contested" ? (
                 <AlertTriangle className="h-3 w-3 text-[#FF5500] shrink-0" />
               ) : bead.tone === "done" ? (
@@ -412,17 +412,17 @@ function ScenarioPanel({ scenarioId, phaseIndex }: { scenarioId: ScenarioId; pha
                 <div className="h-1.5 w-1.5 rounded-full bg-white/35 shrink-0" />
               )}
             </div>
-            <div className="mt-1.5 text-[11px] uppercase tracking-[0.18em] text-white/35 truncate">
+            <div className="mt-1.5 text-xs uppercase tracking-[0.18em] text-white/35 truncate">
               {bead.owner ? `owner ${bead.owner}` : "frontier"}
             </div>
-            <div className="mt-0.5 text-[10px] sm:text-xs text-white/72 truncate pr-1">
+            <div className="mt-0.5 text-xs text-white/72 truncate pr-1">
               {bead.note}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-4 rounded-[14px] border border-white/10 bg-black/25 px-3 py-2 text-[11px] sm:text-xs leading-relaxed text-white/75">
+      <div className="mt-4 rounded-[14px] border border-white/10 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/75">
         {frame.verdict}
       </div>
     </div>
@@ -480,7 +480,7 @@ export function SwarmExecutionViz() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-[#FFBD2E]/70">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#FFBD2E]/70">
             <Users className="h-3.5 w-3.5" />
             Interactive Exhibit
           </div>
@@ -565,7 +565,7 @@ export function SwarmExecutionViz() {
                 : "border-white/8 bg-white/[0.03] hover:border-white/14 hover:bg-white/[0.05]",
             )}
           >
-            <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/35">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/35">
               {index + 1}
             </div>
             <div className="mt-2 text-sm font-bold text-white">{phase.label}</div>
@@ -587,7 +587,7 @@ export function SwarmExecutionViz() {
           exit={{ opacity: 0, y: -10 }}
           className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.02] p-5 shadow-inner"
         >
-          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[#FFBD2E]">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#FFBD2E]">
             Comparative takeaway
           </div>
           <p className="mt-3 text-sm leading-relaxed text-white/76">

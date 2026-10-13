@@ -1141,7 +1141,7 @@ function InteractiveBuildTimeline() {
           <Shield className="h-4 w-4 text-primary" />
           <span className="text-sm font-mono font-bold text-white/90">SLB Launch Console</span>
         </div>
-        <span className="ml-auto text-[10px] font-mono text-white/30">
+        <span className="ml-auto text-xs font-mono text-white/30">
           slb v1.0.0 | two-person-rule
         </span>
       </div>
@@ -1299,7 +1299,7 @@ function InteractiveBuildTimeline() {
                 Audit Trail
               </span>
             </div>
-            <div className="space-y-1 font-mono text-[11px]">
+            <div className="space-y-1 font-mono text-xs">
               {phase === "idle" ? (
                 <span className="text-white/30">Waiting for launch sequence...</span>
               ) : (
@@ -1334,7 +1334,7 @@ function InteractiveBuildTimeline() {
                 Terminal Output
               </span>
             </div>
-            <div className="space-y-0.5 font-mono text-[11px]">
+            <div className="space-y-0.5 font-mono text-xs">
               {phase === "idle" ? (
                 <span className="text-emerald-400/40">
                   $ <span className="animate-pulse">_</span>
@@ -1531,7 +1531,7 @@ function KeyTurnSVG({
           y="74"
           textAnchor="middle"
           fill="rgba(255,255,255,0.6)"
-          fontSize="10"
+          fontSize="12"
           fontFamily="monospace"
         >
           KEY A
@@ -1575,7 +1575,7 @@ function KeyTurnSVG({
           y="74"
           textAnchor="middle"
           fill="rgba(255,255,255,0.6)"
-          fontSize="10"
+          fontSize="12"
           fontFamily="monospace"
         >
           KEY B
@@ -1636,7 +1636,7 @@ function AgentConsole({
         <span className={`text-xs font-mono font-bold ${isActive ? accentColor : "text-white/30"}`}>
           {agentName}
         </span>
-        <span className="text-[10px] font-mono text-white/20 uppercase ml-auto">{role}</span>
+        <span className="text-xs font-mono text-white/20 uppercase ml-auto">{role}</span>
       </div>
 
       <AnimatePresence mode="wait">
@@ -1661,16 +1661,16 @@ function AgentConsole({
           >
             {role === "INITIATOR" && (
               <div className="rounded-lg bg-black/30 px-3 py-2">
-                <span className="text-[10px] font-mono text-white/30 uppercase block mb-1">
+                <span className="text-xs font-mono text-white/30 uppercase block mb-1">
                   Command
                 </span>
-                <span className="text-[11px] font-mono text-emerald-400/80 break-all">
+                <span className="text-xs font-mono text-emerald-400/80 break-all">
                   {command}
                 </span>
               </div>
             )}
             <div className="rounded-lg bg-black/20 px-3 py-2">
-              <span className="text-[10px] font-mono text-white/30 uppercase block mb-1">
+              <span className="text-xs font-mono text-white/30 uppercase block mb-1">
                 {role === "INITIATOR"
                   ? "Reasoning"
                   : phase === "denied" || phase === "aborted"
@@ -1859,8 +1859,8 @@ function StatusRow({
 
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[10px] font-mono text-white/30 uppercase">{label}</span>
-      <span className={`text-[11px] font-mono font-bold ${valueColor}`}>{value}</span>
+      <span className="text-xs font-mono text-white/30 uppercase">{label}</span>
+      <span className={`text-xs font-mono font-bold ${valueColor}`}>{value}</span>
     </div>
   );
 }

@@ -865,7 +865,7 @@ function AgentMiniPane({
           <div className="h-1.5 w-1.5 rounded-full bg-yellow-500/50" />
           <div className="h-1.5 w-1.5 rounded-full bg-green-500/50" />
         </div>
-        <span className="text-[10px] text-white/40 font-mono ml-1 flex-1 truncate">
+        <span className="text-xs text-white/40 font-mono ml-1 flex-1 truncate">
           pane #{pane.id} -- {pane.name}
         </span>
         <motion.div
@@ -883,7 +883,7 @@ function AgentMiniPane({
         />
       </div>
       {/* Pane terminal content */}
-      <div className="p-2 font-mono text-[10px] leading-relaxed min-h-[56px] max-h-[72px] overflow-hidden">
+      <div className="p-2 font-mono text-xs leading-relaxed min-h-[56px] max-h-[88px] overflow-y-auto">
         {pane.lines.map((line, i) => (
           <div key={i} className={`${line.color} truncate`}>
             {line.text}
@@ -916,7 +916,7 @@ function AgentMiniPane({
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
             />
           </div>
-          <div className={`text-[10px] mt-0.5 ${colors.text}`}>{pane.progress}%</div>
+          <div className={`text-xs mt-0.5 ${colors.text}`}>{pane.progress}%</div>
         </div>
       )}
     </motion.div>
@@ -926,7 +926,7 @@ function AgentMiniPane({
 function ActivityHeatmap({ files }: { files: FileActivity[] }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5 text-[10px] text-white/40 uppercase tracking-wider">
+      <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider">
         <FileText className="h-3 w-3" />
         <span>File Activity</span>
       </div>
@@ -939,7 +939,7 @@ function ActivityHeatmap({ files }: { files: FileActivity[] }) {
           className="flex items-center gap-2"
         >
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] font-mono text-white/60 truncate">{file.path}</div>
+            <div className="text-xs font-mono text-white/60 truncate">{file.path}</div>
           </div>
           <div className="w-16 h-2 rounded-full bg-white/[0.04] overflow-hidden flex-shrink-0">
             <motion.div
@@ -952,7 +952,7 @@ function ActivityHeatmap({ files }: { files: FileActivity[] }) {
               transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.05 + 0.2 }}
             />
           </div>
-          <span className="text-[10px] text-white/30 w-4 text-right font-mono flex-shrink-0">
+          <span className="text-xs text-white/30 w-4 text-right font-mono flex-shrink-0">
             #{file.agent}
           </span>
         </motion.div>
@@ -1008,7 +1008,7 @@ function MetricsBar({ panes }: { panes: AgentPaneData[] }) {
             {m.icon}
             <span className="text-sm font-bold font-mono">{m.value}</span>
           </div>
-          <div className="text-[10px] text-white/40 mt-0.5">{m.label}</div>
+          <div className="text-xs text-white/40 mt-0.5">{m.label}</div>
         </motion.div>
       ))}
     </div>
@@ -1018,7 +1018,7 @@ function MetricsBar({ panes }: { panes: AgentPaneData[] }) {
 function EventTimeline({ events }: { events: TimelineEvent[] }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5 text-[10px] text-white/40 uppercase tracking-wider">
+      <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider">
         <Clock className="h-3 w-3" />
         <span>Timeline</span>
       </div>
@@ -1029,7 +1029,7 @@ function EventTimeline({ events }: { events: TimelineEvent[] }) {
             initial={{ opacity: 0, x: 8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.06 }}
-            className="flex items-start gap-2 text-[10px]"
+            className="flex items-start gap-2 text-xs"
           >
             <span className="text-white/30 font-mono w-8 flex-shrink-0">{evt.time}</span>
             <div className="flex items-center gap-1.5 mt-0.5 flex-shrink-0">
@@ -1052,9 +1052,9 @@ function MonitorTerminal({ lines, active }: { lines: string[]; active: boolean }
     <div className="rounded-lg border border-white/[0.08] bg-black/60 overflow-hidden">
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02]">
         <BarChart3 className="h-3 w-3 text-cyan-400" />
-        <span className="text-[10px] text-white/40 font-mono">wa monitor</span>
+        <span className="text-xs text-white/40 font-mono">wa monitor</span>
       </div>
-      <div className="p-2.5 font-mono text-[10px] leading-relaxed space-y-0.5">
+      <div className="p-2.5 font-mono text-xs leading-relaxed space-y-0.5">
         {lines.map((line, i) => (
           <motion.div
             key={i}
@@ -1178,7 +1178,7 @@ function InteractiveTerminalObserver() {
             </motion.div>
           </AnimatePresence>
           {/* Scenario counter */}
-          <div className="text-[10px] text-white/30 font-mono flex-shrink-0 hidden sm:block">
+          <div className="text-xs text-white/30 font-mono flex-shrink-0 hidden sm:block">
             {scenarioIdx + 1}/{totalScenarios}
           </div>
         </div>
@@ -1212,7 +1212,7 @@ function InteractiveTerminalObserver() {
               aria-label={tab.label}
               aria-pressed={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
                 activeTab === tab.key
                   ? "bg-white/[0.08] text-white shadow-sm"
                   : "text-white/40 hover:text-white/60 hover:bg-white/[0.03]"
@@ -1267,7 +1267,7 @@ function InteractiveTerminalObserver() {
 
               {/* Per-agent breakdown */}
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] text-white/40 uppercase tracking-wider px-1">
+                <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider px-1">
                   <Activity className="h-3 w-3" />
                   <span>Per-Agent Breakdown</span>
                 </div>
@@ -1283,24 +1283,24 @@ function InteractiveTerminalObserver() {
                     >
                       <div className="flex items-center gap-1.5 w-20 flex-shrink-0">
                         <Circle className={`h-2 w-2 ${colors.text}`} />
-                        <span className="text-[10px] font-mono text-white/60">#{pane.id}</span>
+                        <span className="text-xs font-mono text-white/60">#{pane.id}</span>
                       </div>
                       <div className="flex-1 grid grid-cols-3 gap-2 text-center">
                         <div>
                           <div className="text-xs font-mono text-emerald-400">
                             {pane.linesChanged}
                           </div>
-                          <div className="text-[10px] text-white/30">lines</div>
+                          <div className="text-xs text-white/30">lines</div>
                         </div>
                         <div>
                           <div className="text-xs font-mono text-cyan-400">{pane.filesTouched}</div>
-                          <div className="text-[10px] text-white/30">files</div>
+                          <div className="text-xs text-white/30">files</div>
                         </div>
                         <div>
                           <div className="text-xs font-mono text-violet-400">
                             {pane.commandsRun}
                           </div>
-                          <div className="text-[10px] text-white/30">cmds</div>
+                          <div className="text-xs text-white/30">cmds</div>
                         </div>
                       </div>
                       <div className="w-12 flex-shrink-0 text-right">
@@ -1334,7 +1334,7 @@ function InteractiveTerminalObserver() {
 
               {/* Activity sparkline visualization */}
               <div className="p-3 rounded-lg border border-white/[0.06] bg-black/30">
-                <div className="flex items-center gap-1.5 text-[10px] text-white/40 uppercase tracking-wider mb-2">
+                <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider mb-2">
                   <Activity className="h-3 w-3" />
                   <span>Agent Activity (last hour)</span>
                 </div>
@@ -1343,7 +1343,7 @@ function InteractiveTerminalObserver() {
                     const colors = STATUS_COLORS[pane.status];
                     return (
                       <div key={pane.id} className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-white/40 w-6">#{pane.id}</span>
+                        <span className="text-xs font-mono text-white/40 w-6">#{pane.id}</span>
                         <div className="flex-1 flex items-end gap-px h-4">
                           {Array.from({ length: 20 }).map((_, bi) => {
                             // Deterministic bar height based on pane id and bar index

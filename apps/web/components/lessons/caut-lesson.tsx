@@ -504,14 +504,14 @@ function ProviderBar({
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={SPRING_SNAPPY}
-              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30"
+              className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30"
             >
               Rate Limited
             </motion.span>
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-white/30 font-mono">{provider.accountName}</span>
+          <span className="text-xs text-white/30 font-mono">{provider.accountName}</span>
           <span className={`text-xs font-semibold font-mono ${provider.color}`}>
             ${provider.currentCost.toFixed(2)}
           </span>
@@ -585,7 +585,7 @@ function BudgetGauge({ percent }: { percent: number }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Gauge className="h-3.5 w-3.5 text-white/40" />
-          <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+          <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
             Daily Budget
           </span>
         </div>
@@ -630,8 +630,8 @@ function BudgetGauge({ percent }: { percent: number }) {
 
       {/* Labels */}
       <div className="flex justify-between mt-1.5">
-        <span className="text-[10px] text-white/20 font-mono">$0</span>
-        <span className={`text-[10px] font-mono ${getLabelColor(clampedPercent)}`}>$50 limit</span>
+        <span className="text-xs text-white/20 font-mono">$0</span>
+        <span className={`text-xs font-mono ${getLabelColor(clampedPercent)}`}>$50 limit</span>
       </div>
     </div>
   );
@@ -679,7 +679,7 @@ function SavingsCounter({ target }: { target: number }) {
     <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
       <div className="flex items-center gap-2 mb-2">
         <TrendingUp className="h-3.5 w-3.5 text-emerald-400/60" />
-        <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+        <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
           Savings Recovered
         </span>
       </div>
@@ -707,13 +707,13 @@ function SavingsCounter({ target }: { target: number }) {
       {target > 0 ? (
         <div className="flex items-center gap-1 mt-1">
           <ArrowDownRight className="h-3 w-3 text-emerald-400/60" />
-          <span className="text-[10px] text-emerald-400/80 font-medium">
+          <span className="text-xs text-emerald-400/80 font-medium">
             Prompt caching + provider shifting
           </span>
         </div>
       ) : (
         <div className="flex items-center gap-1 mt-1">
-          <span className="text-[10px] text-white/20 font-medium">
+          <span className="text-xs text-white/20 font-medium">
             No optimizations applied yet
           </span>
         </div>
@@ -783,7 +783,7 @@ function LiveLog({ lines }: { lines: string[] }) {
     >
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Terminal className="h-3 w-3 text-white/30" />
-        <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+        <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
           Live Feed
         </span>
         <motion.div
@@ -806,7 +806,7 @@ function LiveLog({ lines }: { lines: string[] }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ ...SPRING, delay: idx * 0.06 }}
-              className="text-[11px] font-mono text-white/50 leading-relaxed whitespace-nowrap"
+              className="text-xs font-mono text-white/50 leading-relaxed whitespace-nowrap"
             >
               <span className="text-white/20 select-none">$ </span>
               {line}
@@ -1005,7 +1005,7 @@ function InteractiveCostDashboardImpl() {
               transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
             />
-            <span className="text-[10px] text-emerald-400/80 font-medium">LIVE</span>
+            <span className="text-xs text-emerald-400/80 font-medium">LIVE</span>
           </div>
         </div>
 
@@ -1020,7 +1020,7 @@ function InteractiveCostDashboardImpl() {
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
                 transition={SPRING_SNAPPY}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors border ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${
                   stepIndex === idx
                     ? "bg-white/[0.1] text-white border-white/[0.15]"
                     : "text-white/35 hover:text-white/55 border-transparent hover:border-white/[0.06]"
@@ -1058,7 +1058,7 @@ function InteractiveCostDashboardImpl() {
               >
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-xs font-semibold text-white/80">{step.label}</span>
-                  <span className="text-[10px] text-white/25 font-mono">
+                  <span className="text-xs text-white/25 font-mono">
                     Step {stepIndex + 1}/{SCENARIO_STEPS.length}
                   </span>
                 </div>
@@ -1104,7 +1104,7 @@ function InteractiveCostDashboardImpl() {
           >
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="h-3.5 w-3.5 text-white/40" />
-              <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+              <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
                 Total Spend
               </span>
             </div>
@@ -1124,14 +1124,14 @@ function InteractiveCostDashboardImpl() {
               {step.totalCost > 30 ? (
                 <>
                   <ArrowUpRight className="h-3 w-3 text-red-400/60" />
-                  <span className="text-[10px] text-red-400/80 font-medium">
+                  <span className="text-xs text-red-400/80 font-medium">
                     Above daily average
                   </span>
                 </>
               ) : (
                 <>
                   <ArrowDownRight className="h-3 w-3 text-emerald-400/60" />
-                  <span className="text-[10px] text-emerald-400/80 font-medium">
+                  <span className="text-xs text-emerald-400/80 font-medium">
                     Within normal range
                   </span>
                 </>
@@ -1147,7 +1147,7 @@ function InteractiveCostDashboardImpl() {
           >
             <div className="flex items-center gap-2 mb-2">
               <Zap className="h-3.5 w-3.5 text-amber-400/60" />
-              <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+              <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
                 Total Tokens
               </span>
             </div>
@@ -1171,7 +1171,7 @@ function InteractiveCostDashboardImpl() {
             </AnimatePresence>
             <div className="flex items-center gap-1 mt-1">
               <BarChart3 className="h-3 w-3 text-white/30" />
-              <span className="text-[10px] text-white/30 font-medium">
+              <span className="text-xs text-white/30 font-medium">
                 Across {providerStates.filter((p) => !p.rateLimited).length} active providers
               </span>
             </div>
@@ -1218,7 +1218,7 @@ function InteractiveCostDashboardImpl() {
         <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="h-3.5 w-3.5 text-white/40" />
-            <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+            <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
               Cost Distribution
             </span>
           </div>
@@ -1235,7 +1235,7 @@ function InteractiveCostDashboardImpl() {
                       provider.rateLimited ? "opacity-40" : "opacity-80"
                     } min-h-[2px]`}
                   />
-                  <span className="text-[10px] text-white/30 font-mono truncate w-full text-center">
+                  <span className="text-xs text-white/30 font-mono truncate w-full text-center">
                     {provider.name.split(" ")[0]}
                   </span>
                 </div>
@@ -1256,7 +1256,7 @@ function InteractiveCostDashboardImpl() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={SPRING_SNAPPY}
-              className="text-[10px] font-mono text-white/30 bg-white/[0.05] px-1.5 py-0.5 rounded"
+              className="text-xs font-mono text-white/30 bg-white/[0.05] px-1.5 py-0.5 rounded"
             >
               {step.alerts.length}
             </motion.span>

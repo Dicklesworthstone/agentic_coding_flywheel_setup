@@ -747,7 +747,7 @@ function InteractiveArchiveSearch() {
               <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
               <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
             </div>
-            <span className="ml-2 text-[10px] text-white/30 font-mono">xf archive search</span>
+            <span className="ml-2 text-xs text-white/30 font-mono">xf archive search</span>
           </div>
           <div className="p-4 font-mono text-xs space-y-0.5 max-h-40 overflow-y-auto">
             {terminalLines.length === 0 ? (
@@ -941,7 +941,7 @@ function InteractiveArchiveSearch() {
                   {scenario.indexStats.topHashtags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/40"
+                      className="text-xs font-mono px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/40"
                     >
                       {tag}
                     </span>
@@ -1009,7 +1009,7 @@ function InteractiveArchiveSearch() {
                       className="bg-rose-500/60 rounded-r-full"
                     />
                   </div>
-                  <div className="flex items-center justify-between mt-1.5 text-[10px] font-mono">
+                  <div className="flex items-center justify-between mt-1.5 text-xs font-mono">
                     <span className="text-emerald-400">Positive {sentimentCounts.positive}</span>
                     <span className="text-white/40">Neutral {sentimentCounts.neutral}</span>
                     <span className="text-rose-400">Negative {sentimentCounts.negative}</span>
@@ -1052,7 +1052,7 @@ function InteractiveArchiveSearch() {
                         </div>
                         <span className="text-xs text-white/40 font-mono">{result.date}</span>
                         <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${getTypeBadgeColor(result.type)}`}
+                          className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getTypeBadgeColor(result.type)}`}
                         >
                           {result.type}
                         </span>
@@ -1090,7 +1090,7 @@ function InteractiveArchiveSearch() {
                           {result.hashtags.map((tag) => (
                             <span
                               key={tag}
-                              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400/60 border border-sky-500/20"
+                              className="text-xs font-mono px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400/60 border border-sky-500/20"
                             >
                               {tag}
                             </span>
@@ -1100,7 +1100,7 @@ function InteractiveArchiveSearch() {
 
                       {/* Sentiment badge */}
                       <span
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${getSentimentBg(result.sentiment)} ${getSentimentColor(result.sentiment)}`}
+                        className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getSentimentBg(result.sentiment)} ${getSentimentColor(result.sentiment)}`}
                       >
                         {result.sentiment}
                       </span>
@@ -1110,7 +1110,7 @@ function InteractiveArchiveSearch() {
 
                       {/* Relevance score */}
                       <div className="flex items-center gap-2 min-w-[140px]">
-                        <span className="text-[10px] text-white/40 font-mono shrink-0">
+                        <span className="text-xs text-white/40 font-mono shrink-0">
                           {(result.relevance * 100).toFixed(0)}%
                         </span>
                         <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1140,7 +1140,7 @@ function InteractiveArchiveSearch() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.5 }}
-                  className="flex items-center justify-center gap-2 py-2 text-[10px] text-white/20 font-mono"
+                  className="flex items-center justify-center gap-2 py-2 text-xs text-white/20 font-mono"
                 >
                   <Download className="h-3 w-3" />
                   xf search &quot;{scenario.id === "keyword" ? "machine learning" : "..."}&quot;
@@ -1166,7 +1166,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-[10px] text-white/30 uppercase tracking-wide">{label}</div>
+        <div className="text-xs text-white/30 uppercase tracking-wide">{label}</div>
         <div className="text-xs font-semibold text-white/80 font-mono truncate">{value}</div>
       </div>
     </div>

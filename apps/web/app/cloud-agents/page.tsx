@@ -173,7 +173,7 @@ function CodePanel({ text, title, label, copyLabel, className = "" }: {
       <div className="flex min-h-12 items-center gap-3 border-b border-white/[0.07] bg-white/[0.03] py-1 pl-4 pr-1.5">
         <Terminal className="size-4 shrink-0 text-[#7aa2f7]" aria-hidden="true" />
         <span title={title} className="min-w-0 flex-1 truncate font-mono text-xs text-[#a9b1d6]">{title}</span>
-        <span className="hidden rounded border border-white/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[#a9b1d6]/70 sm:inline">{lang}</span>
+        <span className="hidden rounded border border-white/10 px-1.5 py-0.5 font-mono text-xs uppercase tracking-wider text-[#a9b1d6]/70 sm:inline">{lang}</span>
         <button
           type="button"
           onClick={copy}
@@ -238,10 +238,10 @@ function ProviderPicker({ agentId, choose }: { agentId: string; choose: (id: str
                 onChange={() => choose(item.id)}
                 className="sr-only"
               />
-              <span aria-hidden="true" className={`flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold transition-colors max-sm:hidden ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/80"}`}>{item.initials}</span>
+              <span aria-hidden="true" className={`flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold transition-colors max-sm:hidden ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground/80"}`}>{item.initials}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-foreground">{item.name}</span>
-                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground sm:text-xs">
+                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${EVIDENCE_STYLE[item.evidence].dot}`} />
                   <span className="truncate">{item.evidence}</span>
                 </span>
@@ -261,7 +261,7 @@ function HandoffCard({ agent }: { agent: CloudAgent }) {
   const [preview, setPreview] = useState(false);
   return (
     <div className="rounded-2xl border border-primary/35 bg-gradient-to-b from-primary/[0.09] to-primary/[0.03] p-4 sm:p-5">
-      <p className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+      <p className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-primary">
         <Sparkles className="size-3" aria-hidden="true" />Recommended
       </p>
       <h2 className="mt-2.5 text-base font-semibold tracking-tight text-foreground">Let a browser agent set it up</h2>
@@ -357,7 +357,7 @@ function Highlights({ shot }: { shot: SetupScreenshot }) {
           style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
         >
           {/* Badges sit on the right edge so they never cover the label they mark. */}
-          <span className={`absolute -top-2.5 flex size-5 items-center justify-center rounded-full bg-primary font-mono text-[11px] font-bold text-primary-foreground shadow-md ring-2 ring-white ${box.x + box.w > 95 ? "-left-2.5" : "-right-2.5"}`}>
+          <span className={`absolute -top-2.5 flex size-5 items-center justify-center rounded-full bg-primary font-mono text-xs font-bold text-primary-foreground shadow-md ring-2 ring-white ${box.x + box.w > 95 ? "-left-2.5" : "-right-2.5"}`}>
             {index + 1}
           </span>
         </span>
@@ -372,7 +372,7 @@ function HighlightLegend({ shot, className = "" }: { shot: SetupScreenshot; clas
     <ol aria-label="Highlighted controls" className={`flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-foreground/85 ${className}`}>
       {shot.highlights.map((box, index) => (
         <li key={box.label} className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="flex size-[18px] items-center justify-center rounded-full bg-primary font-mono text-[10px] font-bold text-primary-foreground">{index + 1}</span>
+          <span aria-hidden="true" className="flex size-[18px] items-center justify-center rounded-full bg-primary font-mono text-xs font-bold text-primary-foreground">{index + 1}</span>
           {box.label}
         </li>
       ))}
@@ -580,7 +580,7 @@ function StepBody({ agent, step, onOpenShot }: { agent: CloudAgent; step: SetupS
     <>
       {step.fields && (
         <div className="max-w-2xl rounded-xl border border-border/70 bg-card/50 p-3 sm:p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Where this goes</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">Where this goes</p>
           <dl className="grid gap-2 sm:grid-cols-2">
             {step.fields.map((field) => (
               <div key={field.label} className="min-w-0 rounded-lg border border-border/60 bg-background/60 px-3 py-2">
@@ -707,7 +707,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
               aria-current={isActive ? "step" : undefined}
               className={`flex min-h-11 items-start gap-3 rounded-lg px-2.5 py-2 text-sm leading-snug transition-colors ${focusRing} ${isActive ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
             >
-              <span aria-hidden="true" className={`mt-px flex size-5 shrink-0 items-center justify-center rounded-full border font-mono text-[10px] font-semibold ${isDone ? "border-primary bg-primary text-primary-foreground" : isActive ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>
+              <span aria-hidden="true" className={`mt-px flex size-5 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-semibold ${isDone ? "border-primary bg-primary text-primary-foreground" : isActive ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>
                 {isDone ? <Check className="size-3" /> : index + 1}
               </span>
               <span>{step.title}{isDone && <span className="sr-only"> (done)</span>}</span>
@@ -750,7 +750,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
       <div ref={mobileBar} className="sticky top-0 z-30 -mx-5 mb-8 border-b border-border/60 bg-background px-5 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.8)] sm:-mx-8 sm:px-8 lg:hidden">
         <div className="flex min-h-14 items-center gap-3 py-2">
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
               Step {activeIndex + 1} of {steps.length} · {done.size} done
             </p>
             <p className="truncate text-sm font-medium text-foreground">{steps[activeIndex].title}</p>
@@ -778,7 +778,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
         <div className="hidden lg:block">
           <div className="sticky top-8 space-y-6">
             <nav aria-label={`${agent.name} steps`}>
-              <p className="mb-2 px-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Steps</p>
+              <p className="mb-2 px-2.5 font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">Steps</p>
               {stepList()}
             </nav>
             <div className="space-y-2 px-2.5">
@@ -817,7 +817,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
                     {isDone ? <Check className="size-5" /> : index + 1}
                   </span>
                   <div className="min-w-0 pt-0.5">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Step {index + 1} of {steps.length}</p>
+                    <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">Step {index + 1} of {steps.length}</p>
                     <h3 className="mt-1 text-[1.3rem] font-semibold leading-snug tracking-tight text-foreground sm:text-[1.55rem]">{step.title}</h3>
                   </div>
                 </div>
@@ -1097,7 +1097,7 @@ export default function CloudAgentsPage() {
       <main id="main-content" tabIndex={-1} className="relative focus:outline-none">
         <section aria-labelledby="hero-heading" className="mx-auto grid max-w-6xl gap-x-14 gap-y-10 px-5 pb-16 pt-10 sm:px-8 sm:pb-20 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,31rem)] lg:pb-24">
           <div className="min-w-0">
-            <p className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-primary">
+            <p className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 font-mono text-xs uppercase tracking-[0.18em] text-primary">
               <Cloud className="size-3.5" aria-hidden="true" />Cloud agent setup
             </p>
             <h1 id="hero-heading" className="mt-6 text-[2.5rem] font-semibold leading-[1.05] tracking-tight text-foreground sm:text-[3.5rem] lg:text-[4.25rem]">

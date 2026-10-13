@@ -502,7 +502,7 @@ function InteractiveReleasePipeline() {
             <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">
               CI Throttled
             </span>
-            <span className="text-[10px] text-red-400/60">&mdash; Actions minutes exhausted</span>
+            <span className="text-xs text-red-400/60">&mdash; Actions minutes exhausted</span>
           </div>
         </div>
 
@@ -533,12 +533,12 @@ function InteractiveReleasePipeline() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-white/90">{scenario.label}</span>
-                  <span className="rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-[10px] font-mono text-white/50">
+                  <span className="rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-xs font-mono text-white/50">
                     {scenario.version}
                   </span>
                 </div>
                 <p className="text-xs text-white/50 mt-0.5">{scenario.description}</p>
-                <div className="mt-2 flex items-center gap-1.5 text-[10px] font-mono text-white/30">
+                <div className="mt-2 flex items-center gap-1.5 text-xs font-mono text-white/30">
                   <Terminal className="h-3 w-3" />
                   <span className="truncate">{scenario.command}</span>
                 </div>
@@ -737,7 +737,7 @@ function ScenarioStepper({
         <ChevronRight className="h-4 w-4" />
       </motion.button>
 
-      <span className="ml-2 text-[10px] font-mono text-white/30">
+      <span className="ml-2 text-xs font-mono text-white/30">
         {activeIndex + 1}/{scenarios.length}
       </span>
     </div>
@@ -833,7 +833,7 @@ function ArtifactFlowDiagram({
     <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <GitBranch className="h-3.5 w-3.5 text-white/40" />
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Artifact Flow
         </span>
       </div>
@@ -961,7 +961,7 @@ function ArtifactFlowDiagram({
                 x={x + w / 2}
                 y={y + 22}
                 textAnchor="middle"
-                fontSize={9}
+                fontSize={12}
                 fontWeight={600}
                 fill={isActive || isComplete ? colors.text : "rgba(255,255,255,0.3)"}
               >
@@ -977,7 +977,7 @@ function ArtifactFlowDiagram({
                   x={x + w / 2}
                   y={y + 39}
                   textAnchor="middle"
-                  fontSize={7}
+                  fontSize={12}
                   fill="white"
                   fontWeight={700}
                 >
@@ -1007,7 +1007,7 @@ function ArtifactFlowDiagram({
         })}
 
         {/* Source label */}
-        <text x={30} y={105} fontSize={8} fill="rgba(255,255,255,0.35)" fontWeight={500}>
+        <text x={30} y={105} fontSize={12} fill="rgba(255,255,255,0.35)" fontWeight={500}>
           Local Machine
         </text>
         <rect
@@ -1024,7 +1024,7 @@ function ArtifactFlowDiagram({
           x={70}
           y={129}
           textAnchor="middle"
-          fontSize={8}
+          fontSize={12}
           fill="rgba(255,255,255,0.4)"
           fontFamily="monospace"
         >
@@ -1052,7 +1052,7 @@ function ArtifactFlowDiagram({
         />
 
         {/* Destination label */}
-        <text x={345} y={105} fontSize={8} fill="rgba(255,255,255,0.35)" fontWeight={500}>
+        <text x={345} y={105} fontSize={12} fill="rgba(255,255,255,0.35)" fontWeight={500}>
           GitHub Release
         </text>
         <rect
@@ -1069,7 +1069,7 @@ function ArtifactFlowDiagram({
           x={405}
           y={129}
           textAnchor="middle"
-          fontSize={8}
+          fontSize={12}
           fill={phase === "done" ? "rgba(110,231,183,0.8)" : "rgba(255,255,255,0.4)"}
           fontFamily="monospace"
         >
@@ -1092,7 +1092,7 @@ function ArtifactFlowDiagram({
           x={250}
           y={170}
           textAnchor="middle"
-          fontSize={9}
+          fontSize={12}
           fill="rgba(255,255,255,0.25)"
           fontWeight={500}
         >
@@ -1131,7 +1131,7 @@ function PlatformBuildGrid({
     <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <Hammer className="h-3.5 w-3.5 text-white/40" />
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Build Targets
         </span>
       </div>
@@ -1155,10 +1155,10 @@ function PlatformBuildGrid({
                 <TargetIcon
                   className={`h-3 w-3 ${isComplete ? "text-emerald-400" : isBuilding ? "text-blue-400" : "text-white/30"}`}
                 />
-                <span className="text-[10px] font-mono text-white/60">{target.label}</span>
+                <span className="text-xs font-mono text-white/60">{target.label}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono text-white/30">
+                <span className="text-xs font-mono text-white/30">
                   {isComplete ? `${target.sizeKb}KB` : isBuilding ? `${Math.round(pct)}%` : "--"}
                 </span>
                 {isComplete && (
@@ -1199,7 +1199,7 @@ function PlatformBuildGrid({
             {Array.from({ length: 4 - targets.length }, (_, i) => (
               <div key={`empty-${i}`} className="flex items-center gap-2 py-1 opacity-30">
                 <Cpu className="h-3 w-3 text-white/20" />
-                <span className="text-[10px] font-mono text-white/20">--/--</span>
+                <span className="text-xs font-mono text-white/20">--/--</span>
               </div>
             ))}
           </div>
@@ -1274,7 +1274,7 @@ function ChecksumVerification({
     <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <Hash className="h-3.5 w-3.5 text-white/40" />
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           SHA-256 Checksums
         </span>
         {isVerified && (
@@ -1282,7 +1282,7 @@ function ChecksumVerification({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={SPRING}
-            className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400 font-mono"
+            className="ml-auto flex items-center gap-1 text-xs text-emerald-400 font-mono"
           >
             <CheckCircle2 className="h-3 w-3" />
             verified
@@ -1292,7 +1292,7 @@ function ChecksumVerification({
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="ml-auto flex items-center gap-1 text-[10px] text-cyan-400 font-mono"
+            className="ml-auto flex items-center gap-1 text-xs text-cyan-400 font-mono"
           >
             <motion.div
               animate={inView ? { rotate: 360 } : { rotate: 0 }}
@@ -1317,11 +1317,11 @@ function ChecksumVerification({
             className="group"
           >
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-white/40 w-24 shrink-0 truncate">
+              <span className="text-xs font-mono text-white/40 w-24 shrink-0 truncate">
                 {target.label}
               </span>
               <div
-                className={`flex-1 font-mono text-[10px] leading-tight truncate transition-colors ${
+                className={`flex-1 font-mono text-xs leading-tight truncate transition-colors ${
                   isVerified
                     ? "text-emerald-400/70"
                     : isVerifying
@@ -1403,7 +1403,7 @@ function MiniTerminal({
           <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
           <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-[10px] font-mono text-white/30 ml-2">dsr-terminal</span>
+        <span className="text-xs font-mono text-white/30 ml-2">dsr-terminal</span>
       </div>
 
       {/* Terminal content */}
@@ -1414,7 +1414,7 @@ function MiniTerminal({
         {lines.length === 0 && (
           <div className="flex items-center gap-2 text-white/20">
             <Terminal className="h-3 w-3" />
-            <span className="text-[10px] font-mono">Waiting for release command...</span>
+            <span className="text-xs font-mono">Waiting for release command...</span>
           </div>
         )}
 
@@ -1425,7 +1425,7 @@ function MiniTerminal({
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.15 }}
-              className={`font-mono text-[10px] leading-relaxed ${TERMINAL_LINE_COLORS[line.type]}`}
+              className={`font-mono text-xs leading-relaxed ${TERMINAL_LINE_COLORS[line.type]}`}
             >
               {line.text === "" ? <br /> : line.text}
             </motion.div>

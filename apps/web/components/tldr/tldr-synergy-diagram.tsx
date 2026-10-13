@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { getColorDefinition } from "@/lib/colors";
 import type { TldrFlywheelTool } from "@/lib/tldr-content";
-import { cn } from "@/lib/utils";
+import { cn, handleHorizontalScrollKeyDown } from "@/lib/utils";
 
 // =============================================================================
 // TYPES
@@ -158,11 +158,18 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>
+      <div
+        className="overflow-x-auto pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        role="region"
+        tabIndex={0}
+        onKeyDown={handleHorizontalScrollKeyDown}
+        aria-label="Tool synergy diagram (scrolls sideways when needed)"
+      >
       <motion.div
         initial={reducedMotion ? {} : { opacity: 0, scale: 0.95 }}
-        animate={isInView ? { opacity: 1, scale: 1 } : {}}
+        animate={reducedMotion || isInView ? { opacity: 1, scale: 1 } : {}}
         transition={{ duration: reducedMotion ? 0 : 0.6 }}
-        className="mx-auto max-w-md"
+        className="mx-auto min-w-[520px]"
       >
         <svg
           viewBox={`0 0 ${DIAGRAM_CONFIG.viewBoxSize} ${DIAGRAM_CONFIG.viewBoxSize}`}
@@ -292,7 +299,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
                     strokeWidth={isHighlighted ? 2 : 1}
                     strokeLinecap="round"
                     initial={reducedMotion ? {} : { opacity: 0 }}
-                    animate={isInView ? { opacity: isHighlighted ? 1 : 0.5 } : {}}
+                    animate={reducedMotion || isInView ? { opacity: isHighlighted ? 1 : 0.5 } : {}}
                     transition={{
                       duration: reducedMotion ? 0 : 0.6,
                       delay: reducedMotion ? 0 : 0.3 + index * 0.02,
@@ -311,7 +318,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
                     strokeLinecap="round"
                     strokeDasharray={isHighlighted ? "4 14" : "3 18"}
                     initial={reducedMotion ? {} : { opacity: 0 }}
-                    animate={isInView ? { opacity: isHighlighted ? 0.9 : 0.4 } : {}}
+                    animate={reducedMotion || isInView ? { opacity: isHighlighted ? 0.9 : 0.4 } : {}}
                     transition={{
                       duration: reducedMotion ? 0 : 0.6,
                       delay: reducedMotion ? 0 : 0.3 + index * 0.02,
@@ -330,7 +337,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
           {/* Center "Flywheel" label */}
           <motion.g
             initial={reducedMotion ? {} : { opacity: 0, scale: 0.8 }}
-            animate={isInView ? { opacity: 1, scale: 1 } : {}}
+            animate={reducedMotion || isInView ? { opacity: 1, scale: 1 } : {}}
             transition={{
               duration: reducedMotion ? 0 : 0.5,
               delay: reducedMotion ? 0 : 0.2,
@@ -396,7 +403,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
               <motion.g
                 key={tool.id}
                 initial={reducedMotion ? {} : { opacity: 0, scale: 0 }}
-                animate={isInView ? { opacity: 1, scale: 1 } : {}}
+                animate={reducedMotion || isInView ? { opacity: 1, scale: 1 } : {}}
                 transition={{
                   duration: reducedMotion ? 0 : 0.4,
                   delay: reducedMotion ? 0 : 0.4 + index * 0.05,
@@ -477,7 +484,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
                   x={pos.x}
                   y={pos.y + 4}
                   textAnchor="middle"
-                  className="fill-white font-bold text-[10px] drop-shadow-sm"
+                  className="fill-white font-bold text-xs drop-shadow-sm"
                   style={{ textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}
                 >
                   {tool.shortName}
@@ -499,7 +506,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
               <motion.g
                 key={tool.id}
                 initial={reducedMotion ? {} : { opacity: 0, scale: 0 }}
-                animate={isInView ? { opacity: 1, scale: 1 } : {}}
+                animate={reducedMotion || isInView ? { opacity: 1, scale: 1 } : {}}
                 transition={{
                   duration: reducedMotion ? 0 : 0.4,
                   delay: reducedMotion ? 0 : 0.5 + index * 0.04,
@@ -570,7 +577,7 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
                   x={pos.x}
                   y={pos.y + 3}
                   textAnchor="middle"
-                  className="fill-white font-bold text-[8px] drop-shadow-sm"
+                  className="fill-white font-bold text-xs drop-shadow-sm"
                   style={{ textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}
                 >
                   {tool.shortName}
@@ -593,11 +600,13 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
             `}
           </style>
         </svg>
+      </motion.div>
+      </div>
 
         {/* Legend */}
         <motion.div
           initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: reducedMotion ? 0 : 0.5, delay: reducedMotion ? 0 : 0.8 }}
           className="mt-6 text-center"
         >
@@ -613,7 +622,6 @@ export function TldrSynergyDiagram({ tools, className }: TldrSynergyDiagramProps
             )}
           </p>
         </motion.div>
-      </motion.div>
     </div>
   );
 }

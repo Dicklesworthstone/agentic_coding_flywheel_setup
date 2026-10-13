@@ -34,6 +34,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -570,7 +571,7 @@ function MiniTerminal({ lines, isVisible }: { lines: string[]; isVisible: boolea
         <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
         <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
         <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
-        <span className="ml-2 text-[10px] text-white/30 font-mono">skill-invoke</span>
+        <span className="ml-2 text-xs text-white/30 font-mono">skill-invoke</span>
       </div>
       {/* Terminal body */}
       <div className="p-3 font-mono text-xs space-y-1 min-h-[80px]">
@@ -666,6 +667,7 @@ function DependencyGraph({
         </span>
       </div>
       <div className="relative overflow-hidden rounded-lg bg-black/20 border border-white/[0.04]">
+        <DiagramScroller label="Skill dependency graph" minWidth={400}>
         <svg
           ref={svgRef}
           viewBox="0 0 400 280"
@@ -764,7 +766,7 @@ function DependencyGraph({
                   y={pos.y + (isSelected ? 24 : 20)}
                   textAnchor="middle"
                   fill={isSelected ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}
-                  fontSize={isSelected ? 9 : 8}
+                  fontSize={12}
                   fontFamily="monospace"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -800,6 +802,7 @@ function DependencyGraph({
             );
           })}
         </svg>
+        </DiagramScroller>
       </div>
       <p className="text-xs text-white/25 mt-2 text-center">
         Click nodes to explore skill dependencies
@@ -854,7 +857,7 @@ function StatsBar({ skills }: { skills: Skill[] }) {
             {stat.icon}
             <span className="text-base font-bold">{stat.value}</span>
           </div>
-          <span className="text-[10px] text-white/30 uppercase tracking-wider">{stat.label}</span>
+          <span className="text-xs text-white/30 uppercase tracking-wider">{stat.label}</span>
         </motion.div>
       ))}
     </div>
@@ -1059,7 +1062,7 @@ function InteractiveSkillBrowser() {
               >
                 {cat.icon}
                 {cat.label}
-                <span className={`ml-0.5 text-[10px] ${isActive ? "opacity-90" : "opacity-80"}`}>
+                <span className={`ml-0.5 text-xs ${isActive ? "opacity-90" : "opacity-80"}`}>
                   {count}
                 </span>
               </motion.button>
@@ -1129,7 +1132,7 @@ function InteractiveSkillBrowser() {
                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                               )}
                             </div>
-                            <span className={`text-[10px] ${cat.textColor} opacity-90`}>
+                            <span className={`text-xs ${cat.textColor} opacity-90`}>
                               {cat.label}
                             </span>
                           </div>
@@ -1145,13 +1148,13 @@ function InteractiveSkillBrowser() {
                           {skill.triggers.slice(0, 2).map((trigger) => (
                             <span
                               key={trigger}
-                              className="rounded-md bg-white/[0.04] border border-white/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-white/40"
+                              className="rounded-md bg-white/[0.04] border border-white/[0.06] px-1.5 py-0.5 text-xs font-mono text-white/40"
                             >
                               {trigger}
                             </span>
                           ))}
                           {skill.triggers.length > 2 && (
-                            <span className="text-[10px] text-white/25">
+                            <span className="text-xs text-white/25">
                               +{skill.triggers.length - 2}
                             </span>
                           )}
@@ -1159,7 +1162,7 @@ function InteractiveSkillBrowser() {
 
                         {/* Bottom: stats + install */}
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 text-[10px] text-white/30">
+                          <div className="flex items-center gap-3 text-xs text-white/30">
                             <span className="flex items-center gap-1">
                               <BarChart3 className="h-3 w-3" />
                               {skill.usageCount.toLocaleString()}
@@ -1184,7 +1187,7 @@ function InteractiveSkillBrowser() {
                               >
                                 <Loader2 className={`h-3.5 w-3.5 ${cat.textColor}`} />
                               </motion.div>
-                              <span className="text-[10px] text-white/40">{installProgress}%</span>
+                              <span className="text-xs text-white/40">{installProgress}%</span>
                             </div>
                           ) : !skill.installed ? (
                             <motion.button
@@ -1195,12 +1198,12 @@ function InteractiveSkillBrowser() {
                                 e.stopPropagation();
                                 handleInstall(skill);
                               }}
-                              className={`rounded-md px-2.5 py-1 text-[10px] font-medium border ${cat.borderColor} ${cat.textColor} bg-transparent hover:bg-white/[0.05] transition-colors`}
+                              className={`rounded-md px-2.5 py-1 text-xs font-medium border ${cat.borderColor} ${cat.textColor} bg-transparent hover:bg-white/[0.05] transition-colors`}
                             >
                               Install
                             </motion.button>
                           ) : (
-                            <span className="text-[10px] text-emerald-400/80 font-medium">
+                            <span className="text-xs text-emerald-400/80 font-medium">
                               Installed
                             </span>
                           )}
@@ -1296,12 +1299,12 @@ function InteractiveSkillBrowser() {
                             </h4>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span
-                                className={`text-[10px] ${getCategoryMeta(selectedSkill.category).textColor}`}
+                                className={`text-xs ${getCategoryMeta(selectedSkill.category).textColor}`}
                               >
                                 {getCategoryMeta(selectedSkill.category).label}
                               </span>
-                              <span className="text-[10px] text-white/25">|</span>
-                              <span className="text-[10px] text-white/30">
+                              <span className="text-xs text-white/25">|</span>
+                              <span className="text-xs text-white/30">
                                 v{selectedSkill.version}
                               </span>
                             </div>
@@ -1347,7 +1350,7 @@ function InteractiveSkillBrowser() {
 
                       {/* Description */}
                       <div className="mb-4">
-                        <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                        <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
                           Description
                         </span>
                         <p className="mt-1 text-sm text-white/60 leading-relaxed">
@@ -1357,7 +1360,7 @@ function InteractiveSkillBrowser() {
 
                       {/* Triggers */}
                       <div className="mb-4">
-                        <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                        <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
                           Trigger Patterns
                         </span>
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -1374,7 +1377,7 @@ function InteractiveSkillBrowser() {
 
                       {/* Commands */}
                       <div className="mb-4">
-                        <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                        <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
                           Example Commands
                         </span>
                         <div className="mt-1.5 space-y-1">
@@ -1391,7 +1394,7 @@ function InteractiveSkillBrowser() {
 
                       {/* Dependencies */}
                       <div className="mb-4">
-                        <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                        <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
                           Dependencies
                         </span>
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -1422,7 +1425,7 @@ function InteractiveSkillBrowser() {
 
                       {/* File path */}
                       <div>
-                        <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                        <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
                           File Path
                         </span>
                         <div className="mt-1.5 rounded-lg bg-black/30 border border-white/[0.04] px-3 py-2">
@@ -1544,7 +1547,7 @@ function InteractiveSkillBrowser() {
                       </p>
                       <div className="space-y-2">
                         <div>
-                          <span className="text-[10px] text-white/30 uppercase tracking-wider font-medium">
+                          <span className="text-xs text-white/30 uppercase tracking-wider font-medium">
                             Depends On
                           </span>
                           <div className="mt-1 flex flex-wrap gap-1">
@@ -1552,18 +1555,18 @@ function InteractiveSkillBrowser() {
                               selectedSkill.dependencies.map((dep) => (
                                 <span
                                   key={dep}
-                                  className="rounded-md bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 text-[10px] font-mono text-violet-400"
+                                  className="rounded-md bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 text-xs font-mono text-violet-400"
                                 >
                                   {dep}
                                 </span>
                               ))
                             ) : (
-                              <span className="text-[10px] text-white/20 italic">None</span>
+                              <span className="text-xs text-white/20 italic">None</span>
                             )}
                           </div>
                         </div>
                         <div>
-                          <span className="text-[10px] text-white/30 uppercase tracking-wider font-medium">
+                          <span className="text-xs text-white/30 uppercase tracking-wider font-medium">
                             Used By
                           </span>
                           <div className="mt-1 flex flex-wrap gap-1">
@@ -1573,14 +1576,14 @@ function InteractiveSkillBrowser() {
                                 <button
                                   key={s.id}
                                   onClick={() => setSelectedSkill(s)}
-                                  className="rounded-md bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-mono text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                                  className="rounded-md bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-xs font-mono text-cyan-400 hover:bg-cyan-500/20 transition-colors"
                                 >
                                   {s.name}
                                 </button>
                               ))}
                             {localSkills.filter((s) => s.dependencies.includes(selectedSkill.name))
                               .length === 0 && (
-                              <span className="text-[10px] text-white/20 italic">None</span>
+                              <span className="text-xs text-white/20 italic">None</span>
                             )}
                           </div>
                         </div>
@@ -1700,7 +1703,7 @@ function InteractiveSkillBrowser() {
                     transition={SPRING}
                     className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
                   >
-                    <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                    <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
                       Quick Invoke Commands
                     </span>
                     <div className="mt-2 space-y-1.5">

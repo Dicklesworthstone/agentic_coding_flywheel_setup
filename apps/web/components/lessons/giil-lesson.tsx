@@ -607,7 +607,7 @@ function ConnectionBadge({
         }`}
       />
       <span
-        className={`text-[10px] font-mono ${isConnected ? provider.textColor : "text-white/30"}`}
+        className={`text-xs font-mono ${isConnected ? provider.textColor : "text-white/30"}`}
       >
         {isConnected ? "connected" : "standby"}
       </span>
@@ -849,7 +849,7 @@ function InteractiveCloudDownload() {
             ) : (
               <Loader2 className="h-3 w-3 animate-spin text-white/50" />
             )}
-            <span className="text-[10px] font-mono text-white/60 uppercase tracking-wider">
+            <span className="text-xs font-mono text-white/60 uppercase tracking-wider">
               {PHASE_LABELS[phase]}
             </span>
           </motion.div>
@@ -968,7 +968,7 @@ function InteractiveCloudDownload() {
                     <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
                   </div>
-                  <span className="text-[10px] text-white/30 ml-2 font-mono">
+                  <span className="text-xs text-white/30 ml-2 font-mono">
                     giil -- cloud image downloader
                   </span>
                 </div>
@@ -1110,7 +1110,7 @@ function InteractiveCloudDownload() {
                       </div>
 
                       {/* Download stats */}
-                      <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-3">
                           <span className="text-white/50">
                             {formatBytes(activeProvider.file.sizeBytes, progress)} /{" "}
@@ -1151,7 +1151,7 @@ function InteractiveCloudDownload() {
                             : `Saved to ./${activeProvider.file.name}`}
                         </span>
                       </div>
-                      <div className="text-white/30 text-[10px] pl-5">
+                      <div className="text-white/30 text-xs pl-5">
                         {activeProvider.file.format} | {activeProvider.file.dimensions} |{" "}
                         {activeProvider.file.size} | {activeProvider.file.colorDepth}
                       </div>
@@ -1202,7 +1202,7 @@ function InteractiveCloudDownload() {
                             <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
                               <div className="flex items-center gap-2 mb-2">
                                 <Lock className="h-3 w-3 text-amber-400" />
-                                <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider">
+                                <span className="text-xs font-mono text-amber-400 uppercase tracking-wider">
                                   Bypass Method
                                 </span>
                               </div>
@@ -1213,7 +1213,7 @@ function InteractiveCloudDownload() {
                             <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
                               <div className="flex items-center gap-2 mb-3">
                                 <RefreshCw className="h-3 w-3 text-cyan-400" />
-                                <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">
+                                <span className="text-xs font-mono text-cyan-400 uppercase tracking-wider">
                                   Request Pipeline
                                 </span>
                               </div>
@@ -1221,7 +1221,7 @@ function InteractiveCloudDownload() {
                                 {activeProvider.pipelineSteps.map((step, i) => (
                                   <div key={step} className="flex items-center gap-2">
                                     <div
-                                      className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                      className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${
                                         phase === "done"
                                           ? `bg-gradient-to-br ${activeProvider.gradient} text-white`
                                           : "bg-white/[0.06] text-white/30"
@@ -1229,7 +1229,7 @@ function InteractiveCloudDownload() {
                                     >
                                       {i + 1}
                                     </div>
-                                    <span className="text-[10px] text-white/50 font-mono">
+                                    <span className="text-xs text-white/50 font-mono">
                                       {step}
                                     </span>
                                     {i < activeProvider.pipelineSteps.length - 1 && (
@@ -1268,7 +1268,7 @@ function InteractiveCloudDownload() {
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="flex items-center gap-1.5 text-[10px] text-emerald-400/70 font-mono"
+                          className="flex items-center gap-1.5 text-xs text-emerald-400/70 font-mono"
                         >
                           <Eye className="h-3 w-3" />
                           <span>Ready for AI analysis</span>
@@ -1326,34 +1326,34 @@ function InteractiveCloudDownload() {
                         >
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
                                 File
                               </p>
-                              <p className="text-[11px] font-mono text-white/80 truncate">
+                              <p className="text-xs font-mono text-white/80 truncate">
                                 {activeProvider.file.name}
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
                                 Size
                               </p>
-                              <p className="text-[11px] font-mono text-white/80">
+                              <p className="text-xs font-mono text-white/80">
                                 {activeProvider.file.size}
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
                                 Dimensions
                               </p>
-                              <p className="text-[11px] font-mono text-white/80">
+                              <p className="text-xs font-mono text-white/80">
                                 {activeProvider.file.dimensions}
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-[10px] text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
                                 Format
                               </p>
-                              <p className="text-[11px] font-mono text-white/80">
+                              <p className="text-xs font-mono text-white/80">
                                 {activeProvider.file.format} / {activeProvider.file.colorDepth}
                               </p>
                             </div>
@@ -1364,7 +1364,7 @@ function InteractiveCloudDownload() {
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-1.5">
                                 <Terminal className="h-3 w-3 text-white/40" />
-                                <span className="text-[10px] text-white/40 uppercase tracking-wider font-mono">
+                                <span className="text-xs text-white/40 uppercase tracking-wider font-mono">
                                   Command Used
                                 </span>
                               </div>
@@ -1414,7 +1414,7 @@ function InteractiveCloudDownload() {
                           <ImageIcon className="h-4 w-4 text-white/25" />
                         </div>
                         <div className="absolute bottom-0 inset-x-0 bg-black/40 px-1.5 py-0.5">
-                          <p className="text-[10px] text-white/60 truncate font-mono">
+                          <p className="text-xs text-white/60 truncate font-mono">
                             {p.file.name}
                           </p>
                         </div>

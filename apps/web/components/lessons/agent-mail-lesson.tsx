@@ -813,7 +813,7 @@ function ThreadViewer({ message, onClose }: { message: MailMessage; onClose: () 
               <span className="text-xs font-semibold text-emerald-400">
                 {getAgentNameById(message.to)}
               </span>
-              <span className="text-[10px] text-white/30 ml-auto">{message.timestamp}</span>
+              <span className="text-xs text-white/30 ml-auto">{message.timestamp}</span>
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
               <p className="text-sm text-white/70 leading-relaxed">{message.body}</p>
@@ -916,7 +916,7 @@ function AgentInboxCard({
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={springSmooth}
-                className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500/90 px-1.5 text-[10px] font-bold text-white shadow-lg shadow-red-500/30"
+                className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500/90 px-1.5 text-xs font-bold text-white shadow-lg shadow-red-500/30"
               >
                 {unreadCount}
               </motion.span>
@@ -954,7 +954,7 @@ function AgentInboxCard({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.7 }}
                 transition={springSmooth}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono ${agent.textColor} bg-white/[0.06] border border-white/[0.08]`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono ${agent.textColor} bg-white/[0.06] border border-white/[0.08]`}
               >
                 <Lock className="h-2.5 w-2.5" />
                 {f}
@@ -962,7 +962,7 @@ function AgentInboxCard({
             ))}
           </div>
         ) : (
-          <p className="text-[10px] text-white/20 italic">No file reservations</p>
+          <p className="text-xs text-white/20 italic">No file reservations</p>
         )}
       </div>
 
@@ -977,7 +977,7 @@ function AgentInboxCard({
           >
             <div className="mx-4 mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/30">
               <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-              <span className="text-[11px] text-red-300 font-medium">
+              <span className="text-xs text-red-300 font-medium">
                 Denied: {conflict.file} is reserved
               </span>
             </div>
@@ -989,7 +989,7 @@ function AgentInboxCard({
       <div className="relative border-t border-white/[0.06]">
         <div className="px-4 py-2 flex items-center gap-1.5">
           <Inbox className="h-3 w-3 text-white/30" />
-          <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
             Messages
           </span>
         </div>
@@ -1029,7 +1029,7 @@ function AgentInboxCard({
               })}
           </AnimatePresence>
           {agent.messages.filter((m) => m.to === agent.id || m.from === agent.id).length === 0 && (
-            <p className="text-[10px] text-white/15 italic px-2 py-1">No messages yet</p>
+            <p className="text-xs text-white/15 italic px-2 py-1">No messages yet</p>
           )}
         </div>
       </div>
@@ -1206,7 +1206,7 @@ function InteractiveCoordinationSim() {
                   <span className="text-xs font-semibold text-white/80">
                     {flyingEnvelope.subject}
                   </span>
-                  <span className="text-[10px] text-white/40">
+                  <span className="text-xs text-white/40">
                     {getAgentNameById(flyingEnvelope.from)}{" "}
                     <ArrowRight className="inline h-2.5 w-2.5" />{" "}
                     {getAgentNameById(flyingEnvelope.to)}
@@ -1240,7 +1240,7 @@ function InteractiveCoordinationSim() {
                             : "bg-white/60"
                     }`}
                   />
-                  <span className="text-[10px] text-white/40">{a.name}</span>
+                  <span className="text-xs text-white/40">{a.name}</span>
                 </div>
               ))}
             </div>
@@ -1280,7 +1280,7 @@ function InteractiveCoordinationSim() {
                   </motion.div>
 
                   {/* File path */}
-                  <code className="text-[11px] font-mono text-white/50 text-center leading-tight">
+                  <code className="text-xs font-mono text-white/50 text-center leading-tight">
                     {file.path}
                   </code>
 
@@ -1293,7 +1293,7 @@ function InteractiveCoordinationSim() {
                         animate={{ opacity: 1, scale: 1, rotate: 0 }}
                         exit={{ opacity: 0, scale: 0, rotate: 90 }}
                         transition={springSmooth}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${ownerColors.bg} ${ownerColors.text} border ${ownerColors.border}`}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ownerColors.bg} ${ownerColors.text} border ${ownerColors.border}`}
                       >
                         <Lock className="h-2.5 w-2.5" />
                         {ownerName}
@@ -1304,7 +1304,7 @@ function InteractiveCoordinationSim() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-white/20"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-white/20"
                       >
                         <Unlock className="h-2.5 w-2.5" />
                         Free
@@ -1337,7 +1337,7 @@ function InteractiveCoordinationSim() {
             <Clock className="h-4 w-4 text-white/50" />
             <span className="text-sm font-semibold text-white/70">Activity Log</span>
             {activityLog.length > 0 && (
-              <span className="ml-auto text-[10px] text-white/30 font-mono">
+              <span className="ml-auto text-xs text-white/30 font-mono">
                 {activityLog.length} event{activityLog.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -1366,7 +1366,7 @@ function InteractiveCoordinationSim() {
                     transition={springSmooth}
                     className="flex items-center gap-3 px-5 py-2.5 border-b border-white/[0.03] last:border-0"
                   >
-                    <span className="text-[10px] font-mono text-white/25 shrink-0 w-14">
+                    <span className="text-xs font-mono text-white/25 shrink-0 w-16">
                       {entry.timestamp}
                     </span>
                     <div

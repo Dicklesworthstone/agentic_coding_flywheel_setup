@@ -639,14 +639,14 @@ function InteractiveGitFlow() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowDangerOverlay(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-mono text-red-400 transition hover:bg-red-500/20 hover:border-red-500/50"
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-mono text-red-400 transition hover:bg-red-500/20 hover:border-red-500/50"
           >
             <AlertTriangle className="h-3 w-3" />
             Danger Ops
           </button>
           <button
             onClick={resetFlow}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/50 transition hover:bg-white/[0.08] hover:text-white/70"
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-xs text-white/50 transition hover:bg-white/[0.08] hover:text-white/70"
           >
             <RotateCcw className="h-3 w-3" />
             Reset
@@ -683,7 +683,7 @@ function InteractiveGitFlow() {
               initial={false}
               animate={{ opacity: 1 }}
             >
-              <span className="text-[10px] text-white/40 uppercase tracking-wider">HEAD</span>
+              <span className="text-xs text-white/40 uppercase tracking-wider">HEAD</span>
               <motion.div
                 layout
                 transition={SPRING}
@@ -773,7 +773,7 @@ function InteractiveGitFlow() {
                         {selectedCommitData.hash}
                       </code>
                       {selectedCommitData.isMerge && (
-                        <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300 uppercase">
+                        <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-xs font-semibold text-purple-300 uppercase">
                           Merge
                         </span>
                       )}
@@ -818,7 +818,7 @@ function InteractiveGitFlow() {
           />
           <div className="flex items-center justify-center py-1.5">
             <ChevronRight className="h-3 w-3 text-white/20" />
-            <span className="text-[10px] text-white/20 mx-1">git add</span>
+            <span className="text-xs text-white/20 mx-1">git add</span>
             <ChevronRight className="h-3 w-3 text-white/20" />
           </div>
           <StagingZone
@@ -828,7 +828,7 @@ function InteractiveGitFlow() {
           />
           <div className="flex items-center justify-center py-1.5">
             <ChevronRight className="h-3 w-3 text-white/20" />
-            <span className="text-[10px] text-white/20 mx-1">commit</span>
+            <span className="text-xs text-white/20 mx-1">commit</span>
             <ChevronRight className="h-3 w-3 text-white/20" />
           </div>
           <StagingZone
@@ -910,7 +910,7 @@ function InteractiveGitFlow() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-red-300">DCG: Dangerous Commands</h3>
-                  <p className="text-[11px] text-red-400/70">Always review before approving</p>
+                  <p className="text-xs text-red-400/70">Always review before approving</p>
                 </div>
               </div>
               <div className="space-y-2 mb-5">
@@ -922,7 +922,7 @@ function InteractiveGitFlow() {
                     <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
                     <div>
                       <code className="text-xs font-mono text-red-300">{d.cmd}</code>
-                      <p className="text-[11px] text-red-400/60 mt-0.5">{d.desc}</p>
+                      <p className="text-xs text-red-400/60 mt-0.5">{d.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -997,7 +997,7 @@ function CommitNode({
             transition={SPRING}
             className="absolute -top-6 left-1/2 -translate-x-1/2"
           >
-            <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 uppercase tracking-wider whitespace-nowrap">
+            <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-xs font-bold text-amber-300 uppercase tracking-wider whitespace-nowrap">
               HEAD
             </span>
           </motion.div>
@@ -1023,7 +1023,7 @@ function CommitNode({
 
       {/* Hash label */}
       <span
-        className={`text-[10px] font-mono ${
+        className={`text-xs font-mono ${
           isSelected ? c.text : "text-white/30"
         } group-hover:text-white/60 transition-colors whitespace-nowrap`}
       >
@@ -1077,7 +1077,7 @@ function StagingZone({
 
   return (
     <div className={`rounded-lg border ${c.border} ${c.bg} p-2.5 min-h-[64px]`}>
-      <p className={`text-[10px] font-semibold ${c.header} uppercase tracking-wider mb-2`}>
+      <p className={`text-xs font-semibold ${c.header} uppercase tracking-wider mb-2`}>
         {title}
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -1088,7 +1088,7 @@ function StagingZone({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-[10px] text-white/30 italic"
+              className="text-xs text-white/30 italic"
             >
               Empty
             </motion.span>
@@ -1121,7 +1121,7 @@ function StagingFileChip({ file }: { file: StagingFile }) {
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.8 }}
       transition={SPRING_SNAPPY}
-      className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-mono ${statusColors[file.status]} ${
+      className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-mono ${statusColors[file.status]} ${
         isSensitive ? "ring-1 ring-red-500/40" : ""
       }`}
     >

@@ -793,7 +793,7 @@ function TmuxStatusBar({
 
   return (
     <div
-      className={`flex items-center justify-between px-3 py-1 font-mono text-[11px] transition-colors duration-300 ${
+      className={`flex items-center justify-between px-3 py-1 font-mono text-xs transition-colors duration-300 ${
         isDetached
           ? "bg-red-950/60 border-t border-red-500/20 text-red-400/60"
           : "bg-emerald-950/60 border-t border-emerald-500/20 text-emerald-300/90"
@@ -953,8 +953,8 @@ function SimPaneContent({
   return (
     <div className="h-full flex flex-col">
       {/* Terminal output lines */}
-      <div className="flex-1 p-2 sm:p-3 overflow-hidden">
-        <div className="text-[10px] sm:text-xs font-mono leading-relaxed space-y-0">
+      <div className="flex-1 min-h-0 p-2 sm:p-3 overflow-auto" tabIndex={0}>
+        <div className="text-xs font-mono leading-relaxed space-y-0">
           {output.map((line, i) => (
             <div key={i} className="whitespace-pre">
               {line.startsWith("$") ? (
@@ -1114,7 +1114,7 @@ function SimButton({
       {icon}
       <span>{label}</span>
       {shortcut && (
-        <kbd className="ml-1 px-1.5 py-0.5 rounded bg-black/30 border border-white/[0.08] text-[10px] font-mono text-white/40">
+        <kbd className="ml-1 px-1.5 py-0.5 rounded bg-black/30 border border-white/[0.08] text-xs font-mono text-white/40">
           {shortcut}
         </kbd>
       )}

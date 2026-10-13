@@ -117,7 +117,7 @@ export function PlanEvolutionStudio() {
 
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-2 mb-2">
+          <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-2 mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Interactive Studio
           </div>
@@ -135,7 +135,7 @@ export function PlanEvolutionStudio() {
           htmlFor="plan-refinement-round"
           className="block rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner min-w-[280px]"
         >
-          <div className="flex items-center justify-between gap-6 text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs font-bold uppercase tracking-widest text-white/40">
             <span>Refinement round</span>
             <span className="text-white/80">{PLAN_REFINEMENT_LABELS[refinementRound]}</span>
           </div>
@@ -199,7 +199,7 @@ export function PlanEvolutionStudio() {
                 <div className="flex items-start justify-between gap-4 relative z-10">
                   <div>
                     <div
-                      className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
+                      className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
                       style={{ color: model.color }}
                     >
                       {enabled && (
@@ -216,7 +216,7 @@ export function PlanEvolutionStudio() {
                   </div>
                   <div
                     className={cn(
-                      "rounded-full px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest transition-colors",
+                      "rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest transition-colors",
                       enabled ? "text-white" : "text-white/40",
                     )}
                     style={{
@@ -232,7 +232,7 @@ export function PlanEvolutionStudio() {
                   {model.strengths.map((strength) => (
                     <span
                       key={strength}
-                      className="rounded-lg border px-3 py-1.5 text-[0.7rem] font-medium text-white/70"
+                      className="rounded-lg border px-3 py-1.5 text-xs font-medium text-white/70"
                       style={{
                         borderColor: enabled ? `${model.color}20` : "rgba(255,255,255,0.05)",
                         backgroundColor: enabled ? `${model.color}0A` : "transparent",
@@ -251,7 +251,7 @@ export function PlanEvolutionStudio() {
           <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
+                <div className="text-xs font-bold uppercase tracking-widest text-white/40">
                   Hybrid Plan Quality
                 </div>
                 <div className="mt-1 text-4xl font-black tracking-tighter text-white drop-shadow-md">
@@ -259,7 +259,7 @@ export function PlanEvolutionStudio() {
                 </div>
               </div>
               <div className="rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/10 px-5 py-3 text-right shadow-inner">
-                <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]">
+                <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500]">
                   Active Inputs
                 </div>
                 <div className="mt-1 text-2xl font-black text-[#FF5500]">
@@ -268,7 +268,7 @@ export function PlanEvolutionStudio() {
               </div>
             </div>
 
-            <div className="relative mt-8 h-56 overflow-hidden rounded-2xl border border-white/[0.04] bg-[#020408] shadow-inner">
+            <div className="relative mt-8 min-h-56 overflow-hidden rounded-2xl border border-white/[0.04] bg-[#020408] p-5 pb-8 shadow-inner">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.1),transparent_60%)] pointer-events-none" />
 
               {[0, 1, 2].map((sheetLayer) => (
@@ -288,7 +288,7 @@ export function PlanEvolutionStudio() {
               ))}
 
               <motion.div
-                className="absolute inset-[20px] rounded-2xl border border-white/[0.08] bg-[#0A0D14] p-5 shadow-xl backdrop-blur-md"
+                className="relative rounded-2xl border border-white/[0.08] bg-[#0A0D14] p-5 shadow-xl backdrop-blur-md"
                 initial={false}
                 animate={{ y: [12, 6, 0, -2, -4][refinementRound] }}
                 transition={{ type: "spring", stiffness: 180, damping: 20 }}
@@ -297,7 +297,7 @@ export function PlanEvolutionStudio() {
                   {selectedModels.map((model) => (
                     <span
                       key={model.id}
-                      className="rounded-full px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-widest text-white shadow-sm"
+                      className="rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-widest text-white shadow-sm"
                       style={{
                         backgroundColor: `${model.color}15`,
                         border: `1px solid ${model.color}30`,
@@ -338,7 +338,7 @@ export function PlanEvolutionStudio() {
           </div>
 
           <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg">
-            <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 mb-5">
+            <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-5">
               What the hybrid gains
             </div>
             <div className="space-y-4">
@@ -361,7 +361,7 @@ export function PlanEvolutionStudio() {
             </div>
 
             <div className="mt-6 rounded-xl border border-white/[0.05] bg-[#020408] p-5 shadow-inner">
-              <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/30 mb-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-white/30 mb-3">
                 If you mute a proposal
               </div>
               <div className="space-y-2 text-sm leading-relaxed text-zinc-400 font-light">

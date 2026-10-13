@@ -164,7 +164,7 @@ function TerminalBlock({
         )}
         <span
           className={cn(
-            "text-[0.65rem] font-bold uppercase tracking-widest",
+            "text-xs font-bold uppercase tracking-widest",
             isWeak ? "text-red-400" : "text-emerald-400",
           )}
         >
@@ -172,7 +172,7 @@ function TerminalBlock({
         </span>
         <span
           className={cn(
-            "ml-auto rounded-full px-2.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-widest border tabular-nums",
+            "ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-widest border tabular-nums",
             isWeak
               ? "border-red-500/20 bg-red-500/10 text-red-400"
               : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
@@ -263,7 +263,7 @@ function TerminalBlock({
 
       {/* Sparse/dense indicator for weak side */}
       {isWeak && lines.length <= 2 && (
-        <div className="mt-3 flex items-center gap-2 text-[0.6rem] font-bold uppercase tracking-widest text-red-400/60 relative z-10">
+        <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-red-400/60 relative z-10">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500/40" />
           No scope, no constraints, no tests
         </div>
@@ -291,13 +291,13 @@ function QualityMetrics({
 
       {/* #6: Column headers on desktop */}
       <div className="hidden lg:flex items-center gap-2 mb-1 w-full justify-center">
-        <span className="text-[0.55rem] font-bold uppercase tracking-widest text-white/20 w-5 text-center">
+        <span className="text-xs font-bold uppercase tracking-widest text-white/20 w-5 text-center">
           Weak
         </span>
-        <span className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+        <span className="text-xs font-bold uppercase tracking-widest text-white/30">
           Quality
         </span>
-        <span className="text-[0.55rem] font-bold uppercase tracking-widest text-white/20 w-5 text-center">
+        <span className="text-xs font-bold uppercase tracking-widest text-white/20 w-5 text-center">
           Strong
         </span>
       </div>
@@ -330,7 +330,7 @@ function QualityMetrics({
               <span className="text-red-400 text-sm shrink-0">
                 {metric.weak ? "\u2705" : "\u274C"}
               </span>
-              <span className="text-[0.65rem] font-bold text-white/50 tracking-wide whitespace-nowrap">
+              <span className="text-xs font-bold text-white/50 tracking-wide whitespace-nowrap">
                 {metric.label}
               </span>
               <span className="text-emerald-400 text-sm shrink-0">
@@ -365,7 +365,7 @@ export function BeadComparisonViz() {
       {/* HEADER */}
       <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between mb-8 sm:mb-10">
         <div>
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
+          <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Interactive Comparison
           </div>
@@ -481,7 +481,7 @@ export function BeadComparisonViz() {
           className="relative z-10 mt-8 sm:mt-10 rounded-2xl border border-[#FFBD2E]/20 bg-[#FFBD2E]/[0.04] p-5 sm:p-6 shadow-lg overflow-hidden"
         >
           <div className="absolute top-0 right-0 w-40 h-40 blur-[60px] opacity-15 pointer-events-none bg-[#FFBD2E]" />
-          <div className="relative z-10 flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-widest text-[#FFBD2E]">
+          <div className="relative z-10 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
             <motion.span
               key={`icon-spin-${activeTab}`}
               initial={reducedMotion ? false : { rotate: 0 }}

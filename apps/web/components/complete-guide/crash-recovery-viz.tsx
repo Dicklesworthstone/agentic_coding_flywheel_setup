@@ -345,7 +345,7 @@ export function CrashRecoveryViz() {
                 {/* Current work */}
                 {agent.alive && agent.currentBead !== null ? (
                   <div>
-                    <div className="text-[10px] text-zinc-500 mb-1.5 truncate">
+                    <div className="text-xs text-zinc-500 mb-1.5 truncate">
                       {BEAD_TITLES[agent.currentBead]}
                     </div>
                     <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
@@ -356,14 +356,14 @@ export function CrashRecoveryViz() {
                         transition={springTransition}
                       />
                     </div>
-                    <div className="text-[10px] text-zinc-500 mt-1 text-right">
+                    <div className="text-xs text-zinc-500 mt-1 text-right">
                       {Math.floor(agent.progress)}%
                     </div>
                   </div>
                 ) : agent.alive ? (
-                  <div className="text-[10px] text-zinc-500 italic">Idle, scanning for work...</div>
+                  <div className="text-xs text-zinc-500 italic">Idle, scanning for work...</div>
                 ) : (
-                  <div className="text-[10px] text-red-400 font-medium">CRASHED</div>
+                  <div className="text-xs text-red-400 font-medium">CRASHED</div>
                 )}
 
                 {/* Kill overlay: desktop hover OR mobile tap-to-select */}
@@ -385,7 +385,7 @@ export function CrashRecoveryViz() {
 
         {/* Event log */}
         <div className="border-t lg:border-t-0 lg:border-l border-white/[0.04] p-5 sm:p-6 bg-black/20">
-          <div className="text-[11px] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3">
+          <div className="text-xs font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3">
             Event Log
           </div>
           <div className="space-y-2" role="log" aria-live="polite">
@@ -397,7 +397,7 @@ export function CrashRecoveryViz() {
                   animate={{ opacity: Math.max(0.3, 1 - Math.log(i + 1) * 0.25), x: 0 }}
                   exit={rm ? {} : { opacity: 0, x: -10 }}
                   transition={springTransition}
-                  className={`text-[11px] leading-relaxed ${
+                  className={`text-xs leading-relaxed ${
                     entry.includes("crashed")
                       ? "text-red-400"
                       : entry.includes("recovered")

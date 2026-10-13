@@ -1501,7 +1501,7 @@ function InteractiveSessionSearch() {
                                   <span className={`text-sm font-semibold ${colors.text}`}>
                                     {hit.agentLabel}
                                   </span>
-                                  <div className="text-[10px] text-white/30 font-mono">
+                                  <div className="text-xs text-white/30 font-mono">
                                     {hit.workspace}
                                   </div>
                                 </div>
@@ -1523,7 +1523,7 @@ function InteractiveSessionSearch() {
                                 </button>
                                 <button
                                   onClick={() => setExpandedHit(isExpanded ? null : hit.id)}
-                                  className="flex h-6 items-center gap-1 px-2 rounded-md bg-white/[0.04] text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors text-[10px] font-mono"
+                                  className="flex h-6 items-center gap-1 px-2 rounded-md bg-white/[0.04] text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors text-xs font-mono"
                                 >
                                   {isExpanded ? (
                                     <>
@@ -1540,10 +1540,10 @@ function InteractiveSessionSearch() {
 
                             {/* Session path + timestamp */}
                             <div className="flex items-center justify-between">
-                              <div className="font-mono text-[11px] text-white/35 truncate flex-1">
+                              <div className="font-mono text-xs text-white/35 truncate flex-1">
                                 {hit.sessionPath}:{hit.lineNumber}
                               </div>
-                              <div className="flex items-center gap-1.5 text-[10px] text-white/25 ml-2 shrink-0">
+                              <div className="flex items-center gap-1.5 text-xs text-white/25 ml-2 shrink-0">
                                 <Clock className="h-3 w-3" />
                                 {hit.timestamp.slice(0, 10)}
                               </div>
@@ -1587,7 +1587,7 @@ function InteractiveSessionSearch() {
                               {hit.tags.map((tag) => (
                                 <span
                                   key={tag}
-                                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] text-[10px] text-white/40 font-mono border border-white/[0.06]"
+                                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] text-xs text-white/40 font-mono border border-white/[0.06]"
                                 >
                                   <Tag className="h-2.5 w-2.5" />
                                   {tag}
@@ -1636,7 +1636,7 @@ function InteractiveSessionSearch() {
                                             }`}
                                           >
                                             {isMatch && (
-                                              <span className="text-[10px] text-primary/60 uppercase tracking-wider mr-2">
+                                              <span className="text-xs text-primary/60 uppercase tracking-wider mr-2">
                                                 match
                                               </span>
                                             )}
@@ -1742,7 +1742,7 @@ function InteractiveSessionSearch() {
                               {i < scenario.timeline.length - 1 && (
                                 <div className="flex items-center gap-1 mt-2 ml-1">
                                   <ArrowRight className="h-3 w-3 text-white/20" />
-                                  <span className="text-[10px] text-white/20">
+                                  <span className="text-xs text-white/20">
                                     evolved approach
                                   </span>
                                 </div>
@@ -1831,7 +1831,7 @@ function InteractiveSessionSearch() {
                             >
                               <CatIcon className="h-3 w-3" />
                               {node.label}
-                              <span className="text-[10px] opacity-50 ml-1">
+                              <span className="text-xs opacity-50 ml-1">
                                 ({node.connections.length})
                               </span>
                             </motion.div>
@@ -1868,7 +1868,7 @@ function InteractiveSessionSearch() {
                       ).map((item) => (
                         <div key={item.cat} className="flex items-center gap-1.5">
                           <span className={`h-2 w-2 rounded-full ${item.dot}`} />
-                          <span className={`text-[10px] capitalize ${item.color}`}>{item.cat}</span>
+                          <span className={`text-xs capitalize ${item.color}`}>{item.cat}</span>
                         </div>
                       ))}
                     </div>
@@ -1899,7 +1899,7 @@ function InteractiveSessionSearch() {
                               }`}
                             />
                             <span className="text-xs text-white/60 flex-1">{node.label}</span>
-                            <span className="text-[10px] text-white/25 font-mono">
+                            <span className="text-xs text-white/25 font-mono">
                               {node.connections.length} connections
                             </span>
                           </motion.div>

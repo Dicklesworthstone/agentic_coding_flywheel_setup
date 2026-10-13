@@ -83,7 +83,7 @@ export function ConvergenceDetector() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-[#FFBD2E]/70">
+          <div className="text-xs font-semibold uppercase tracking-[0.28em] text-[#FFBD2E]/70">
             Interactive Simulator
           </div>
           <h4 className="mt-2 text-xl font-black tracking-[-0.03em] text-white sm:text-2xl">
@@ -96,7 +96,7 @@ export function ConvergenceDetector() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] uppercase tracking-[0.22em] text-white/35">Presets</span>
+          <span className="text-xs uppercase tracking-[0.22em] text-white/35">Presets</span>
           {PRESETS.map((preset) => (
             <button
               key={preset.label}
@@ -126,7 +126,7 @@ export function ConvergenceDetector() {
             >
               <div className="flex items-baseline justify-between gap-3">
                 <div className="text-sm font-semibold text-white/78">{signal.label}</div>
-                <div className="text-[10px] uppercase tracking-[0.2em] text-white/35">
+                <div className="text-xs uppercase tracking-[0.2em] text-white/35">
                   {signal.weightLabel}
                 </div>
               </div>
@@ -148,7 +148,7 @@ export function ConvergenceDetector() {
               />
 
               <div className="mt-4 flex items-center justify-between gap-4">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-white/35">
+                <div className="text-xs uppercase tracking-[0.2em] text-white/35">
                   Signal strength
                 </div>
                 <div className="text-sm font-black tabular-nums" style={{ color: signal.color }}>
@@ -188,7 +188,7 @@ export function ConvergenceDetector() {
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-white/35">
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/35">
                   score
                 </div>
                 <div
@@ -201,7 +201,7 @@ export function ConvergenceDetector() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/35">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/35">
                 Current phase
               </div>
               <div

@@ -861,7 +861,7 @@ function ContextFillGauge({ fill, animated }: { fill: number; animated: boolean 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-white/50 font-medium">Context Window</span>
+        <span className="text-xs text-white/50 font-medium">Context Window</span>
         <motion.span
           className={`text-xs font-mono font-bold ${getTextColor(fill)}`}
           key={animated ? fill : "idle"}
@@ -902,8 +902,8 @@ function TokenUsageBar({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-white/40">{label}</span>
-        <span className="text-[10px] font-mono text-white/60">{animated ? formatted : "--"}</span>
+        <span className="text-xs text-white/40">{label}</span>
+        <span className="text-xs font-mono text-white/60">{animated ? formatted : "--"}</span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
         <motion.div
@@ -926,7 +926,7 @@ function StackTracePanel({ frames, animated }: { frames: StackFrame[]; animated:
           initial={{ opacity: 0, x: -12 }}
           animate={{ opacity: animated ? 1 : 0.3, x: animated ? 0 : -12 }}
           transition={{ ...SPRING, delay: animated ? i * 0.08 : 0 }}
-          className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${
+          className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
             frame.isError
               ? "border-red-500/30 bg-red-500/[0.06]"
               : "border-white/[0.06] bg-white/[0.02]"
@@ -967,7 +967,7 @@ function DivergencePanel({
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.04] p-2.5">
         <div className="flex items-center gap-1.5 mb-2">
           <Eye className="h-3 w-3 text-blue-400" />
-          <span className="text-[10px] font-semibold text-blue-300">Agent Believes</span>
+          <span className="text-xs font-semibold text-blue-300">Agent Believes</span>
         </div>
         <div className="space-y-1">
           {agentView.map((line, i) => (
@@ -987,7 +987,7 @@ function DivergencePanel({
       <div className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-2.5">
         <div className="flex items-center gap-1.5 mb-2">
           <EyeOff className="h-3 w-3 text-red-400" />
-          <span className="text-[10px] font-semibold text-red-300">Reality</span>
+          <span className="text-xs font-semibold text-red-300">Reality</span>
         </div>
         <div className="space-y-1">
           {reality.map((line, i) => (
@@ -1019,7 +1019,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
           className="flex items-start gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2"
         >
           <div
-            className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${
+            className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold shrink-0 ${
               fix.rank === 1
                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                 : "bg-white/[0.06] text-white/50 border border-white/[0.08]"
@@ -1031,7 +1031,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-white/80">{fix.label}</span>
               <span
-                className={`text-[10px] font-mono shrink-0 ${
+                className={`text-xs font-mono shrink-0 ${
                   fix.confidence >= 90
                     ? "text-emerald-400"
                     : fix.confidence >= 80
@@ -1042,7 +1042,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
                 {animated ? `${fix.confidence}%` : "--%"}
               </span>
             </div>
-            <code className="mt-1 block text-[10px] text-amber-300/70 bg-white/[0.03] px-1.5 py-0.5 rounded font-mono truncate">
+            <code className="mt-1 block text-xs text-amber-300/70 bg-white/[0.03] px-1.5 py-0.5 rounded font-mono truncate">
               {fix.command}
             </code>
           </div>
@@ -1075,8 +1075,8 @@ function SessionLogPanel({ entries, animated }: { entries: LogEntry[]; animated:
           className="flex items-start gap-2 py-0.5"
         >
           <div className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${levelDots[entry.level]}`} />
-          <span className="text-[10px] text-white/30 shrink-0">{entry.time}</span>
-          <span className={`text-[10px] ${levelColors[entry.level]}`}>{entry.message}</span>
+          <span className="text-xs text-white/30 shrink-0">{entry.time}</span>
+          <span className={`text-xs ${levelColors[entry.level]}`}>{entry.message}</span>
         </motion.div>
       ))}
     </div>
@@ -1148,7 +1148,7 @@ function AgentStatusSVG({ scenario, animated }: { scenario: DebugScenario; anima
       >
         {animated ? scenario.conversationTurns : "--"}
       </text>
-      <text x="60" y="76" textAnchor="middle" className="fill-white/55 text-[12px]">
+      <text x="60" y="76" textAnchor="middle" className="fill-white/55 text-[18px]">
         turns
       </text>
     </svg>
@@ -1258,7 +1258,7 @@ function InteractiveDebugDashboardImpl() {
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.95 }}
               transition={SPRING}
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-medium transition-colors border ${
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors border ${
                 i === activeIdx
                   ? `${s.borderColor} ${s.bgColor} ${s.color}`
                   : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60 hover:border-white/[0.12]"
@@ -1285,7 +1285,7 @@ function InteractiveDebugDashboardImpl() {
               <span className={scenario.color}>{scenario.icon}</span>
               <span className={`text-sm font-semibold ${scenario.color}`}>{scenario.title}</span>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-white/40">
+            <div className="flex items-center gap-1.5 text-xs text-white/40">
               <span>
                 Scenario {activeIdx + 1}/{scenarios.length}
               </span>
@@ -1309,7 +1309,7 @@ function InteractiveDebugDashboardImpl() {
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Cpu className="h-3.5 w-3.5 text-indigo-400" />
-                  <span className="text-[11px] font-semibold text-white/80">Agent State</span>
+                  <span className="text-xs font-semibold text-white/80">Agent State</span>
                   {isScanning && (
                     <motion.div
                       animate={inView ? { rotate: 360 } : { rotate: 0 }}
@@ -1356,7 +1356,7 @@ function InteractiveDebugDashboardImpl() {
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Layers className="h-3.5 w-3.5 text-red-400" />
-                  <span className="text-[11px] font-semibold text-white/80">Error Trace</span>
+                  <span className="text-xs font-semibold text-white/80">Error Trace</span>
                 </div>
                 <StackTracePanel frames={scenario.stackFrames} animated={isAnalyzed} />
               </div>
@@ -1368,7 +1368,7 @@ function InteractiveDebugDashboardImpl() {
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <BarChart3 className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-[11px] font-semibold text-white/80">Model vs Reality</span>
+                  <span className="text-xs font-semibold text-white/80">Model vs Reality</span>
                 </div>
                 <DivergencePanel
                   agentView={scenario.agentView}
@@ -1381,7 +1381,7 @@ function InteractiveDebugDashboardImpl() {
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Zap className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-[11px] font-semibold text-white/80">Ranked Fixes</span>
+                  <span className="text-xs font-semibold text-white/80">Ranked Fixes</span>
                 </div>
                 <FixSuggestionsPanel fixes={scenario.fixes} animated={isAnalyzed} />
               </div>
@@ -1392,7 +1392,7 @@ function InteractiveDebugDashboardImpl() {
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Terminal className="h-3.5 w-3.5 text-cyan-400" />
-                  <span className="text-[11px] font-semibold text-white/80">Session Log</span>
+                  <span className="text-xs font-semibold text-white/80">Session Log</span>
                 </div>
                 <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
                   <SessionLogPanel

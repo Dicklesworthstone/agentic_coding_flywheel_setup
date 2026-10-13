@@ -577,7 +577,7 @@ function ScoreBar({
   const pct = Math.round(value * 100);
   return (
     <div className="flex items-center gap-2">
-      <span className="w-10 text-[10px] font-mono text-white/40 text-right">{label}</span>
+      <span className="w-10 text-xs font-mono text-white/40 text-right">{label}</span>
       <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
@@ -586,7 +586,7 @@ function ScoreBar({
           className={`h-full rounded-full ${color}`}
         />
       </div>
-      <span className="w-9 text-[10px] font-mono text-white/50 text-right">{pct}%</span>
+      <span className="w-9 text-xs font-mono text-white/50 text-right">{pct}%</span>
     </div>
   );
 }
@@ -668,7 +668,7 @@ function ScenarioStepper({
         <ChevronRight className="h-4 w-4" />
       </motion.button>
 
-      <span className="ml-2 text-[10px] font-mono text-white/30">
+      <span className="ml-2 text-xs font-mono text-white/30">
         {activeIndex + 1}/{scenarios.length}
       </span>
     </div>
@@ -712,7 +712,7 @@ function PipelineProgress({ stage }: { stage: PipelineStage }) {
                 {isComplete ? <CheckCircle className="h-3 w-3" /> : s.icon}
               </span>
               <span
-                className={`text-[10px] font-medium ${
+                className={`text-xs font-medium ${
                   isComplete ? "text-purple-300" : isActive ? "text-purple-400" : "text-white/30"
                 }`}
               >
@@ -761,12 +761,12 @@ function ResultCard({
           <FileText className="h-3 w-3 text-white/30 flex-shrink-0" />
           <span className="text-xs font-semibold text-white truncate">{result.title}</span>
         </div>
-        <span className="flex-shrink-0 text-[10px] font-mono text-amber-300/70">
+        <span className="flex-shrink-0 text-xs font-mono text-amber-300/70">
           {(result.fusedScore * 100).toFixed(0)}%
         </span>
       </div>
 
-      <p className="text-[11px] font-mono text-white/30 truncate">{result.file}</p>
+      <p className="text-xs font-mono text-white/30 truncate">{result.file}</p>
 
       {/* Snippet with keyword highlights */}
       <p className="text-xs text-white/50 leading-relaxed">
@@ -781,7 +781,7 @@ function ResultCard({
           {result.semanticLinks.map((link) => (
             <span
               key={link}
-              className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[10px] font-medium text-cyan-400/70"
+              className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-xs font-medium text-cyan-400/70"
             >
               <Brain className="h-2 w-2" />
               {link}
@@ -888,13 +888,13 @@ function RelevanceGauge({
         </div>
       </div>
       <div className="text-center space-y-1">
-        <p className="text-[10px] font-medium text-white/50">Hybrid Relevance</p>
+        <p className="text-xs font-medium text-white/50">Hybrid Relevance</p>
         {improvement > 0 && (
           <motion.p
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={SPRING}
-            className="text-[10px] font-semibold text-emerald-400"
+            className="text-xs font-semibold text-emerald-400"
           >
             +{improvement}% vs best single engine
           </motion.p>
@@ -919,9 +919,9 @@ function MiniTerminal({ command, isRunning }: { command: string; isRunning: bool
           <div className="h-2 w-2 rounded-full bg-yellow-500/40" />
           <div className="h-2 w-2 rounded-full bg-green-500/40" />
         </div>
-        <span className="text-[10px] font-mono text-white/30">terminal</span>
+        <span className="text-xs font-mono text-white/30">terminal</span>
       </div>
-      <div className="px-3 py-2.5 font-mono text-[11px]">
+      <div className="px-3 py-2.5 font-mono text-xs">
         <div className="flex items-center gap-2">
           <span className="text-emerald-400/70">$</span>
           <span className="text-white/70">{command}</span>
@@ -1098,7 +1098,7 @@ function InteractiveHybridSearch() {
             transition={SPRING_SNAPPY}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-1.5 text-[10px] font-medium text-white/40 hover:text-white/60 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/60 transition-colors"
           >
             <RotateCcw className="h-3 w-3" />
             Reset
@@ -1129,7 +1129,7 @@ function InteractiveHybridSearch() {
               whileHover={isRunning ? {} : { scale: 1.03 }}
               whileTap={isRunning ? {} : { scale: 0.97 }}
               transition={SPRING}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                 active
                   ? "border-purple-500/40 bg-gradient-to-r from-purple-500/15 to-cyan-500/15 text-white"
                   : "border-white/[0.08] bg-white/[0.02] text-white/40 hover:border-white/[0.15] hover:text-white/60 disabled:opacity-40"
@@ -1201,7 +1201,7 @@ function InteractiveHybridSearch() {
                   transition={SPRING}
                   className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
                 >
-                  <p className="text-[10px] font-medium text-white/40 mb-2">Query Tokens</p>
+                  <p className="text-xs font-medium text-white/40 mb-2">Query Tokens</p>
                   <div className="flex flex-wrap gap-2">
                     {scenario.tokens.map((tok, i) => (
                       <motion.span
@@ -1223,7 +1223,7 @@ function InteractiveHybridSearch() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ ...SPRING, delay: 0.3 }}
-                      className="flex items-center text-[10px] text-white/20"
+                      className="flex items-center text-xs text-white/20"
                     >
                       <ArrowRight className="h-3 w-3 mx-1" />
                       BM25 + Vector
@@ -1248,9 +1248,9 @@ function InteractiveHybridSearch() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <BookOpen className="h-3 w-3 text-purple-400" />
-                        <span className="text-[11px] font-semibold text-purple-300">BM25</span>
+                        <span className="text-xs font-semibold text-purple-300">BM25</span>
                       </div>
-                      <span className="text-[10px] font-mono text-purple-400/60">
+                      <span className="text-xs font-mono text-purple-400/60">
                         {stage === "done" || stageIndex(stage) >= 2
                           ? `${scenario.bm25TimeMs}ms`
                           : "..."}
@@ -1267,10 +1267,10 @@ function InteractiveHybridSearch() {
                             className="rounded-lg border border-purple-500/10 bg-purple-500/[0.02] px-2.5 py-1.5"
                           >
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-medium text-white/60 truncate">
+                              <span className="text-xs font-medium text-white/60 truncate">
                                 {r.title}
                               </span>
-                              <span className="text-[10px] font-mono text-purple-300/70 flex-shrink-0">
+                              <span className="text-xs font-mono text-purple-300/70 flex-shrink-0">
                                 {Math.round(r.bm25Score * 100)}%
                               </span>
                             </div>
@@ -1286,7 +1286,7 @@ function InteractiveHybridSearch() {
                         ))}
                       </AnimatePresence>
                       {visibleResults.length === 0 && isRunning && (
-                        <div className="flex items-center justify-center py-6 text-white/20 text-[10px]">
+                        <div className="flex items-center justify-center py-6 text-white/20 text-xs">
                           <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           Scanning...
                         </div>
@@ -1299,9 +1299,9 @@ function InteractiveHybridSearch() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <Brain className="h-3 w-3 text-cyan-400" />
-                        <span className="text-[11px] font-semibold text-cyan-300">Semantic</span>
+                        <span className="text-xs font-semibold text-cyan-300">Semantic</span>
                       </div>
-                      <span className="text-[10px] font-mono text-cyan-400/60">
+                      <span className="text-xs font-mono text-cyan-400/60">
                         {stage === "done" || stageIndex(stage) >= 3
                           ? `${scenario.vectorTimeMs}ms`
                           : "..."}
@@ -1318,10 +1318,10 @@ function InteractiveHybridSearch() {
                             className="rounded-lg border border-cyan-500/10 bg-cyan-500/[0.02] px-2.5 py-1.5"
                           >
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-medium text-white/60 truncate">
+                              <span className="text-xs font-medium text-white/60 truncate">
                                 {r.title}
                               </span>
-                              <span className="text-[10px] font-mono text-cyan-300/70 flex-shrink-0">
+                              <span className="text-xs font-mono text-cyan-300/70 flex-shrink-0">
                                 {Math.round(r.cosineScore * 100)}%
                               </span>
                             </div>
@@ -1337,7 +1337,7 @@ function InteractiveHybridSearch() {
                         ))}
                       </AnimatePresence>
                       {visibleResults.length === 0 && isRunning && (
-                        <div className="flex items-center justify-center py-6 text-white/20 text-[10px]">
+                        <div className="flex items-center justify-center py-6 text-white/20 text-xs">
                           <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           Embedding...
                         </div>
@@ -1350,11 +1350,11 @@ function InteractiveHybridSearch() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <Merge className="h-3 w-3 text-amber-400" />
-                        <span className="text-[11px] font-semibold text-amber-300">
+                        <span className="text-xs font-semibold text-amber-300">
                           Hybrid Fused
                         </span>
                       </div>
-                      <span className="text-[10px] font-mono text-amber-400/60">
+                      <span className="text-xs font-mono text-amber-400/60">
                         {stage === "done" ? `${scenario.fusionTimeMs}ms` : "..."}
                       </span>
                     </div>
@@ -1369,10 +1369,10 @@ function InteractiveHybridSearch() {
                             className="rounded-lg border border-amber-500/10 bg-amber-500/[0.02] px-2.5 py-1.5"
                           >
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-medium text-white/60 truncate">
+                              <span className="text-xs font-medium text-white/60 truncate">
                                 {r.title}
                               </span>
-                              <span className="text-[10px] font-mono text-amber-300/70 flex-shrink-0">
+                              <span className="text-xs font-mono text-amber-300/70 flex-shrink-0">
                                 {Math.round(r.fusedScore * 100)}%
                               </span>
                             </div>
@@ -1388,7 +1388,7 @@ function InteractiveHybridSearch() {
                         ))}
                       </AnimatePresence>
                       {visibleResults.length === 0 && isRunning && (
-                        <div className="flex items-center justify-center py-6 text-white/20 text-[10px]">
+                        <div className="flex items-center justify-center py-6 text-white/20 text-xs">
                           <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           Fusing...
                         </div>
@@ -1410,7 +1410,7 @@ function InteractiveHybridSearch() {
                   className="space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-medium text-white/40">
+                    <p className="text-xs font-medium text-white/40">
                       Ranked Results ({visibleResults.length})
                     </p>
                     {stage === "done" && (
@@ -1422,7 +1422,7 @@ function InteractiveHybridSearch() {
                         transition={SPRING}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 text-[10px] font-medium text-white/40 hover:text-white/60 transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 text-xs font-medium text-white/40 hover:text-white/60 transition-colors"
                       >
                         <Gauge className="h-3 w-3" />
                         {showScores ? "Hide Scores" : "Show Scores"}
@@ -1471,25 +1471,25 @@ function InteractiveHybridSearch() {
                     <div className="flex flex-wrap gap-3 pt-2 border-t border-white/[0.05]">
                       <div className="flex items-center gap-1.5">
                         <Clock className="h-3 w-3 text-purple-400/60" />
-                        <span className="text-[10px] font-mono text-purple-300/60">
+                        <span className="text-xs font-mono text-purple-300/60">
                           BM25: {scenario.bm25TimeMs}ms
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Clock className="h-3 w-3 text-cyan-400/60" />
-                        <span className="text-[10px] font-mono text-cyan-300/60">
+                        <span className="text-xs font-mono text-cyan-300/60">
                           Vector: {scenario.vectorTimeMs}ms
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Clock className="h-3 w-3 text-amber-400/60" />
-                        <span className="text-[10px] font-mono text-amber-300/60">
+                        <span className="text-xs font-mono text-amber-300/60">
                           Fusion: {scenario.fusionTimeMs}ms
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Zap className="h-3 w-3 text-emerald-400/60" />
-                        <span className="text-[10px] font-mono text-emerald-300/60">
+                        <span className="text-xs font-mono text-emerald-300/60">
                           Total:{" "}
                           {scenario.bm25TimeMs + scenario.vectorTimeMs + scenario.fusionTimeMs}ms
                         </span>

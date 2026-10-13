@@ -45,7 +45,7 @@ export function AgentMailViz() {
       {/* HEADER */}
       <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">
         <div>
-          <div className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
+          <div className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2 flex items-center gap-2">
             <span
               className={cn(
                 "w-1.5 h-1.5 rounded-full animate-pulse",
@@ -251,7 +251,7 @@ export function AgentMailViz() {
                   boxShadow: `0 0 10px ${agent.color}`,
                 }}
               />
-              <span className="text-[10px] font-bold text-white tracking-widest">{agent.name}</span>
+              <span className="text-xs font-bold text-white tracking-widest">{agent.name}</span>
             </motion.div>
           ))}
 
@@ -265,7 +265,7 @@ export function AgentMailViz() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.5 }}
                   transition={{ delay: 0.3 + i * 0.2, type: "spring", stiffness: 300, damping: 20 }}
-                  className="absolute z-20 bg-[#FF5500]/10 border border-[#FF5500]/30 text-[#FF5500] text-[10px] px-3 py-1.5 rounded-full font-medium whitespace-nowrap shadow-[0_0_15px_rgba(255,85,0,0.2)] backdrop-blur-md"
+                  className="absolute z-20 bg-[#FF5500]/10 border border-[#FF5500]/30 text-[#FF5500] text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap shadow-[0_0_15px_rgba(255,85,0,0.2)] backdrop-blur-md"
                   style={{
                     left: `${(line.from.x + line.to.x) / 2}%`,
                     top: `${(line.from.y + line.to.y) / 2}%`,

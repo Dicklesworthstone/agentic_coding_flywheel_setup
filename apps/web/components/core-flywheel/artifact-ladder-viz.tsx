@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
-import { cn } from "@/lib/utils";
+import { cn, isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -199,7 +199,7 @@ function StageNode({
       {/* Label */}
       <div className="flex flex-col gap-0.5 min-w-0">
         <span
-          className="text-[0.6rem] font-black uppercase tracking-[0.2em]"
+          className="text-xs font-black uppercase tracking-[0.2em]"
           style={{
             color: isActive ? stage.color : isPast ? `${stage.color}80` : "rgba(255,255,255,0.2)",
             transition: "color 700ms cubic-bezier(0.4, 0, 0.2, 1)",
@@ -319,7 +319,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
       {/* Header */}
       <div>
         <div
-          className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2 mb-4"
+          className="text-xs font-bold uppercase tracking-widest flex items-center gap-2 mb-4"
           style={{ color: stage.color }}
         >
           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
@@ -364,7 +364,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
             <div className="relative z-10">
               <span
-                className="text-[0.6rem] font-black uppercase tracking-[0.3em] block mb-2"
+                className="text-xs font-black uppercase tracking-[0.3em] block mb-2"
                 style={{ color: card.accent }}
               >
                 {card.label}
@@ -377,7 +377,7 @@ function DetailPanel({ stage, reducedMotion }: { stage: Stage; reducedMotion: bo
 
       {/* Progression indicator */}
       <div className="mt-auto rounded-2xl border border-white/[0.04] bg-white/[0.01] p-5">
-        <span className="text-[0.6rem] font-black uppercase tracking-[0.3em] text-white/20 block mb-4">
+        <span className="text-xs font-black uppercase tracking-[0.3em] text-white/20 block mb-4">
           Progression
         </span>
         <div className="flex gap-1.5">
@@ -523,6 +523,10 @@ export function ArtifactLadderViz() {
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey
+        || isInteractiveKeyboardTarget(e.target)) return;
+      const bounds = ref.current?.getBoundingClientRect();
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
         setActiveIndex((cur) => (cur + 1) % STAGES.length);
@@ -565,7 +569,7 @@ export function ArtifactLadderViz() {
       {/* Header */}
       <div className="relative z-10 flex flex-col gap-8 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <div className="text-[0.65rem] font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-60 flex items-center gap-3">
+          <div className="text-xs font-black uppercase tracking-[0.4em] text-[#FF5500] opacity-60 flex items-center gap-3">
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Artifact Progression
           </div>
@@ -598,7 +602,7 @@ export function ArtifactLadderViz() {
               )}
             />
             {autoPlay ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-            <span className="text-[0.65rem] font-black uppercase tracking-[0.2em]">
+            <span className="text-xs font-black uppercase tracking-[0.2em]">
               {autoPlay ? "Auto-Play Active" : "Auto-Play"}
             </span>
           </button>
@@ -707,7 +711,7 @@ export function ArtifactLadderViz() {
         <div className="rounded-2xl border border-white/[0.04] bg-white/[0.01] p-5 group hover:-translate-y-1 transition-transform duration-500 relative overflow-hidden">
           {/* White gradient top border */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-white/0 via-white/40 to-white/0 pointer-events-none" />
-          <div className="text-[0.6rem] font-black uppercase tracking-[0.3em] text-white/20 group-hover:text-white/40 transition-colors">
+          <div className="text-xs font-black uppercase tracking-[0.3em] text-white/20 group-hover:text-white/40 transition-colors">
             Total Stages
           </div>
           <div className="mt-3 text-4xl font-black tracking-tighter text-white">
@@ -721,7 +725,7 @@ export function ArtifactLadderViz() {
         <div className="rounded-2xl border border-white/[0.04] bg-white/[0.01] p-5 group hover:-translate-y-1 transition-transform duration-500 relative overflow-hidden">
           {/* Orange gradient top border */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#FF5500]/0 via-[#FF5500] to-[#FFBD2E]/0 pointer-events-none" />
-          <div className="text-[0.6rem] font-black uppercase tracking-[0.3em] text-white/20 group-hover:text-white/40 transition-colors">
+          <div className="text-xs font-black uppercase tracking-[0.3em] text-white/20 group-hover:text-white/40 transition-colors">
             Key Transition
           </div>
           <div className="mt-3 text-4xl font-black tracking-tighter bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">
@@ -736,7 +740,7 @@ export function ArtifactLadderViz() {
           {/* Green gradient top border */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#22c55e]/0 via-[#22c55e]/60 to-[#22c55e]/0 pointer-events-none" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.1),transparent_50%)] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative z-10 flex items-center gap-2 text-[0.6rem] font-black uppercase tracking-[0.3em] text-[#22c55e]">
+          <div className="relative z-10 flex items-center gap-2 text-xs font-black uppercase tracking-[0.3em] text-[#22c55e]">
             <CheckCircle className="h-3.5 w-3.5" />
             The Insight
           </div>

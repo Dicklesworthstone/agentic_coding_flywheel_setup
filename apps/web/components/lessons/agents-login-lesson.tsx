@@ -23,6 +23,7 @@ import {
   BulletList,
   CodeBlock,
   Divider,
+  DiagramScroller,
   GoalBanner,
   Highlight,
   InlineCode,
@@ -1161,9 +1162,8 @@ function InteractiveAgentComparison() {
         </div>
       </div>
 
-      {/* SVG connection visualization. Below md the terminal panels stack, so
-          the strip need not line up with three columns: a 300-wide geometry
-          keeps its labels ~9-10px on phones instead of ~3.5px (bd-k3qa5). */}
+      {/* Below md the terminals stack. Each geometry keeps its logical width
+          so 12px labels stay readable instead of shrinking with the strip. */}
       <div className="relative px-6 pb-2">
         <div className="md:hidden">
           <AuthFlowSvg
@@ -1244,15 +1244,16 @@ function AuthFlowSvg({
   const width = compact ? 300 : 600;
   const hubX = width / 2;
   const serverW = compact ? 84 : 76;
-  const titleSize = compact ? "text-[10px]" : "text-[8px]";
-  const subtitleSize = compact ? "text-[9.5px]" : "text-[7px]";
-  const labelSize = compact ? "text-[10px]" : "text-[7px]";
+  const titleSize = "text-xs";
+  const subtitleSize = "text-xs";
+  const labelSize = "text-xs";
   // Compact labels need room for descenders below the agent endpoint.
   const agentY = compact ? 58 : 68;
-  const labelY = compact ? 76 : 78;
+  const labelY = compact ? 76 : 86;
 
   return (
-    <svg viewBox={`0 0 ${width} 80`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+    <DiagramScroller label="Agent authentication flow diagram" minWidth={width}>
+    <svg viewBox={`0 0 ${width} 96`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
       {/* Central auth server */}
       <rect
         x={hubX - serverW / 2}
@@ -1385,6 +1386,7 @@ function AuthFlowSvg({
         </circle>
       ))}
     </svg>
+    </DiagramScroller>
   );
 }
 
@@ -1436,7 +1438,7 @@ function AgentTerminalPanel({
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30"
               >
                 <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                <span className="text-[10px] font-medium text-emerald-400">PASS</span>
+                <span className="text-xs font-medium text-emerald-400">PASS</span>
               </motion.div>
             ) : (
               <motion.div
@@ -1446,7 +1448,7 @@ function AgentTerminalPanel({
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/30"
               >
                 <XCircle className="h-3 w-3 text-red-400" />
-                <span className="text-[10px] font-medium text-red-400">FAIL</span>
+                <span className="text-xs font-medium text-red-400">FAIL</span>
               </motion.div>
             )
           ) : isPlaying ? (
@@ -1456,10 +1458,10 @@ function AgentTerminalPanel({
                 animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
                 transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
               />
-              <span className="text-[10px] text-white/30">running</span>
+              <span className="text-xs text-white/30">running</span>
             </div>
           ) : (
-            <span className="text-[10px] text-white/20">idle</span>
+            <span className="text-xs text-white/20">idle</span>
           )}
         </div>
       </div>
@@ -1467,7 +1469,7 @@ function AgentTerminalPanel({
       {/* Terminal body */}
       <div
         ref={terminalRef}
-        className="px-3 py-2 font-mono text-[11px] leading-relaxed min-h-[180px] max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10"
+        className="px-3 py-2 font-mono text-xs leading-relaxed min-h-[180px] max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10"
       >
         {visibleCount === 0 && !isPlaying && (
           <div className="flex items-center justify-center h-full min-h-[160px] text-white/20">
@@ -1515,14 +1517,14 @@ function AgentTerminalPanel({
 
       {/* Terminal footer - timing */}
       <div className="px-3 py-1.5 border-t border-white/[0.04] flex items-center justify-between">
-        <span className="text-[10px] text-white/20">
+        <span className="text-xs text-white/20">
           {visibleCount}/{agentScenario.lines.length} steps
         </span>
         {isDone && (
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-[10px] text-white/30"
+            className="text-xs text-white/30"
           >
             {(agentScenario.finishDelay / 1000).toFixed(1)}s
           </motion.span>

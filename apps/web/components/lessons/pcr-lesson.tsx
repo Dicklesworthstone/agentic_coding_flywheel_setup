@@ -440,7 +440,7 @@ function CompactionSimulatorImpl() {
             <div className="flex flex-col items-start">
               <span className="text-xs font-semibold text-white/80">PCR Hook</span>
               <span
-                className={`text-[10px] font-medium ${pcrEnabled ? "text-emerald-400" : "text-red-400"}`}
+                className={`text-xs font-medium ${pcrEnabled ? "text-emerald-400" : "text-red-400"}`}
               >
                 {pcrEnabled ? "Enabled" : "Disabled"}
               </span>
@@ -511,7 +511,7 @@ function CompactionSimulatorImpl() {
         {/* Context usage bar */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
+            <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
               Context Window Usage
             </span>
             <span className="text-xs text-white/40 font-mono">
@@ -627,7 +627,7 @@ function CompactionSimulatorImpl() {
                   </span>
                 </div>
                 <div className="rounded-lg bg-black/40 border border-white/[0.06] p-3">
-                  <code className="text-[11px] text-emerald-300/80 font-mono leading-relaxed block">
+                  <code className="text-xs text-emerald-300/80 font-mono leading-relaxed block">
                     {`[PCR] Context compaction detected.\n[PCR] Reminder: Re-read AGENTS.md now.\n[PCR] Restoring project rules and conventions...`}
                   </code>
                 </div>

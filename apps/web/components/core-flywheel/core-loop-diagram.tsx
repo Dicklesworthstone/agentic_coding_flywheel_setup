@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
+import { handleHorizontalScrollKeyDown, isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -375,7 +376,7 @@ function StageNode({
         x={pos.x}
         y={pos.y + (isActive ? 50 : 40)}
         textAnchor="middle"
-        className={`text-[11px] font-black uppercase tracking-[0.15em] transition duration-300 ${
+        className={`text-xs font-black uppercase tracking-[0.15em] transition duration-300 ${
           isActive ? "fill-white" : "fill-white/30"
         }`}
       >
@@ -411,7 +412,7 @@ function DetailCard({ stage }: { stage: Stage }) {
       {/* Header */}
       <div className="flex flex-col gap-3">
         <div
-          className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
+          className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
           style={{ color: stage.color }}
         >
           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
@@ -430,7 +431,7 @@ function DetailCard({ stage }: { stage: Stage }) {
         {/* Artifact */}
         <div className="flex flex-col gap-2 p-5 rounded-2xl bg-white/[0.03] border border-white/[0.05] shadow-sm relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.015] to-transparent pointer-events-none" />
-          <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
             <Package size={10} className="opacity-50" />
             Artifact
           </span>
@@ -440,7 +441,7 @@ function DetailCard({ stage }: { stage: Stage }) {
         {/* Command */}
         <div className="flex flex-col gap-2 p-5 rounded-2xl bg-white/[0.02] border border-white/[0.04] shadow-sm relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-          <span className="text-[0.6rem] font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
+          <span className="text-xs font-bold text-white/30 uppercase tracking-widest flex items-center gap-2">
             <Terminal size={10} className="opacity-50" />
             Command
           </span>
@@ -538,14 +539,14 @@ function MobileStageList({
               >
                 {stage.label}
               </span>
-              <span className={`text-[0.7rem] text-white/25 ${isActive ? "" : "truncate"}`}>
+              <span className={`text-xs text-white/25 ${isActive ? "" : "truncate"}`}>
                 {stage.description}
               </span>
             </div>
 
             {/* Step indicator */}
             <span
-              className="ml-auto text-[0.6rem] font-mono font-bold shrink-0"
+              className="ml-auto text-xs font-mono font-bold shrink-0"
               style={{ color: isActive ? stage.color : "rgba(255,255,255,0.15)" }}
             >
               {index + 1}/{STAGE_COUNT}
@@ -668,6 +669,12 @@ export function CoreLoopDiagram() {
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey
+        || isInteractiveKeyboardTarget(e.target)) return;
+      // The once:true reveal stays active after scrolling away; shortcuts must
+      // still belong to the currently visible diagram.
+      const bounds = ref.current?.getBoundingClientRect();
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
         setActiveIndex((cur) => (cur + 1) % STAGE_COUNT);
@@ -705,7 +712,7 @@ export function CoreLoopDiagram() {
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-xl">
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3 mb-4">
+          <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3 mb-4">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Core Loop
           </div>
@@ -735,7 +742,7 @@ export function CoreLoopDiagram() {
                 : "bg-white/20"
             }`}
           />
-          <span className="text-[0.65rem] font-bold uppercase tracking-widest">
+          <span className="text-xs font-bold uppercase tracking-widest">
             {autoTour ? "Auto-Tour Active" : "Tour Paused"}
           </span>
         </button>
@@ -744,8 +751,14 @@ export function CoreLoopDiagram() {
       {/* Body grid */}
       <div className="relative z-10 mt-12 grid gap-12 lg:grid-cols-[1fr_1fr] items-start">
         {/* ---- SVG diagram (hidden on mobile, shown md+) ---- */}
-        <div className="hidden md:flex items-center justify-center">
-          <div className="relative w-full max-w-[480px] aspect-square">
+        <div
+          className="hidden md:block min-w-0 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          role="region"
+          tabIndex={0}
+          aria-label="Core loop diagram (scrolls sideways when needed)"
+          onKeyDown={handleHorizontalScrollKeyDown}
+        >
+          <div className="relative w-full min-w-[400px] max-w-[480px] aspect-square mx-auto">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,85,0,0.025),transparent_60%)]" />
             <svg
               viewBox={viewBox}
@@ -900,7 +913,7 @@ export function CoreLoopDiagram() {
 
           {/* Stage indicator dots */}
           <div className="flex items-center gap-2 pt-6 border-t border-white/[0.04]">
-            <span className="text-[0.6rem] font-bold uppercase tracking-[0.3em] text-white/20 mr-2">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/20 mr-2">
               Stage
             </span>
             {STAGES.map((stage, index) => (

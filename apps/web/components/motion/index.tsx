@@ -1,6 +1,28 @@
 "use client";
 
-import { AnimatePresence, m, useInView, useReducedMotion, type Variants } from "framer-motion";
+import { AnimatePresence, m, useInView, type Variants } from "framer-motion";
+import { useSyncExternalStore } from "react";
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function reducedMotionSnapshot(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function reducedMotionServerSnapshot(): boolean {
+  return false;
+}
+
+/** Keep server and first hydration DOM identical, then follow the live preference. */
+export function useReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeReducedMotion, reducedMotionSnapshot, reducedMotionServerSnapshot);
+}
 
 /**
  * Spring configurations optimized for Stripe/Linear-style subtle, professional feel.
@@ -370,4 +392,4 @@ export type { Variants };
 // <LazyMotion strict>, so importing the full `motion` from "framer-motion"
 // throws in dev and bundles the full animation runtime; always import
 // `motion` from here instead.
-export { AnimatePresence, m as motion, useInView, useReducedMotion };
+export { AnimatePresence, m as motion, useInView };

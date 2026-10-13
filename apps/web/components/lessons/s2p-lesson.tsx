@@ -552,7 +552,7 @@ const PROJECT_TYPES: ProjectType[] = [
         language: "python",
         depth: 1,
         isDir: false,
-        content: `import torch\nfrom model import TransformerModel\nfrom config import TrainConfig\n\ndef evaluate(checkpoint: str):\n    cfg = TrainConfig()\n    model = TransformerModel(cfg)\n    model.load_state_dict(torch.load(checkpoint))\n    model.eval()\n    # Run evaluation metrics\n    print("Model loaded, running eval...")`,
+        content: `import torch\nfrom model import TransformerModel\nfrom config import TrainConfig\n\ndef evaluate(checkpoint: str):\n    cfg = TrainConfig()\n    model = TransformerModel(cfg)\n    model.load_state_dict(torch.load(checkpoint))\n    model.eval()\n    # Run evaluation metrics\n    print("Model loaded, running eval...")`, // ubs:ignore[js.security.eval] Display-only Python sample rendered as React text; model.eval() switches PyTorch inference mode and is not JavaScript eval.
       },
       {
         name: "requirements.txt",
@@ -1295,7 +1295,7 @@ function InteractiveSourceCombiner() {
                         {/* Language badge */}
                         {file.language && (
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${getLangColor(file.language)}`}
+                            className={`text-xs px-1.5 py-0.5 rounded font-mono shrink-0 ${getLangColor(file.language)}`}
                           >
                             {file.language}
                           </span>
@@ -1320,7 +1320,7 @@ function InteractiveSourceCombiner() {
                             }}
                           />
                         </div>
-                        <span className="text-[10px] text-white/30 font-mono w-10 text-right">
+                        <span className="text-xs text-white/30 font-mono w-10 text-right">
                           {file.tokens.toLocaleString()}t
                         </span>
                       </div>
@@ -1378,7 +1378,7 @@ function InteractiveSourceCombiner() {
             {/* Size comparison bars */}
             {selectedFiles.length > 0 && (
               <div className="px-4 py-3 border-b border-white/[0.06] space-y-1.5">
-                <div className="text-[10px] font-mono text-white/30 uppercase tracking-wider mb-2">
+                <div className="text-xs font-mono text-white/30 uppercase tracking-wider mb-2">
                   Token Breakdown
                 </div>
                 {selectedFiles.map((f) => {
@@ -1395,7 +1395,7 @@ function InteractiveSourceCombiner() {
                       }}
                       className="flex items-center gap-2"
                     >
-                      <span className="text-[10px] font-mono text-white/40 w-28 truncate shrink-0">
+                      <span className="text-xs font-mono text-white/40 w-28 truncate shrink-0">
                         {f.name}
                       </span>
                       <div className="flex-1 h-2 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1410,7 +1410,7 @@ function InteractiveSourceCombiner() {
                           }}
                         />
                       </div>
-                      <span className="text-[10px] font-mono text-white/30 w-12 text-right shrink-0">
+                      <span className="text-xs font-mono text-white/30 w-12 text-right shrink-0">
                         {f.tokens.toLocaleString()}
                       </span>
                     </motion.div>
@@ -1418,7 +1418,7 @@ function InteractiveSourceCombiner() {
                 })}
                 {/* Total bar */}
                 <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04] mt-1">
-                  <span className="text-[10px] font-mono text-emerald-400 w-28 shrink-0">
+                  <span className="text-xs font-mono text-emerald-400 w-28 shrink-0">
                     Total
                   </span>
                   <div className="flex-1 h-2 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1436,7 +1436,7 @@ function InteractiveSourceCombiner() {
                     />
                   </div>
                   <span
-                    className={`text-[10px] font-mono w-12 text-right shrink-0 ${barTextColor}`}
+                    className={`text-xs font-mono w-12 text-right shrink-0 ${barTextColor}`}
                   >
                     {totalTokens.toLocaleString()}
                   </span>
@@ -1469,7 +1469,7 @@ function InteractiveSourceCombiner() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                    className="font-mono text-[11px] text-white/60 whitespace-pre-wrap leading-relaxed break-all"
+                    className="font-mono text-xs text-white/60 whitespace-pre-wrap leading-relaxed break-all"
                   >
                     {combinedPreview}
                   </motion.pre>

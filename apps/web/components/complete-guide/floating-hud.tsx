@@ -89,7 +89,7 @@ export function FloatingHUD({ items }: { items: { id: string; label: string; num
           </div>
 
           <div className="flex flex-col items-start text-left">
-            <span className="text-[0.55rem] font-bold uppercase tracking-[0.2em] text-white/40">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/40">
               Section {activeItem?.number?.padStart(2, "0")}
             </span>
             <span className="text-[0.8rem] font-bold text-white tracking-tight">
@@ -109,7 +109,7 @@ export function FloatingHUD({ items }: { items: { id: string; label: string; num
             className="fixed bottom-24 left-1/2 -translate-x-1/2 w-[90vw] max-w-[400px] z-[90] rounded-3xl bg-[#05070A]/95 backdrop-blur-2xl border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.9)] p-6 overflow-hidden flex flex-col max-h-[60vh]"
           >
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5 shrink-0">
-              <span className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]">
+              <span className="text-xs font-bold uppercase tracking-widest text-[#FF5500]">
                 Table of Contents
               </span>
               <button
@@ -136,7 +136,7 @@ export function FloatingHUD({ items }: { items: { id: string; label: string; num
                         }`}
                       >
                         <span
-                          className={`font-mono text-[0.65rem] ${isActive ? "text-[#FF5500] font-bold" : "text-white/30"}`}
+                          className={`font-mono text-xs ${isActive ? "text-[#FF5500] font-bold" : "text-white/30"}`}
                         >
                           {item.number.padStart(2, "0")}
                         </span>

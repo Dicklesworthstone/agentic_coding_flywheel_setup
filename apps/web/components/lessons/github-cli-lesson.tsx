@@ -741,7 +741,7 @@ function InteractiveGitHubWorkflow() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-white/30 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+            <span className="text-xs font-mono text-white/30 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
               {activeStage + 1}/{totalStages}
             </span>
           </div>
@@ -935,7 +935,7 @@ function MiniTerminal({
         </div>
         <div className="flex items-center gap-2 ml-2">
           <Terminal className="h-3 w-3 text-white/30" />
-          <span className="text-[10px] font-mono text-white/30">gh-workflow ~/my-project</span>
+          <span className="text-xs font-mono text-white/30">gh-workflow ~/my-project</span>
         </div>
       </div>
       {/* Command history + current */}
@@ -1060,7 +1060,7 @@ function PRTimeline({
                   )}
                 </motion.div>
                 <span
-                  className={`text-[10px] font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
+                  className={`text-xs font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
                     isActive ? "text-white/90" : "text-white/30"
                   }`}
                 >
@@ -1271,7 +1271,7 @@ function CreateBranchVisual() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1 }}
-        className="text-[10px] text-white/30 font-mono"
+        className="text-xs text-white/30 font-mono"
       >
         HEAD now at feat/add-auth
       </motion.p>
@@ -1297,7 +1297,7 @@ function MakeChangesVisual({ active }: { active: boolean }) {
         <motion.span
           animate={active ? { opacity: [0.3, 1, 0.3] } : { opacity: 1 }}
           transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
-          className="text-[10px] text-white/30"
+          className="text-xs text-white/30"
         >
           writing code...
         </motion.span>
@@ -1319,7 +1319,7 @@ function MakeChangesVisual({ active }: { active: boolean }) {
             )}
             <span className="text-xs font-mono text-white/60 truncate">{file.name}</span>
             <span
-              className={`text-[10px] font-mono ml-auto shrink-0 ${
+              className={`text-xs font-mono ml-auto shrink-0 ${
                 file.type === "added" ? "text-emerald-400/70" : "text-amber-400/70"
               }`}
             >
@@ -1336,7 +1336,7 @@ function MakeChangesVisual({ active }: { active: boolean }) {
         transition={{ delay: 0.8 }}
         className="mt-1 rounded-lg bg-black/30 border border-white/[0.06] px-3 py-2"
       >
-        <div className="flex items-center gap-1 font-mono text-[10px]">
+        <div className="flex items-center gap-1 font-mono text-xs">
           <span className="text-violet-400/60">export</span>
           <span className="text-blue-400/60">async function</span>
           <span className="text-amber-400/60">authenticate</span>
@@ -1373,9 +1373,9 @@ function CreatePRVisual() {
           </div>
           <div>
             <p className="text-xs font-semibold text-purple-400">PR #43</p>
-            <p className="text-[10px] text-white/40">feat/add-auth → main</p>
+            <p className="text-xs text-white/40">feat/add-auth → main</p>
           </div>
-          <span className="ml-auto inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
+          <span className="ml-auto inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
             Open
           </span>
         </div>
@@ -1389,10 +1389,10 @@ function CreatePRVisual() {
         <div className="flex items-center gap-3 mb-3">
           <div className="flex items-center gap-1.5">
             <FileCode className="h-3 w-3 text-white/40" />
-            <span className="text-[10px] text-white/40">5 files changed</span>
+            <span className="text-xs text-white/40">5 files changed</span>
           </div>
-          <span className="text-[10px] text-emerald-400 font-mono">+362</span>
-          <span className="text-[10px] text-red-400 font-mono">-3</span>
+          <span className="text-xs text-emerald-400 font-mono">+362</span>
+          <span className="text-xs text-red-400 font-mono">-3</span>
         </div>
 
         {/* Labels */}
@@ -1401,7 +1401,7 @@ function CreatePRVisual() {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="inline-flex items-center rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium text-violet-400 border border-violet-500/20"
+            className="inline-flex items-center rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-medium text-violet-400 border border-violet-500/20"
           >
             feature
           </motion.span>
@@ -1409,7 +1409,7 @@ function CreatePRVisual() {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3 }}
-            className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-medium text-blue-400 border border-blue-500/20"
+            className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-400 border border-blue-500/20"
           >
             auth
           </motion.span>
@@ -1417,7 +1417,7 @@ function CreatePRVisual() {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.4 }}
-            className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/20"
+            className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-400 border border-amber-500/20"
           >
             needs-review
           </motion.span>
@@ -1432,14 +1432,14 @@ function CreatePRVisual() {
         className="flex items-center gap-2"
       >
         <Users className="h-3.5 w-3.5 text-white/30" />
-        <span className="text-[10px] text-white/40">Review requested from</span>
+        <span className="text-xs text-white/40">Review requested from</span>
         <div className="flex -space-x-1">
           {["bg-blue-500", "bg-emerald-500"].map((bg, i) => (
             <div
               key={bg}
               className={`h-5 w-5 rounded-full ${bg} border-2 border-black/50 flex items-center justify-center`}
             >
-              <span className="text-[10px] text-white font-bold">{i === 0 ? "A" : "B"}</span>
+              <span className="text-xs text-white font-bold">{i === 0 ? "A" : "B"}</span>
             </div>
           ))}
         </div>
@@ -1501,11 +1501,11 @@ function CodeReviewVisual({ commentIndex }: { commentIndex: number }) {
                   <div
                     className={`h-5 w-5 rounded-full ${comment.color} flex items-center justify-center`}
                   >
-                    <span className="text-[10px] text-white font-bold">{comment.initial}</span>
+                    <span className="text-xs text-white font-bold">{comment.initial}</span>
                   </div>
-                  <span className="text-[10px] font-semibold text-white/60">@{comment.author}</span>
+                  <span className="text-xs font-semibold text-white/60">@{comment.author}</span>
                   {comment.type === "suggestion" && (
-                    <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                    <span className="text-xs text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                       suggestion
                     </span>
                   )}
@@ -1574,7 +1574,7 @@ function CIPipelineVisual({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20"
+            className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20"
           >
             All checks passed
           </motion.span>
@@ -1602,7 +1602,7 @@ function CIPipelineVisual({
               <div className="flex items-center gap-2 mb-1.5">
                 <CIJobStatusIcon state={state} active={active} />
                 <span
-                  className={`text-[10px] font-mono font-semibold ${
+                  className={`text-xs font-mono font-semibold ${
                     state === "passed"
                       ? "text-emerald-400"
                       : state === "running"
@@ -1639,7 +1639,7 @@ function CIPipelineVisual({
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-[10px] text-white/30 mt-1 block"
+                  className="text-xs text-white/30 mt-1 block"
                 >
                   {job.duration}
                 </motion.span>
@@ -1696,7 +1696,7 @@ function MergeDeployVisual({ active }: { active: boolean }) {
           className="flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/5 px-3 py-1.5"
         >
           <GitBranch className="h-3 w-3 text-violet-400/50" />
-          <span className="text-[10px] font-mono text-violet-400/50 line-through">
+          <span className="text-xs font-mono text-violet-400/50 line-through">
             feat/add-auth
           </span>
         </motion.div>
@@ -1718,7 +1718,7 @@ function MergeDeployVisual({ active }: { active: boolean }) {
           className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5"
         >
           <div className="h-3 w-3 rounded-full bg-emerald-400" />
-          <span className="text-[10px] font-mono text-emerald-400 font-semibold">main</span>
+          <span className="text-xs font-mono text-emerald-400 font-semibold">main</span>
         </motion.div>
       </div>
 
@@ -1742,7 +1742,7 @@ function MergeDeployVisual({ active }: { active: boolean }) {
         className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-2"
       >
         <Rocket className="h-3.5 w-3.5 text-emerald-400" />
-        <span className="text-[10px] font-mono text-emerald-400">Deployed to production</span>
+        <span className="text-xs font-mono text-emerald-400">Deployed to production</span>
         <motion.div
           animate={active ? { scale: [1, 1.3, 1] } : { scale: 1 }}
           transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
@@ -1754,7 +1754,7 @@ function MergeDeployVisual({ active }: { active: boolean }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.9 }}
-        className="text-[10px] text-white/30 font-mono"
+        className="text-xs text-white/30 font-mono"
       >
         Issue #42 automatically closed -- Branch deleted
       </motion.p>
@@ -1863,7 +1863,7 @@ function BranchFlowVisualization({ activeStage }: { activeStage: number }) {
       </div>
 
       {/* Branch status text */}
-      <div className="flex items-center justify-between text-[10px]">
+      <div className="flex items-center justify-between text-xs">
         <span className="text-blue-400/60 font-mono">main</span>
         <span
           className={`font-mono ${
@@ -1873,7 +1873,7 @@ function BranchFlowVisualization({ activeStage }: { activeStage: number }) {
           feat/add-auth
         </span>
         <span
-          className={`px-1.5 py-0.5 rounded text-[10px] ${
+          className={`px-1.5 py-0.5 rounded text-xs ${
             branchState === "merged"
               ? "bg-emerald-500/10 text-emerald-400"
               : branchState === "active"
@@ -1909,7 +1909,7 @@ function PRDetailPanel({
     return (
       <div className="flex flex-col items-center justify-center py-6 text-center">
         <GitPullRequest className="h-8 w-8 text-white/10 mb-2" />
-        <p className="text-[10px] text-white/30">PR not yet created</p>
+        <p className="text-xs text-white/30">PR not yet created</p>
         <p className="text-xs text-white/20 mt-1">Advance to stage 3 to see PR details</p>
       </div>
     );
@@ -1922,7 +1922,7 @@ function PRDetailPanel({
         <GitPullRequest className={`h-4 w-4 ${merged ? "text-purple-400" : "text-emerald-400"}`} />
         <span className="text-xs font-semibold text-white/80">Add authentication module</span>
         <span
-          className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+          className={`text-xs px-1.5 py-0.5 rounded-full border ${
             merged
               ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
               : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
@@ -1935,15 +1935,15 @@ function PRDetailPanel({
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2 text-center">
-          <p className="text-[10px] text-white/30">Files</p>
+          <p className="text-xs text-white/30">Files</p>
           <p className="text-sm font-semibold text-white/70">5</p>
         </div>
         <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/10 p-2 text-center">
-          <p className="text-[10px] text-emerald-400/60">Added</p>
+          <p className="text-xs text-emerald-400/60">Added</p>
           <p className="text-sm font-semibold text-emerald-400">+362</p>
         </div>
         <div className="rounded-lg bg-red-500/5 border border-red-500/10 p-2 text-center">
-          <p className="text-[10px] text-red-400/60">Removed</p>
+          <p className="text-xs text-red-400/60">Removed</p>
           <p className="text-sm font-semibold text-red-400">-3</p>
         </div>
       </div>
@@ -2005,7 +2005,7 @@ function PRDetailPanel({
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[10px] font-medium ${
+          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
             merged
               ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
               : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
@@ -2055,7 +2055,7 @@ function PRCheckRow({
       {status === "pending" && <CircleDot className="h-3 w-3 text-white/20 shrink-0" />}
       {status === "failed" && <XCircle className="h-3 w-3 text-red-400 shrink-0" />}
       <span
-        className={`text-[10px] font-mono ${
+        className={`text-xs font-mono ${
           status === "passed"
             ? "text-emerald-400/80"
             : status === "running"
@@ -2065,7 +2065,7 @@ function PRCheckRow({
       >
         {label}
       </span>
-      {detail && <span className="text-[10px] text-white/20 ml-auto">{detail}</span>}
+      {detail && <span className="text-xs text-white/20 ml-auto">{detail}</span>}
     </div>
   );
 }
@@ -2147,14 +2147,14 @@ function ActivityFeed({ activeStage }: { activeStage: number }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-white/50 leading-relaxed truncate">{event.text}</p>
-            <p className="text-[10px] text-white/20">{event.time}</p>
+            <p className="text-xs text-white/20">{event.time}</p>
           </div>
         </motion.div>
       ))}
 
       {visibleEvents.length === 0 && (
         <div className="text-center py-4">
-          <p className="text-[10px] text-white/20">No activity yet</p>
+          <p className="text-xs text-white/20">No activity yet</p>
         </div>
       )}
     </div>

@@ -659,7 +659,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           y={midY + 1}
           textAnchor="middle"
           fill="rgba(96,165,250,0.8)"
-          fontSize={10}
+          fontSize={12}
           fontFamily="monospace"
           fontWeight={600}
         >
@@ -682,7 +682,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           y={midY - 3}
           textAnchor="middle"
           fill="rgba(167,139,250,0.8)"
-          fontSize={9}
+          fontSize={12}
           fontFamily="monospace"
           fontWeight={600}
         >
@@ -690,10 +690,10 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
         </text>
         <text
           x={proxyX}
-          y={midY + 10}
+          y={midY + 12}
           textAnchor="middle"
           fill="rgba(167,139,250,0.8)"
-          fontSize={9}
+          fontSize={12}
           fontFamily="monospace"
           fontWeight={600}
         >
@@ -716,7 +716,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           y={midY + 1}
           textAnchor="middle"
           fill={isBlocked ? "rgba(239,68,68,0.4)" : "rgba(52,211,153,0.8)"}
-          fontSize={10}
+          fontSize={12}
           fontFamily="monospace"
           fontWeight={600}
         >
@@ -751,10 +751,10 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
         {isCached && (
           <g>
             <rect
-              x={proxyX - 18}
+              x={proxyX - 24}
               y={midY + 26}
-              width={36}
-              height={14}
+              width={48}
+              height={18}
               rx={4}
               fill="rgba(167,139,250,0.2)"
               stroke="rgba(167,139,250,0.3)"
@@ -762,10 +762,10 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
             />
             <text
               x={proxyX}
-              y={midY + 35}
+              y={midY + 39}
               textAnchor="middle"
               fill="rgba(167,139,250,0.9)"
-              fontSize={7}
+              fontSize={12}
               fontFamily="monospace"
               fontWeight={600}
             >
@@ -869,7 +869,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           y={midY - 28}
           fill="white"
           fillOpacity={0.3}
-          fontSize={8}
+          fontSize={12}
           fontFamily="monospace"
         >
           {scenario.method}
@@ -879,7 +879,7 @@ function FlowDiagram({ scenario, animating }: { scenario: ScenarioStep; animatin
           y={midY - 28}
           textAnchor="end"
           fill={scenario.statusCode >= 400 ? "rgba(239,68,68,0.6)" : "rgba(52,211,153,0.6)"}
-          fontSize={8}
+          fontSize={12}
           fontFamily="monospace"
         >
           {scenario.statusCode} {scenario.statusText.split(" ")[0]}
@@ -906,10 +906,10 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
         ) : (
           <ChevronUp className="h-3 w-3 text-white/30" />
         )}
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           {title}
         </span>
-        <span className="text-[10px] text-white/20 font-mono">({headers.length})</span>
+        <span className="text-xs text-white/20 font-mono">({headers.length})</span>
       </button>
       <AnimatePresence>
         {expanded && (
@@ -924,7 +924,7 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
               {headers.map((h) => (
                 <div
                   key={h.key}
-                  className="flex items-start gap-2 font-mono text-[10px] leading-relaxed"
+                  className="flex items-start gap-2 font-mono text-xs leading-relaxed"
                 >
                   <span className={h.modified ? "text-amber-400/80" : "text-blue-400/80"}>
                     {h.key}:
@@ -935,12 +935,12 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
                     {h.value}
                   </span>
                   {h.modified && (
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
+                    <span className="shrink-0 px-1 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
                       INJECTED
                     </span>
                   )}
                   {h.redacted && (
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400/80 border border-red-500/20">
+                    <span className="shrink-0 px-1 py-0.5 rounded text-xs bg-red-500/10 text-red-400/80 border border-red-500/20">
                       REDACTED
                     </span>
                   )}
@@ -970,10 +970,10 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Latency Waterfall
         </span>
-        <span className="text-[10px] font-mono text-white/40">
+        <span className="text-xs font-mono text-white/40">
           {total < 1 ? `${total}ms` : `${Math.round(total)}ms`} total
         </span>
       </div>
@@ -982,7 +982,7 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
           const pct = (seg.value / maxVal) * 100;
           return (
             <div key={seg.label} className="flex items-center gap-2">
-              <span className="text-[10px] text-white/30 font-mono w-12 text-right">
+              <span className="text-xs text-white/30 font-mono w-12 text-right">
                 {seg.label}
               </span>
               <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden">
@@ -993,7 +993,7 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
                   transition={SPRING}
                 />
               </div>
-              <span className="text-[10px] text-white/25 font-mono w-12">
+              <span className="text-xs text-white/25 font-mono w-12">
                 {seg.value < 1 && seg.value > 0 ? `${seg.value}ms` : `${Math.round(seg.value)}ms`}
               </span>
             </div>
@@ -1018,7 +1018,7 @@ function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
 
   return (
     <div className="space-y-2">
-      <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+      <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
         Rule Engine
       </span>
       <div className="space-y-1">
@@ -1040,14 +1040,14 @@ function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
               <div className="h-3 w-3 rounded-full border border-white/[0.1] shrink-0" />
             )}
             <span
-              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${typeColors[rule.type] || "text-white/40"}`}
+              className={`px-1.5 py-0.5 rounded text-xs font-semibold uppercase border ${typeColors[rule.type] || "text-white/40"}`}
             >
               {rule.type}
             </span>
-            <span className="text-[10px] font-mono text-white/40 flex-1 truncate">
+            <span className="text-xs font-mono text-white/40 flex-1 truncate">
               {rule.pattern}
             </span>
-            <span className="text-[10px] text-white/25 truncate">{rule.action}</span>
+            <span className="text-xs text-white/25 truncate">{rule.action}</span>
           </motion.div>
         ))}
       </div>
@@ -1075,7 +1075,7 @@ function LogStream({ logs, active }: { logs: LogEntry[]; active: boolean }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Proxy Log
         </span>
         <motion.div
@@ -1092,7 +1092,7 @@ function LogStream({ logs, active }: { logs: LogEntry[]; active: boolean }) {
               initial={{ opacity: 0, x: -12 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ ...SPRING, delay: idx * 0.08 }}
-              className={`flex items-start gap-2 px-3 py-1 font-mono text-[10px] border-b border-white/[0.03] last:border-0 ${levelBg[log.level]}`}
+              className={`flex items-start gap-2 px-3 py-1 font-mono text-xs border-b border-white/[0.03] last:border-0 ${levelBg[log.level]}`}
             >
               <span className="text-white/20 shrink-0">{log.timestamp}</span>
               <span className={`shrink-0 uppercase font-semibold ${levelColors[log.level]}`}>
@@ -1149,7 +1149,7 @@ function FlowStateBadge({ state }: { state: ScenarioStep["flowState"] }) {
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={SPRING}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium ${c.color}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${c.color}`}
     >
       {c.icon}
       {c.label}
@@ -1184,7 +1184,7 @@ function DetailTabBar({
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           transition={SPRING_SNAPPY}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
             active === tab.id
               ? "bg-white/[0.08] text-white/80 border border-white/[0.1]"
               : "text-white/30 hover:text-white/50 border border-transparent"
@@ -1264,7 +1264,7 @@ function InteractiveTrafficInspectorImpl() {
               transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
             />
-            <span className="text-[10px] text-emerald-400/80 font-medium">LIVE</span>
+            <span className="text-xs text-emerald-400/80 font-medium">LIVE</span>
           </div>
 
           <div className="flex gap-2">
@@ -1296,7 +1296,7 @@ function InteractiveTrafficInspectorImpl() {
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
                 transition={SPRING_SNAPPY}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors border ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${
                   stepIndex === idx
                     ? "bg-white/[0.1] text-white border-white/[0.15]"
                     : "text-white/35 hover:text-white/55 border-transparent hover:border-white/[0.06]"
@@ -1334,7 +1334,7 @@ function InteractiveTrafficInspectorImpl() {
               >
                 <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                   <span className="text-xs font-semibold text-white/80">{scenario.label}</span>
-                  <span className="text-[10px] text-white/25 font-mono">
+                  <span className="text-xs text-white/25 font-mono">
                     Step {stepIndex + 1}/{SCENARIOS.length}
                   </span>
                   <FlowStateBadge state={scenario.flowState} />
@@ -1434,11 +1434,11 @@ function InteractiveTrafficInspectorImpl() {
                 {/* Body preview */}
                 <div className="rounded-lg border border-white/[0.06] bg-black/30 overflow-hidden">
                   <div className="px-3 py-2 border-b border-white/[0.04]">
-                    <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                       Response Body
                     </span>
                   </div>
-                  <pre className="px-3 py-2 font-mono text-[10px] text-white/40 leading-relaxed overflow-x-auto whitespace-pre">
+                  <pre className="px-3 py-2 font-mono text-xs text-white/40 leading-relaxed overflow-x-auto whitespace-pre">
                     {scenario.bodyPreview}
                   </pre>
                 </div>
@@ -1451,7 +1451,7 @@ function InteractiveTrafficInspectorImpl() {
                 {/* Additional stats */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] text-center">
-                    <span className="text-[10px] uppercase tracking-wider text-white/25 block">
+                    <span className="text-xs uppercase tracking-wider text-white/25 block">
                       Total
                     </span>
                     <span className="text-sm font-mono text-white/60 font-semibold">
@@ -1461,7 +1461,7 @@ function InteractiveTrafficInspectorImpl() {
                     </span>
                   </div>
                   <div className="p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] text-center">
-                    <span className="text-[10px] uppercase tracking-wider text-white/25 block">
+                    <span className="text-xs uppercase tracking-wider text-white/25 block">
                       Proxy Overhead
                     </span>
                     <span className="text-sm font-mono text-amber-400/70 font-semibold">
@@ -1471,7 +1471,7 @@ function InteractiveTrafficInspectorImpl() {
                     </span>
                   </div>
                   <div className="p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] text-center">
-                    <span className="text-[10px] uppercase tracking-wider text-white/25 block">
+                    <span className="text-xs uppercase tracking-wider text-white/25 block">
                       Overhead %
                     </span>
                     <span className="text-sm font-mono text-white/60 font-semibold">

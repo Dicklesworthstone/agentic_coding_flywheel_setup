@@ -241,7 +241,7 @@ export function PlanToBeadsViz() {
 
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-primary/70 mb-2 flex items-center gap-2">
+          <div className="text-xs font-bold uppercase tracking-widest text-primary/70 mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)]" />
             Interactive Exhibit
           </div>
@@ -278,7 +278,7 @@ export function PlanToBeadsViz() {
         <div className="space-y-6">
           <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-            <div className="relative z-10 flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
+            <div className="relative z-10 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/40">
               <FileText className="h-3.5 w-3.5" />
               Human Plan
             </div>
@@ -310,7 +310,7 @@ export function PlanToBeadsViz() {
                     <div className="flex items-start justify-between gap-4 relative z-10">
                       <div>
                         <div
-                          className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
+                          className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
                           style={{ color: concept.color }}
                         >
                           <span
@@ -324,7 +324,7 @@ export function PlanToBeadsViz() {
                         </div>
                       </div>
                       <div
-                        className="rounded-full px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-1"
+                        className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest flex items-center gap-1"
                         style={{
                           color: concept.color,
                           backgroundColor: `${concept.color}15`,
@@ -363,7 +363,7 @@ export function PlanToBeadsViz() {
               style={{ backgroundColor: selectedConcept.color }}
             />
             <div
-              className="relative z-10 text-[0.65rem] font-bold uppercase tracking-widest"
+              className="relative z-10 text-xs font-bold uppercase tracking-widest"
               style={{ color: selectedConcept.color }}
             >
               Selected Concept Insight
@@ -375,7 +375,7 @@ export function PlanToBeadsViz() {
               {selectedConcept.insight}
             </p>
             <div
-              className="relative z-10 mt-5 inline-flex items-center gap-2 rounded-xl border bg-[#05070A]/80 px-4 py-2.5 text-[0.65rem] font-bold uppercase tracking-widest backdrop-blur-sm shadow-inner"
+              className="relative z-10 mt-5 inline-flex items-center gap-2 rounded-xl border bg-[#05070A]/80 px-4 py-2.5 text-xs font-bold uppercase tracking-widest backdrop-blur-sm shadow-inner"
               style={{ color: selectedConcept.color, borderColor: `${selectedConcept.color}20` }}
             >
               <Boxes className="h-4 w-4" />
@@ -389,7 +389,7 @@ export function PlanToBeadsViz() {
 
           <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
+              <div className="text-xs font-bold uppercase tracking-widest text-white/40">
                 Translation Output
               </div>
               <div className="mt-1 text-lg font-black tracking-tight text-white">
@@ -398,7 +398,7 @@ export function PlanToBeadsViz() {
             </div>
             <div
               className={cn(
-                "inline-flex items-center gap-2 rounded-xl border bg-black/40 px-4 py-2.5 text-[0.65rem] font-bold uppercase tracking-widest shadow-inner",
+                "inline-flex items-center gap-2 rounded-xl border bg-black/40 px-4 py-2.5 text-xs font-bold uppercase tracking-widest shadow-inner",
                 mode === "rich"
                   ? "border-primary/20 text-primary"
                   : "border-[#FF5F56]/20 text-[#FF5F56]",
@@ -437,7 +437,7 @@ export function PlanToBeadsViz() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div
-                          className="text-[0.65rem] font-bold uppercase tracking-widest flex items-center gap-2"
+                          className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
                           style={{ color: bead.color }}
                         >
                           <span
@@ -456,19 +456,19 @@ export function PlanToBeadsViz() {
                           bead.dependsOn.map((dependency: TranslationBeadId) => (
                             <span
                               key={dependency}
-                              className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest text-white/50"
+                              className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-bold uppercase tracking-widest text-white/50"
                             >
                               deps: {dependency}
                             </span>
                           ))
                         ) : (
-                          <span className="rounded-full border border-[#FFBD2E]/20 bg-[#FFBD2E]/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest text-[#FFBD2E]">
+                          <span className="rounded-full border border-[#FFBD2E]/20 bg-[#FFBD2E]/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
                             root bead
                           </span>
                         )}
                         {isHighlighted && (
                           <span
-                            className="rounded-full px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest"
+                            className="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
                             style={{
                               color: bead.color,
                               backgroundColor: `${bead.color}15`,
@@ -529,7 +529,7 @@ export function PlanToBeadsViz() {
                                       }}
                                     />
                                     <div>
-                                      <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 mb-1">
+                                      <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-1">
                                         {detail.label}
                                       </div>
                                       <div className="text-sm leading-relaxed text-zinc-300 font-light">
@@ -560,7 +560,7 @@ export function PlanToBeadsViz() {
 
       <div className="relative z-10 p-6 sm:p-8 pt-0 grid gap-5 md:grid-cols-3">
         <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-5 shadow-lg group">
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
+          <div className="text-xs font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
             Execution Readiness
           </div>
           <div
@@ -577,7 +577,7 @@ export function PlanToBeadsViz() {
         </div>
 
         <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-5 shadow-lg group">
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
+          <div className="text-xs font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
             Unanswered Questions
           </div>
           <div
@@ -597,14 +597,14 @@ export function PlanToBeadsViz() {
 
         <div className="rounded-2xl border border-[#FFBD2E]/20 bg-[#FFBD2E]/5 p-5 shadow-lg relative overflow-hidden group">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,189,46,0.1),transparent_50%)] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative z-10 flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-widest text-[#FFBD2E]">
+          <div className="relative z-10 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
             <CheckCircle2 className="h-3.5 w-3.5" />
             The Takeaway
           </div>
           <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-medium">
             {MODE_COPY[mode].takeaway}
           </p>
-          <div className="relative z-10 mt-4 inline-flex items-center gap-2 rounded-xl border border-[#FFBD2E]/30 bg-[#FFBD2E]/10 px-3 py-2 text-[0.65rem] font-bold uppercase tracking-widest text-[#FFBD2E]">
+          <div className="relative z-10 mt-4 inline-flex items-center gap-2 rounded-xl border border-[#FFBD2E]/30 bg-[#FFBD2E]/10 px-3 py-2 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
             <Zap className="h-3.5 w-3.5" />
             Impacts {selectedConcept.mapsTo.length} bead
             {selectedConcept.mapsTo.length > 1 ? "s" : ""}

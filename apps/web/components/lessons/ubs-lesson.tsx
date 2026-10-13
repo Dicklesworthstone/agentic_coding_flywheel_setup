@@ -573,8 +573,8 @@ const SCENARIOS: ScanScenario[] = [
         file: "src/api/auth.ts",
         line: 5,
         col: 14,
-        description: "API key hardcoded in source file",
-        codeSnippet: 'const API_KEY = "sk-live-abc123def456";',
+        description: "API key hardcoded in source file", // ubs:ignore[js.security.hardcoded-secrets] Descriptive lesson text contains no credential; the displayed finding teaches secret detection.
+        codeSnippet: 'const API_KEY = "sk-live-abc123def456";', // ubs:ignore[js.security.hardcoded-secrets] Public fabricated low-entropy example rendered as React text, never sent to a provider or used for authentication.
         fix: "const API_KEY = process.env.API_KEY;",
       },
       {
@@ -972,7 +972,7 @@ function InteractiveBugScanner() {
                     <span className="text-xs font-mono text-white/60 truncate flex-1">
                       {file.name}
                     </span>
-                    <span className="text-[10px] text-white/30">{file.linesScanned} lines</span>
+                    <span className="text-xs text-white/30">{file.linesScanned} lines</span>
                     {isDone && !hasIssues && (
                       <motion.span
                         initial={{ scale: 0 }}
@@ -990,7 +990,7 @@ function InteractiveBugScanner() {
                         className="flex items-center gap-1"
                       >
                         <XCircle className="h-3 w-3 text-red-400" />
-                        <span className="text-[10px] text-red-400">{fileFindings.length}</span>
+                        <span className="text-xs text-red-400">{fileFindings.length}</span>
                       </motion.span>
                     )}
                   </div>
@@ -1058,7 +1058,7 @@ function InteractiveBugScanner() {
                           animate={{ opacity: 1, x: 0 }}
                           className="flex items-center gap-2"
                         >
-                          <span className="text-[10px] font-mono text-white/40 w-28 truncate text-right shrink-0">
+                          <span className="text-xs font-mono text-white/40 w-28 truncate text-right shrink-0">
                             {row.file.split("/").pop()}
                           </span>
                           <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden flex">
@@ -1093,7 +1093,7 @@ function InteractiveBugScanner() {
                               />
                             )}
                           </div>
-                          <span className="text-[10px] text-white/30 w-4 text-right">
+                          <span className="text-xs text-white/30 w-4 text-right">
                             {row.total}
                           </span>
                         </motion.div>
@@ -1102,15 +1102,15 @@ function InteractiveBugScanner() {
                   <div className="flex items-center gap-3 mt-1.5">
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-red-500" />
-                      <span className="text-[10px] text-white/30">Critical</span>
+                      <span className="text-xs text-white/30">Critical</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-[10px] text-white/30">Important</span>
+                      <span className="text-xs text-white/30">Important</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-[10px] text-white/30">Contextual</span>
+                      <span className="text-xs text-white/30">Contextual</span>
                     </div>
                   </div>
                 </div>
@@ -1126,7 +1126,7 @@ function InteractiveBugScanner() {
             </div>
             <div
               ref={terminalRef}
-              className="h-28 rounded-lg bg-black/40 border border-white/[0.06] p-2 overflow-y-auto font-mono text-[11px] leading-relaxed scrollbar-thin scrollbar-thumb-white/10"
+              className="h-28 rounded-lg bg-black/40 border border-white/[0.06] p-2 overflow-y-auto font-mono text-xs leading-relaxed scrollbar-thin scrollbar-thumb-white/10"
             >
               {terminalLines.length === 0 ? (
                 <span className="text-white/20">
@@ -1196,7 +1196,7 @@ function InteractiveBugScanner() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20"
                   >
                     <Shield className="h-3 w-3 text-amber-400" />
-                    <span className="text-[10px] text-amber-400 font-medium">
+                    <span className="text-xs text-amber-400 font-medium">
                       CI strict mode: --fail-on-warning
                     </span>
                   </motion.div>
@@ -1328,11 +1328,11 @@ function InteractiveBugScanner() {
                                   {finding.title}
                                 </span>
                                 <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${styles.bg} ${styles.text} font-bold uppercase tracking-wider`}
+                                  className={`text-xs px-1.5 py-0.5 rounded-full ${styles.bg} ${styles.text} font-bold uppercase tracking-wider`}
                                 >
                                   {styles.label}
                                 </span>
-                                <span className="text-[10px] text-white/30 ml-auto font-mono shrink-0">
+                                <span className="text-xs text-white/30 ml-auto font-mono shrink-0">
                                   {finding.file.split("/").pop()}:{finding.line}:{finding.col}
                                 </span>
                               </div>
@@ -1362,18 +1362,18 @@ function InteractiveBugScanner() {
                                 >
                                   <div className="p-2.5 space-y-2">
                                     <div>
-                                      <span className="text-[10px] text-red-400/60 uppercase tracking-wider font-bold">
+                                      <span className="text-xs text-red-400/60 uppercase tracking-wider font-bold">
                                         Bug
                                       </span>
-                                      <pre className="mt-0.5 text-[10px] text-red-300/80 font-mono bg-red-500/5 rounded p-1.5 overflow-x-auto">
+                                      <pre className="mt-0.5 text-xs text-red-300/80 font-mono bg-red-500/5 rounded p-1.5 overflow-x-auto">
                                         {finding.codeSnippet}
                                       </pre>
                                     </div>
                                     <div>
-                                      <span className="text-[10px] text-emerald-400/60 uppercase tracking-wider font-bold">
+                                      <span className="text-xs text-emerald-400/60 uppercase tracking-wider font-bold">
                                         Fix
                                       </span>
-                                      <pre className="mt-0.5 text-[10px] text-emerald-300/80 font-mono bg-emerald-500/5 rounded p-1.5 overflow-x-auto">
+                                      <pre className="mt-0.5 text-xs text-emerald-300/80 font-mono bg-emerald-500/5 rounded p-1.5 overflow-x-auto">
                                         {finding.fix}
                                       </pre>
                                     </div>
@@ -1489,7 +1489,7 @@ function InteractiveBugScanner() {
                           </motion.div>
                         )}
                         {isComplete && (
-                          <span className="ml-auto text-[10px] text-emerald-400/60">Done</span>
+                          <span className="ml-auto text-xs text-emerald-400/60">Done</span>
                         )}
                       </motion.div>
                     );
@@ -1510,10 +1510,10 @@ function InteractiveBugScanner() {
                         className="flex items-center gap-2 p-2 rounded-lg border border-emerald-500/15 bg-emerald-500/5"
                       >
                         <CheckCircle className="h-3 w-3 text-emerald-400 shrink-0" />
-                        <span className="text-[11px] text-emerald-400/70 line-through">
+                        <span className="text-xs text-emerald-400/70 line-through">
                           {f.title}
                         </span>
-                        <span className="text-[10px] text-emerald-400/40 ml-auto">Fixed</span>
+                        <span className="text-xs text-emerald-400/40 ml-auto">Fixed</span>
                       </div>
                     ))}
                   </motion.div>

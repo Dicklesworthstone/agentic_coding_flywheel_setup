@@ -23,7 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView } from "@/components/motion";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
@@ -1112,7 +1112,7 @@ function InteractiveRepoSync() {
                 className="flex items-center gap-1.5 text-amber-400"
               >
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span className="text-[10px] font-mono">running</span>
+                <span className="text-xs font-mono">running</span>
               </motion.div>
             )}
             <button
@@ -1131,17 +1131,17 @@ function InteractiveRepoSync() {
       {activeScenario === "parallel-sync" && (
         <div className="relative px-4 pb-2">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-white/30 font-mono shrink-0">workers:</span>
+            <span className="text-xs text-white/30 font-mono shrink-0">workers:</span>
             <div className="flex items-center gap-1.5">
               {workerSlots.map((slot, i) => (
                 <motion.div
                   key={i}
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition duration-300 ${
+                  className={`px-2 py-0.5 rounded text-xs font-mono transition duration-300 ${
                     slot
                       ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
                       : "bg-white/[0.03] text-white/20 border border-white/[0.06]"
                   }`}
-                  animate={{ scale: slot ? 1 : 0.95 }}
+                  animate={{ scale: 1 }}
                   transition={SPRING}
                 >
                   {slot ?? "idle"}
@@ -1172,7 +1172,7 @@ function InteractiveRepoSync() {
           <div className="mt-3 p-3 rounded-xl bg-black/30 border border-white/[0.06]">
             <div className="flex items-center gap-2 mb-2">
               <GitBranch className="h-3.5 w-3.5 text-white/40" />
-              <span className="text-[11px] text-white/40 font-medium">Branch States</span>
+              <span className="text-xs text-white/40 font-medium">Branch States</span>
             </div>
             <div className="space-y-1">
               {repos
@@ -1182,7 +1182,7 @@ function InteractiveRepoSync() {
                   <BranchRow key={repo.name} repo={repo} />
                 ))}
               {repos.filter((r) => r.status !== "pending").length === 0 && (
-                <p className="text-[10px] text-white/20 font-mono py-1">
+                <p className="text-xs text-white/20 font-mono py-1">
                   Waiting for sync to start...
                 </p>
               )}
@@ -1195,7 +1195,7 @@ function InteractiveRepoSync() {
           <div className="h-full rounded-xl bg-black/50 border border-white/[0.06] overflow-hidden flex flex-col">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
               <Terminal className="h-3.5 w-3.5 text-white/40" />
-              <span className="text-[11px] text-white/40 font-mono">output</span>
+              <span className="text-xs text-white/40 font-mono">output</span>
               <div className="ml-auto flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-red-500/60" />
                 <div className="w-2 h-2 rounded-full bg-amber-500/60" />
@@ -1209,7 +1209,7 @@ function InteractiveRepoSync() {
               role="region"
               aria-label="Command output (scrollable)"
             >
-              <div className="space-y-0.5 font-mono text-[11px]">
+              <div className="space-y-0.5 font-mono text-xs">
                 <AnimatePresence>
                   {terminalLines.map((line, i) => (
                     <motion.div
@@ -1273,7 +1273,7 @@ function InteractiveRepoSync() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-medium text-violet-300">
+                  <span className="text-xs font-medium text-violet-300">
                     Planning commit for {aiTargetRepo}
                   </span>
                   <motion.div
@@ -1465,7 +1465,7 @@ function SyncRepoTile({
             {statusIcon[repo.status]}
           </motion.div>
         </AnimatePresence>
-        <span className={`text-[10px] font-mono font-medium ${style.text} truncate leading-tight`}>
+        <span className={`text-xs font-mono font-medium ${style.text} truncate leading-tight`}>
           {repo.name}
         </span>
       </div>
@@ -1478,9 +1478,9 @@ function SyncRepoTile({
           className="flex items-center gap-1 mb-1.5"
         >
           <GitBranch className="h-2.5 w-2.5 text-white/20" />
-          <span className="text-[10px] font-mono text-white/25">{repo.branch}</span>
+          <span className="text-xs font-mono text-white/25">{repo.branch}</span>
           {repo.changedFiles > 0 && repo.status !== "synced" && (
-            <span className="text-[10px] font-mono text-orange-400/70 ml-auto">
+            <span className="text-xs font-mono text-orange-400/70 ml-auto">
               {repo.changedFiles}f
             </span>
           )}
@@ -1515,7 +1515,7 @@ function SyncRepoTile({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="mt-1 text-[10px] font-mono text-violet-400/60 truncate"
+          className="mt-1 text-xs font-mono text-violet-400/60 truncate"
         >
           {aiTyping.slice(-20)}
         </motion.div>
@@ -1560,14 +1560,14 @@ function BranchRow({ repo }: { repo: SyncRepo }) {
         <div className="h-px flex-1 bg-white/[0.08]" />
         {repo.ahead > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
       </div>
-      <span className="text-[10px] font-mono text-white/40 w-14 truncate">{repo.name}</span>
-      <span className="text-[10px] font-mono text-white/20 w-10">{repo.branch}</span>
+      <span className="text-xs font-mono text-white/40 w-14 truncate">{repo.name}</span>
+      <span className="text-xs font-mono text-white/20 w-10">{repo.branch}</span>
       <div className="flex items-center gap-1 ml-auto">
         {repo.ahead > 0 && (
-          <span className="text-[10px] font-mono text-blue-400/60">+{repo.ahead}</span>
+          <span className="text-xs font-mono text-blue-400/60">+{repo.ahead}</span>
         )}
         {repo.behind > 0 && (
-          <span className="text-[10px] font-mono text-amber-400/60">-{repo.behind}</span>
+          <span className="text-xs font-mono text-amber-400/60">-{repo.behind}</span>
         )}
         {repo.commitMsg && <FileText className="h-2.5 w-2.5 text-violet-400/40 ml-1" />}
       </div>
@@ -1588,6 +1588,7 @@ function StatusPill({
   label: string;
   color: "emerald" | "amber" | "violet" | "red";
 }) {
+  const reducedMotion = useReducedMotion();
   if (count === 0) return null;
 
   const colorMap = {
@@ -1599,10 +1600,11 @@ function StatusPill({
 
   return (
     <motion.span
-      initial={{ opacity: 0, scale: 0.8 }}
+      initial={reducedMotion ? false : { opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
+      style={reducedMotion ? { transform: "none" } : undefined}
       transition={SPRING_SNAPPY}
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono ${colorMap[color]}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono ${colorMap[color]}`}
     >
       {count} {label}
     </motion.span>

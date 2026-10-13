@@ -930,7 +930,7 @@ function QualityChart({
   return (
     <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Quality Progression
         </span>
         <motion.span
@@ -972,7 +972,7 @@ function QualityChart({
                 )}
               </motion.div>
               <span
-                className="text-[10px] font-mono transition-colors duration-300"
+                className="text-xs font-mono transition-colors duration-300"
                 style={{ color: isVisible ? iter.color : "rgba(255,255,255,0.2)" }}
               >
                 {isVisible ? `${iter.quality}` : ""}
@@ -987,7 +987,7 @@ function QualityChart({
         {iterations.map((iter, i) => (
           <div
             key={iter.id}
-            className="flex-1 text-center text-[10px] font-medium transition-colors duration-300"
+            className="flex-1 text-center text-xs font-medium transition-colors duration-300"
             style={{
               color: i <= currentIdx ? iter.color : "rgba(255,255,255,0.15)",
               opacity: i === currentIdx ? 1 : 0.6,
@@ -1009,11 +1009,11 @@ function ReviewPanel({ checks, animateIn }: { checks: ReviewCheck[]; animateIn: 
   return (
     <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
           <Eye className="h-3 w-3" />
           Automated Checks
         </span>
-        <div className="flex items-center gap-2 text-[10px] font-mono">
+        <div className="flex items-center gap-2 text-xs font-mono">
           {passCount > 0 && <span className="text-emerald-400">{passCount} pass</span>}
           {warnCount > 0 && <span className="text-amber-400">{warnCount} warn</span>}
           {failCount > 0 && <span className="text-red-400">{failCount} fail</span>}
@@ -1032,11 +1032,11 @@ function ReviewPanel({ checks, animateIn }: { checks: ReviewCheck[]; animateIn: 
               damping: 25,
               delay: animateIn ? i * 0.06 : 0,
             }}
-            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[11px] ${getCheckBg(check.status)}`}
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${getCheckBg(check.status)}`}
           >
             <div className="flex-shrink-0">{getCheckIcon(check.status)}</div>
             <span className="font-medium text-white/70 flex-1">{check.label}</span>
-            <span className="text-white/40 text-[10px] hidden sm:inline">{check.detail}</span>
+            <span className="text-white/40 text-xs hidden sm:inline">{check.detail}</span>
           </motion.div>
         ))}
       </div>
@@ -1075,11 +1075,11 @@ function PlanDocument({
         style={{ borderColor: `${iterColor}15`, backgroundColor: `${iterColor}06` }}
       >
         <FileText className="h-3 w-3" style={{ color: iterColor }} />
-        <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
           plan.md
         </span>
         <div className="flex-1" />
-        <span className="text-[10px] font-mono text-white/30">
+        <span className="text-xs font-mono text-white/30">
           {lines.filter((l) => l.status !== "removed").length} lines
         </span>
       </div>
@@ -1110,18 +1110,18 @@ function PlanDocument({
             >
               <div className={`flex items-start px-1 ${getLineBg(line.status)}`}>
                 {/* Line number */}
-                <span className="w-6 text-right text-[10px] font-mono text-white/15 select-none py-0.5 flex-shrink-0">
+                <span className="w-6 text-right text-xs font-mono text-white/15 select-none py-0.5 flex-shrink-0">
                   {i + 1}
                 </span>
                 {/* Diff prefix */}
                 <span
-                  className={`w-4 text-center text-[10px] font-mono ${prefix.color} select-none py-0.5 flex-shrink-0`}
+                  className={`w-4 text-center text-xs font-mono ${prefix.color} select-none py-0.5 flex-shrink-0`}
                 >
                   {prefix.char}
                 </span>
                 {/* Content */}
                 <span
-                  className={`flex-1 text-[11px] font-mono py-0.5 ${
+                  className={`flex-1 text-xs font-mono py-0.5 ${
                     isRemoved
                       ? "text-red-400/50 line-through"
                       : line.status === "added"
@@ -1156,7 +1156,7 @@ function PlanDocument({
                       <div className="flex items-start gap-1.5">
                         <div className="flex-shrink-0 mt-0.5">{cStyle.icon}</div>
                         <div>
-                          <span className="text-[10px] font-semibold text-white/40 block">
+                          <span className="text-xs font-semibold text-white/40 block">
                             {comment.author}
                           </span>
                           <span className={`text-xs ${cStyle.text}`}>{comment.text}</span>
@@ -1183,7 +1183,7 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
           <div className="h-2 w-2 rounded-full bg-amber-500/60" />
           <div className="h-2 w-2 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-[10px] font-mono text-white/30">terminal</span>
+        <span className="text-xs font-mono text-white/30">terminal</span>
       </div>
       <div
         className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
@@ -1218,7 +1218,7 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
                 damping: 25,
                 delay: animateIn ? i * 0.08 : 0,
               }}
-              className={`text-[11px] font-mono ${lineColor} leading-relaxed`}
+              className={`text-xs font-mono ${lineColor} leading-relaxed`}
             >
               {line || "\u00A0"}
             </motion.div>
@@ -1251,7 +1251,7 @@ function IterationNav({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors text-[10px] font-medium border flex-shrink-0"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-medium border flex-shrink-0"
             style={{
               backgroundColor: isCurrent ? `${iter.color}15` : "transparent",
               borderColor: isCurrent
@@ -1366,13 +1366,13 @@ function InteractiveRefinementLoop() {
                       Pass {iteration.id}: {iteration.title}
                     </span>
                     <span
-                      className="text-[10px] px-2 py-0.5 rounded-full font-semibold transition-colors duration-500"
+                      className="text-xs px-2 py-0.5 rounded-full font-semibold transition-colors duration-500"
                       style={{ color: iteration.color, backgroundColor: `${iteration.color}15` }}
                     >
                       {iteration.quality}%
                     </span>
                   </div>
-                  <span className="text-[11px] text-white/40">{iteration.subtitle}</span>
+                  <span className="text-xs text-white/40">{iteration.subtitle}</span>
                 </div>
               </motion.div>
             </AnimatePresence>
@@ -1388,7 +1388,7 @@ function InteractiveRefinementLoop() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
                 showComments
                   ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
                   : "border-white/[0.1] bg-white/[0.04] text-white/50"
@@ -1405,7 +1405,7 @@ function InteractiveRefinementLoop() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-white/70 hover:text-white hover:border-white/[0.2] transition-colors text-[10px] font-medium"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-white/70 hover:text-white hover:border-white/[0.2] transition-colors text-xs font-medium"
             >
               {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
               {isPlaying ? "Pause" : "Play"}
@@ -1468,7 +1468,7 @@ function InteractiveRefinementLoop() {
             </AnimatePresence>
 
             {/* Diff legend */}
-            <div className="flex flex-wrap gap-3 px-1 text-[10px] font-mono text-white/40">
+            <div className="flex flex-wrap gap-3 px-1 text-xs font-mono text-white/40">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-sm bg-emerald-500/40" /> Added
               </span>
@@ -1520,7 +1520,7 @@ function InteractiveRefinementLoop() {
                     type="button"
                     aria-pressed={activeTab === tab.key}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[10px] font-medium transition-colors border-b-2 ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-colors border-b-2 ${
                       activeTab === tab.key
                         ? "text-white/80 border-white/30 bg-white/[0.03]"
                         : "text-white/35 border-transparent hover:text-white/50"
@@ -1531,7 +1531,7 @@ function InteractiveRefinementLoop() {
                         its name on phones without an aria-label override. */}
                     <span className="sr-only sm:not-sr-only">{tab.label}</span>
                     {tab.badge && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40">
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40">
                         {tab.badge}
                       </span>
                     )}
@@ -1592,10 +1592,10 @@ function InteractiveRefinementLoop() {
                                 <div className="flex-shrink-0 mt-0.5">{cStyle.icon}</div>
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-[10px] font-bold text-white/50">
+                                    <span className="text-xs font-bold text-white/50">
                                       {comment.author}
                                     </span>
-                                    <span className="text-[10px] font-mono text-white/25">
+                                    <span className="text-xs font-mono text-white/25">
                                       line {comment.line + 1}
                                     </span>
                                   </div>
@@ -1632,7 +1632,7 @@ function InteractiveRefinementLoop() {
         {/* Bottom: Convergence timeline */}
         <div className="pt-3 border-t border-white/[0.06]">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider flex-shrink-0">
+            <span className="text-xs font-semibold text-white/40 uppercase tracking-wider flex-shrink-0">
               Convergence
             </span>
             <div className="flex-1 flex items-center gap-0.5">

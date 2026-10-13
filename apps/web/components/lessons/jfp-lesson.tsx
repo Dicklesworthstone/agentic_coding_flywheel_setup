@@ -31,6 +31,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -666,8 +667,9 @@ function RadarChart({ scores, animate }: { scores: QualityScores; animate: boole
   });
 
   return (
+    <DiagramScroller label="Prompt quality radar" minWidth={248}>
     <div className="flex items-center justify-center">
-      <svg viewBox="0 0 200 200" className="w-full max-w-[220px] h-auto">
+      <svg viewBox="-24 0 248 200" className="w-full max-w-[248px] h-auto">
         {/* Grid */}
         {gridPolygons.map((pts, i) => (
           <polygon
@@ -726,13 +728,14 @@ function RadarChart({ scores, animate }: { scores: QualityScores; animate: boole
             y={lp.y}
             textAnchor="middle"
             dominantBaseline="middle"
-            className="fill-white/50 text-[7px] font-medium"
+            className="fill-white/50 text-xs font-medium"
           >
             {lp.label}
           </text>
         ))}
       </svg>
     </div>
+    </DiagramScroller>
   );
 }
 
@@ -747,7 +750,7 @@ function QualityBar({ label, value, delay }: { label: string; value: number; del
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-[10px]">
+      <div className="flex items-center justify-between text-xs">
         <span className="text-white/50">{label}</span>
         <span className={`font-mono font-semibold ${textColor}`}>{value}%</span>
       </div>
@@ -894,7 +897,7 @@ function PromptEvolutionTab() {
                           : "bg-emerald-400"
                     }`}
                   />
-                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-wider">
+                  <span className="text-xs font-mono text-white/30 uppercase tracking-wider">
                     Version {version.version} - {version.label}
                   </span>
                   <div className="flex-1" />
@@ -942,7 +945,7 @@ function PromptEvolutionTab() {
                   <RadarChart scores={version.scores} animate={true} />
                 </motion.div>
               </AnimatePresence>
-              <p className="text-[10px] text-white/30 text-center mt-1">Quality Radar</p>
+              <p className="text-xs text-white/30 text-center mt-1">Quality Radar</p>
             </div>
           </div>
         </motion.div>
@@ -1002,7 +1005,7 @@ function VagueVsPreciseTab() {
               </div>
               <p className="font-mono text-xs text-white/50 leading-relaxed">{item.vague}</p>
               <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-white/40">Agent Result Quality</span>
                   <span className="font-mono font-semibold text-red-400">{item.vagueResult}%</span>
                 </div>
@@ -1018,7 +1021,7 @@ function VagueVsPreciseTab() {
                   {["Ambiguous scope", "No context", "Missing constraints"].map((tag) => (
                     <span
                       key={tag}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400/70 border border-red-500/20"
+                      className="px-1.5 py-0.5 rounded text-xs bg-red-500/10 text-red-400/70 border border-red-500/20"
                     >
                       {tag}
                     </span>
@@ -1037,7 +1040,7 @@ function VagueVsPreciseTab() {
               </div>
               <p className="font-mono text-xs text-white/70 leading-relaxed">{item.precise}</p>
               <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-white/40">Agent Result Quality</span>
                   <span className="font-mono font-semibold text-emerald-400">
                     {item.preciseResult}%
@@ -1055,7 +1058,7 @@ function VagueVsPreciseTab() {
                   {["Specific location", "Clear context", "Defined output"].map((tag) => (
                     <span
                       key={tag}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400/70 border border-emerald-500/20"
+                      className="px-1.5 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-400/70 border border-emerald-500/20"
                     >
                       {tag}
                     </span>
@@ -1224,7 +1227,7 @@ function TemplateBuilderTab() {
                   {isEnabled && <Check className="h-2.5 w-2.5" />}
                 </button>
                 <span className={`text-xs font-medium ${section.color}`}>{section.label}</span>
-                <span className="flex-1 text-[10px] text-white/30 truncate font-mono">
+                <span className="flex-1 text-xs text-white/30 truncate font-mono">
                   {section.text.split("\n")[0]}
                 </span>
               </motion.div>
@@ -1242,7 +1245,7 @@ function TemplateBuilderTab() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-white/30">Quality:</span>
+              <span className="text-xs text-white/30">Quality:</span>
               <span
                 className={`text-xs font-mono font-bold ${
                   qualityScore >= 80
@@ -1296,14 +1299,14 @@ function TemplateBuilderTab() {
 
           {/* Section count badges */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] text-white/30">
+            <span className="text-xs text-white/30">
               {enabledSections.size} of {TEMPLATE_SECTIONS.length} sections active
             </span>
             <div className="flex-1" />
             {enabledSections.size < TEMPLATE_SECTIONS.length && (
               <button
                 onClick={() => setEnabledSections(new Set(TEMPLATE_SECTIONS.map((s) => s.id)))}
-                className="text-[10px] text-primary/70 hover:text-primary transition-colors"
+                className="text-xs text-primary/70 hover:text-primary transition-colors"
               >
                 Enable all
               </button>
@@ -1311,7 +1314,7 @@ function TemplateBuilderTab() {
             {enabledSections.size > 0 && (
               <button
                 onClick={() => setEnabledSections(new Set())}
-                className="text-[10px] text-white/30 hover:text-white/50 transition-colors"
+                className="text-xs text-white/30 hover:text-white/50 transition-colors"
               >
                 Clear all
               </button>
@@ -1439,7 +1442,7 @@ function AgentTerminalTab() {
             <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
             <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
           </div>
-          <span className="text-[10px] text-white/30 font-mono ml-2">agent-terminal -- jfp</span>
+          <span className="text-xs text-white/30 font-mono ml-2">agent-terminal -- jfp</span>
           <div className="flex-1" />
           <Terminal className="h-3 w-3 text-white/20" />
         </div>
@@ -1481,7 +1484,7 @@ function AgentTerminalTab() {
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center gap-4 text-[10px] text-white/30 px-1">
+      <div className="flex items-center gap-4 text-xs text-white/30 px-1">
         <span>
           Lines: {visibleLines}/{TERMINAL_LINES.length}
         </span>

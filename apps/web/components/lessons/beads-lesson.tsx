@@ -1063,7 +1063,7 @@ function InteractiveDependencyGraph() {
               >
                 {/* Step number */}
                 <div
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                     isActive
                       ? "bg-primary text-white"
                       : isPast
@@ -1074,7 +1074,7 @@ function InteractiveDependencyGraph() {
                   {isPast ? <CheckCircle className="h-3.5 w-3.5" /> : i + 1}
                 </div>
                 <span
-                  className={`text-[10px] font-medium leading-tight ${
+                  className={`text-xs font-medium leading-tight ${
                     isActive ? "text-primary" : isPast ? "text-emerald-400" : "text-white/40"
                   }`}
                 >
@@ -1101,7 +1101,7 @@ function InteractiveDependencyGraph() {
           >
             <ArrowRight className="h-3 w-3 text-primary shrink-0" />
             <span className="text-xs text-white/60">{WORKFLOW_STEPS[activeStep].description}</span>
-            <code className="ml-auto text-[10px] text-primary/80 font-mono whitespace-nowrap">
+            <code className="ml-auto text-xs text-primary/80 font-mono whitespace-nowrap">
               {WORKFLOW_STEPS[activeStep].command}
             </code>
           </motion.div>
@@ -1116,7 +1116,7 @@ function InteractiveDependencyGraph() {
           {/* Progress bar */}
           <div className="flex-1 min-w-[120px]">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-white/40 uppercase tracking-wider">
+              <span className="text-xs text-white/40 uppercase tracking-wider">
                 Project Progress
               </span>
               <span className="text-xs font-mono text-primary">{stats.progress}%</span>
@@ -1200,7 +1200,7 @@ function InteractiveDependencyGraph() {
 
           <svg
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-            className="w-full h-auto min-w-[820px] lg:min-w-0"
+            className="w-full h-auto min-w-[820px]"
             style={{ minHeight: 250 }}
             role="group"
             aria-label="Bead dependency graph. Each bead is a button: press Enter to claim a ready bead or close one in progress."
@@ -1566,7 +1566,7 @@ function InteractiveDependencyGraph() {
                       x="0"
                       y="0"
                       width="20"
-                      height="13"
+                      height="16"
                       rx="4"
                       fill={
                         bead.priority === 0
@@ -1580,7 +1580,7 @@ function InteractiveDependencyGraph() {
                     <text
                       id={`bead-node-${bead.id}-p`}
                       x="10"
-                      y="10"
+                      y="12"
                       fill={
                         bead.priority === 0
                           ? "#fca5a5"
@@ -1588,7 +1588,7 @@ function InteractiveDependencyGraph() {
                             ? "#fcd34d"
                             : "rgba(255,255,255,0.4)"
                       }
-                      fontSize="7"
+                      fontSize="12"
                       fontWeight="700"
                       fontFamily="monospace"
                       textAnchor="middle"
@@ -1604,7 +1604,7 @@ function InteractiveDependencyGraph() {
                     y={bead.y + 18}
                     fill={sc.text}
                     fillOpacity={bead.status === "open" && !ready ? 0.35 : 0.55}
-                    fontSize="8"
+                    fontSize="12"
                     fontFamily="monospace"
                   >
                     {bead.id}
@@ -1617,7 +1617,7 @@ function InteractiveDependencyGraph() {
                     y={bead.y + 34}
                     fill={sc.text}
                     fillOpacity={bead.status === "open" && !ready ? 0.45 : 0.9}
-                    fontSize="10"
+                    fontSize="12"
                     fontWeight="600"
                   >
                     {bead.title.length > 15 ? bead.title.slice(0, 14) + "\u2026" : bead.title}
@@ -1637,7 +1637,7 @@ function InteractiveDependencyGraph() {
                             ? "#a78bfa"
                             : "rgba(255,255,255,0.3)"
                     }
-                    fontSize="8"
+                    fontSize="12"
                     fontStyle="italic"
                   >
                     {bead.type}
@@ -1660,7 +1660,7 @@ function InteractiveDependencyGraph() {
                       y={bead.y + NODE_H - barH - 3}
                       fill={sc.text}
                       fillOpacity={0.4}
-                      fontSize="7"
+                      fontSize="12"
                       textAnchor="middle"
                     >
                       {imp}
@@ -1683,7 +1683,7 @@ function InteractiveDependencyGraph() {
               ).map(([, color, label], i) => (
                 <g key={label} transform={`translate(${i * 120}, 0)`}>
                   <circle cx={6} cy={6} r={5} fill={color} fillOpacity={0.6} />
-                  <text x={16} y={10} fill="white" fillOpacity={0.5} fontSize="9">
+                  <text x={16} y={10} fill="white" fillOpacity={0.5} fontSize="12">
                     {label}
                   </text>
                 </g>
@@ -1700,13 +1700,13 @@ function InteractiveDependencyGraph() {
                   strokeWidth={1.5}
                   strokeDasharray="4 2"
                 />
-                <text x={18} y={10} fill="white" fillOpacity={0.5} fontSize="9">
+                <text x={18} y={10} fill="white" fillOpacity={0.5} fontSize="12">
                   Critical Path
                 </text>
               </g>
               <g transform="translate(610, 0)">
                 <rect x={0} y={2} width={5} height={8} rx={1} fill="white" fillOpacity={0.3} />
-                <text x={10} y={10} fill="white" fillOpacity={0.5} fontSize="9">
+                <text x={10} y={10} fill="white" fillOpacity={0.5} fontSize="12">
                   Importance
                 </text>
               </g>
@@ -1725,7 +1725,7 @@ function InteractiveDependencyGraph() {
               <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
                 Ready Queue
               </span>
-              <span className="ml-auto text-[10px] font-mono text-primary">
+              <span className="ml-auto text-xs font-mono text-primary">
                 {readyBeads.length}
               </span>
             </div>
@@ -1769,11 +1769,11 @@ function InteractiveDependencyGraph() {
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-mono font-bold ${pi.color}`}>
+                            <span className={`text-xs font-mono font-bold ${pi.color}`}>
                               {pi.label}
                             </span>
-                            <code className="text-[10px] text-white/40 font-mono">{bead.id}</code>
-                            <span className={`ml-auto text-[10px] ${ti.color}`}>{ti.label}</span>
+                            <code className="text-xs text-white/40 font-mono">{bead.id}</code>
+                            <span className={`ml-auto text-xs ${ti.color}`}>{ti.label}</span>
                           </div>
                           <p className="text-xs text-white/70 mt-1 truncate">{bead.title}</p>
                         </motion.button>
@@ -1791,7 +1791,7 @@ function InteractiveDependencyGraph() {
               <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                 Blocked
               </span>
-              <span className="ml-auto text-[10px] font-mono text-white/30">
+              <span className="ml-auto text-xs font-mono text-white/30">
                 {blockedBeads.length}
               </span>
             </div>
@@ -1801,7 +1801,7 @@ function InteractiveDependencyGraph() {
                 return (
                   <div
                     key={bead.id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-[10px]"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs"
                     onMouseEnter={() => setHoveredId(bead.id)}
                     onMouseLeave={() => setHoveredId(null)}
                   >
@@ -1857,19 +1857,19 @@ function InteractiveDependencyGraph() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <code className="text-xs text-white/50 font-mono">{activeBead.id}</code>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${beadStatusColor(activeBead.status).badge}`}
+                      className={`px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border ${beadStatusColor(activeBead.status).badge}`}
                     >
                       {isBeadReady(activeBead, beadMap) && activeBead.status === "open"
                         ? "Ready"
                         : beadStatusColor(activeBead.status).label}
                     </span>
                     <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${priorityInfo(activeBead.priority).color} ${priorityInfo(activeBead.priority).bgColor}`}
+                      className={`px-1.5 py-0.5 rounded text-xs font-mono font-bold ${priorityInfo(activeBead.priority).color} ${priorityInfo(activeBead.priority).bgColor}`}
                     >
                       {priorityInfo(activeBead.priority).label}{" "}
                       {priorityInfo(activeBead.priority).urgency}
                     </span>
-                    <span className={`text-[10px] italic ${beadTypeInfo(activeBead.type).color}`}>
+                    <span className={`text-xs italic ${beadTypeInfo(activeBead.type).color}`}>
                       {beadTypeInfo(activeBead.type).label}
                     </span>
                   </div>
@@ -1885,7 +1885,7 @@ function InteractiveDependencyGraph() {
               {/* Deps & Unblocks */}
               <div className="grid grid-cols-2 gap-4 mt-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">
+                  <p className="text-xs uppercase tracking-wider text-white/30 mb-1">
                     Depends on
                   </p>
                   {activeBead.deps.length === 0 ? (
@@ -1898,7 +1898,7 @@ function InteractiveDependencyGraph() {
                         return (
                           <span
                             key={d}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 ${
+                            className={`px-1.5 py-0.5 rounded text-xs font-mono flex items-center gap-1 ${
                               dep ? beadStatusColor(dep.status).badge : "bg-white/10 text-white/40"
                             }`}
                           >
@@ -1915,7 +1915,7 @@ function InteractiveDependencyGraph() {
                   )}
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">
+                  <p className="text-xs uppercase tracking-wider text-white/30 mb-1">
                     Unblocks
                   </p>
                   {(unblocksMap[activeBead.id] ?? []).length === 0 ? (
@@ -1927,7 +1927,7 @@ function InteractiveDependencyGraph() {
                         return (
                           <span
                             key={bId}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${bt ? beadStatusColor(bt.status).badge : "bg-white/10 text-white/40"}`}
+                            className={`px-1.5 py-0.5 rounded text-xs font-mono ${bt ? beadStatusColor(bt.status).badge : "bg-white/10 text-white/40"}`}
                           >
                             {bId}
                           </span>
@@ -1945,7 +1945,7 @@ function InteractiveDependencyGraph() {
                   <p className="text-xs text-primary font-medium">
                     Click to claim and start working on this bead
                   </p>
-                  <code className="ml-auto text-[10px] text-primary/60 font-mono">
+                  <code className="ml-auto text-xs text-primary/60 font-mono">
                     br update {activeBead.id} --status=in_progress
                   </code>
                 </div>
@@ -1956,7 +1956,7 @@ function InteractiveDependencyGraph() {
                   <p className="text-xs text-amber-400 font-medium">
                     Click to mark complete and unblock downstream beads
                   </p>
-                  <code className="ml-auto text-[10px] text-amber-400/60 font-mono">
+                  <code className="ml-auto text-xs text-amber-400/60 font-mono">
                     br close {activeBead.id}
                   </code>
                 </div>
@@ -1964,7 +1964,7 @@ function InteractiveDependencyGraph() {
               {activeBead.status === "open" && !isBeadReady(activeBead, beadMap) && (
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
                   <Lock className="h-3 w-3 text-white/30" />
-                  <p className="text-[10px] text-white/40 font-medium">
+                  <p className="text-xs text-white/40 font-medium">
                     Blocked by unfinished dependencies
                   </p>
                 </div>
@@ -1996,8 +1996,8 @@ function StatPill({
       className={`flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.03] border border-white/[0.06] ${color}`}
     >
       {icon}
-      <span className="text-[10px] font-medium">{label}</span>
-      <span className="text-[10px] font-mono font-bold">{value}</span>
+      <span className="text-xs font-medium">{label}</span>
+      <span className="text-xs font-mono font-bold">{value}</span>
     </div>
   );
 }
@@ -2025,7 +2025,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <Circle className="h-2 w-2 text-red-400/60" />
         <Circle className="h-2 w-2 text-amber-400/60" />
         <Circle className="h-2 w-2 text-emerald-400/60" />
-        <span className="ml-2 text-[10px] text-white/30 font-mono">br terminal</span>
+        <span className="ml-2 text-xs text-white/30 font-mono">br terminal</span>
       </div>
       {/* Output */}
       <div
@@ -2041,7 +2041,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className={`text-[10px] font-mono leading-relaxed ${
+              className={`text-xs font-mono leading-relaxed ${
                 line.startsWith("$")
                   ? "text-emerald-400"
                   : line.startsWith("  Unblocked")

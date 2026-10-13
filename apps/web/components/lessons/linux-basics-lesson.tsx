@@ -1377,7 +1377,7 @@ function InteractiveFilesystemTree() {
         <div className="flex items-center gap-2">
           <FolderOpen className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium text-white/80">Filesystem Explorer</span>
-          <span className="text-[10px] text-white/30 ml-1">Click directories to explore</span>
+          <span className="text-xs text-white/30 ml-1">Click directories to explore</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
@@ -1499,7 +1499,7 @@ function InteractiveFilesystemTree() {
       <div className="border-t border-white/[0.06] px-5 py-1.5 flex justify-end">
         <button
           onClick={() => setShowDetail((p) => !p)}
-          className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+          className="text-xs text-white/30 hover:text-white/60 transition-colors"
         >
           {showDetail ? "Hide details" : "Show details"}
         </button>
@@ -1513,7 +1513,7 @@ function InteractiveFilesystemTree() {
           <div className="flex-1" />
           <button
             onClick={() => setTerminalHistory([...activeScenario.terminalLines])}
-            className="text-[10px] text-white/20 hover:text-white/50 transition-colors flex items-center gap-1"
+            className="text-xs text-white/20 hover:text-white/50 transition-colors flex items-center gap-1"
           >
             <Play className="h-2.5 w-2.5" />
             reset
@@ -1573,7 +1573,7 @@ function FileDetailPanel({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-white truncate">{node.name}</p>
-          <p className="text-[10px] text-white/30 truncate">{path}</p>
+          <p className="text-xs text-white/30 truncate">{path}</p>
         </div>
       </div>
 
@@ -1664,13 +1664,13 @@ function PermissionsBreakdown({ permissions }: { permissions: string }) {
     >
       <div className="flex items-center gap-2 mb-1">
         <Lock className="h-3 w-3 text-orange-400/70" />
-        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Permission Breakdown
         </span>
       </div>
 
       {/* Type indicator */}
-      <div className="text-[10px] text-white/30">
+      <div className="text-xs text-white/30">
         Type: <span className="text-white/60 font-mono">{typeChar}</span>
         {" = "}
         <span className="text-white/50">
@@ -1726,7 +1726,7 @@ function PermColumn({
 }) {
   return (
     <div className="space-y-1.5">
-      <div className={`flex items-center gap-1 text-[10px] font-semibold ${color}`}>
+      <div className={`flex items-center gap-1 text-xs font-semibold ${color}`}>
         {icon}
         {label}
       </div>
@@ -1735,7 +1735,7 @@ function PermColumn({
         return (
           <div
             key={`${labels[i]}-${i}`}
-            className={`flex items-center gap-1 text-[10px] rounded px-1 py-0.5 ${
+            className={`flex items-center gap-1 text-xs rounded px-1 py-0.5 ${
               isSet ? "bg-white/[0.04]" : ""
             }`}
           >
@@ -1819,19 +1819,19 @@ function TreeNodeRow({
 
         {/* Home badge */}
         {node.isHome && (
-          <span className="ml-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400/80 border border-amber-500/20">
+          <span className="ml-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400/80 border border-amber-500/20">
             ~ home
           </span>
         )}
 
         {/* File size hint (compact) */}
         {!isFolder && node.size && (
-          <span className="ml-auto text-[10px] text-white/20 font-mono shrink-0">{node.size}</span>
+          <span className="ml-auto text-xs text-white/20 font-mono shrink-0">{node.size}</span>
         )}
 
         {/* Permission hint on folder */}
         {isFolder && node.permissions && (
-          <span className="ml-auto text-[10px] text-white/50 font-mono shrink-0 hidden sm:inline">
+          <span className="ml-auto text-xs text-white/50 font-mono shrink-0 hidden sm:inline">
             {node.permissions}
           </span>
         )}

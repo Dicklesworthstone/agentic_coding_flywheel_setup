@@ -47,7 +47,7 @@ export function ContextHorizonViz() {
 
         {/* SLIDER CONTROL */}
         <div className="mt-4 sm:mt-0 flex flex-col gap-2 bg-[#020408] p-4 rounded-xl border border-white/[0.05] min-w-[200px] sm:min-w-[240px] shadow-inner">
-          <div className="flex justify-between text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
+          <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-white/40">
             <span>Prototype</span>
             <span>Production</span>
           </div>
@@ -73,7 +73,7 @@ export function ContextHorizonViz() {
       <div className="relative w-full h-[450px] bg-[#020408] flex items-end justify-center gap-12 sm:gap-32 p-8 overflow-hidden">
         {/* Token Horizon Line */}
         <div className="absolute top-[120px] left-0 right-0 border-t-2 border-dashed border-[#FF5F56]/40 z-0">
-          <div className="absolute right-4 -top-3.5 bg-[#020408] px-3 py-0.5 rounded-full border border-[#FF5F56]/20 text-[0.65rem] font-mono font-bold text-[#FF5F56] tracking-widest uppercase flex items-center gap-1.5 shadow-[0_0_10px_rgba(255,95,86,0.2)]">
+          <div className="absolute right-4 -top-3.5 bg-[#020408] px-3 py-0.5 rounded-full border border-[#FF5F56]/20 text-xs font-mono font-bold text-[#FF5F56] tracking-widest uppercase flex items-center gap-1.5 shadow-[0_0_10px_rgba(255,95,86,0.2)]">
             <AlertOctagon className="h-3 w-3" />
             Token Limit Horizon
           </div>
@@ -99,7 +99,7 @@ export function ContextHorizonViz() {
             <div className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">
               Plan Space
             </div>
-            <div className="text-[0.65rem] sm:text-xs text-[#27C93F] font-mono mt-1.5 flex items-center justify-center gap-1.5 bg-[#27C93F]/10 rounded-full px-2 py-0.5 border border-[#27C93F]/20">
+            <div className="text-xs text-[#27C93F] font-mono mt-1.5 flex items-center justify-center gap-1.5 bg-[#27C93F]/10 rounded-full px-2 py-0.5 border border-[#27C93F]/20">
               <CheckCircle2 className="h-3 w-3" /> Context Safe
             </div>
           </div>
@@ -156,7 +156,7 @@ export function ContextHorizonViz() {
             </div>
             <div
               className={cn(
-                "text-[0.65rem] sm:text-xs font-mono mt-1.5 flex items-center justify-center gap-1.5 rounded-full px-2 py-0.5 border transition-colors duration-500",
+                "text-xs font-mono mt-1.5 flex items-center justify-center gap-1.5 rounded-full px-2 py-0.5 border transition-colors duration-500",
                 isCodeBlowingHorizon
                   ? "text-[#FF5F56] bg-[#FF5F56]/10 border-[#FF5F56]/20"
                   : "text-[#FF5500] bg-[#FF5500]/10 border-[#FF5500]/20",

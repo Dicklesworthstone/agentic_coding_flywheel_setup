@@ -32,7 +32,7 @@ function FlywheelExplanation() {
           {/* Text content */}
           <motion.div
             initial={reducedMotion ? {} : { opacity: 0, x: -20 }}
-            animate={isInView ? { opacity: 1, x: 0 } : {}}
+            animate={reducedMotion || isInView ? { opacity: 1, x: 0 } : {}}
             transition={{ duration: reducedMotion ? 0 : 0.5 }}
           >
             <h2 className="text-xl font-bold text-white sm:text-2xl md:text-3xl">
@@ -43,7 +43,7 @@ function FlywheelExplanation() {
                 <motion.p
                   key={paragraph.slice(0, 50)}
                   initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
-                  animate={isInView ? { opacity: 1, y: 0 } : {}}
+                  animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : {}}
                   transition={{
                     duration: reducedMotion ? 0 : 0.4,
                     delay: reducedMotion ? 0 : 0.1 + index * 0.1,
@@ -59,7 +59,7 @@ function FlywheelExplanation() {
           {/* Synergy diagram */}
           <motion.div
             initial={reducedMotion ? {} : { opacity: 0, x: 20 }}
-            animate={isInView ? { opacity: 1, x: 0 } : {}}
+            animate={reducedMotion || isInView ? { opacity: 1, x: 0 } : {}}
             transition={{ duration: reducedMotion ? 0 : 0.5, delay: reducedMotion ? 0 : 0.2 }}
             className="mx-auto max-w-sm lg:max-w-none"
           >

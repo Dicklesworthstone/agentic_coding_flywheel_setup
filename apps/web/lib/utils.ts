@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { manifestSelectionProfiles } from "./generated/manifest-modules";
 import {
   containsIPAddress,
@@ -458,9 +459,27 @@ export function isInteractiveKeyboardTarget(target: EventTarget | null): boolean
     return true;
   }
 
+  // Tabbable diagrams and scroll regions use arrow keys for native panning.
+  // Keep page landmarks with tabindex=-1 eligible for global navigation.
+  for (let element: Element | null = target; element; element = element.parentElement) {
+    if (element instanceof HTMLElement && element.hasAttribute("tabindex") && element.tabIndex >= 0) {
+      return true;
+    }
+  }
+
   return (
     target.closest(
       'button, a, input, textarea, select, summary, [role="button"], [role="link"], [role="menuitem"], [contenteditable="true"]',
     ) !== null
   );
+}
+
+/** Give horizontal regions consistent arrow-key panning across browser engines. */
+export function handleHorizontalScrollKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+  if (event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey
+    || event.target !== event.currentTarget) return;
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return;
+  event.preventDefault();
+  event.currentTarget.scrollBy({ left: event.key === "ArrowRight" ? 48 : -48, behavior: "auto" });
 }

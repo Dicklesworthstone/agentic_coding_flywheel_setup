@@ -534,7 +534,7 @@ function ChatBubble({
       className={`flex gap-2 ${isUser ? "" : "flex-row-reverse"}`}
     >
       <div
-        className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+        className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold ${
           isUser ? "bg-white/10 text-white/60" : "text-white"
         }`}
         style={isUser ? undefined : { backgroundColor: providerColor + "33" }}
@@ -561,22 +561,22 @@ function ChatBubble({
         {(message.hasCode || message.hasImage || message.hasLink || message.hasTable) && (
           <div className="flex gap-1 mt-1.5">
             {message.hasCode && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
                 <Code2 className="h-2 w-2" /> code
               </span>
             )}
             {message.hasImage && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 text-xs">
                 <ImageIcon className="h-2 w-2" /> img
               </span>
             )}
             {message.hasLink && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs">
                 <ExternalLink className="h-2 w-2" /> link
               </span>
             )}
             {message.hasTable && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
                 <Table className="h-2 w-2" /> table
               </span>
             )}
@@ -601,8 +601,8 @@ function MarkdownBlock({
   const styles: Record<string, string> = {
     heading: "text-white/90 font-bold text-xs",
     text: "text-white/60 text-xs",
-    code: "text-emerald-400 font-mono text-[10px] bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1",
-    metadata: "text-white/30 font-mono text-[10px] italic",
+    code: "text-emerald-400 font-mono text-xs bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1",
+    metadata: "text-white/30 font-mono text-xs italic",
   };
 
   return (
@@ -648,7 +648,7 @@ function FormatDetectionBadge({
       initial={{ opacity: 0, scale: 0.6 }}
       animate={{
         opacity: isDetected ? 1 : isDetecting ? 0.6 : 0.2,
-        scale: isDetected ? 1 : isDetecting ? 0.95 : 0.85,
+        scale: 1,
       }}
       transition={{
         type: "spring",
@@ -656,7 +656,7 @@ function FormatDetectionBadge({
         damping: 25,
         delay: index * 0.15,
       }}
-      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-medium ${colorClass} ${
+      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-medium ${colorClass} ${
         isDetecting && !isDetected ? "animate-pulse" : ""
       }`}
     >
@@ -732,7 +732,7 @@ function PipelineProgressBar({
                 )}
               </motion.div>
               <span
-                className={`text-[10px] font-medium hidden sm:block ${
+                className={`text-xs font-medium hidden sm:block ${
                   isPast ? "text-emerald-400" : isCurrent ? "text-white/80" : "text-white/30"
                 }`}
               >
@@ -782,18 +782,18 @@ function SizeComparison({ source }: { source: SourceInfo }) {
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
         <div className="flex items-center gap-1.5">
           <Globe className="h-3 w-3 text-white/40" />
-          <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
             Raw Input
           </span>
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-white/50">Size</span>
-            <span className="text-[10px] font-mono text-white/70">{source.fileSize}</span>
+            <span className="text-xs text-white/50">Size</span>
+            <span className="text-xs font-mono text-white/70">{source.fileSize}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-white/50">Tokens</span>
-            <span className="text-[10px] font-mono text-white/70">
+            <span className="text-xs text-white/50">Tokens</span>
+            <span className="text-xs font-mono text-white/70">
               {source.tokens.toLocaleString()}
             </span>
           </div>
@@ -804,18 +804,18 @@ function SizeComparison({ source }: { source: SourceInfo }) {
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
         <div className="flex items-center gap-1.5">
           <FileText className="h-3 w-3 text-emerald-400/60" />
-          <span className="text-[10px] font-semibold text-emerald-400/60 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-emerald-400/60 uppercase tracking-wider">
             Clean Output
           </span>
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-emerald-400/50">Size</span>
-            <span className="text-[10px] font-mono text-emerald-400/80">{source.outputSize}</span>
+            <span className="text-xs text-emerald-400/50">Size</span>
+            <span className="text-xs font-mono text-emerald-400/80">{source.outputSize}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-emerald-400/50">Tokens</span>
-            <span className="text-[10px] font-mono text-emerald-400/80">
+            <span className="text-xs text-emerald-400/50">Tokens</span>
+            <span className="text-xs font-mono text-emerald-400/80">
               {source.outputTokens.toLocaleString()}
             </span>
           </div>
@@ -829,7 +829,7 @@ function SizeComparison({ source }: { source: SourceInfo }) {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
       >
-        <span className="text-[10px] text-emerald-400/70">
+        <span className="text-xs text-emerald-400/70">
           {Math.round((1 - source.outputTokens / source.tokens) * 100)}% smaller after cleaning (
           {(source.tokens - source.outputTokens).toLocaleString()} tokens saved)
         </span>
@@ -969,7 +969,7 @@ function InteractiveConversionPipelineImpl() {
         <div className="text-center space-y-1">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] mb-2">
             <Layers className="h-3 w-3 text-white/50" />
-            <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
               Live Pipeline
             </span>
           </div>
@@ -1001,7 +1001,7 @@ function InteractiveConversionPipelineImpl() {
               >
                 <div className="flex items-center gap-2 mb-1">
                   <div
-                    className="h-5 w-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white"
+                    className="h-5 w-5 rounded-md flex items-center justify-center text-xs font-bold text-white"
                     style={{ backgroundColor: s.color + "33" }}
                   >
                     {s.icon}
@@ -1012,8 +1012,8 @@ function InteractiveConversionPipelineImpl() {
                     {s.name}
                   </span>
                 </div>
-                <p className="text-[10px] text-white/30 font-mono truncate">{s.url}</p>
-                <p className="text-[10px] text-white/50 truncate mt-0.5">{s.title}</p>
+                <p className="text-xs text-white/30 font-mono truncate">{s.url}</p>
+                <p className="text-xs text-white/50 truncate mt-0.5">{s.title}</p>
               </motion.button>
             );
           })}
@@ -1033,12 +1033,12 @@ function InteractiveConversionPipelineImpl() {
               {/* URL bar */}
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 flex items-center gap-3">
                 <Link2 className="h-3.5 w-3.5 text-white/30 shrink-0" />
-                <p className="text-[10px] font-mono text-white/60 truncate flex-1">
+                <p className="text-xs font-mono text-white/60 truncate flex-1">
                   https://{source.url}
                 </p>
                 <div className="flex items-center gap-1">
                   <Clock className="h-3 w-3 text-white/30" />
-                  <span className="text-[10px] text-white/30 font-mono">
+                  <span className="text-xs text-white/30 font-mono">
                     {source.messages.length} msgs
                   </span>
                 </div>
@@ -1053,12 +1053,12 @@ function InteractiveConversionPipelineImpl() {
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2 min-h-[200px]">
                   <div className="flex items-center gap-2 mb-2">
                     <MessageSquare className="h-3 w-3 text-white/40" />
-                    <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                       Source Conversation
                     </span>
                     <div className="flex-1" />
                     <span
-                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
+                      className="text-xs font-semibold px-1.5 py-0.5 rounded-md"
                       style={{
                         color: source.color,
                         backgroundColor: source.color + "1A",
@@ -1097,7 +1097,7 @@ function InteractiveConversionPipelineImpl() {
                         transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         className="pt-2 border-t border-white/[0.06]"
                       >
-                        <span className="text-[10px] text-white/30 uppercase tracking-wider font-semibold block mb-1.5">
+                        <span className="text-xs text-white/30 uppercase tracking-wider font-semibold block mb-1.5">
                           Detected Formats
                         </span>
                         <div className="flex flex-wrap gap-1.5">
@@ -1129,7 +1129,7 @@ function InteractiveConversionPipelineImpl() {
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-1.5 min-h-[200px]">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="h-3 w-3 text-white/40" />
-                    <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                       Markdown Output
                     </span>
                     <div className="flex-1" />
@@ -1138,7 +1138,7 @@ function InteractiveConversionPipelineImpl() {
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                        className="text-[10px] font-semibold text-emerald-400 px-1.5 py-0.5 rounded-md bg-emerald-500/10"
+                        className="text-xs font-semibold text-emerald-400 px-1.5 py-0.5 rounded-md bg-emerald-500/10"
                       >
                         Complete
                       </motion.span>
@@ -1169,7 +1169,7 @@ function InteractiveConversionPipelineImpl() {
                         className="flex items-center gap-2"
                       >
                         <ChevronRight className="h-5 w-5" />
-                        <span className="text-[10px]">Waiting for pipeline...</span>
+                        <span className="text-xs">Waiting for pipeline...</span>
                       </motion.div>
                     </div>
                   )}
@@ -1224,7 +1224,7 @@ function InteractiveConversionPipelineImpl() {
                           <FileText className="h-4 w-4 text-blue-400" />
                           <span className="text-xs font-semibold text-blue-400">Markdown</span>
                         </div>
-                        <p className="text-[10px] font-mono text-white/50 break-all">
+                        <p className="text-xs font-mono text-white/50 break-all">
                           {source.title.toLowerCase().replace(/\s+/g, "_")}.md
                         </p>
                         <div className="space-y-1 pt-1">
@@ -1258,7 +1258,7 @@ function InteractiveConversionPipelineImpl() {
                           <FileCode className="h-4 w-4 text-violet-400" />
                           <span className="text-xs font-semibold text-violet-400">HTML</span>
                         </div>
-                        <p className="text-[10px] font-mono text-white/50 break-all">
+                        <p className="text-xs font-mono text-white/50 break-all">
                           {source.title.toLowerCase().replace(/\s+/g, "_")}.html
                         </p>
                         <div className="space-y-1 pt-1">
@@ -1318,9 +1318,9 @@ function OutputMetric({
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-1.5">
         <Icon className="h-3 w-3 text-white/30" />
-        <span className="text-[10px] text-white/40">{label}</span>
+        <span className="text-xs text-white/40">{label}</span>
       </div>
-      <span className="text-[10px] font-mono text-white/60">{value}</span>
+      <span className="text-xs font-mono text-white/60">{value}</span>
     </div>
   );
 }

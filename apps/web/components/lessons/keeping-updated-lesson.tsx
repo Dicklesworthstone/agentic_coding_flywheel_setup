@@ -25,6 +25,7 @@ import { AnimatePresence, motion, useInView } from "@/components/motion";
 import {
   BulletList,
   CodeBlock,
+  DiagramScroller,
   Divider,
   GoalBanner,
   Paragraph,
@@ -1419,7 +1420,7 @@ function RepoGrid({
 
             {/* Category badge */}
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full ${catColor.bg} ${catColor.text} border ${catColor.border}`}
+              className={`text-xs px-1.5 py-0.5 rounded-full ${catColor.bg} ${catColor.text} border ${catColor.border}`}
             >
               {repo.category}
             </span>
@@ -1537,12 +1538,12 @@ function DependencyGraph({
     apt: { x: 250, y: 25 },
     omz: { x: 80, y: 75 },
     p10k: { x: 30, y: 130 },
-    plugins: { x: 130, y: 130 },
+    plugins: { x: 110, y: 130 },
     claude: { x: 210, y: 75 },
     codex: { x: 290, y: 75 },
     agy: { x: 370, y: 75 },
     wrangler: { x: 450, y: 75 },
-    supabase: { x: 160, y: 130 },
+    supabase: { x: 190, y: 130 },
     vercel: { x: 350, y: 130 },
     ntm: { x: 160, y: 185 },
     dcg: { x: 400, y: 185 },
@@ -1584,8 +1585,9 @@ function DependencyGraph({
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-black/30 p-2 overflow-hidden">
+      <DiagramScroller label="Update dependency graph" minWidth={500}>
       <svg
-        viewBox="0 0 500 210"
+        viewBox="0 0 500 230"
         className="w-full h-auto"
         aria-label="Dependency graph of update components"
       >
@@ -1665,11 +1667,11 @@ function DependencyGraph({
               {/* Label */}
               <text
                 x={pos.x}
-                y={pos.y + 3.5}
+                y={pos.y + 29}
                 textAnchor="middle"
                 fill="white"
                 fillOpacity={status === "idle" ? 0.3 : 0.9}
-                fontSize={7}
+                fontSize={12}
                 fontFamily="monospace"
                 fontWeight={600}
               >
@@ -1679,6 +1681,7 @@ function DependencyGraph({
           );
         })}
       </svg>
+      </DiagramScroller>
     </div>
   );
 }
@@ -1752,7 +1755,7 @@ function VersionComparisonPanel({
       {/* Version comparison */}
       <div className="flex items-center gap-3 mb-3">
         <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
-          <span className="text-[10px] text-white/30 block mb-0.5">Current</span>
+          <span className="text-xs text-white/30 block mb-0.5">Current</span>
           <code className="text-xs font-mono text-red-400/80">{repo.versionFrom}</code>
         </div>
         <div className="flex items-center">
@@ -1761,7 +1764,7 @@ function VersionComparisonPanel({
           />
         </div>
         <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
-          <span className="text-[10px] text-white/30 block mb-0.5">Target</span>
+          <span className="text-xs text-white/30 block mb-0.5">Target</span>
           <code className="text-xs font-mono text-emerald-400/80">{repo.versionTo}</code>
         </div>
       </div>
@@ -1775,7 +1778,7 @@ function VersionComparisonPanel({
 
       {/* Changelog */}
       <div className="space-y-1">
-        <span className="text-[10px] text-white/30 uppercase tracking-wider">
+        <span className="text-xs text-white/30 uppercase tracking-wider">
           Changelog highlights
         </span>
         {changes.map((change, i) => (
@@ -1795,14 +1798,14 @@ function VersionComparisonPanel({
       {/* Dependencies */}
       {repo.dependsOn.length > 0 && (
         <div className="mt-3 pt-2 border-t border-white/[0.04]">
-          <span className="text-[10px] text-white/30 uppercase tracking-wider">Depends on</span>
+          <span className="text-xs text-white/30 uppercase tracking-wider">Depends on</span>
           <div className="flex flex-wrap gap-1 mt-1">
             {repo.dependsOn.map((depId) => {
               const dep = REPOS.find((r) => r.id === depId);
               return (
                 <span
                   key={depId}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-white/40 font-mono"
+                  className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-white/40 font-mono"
                 >
                   {dep?.shortName ?? depId}
                 </span>

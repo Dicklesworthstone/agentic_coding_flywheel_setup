@@ -367,7 +367,7 @@ function DesktopToolNode({
 }: DesktopToolNodeProps) {
   const Icon = flywheelIconMap[tool.icon] || Zap;
   const iconSize = isPrimary ? "h-6 w-6" : "h-5 w-5";
-  const fontSize = isPrimary ? "text-[11px]" : "text-[9px]";
+  const fontSize = "text-xs";
   const color = getColorFromGradient(tool.color);
 
   return (
@@ -476,7 +476,7 @@ function DesktopToolNode({
         {/* Star badge with glow */}
         {tool.stars && tool.stars >= 50 && (
           <div
-            className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-full bg-amber-500/30 px-1.5 py-0.5 text-[8px] font-bold text-amber-300 backdrop-blur-sm border border-amber-400/30"
+            className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-full bg-amber-500/30 px-1.5 py-0.5 text-xs font-bold text-amber-300 backdrop-blur-sm border border-amber-400/30"
             style={{ boxShadow: "0 2px 8px rgba(251,191,36,0.3)" }}
           >
             <Star className="h-2 w-2 fill-current" aria-hidden="true" />
@@ -534,7 +534,7 @@ function CenterHub({ size }: { size: number }) {
             <Sparkles className="h-8 w-8 text-primary opacity-50" />
           </div>
         </div>
-        <span className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-primary/90">
+        <span className="mt-1.5 text-xs font-bold uppercase tracking-[0.15em] text-primary/90">
           Flywheel
         </span>
       </div>
@@ -899,7 +899,7 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
         </div>
         {tool.stars && tool.stars >= 50 && (
           <div
-            className="flex items-center gap-0.5 rounded-full bg-amber-500/25 px-2 py-1 text-[10px] font-bold text-amber-300 border border-amber-400/30"
+            className="flex items-center gap-0.5 rounded-full bg-amber-500/25 px-2 py-1 text-xs font-bold text-amber-300 border border-amber-400/30"
             style={{ boxShadow: "0 2px 8px rgba(251,191,36,0.2)" }}
           >
             <Star className="h-2.5 w-2.5 fill-current" />
@@ -915,7 +915,7 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
 
       {/* Footer */}
       <div className="relative z-10 mt-auto pt-4 flex items-center justify-between border-t border-border/30">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+        <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
           {tool.language}
         </span>
         <div
@@ -1694,7 +1694,7 @@ export default function FlywheelVisualization() {
       <div className="mb-10 md:mb-14 text-center">
         <div className="mb-5 flex items-center justify-center gap-3">
           <div className="h-px w-10 bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
-          <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-primary">
+          <span className="text-xs font-bold uppercase tracking-[0.3em] text-primary">
             Ecosystem
           </span>
           <div className="h-px w-10 bg-gradient-to-l from-transparent via-primary/60 to-transparent" />

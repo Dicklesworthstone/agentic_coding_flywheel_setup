@@ -501,7 +501,7 @@ function MountBar({ mount }: { mount: MountPoint }) {
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-[11px]">
+      <div className="flex items-center justify-between text-xs">
         <span className="font-mono text-white/60 font-medium">{mount.path}</span>
         <span className={`font-mono font-semibold ${colors.text}`}>
           {mount.usedGb.toFixed(1)}/{mount.totalGb} GB ({pct}%)
@@ -596,7 +596,7 @@ function CategoryDonut({ categories, size = 180 }: { categories: DiskCategory[];
         y={half + 12}
         textAnchor="middle"
         fill="rgba(255,255,255,0.4)"
-        fontSize="10"
+        fontSize="14"
         fontFamily="monospace"
       >
         total used
@@ -628,10 +628,10 @@ function FileTreemap({ categories }: { categories: DiskCategory[] }) {
               borderColor: `${cat.color}30`,
             }}
           >
-            <span className="text-[10px] font-mono font-semibold text-white/70 truncate w-full text-center">
+            <span className="text-xs font-mono font-semibold text-white/70 truncate w-full text-center">
               {cat.name}
             </span>
-            <span className="text-[10px] font-mono" style={{ color: cat.color }}>
+            <span className="w-full break-words text-center text-xs font-mono" style={{ color: cat.color }}>
               {cat.sizeGb.toFixed(1)} GB
             </span>
           </motion.div>
@@ -648,8 +648,8 @@ function CategoryLegend({ categories }: { categories: DiskCategory[] }) {
       {categories.map((cat) => (
         <div key={cat.name} className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: cat.color }} />
-          <span className="text-[10px] text-white/50 truncate">{cat.name}</span>
-          <span className="text-[10px] font-mono text-white/30 ml-auto shrink-0">
+          <span className="text-xs text-white/50 truncate">{cat.name}</span>
+          <span className="text-xs font-mono text-white/30 ml-auto shrink-0">
             {cat.sizeGb.toFixed(1)}
           </span>
         </div>
@@ -673,7 +673,7 @@ function AlertTicker({ alerts }: { alerts: AlertEntry[] }) {
           initial={{ opacity: 0, x: -8 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ ...SPRING, delay: i * 0.08 }}
-          className="flex items-start gap-2 text-[11px]"
+          className="flex items-start gap-2 text-xs"
         >
           <span className="font-mono text-white/30 shrink-0">{alert.time}</span>
           <span className={`${SEVERITY_COLORS[alert.severity]} font-mono`}>
@@ -702,7 +702,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
           <div className="w-2 h-2 rounded-full bg-amber-400/50" />
           <div className="w-2 h-2 rounded-full bg-emerald-400/50" />
         </div>
-        <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider ml-1">
+        <span className="text-xs font-semibold text-white/40 uppercase tracking-wider ml-1">
           Terminal
         </span>
       </div>
@@ -718,7 +718,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: i * 0.04 }}
-            className={`text-[11px] font-mono leading-relaxed ${
+            className={`text-xs font-mono leading-relaxed ${
               line.startsWith("$")
                 ? "text-emerald-400"
                 : line.startsWith("!")
@@ -766,7 +766,7 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={SPRING}
-          className={`ml-auto text-[10px] font-mono px-2 py-0.5 rounded-full font-medium ${
+          className={`ml-auto text-xs font-mono px-2 py-0.5 rounded-full font-medium ${
             isReleased
               ? "bg-red-500/20 text-red-400"
               : isReserved
@@ -789,7 +789,7 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
           />
         </div>
         <span
-          className={`text-[11px] font-mono ${isReleased ? "text-red-400" : "text-emerald-400"}`}
+          className={`text-xs font-mono ${isReleased ? "text-red-400" : "text-emerald-400"}`}
         >
           {sizeGb.toFixed(1)} GB
         </span>
@@ -945,7 +945,7 @@ function InteractiveDiskPressureImpl() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   transition={SPRING}
-                  className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                  className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${
                     isActive
                       ? `${sColors.border} ${sColors.bg} ${sColors.text}`
                       : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
@@ -1013,7 +1013,7 @@ function InteractiveDiskPressureImpl() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Gauge className="h-4 w-4 text-white/50" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Overall Usage
                 </span>
                 <motion.span
@@ -1021,7 +1021,7 @@ function InteractiveDiskPressureImpl() {
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={SPRING}
-                  className={`ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                  className={`ml-auto text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
                     overallColors.label === "CRITICAL"
                       ? "bg-red-500/20 text-red-400"
                       : overallColors.label === "WARNING"
@@ -1079,7 +1079,7 @@ function InteractiveDiskPressureImpl() {
                     y={100}
                     textAnchor="middle"
                     fill="rgba(255,255,255,0.4)"
-                    fontSize="10"
+                    fontSize="15"
                     fontFamily="monospace"
                   >
                     aggregate
@@ -1098,7 +1098,7 @@ function InteractiveDiskPressureImpl() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <HardDrive className="h-4 w-4 text-white/50" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Mount Points
                 </span>
               </div>
@@ -1120,15 +1120,15 @@ function InteractiveDiskPressureImpl() {
               <div className="flex items-center gap-3 pt-1 border-t border-white/[0.04]">
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-yellow-500/50" />
-                  <span className="text-[10px] text-white/30">75%</span>
+                  <span className="text-xs text-white/30">75%</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-red-500/50" />
-                  <span className="text-[10px] text-white/30">90%</span>
+                  <span className="text-xs text-white/30">90%</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-red-500/70" />
-                  <span className="text-[10px] text-white/30">95% release</span>
+                  <span className="text-xs text-white/30">95% release</span>
                 </div>
               </div>
             </div>
@@ -1137,7 +1137,7 @@ function InteractiveDiskPressureImpl() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <FolderTree className="h-4 w-4 text-white/50" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Space Treemap
                 </span>
               </div>
@@ -1161,7 +1161,7 @@ function InteractiveDiskPressureImpl() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <Database className="h-4 w-4 text-white/50" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Breakdown
                 </span>
               </div>
@@ -1186,7 +1186,7 @@ function InteractiveDiskPressureImpl() {
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-white/50" />
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Alert Log
                 </span>
               </div>

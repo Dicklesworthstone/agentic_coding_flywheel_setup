@@ -4,7 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { CheckCircle, Code, Compass, FileText, GitBranch, Mail, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
-import { cn } from "@/lib/utils";
+import { cn, isInteractiveKeyboardTarget } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -153,7 +153,7 @@ function StepNode({
           {IconAlt && (
             <>
               <span
-                className="text-[10px] font-bold transition-colors duration-300"
+                className="text-xs font-bold transition-colors duration-300"
                 style={{
                   color: isActive ? step.color : "rgba(255,255,255,0.2)",
                 }}
@@ -174,7 +174,7 @@ function StepNode({
       {/* Step number + label */}
       <div className="relative z-10 flex flex-col items-center">
         <span
-          className="text-[0.55rem] font-bold uppercase tracking-widest transition-colors duration-300"
+          className="text-xs font-bold uppercase tracking-widest transition-colors duration-300"
           style={{
             // Inactive text at 60% white clears 4.5:1 on this near-black.
             color: isActive ? step.color : "rgba(255,255,255,0.6)",
@@ -184,7 +184,7 @@ function StepNode({
           {index + 1}
         </span>
         <span
-          className="text-[0.7rem] font-bold tracking-wide transition-colors duration-300 whitespace-nowrap"
+          className="text-xs font-bold tracking-wide transition-colors duration-300 whitespace-nowrap"
           style={{
             color: isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
           }}
@@ -249,7 +249,7 @@ function DetailCard({
       <div className="relative z-10 grid gap-4 sm:grid-cols-3">
         {/* Action */}
         <div className="space-y-1.5">
-          <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
             Action
           </div>
           <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.action}</p>
@@ -257,7 +257,7 @@ function DetailCard({
 
         {/* Output */}
         <div className="space-y-1.5">
-          <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
             Output
           </div>
           <p className="text-sm leading-relaxed text-zinc-300 font-light">{step.output}</p>
@@ -265,7 +265,7 @@ function DetailCard({
 
         {/* Timing */}
         <div className="space-y-1.5">
-          <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
             Timing
           </div>
           <div className="flex items-center gap-2">
@@ -362,7 +362,7 @@ function LoopArrow({
           style={{ color: isHighlighted ? "#FFBD2E" : "rgba(255,255,255,0.15)" }}
         />
         <span
-          className="text-[0.6rem] font-bold uppercase tracking-widest"
+          className="text-xs font-bold uppercase tracking-widest"
           style={{ color: isHighlighted ? "#FFBD2E" : "rgba(255,255,255,0.15)" }}
         >
           Repeat from Route
@@ -431,6 +431,10 @@ export function OperatingRhythmViz() {
   useEffect(() => {
     if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey
+        || isInteractiveKeyboardTarget(e.target)) return;
+      const bounds = containerRef.current?.getBoundingClientRect();
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
         setActiveIndex((cur) => (cur + 1) % STEP_COUNT);
@@ -467,7 +471,7 @@ export function OperatingRhythmViz() {
 
       {/* ---- HEADER ---- */}
       <div className="relative z-10 mb-8 sm:mb-10">
-        <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
+        <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
           Operating Rhythm
         </div>
@@ -488,7 +492,7 @@ export function OperatingRhythmViz() {
           style={{ left: "38%", right: "0%" }}
         />
         <div
-          className="absolute top-1 flex items-center gap-1 text-[0.55rem] font-bold uppercase tracking-widest"
+          className="absolute top-1 flex items-center gap-1 text-xs font-bold uppercase tracking-widest"
           style={{ left: "40%", color: "rgba(255,255,255,0.12)" }}
         >
           <RotateCcw className="h-3 w-3" />
@@ -544,7 +548,7 @@ export function OperatingRhythmViz() {
           style={{ top: "55%", bottom: "0%", left: "-4px", right: "-4px" }}
         >
           <div
-            className="flex items-center gap-1 px-3 pt-2 text-[0.55rem] font-bold uppercase tracking-widest"
+            className="flex items-center gap-1 px-3 pt-2 text-xs font-bold uppercase tracking-widest"
             style={{ color: "rgba(255,255,255,0.12)" }}
           >
             <RotateCcw className="h-3 w-3" />
@@ -602,7 +606,7 @@ export function OperatingRhythmViz() {
                 <div className="flex-1 min-w-0 pb-2">
                   <div className="flex items-center gap-2 mb-1">
                     <span
-                      className="text-[0.55rem] font-bold uppercase tracking-widest"
+                      className="text-xs font-bold uppercase tracking-widest"
                       style={{
                         color: activeIndex === i ? step.color : "rgba(255,255,255,0.6)",
                       }}
@@ -646,7 +650,7 @@ export function OperatingRhythmViz() {
                           }}
                         >
                           <div className="space-y-1">
-                            <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+                            <div className="text-xs font-bold uppercase tracking-widest text-white/30">
                               Action
                             </div>
                             <p className="text-sm leading-relaxed text-zinc-300 font-light">
@@ -654,7 +658,7 @@ export function OperatingRhythmViz() {
                             </p>
                           </div>
                           <div className="space-y-1">
-                            <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+                            <div className="text-xs font-bold uppercase tracking-widest text-white/30">
                               Output
                             </div>
                             <p className="text-sm leading-relaxed text-zinc-300 font-light">
@@ -662,7 +666,7 @@ export function OperatingRhythmViz() {
                             </p>
                           </div>
                           <div className="space-y-1">
-                            <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30">
+                            <div className="text-xs font-bold uppercase tracking-widest text-white/30">
                               Timing
                             </div>
                             <span
@@ -704,7 +708,7 @@ export function OperatingRhythmViz() {
           type="button"
           onClick={() => setAutoPlay((prev) => !prev)}
           className={cn(
-            "text-[0.6rem] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300",
+            "text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300",
             autoPlay
               ? "border-[#FF5500]/20 text-[#FF5500] bg-[#FF5500]/[0.05] hover:bg-[#FF5500]/[0.1]"
               : "border-white/[0.06] text-white/20 bg-white/[0.02] hover:bg-white/[0.04]",

@@ -262,7 +262,7 @@ export function PromptBlock({
             <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FFBD2E] transition-colors duration-500 shadow-sm" />
             <div className="w-2.5 h-2.5 rounded-full bg-white/10 group-hover:bg-[#FF5500] transition-colors duration-500 shadow-sm" />
           </div>
-          <span className="ml-2 text-[0.7rem] font-bold text-white/50 tracking-wider uppercase">
+          <span className="ml-2 text-xs font-bold text-white/50 tracking-wider uppercase">
             {title}
           </span>
         </div>
@@ -271,7 +271,7 @@ export function PromptBlock({
           whileTap={{ scale: 0.95 }}
           onClick={handleCopy}
           aria-label={copied ? "Copied" : `Copy prompt: ${title}`}
-          className="flex min-h-[44px] items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-[0.7rem] font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
+          className="flex min-h-[44px] items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-[#FF5500]" />
@@ -306,7 +306,7 @@ export function PromptBlock({
                   <Terminal className="h-3 w-3 text-zinc-400" />
                 </div>
                 <div>
-                  <span className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest block mb-1">
+                  <span className="text-xs font-bold text-white/30 uppercase tracking-widest block mb-1">
                     Context
                   </span>
                   <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed">{where}</p>
@@ -319,7 +319,7 @@ export function PromptBlock({
                   <Lightbulb className="h-3 w-3 text-[#FF5500]" />
                 </div>
                 <div>
-                  <span className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-widest block mb-1">
+                  <span className="text-xs font-bold text-[#FF5500] uppercase tracking-widest block mb-1">
                     Psychology
                   </span>
                   <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed italic">
@@ -359,7 +359,7 @@ export function DataTable({
             <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
             <div className="relative z-10 flex flex-col h-full">
-              <div className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+              <div className="text-xs font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.6)]" />
                 {headers[0]}
               </div>
@@ -369,7 +369,7 @@ export function DataTable({
 
               {headers[1] && row[1] && (
                 <div className="mb-6 flex-1">
-                  <div className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
                     {headers[1]}
                   </div>
                   <div className="text-[1.05rem] text-zinc-300 font-light leading-relaxed">
@@ -380,7 +380,7 @@ export function DataTable({
 
               {headers[2] && row[2] && (
                 <div className="mt-auto pt-5 border-t border-white/[0.06]">
-                  <div className="text-[0.6rem] font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-[0.15em] mb-2">
                     {headers[2]}
                   </div>
                   <div className="text-[1rem] text-zinc-400 font-medium italic leading-relaxed">
@@ -408,7 +408,7 @@ export function DataTable({
               {headers.map((h, i) => (
                 <th
                   key={i}
-                  className="px-8 py-6 text-left text-[0.7rem] font-black text-[#FF5500] uppercase tracking-[0.2em] whitespace-nowrap"
+                  className="px-8 py-6 text-left text-xs font-black text-[#FF5500] uppercase tracking-[0.2em] whitespace-nowrap"
                 >
                   {h}
                 </th>
@@ -473,7 +473,7 @@ export function PhaseCard({
             {phase}
           </div>
           <div className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent hidden sm:block" />
-          <div className="text-[0.65rem] font-bold text-white/30 uppercase tracking-widest">
+          <div className="text-xs font-bold text-white/30 uppercase tracking-widest">
             Step Verification
           </div>
         </div>
@@ -540,7 +540,7 @@ export function TipBox({
 
       <div className="relative z-10 flex flex-col gap-4">
         <div
-          className={`text-[0.7rem] font-bold ${c.color} uppercase tracking-widest flex items-center gap-2.5`}
+          className={`text-xs font-bold ${c.color} uppercase tracking-widest flex items-center gap-2.5`}
         >
           <div
             className={`w-1.5 h-1.5 rounded-full ${c.dot} shadow-[0_0_8px_currentColor] animate-pulse`}
@@ -793,7 +793,7 @@ export function OperatorCard({
               <Zap className="h-3 w-3" />
             </span>
             <div>
-              <span className="text-[#FF5500] font-bold uppercase tracking-widest text-[0.65rem] block mb-1">
+              <span className="text-[#FF5500] font-bold uppercase tracking-widest text-xs block mb-1">
                 Trigger
               </span>
               <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">
@@ -808,7 +808,7 @@ export function OperatorCard({
               <AlertTriangle className="h-3 w-3" />
             </span>
             <div>
-              <span className="text-[#FF5F56]/80 font-bold uppercase tracking-widest text-[0.65rem] block mb-1">
+              <span className="text-[#FF5F56]/80 font-bold uppercase tracking-widest text-xs block mb-1">
                 Failure Mode
               </span>
               <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">
@@ -901,7 +901,7 @@ export function TableOfContents({
             >
               {item.number && (
                 <span
-                  className={`font-mono text-[10px] ${isActive ? "text-primary" : "text-zinc-500"}`}
+                  className={`font-mono text-xs ${isActive ? "text-primary" : "text-zinc-500"}`}
                 >
                   {item.number.padStart(2, "0")}
                 </span>

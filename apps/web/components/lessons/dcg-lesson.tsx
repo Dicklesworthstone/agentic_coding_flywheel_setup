@@ -592,7 +592,7 @@ function InteractiveDcgDemo() {
             </div>
             <div>
               <p className="text-sm font-bold text-white/90">DCG Control Room</p>
-              <p className="text-[10px] text-white/40">Command Guard v2.1 active</p>
+              <p className="text-xs text-white/40">Command Guard v2.1 active</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -638,7 +638,7 @@ function InteractiveDcgDemo() {
 
         {/* Scenario selector */}
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-semibold">
+          <p className="text-xs uppercase tracking-wider text-white/30 mb-2 font-semibold">
             Select Command to Analyze
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -650,7 +650,7 @@ function InteractiveDcgDemo() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className={`relative rounded-xl border px-3 py-2.5 text-left font-mono text-[11px] transition-colors overflow-hidden ${
+                className={`relative rounded-xl border px-3 py-2.5 text-left font-mono text-xs transition-colors overflow-hidden ${
                   selectedIdx === i
                     ? `${threatBorder(s.threatLevel)} ${threatGlow(s.threatLevel)}`
                     : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.15]"
@@ -753,7 +753,7 @@ function StatusPill({
   };
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium ${classes[color]}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${classes[color]}`}
     >
       {icon}
       {label}
@@ -878,7 +878,7 @@ function PipelineView({
                 {step.done ? <CheckCircle className="h-3.5 w-3.5" /> : step.icon}
               </span>
               <span
-                className={`text-[10px] font-medium truncate ${
+                className={`text-xs font-medium truncate ${
                   step.active
                     ? scenario.blocked && i === 3
                       ? "text-red-400"
@@ -917,12 +917,12 @@ function PipelineView({
             <span className="h-2 w-2 rounded-full bg-yellow-500/60" />
             <span className="h-2 w-2 rounded-full bg-green-500/60" />
           </div>
-          <span className="text-[10px] text-white/30 ml-1 font-mono">dcg-guard</span>
+          <span className="text-xs text-white/30 ml-1 font-mono">dcg-guard</span>
           {phase === "verdict" && (
             <button
               type="button"
               onClick={onReset}
-              className="ml-auto flex items-center gap-1 text-[10px] text-white/40 hover:text-white/60 transition-colors"
+              className="ml-auto flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -1102,7 +1102,7 @@ function PipelineView({
 
             {/* Detail card */}
             <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3 text-xs text-white/50 leading-relaxed">
-              <p className="text-white/30 font-semibold uppercase tracking-wider text-[10px] mb-1">
+              <p className="text-white/30 font-semibold uppercase tracking-wider text-xs mb-1">
                 Analysis Detail
               </p>
               <p>{scenario.detail}</p>
@@ -1119,7 +1119,7 @@ function PipelineView({
                   <button
                     type="button"
                     onClick={() => setShowBypass(!showBypass)}
-                    className="text-[10px] text-amber-400/60 hover:text-amber-400 transition-colors"
+                    className="text-xs text-amber-400/60 hover:text-amber-400 transition-colors"
                   >
                     {showBypass ? "Hide" : "Try It"}
                   </button>
@@ -1161,7 +1161,7 @@ function PipelineView({
                             initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0 }}
-                            className="text-[10px] text-emerald-400 mt-2 flex items-center gap-1"
+                            className="text-xs text-emerald-400 mt-2 flex items-center gap-1"
                           >
                             <CheckCircle className="h-3 w-3" />
                             Bypass accepted. Command allowed once.
@@ -1173,7 +1173,7 @@ function PipelineView({
                             initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0 }}
-                            className="text-[10px] text-red-400 mt-2 flex items-center gap-1"
+                            className="text-xs text-red-400 mt-2 flex items-center gap-1"
                           >
                             <XCircle className="h-3 w-3" />
                             Invalid code. Hint: check the terminal output above.
@@ -1230,7 +1230,7 @@ function DcgDoctorPanel() {
           <span className={c.ok ? "text-white/60" : "text-red-400"}>{c.label}</span>
         </motion.div>
       ))}
-      <p className="text-[10px] text-emerald-400/80 mt-1 font-medium">All checks passed</p>
+      <p className="text-xs text-emerald-400/80 mt-1 font-medium">All checks passed</p>
     </div>
   );
 }
@@ -1252,7 +1252,7 @@ function PacksBrowser({
         <div className="flex items-center gap-2 mb-3">
           <Layers className="h-4 w-4 text-primary" />
           <span className="text-xs font-bold text-white/80">Protection Packs</span>
-          <span className="text-[10px] text-white/30 ml-auto">
+          <span className="text-xs text-white/30 ml-auto">
             {packsList.filter((p) => p.enabled).length}/{packsList.length} enabled
           </span>
         </div>
@@ -1282,11 +1282,11 @@ function PacksBrowser({
                   >
                     {p.name}
                   </p>
-                  <p className="text-[10px] text-white/30 truncate">{p.desc}</p>
+                  <p className="text-xs text-white/30 truncate">{p.desc}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
-                <span className="text-[10px] text-white/30">{p.rules} rules</span>
+                <span className="text-xs text-white/30">{p.rules} rules</span>
                 <button
                   type="button"
                   onClick={() => onToggle(i)}
@@ -1312,9 +1312,9 @@ function PacksBrowser({
             <span className="h-1.5 w-1.5 rounded-full bg-yellow-500/60" />
             <span className="h-1.5 w-1.5 rounded-full bg-green-500/60" />
           </div>
-          <span className="text-[10px] text-white/20 ml-1 font-mono">terminal</span>
+          <span className="text-xs text-white/20 ml-1 font-mono">terminal</span>
         </div>
-        <div className="font-mono text-[11px] space-y-1">
+        <div className="font-mono text-xs space-y-1">
           <p>
             <span className="text-emerald-400">$</span>
             <span className="text-white/60"> dcg packs</span>
@@ -1361,7 +1361,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
         <div className="flex items-center gap-3 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
           <History className="h-3.5 w-3.5 text-white/40" />
           <span className="text-xs font-semibold text-white/60">Block History</span>
-          <span className="text-[10px] text-white/30 ml-auto">{entries.length} entries</span>
+          <span className="text-xs text-white/30 ml-auto">{entries.length} entries</span>
         </div>
 
         {/* Entries */}
@@ -1376,7 +1376,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
                 i === 0 ? "bg-white/[0.02]" : ""
               }`}
             >
-              <span className="text-[10px] text-white/25 font-mono w-10 flex-shrink-0">
+              <span className="text-xs text-white/25 font-mono w-12 flex-shrink-0">
                 {entry.timestamp}
               </span>
               <span
@@ -1387,11 +1387,11 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
               ) : (
                 <CheckCircle className="h-3 w-3 text-emerald-400 flex-shrink-0" />
               )}
-              <span className="text-[11px] font-mono text-white/60 truncate min-w-0">
+              <span className="text-xs font-mono text-white/60 truncate min-w-0">
                 {entry.command}
               </span>
               {entry.rule && (
-                <span className="text-[10px] text-white/25 font-mono flex-shrink-0 ml-auto">
+                <span className="text-xs text-white/25 font-mono flex-shrink-0 ml-auto">
                   {entry.rule}
                 </span>
               )}
@@ -1404,19 +1404,19 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
           <p className="text-lg font-bold text-white/80">{entries.length}</p>
-          <p className="text-[10px] text-white/30 uppercase tracking-wider">Total</p>
+          <p className="text-xs text-white/30 uppercase tracking-wider">Total</p>
         </div>
         <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] p-2 text-center">
           <p className="text-lg font-bold text-red-400">
             {entries.filter((e) => e.blocked).length}
           </p>
-          <p className="text-[10px] text-red-400/50 uppercase tracking-wider">Blocked</p>
+          <p className="text-xs text-red-400/50 uppercase tracking-wider">Blocked</p>
         </div>
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-2 text-center">
           <p className="text-lg font-bold text-emerald-400">
             {entries.filter((e) => !e.blocked).length}
           </p>
-          <p className="text-[10px] text-emerald-400/50 uppercase tracking-wider">Allowed</p>
+          <p className="text-xs text-emerald-400/50 uppercase tracking-wider">Allowed</p>
         </div>
       </div>
     </div>

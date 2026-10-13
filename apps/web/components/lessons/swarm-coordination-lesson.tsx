@@ -725,7 +725,7 @@ const SCENARIOS: SwarmScenario[] = [
 // -- Hex layout helpers -------------------------------------------------------
 
 /** Size of each hexagonal cell */
-const HEX_R = 42;
+const HEX_R = 54;
 const HEX_W = HEX_R * 2;
 const HEX_H = Math.sqrt(3) * HEX_R;
 
@@ -810,10 +810,10 @@ function HexAgentNode({
       {/* Agent name */}
       <text
         x={cx}
-        y={cy - 10}
+        y={cy - 12}
         textAnchor="middle"
         fill={agent.color}
-        fontSize="10"
+        fontSize="12"
         fontWeight="700"
         fontFamily="system-ui"
       >
@@ -823,10 +823,10 @@ function HexAgentNode({
       {/* Provider label */}
       <text
         x={cx}
-        y={cy + 2}
+        y={cy + 3}
         textAnchor="middle"
         fill="rgba(255,255,255,0.35)"
-        fontSize="7"
+        fontSize="12"
         fontFamily="system-ui"
       >
         {agent.provider}
@@ -835,10 +835,10 @@ function HexAgentNode({
       {/* Task */}
       <text
         x={cx}
-        y={cy + 14}
+        y={cy + 18}
         textAnchor="middle"
         fill="rgba(255,255,255,0.55)"
-        fontSize="8"
+        fontSize="12"
         fontWeight="500"
         fontFamily="system-ui"
       >
@@ -847,9 +847,9 @@ function HexAgentNode({
 
       {/* Status indicator dot */}
       <circle
-        cx={cx + HEX_R - 18}
-        cy={cy - HEX_R + 18}
-        r={5}
+        cx={cx + HEX_R - 32}
+        cy={cy - HEX_R + 20}
+        r={7}
         fill={
           status === "done"
             ? "#10b981"
@@ -863,11 +863,11 @@ function HexAgentNode({
       {/* Done checkmark */}
       {status === "done" && (
         <motion.text
-          x={cx + HEX_R - 18}
-          y={cy - HEX_R + 21.5}
+          x={cx + HEX_R - 32}
+          y={cy - HEX_R + 24}
           textAnchor="middle"
           fill="white"
-          fontSize="8"
+          fontSize="12"
           fontWeight="bold"
           fontFamily="system-ui"
           initial={{ opacity: 0, scale: 0 }}
@@ -881,11 +881,11 @@ function HexAgentNode({
       {/* Rate-limit X */}
       {status === "rate-limited" && (
         <motion.text
-          x={cx + HEX_R - 18}
-          y={cy - HEX_R + 21.5}
+          x={cx + HEX_R - 32}
+          y={cy - HEX_R + 24}
           textAnchor="middle"
           fill="white"
-          fontSize="8"
+          fontSize="12"
           fontWeight="bold"
           fontFamily="system-ui"
           animate={active ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
@@ -897,7 +897,7 @@ function HexAgentNode({
 
       {/* Typing indicator for working agents */}
       {(status === "working" || status === "sending" || status === "spawning") && (
-        <TypingDotsRow cx={cx} cy={cy + 26} color={agent.color} active={active} />
+        <TypingDotsRow cx={cx} cy={cy + 32} color={agent.color} active={active} />
       )}
     </motion.g>
   );
@@ -1031,7 +1031,7 @@ function TaskQueuePanel({ beads }: { beads: SwarmScenario["queueBeads"] }) {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={SPRING_CFG}
-            className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] border"
+            className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs border"
             style={{
               borderColor: agent ? agent.color + "40" : "rgba(255,255,255,0.08)",
               backgroundColor: agent ? agent.color + "10" : "rgba(255,255,255,0.02)",
@@ -1079,13 +1079,13 @@ function FileReservationPanel({
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={SPRING_CFG}
-              className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-mono border"
+              className="flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-mono border"
               style={{
                 borderColor: isConflict ? "rgba(248,113,113,0.5)" : agent.color + "30",
                 backgroundColor: isConflict ? "rgba(239,68,68,0.08)" : agent.color + "08",
               }}
             >
-              {isConflict && <span className="text-red-400 font-bold text-[10px]">!!</span>}
+              {isConflict && <span className="text-red-400 font-bold text-xs">!!</span>}
               <span style={{ color: agent.color }} className="shrink-0 font-semibold">
                 {agent.name}
               </span>
@@ -1132,7 +1132,7 @@ function MailMessagePanel({ messages }: { messages: MailMessage[] }) {
 
 function ProgressBar({ progress }: { progress: number }) {
   return (
-    <div className="relative h-3 rounded-full overflow-hidden bg-white/[0.04] border border-white/[0.06]">
+    <div className="relative h-5 rounded-full overflow-hidden bg-white/[0.04] border border-white/[0.06]">
       <motion.div
         className="absolute inset-y-0 left-0 rounded-full"
         style={{
@@ -1146,7 +1146,7 @@ function ProgressBar({ progress }: { progress: number }) {
         transition={{ type: "spring", stiffness: 80, damping: 20 }}
       />
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[10px] font-bold text-white/70 drop-shadow-sm">{progress}%</span>
+        <span className="text-xs font-bold text-white/70 drop-shadow-sm">{progress}%</span>
       </div>
     </div>
   );
@@ -1177,13 +1177,13 @@ function PanelTabBar({
           key={t.key}
           type="button"
           onClick={() => onSelect(t.key)}
-          className={`relative px-3 py-1.5 text-[10px] font-medium transition-colors ${
+          className={`relative px-3 py-1.5 text-xs font-medium transition-colors ${
             active === t.key ? "text-white" : "text-white/40 hover:text-white/60"
           }`}
         >
           {t.label}
           {t.badge !== undefined && (
-            <span className="ml-1 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-bold text-amber-400">
+            <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/20 px-1 text-xs font-bold text-amber-400">
               {t.badge}
             </span>
           )}
@@ -1277,9 +1277,9 @@ function InteractiveSwarmOrchestrator() {
 
   // SVG layout constants
   const svgW = 560;
-  const svgH = 260;
+  const svgH = 310;
   const gridOffsetX = 70;
-  const gridOffsetY = 56;
+  const gridOffsetY = 68;
 
   // Build a lookup from agent id -> hex center
   const agentCenters: Record<string, { x: number; y: number }> = {};
@@ -1310,7 +1310,7 @@ function InteractiveSwarmOrchestrator() {
           >
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-white/90">{scenario.title}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-white/40">
+              <span className="text-xs px-2 py-0.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-white/40">
                 Step {step + 1}/{totalSteps}
               </span>
             </div>
@@ -1415,8 +1415,8 @@ function InteractiveSwarmOrchestrator() {
       {/* Progress bar */}
       <div className="relative px-5 pb-2">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-[10px] font-medium text-white/40">Swarm Progress</span>
-          <span className="text-[10px] text-white/25 ml-auto">
+          <span className="text-xs font-medium text-white/40">Swarm Progress</span>
+          <span className="text-xs text-white/25 ml-auto">
             {HEX_AGENTS.filter((a) => scenario.agentStatuses[a.id] === "done").length}/
             {HEX_AGENTS.length} agents done
           </span>
@@ -1430,7 +1430,7 @@ function InteractiveSwarmOrchestrator() {
           const status = scenario.agentStatuses[agent.id] ?? "idle";
           const palette = STATUS_PALETTE[status as AgentStatus];
           return (
-            <div key={agent.id} className="flex items-center gap-1 text-[10px]">
+            <div key={agent.id} className="flex items-center gap-1 text-xs">
               <div
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: agent.color, opacity: 0.8 }}

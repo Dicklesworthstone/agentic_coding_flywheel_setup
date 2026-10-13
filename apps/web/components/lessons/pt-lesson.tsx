@@ -27,6 +27,7 @@ import { AnimatePresence, motion, springs, useInView } from "@/components/motion
 import {
   CodeBlock,
   CommandList,
+  DiagramScroller,
   Divider,
   FeatureCard,
   FeatureGrid,
@@ -974,10 +975,10 @@ function ResourceGauge({
         </div>
       </div>
       <div className="text-center">
-        <div className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
+        <div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           {label}
         </div>
-        <div className="text-[10px] font-mono text-white/30">
+        <div className="text-xs font-mono text-white/30">
           {formatMem(value)}/{formatMem(max)} {unit}
         </div>
       </div>
@@ -994,7 +995,7 @@ function ProcessTree({ processes }: { processes: SimProcess[] }) {
   const children = (ppid: number) => processes.filter((p) => p.ppid === ppid && p.pid !== ppid);
 
   return (
-    <div className="space-y-1 font-mono text-[11px]">
+    <div className="space-y-1 font-mono text-xs">
       {roots.map((root) => (
         <div key={root.pid}>
           <div className="flex items-center gap-2">
@@ -1040,7 +1041,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
         <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
         <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
-        <span className="text-[10px] text-white/30 ml-2 font-mono">terminal</span>
+        <span className="text-xs text-white/30 ml-2 font-mono">terminal</span>
       </div>
       <div className="p-3 space-y-0.5 max-h-44 overflow-y-auto">
         {lines.map((line, i) => (
@@ -1049,7 +1050,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
             initial={{ opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ ...SPRING, delay: i * 0.08 }}
-            className={`font-mono text-[11px] leading-relaxed ${
+            className={`font-mono text-xs leading-relaxed ${
               line.startsWith("$")
                 ? "text-emerald-400"
                 : line.includes("!!") || line.includes("WARNING")
@@ -1336,7 +1337,7 @@ function InteractiveProcessTriageDashboard() {
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.9 }}
                 transition={SPRING}
-                className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition ${
+                className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
                   i === step
                     ? "bg-primary/20 border border-primary/30 text-primary"
                     : "bg-white/[0.02] border border-white/[0.06] text-white/30 hover:text-white/50 hover:border-white/[0.12]"
@@ -1376,7 +1377,7 @@ function InteractiveProcessTriageDashboard() {
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-primary">{scenario.icon}</span>
                 <span className="text-sm font-semibold text-white/80">{scenario.label}</span>
-                <span className="text-[10px] text-white/30 ml-auto">
+                <span className="text-xs text-white/30 ml-auto">
                   Step {step + 1}/{totalSteps}
                 </span>
               </div>
@@ -1399,7 +1400,7 @@ function InteractiveProcessTriageDashboard() {
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Gauge className="h-3.5 w-3.5 text-white/40" />
-                  <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                     System Resources
                   </span>
                 </div>
@@ -1427,19 +1428,19 @@ function InteractiveProcessTriageDashboard() {
                   />
                   <div className="flex flex-col items-center gap-1.5 justify-center">
                     <div className="text-center space-y-1">
-                      <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                      <div className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                         Load Avg
                       </div>
                       <div className="font-mono text-xs text-white/70">
                         {res.loadAvg.map((v) => v.toFixed(2)).join(" ")}
                       </div>
-                      <div className="text-[10px] text-white/30">{res.cpuCores} cores</div>
+                      <div className="text-xs text-white/30">{res.cpuCores} cores</div>
                     </div>
                     <div className="text-center space-y-1 mt-1">
-                      <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                      <div className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                         Disk I/O
                       </div>
-                      <div className="flex gap-3 text-[10px] font-mono">
+                      <div className="flex gap-3 text-xs font-mono">
                         <span className="text-emerald-400">
                           {"\u2191"}
                           {formatIO(res.diskRead)} MB/s
@@ -1513,20 +1514,20 @@ function InteractiveProcessTriageDashboard() {
                     transition={SPRING}
                     className="flex flex-col gap-1.5"
                   >
-                    <div className="flex items-center gap-1.5 text-[10px]">
+                    <div className="flex items-center gap-1.5 text-xs">
                       <div className="h-2 w-2 rounded-full bg-emerald-500" />
                       <span className="text-white/40">Safe: {safePids.length}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10px]">
+                    <div className="flex items-center gap-1.5 text-xs">
                       <div className="h-2 w-2 rounded-full bg-amber-500" />
                       <span className="text-white/40">Suspicious: {suspiciousPids.length}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10px]">
+                    <div className="flex items-center gap-1.5 text-xs">
                       <div className="h-2 w-2 rounded-full bg-red-500" />
                       <span className="text-white/40">Kill: {killablePids.length}</span>
                     </div>
                     {killedPids.size > 0 && (
-                      <div className="flex items-center gap-1.5 text-[10px]">
+                      <div className="flex items-center gap-1.5 text-xs">
                         <Skull className="h-2.5 w-2.5 text-white/30" />
                         <span className="text-white/30">Killed: {killedPids.size}</span>
                       </div>
@@ -1548,8 +1549,9 @@ function InteractiveProcessTriageDashboard() {
             transition={{ duration: 0.2 }}
           >
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
+              <DiagramScroller label="Process triage table" minWidth={560}>
               {/* Table header */}
-              <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 px-3 py-2 border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-white/25 font-semibold bg-white/[0.01]">
+              <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 px-3 py-2 border-b border-white/[0.06] text-xs uppercase tracking-wider text-white/25 font-semibold bg-white/[0.01]">
                 <span>PID</span>
                 <span>S</span>
                 <span>Process</span>
@@ -1588,9 +1590,9 @@ function InteractiveProcessTriageDashboard() {
                         }`}
                       >
                         <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 items-center">
-                          <span className="font-mono text-[11px] text-white/40">{proc.pid}</span>
+                          <span className="font-mono text-xs text-white/40">{proc.pid}</span>
                           <span
-                            className={`font-mono text-[10px] font-bold ${getStateColor(proc.state)}`}
+                            className={`font-mono text-xs font-bold ${getStateColor(proc.state)}`}
                           >
                             {getStateLabel(proc.state)}
                           </span>
@@ -1605,7 +1607,7 @@ function InteractiveProcessTriageDashboard() {
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
                                 transition={springs.snappy}
-                                className="shrink-0 rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[10px] text-red-400 font-bold"
+                                className="shrink-0 rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-xs text-red-400 font-bold"
                               >
                                 KILLED
                               </motion.span>
@@ -1614,7 +1616,7 @@ function InteractiveProcessTriageDashboard() {
                           {/* CPU with bar */}
                           <div className="text-right">
                             <span
-                              className={`font-mono text-[10px] ${highCpu ? "text-red-400" : "text-white/40"}`}
+                              className={`font-mono text-xs ${highCpu ? "text-red-400" : "text-white/40"}`}
                             >
                               {proc.cpu.toFixed(1)}
                             </span>
@@ -1628,7 +1630,7 @@ function InteractiveProcessTriageDashboard() {
                           {/* Memory */}
                           <div className="text-right">
                             <span
-                              className={`font-mono text-[10px] ${highMem ? "text-amber-400" : "text-white/40"}`}
+                              className={`font-mono text-xs ${highMem ? "text-amber-400" : "text-white/40"}`}
                             >
                               {formatMem(proc.memory)}
                             </span>
@@ -1639,7 +1641,7 @@ function InteractiveProcessTriageDashboard() {
                             />
                           </div>
                           {/* I/O */}
-                          <span className="text-right font-mono text-[10px] text-white/30">
+                          <span className="text-right font-mono text-xs text-white/30">
                             {proc.ioRead + proc.ioWrite > 0
                               ? `${formatIO(proc.ioRead + proc.ioWrite)}`
                               : "-"}
@@ -1655,7 +1657,7 @@ function InteractiveProcessTriageDashboard() {
                               />
                             </div>
                             <span
-                              className={`text-[10px] font-mono w-5 text-right ${isScored ? getDangerTextColor(proc.dangerScore) : "text-white/15"}`}
+                              className={`text-xs font-mono w-5 text-right ${isScored ? getDangerTextColor(proc.dangerScore) : "text-white/15"}`}
                             >
                               {isScored ? (proc.dangerScore * 100).toFixed(0) : "--"}
                             </span>
@@ -1708,7 +1710,7 @@ function InteractiveProcessTriageDashboard() {
                                       ? "Suspicious"
                                       : "Safe"}
                                 </span>
-                                <span className="text-[10px] text-white/20 ml-auto font-mono">
+                                <span className="text-xs text-white/20 ml-auto font-mono">
                                   Score: {(proc.dangerScore * 100).toFixed(0)} | Uptime:{" "}
                                   {proc.uptime} | PPID: {proc.ppid}
                                 </span>
@@ -1720,19 +1722,19 @@ function InteractiveProcessTriageDashboard() {
                               {/* Resource detail */}
                               <div className="grid grid-cols-4 gap-3 mb-3">
                                 <div className="text-center">
-                                  <div className="text-[10px] text-white/25 uppercase">CPU</div>
+                                  <div className="text-xs text-white/25 uppercase">CPU</div>
                                   <div className="text-xs font-mono text-white/60">
                                     {proc.cpu.toFixed(1)}%
                                   </div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-[10px] text-white/25 uppercase">Memory</div>
+                                  <div className="text-xs text-white/25 uppercase">Memory</div>
                                   <div className="text-xs font-mono text-white/60">
                                     {formatMem(proc.memory)}
                                   </div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-[10px] text-white/25 uppercase">
+                                  <div className="text-xs text-white/25 uppercase">
                                     I/O Read
                                   </div>
                                   <div className="text-xs font-mono text-white/60">
@@ -1740,7 +1742,7 @@ function InteractiveProcessTriageDashboard() {
                                   </div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-[10px] text-white/25 uppercase">
+                                  <div className="text-xs text-white/25 uppercase">
                                     I/O Write
                                   </div>
                                   <div className="text-xs font-mono text-white/60">
@@ -1774,6 +1776,7 @@ function InteractiveProcessTriageDashboard() {
                   );
                 })}
               </div>
+              </DiagramScroller>
             </div>
           </motion.div>
         </AnimatePresence>
@@ -1792,7 +1795,7 @@ function InteractiveProcessTriageDashboard() {
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TreePine className="h-3.5 w-3.5 text-white/40" />
-                <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
                   Process Tree
                 </span>
               </div>
