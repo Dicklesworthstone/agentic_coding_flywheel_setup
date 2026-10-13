@@ -15322,18 +15322,86 @@ EOF
     assert_failure
 }
 
-@test "rollback backoff: verified installer returns the backoff exit code" {
+_backoff_installer_fixture() {
     # The setup() for this file stubs `date`; these tests need real epochs.
     date() { /bin/date "$@"; }
     mkdir -p "$HOME/.local/state/acfs"
     unset XDG_STATE_HOME
     export ACFS_HOLDS_FILE="$HOME/.acfs/holds.yaml"
-    printf 'br 2 %s\n' "$(/bin/date +%s)" > "$HOME/.local/state/acfs/update-rollback.state"
-
     FORCE_MODE=false
+    BACKOFF_OLD_SHA="$(printf 'a%.0s' {1..64})"
+    BACKOFF_NEW_SHA="$(printf 'b%.0s' {1..64})"
+    # No network: checksums "load" as the pin under test, and a download
+    # attempt is reported instead of made.
+    update_require_security() { UPDATE_SECURITY_READY=true; return 0; }
+    get_checksum() { printf '%s\n' "$BACKOFF_PINNED_SHA"; }
+    verify_checksum() { echo "VERIFY $3 $2" >&2; return 1; }
+    declare -gA KNOWN_INSTALLERS=([br]="https://example.invalid/br/install.sh")
+}
+
+@test "rollback backoff: verified installer returns the backoff exit code" {
+    _backoff_installer_fixture
+    BACKOFF_PINNED_SHA="$BACKOFF_OLD_SHA"
+    printf 'br 2 %s %s\n' "$(/bin/date +%s)" "$BACKOFF_OLD_SHA" > "$HOME/.local/state/acfs/update-rollback.state"
+
     run update_run_verified_installer_with_env br ""
     [[ "$status" -eq 94 ]]
     assert_output --partial "SKIPPED (rollback backoff)"
+    refute_output --partial "VERIFY"
+}
+
+@test "rollback backoff: a newly pinned installer is tried at once" {
+    _backoff_installer_fixture
+    BACKOFF_PINNED_SHA="$BACKOFF_NEW_SHA"
+    printf 'br 9 %s %s\n' "$(/bin/date +%s)" "$BACKOFF_OLD_SHA" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    run update_run_verified_installer_with_env br ""
+    [[ "$status" -ne 94 ]]
+    refute_output --partial "SKIPPED (rollback backoff)"
+    assert_output --partial "VERIFY br $BACKOFF_NEW_SHA"
+}
+
+@test "rollback backoff: same pin keeps it, a new pin lifts it, an unknown pin keeps it" {
+    _backoff_installer_fixture
+    printf 'csctf 9 %s %s\n' "$(/bin/date +%s)" "$BACKOFF_OLD_SHA" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    run update_tool_rollback_backoff_details csctf "$BACKOFF_OLD_SHA"
+    assert_success
+    run update_tool_rollback_backoff_details csctf "$BACKOFF_NEW_SHA"
+    assert_failure
+    # Callers that cannot name the pin (the claude parent-shell check) keep
+    # the plain time-based backoff.
+    run update_tool_rollback_backoff_details csctf
+    assert_success
+    run update_tool_rollback_backoff_details csctf "not-a-sha"
+    assert_success
+}
+
+@test "rollback backoff: a failure recorded before pins were tracked is retried once a pin is known" {
+    _backoff_installer_fixture
+    printf 'csctf 9 %s\n' "$(/bin/date +%s)" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    run update_tool_rollback_backoff_details csctf "$BACKOFF_NEW_SHA"
+    assert_failure
+    run update_tool_rollback_backoff_details csctf
+    assert_success
+    update_tool_rollback_backoff_details csctf || true
+    [[ "$UPDATE_LAST_BACKOFF_DETAILS" == *"failed 9 time(s)"* ]]
+}
+
+@test "rollback: a failed verification records the installer pin it failed with" {
+    _backoff_installer_fixture
+    local state_file="$HOME/.local/state/acfs/update-rollback.state"
+
+    update_rollback_state_record_failure csctf "$BACKOFF_OLD_SHA"
+    update_rollback_state_record_failure csctf "$BACKOFF_NEW_SHA"
+    run grep -E "^csctf 2 [0-9]+ $BACKOFF_NEW_SHA\$" "$state_file"
+    assert_success
+
+    # Anything that is not a sha256 is not stored as one.
+    update_rollback_state_record_failure ntm "../../etc"
+    run grep -E '^ntm 1 [0-9]+$' "$state_file"
+    assert_success
 }
 
 # ============================================================

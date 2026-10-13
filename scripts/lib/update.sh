@@ -4997,7 +4997,9 @@ update_tool_smoke_check() {
 
 # State file recording post-install verification failures per tool, so the
 # nightly backs off instead of retry-looping a broken release. Plain text,
-# one `tool count last_failure_epoch` line per tool.
+# one `tool count last_failure_epoch [installer_sha256]` line per tool; the
+# sha is the pinned installer that failed (absent in lines written before
+# pins were tracked).
 update_rollback_state_file() {
     local state_home="${XDG_STATE_HOME:-}"
     if [[ -z "$state_home" ]]; then
@@ -5014,7 +5016,7 @@ update_rollback_state_lookup() {
     local state_file=""
     state_file="$(update_rollback_state_file 2>/dev/null || true)"
     [[ -n "$state_file" && -f "$state_file" ]] || return 1
-    awk -v tool="$tool" '$1 == tool { print $2, $3; found = 1 } END { exit found ? 0 : 1 }' "$state_file"
+    awk -v tool="$tool" '$1 == tool { print $2, $3, $4; found = 1 } END { exit found ? 0 : 1 }' "$state_file"
 }
 
 _update_rollback_state_rewrite() {
@@ -5048,13 +5050,15 @@ _update_rollback_state_rewrite() {
 
 update_rollback_state_record_failure() {
     local tool="${1:-}"
+    local installer_sha="${2:-}"
     [[ -n "$tool" ]] || return 1
+    [[ "$installer_sha" =~ ^[[:xdigit:]]{64}$ ]] || installer_sha=""
     local count=0
     local entry=""
     entry="$(update_rollback_state_lookup "$tool" 2>/dev/null || true)"
     [[ -n "$entry" ]] && count="${entry%% *}"
     [[ "$count" =~ ^[0-9]+$ ]] || count=0
-    _update_rollback_state_rewrite "$tool" "$tool $((count + 1)) $(date +%s)"
+    _update_rollback_state_rewrite "$tool" "$tool $((count + 1)) $(date +%s)${installer_sha:+ $installer_sha}"
 }
 
 update_rollback_state_clear() {
@@ -5066,19 +5070,29 @@ update_rollback_state_clear() {
 
 # Backoff: after N verification failures, skip re-attempting the tool for
 # min(N, 7) days. --force overrides (a human is watching); holds do not.
+# Pass the currently pinned installer sha as $2: a pin that differs from the
+# one that failed is a new release and is tried right away, so an upstream fix
+# reaches the host the next run instead of up to a week later (csctf on the
+# non-AVX2 yto stayed broken in backoff after its fixed installer was pinned,
+# 2026-10-13). A failure recorded without a pin counts as a different pin.
 update_tool_rollback_backoff_details() {
     local tool="${1:-}"
+    local current_sha="${2:-}"
     UPDATE_LAST_BACKOFF_DETAILS=""
     [[ -n "$tool" ]] || return 1
     [[ "${FORCE_MODE:-false}" == "true" ]] && return 1
 
-    local entry="" count=0 last_epoch=0
+    local entry="" count=0 last_epoch=0 failed_sha=""
     entry="$(update_rollback_state_lookup "$tool" 2>/dev/null || true)"
     [[ -n "$entry" ]] || return 1
-    count="${entry%% *}"
-    last_epoch="${entry##* }"
+    read -r count last_epoch failed_sha <<<"$entry"
     [[ "$count" =~ ^[0-9]+$ && "$last_epoch" =~ ^[0-9]+$ ]] || return 1
     ((count > 0)) || return 1
+
+    if [[ "$current_sha" =~ ^[[:xdigit:]]{64}$ && "$failed_sha" != "$current_sha" ]]; then
+        log_to_file "Rollback backoff lifted for $tool: its pinned installer changed since the last failed verification (${failed_sha:0:12}${failed_sha:+ -> }${current_sha:0:12})"
+        return 1
+    fi
 
     local backoff_days="$count"
     ((backoff_days > 7)) && backoff_days=7
@@ -5126,6 +5140,7 @@ update_snapshot_tool_binary() {
 # (or unverifiable), 1 when verification failed (rolled back or not).
 update_verify_tool_or_rollback() {
     local tool="${1:-}"
+    local installer_sha="${2:-}"
     local prev_path="${UPDATE_ROLLBACK_PREV_PATH:-}"
 
     local binary_name=""
@@ -5176,7 +5191,7 @@ update_verify_tool_or_rollback() {
         log_to_file "No previous $tool binary retained for rollback"
     fi
 
-    update_rollback_state_record_failure "$tool" || true
+    update_rollback_state_record_failure "$tool" "$installer_sha" || true
     return 1
 }
 
@@ -5211,8 +5226,14 @@ update_run_verified_installer_with_env() {
     fi
 
     # Rollback backoff (issue #357): a tool whose fresh install failed its
-    # post-install smoke check recently is not retried every run.
-    if update_tool_rollback_backoff_details "$tool"; then
+    # post-install smoke check recently is not retried every run, unless
+    # its pinned installer has changed since (needs checksums loaded).
+    local backoff_current_sha=""
+    if update_rollback_state_lookup "$tool" >/dev/null 2>&1 \
+        && update_require_security >/dev/null 2>&1; then
+        backoff_current_sha="$(get_checksum "$tool")"
+    fi
+    if update_tool_rollback_backoff_details "$tool" "$backoff_current_sha"; then
         echo "SKIPPED (rollback backoff): $tool -- $UPDATE_LAST_BACKOFF_DETAILS" >&2
         log_to_file "Rollback backoff honored for $tool: $UPDATE_LAST_BACKOFF_DETAILS"
         return "$UPDATE_EXIT_ROLLBACK_BACKOFF"
@@ -5287,7 +5308,7 @@ update_run_verified_installer_with_env() {
     [[ "$exit_code" == "$UPDATE_EXIT_CHECKSUM" ]] && exit_code=1
 
     if [[ $exit_code -eq 0 ]]; then
-        update_verify_tool_or_rollback "$tool" || return 1
+        update_verify_tool_or_rollback "$tool" "$expected_sha256" || return 1
     fi
 
     return "$exit_code"
