@@ -51,7 +51,7 @@ test.describe
         });
 
         await test.step("mentions the pinned Gemini 4 Argon model + agy command", async () => {
-          await expect(page.getByText(/Gemini 3\.8 Flash/i).first()).toBeVisible();
+          await expect(page.getByText(/Gemini 4 Argon/i).first()).toBeVisible();
         });
 
         expect(errors).toEqual([]);

@@ -97,11 +97,13 @@ Each `agy --print` starts a **new** conversation (new `conversations/<uuid>.db`)
 
 ## 6. 🔴 MODEL-PIN GUARD (mandatory — bead bd-47kjh.1.7)
 
-**Every** `agy` invocation in **every** tool/skill MUST run on **`Gemini 4 Argon (High)`** and never anything else. `agy models` lists:
+**Every** `agy` invocation in **every** tool/skill MUST run on **`Gemini 4 Argon (High)`** and never anything else. `agy models` lists (agy 1.3.4, 2026-10-13):
 
 | Allowed | Forbidden |
 |---|---|
-| `Gemini 4 Argon (High)` | `Gemini 4 Argon (Medium/Low)`, `Gemini 3.8 Flash (High/Medium/Low)`, `Gemini 3.7 Flash (High/Medium/Low)`, `Gemini 3.6 Flash (High/Medium/Low)`, `Gemini 3.5 Flash (High/Medium/Low)`, `Gemini 3.1 Pro (High/Low)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)` |
+| `Gemini 4 Argon (High)` | `Gemini 4 Argon (Medium/Low)`, `Gemini 3.8 Flash (High/Medium/Low)`, `Claude Opus 5.5 (High/Medium/Low)`, `Claude Sonnet 5.5 (High/Medium/Low)`, `GPT-OSS 120B (Medium)` |
+
+Older generations that `agy models` no longer lists (Gemini 3.5–3.7 Flash, Gemini 3.1 Pro, Claude 4.x) stay forbidden too; `AGY_FORBIDDEN_MODEL_REGEX` covers them by family.
 
 Argon has no separate `--effort` axis: the thinking tier is part of the model name, `(High)` is the top tier, and agy rejects `--effort` (any level) for Argon models. Never pass `--effort` to agy; the `"effort"` key in `settings.json` is tolerated and ignored.
 
