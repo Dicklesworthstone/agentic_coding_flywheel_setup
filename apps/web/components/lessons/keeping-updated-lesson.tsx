@@ -1721,7 +1721,7 @@ function VersionComparisonPanel({
     ],
     claude: ["Improved tool use reliability", "Faster streaming responses", "New /compact command"],
     codex: ["Multi-file editing support", "Better error recovery", "Sandbox improvements"],
-    agy: ["Pinned Gemini 3.8 Flash model", "DCG hook integration", "Terminal settings refreshed"],
+    agy: ["Pinned Gemini 4 Argon model", "DCG hook integration", "Terminal settings refreshed"],
     wrangler: ["D1 export support", "Hyperdrive GA", "Pages build caching"],
     supabase: ["Edge Functions v2", "Branching GA", "Realtime improvements"],
     vercel: ["Fluid compute support", "Faster deploys", "Improved DX for monorepos"],

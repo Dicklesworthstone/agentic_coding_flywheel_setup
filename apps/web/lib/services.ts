@@ -161,7 +161,7 @@ export const SERVICES: Service[] = [
     requiresSubscription: true,
     subscriptionNote: "Requires eligible Google/Gemini access",
     whyNeeded:
-      "Third AI option. Uses Gemini 3.8 Flash (High) through Antigravity. Good for Google Cloud projects and fresh-perspective reviews.",
+      "Third AI option. Uses Gemini 4 Argon (High) through Antigravity. Good for Google Cloud projects and fresh-perspective reviews.",
     signupUrl: "https://accounts.google.com/",
     supportsGoogleSso: true, // It IS Google
     postInstallCommand: "agy",

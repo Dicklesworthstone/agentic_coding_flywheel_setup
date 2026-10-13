@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 
-MODEL = "Gemini 3.8 Flash (High)"
+MODEL = "Gemini 4 Argon (High)"
 HOME = pathlib.Path.home()
 REAL_AGY = HOME / ".local" / "bin" / "agy-real"
 SETTINGS_PATH = HOME / ".gemini" / "antigravity-cli" / "settings.json"
@@ -489,7 +489,9 @@ def ensure_dcg_hook():
 
 
 def filtered_args(argv):
-    value_flags = {"--model", "-model", "-m"}
+    # --effort is stripped with --model: the pinned Argon model carries its
+    # thinking tier in its name, and agy rejects --effort at any level for it.
+    value_flags = {"--model", "-model", "-m", "--effort", "-effort"}
     pinned_bool_flags = {
         "--dangerously-skip-permissions",
         "-dangerously-skip-permissions",

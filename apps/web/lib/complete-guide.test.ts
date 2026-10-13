@@ -50,7 +50,7 @@ describe("complete guide derived claims", () => {
   });
 
   test("intentional current-model exceptions remain explicit", () => {
-    expect(COMPLETE_GUIDE_MODELS.antigravity).toBe("Gemini 3.8 Flash (High)");
+    expect(COMPLETE_GUIDE_MODELS.antigravity).toBe("Gemini 4 Argon (High)");
     expect(COMPLETE_GUIDE_MODELS.restrictedPreview).toBe("Claude Mythos Preview");
     // JSX prose may be re-wrapped by the formatter; compare rendered spacing.
     expect(pageSource.replace(/\s+/g, " ")).toContain("is not generally available");

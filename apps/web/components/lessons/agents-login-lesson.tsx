@@ -122,10 +122,10 @@ export function AgentsLoginLesson() {
           <AliasCard
             alias="agy"
             name="Antigravity CLI"
-            code={`agy --model "Gemini 3.8 Flash (High)" \\
+            code={`agy --model "Gemini 4 Argon (High)" \\
   --dangerously-skip-permissions`}
             features={[
-              'Model pinned to "Gemini 3.8 Flash (High)"',
+              'Model pinned to "Gemini 4 Argon (High)"',
               "Auto-approves tool permissions (no confirmations)",
               "Successor to the retired Gemini CLI",
             ]}
@@ -166,7 +166,7 @@ export function AgentsLoginLesson() {
           <LoginStep
             agent="Antigravity CLI"
             command="agy"
-            description="Run agy once and follow the prompts to authenticate with your Google account. The model is pinned to Gemini 3.8 Flash (High)."
+            description="Run agy once and follow the prompts to authenticate with your Google account. The model is pinned to Gemini 4 Argon (High)."
             gradient="from-blue-500/10 to-purple-500/10"
           />
 
@@ -747,7 +747,7 @@ const SCENARIOS: Scenario[] = [
           { text: "Opening browser for Google sign-in...", type: "info", delay: 500 },
           { text: "Visit: https://accounts.google.com/o/oauth2/...", type: "output", delay: 900 },
           { text: "Welcome to Antigravity CLI!", type: "info", delay: 1300 },
-          { text: "Model pinned: Gemini 3.8 Flash (High)", type: "success", delay: 1800 },
+          { text: "Model pinned: Gemini 4 Argon (High)", type: "success", delay: 1800 },
           { text: "Ready to chat as user@gmail.com", type: "success", delay: 2400 },
         ],
         result: "success",

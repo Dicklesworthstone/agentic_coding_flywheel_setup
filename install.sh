@@ -9747,7 +9747,7 @@ projects_base = "/data/projects"
 # Default models when no specifier given
 default_claude = "claude-fable-5"
 default_codex = "gpt-6-astra"
-default_gemini = "Gemini 3.8 Flash (High)"
+default_gemini = "Gemini 4 Argon (High)"
 
 [agents]
 # Keep Codex model and effort independent of the installed NTM binary's defaults.

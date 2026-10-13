@@ -55,7 +55,7 @@ describe("antigravity is a first-class agent", () => {
     const agy = agentPersonalities.antigravity;
     expect(agy).toBeDefined();
     // The pinned model is the defining trait of the Antigravity CLI.
-    expect(agy.tagline).toContain("Gemini 3.8 Flash");
+    expect(agy.tagline).toContain("Gemini 4 Argon");
     expect(agy.gradient).toContain("purple");
     expect(agy.glowColor.length).toBeGreaterThan(0);
     expect(agy.bgGlow.length).toBeGreaterThan(0);

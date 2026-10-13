@@ -40,9 +40,9 @@ codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c mode
 
 ### `agy` (Antigravity CLI)
 ```bash
-agy --model "Gemini 3.8 Flash (High)" --dangerously-skip-permissions
+agy --model "Gemini 4 Argon (High)" --dangerously-skip-permissions
 ```
-- Model pinned to "Gemini 3.8 Flash (High)" (the only allowed model)
+- Model pinned to "Gemini 4 Argon (High)" (the only allowed model)
 - Auto-approves tool permissions (no confirmations)
 - Successor to the retired Gemini CLI; the binary self-updates in the background
 
@@ -99,7 +99,7 @@ Follow the browser prompts to authenticate with your **ChatGPT Pro/Plus/Team acc
 ```bash
 agy
 ```
-Follow the prompts to authenticate with your Google account. ACFS keeps the model pinned to Gemini 3.8 Flash (High).
+Follow the prompts to authenticate with your Google account. ACFS keeps the model pinned to Gemini 4 Argon (High).
 
 ---
 

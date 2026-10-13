@@ -323,7 +323,7 @@ export default function LaunchOnboardingStep() {
                 <p className="font-medium">Antigravity CLI (optional)</p>
                 <CommandCard
                   command="agy"
-                  description="Run agy once and follow the prompts to sign in with your Google account. The model is pinned to Gemini 3.8 Flash (High)."
+                  description="Run agy once and follow the prompts to sign in with your Google account. The model is pinned to Gemini 4 Argon (High)."
                   runLocation="vps"
                 />
               </div>
