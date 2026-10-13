@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ACFS_NIGHTLY_HEALTH_API=1
 # ============================================================
 # ACFS Nightly Update - Pre-flight wrapper
 #
@@ -25,7 +26,9 @@ acfs_nightly_state_read() {
 
     [[ -f "$file" && -r "$file" && ! -L "$file" ]] || return 1
     # Bound the read and require one complete record. Never source/eval state.
-    IFS= read -r -d '' -n 1024 record < "$file" || true
+    # A NUL delimiter or a full buffer is not EOF. Refuse a hidden suffix
+    # rather than accepting a valid-looking record before the first NUL.
+    if IFS= read -r -d '' -n 1024 record < "$file"; then return 1; fi
     [[ ${#record} -lt 1024 && "$record" == *$'\n' ]] || return 1
     record="${record%$'\n'}"
     [[ "$record" != *$'\n'* && "$record" != *$'\r'* ]] || return 1
@@ -64,6 +67,91 @@ acfs_nightly_state_read() {
     ACFS_NIGHTLY_ATTEMPT="$attempt"
     ACFS_NIGHTLY_NEXT_RETRY="$retry"
 }
+
+# Read-only summary of the persisted retry window. No timer, process, network,
+# updater, or log probe is made here: even a fresh running record is not proof
+# that a process is alive, and a successful run is not proof of upstream parity.
+# Output is one tab-separated health/message/JSON record for status and doctor.
+# A subshell prevents parser globals or sourced shell options leaking to callers.
+acfs_nightly_health_report() (
+    local file="${1:-}" now="${2:-}" level=skip code=not_recorded
+    local message="nightly: no execution record" data=null suffix=""
+    local last_success=null next_retry=null
+
+    if [[ -e "$file" || -L "$file" ]]; then
+        level=warn
+        code=invalid_state
+        message="nightly: execution record unreadable or invalid; inspect local update logs"
+        if acfs_nightly_state_read "$file"; then
+            [[ "$ACFS_NIGHTLY_LAST_SUCCESS" == 0 ]] || last_success="$ACFS_NIGHTLY_LAST_SUCCESS"
+            [[ "$ACFS_NIGHTLY_NEXT_RETRY" == 0 ]] || next_retry="$ACFS_NIGHTLY_NEXT_RETRY"
+            data=$(printf '{"outcome":"%s","reason":"%s","skipped_nights":%s,"last_attempt_epoch":%s,"last_success_epoch":%s,"next_retry_epoch":%s}' \
+                "$ACFS_NIGHTLY_OUTCOME" "$ACFS_NIGHTLY_REASON" "$ACFS_NIGHTLY_SKIPPED_NIGHTS" \
+                "$ACFS_NIGHTLY_LAST_ATTEMPT" "$last_success" "$next_retry")
+            if [[ -z "$now" ]]; then
+                now=$(date +%s 2>/dev/null) || now=""
+            fi
+            if (( ACFS_NIGHTLY_SKIPPED_NIGHTS > 0 )); then
+                suffix="; $ACFS_NIGHTLY_SKIPPED_NIGHTS skipped night(s) since last full success"
+            fi
+            if [[ ! "$now" =~ ^[1-9][0-9]{0,9}$ ]]; then
+                code=clock_unavailable
+                message="nightly: cannot determine execution-record age"
+            elif (( ACFS_NIGHTLY_LAST_ATTEMPT > now + 300 || ACFS_NIGHTLY_LAST_SUCCESS > now + 300 )); then
+                code=clock_skew
+                message="nightly: execution record is future-dated; check the system clock"
+            else
+                case "$ACFS_NIGHTLY_OUTCOME" in
+                    success)
+                        if (( now - ACFS_NIGHTLY_LAST_SUCCESS > 259200 )); then
+                            code=stale_success
+                            message="nightly: last full success more than 3 days ago; inspect the timer"
+                        else
+                            level=pass
+                            code=success
+                            message="nightly: last recorded update completed successfully"
+                        fi
+                        ;;
+                    skipped)
+                        code=skipped
+                        message="nightly: retry budget exhausted ($ACFS_NIGHTLY_REASON)"
+                        ;;
+                    retrying)
+                        code=retrying
+                        message="nightly: deferred ($ACFS_NIGHTLY_REASON), retry scheduled"
+                        if (( now > ACFS_NIGHTLY_NEXT_RETRY + 300 )); then
+                            code=retry_overdue
+                            message="nightly: scheduled retry overdue; inspect the service"
+                        fi
+                        ;;
+                    running)
+                        code=running
+                        message="nightly: update recorded in progress, not yet successful"
+                        # The unit allows two hours for retry + execution. Allow
+                        # another five minutes before calling the record stale.
+                        if (( now - ACFS_NIGHTLY_LAST_ATTEMPT > 7500 )); then
+                            code=run_overdue
+                            message="nightly: in-progress record exceeds the service time budget"
+                        fi
+                        ;;
+                    failed)
+                        code=failed
+                        message="nightly: last update failed or partially failed; inspect local update logs"
+                        ;;
+                    interrupted)
+                        code=interrupted
+                        message="nightly: last update was interrupted; inspect the service and logs"
+                        ;;
+                esac
+            fi
+            message+="$suffix"
+        fi
+    fi
+    # All strings above are literals or closed-enum parser output; raw file
+    # contents and paths never enter diagnostics or the JSON contract.
+    printf '%s\t%s\t{"health":"%s","code":"%s","state":%s}\n' \
+        "$level" "$message" "$level" "$code" "$data"
+)
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
     return 0

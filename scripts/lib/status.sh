@@ -1299,6 +1299,33 @@ _status_editor_json() {
         }'
 }
 
+# Use the library beside this status entry point, not code selected by state.
+# Older nightly wrappers executed on source; require the explicit API marker
+# before sourcing so a mixed-version runtime cannot accidentally run an update.
+_status_read_nightly_health() {
+    local helper="" marker="" first_line="" output=""
+    _STATUS_NIGHTLY_LEVEL=skip
+    _STATUS_NIGHTLY_MESSAGE="nightly: no execution record"
+    _STATUS_NIGHTLY_JSON='{"health":"skip","code":"not_recorded","state":null}'
+    [[ -e "$_ACFS_HOME/nightly-update.state" || -L "$_ACFS_HOME/nightly-update.state" ]] || return 0
+
+    _STATUS_NIGHTLY_LEVEL=warn
+    _STATUS_NIGHTLY_MESSAGE="nightly: execution record present but health reader unavailable; refresh ACFS runtime"
+    _STATUS_NIGHTLY_JSON='{"health":"warn","code":"reader_unavailable","state":null}'
+    for helper in "$_STATUS_SCRIPT_DIR/nightly_update.sh" "$_STATUS_SCRIPT_DIR/../nightly-update.sh"; do
+        [[ -f "$helper" && -r "$helper" && ! -L "$helper" ]] || continue
+        { IFS= read -r first_line; IFS= read -r marker; } < "$helper" || continue
+        [[ "$first_line" == '#!'* && "$marker" == '# ACFS_NIGHTLY_HEALTH_API=1' ]] || continue
+        if output=$(
+            source "$helper" || exit 1
+            acfs_nightly_health_report "$_ACFS_HOME/nightly-update.state"
+        ) && [[ "$output" == pass$'\t'* || "$output" == warn$'\t'* || "$output" == skip$'\t'* ]]; then
+            IFS=$'\t' read -r _STATUS_NIGHTLY_LEVEL _STATUS_NIGHTLY_MESSAGE _STATUS_NIGHTLY_JSON <<< "$output"
+        fi
+        return 0
+    done
+}
+
 status_main() {
     local parse_status=0
     local _state_file=""
@@ -1327,6 +1354,9 @@ status_main() {
     local _missing_count=0
     local _jq_bin=""
     local _date_bin=""
+    local _STATUS_NIGHTLY_LEVEL=skip
+    local _STATUS_NIGHTLY_MESSAGE=""
+    local _STATUS_NIGHTLY_JSON=""
     local w=""
     local e=""
     local cmd=""
@@ -1399,6 +1429,11 @@ status_main() {
         fi
     fi
 
+    _status_read_nightly_health
+    if [[ "$_STATUS_NIGHTLY_LEVEL" == warn ]]; then
+        _warnings+=("$_STATUS_NIGHTLY_MESSAGE")
+    fi
+
     if [[ "$_STATUS_CHECK_UPDATES" == "true" ]]; then
         if [[ -n "$_ACFS_HOME" ]] && [[ -f "$_ACFS_HOME/VERSION" ]]; then
             _local_version=$(cat "$_ACFS_HOME/VERSION" 2>/dev/null) || _local_version=""
@@ -1450,6 +1485,7 @@ status_main() {
         if [[ -n "$_update_available" ]]; then
             _update_json=",\"update_available\":\"$(_json_escape "$_update_available")\""
         fi
+        _update_json+=",\"nightly_update\":$_STATUS_NIGHTLY_JSON"
 
         printf '{"status":"%s","tools":%d,"last_update":%s,"warnings":[%s],"errors":[%s]%s}\n' \
             "${_status_word,,}" "$_tool_count" "$_last_update_json" \
@@ -1476,6 +1512,7 @@ status_main() {
             done
             [[ $_missing_count -gt 0 ]] && _msg="$_msg, $_missing_count missing tool(s)"
             [[ -n "$_update_available" ]] && _msg="$_msg, update available"
+            [[ "$_STATUS_NIGHTLY_LEVEL" == warn ]] && _msg="$_msg; $_STATUS_NIGHTLY_MESSAGE"
         fi
 
         case $_exit_code in
