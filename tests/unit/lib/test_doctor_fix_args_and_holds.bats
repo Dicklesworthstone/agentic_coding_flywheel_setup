@@ -150,3 +150,65 @@ EOF
     assert_output --partial 'EXPIRED'
     assert_output --partial 'acfs unhold cass'
 }
+
+# ============================================================
+# #448 — nightly skips are visible
+# ============================================================
+
+write_nightly_state() {
+    mkdir -p "$HOME/.acfs"
+    printf '1\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" > "$HOME/.acfs/nightly-update.state"
+}
+
+@test "a nightly that keeps skipping warns and points at a manual update" {
+    local now
+    now=$(date +%s)
+    write_nightly_state skipped load "$now" $((now - 5 * 86400)) $((now - 4 * 86400)) 2026-10-13 4 3 0
+
+    run run_updates_health_json
+    assert_success
+    assert_output --partial '"id":"updates.nightly_runs","label":"Nightly update runs","status":"warn","details":"retry budget exhausted (load); 4 skipped night(s) since last full success"'
+    assert_output --partial '"fix":"ACFS_NIGHTLY_MAX_RETRIES=0 ~/.acfs/scripts/nightly-update.sh  # resource-checked retry; acfs update --yes skips the load gate"'
+}
+
+@test "a nightly that ran passes, an unreadable record warns, no record is silent" {
+    local now
+    now=$(date +%s)
+    write_nightly_state success none "$now" "$now" 0 - 0 1 0
+    run run_updates_health_json
+    assert_success
+    assert_output --partial '"id":"updates.nightly_runs","label":"Nightly update runs","status":"pass","details":"last recorded update completed successfully"'
+
+    printf 'not a record\n' > "$HOME/.acfs/nightly-update.state"
+    run run_updates_health_json
+    assert_success
+    assert_output --partial '"id":"updates.nightly_runs","label":"Nightly update runs","status":"warn","details":"execution record unreadable or invalid; inspect local update logs"'
+    assert_output --partial 'nightly-update.state.bad'
+
+    rm -f "$HOME/.acfs/nightly-update.state"
+    run run_updates_health_json
+    assert_success
+    refute_output --partial 'updates.nightly_runs'
+}
+
+@test "doctor never sources a nightly wrapper without the health API marker" {
+    # Pre-API wrappers ran the whole update when sourced.
+    local now old_lib="$HOME/old-lib"
+    now=$(date +%s)
+    write_nightly_state skipped load "$now" 0 "$now" 2026-10-13 1 3 0
+    mkdir -p "$old_lib"
+    printf '#!/usr/bin/env bash\ntouch "%s/sourced"\n' "$HOME" > "$old_lib/nightly_update.sh"
+
+    load_doctor_functions
+    JSON_MODE=true
+    HAS_GUM=false
+    JSON_CHECKS=()
+    PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0; SKIP_COUNT=0
+    _acfs_doctor_find_lib_script() { printf '%s\n' "$old_lib/$1"; }
+    _acfs_doctor_find_scripts_script() { return 1; }
+    check_nightly_health "$HOME/.acfs/nightly-update.state"
+
+    [[ ! -e "$HOME/sourced" ]] || fail "doctor sourced a wrapper without the health API marker"
+    [[ "${JSON_CHECKS[*]}" == *'"status":"warn","details":"execution record present but no nightly health reader is deployed"'* ]] \
+        || fail "unexpected checks: ${JSON_CHECKS[*]}"
+}

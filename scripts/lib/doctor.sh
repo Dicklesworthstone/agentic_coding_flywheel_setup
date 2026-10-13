@@ -5091,6 +5091,46 @@ EOF
 # Surface per-tool version holds and post-install rollback state every doctor
 # run (issue #357): a held tool must be reported, never silently skipped, and
 # a tool whose fresh install failed verification should be visible here too.
+# The nightly wrapper's health record (#448): an always-busy host skipped its
+# update night after night while doctor still passed. Same reader as
+# `acfs status`, sourced in a subshell and only from a copy carrying the
+# health API marker, because older wrappers ran the whole update when sourced.
+check_nightly_health() {
+    local state_file="$1" helper="" first_line="" marker="" output=""
+    local level="" message="" json="" code="" fix=""
+
+    [[ -e "$state_file" || -L "$state_file" ]] || return 0
+    for helper in "$(_acfs_doctor_find_lib_script "nightly_update.sh" 2>/dev/null)" \
+        "$(_acfs_doctor_find_scripts_script "nightly-update.sh" 2>/dev/null)"; do
+        [[ -n "$helper" && -f "$helper" && -r "$helper" && ! -L "$helper" ]] || continue
+        { IFS= read -r first_line; IFS= read -r marker; } < "$helper" || continue
+        [[ "$first_line" == '#!'* && "$marker" == '# ACFS_NIGHTLY_HEALTH_API=1' ]] || continue
+        output=$(
+            # shellcheck source=/dev/null
+            source "$helper" </dev/null >/dev/null 2>&1 || exit 1
+            acfs_nightly_health_report "$state_file"
+        ) || output=""
+        IFS=$'\t' read -r level message json <<< "$output"
+        [[ "$json" =~ \"code\":\"([a-z_]+)\" ]] && code="${BASH_REMATCH[1]}"
+        case "$code" in
+            skipped|retrying|retry_overdue|stale_success)
+                fix="ACFS_NIGHTLY_MAX_RETRIES=0 ~/.acfs/scripts/nightly-update.sh  # resource-checked retry; acfs update --yes skips the load gate" ;;
+            invalid_state)
+                fix="inspect it, then: mv $state_file $state_file.bad  # the nightly refuses to run past it" ;;
+            interrupted|run_overdue)
+                fix="journalctl --user -u acfs-nightly-update.service -n 50" ;;
+        esac
+        case "$level" in
+            pass|skip) check "updates.nightly_runs" "Nightly update runs" "$level" "${message#nightly: }"; return 0 ;;
+            warn) check "updates.nightly_runs" "Nightly update runs" "warn" "${message#nightly: }" "$fix"; return 0 ;;
+        esac
+        break
+    done
+    check "updates.nightly_runs" "Nightly update runs" "warn" \
+        "execution record present but no nightly health reader is deployed" \
+        "acfs update --yes  # refreshes the ACFS runtime"
+}
+
 check_updates_health() {
     section "Updates"
 
@@ -5179,6 +5219,8 @@ check_updates_health() {
     if [[ "$reported_rollback" != "true" ]]; then
         check "updates.rollback" "Post-install rollback" "pass" "no tools rolled back"
     fi
+
+    check_nightly_health "$runtime_home/.acfs/nightly-update.state"
 
     check_runtime_deploy_skew
 

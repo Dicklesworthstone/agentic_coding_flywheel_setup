@@ -74,8 +74,9 @@ contents are not echoed. Missing or old unsafe-to-source reader code produces
 This is not upstream-version attestation, timer enablement detection, or a
 live process check. A recent successful update can intentionally omit ACFS
 self-update. No network, update, cleanup, timer change, or state write is made
-by the new status integration. The separate `acfs doctor` nightly-check adapter
-is not included in this change.
+by the new status integration. `acfs doctor` reports the same verdict as its
+`updates.nightly_runs` check, with a fix hint for skipped, interrupted and
+invalid records.
 
 ## Resource-checked manual retry
 
@@ -96,6 +97,7 @@ status appear healthy.
 ```bash
 python3 tests/unit/test_nightly_update.py
 python3 tests/unit/test_nightly_health.py
+bats tests/unit/lib/test_doctor_fix_args_and_holds.bats
 bash -n scripts/lib/nightly_update.sh scripts/lib/status.sh
 shellcheck scripts/lib/nightly_update.sh scripts/lib/status.sh
 cd packages/manifest
