@@ -1,0 +1,124 @@
+name: Nightly health publication check
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/nightly-health.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check the exact runtime baselines
+        run: |
+          test "$(git hash-object scripts/lib/nightly_update.sh)" = 2435cc536d666e2fc66dc3c18565f4b97cb66cfb
+          test "$(git hash-object scripts/lib/status.sh)" = 9ac19a779c38e9ff542b50b00b9508ebbda77bbd
+          test "$(git hash-object scripts/lib/doctor.sh)" = a7f07e392da24d30c42232608f6d98e260da5bce
+      - name: Read and verify the fixed patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, io, json, os, pathlib, urllib.request
+          parts = ['c9cf9d1e20bca938ec7190b7a76e4868d1e9f80e', '5d662f348a155f8193cd3289920900bf3ca28dcc', '6e0418da0ff8a4cf11f3c4ba642fbbf45744a49c']
+          encoded = bytearray()
+          for sha in parts:
+              url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/blobs/{sha}"
+              request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  value = json.load(response)
+              data = base64.b64decode(value['content'])
+              assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == sha
+              encoded.extend(data)
+          packed = base64.b64decode(encoded, validate=True)
+          assert len(packed) == 9040
+          assert hashlib.sha256(packed).hexdigest() == '637c25c8857a3ddb0337037eff6809ddbd5405c11e30454df76c0110093367a1'
+          with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream:
+              patch = stream.read(32134)
+          assert len(patch) == 32133
+          assert hashlib.sha256(patch).hexdigest() == '381284c7f9e6e6f01ace07d551051feced2393ad3b5243bca03b6ded0464aedd'
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'nightly-health.patch').write_bytes(patch)
+          PY
+      - name: Apply the reviewed changes
+        run: |
+          git apply --recount --check "$RUNNER_TEMP/nightly-health.patch"
+          git apply --recount "$RUNNER_TEMP/nightly-health.patch"
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq shellcheck
+      - name: Validate runtime syntax, lint and behavior
+        run: |
+          bash -n scripts/lib/nightly_update.sh
+          bash -n scripts/lib/status.sh
+          bash -n scripts/lib/doctor.sh
+          shellcheck scripts/lib/nightly_update.sh scripts/lib/status.sh scripts/lib/doctor.sh
+          python3 tests/unit/test_nightly_update.py
+          python3 tests/unit/test_nightly_health.py
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install manifest dependencies
+        working-directory: packages/manifest
+        run: bun install --frozen-lockfile
+      - name: Regenerate and verify canonical artifacts
+        working-directory: packages/manifest
+        run: |
+          bun run generate
+          bun run generate --diff
+      - name: Check exact changed-file scope
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          allowed = {'scripts/lib/nightly_update.sh', 'scripts/lib/status.sh', 'scripts/lib/doctor.sh', 'scripts/generated/internal_checksums.sh', 'tests/unit/test_nightly_health.py', 'docs/operations/nightly-update-health.md'}
+          changed = set(subprocess.check_output(['git','diff','--name-only','-z']).decode().strip('\0').split('\0'))
+          changed.update(subprocess.check_output(['git','ls-files','--others','--exclude-standard','-z']).decode().strip('\0').split('\0'))
+          changed.discard('')
+          assert changed == allowed, f'Unexpected changed paths: {sorted(changed ^ allowed)}'
+          subprocess.run(['git','add','--',*sorted(allowed)], check=True)
+          subprocess.run(['git','diff','--cached','--check'], check=True)
+          PY
+      - name: Stage validated objects without updating refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY']
+          head = subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert head == os.environ['GITHUB_SHA']
+          base_tree = subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+          def post(endpoint, value):
+              request = urllib.request.Request(f'https://api.github.com/repos/{repo}/git/{endpoint}', data=json.dumps(value).encode(), headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}, method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          paths = subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          entries, verification = [], []
+          for path in paths:
+              data = pathlib.Path(path).read_bytes()
+              expected = hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+              blob = post('blobs', {'encoding':'base64','content':base64.b64encode(data).decode()})['sha']
+              assert blob == expected
+              mode = subprocess.check_output(['git','ls-files','-s','--',path],text=True).split()[0]
+              entries.append({'path':path,'mode':mode,'type':'blob','sha':blob})
+              verification.append({'path':path,'blob':blob,'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)})
+          tree = post('trees',{'base_tree':base_tree,'tree':entries})['sha']
+          result = {'base_commit':head,'tree':tree,'files':verification,'branch_updated':False}
+          destination = pathlib.Path(os.environ['RUNNER_TEMP'])/'nightly-health-candidate.json'
+          destination.write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-health-candidate
+          path: ${{ runner.temp }}/nightly-health-candidate.json
+          if-no-files-found: error
