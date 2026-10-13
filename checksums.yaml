@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-13T18:30:56+00:00
+# checksums.yaml - Auto-generated 2026-10-13T18:46:04+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -152,7 +152,7 @@ installers:
 
   ru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh"
-    sha256: "4af6f6fc31979c775553fdb50da73f34395762eca8c769dea9ab6de77535dc94"
+    sha256: "77d3743db7683e7de8ca3190f19728ed34c543e66cc570fa289cc173e4e4e7cb"
 
   rust:
     url: "https://sh.rustup.rs"
