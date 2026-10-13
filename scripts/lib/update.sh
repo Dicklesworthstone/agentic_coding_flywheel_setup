@@ -978,6 +978,34 @@ is_expected_acfs_origin_url() {
 # Logging Infrastructure
 # ============================================================
 
+# The Version line names the git checkout ACFS_REPO_ROOT, but fleet nightlies
+# run the deployed copy under ~/.acfs with --no-self-update, which only a
+# self-updating run refreshes. On 2026-10-13 logs said v0.10.0+c86c2073 while
+# eight hosts ran that morning's update.sh and a 10-04 stack.sh. When this run
+# executes code outside the checkout, say whether it matches the named commit.
+update_runtime_provenance_line() {
+    local runtime_root="" cmp_bin="" git_bin="" matches=""
+
+    runtime_root="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)" || return 1
+    [[ -n "$runtime_root" && -n "${ACFS_REPO_ROOT:-}" && "$runtime_root" != "$ACFS_REPO_ROOT" ]] || return 1
+    [[ -f "$SCRIPT_DIR/update.sh" ]] || return 1
+    cmp_bin="$(update_system_binary_path cmp 2>/dev/null || true)"
+    git_bin="$(update_system_binary_path git 2>/dev/null || true)"
+    if [[ -n "$cmp_bin" && -n "$git_bin" && -d "$ACFS_REPO_ROOT/.git" ]] &&
+        "$git_bin" -C "$ACFS_REPO_ROOT" cat-file -e HEAD:scripts/lib/update.sh 2>/dev/null; then
+        if "$git_bin" -C "$ACFS_REPO_ROOT" show HEAD:scripts/lib/update.sh 2>/dev/null | "$cmp_bin" -s - "$SCRIPT_DIR/update.sh"; then
+            matches=yes
+        else
+            matches=no
+        fi
+    fi
+    case "$matches" in
+        yes) printf 'Runtime: %s (deployed copy; update.sh matches that commit)\n' "$runtime_root" ;;
+        no) printf 'Runtime: %s (deployed copy; update.sh differs from that commit, so this run uses other code: a self-updating acfs update deploys it)\n' "$runtime_root" ;;
+        *) printf 'Runtime: %s (deployed copy; not compared with the checkout)\n' "$runtime_root" ;;
+    esac
+}
+
 init_logging() {
     if update_is_read_only_mode; then
         UPDATE_LOG_FILE=""
@@ -994,6 +1022,7 @@ init_logging() {
         echo "Started: $(date -Iseconds)"
         echo "User: $(update_current_user 2>/dev/null || true)"
         echo "Version: $ACFS_VERSION_DISPLAY"
+        update_runtime_provenance_line 2>/dev/null || true
         echo "==============================================="
         echo ""
     } >> "$UPDATE_LOG_FILE"

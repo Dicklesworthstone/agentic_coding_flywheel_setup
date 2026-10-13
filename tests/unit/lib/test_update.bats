@@ -16385,3 +16385,66 @@ _staging_head_refusing_first_write() {
     [[ "$rc" -ne 0 && -z "$out" ]] || fail "rc=$rc out=$out"
     [[ -z "$(compgen -G "/tmp/$prefix.*")$(compgen -G "/var/tmp/$prefix.*")" ]] || fail "probe file left behind"
 }
+
+# The Version header names the git checkout; fleet nightlies run the deployed
+# ~/.acfs copy, so the header also says whether that copy matches.
+_provenance_fixture() {
+    PROV_REPO="$(create_temp_dir)/checkout"
+    PROV_DEPLOYED="$(create_temp_dir)/acfs"
+    mkdir -p "$PROV_REPO/scripts/lib" "$PROV_DEPLOYED/scripts/lib"
+    printf '#!/usr/bin/env bash\necho current\n' > "$PROV_REPO/scripts/lib/update.sh"
+    git -C "$PROV_REPO" init -q
+    git -C "$PROV_REPO" add scripts/lib/update.sh
+    git -C "$PROV_REPO" -c user.name=t -c user.email=t@example.invalid commit -q -m init
+    ACFS_REPO_ROOT="$PROV_REPO"
+}
+
+@test "update log runtime line: a deployed copy matching the checkout commit says so" {
+    _provenance_fixture
+    cp "$PROV_REPO/scripts/lib/update.sh" "$PROV_DEPLOYED/scripts/lib/update.sh"
+    SCRIPT_DIR="$PROV_DEPLOYED/scripts/lib"
+
+    run update_runtime_provenance_line
+    assert_success
+    assert_output "Runtime: $PROV_DEPLOYED (deployed copy; update.sh matches that commit)"
+}
+
+@test "update log runtime line: a stale deployed copy is called out" {
+    _provenance_fixture
+    printf '#!/usr/bin/env bash\necho older\n' > "$PROV_DEPLOYED/scripts/lib/update.sh"
+    SCRIPT_DIR="$PROV_DEPLOYED/scripts/lib"
+
+    run update_runtime_provenance_line
+    assert_success
+    assert_output --partial "update.sh differs from that commit"
+    assert_output --partial "a self-updating acfs update deploys it"
+
+    # A working-tree edit does not count: the Version line names HEAD.
+    cp "$PROV_DEPLOYED/scripts/lib/update.sh" "$PROV_REPO/scripts/lib/update.sh"
+    run update_runtime_provenance_line
+    assert_output --partial "differs from that commit"
+}
+
+@test "update log runtime line: running from the checkout itself adds no line" {
+    _provenance_fixture
+    SCRIPT_DIR="$PROV_REPO/scripts/lib"
+
+    run update_runtime_provenance_line
+    assert_failure
+    assert_output ""
+}
+
+@test "update log runtime line: init_logging writes it under Version" {
+    _provenance_fixture
+    printf '#!/usr/bin/env bash\necho older\n' > "$PROV_DEPLOYED/scripts/lib/update.sh"
+    SCRIPT_DIR="$PROV_DEPLOYED/scripts/lib"
+    UPDATE_LOG_DIR="$(create_temp_dir)"
+    ACFS_VERSION_DISPLAY="v0.10.0+abc1234"
+    update_is_read_only_mode() { return 1; }
+
+    init_logging
+
+    run grep -A1 '^Version: v0.10.0+abc1234$' "$UPDATE_LOG_FILE"
+    assert_success
+    assert_output --partial "Runtime: $PROV_DEPLOYED (deployed copy; update.sh differs from that commit"
+}
