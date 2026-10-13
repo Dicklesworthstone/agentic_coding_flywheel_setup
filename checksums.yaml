@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-13T19:46:29+00:00
+# checksums.yaml - Auto-generated 2026-10-13T20:01:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -172,7 +172,7 @@ installers:
 
   srps:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/system_resource_protection_script/main/install.sh"
-    sha256: "23ade70d1a20c413ae95f5c0f2f1bc631094c459940f000d1d88e22f467a888e"
+    sha256: "f3daf3c3486c2f194393ae687f73f2fc4e0a007a65a2ffe9ead197b0195a2d0c"
 
   tru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
