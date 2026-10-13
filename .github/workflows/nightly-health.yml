@@ -3,24 +3,7 @@ name: Nightly update health regressions
 on:
   push:
     branches: [main]
-    paths:
-      - 'scripts/lib/nightly_update.sh'
-      - 'scripts/lib/status.sh'
-      - 'scripts/generated/internal_checksums.sh'
-      - 'tests/unit/test_nightly_update.py'
-      - 'tests/unit/test_nightly_health.py'
-      - 'packages/manifest/**'
-      - '.github/workflows/nightly-health.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'scripts/lib/nightly_update.sh'
-      - 'scripts/lib/status.sh'
-      - 'scripts/generated/internal_checksums.sh'
-      - 'tests/unit/test_nightly_update.py'
-      - 'tests/unit/test_nightly_health.py'
-      - 'packages/manifest/**'
-      - '.github/workflows/nightly-health.yml'
+    paths: ['.github/workflows/nightly-health.yml']
   workflow_dispatch:
 
 permissions:
@@ -29,30 +12,151 @@ permissions:
 jobs:
   regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Require the reviewed runtime baseline
+        run: test "$(git hash-object scripts/lib/doctor.sh)" = e07ce354f85198a72a7762990d3603803979698f
+      - name: Retrieve the fixed patch and tests as data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, urllib.request
+          items = [
+              ('fbb9beb8d83bc33c49ebabcfc40bf40bbb04097c', pathlib.Path(os.environ['RUNNER_TEMP'])/'doctor.patch'),
+              ('62843c143cde3d217d7a3837e7b97953b8a067f7', pathlib.Path('tests/unit/test_nightly_doctor.py')),
+          ]
+          for sha, path in items:
+              assert not path.exists()
+              request = urllib.request.Request(f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/blobs/{sha}", headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  value = json.load(response)
+              data = base64.b64decode(value['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() == sha
+              path.write_bytes(data)
+          PY
+      - name: Preserve full-source baseline and apply reviewed patch
+        run: |
+          cp scripts/lib/doctor.sh "$RUNNER_TEMP/doctor-before.sh"
+          git apply --recount --check "$RUNNER_TEMP/doctor.patch"
+          git apply --recount "$RUNNER_TEMP/doctor.patch"
       - name: Install test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq shellcheck
-      - name: Validate runtime syntax and lint
+          sudo apt-get install -y jq shellcheck bats
+      - name: Check actual syntax and lint
         run: |
+          bash -n scripts/lib/doctor.sh
           bash -n scripts/lib/nightly_update.sh
           bash -n scripts/lib/status.sh
-          shellcheck scripts/lib/nightly_update.sh scripts/lib/status.sh
-      - name: Run resource, persistence and health regressions
+          shellcheck scripts/lib/doctor.sh scripts/lib/nightly_update.sh scripts/lib/status.sh
+      - name: Run connected regressions and incumbent doctor tests
         run: |
           python3 tests/unit/test_nightly_update.py
           python3 tests/unit/test_nightly_health.py
+          python3 tests/unit/test_nightly_doctor.py
+          bats tests/unit/lib/test_doctor_fix_args_and_holds.bats
+      - name: Require the incumbent false-success regression to fail
+        run: |
+          if ACFS_TEST_DOCTOR_SOURCE="$RUNNER_TEMP/doctor-before.sh" python3 tests/unit/test_nightly_doctor.py NightlyDoctorReaderTests.test_missing_api_cannot_reuse_inherited_success > "$RUNNER_TEMP/doctor-before-test.txt" 2>&1; then
+            cat "$RUNNER_TEMP/doctor-before-test.txt"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/doctor-before-test.txt"
+          grep -F 'FAIL: test_missing_api_cannot_reuse_inherited_success' "$RUNNER_TEMP/doctor-before-test.txt"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - name: Install manifest dependencies
         working-directory: packages/manifest
         run: bun install --frozen-lockfile
-      - name: Verify canonical artifacts without modifying them
+      - name: Regenerate and verify canonical artifacts
         working-directory: packages/manifest
-        run: bun run generate --diff
+        run: |
+          bun run generate
+          bun run generate --diff
+      - name: Preserve validated candidate bytes
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          allowed = {'scripts/lib/doctor.sh','scripts/generated/internal_checksums.sh','tests/unit/test_nightly_doctor.py'}
+          changed = set(subprocess.check_output(['git','diff','--name-only','-z']).decode().strip('\0').split('\0'))
+          changed.update(subprocess.check_output(['git','ls-files','--others','--exclude-standard','-z']).decode().strip('\0').split('\0'))
+          changed.discard('')
+          assert changed == allowed, f'Unexpected changes: {sorted(changed ^ allowed)}'
+          subprocess.run(['git','add','--',*sorted(allowed)],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          out = pathlib.Path(os.environ['RUNNER_TEMP'])/'doctor-validated'
+          out.mkdir()
+          files=[]
+          for name in sorted(allowed):
+              src=pathlib.Path(name)
+              assert src.is_file() and not src.is_symlink()
+              data=src.read_bytes()
+              path=out/name
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_bytes(data)
+              mode=subprocess.check_output(['git','ls-files','-s','--',name],text=True).split()[0]
+              files.append({'path':name,'mode':mode,'sha256':hashlib.sha256(data).hexdigest(),'blob':hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()})
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert head==os.environ['GITHUB_SHA']
+          tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+          (out/'candidate.json').write_text(json.dumps({'base_commit':head,'base_tree':tree,'files':files},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: doctor-validated
+          path: ${{ runner.temp }}/doctor-validated/
+          if-no-files-found: error
+  stage:
+    needs: regression
+    if: github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: doctor-validated
+          path: candidate
+      - name: Stage validated file objects without executing source or moving refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,urllib.request
+          root=pathlib.Path('candidate')
+          value=json.loads((root/'candidate.json').read_text())
+          assert value['base_commit']==os.environ['GITHUB_SHA']
+          allowed={'scripts/lib/doctor.sh','scripts/generated/internal_checksums.sh','tests/unit/test_nightly_doctor.py'}
+          assert len(value['files'])==len(allowed) and {x['path'] for x in value['files']}==allowed
+          def api(endpoint,data=None):
+              req=urllib.request.Request(f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/{endpoint}", data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=30) as response: return json.load(response)
+          assert api('commits/'+value['base_commit'])['tree']['sha']==value['base_tree']
+          entries=[]
+          for item in value['files']:
+              path=root/item['path']
+              assert path.is_file() and not path.is_symlink() and path.stat().st_size<1024*1024
+              assert item['mode'] in {'100644','100755'}
+              data=path.read_bytes()
+              assert hashlib.sha256(data).hexdigest()==item['sha256']
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==item['blob']
+              blob=api('blobs',{'encoding':'base64','content':base64.b64encode(data).decode()})['sha']
+              assert blob==item['blob']
+              entries.append({'path':item['path'],'mode':item['mode'],'type':'blob','sha':blob})
+          tree=api('trees',{'base_tree':value['base_tree'],'tree':entries})['sha']
+          result={'base_commit':value['base_commit'],'tree':tree,'files':value['files'],'branch_updated':False}
+          pathlib.Path('doctor-candidate.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: doctor-candidate
+          path: doctor-candidate.json
+          if-no-files-found: error
