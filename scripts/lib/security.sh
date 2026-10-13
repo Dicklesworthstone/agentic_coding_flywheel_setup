@@ -131,6 +131,33 @@ acfs_security_mktemp() {
     fi
 }
 
+# Private temp file in a system temp directory rather than caller-controlled
+# TMPDIR, so a privileged caller can hand it to the target user. /tmp is often
+# a tmpfs with per-user quotas (systemd 256+ usrquota): once a user's share is
+# spent every write there fails with EDQUOT while df still shows free space,
+# and every verified installer failed. Use the first directory that takes a
+# test write of PROBE_BYTES (default 1 MiB); the file is returned empty.
+ACFS_SECURITY_SYSTEM_TMP_DIRS=(/tmp /var/tmp)
+acfs_security_system_mktemp() {
+    local name="${1:-}" probe_bytes="${2:-1048576}" dir="" file="" head_bin=""
+
+    [[ "$name" == *XXXXXX && "$name" != */* ]] || return 1
+    [[ "$probe_bytes" =~ ^[0-9]{1,9}$ ]] || return 1
+    head_bin="$(acfs_security_required_binary_path head 2>/dev/null)" || head_bin=""
+    for dir in "${ACFS_SECURITY_SYSTEM_TMP_DIRS[@]}"; do
+        [[ -d "$dir" && -w "$dir" ]] || continue
+        file="$(acfs_security_mktemp "$dir/$name" 2>/dev/null)" || continue
+        if [[ -z "$head_bin" ]] || "$head_bin" -c "$probe_bytes" /dev/zero > "$file" 2>/dev/null; then
+            if : > "$file"; then
+                printf '%s\n' "$file"
+                return 0
+            fi
+        fi
+        _acfs_remove_temp_files "$file"
+    done
+    return 1
+}
+
 acfs_security_cat_file() {
     local cat_bin=""
     local file="${1:-}"
@@ -1570,7 +1597,7 @@ _acfs_offline_pack_verify_artifact_snapshot() {
     # The pack can live on removable or otherwise shared storage. Snapshot the
     # artifact into a private file before verification so a concurrent rename
     # cannot swap different bytes into the later stdout read (TOCTOU).
-    artifact_snapshot="$(acfs_security_mktemp "/tmp/acfs-installer-cache-artifact.XXXXXX" 2>/dev/null)" || {
+    artifact_snapshot="$(acfs_security_system_mktemp "acfs-installer-cache-artifact.XXXXXX" "$((size_bytes + 1))")" || {
         acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to create a private snapshot for $rel_path"
         return 1
     }
@@ -1816,8 +1843,8 @@ acfs_stage_verified_installer() {
         return 1
     fi
 
-    staging_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || {
-        log_error "Failed to create verified installer staging file for $name"
+    staging_file="$(acfs_security_system_mktemp "acfs-verified-installer.XXXXXX")" || {
+        log_error "Failed to create verified installer staging file for $name (no system temp dir took a test write: full or over a per-user quota?)"
         ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
         return 1
     }

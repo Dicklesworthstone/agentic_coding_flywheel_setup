@@ -716,3 +716,63 @@ EOF
     assert_equal "$(get_checksum "sentinel_tool")" "$existing_sha"
     assert_equal "$ACFS_CHECKSUMS_REMOTE_REFRESHED" "false"
 }
+
+# ============================================================
+# System temp staging when /tmp refuses writes (tmpfs usrquota spent)
+# ============================================================
+
+# A head that refuses its first write, like /tmp at a spent per-user quota
+# (EDQUOT while mktemp still succeeds), then behaves normally.
+use_head_refusing_first_write() {
+    local real_head
+    real_head="$(acfs_security_system_binary_path head)"
+    HEAD_CALLS="$(create_temp_file)"
+    FAKE_HEAD="$(create_temp_dir)/head"
+    printf '#!/bin/bash\nn=$(wc -l < "%s")\necho x >> "%s"\n[[ "$n" -ge 1 ]] || exit 1\nexec "%s" "$@"\n' \
+        "$HEAD_CALLS" "$HEAD_CALLS" "$real_head" > "$FAKE_HEAD"
+    chmod 0755 "$FAKE_HEAD"
+    eval "$(declare -f acfs_security_required_binary_path | sed '1s/acfs_security_required_binary_path/_real_required_binary_path/')"
+    acfs_security_required_binary_path() {
+        if [[ "$1" == head ]]; then printf '%s\n' "$FAKE_HEAD"; else _real_required_binary_path "$@"; fi
+    }
+}
+
+@test "acfs_security_system_mktemp: falls back past a temp dir that refuses the test write" {
+    local spent good file
+    spent="$(create_temp_dir)"
+    good="$(create_temp_dir)"
+    ACFS_SECURITY_SYSTEM_TMP_DIRS=("$spent" "$good")
+    use_head_refusing_first_write
+
+    file="$(acfs_security_system_mktemp "acfs-verified-installer.XXXXXX")"
+
+    [[ "$file" == "$good"/acfs-verified-installer.* && -f "$file" && ! -s "$file" ]] || fail "got: $file"
+    [[ -z "$(ls -A "$spent")" ]] || fail "probe file left in the refusing dir: $(ls -A "$spent")"
+}
+
+@test "acfs_security_system_mktemp: no dir is used when none takes the test write" {
+    local full file rc=0
+    full="$(create_temp_dir)"
+    ACFS_SECURITY_SYSTEM_TMP_DIRS=("$full")
+
+    file="$(ulimit -f 64; acfs_security_system_mktemp "acfs-verified-installer.XXXXXX" 2>/dev/null)" || rc=$?
+
+    [[ "$rc" -ne 0 && -z "$file" ]] || fail "rc=$rc file=$file"
+    [[ -z "$(ls -A "$full")" ]] || fail "probe file left behind: $(ls -A "$full")"
+}
+
+@test "acfs_stage_verified_installer: stages in the fallback dir when /tmp refuses writes" {
+    local spent good staged=""
+    spent="$(create_temp_dir)"
+    good="$(create_temp_dir)"
+    ACFS_SECURITY_SYSTEM_TMP_DIRS=("$spent" "$good")
+    use_head_refusing_first_write
+    verify_checksum() { printf 'echo verified installer\n'; }
+
+    acfs_stage_verified_installer staged "https://example.invalid/install.sh" \
+        "$(printf '%064d' 1)" "demo" || fail "staging failed"
+
+    [[ "$staged" == "$good"/acfs-verified-installer.* ]] || fail "staged at: $staged"
+    assert_equal "$(cat "$staged")" "echo verified installer"
+    [[ ! -w "$staged" || "$(id -u)" == 0 ]] || fail "staged installer is writable"
+}
