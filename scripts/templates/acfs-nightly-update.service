@@ -12,10 +12,10 @@ Type=oneshot
 # Run the pre-flight wrapper (not acfs-update directly)
 ExecStart=%h/.acfs/scripts/nightly-update.sh
 
-# Give plenty of time for updates (1 hour max)
-TimeoutStartSec=3600
+# At most 1 hour of resource-safe retries plus 1 hour for the update itself.
+TimeoutStartSec=7200
 
-# Don't restart on failure
+# Don't restart on failure (the wrapper owns its bounded pre-flight retries).
 Restart=no
 RemainAfterExit=no
 

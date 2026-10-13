@@ -6,13 +6,68 @@
 # running acfs-update to avoid updating under adverse conditions.
 #
 # Pre-flight checks:
-#   1. Load average - skip if system is overloaded
-#   2. Disk space   - skip if critically low (<2GB)
+#   1. Load average - defer if system is overloaded
+#   2. Disk space   - defer if critically low (<2GB)
 #   3. Low-risk cleanup if disk is tight (<5GB)
 #   4. Run acfs-update --yes --quiet --no-self-update by default
 #
 # Logs to: ~/.acfs/logs/updates/nightly-YYYY-MM-DD-HHMMSS.log
+# State:   ~/.acfs/nightly-update.state (atomic, not an executable shell file)
+# Retries: two more pre-flight checks at 30-minute intervals, then stop.
 # ============================================================
+
+# Shared, side-effect-free reader for `acfs status`. Keep this before the
+# execution guard: both the repository path and deployed nightly-update.sh
+# can be sourced without starting an update or changing shell options/HOME.
+acfs_nightly_state_read() {
+    local file="$1" record="" number=""
+    local version outcome reason attempt_ts success_ts first_skip skip_date skips attempt retry extra
+
+    [[ -f "$file" && -r "$file" && ! -L "$file" ]] || return 1
+    # Bound the read and require one complete record. Never source/eval state.
+    IFS= read -r -d '' -n 1024 record < "$file" || true
+    [[ ${#record} -lt 1024 && "$record" == *$'\n' ]] || return 1
+    record="${record%$'\n'}"
+    [[ "$record" != *$'\n'* && "$record" != *$'\r'* ]] || return 1
+    IFS=$'\t' read -r version outcome reason attempt_ts success_ts first_skip skip_date skips attempt retry extra <<< "$record"
+    [[ "$version" == 1 && -z "$extra" ]] || return 1
+    case "$outcome" in retrying|skipped|running|success|failed|interrupted) ;; *) return 1 ;; esac
+    case "$reason" in none|load|disk|metrics|update|interrupted) ;; *) return 1 ;; esac
+    for number in "$attempt_ts" "$success_ts" "$first_skip" "$retry"; do
+        [[ "$number" =~ ^(0|[1-9][0-9]{0,9})$ ]] || return 1
+    done
+    [[ "$skips" =~ ^(0|[1-9][0-9]{0,5})$ && "$attempt" =~ ^[1-3]$ ]] || return 1
+    [[ "$skip_date" == - || "$skip_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+    # Reject missing/extra/empty columns (IFS normally collapses adjacent tabs).
+    [[ "$record" == "$(printf '1\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+        "$outcome" "$reason" "$attempt_ts" "$success_ts" "$first_skip" "$skip_date" "$skips" "$attempt" "$retry")" ]] || return 1
+    if [[ "$outcome" == success ]]; then
+        [[ "$success_ts" != 0 && "$skips" == 0 && "$first_skip" == 0 && "$skip_date" == - && "$reason" == none ]] || return 1
+    fi
+    if [[ "$outcome" == retrying ]]; then
+        (( retry > attempt_ts && retry - attempt_ts <= 1800 && skips > 0 )) || return 1
+    else
+        [[ "$retry" == 0 ]] || return 1
+    fi
+    if [[ "$skips" == 0 ]]; then
+        [[ "$first_skip" == 0 && "$skip_date" == - ]] || return 1
+    else
+        [[ "$first_skip" != 0 && "$skip_date" != - ]] || return 1
+    fi
+    ACFS_NIGHTLY_OUTCOME="$outcome"
+    ACFS_NIGHTLY_REASON="$reason"
+    ACFS_NIGHTLY_LAST_ATTEMPT="$attempt_ts"
+    ACFS_NIGHTLY_LAST_SUCCESS="$success_ts"
+    ACFS_NIGHTLY_FIRST_SKIP="$first_skip"
+    ACFS_NIGHTLY_SKIP_DATE="$skip_date"
+    ACFS_NIGHTLY_SKIPPED_NIGHTS="$skips"
+    ACFS_NIGHTLY_ATTEMPT="$attempt"
+    ACFS_NIGHTLY_NEXT_RETRY="$retry"
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
 
 set -euo pipefail
 
@@ -415,28 +470,136 @@ if [[ -n "$_ACFS_NOTIFY_LIB" ]]; then
     source "$_ACFS_NOTIFY_LIB" 2>/dev/null || true
 fi
 
-# ── Pre-flight 1: Load average check ──────────────────────
-NPROC="$(nproc)"
-LOAD_5MIN="$(awk '{print $2}' /proc/loadavg)"
-
-# Compare as integers (bash can't do float comparison natively)
-LOAD_INT="${LOAD_5MIN%%.*}"
-if [[ "$LOAD_INT" -ge "$NPROC" ]]; then
-    log "SKIP: 5-min load average ($LOAD_5MIN) >= nproc ($NPROC). System overloaded."
+# ── Bounded retries and persistent health state ──────────
+# A single service invocation owns the retry window. No detached jobs, no
+# forced updates, and no overlapping manual/timer runs. The lock survives
+# sleeps but is closed in the updater so its background children cannot own it.
+NIGHTLY_MAX_RETRIES="${ACFS_NIGHTLY_MAX_RETRIES:-2}"
+NIGHTLY_RETRY_DELAY="${ACFS_NIGHTLY_RETRY_DELAY_SECONDS:-1800}"
+if [[ ! "$NIGHTLY_MAX_RETRIES" =~ ^[0-2]$ ]] ||
+    [[ ! "$NIGHTLY_RETRY_DELAY" =~ ^[1-9][0-9]{0,3}$ ]] ||
+    (( NIGHTLY_RETRY_DELAY > 1800 )); then
+    log "ERROR: retries must be 0..2 and retry delay must be 1..1800 seconds"
+    exit 1
+fi
+NIGHTLY_STATE_FILE="$HOME/.acfs/nightly-update.state"
+exec 9>"$HOME/.acfs/nightly-update.lock"
+if ! command -v flock >/dev/null 2>&1; then
+    log "ERROR: flock unavailable; refusing an unlocked nightly update"
+    exit 1
+fi
+if ! flock -n 9; then
+    log "SKIP: another nightly update/retry window is already running"
     exit 0
 fi
-log "OK: Load average $LOAD_5MIN < $NPROC cores"
 
-# ── Pre-flight 2: Disk space check ────────────────────────
-# Get available space on root filesystem in GB
-ROOT_AVAIL_KB="$(df --output=avail / | tail -1 | tr -d ' ')"
-ROOT_AVAIL_GB="$((ROOT_AVAIL_KB / 1048576))"
-
-if [[ "$ROOT_AVAIL_GB" -lt 2 ]]; then
-    log "SKIP: Root filesystem has only ${ROOT_AVAIL_GB}GB free (need >= 2GB). Critically low."
-    exit 0
+ACFS_NIGHTLY_OUTCOME=running
+ACFS_NIGHTLY_REASON=none
+ACFS_NIGHTLY_LAST_ATTEMPT=0
+ACFS_NIGHTLY_LAST_SUCCESS=0
+ACFS_NIGHTLY_FIRST_SKIP=0
+ACFS_NIGHTLY_SKIP_DATE=-
+ACFS_NIGHTLY_SKIPPED_NIGHTS=0
+ACFS_NIGHTLY_ATTEMPT=1
+ACFS_NIGHTLY_NEXT_RETRY=0
+if [[ -e "$NIGHTLY_STATE_FILE" || -L "$NIGHTLY_STATE_FILE" ]]; then
+    if ! acfs_nightly_state_read "$NIGHTLY_STATE_FILE"; then
+        log "ERROR: invalid nightly state: $NIGHTLY_STATE_FILE (preserved for inspection)"
+        exit 1
+    fi
 fi
-log "OK: Root filesystem has ${ROOT_AVAIL_GB}GB free"
+# Freeze the date for this retry window, including one spanning midnight.
+NIGHTLY_DATE="$(date +%F)"
+NIGHTLY_FINALIZED=false
+
+nightly_write_state() {
+    local tmp=""
+    tmp="$(mktemp "${NIGHTLY_STATE_FILE}.XXXXXX")" || return 1
+    if ! printf '1\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$ACFS_NIGHTLY_OUTCOME" "$ACFS_NIGHTLY_REASON" \
+        "$ACFS_NIGHTLY_LAST_ATTEMPT" "$ACFS_NIGHTLY_LAST_SUCCESS" \
+        "$ACFS_NIGHTLY_FIRST_SKIP" "$ACFS_NIGHTLY_SKIP_DATE" \
+        "$ACFS_NIGHTLY_SKIPPED_NIGHTS" "$ACFS_NIGHTLY_ATTEMPT" \
+        "$ACFS_NIGHTLY_NEXT_RETRY" > "$tmp" ||
+        ! mv -fT -- "$tmp" "$NIGHTLY_STATE_FILE"; then
+        log "ERROR: cannot persist nightly health state; refusing to continue"
+        return 1
+    fi
+}
+
+nightly_on_exit() {
+    if [[ "$NIGHTLY_FINALIZED" != true ]]; then
+        ACFS_NIGHTLY_OUTCOME=interrupted
+        ACFS_NIGHTLY_REASON=interrupted
+        ACFS_NIGHTLY_NEXT_RETRY=0
+        nightly_write_state || log "ERROR: could not record interrupted nightly update"
+    fi
+}
+trap nightly_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+nightly_resources_ready() {
+    # Collect BOTH metrics on every attempt. Failed probes and malformed values
+    # are not zero load / unlimited disk. Validate before any Bash arithmetic.
+    NPROC="$(nproc 2>/dev/null)" || NPROC=""
+    LOAD_5MIN="$(awk '{print $2}' /proc/loadavg 2>/dev/null)" || LOAD_5MIN=""
+    ROOT_AVAIL_KB="$(LC_ALL=C df --output=avail / 2>/dev/null | tail -1 | tr -d '[:space:]')" || ROOT_AVAIL_KB=""
+    if [[ ! "$NPROC" =~ ^[1-9][0-9]{0,5}$ ||
+          ! "$LOAD_5MIN" =~ ^[0-9]{1,6}(\.[0-9]{1,6})?$ ||
+          ! "$ROOT_AVAIL_KB" =~ ^[0-9]{1,15}$ ]]; then
+        ACFS_NIGHTLY_REASON=metrics
+        log "DEFER: load/CPU/disk metrics unavailable or invalid; cannot establish safe update conditions"
+        return 1
+    fi
+    LOAD_INT=$((10#${LOAD_5MIN%%.*}))
+    ROOT_AVAIL_GB=$((10#$ROOT_AVAIL_KB / 1048576))
+    if (( LOAD_INT >= NPROC )); then
+        ACFS_NIGHTLY_REASON=load
+        log "DEFER: 5-min load average ($LOAD_5MIN) >= nproc ($NPROC). System overloaded."
+        return 1
+    fi
+    if (( ROOT_AVAIL_GB < 2 )); then
+        ACFS_NIGHTLY_REASON=disk
+        log "DEFER: Root filesystem has only ${ROOT_AVAIL_GB}GB free (need >= 2GB). Critically low."
+        return 1
+    fi
+    ACFS_NIGHTLY_REASON=none
+    log "OK: Load average $LOAD_5MIN < $NPROC cores; root has ${ROOT_AVAIL_GB}GB free"
+}
+
+for (( ACFS_NIGHTLY_ATTEMPT=1; ACFS_NIGHTLY_ATTEMPT<=NIGHTLY_MAX_RETRIES+1; ACFS_NIGHTLY_ATTEMPT++ )); do
+    ACFS_NIGHTLY_LAST_ATTEMPT="$(date +%s)"
+    ACFS_NIGHTLY_NEXT_RETRY=0
+    if nightly_resources_ready; then
+        ACFS_NIGHTLY_OUTCOME=running
+        nightly_write_state
+        break
+    fi
+    if [[ "$ACFS_NIGHTLY_SKIP_DATE" != "$NIGHTLY_DATE" ]]; then
+        # Count distinct nights with a blocked pre-flight since the last fully
+        # successful run, not retries or manual invocations on the same date.
+        if (( ACFS_NIGHTLY_SKIPPED_NIGHTS < 999999 )); then
+            ACFS_NIGHTLY_SKIPPED_NIGHTS=$((ACFS_NIGHTLY_SKIPPED_NIGHTS + 1))
+        fi
+        ACFS_NIGHTLY_SKIP_DATE="$NIGHTLY_DATE"
+    fi
+    if (( ACFS_NIGHTLY_FIRST_SKIP == 0 )); then
+        ACFS_NIGHTLY_FIRST_SKIP="$ACFS_NIGHTLY_LAST_ATTEMPT"
+    fi
+    if (( ACFS_NIGHTLY_ATTEMPT > NIGHTLY_MAX_RETRIES )); then
+        ACFS_NIGHTLY_OUTCOME=skipped
+        nightly_write_state
+        NIGHTLY_FINALIZED=true
+        log "SKIP: retry budget exhausted; ${ACFS_NIGHTLY_SKIPPED_NIGHTS} skipped night(s) since last success. See acfs status."
+        exit 0
+    fi
+    ACFS_NIGHTLY_OUTCOME=retrying
+    ACFS_NIGHTLY_NEXT_RETRY=$((ACFS_NIGHTLY_LAST_ATTEMPT + NIGHTLY_RETRY_DELAY))
+    nightly_write_state
+    log "RETRY: checking load and disk again in ${NIGHTLY_RETRY_DELAY}s (attempt $((ACFS_NIGHTLY_ATTEMPT + 1))/$((NIGHTLY_MAX_RETRIES + 1)))"
+    sleep "$NIGHTLY_RETRY_DELAY" 9>&-
+done
 
 # ── Pre-flight 3: Low-risk cleanup if tight on space ──────
 if [[ "$ROOT_AVAIL_GB" -lt 5 ]]; then
@@ -539,9 +702,25 @@ log "---"
 
 # Run update; capture exit code but don't fail the whole script
 set +e
-"$ACFS_UPDATE" "${NIGHTLY_UPDATE_ARGS[@]}"
+"$ACFS_UPDATE" "${NIGHTLY_UPDATE_ARGS[@]}" 9>&-
 UPDATE_RC=$?
 set -e
+
+ACFS_NIGHTLY_NEXT_RETRY=0
+if [[ "$UPDATE_RC" -eq 0 ]]; then
+    ACFS_NIGHTLY_OUTCOME=success
+    ACFS_NIGHTLY_REASON=none
+    ACFS_NIGHTLY_LAST_SUCCESS="$(date +%s)"
+    ACFS_NIGHTLY_FIRST_SKIP=0
+    ACFS_NIGHTLY_SKIP_DATE=-
+    ACFS_NIGHTLY_SKIPPED_NIGHTS=0
+else
+    # Partial failure (2) is not full recovery; do not refresh success time.
+    ACFS_NIGHTLY_OUTCOME=failed
+    ACFS_NIGHTLY_REASON=update
+fi
+nightly_write_state
+NIGHTLY_FINALIZED=true
 
 log "---"
 if [[ "$UPDATE_RC" -eq 0 ]]; then
