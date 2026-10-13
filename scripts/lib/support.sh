@@ -3,7 +3,7 @@
 # ============================================================
 # ACFS Support Bundle - Collect diagnostic data for troubleshooting
 # Usage: acfs support-bundle [--verbose] [--output DIR]
-# Output: ~/.acfs/support/<timestamp>/ + .tar.gz archive
+# Output: ~/.acfs/support/<run>/diagnostics/ + diagnostics.tar.gz
 # ============================================================
 _SUPPORT_WAS_SOURCED=false
 _SUPPORT_ORIGINAL_HOME=""
@@ -290,9 +290,9 @@ support_print_help() {
     echo "  --help, -h       Show this help"
     echo ""
     echo "Output:"
-    echo "  ~/.acfs/support/<timestamp>/          Unpacked bundle directory"
-    echo "  ~/.acfs/support/<timestamp>.tar.gz    Compressed archive"
-    echo "  ~/.acfs/support/<timestamp>/manifest.json  Bundle manifest"
+    echo "  ~/.acfs/support/<run>/diagnostics/          Unpacked bundle directory"
+    echo "  ~/.acfs/support/<run>/diagnostics.tar.gz    Compressed archive"
+    echo "  ~/.acfs/support/<run>/diagnostics/manifest.json  Bundle manifest"
 }
 
 support_parse_args() {
@@ -1096,21 +1096,6 @@ support_manifest_diagnostic_json() {
                 source: {valid_json: false, malformed: false}
             }'
     }
-}
-
-# Generate a bundle name that stays unique even when multiple runs land
-# in the same second or a prior bundle path already exists.
-# Usage: next_bundle_name
-next_bundle_name() {
-    local timestamp base_name
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    base_name="${timestamp}_$$"
-
-    while [[ -e "${OUTPUT_BASE}/${base_name}" || -e "${OUTPUT_BASE}/${base_name}.tar.gz" ]]; do
-        base_name="${timestamp}_$$_${RANDOM}"
-    done
-
-    printf '%s\n' "$base_name"
 }
 
 # Safely copy a file into the bundle, logging the result.
@@ -2310,6 +2295,9 @@ capture_team_profile_json() {
         }' > "$profile_file"
     else
         profile_size="$(wc -c < "$profile_candidate" 2>/dev/null || true)"
+        # BSD wc pads counts with spaces; keep the same numeric/size guard on
+        # macOS rather than rejecting every readable profile there.
+        profile_size="${profile_size//[[:space:]]/}"
         if [[ ! "$profile_size" =~ ^[0-9]+$ || "$profile_size" -gt "$max_profile_bytes" ]]; then
             "$jq_bin" -n '{
                 schema_version: 1,
@@ -3111,7 +3099,7 @@ redact_private_key_blocks() {
     local file="$1"
     local tmp_file=""
 
-    tmp_file=$(mktemp "${file}.redacted.XXXXXX") || return 1
+    tmp_file=$(support_redaction_tempfile "$file") || return 1
     if awk '
         /^[[:space:]]*-----BEGIN [^-]*PRIVATE KEY[^-]*-----[[:space:]]*$/ {
             if (!in_private_key) {
@@ -3146,12 +3134,23 @@ redact_private_key_blocks() {
     return 0
 }
 
+# During collection, scratch bytes live outside the archived diagnostic tree.
+# The standalone redaction API still stages beside its input for atomic rename.
+support_redaction_tempfile() {
+    local file="$1"
+    if [[ -n "${SUPPORT_REDACTION_TEMP_DIR:-}" ]]; then
+        mktemp "${SUPPORT_REDACTION_TEMP_DIR}/redacted.XXXXXX"
+    else
+        mktemp "${file}.redacted.XXXXXX"
+    fi
+}
+
 support_sed_in_place() {
     local file="${!#}"
     local tmp=""
 
     [[ -f "$file" && ! -L "$file" ]] || return 1
-    tmp="$(mktemp "${file}.redacted.XXXXXX" 2>/dev/null)" || return 1
+    tmp="$(support_redaction_tempfile "$file" 2>/dev/null)" || return 1
     if sed -E "${@:1:$#-1}" "$file" > "$tmp" 2>/dev/null \
         && [[ -f "$file" && ! -L "$file" ]] \
         && mv -- "$tmp" "$file" 2>/dev/null; then
@@ -3179,7 +3178,7 @@ support_replace_literal_in_file() {
 
     [[ -n "$find_str" ]] || return 0
     [[ -f "$file" && ! -L "$file" ]] || return 1
-    tmp="$(mktemp "${file}.redacted.XXXXXX" 2>/dev/null)" || return 1
+    tmp="$(support_redaction_tempfile "$file" 2>/dev/null)" || return 1
     if ACFS_REDACT_FIND="$find_str" ACFS_REDACT_REPL="$replace_str" \
         LC_ALL=C awk '
             BEGIN {
@@ -3555,7 +3554,53 @@ support_verify_identity_redaction() {
 # ============================================================
 # Main bundle collection
 # ============================================================
-main() {
+support_write_archive() (
+    local archive_file="$1"
+    local bundle_name="$2"
+    local archive_fd
+    set -o noclobber
+    if ! exec {archive_fd}> "$archive_file"; then
+        return 1
+    fi
+    if ! tar -czf - -- "$bundle_name" >&"$archive_fd"; then
+        return 1
+    fi
+    # A pathname swapped after the exclusive open must not become the
+    # reported artifact. The subshell closes the retained descriptor on exit.
+    local archive_matches=false
+    if [[ -d /proc/self/fd ]]; then
+        [[ ! -L "$archive_file" && "$archive_file" -ef "/proc/self/fd/$archive_fd" ]] && archive_matches=true
+    else
+        # BSD /dev/fd exposes virtual inode metadata to stat(path). Use fstat
+        # on the inherited descriptor there; no bundle contents are read.
+        local python_bin=""
+        python_bin=$(support_system_binary_path python3 2>/dev/null || true)
+        if [[ -n "$python_bin" ]] && "$python_bin" - "$archive_file" "$archive_fd" <<'PY'
+import os
+import stat
+import sys
+
+try:
+    path_info = os.stat(sys.argv[1], follow_symlinks=False)
+    held_info = os.fstat(int(sys.argv[2]))
+except (OSError, ValueError):
+    sys.exit(1)
+sys.exit(0 if stat.S_ISREG(path_info.st_mode) and
+         (path_info.st_dev, path_info.st_ino) ==
+         (held_info.st_dev, held_info.st_ino) else 1)
+PY
+        then
+            archive_matches=true
+        fi
+    fi
+    if [[ "$archive_matches" != true ]]; then
+        log_error "Archive pathname changed during compression"
+        return 1
+    fi
+)
+
+# Isolate the working directory and private umask from sourced callers.
+main() (
     local parse_status=0
 
     support_parse_args "$@" || parse_status=$?
@@ -3565,13 +3610,28 @@ main() {
         *) return "$parse_status" ;;
     esac
 
-    support_initialize_context
+    support_initialize_context || return 1
 
-    local bundle_name
-    bundle_name=$(next_bundle_name)
-
-    local bundle_dir="${OUTPUT_BASE}/${bundle_name}"
+    # Allocate rather than probe a predictable name. Keep both collection and
+    # archive writes relative to the private working directory: replacing an
+    # ancestor path after cd must never redirect a write to another location.
+    umask 077
+    if ! mkdir -p -- "$OUTPUT_BASE" || ! cd -P -- "$OUTPUT_BASE"; then
+        log_error "Cannot open support-bundle output directory"
+        return 1
+    fi
+    local workspace=""
+    if ! workspace=$(mktemp -d "./$(date +%Y%m%d_%H%M%S)_XXXXXX") \
+        || ! cd -P -- "$workspace"; then
+        log_error "Cannot allocate private support-bundle workspace"
+        return 1
+    fi
+    OUTPUT_BASE=$(pwd -P) || return 1
+    local bundle_name="diagnostics"
+    local bundle_dir="./$bundle_name"
+    local archive_file="./${bundle_name}.tar.gz"
     local archive_path="${OUTPUT_BASE}/${bundle_name}.tar.gz"
+    local SUPPORT_REDACTION_TEMP_DIR="./.staging"
 
     # Track collected files for manifest
     BUNDLE_FILES=()
@@ -3582,10 +3642,9 @@ main() {
     # Create bundle directory
     # The bundle holds copies of ~/.zshrc, install logs, and doctor output
     # before redaction runs; keep every file and directory owner-only.
-    umask 077
-    mkdir -p "$bundle_dir" || {
-        log_error "Cannot create bundle directory: $bundle_dir"
-        exit 1
+    mkdir -- "$bundle_dir" "$SUPPORT_REDACTION_TEMP_DIR" || {
+        log_error "Cannot create private diagnostic directory"
+        return 1
     }
 
     # --- Collect ACFS state files ---
@@ -3660,7 +3719,7 @@ main() {
     # Systemd journal (last 100 acfs-related lines)
     if command -v journalctl &>/dev/null; then
         local journal_tmp=""
-        journal_tmp=$(mktemp "${bundle_dir}/journal-acfs.log.tmp.XXXXXX") || journal_tmp=""
+        journal_tmp=$(mktemp "${SUPPORT_REDACTION_TEMP_DIR}/journal-acfs.XXXXXX") || journal_tmp=""
         if [[ -n "$journal_tmp" ]] && journalctl --no-pager -n 100 -u 'acfs*' > "$journal_tmp" 2>/dev/null; then
             if mv "$journal_tmp" "$bundle_dir/journal-acfs.log"; then
                 record_bundle_file "journal-acfs.log"
@@ -3701,15 +3760,25 @@ main() {
 
     # --- Create tar archive ---
     log_detail "Creating archive..."
-    if tar -czf "$archive_path" -C "$OUTPUT_BASE" "$bundle_name" 2>/dev/null; then
-        chmod 600 "$archive_path" 2>/dev/null || true
+    # noclobber opens the archive exclusively, then tar writes through that
+    # held descriptor. Do not chmod or reopen the pathname after the write.
+    # Existing files, hard links and symlinks must remain untouched.
+    if support_write_archive "$archive_file" "$bundle_name"; then
+        if [[ ! "$OUTPUT_BASE" -ef . ]]; then
+            log_error "Support-bundle workspace moved; refusing to report a stale archive path"
+            return 1
+        fi
         log_success "Bundle created: $archive_path"
         echo "$archive_path"
     else
-        log_warn "Could not create tar archive, bundle available at: $bundle_dir"
-        echo "$bundle_dir"
+        if [[ ! "$OUTPUT_BASE" -ef . ]]; then
+            log_error "Support-bundle workspace moved; refusing to report a stale diagnostic path"
+            return 1
+        fi
+        log_warn "Could not create tar archive, bundle available at: ${OUTPUT_BASE}/${bundle_name}"
+        echo "${OUTPUT_BASE}/${bundle_name}"
     fi
-}
+)
 
 support_restore_shell_options_if_sourced() {
     [[ "$_SUPPORT_WAS_SOURCED" == "true" ]] || return 0

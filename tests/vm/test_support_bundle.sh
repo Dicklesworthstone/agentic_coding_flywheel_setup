@@ -4,11 +4,12 @@
 # ACFS Support Bundle Tests
 # Tests: collection functions, redaction, CLI flags, manifest
 # Usage: bash tests/vm/test_support_bundle.sh
+# Focused filesystem regression: bash tests/vm/test_support_bundle.sh --output-safety-only
 # ============================================================
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SUPPORT_SH="$REPO_ROOT/scripts/lib/support.sh"
+SUPPORT_SH="${ACFS_SUPPORT_TEST_SCRIPT:-$REPO_ROOT/scripts/lib/support.sh}"
 
 # Source test harness
 source "$REPO_ROOT/tests/vm/lib/test_harness.sh"
@@ -839,6 +840,190 @@ EOF
     cleanup_mock_env
 }
 
+# Exercise real collection, redaction, manifest and tar writes in a private
+# fixture. Optional telemetry is omitted so no shared services are contacted.
+# Plant the output collision after collection starts, not before name selection.
+test_bundle_output_safety() {
+    setup_mock_env
+    local output_dir="$MOCK_HOME/output with spaces"
+    local replacement_dir="$MOCK_HOME/replacement"
+    local original_dir="$MOCK_HOME/original"
+    local mode status output_path archive_target bundle_root entry
+    mkdir -p "$replacement_dir" "$original_dir"
+    ln -s "$original_dir" "$output_dir"
+    for mode in ordinary failed-journal archive-file archive-symlink archive-dangling archive-hardlink archive-directory archive-swap ancestor-swap workspace-move; do
+        archive_target="$MOCK_HOME/target-$mode"
+        if [[ "$mode" != archive-dangling ]]; then
+            printf 'existing target stays intact\n' > "$archive_target"
+        fi
+        status=0
+        HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" bash -s -- \
+            "$SUPPORT_SH" "$output_dir" "$MOCK_HOME" "$MOCK_ACFS" "$mode" \
+            "$archive_target" "$replacement_dir" \
+            > "$MOCK_HOME/$mode.stdout" 2> "$MOCK_HOME/$mode.stderr" <<'BASH' || status=$?
+source "$1"
+fixture_output="$2" fixture_home="$3" fixture_acfs="$4" fixture_mode="$5" fixture_target="$6" fixture_replacement="$7"
+log_section() { :; }
+log_step() { :; }
+log_detail() { :; }
+log_warn() { printf '%s\n' "$*" >&2; }
+log_error() { printf '%s\n' "$*" >&2; }
+log_success() { printf '%s\n' "$*" >&2; }
+support_initialize_context() {
+    OUTPUT_BASE="$fixture_output"
+    SUPPORT_TARGET_HOME="$fixture_home"
+    SUPPORT_TARGET_USER="fixture-user"
+    _SUPPORT_ACFS_HOME="$fixture_acfs"
+}
+capture_doctor_json() { :; }
+capture_agent_readiness_json() { :; }
+capture_checkpoint_summary_json() { :; }
+capture_local_progress_json() { :; }
+capture_swarm_status_json() { :; }
+capture_provenance_json() { :; }
+capture_resource_profile_json() { :; }
+capture_credential_status_json() { :; }
+capture_team_profile_json() { :; }
+capture_swarm_inventory_json() { :; }
+capture_swarm_timeline_json() { :; }
+capture_env_summary() { :; }
+capture_versions() {
+    local archive_file="${1}.tar.gz"
+    case "$fixture_mode" in
+        archive-file) printf 'existing archive stays intact\n' > "$archive_file" ;;
+        archive-symlink|archive-dangling) ln -s "$fixture_target" "$archive_file" ;;
+        archive-hardlink) ln "$fixture_target" "$archive_file" ;;
+        archive-directory) mkdir "$archive_file" ;;
+        archive-swap) fixture_archive="$archive_file" ;;
+        ancestor-swap)
+            mv "$fixture_output" "${fixture_output}.retained"
+            ln -s "$fixture_replacement" "$fixture_output"
+            ;;
+        workspace-move)
+            mv "$OUTPUT_BASE" "${OUTPUT_BASE}.moved"
+            mkdir "$OUTPUT_BASE"
+            ;;
+    esac
+}
+tar() {
+    if [[ "$fixture_mode" == archive-swap ]]; then
+        if [[ -f "$fixture_archive" ]]; then
+            mv "$fixture_archive" "${fixture_archive}.retained"
+        fi
+        ln -s "$fixture_target" "$fixture_archive"
+    fi
+    command tar "$@"
+}
+# Keep system journal capture out of this filesystem fixture as well.
+journalctl() { printf 'uncollected fixture journal bytes\n'; return 1; }
+before_cwd="$PWD"
+before_umask=$(umask)
+main --output "$fixture_output"
+result=$?
+if [[ "$PWD" == "$before_cwd" && "$(umask)" == "$before_umask" ]]; then
+    printf 'preserved\n' > "$fixture_home/$fixture_mode.caller"
+else
+    printf 'changed\n' > "$fixture_home/$fixture_mode.caller"
+fi
+exit "$result"
+BASH
+        output_path=$(cat "$MOCK_HOME/$mode.stdout")
+        harness_assert_eq "preserved" "$(cat "$MOCK_HOME/$mode.caller")" "Sourced caller directory and umask preserved: $mode"
+        if [[ "$mode" == workspace-move ]]; then
+            if [[ "$status" -ne 0 && -z "$output_path" ]] \
+                && grep -q 'workspace moved' "$MOCK_HOME/$mode.stderr"; then
+                harness_pass "Moved workspace cannot produce a stale success path"
+            else
+                harness_fail "Moved workspace cannot produce a stale success path" "status=$status output=$output_path"
+            fi
+            continue
+        fi
+        if [[ "$status" -ne 0 ]]; then
+            harness_fail "Support output scenario completes: $mode" "status=$status; see $MOCK_HOME/$mode.stderr"
+            continue
+        fi
+        case "$mode" in
+            archive-*)
+                if [[ -d "$output_path" && "$output_path" != *.tar.gz ]]; then
+                    harness_pass "Archive collision retains useful diagnostic directory: $mode"
+                else
+                    harness_fail "Archive collision retains useful diagnostic directory: $mode" "$output_path"
+                fi
+                if [[ "$mode" == archive-dangling ]]; then
+                    if [[ ! -e "$archive_target" ]]; then
+                        harness_pass "Dangling archive target is never created"
+                    else
+                        harness_fail "Dangling archive target is never created"
+                    fi
+                elif [[ "$(cat "$archive_target")" == 'existing target stays intact' ]]; then
+                    harness_pass "Archive target remains unchanged: $mode"
+                else
+                    harness_fail "Archive target remains unchanged: $mode"
+                fi
+                if [[ "$mode" == archive-file ]]; then
+                    if [[ "$(cat "${output_path}.tar.gz")" == 'existing archive stays intact' ]]; then
+                        harness_pass "Pre-existing archive bytes remain unchanged"
+                    else
+                        harness_fail "Pre-existing archive bytes remain unchanged"
+                    fi
+                fi
+                if [[ "$mode" == archive-directory ]]; then
+                    if [[ -d "${output_path}.tar.gz" && -z "$(find "${output_path}.tar.gz" -mindepth 1 -print -quit)" ]]; then
+                        harness_pass "Pre-existing archive directory remains unchanged"
+                    else
+                        harness_fail "Pre-existing archive directory remains unchanged"
+                    fi
+                fi
+                if [[ "$mode" == archive-swap ]]; then
+                    if grep -q 'Archive pathname changed' "$MOCK_HOME/$mode.stderr" \
+                        && tar -tzf "${output_path}.tar.gz.retained" > "$MOCK_HOME/$mode.contents"; then
+                        harness_pass "Archive swap writes only through the retained descriptor and reports diagnostics"
+                    else
+                        harness_fail "Archive swap writes only through the retained descriptor and reports diagnostics"
+                    fi
+                fi
+                ;;
+            ordinary|failed-journal|ancestor-swap)
+                if [[ -f "$output_path" ]] && tar -tzf "$output_path" > "$MOCK_HOME/$mode.contents"; then
+                    harness_pass "Real archive remains readable: $mode"
+                else
+                    harness_fail "Real archive remains readable: $mode" "$output_path"
+                    continue
+                fi
+                if [[ "$mode" == ancestor-swap && -z "$(find "$replacement_dir" -mindepth 1 -print -quit)" ]]; then
+                    harness_pass "Changing output ancestor cannot redirect collection or archive writes"
+                elif [[ "$mode" == ancestor-swap ]]; then
+                    harness_fail "Changing output ancestor cannot redirect collection or archive writes"
+                fi
+                bundle_root="${output_path%.tar.gz}"
+                if [[ -f "$bundle_root/state.json" && -f "$bundle_root/config/.zshrc" \
+                    && -f "$bundle_root/manifest.json" && -f "$bundle_root/support-report.md" ]]; then
+                    harness_pass "Useful state, configuration, manifest and report persist: $mode"
+                else
+                    harness_fail "Useful state, configuration, manifest and report persist: $mode"
+                fi
+                entry=$(find "$(dirname "$output_path")" \( \
+                    -perm -040 -o -perm -020 -o -perm -010 \
+                    -o -perm -004 -o -perm -002 -o -perm -001 \) -print -quit)
+                if [[ -z "$entry" ]]; then
+                    harness_pass "Workspace, diagnostics and archive remain owner-only: $mode"
+                else
+                    harness_fail "Workspace, diagnostics and archive remain owner-only: $mode" "$entry"
+                fi
+                if [[ "$mode" == failed-journal ]]; then
+                    if [[ -z "$(find "$bundle_root" -type f -name '*.tmp.*' -print -quit)" ]] \
+                        && ! grep -R -F 'uncollected fixture journal bytes' "$bundle_root"; then
+                        harness_pass "Failed capture scratch data stays outside the diagnostic archive"
+                    else
+                        harness_fail "Failed capture scratch data stays outside the diagnostic archive"
+                    fi
+                fi
+                ;;
+        esac
+    done
+    cleanup_mock_env
+}
+
 test_unknown_flag_errors() {
     local exit_code=0
     bash "$SUPPORT_SH" --bogus-flag >/dev/null 2>&1 || exit_code=$?
@@ -855,6 +1040,13 @@ test_unknown_flag_errors() {
 # ============================================================
 main() {
     harness_init "ACFS Support Bundle Tests"
+
+    if [[ "${1:-}" == --output-safety-only ]]; then
+        harness_section "Output Filesystem Safety Tests"
+        test_bundle_output_safety || true
+        harness_summary
+        return $?
+    fi
 
     # Pre-flight check
     if ! command -v jq &>/dev/null; then
@@ -873,6 +1065,7 @@ main() {
     test_bundle_names_stay_unique_when_timestamps_collide || true
     test_log_collection_skips_symlinked_logs || true
     test_tar_failure_returns_bundle_dir || true
+    test_bundle_output_safety || true
 
     harness_section "Manifest JSON Tests"
     test_manifest_json_valid || true

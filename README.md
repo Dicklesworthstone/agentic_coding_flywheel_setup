@@ -4470,10 +4470,14 @@ acfs support-bundle [options]
 
 **Output files:**
 ```
-~/.acfs/support/<timestamp>/          # Unpacked bundle directory
-~/.acfs/support/<timestamp>.tar.gz    # Compressed archive (shareable)
-~/.acfs/support/<timestamp>/manifest.json  # Bundle manifest
+~/.acfs/support/<run>/diagnostics/          # Unpacked bundle directory
+~/.acfs/support/<run>/diagnostics.tar.gz    # Compressed archive (shareable)
+~/.acfs/support/<run>/diagnostics/manifest.json  # Bundle manifest
 ```
+
+Each run uses a unique private directory. Existing archive files or symlinks are
+never overwritten; if compression fails, the command prints the unpacked
+diagnostic directory instead. Review the bundle before sharing it.
 
 **What's collected:**
 
