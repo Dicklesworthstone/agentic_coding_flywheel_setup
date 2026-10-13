@@ -490,7 +490,7 @@ function InteractiveReleasePipeline() {
         {/* Header */}
         <div className="text-center">
           <p className="text-sm font-semibold text-white/80">Release Pipeline Control Room</p>
-          <p className="text-xs text-white/50 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Watch DSR build, verify, sign, and publish release artifacts locally
           </p>
         </div>
@@ -533,12 +533,12 @@ function InteractiveReleasePipeline() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-white/90">{scenario.label}</span>
-                  <span className="rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-xs font-mono text-white/50">
+                  <span className="rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-xs font-mono text-muted-foreground">
                     {scenario.version}
                   </span>
                 </div>
-                <p className="text-xs text-white/50 mt-0.5">{scenario.description}</p>
-                <div className="mt-2 flex items-center gap-1.5 text-xs font-mono text-white/30">
+                <p className="text-xs text-muted-foreground mt-0.5">{scenario.description}</p>
+                <div className="mt-2 flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
                   <Terminal className="h-3 w-3" />
                   <span className="truncate">{scenario.command}</span>
                 </div>
@@ -616,7 +616,7 @@ function InteractiveReleasePipeline() {
             disabled={phase !== "idle" && phase !== "done"}
             className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
               phase !== "idle" && phase !== "done"
-                ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
+                ? "border-white/[0.06] bg-white/[0.02] text-muted-foreground cursor-wait"
                 : "border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
             }`}
           >
@@ -649,7 +649,7 @@ function InteractiveReleasePipeline() {
               transition={SPRING}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-white/50 hover:text-white/70 transition-colors"
+              className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-muted-foreground hover:text-white/70 transition-colors"
             >
               Reset
             </motion.button>
@@ -689,7 +689,7 @@ function ScenarioStepper({
         whileHover={disabled ? {} : { scale: 1.1 }}
         whileTap={disabled ? {} : { scale: 0.9 }}
         transition={SPRING}
-        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70 disabled:opacity-30 transition-colors"
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 disabled:opacity-30 transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />
       </motion.button>
@@ -732,12 +732,12 @@ function ScenarioStepper({
         whileHover={disabled ? {} : { scale: 1.1 }}
         whileTap={disabled ? {} : { scale: 0.9 }}
         transition={SPRING}
-        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70 disabled:opacity-30 transition-colors"
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 disabled:opacity-30 transition-colors"
       >
         <ChevronRight className="h-4 w-4" />
       </motion.button>
 
-      <span className="ml-2 text-xs font-mono text-white/30">
+      <span className="ml-2 text-xs font-mono text-muted-foreground">
         {activeIndex + 1}/{scenarios.length}
       </span>
     </div>
@@ -760,7 +760,7 @@ function DraftFinalToggle({
   return (
     <div className="flex items-center justify-center gap-3">
       <span
-        className={`text-xs font-medium transition-colors ${isDraft ? "text-amber-400" : "text-white/30"}`}
+        className={`text-xs font-medium transition-colors ${isDraft ? "text-amber-400" : "text-muted-foreground"}`}
       >
         Draft
       </span>
@@ -786,7 +786,7 @@ function DraftFinalToggle({
         />
       </motion.button>
       <span
-        className={`text-xs font-medium transition-colors ${!isDraft ? "text-emerald-400" : "text-white/30"}`}
+        className={`text-xs font-medium transition-colors ${!isDraft ? "text-emerald-400" : "text-muted-foreground"}`}
       >
         Final
       </span>
@@ -832,8 +832,8 @@ function ArtifactFlowDiagram({
   return (
     <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
-        <GitBranch className="h-3.5 w-3.5 text-white/40" />
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+        <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Artifact Flow
         </span>
       </div>
@@ -963,7 +963,7 @@ function ArtifactFlowDiagram({
                 textAnchor="middle"
                 fontSize={12}
                 fontWeight={600}
-                fill={isActive || isComplete ? colors.text : "rgba(255,255,255,0.3)"}
+                fill={isActive || isComplete ? colors.text : "var(--muted-foreground)"}
               >
                 {stage.label}
               </text>
@@ -1007,7 +1007,7 @@ function ArtifactFlowDiagram({
         })}
 
         {/* Source label */}
-        <text x={30} y={105} fontSize={12} fill="rgba(255,255,255,0.35)" fontWeight={500}>
+        <text x={30} y={105} fontSize={12} fill="var(--muted-foreground)" fontWeight={500}>
           Local Machine
         </text>
         <rect
@@ -1025,7 +1025,7 @@ function ArtifactFlowDiagram({
           y={129}
           textAnchor="middle"
           fontSize={12}
-          fill="rgba(255,255,255,0.4)"
+          fill="var(--muted-foreground)"
           fontFamily="monospace"
         >
           act runner
@@ -1052,7 +1052,7 @@ function ArtifactFlowDiagram({
         />
 
         {/* Destination label */}
-        <text x={345} y={105} fontSize={12} fill="rgba(255,255,255,0.35)" fontWeight={500}>
+        <text x={345} y={105} fontSize={12} fill="var(--muted-foreground)" fontWeight={500}>
           GitHub Release
         </text>
         <rect
@@ -1070,7 +1070,7 @@ function ArtifactFlowDiagram({
           y={129}
           textAnchor="middle"
           fontSize={12}
-          fill={phase === "done" ? "rgba(110,231,183,0.8)" : "rgba(255,255,255,0.4)"}
+          fill={phase === "done" ? "rgba(110,231,183,0.8)" : "var(--muted-foreground)"}
           fontFamily="monospace"
         >
           {isDraft ? "draft release" : "final release"}
@@ -1093,7 +1093,7 @@ function ArtifactFlowDiagram({
           y={170}
           textAnchor="middle"
           fontSize={12}
-          fill="rgba(255,255,255,0.25)"
+          fill="var(--muted-foreground)"
           fontWeight={500}
         >
           {phase === "idle" && "Ready to release"}
@@ -1130,8 +1130,8 @@ function PlatformBuildGrid({
   return (
     <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Hammer className="h-3.5 w-3.5 text-white/40" />
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+        <Hammer className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Build Targets
         </span>
       </div>
@@ -1153,12 +1153,12 @@ function PlatformBuildGrid({
             >
               <div className="flex items-center gap-2">
                 <TargetIcon
-                  className={`h-3 w-3 ${isComplete ? "text-emerald-400" : isBuilding ? "text-blue-400" : "text-white/30"}`}
+                  className={`h-3 w-3 ${isComplete ? "text-emerald-400" : isBuilding ? "text-blue-400" : "text-muted-foreground"}`}
                 />
                 <span className="text-xs font-mono text-white/60">{target.label}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-white/30">
+                <span className="text-xs font-mono text-muted-foreground">
                   {isComplete ? `${target.sizeKb}KB` : isBuilding ? `${Math.round(pct)}%` : "--"}
                 </span>
                 {isComplete && (
@@ -1198,8 +1198,8 @@ function PlatformBuildGrid({
           <div className="pt-1">
             {Array.from({ length: 4 - targets.length }, (_, i) => (
               <div key={`empty-${i}`} className="flex items-center gap-2 py-1 opacity-30">
-                <Cpu className="h-3 w-3 text-white/20" />
-                <span className="text-xs font-mono text-white/20">--/--</span>
+                <Cpu className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs font-mono text-muted-foreground">--/--</span>
               </div>
             ))}
           </div>
@@ -1273,8 +1273,8 @@ function ChecksumVerification({
   return (
     <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Hash className="h-3.5 w-3.5 text-white/40" />
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+        <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           SHA-256 Checksums
         </span>
         {isVerified && (
@@ -1317,7 +1317,7 @@ function ChecksumVerification({
             className="group"
           >
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-white/40 w-24 shrink-0 truncate">
+              <span className="text-xs font-mono text-muted-foreground w-24 shrink-0 truncate">
                 {target.label}
               </span>
               <div
@@ -1326,7 +1326,7 @@ function ChecksumVerification({
                     ? "text-emerald-400/70"
                     : isVerifying
                       ? "text-cyan-400/60"
-                      : "text-white/25"
+                      : "text-muted-foreground"
                 }`}
               >
                 {revealed ? hashes[idx] : "•".repeat(64)}
@@ -1340,7 +1340,7 @@ function ChecksumVerification({
                   {copiedIdx === idx ? (
                     <Check className="h-3 w-3 text-emerald-400" />
                   ) : (
-                    <Copy className="h-3 w-3 text-white/30 hover:text-white/60" />
+                    <Copy className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   )}
                 </button>
               )}
@@ -1374,7 +1374,7 @@ interface TerminalLine {
 
 const TERMINAL_LINE_COLORS: Record<TerminalLine["type"], string> = {
   command: "text-cyan-300",
-  output: "text-white/50",
+  output: "text-muted-foreground",
   info: "text-blue-400",
   success: "text-emerald-400",
   warning: "text-amber-400",
@@ -1403,7 +1403,7 @@ function MiniTerminal({
           <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
           <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-xs font-mono text-white/30 ml-2">dsr-terminal</span>
+        <span className="text-xs font-mono text-muted-foreground ml-2">dsr-terminal</span>
       </div>
 
       {/* Terminal content */}
@@ -1412,7 +1412,7 @@ function MiniTerminal({
         className="h-48 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
       >
         {lines.length === 0 && (
-          <div className="flex items-center gap-2 text-white/20">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <Terminal className="h-3 w-3" />
             <span className="text-xs font-mono">Waiting for release command...</span>
           </div>

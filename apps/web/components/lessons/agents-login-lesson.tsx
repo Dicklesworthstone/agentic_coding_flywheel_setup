@@ -428,7 +428,7 @@ function LoginStep({
           role="region"
           aria-label={`${agent} login command (scrollable)`}
         >
-          <span className="text-white/50">$ </span>
+          <span className="text-muted-foreground">$ </span>
           {command}
         </pre>
       </div>
@@ -485,7 +485,7 @@ function CodexLoginSection() {
             role="region"
             aria-label="Device auth command (scrollable)"
           >
-            <span className="text-white/50">$ </span>codex login --device-auth
+            <span className="text-muted-foreground">$ </span>codex login --device-auth
           </pre>
         </div>
       </div>
@@ -507,13 +507,13 @@ function CodexLoginSection() {
             role="region"
             aria-label="SSH tunnel commands (scrollable)"
           >
-            <span className="text-white/50"># On laptop:</span>
+            <span className="text-muted-foreground"># On laptop:</span>
             {"\n"}
-            <span className="text-white/50">$ </span>ssh -L 1455:localhost:1455 ubuntu@YOUR_VPS_IP
+            <span className="text-muted-foreground">$ </span>ssh -L 1455:localhost:1455 ubuntu@YOUR_VPS_IP
             {"\n"}
-            <span className="text-white/50"># Then on VPS:</span>
+            <span className="text-muted-foreground"># Then on VPS:</span>
             {"\n"}
-            <span className="text-white/50">$ </span>codex login
+            <span className="text-muted-foreground">$ </span>codex login
           </pre>
         </div>
       </div>
@@ -530,7 +530,7 @@ function CodexLoginSection() {
             role="region"
             aria-label="Standard login command (scrollable)"
           >
-            <span className="text-white/50">$ </span>codex login
+            <span className="text-muted-foreground">$ </span>codex login
           </pre>
         </div>
       </div>
@@ -1071,7 +1071,7 @@ function InteractiveAgentComparison() {
           </div>
           <h3 className="text-lg font-bold text-white">Agent Authentication Race</h3>
         </div>
-        <p className="text-sm text-white/50">
+        <p className="text-sm text-muted-foreground">
           Watch how each agent handles real authentication scenarios
         </p>
       </div>
@@ -1092,7 +1092,7 @@ function InteractiveAgentComparison() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 i === scenarioIndex
                   ? "bg-primary/20 border border-primary/30 text-primary"
-                  : "border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/60"
+                  : "border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-foreground"
               }`}
             >
               {sc.icon}
@@ -1114,7 +1114,7 @@ function InteractiveAgentComparison() {
                 transition={springs.snappy}
               >
                 <h4 className="text-sm font-semibold text-white">{scenario.title}</h4>
-                <p className="text-xs text-white/40">{scenario.description}</p>
+                <p className="text-xs text-muted-foreground">{scenario.description}</p>
               </motion.div>
             </AnimatePresence>
           </div>
@@ -1128,7 +1128,7 @@ function InteractiveAgentComparison() {
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={springs.snappy}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/80 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/80 transition-colors"
             >
               <SkipBack className="h-3.5 w-3.5" />
             </motion.button>
@@ -1154,7 +1154,7 @@ function InteractiveAgentComparison() {
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={springs.snappy}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/80 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/80 transition-colors"
             >
               <SkipForward className="h-3.5 w-3.5" />
             </motion.button>
@@ -1276,7 +1276,8 @@ function AuthFlowSvg({
         x={hubX}
         y={33}
         textAnchor="middle"
-        className={`fill-white/50 ${subtitleSize}`}
+        className={subtitleSize}
+        fill="var(--muted-foreground)"
       >
         SERVER
       </text>
@@ -1458,10 +1459,10 @@ function AgentTerminalPanel({
                 animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
                 transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
               />
-              <span className="text-xs text-white/30">running</span>
+              <span className="text-xs text-muted-foreground">running</span>
             </div>
           ) : (
-            <span className="text-xs text-white/20">idle</span>
+            <span className="text-xs text-muted-foreground">idle</span>
           )}
         </div>
       </div>
@@ -1472,7 +1473,7 @@ function AgentTerminalPanel({
         className="px-3 py-2 font-mono text-xs leading-relaxed min-h-[180px] max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10"
       >
         {visibleCount === 0 && !isPlaying && (
-          <div className="flex items-center justify-center h-full min-h-[160px] text-white/20">
+          <div className="flex items-center justify-center h-full min-h-[160px] text-muted-foreground">
             <span className="text-xs">Press play to start</span>
           </div>
         )}
@@ -1486,7 +1487,7 @@ function AgentTerminalPanel({
               className={`py-0.5 ${getLineColor(line.type)}`}
             >
               {line.type === "command" && (
-                <span className="text-white/30 select-none">
+                <span className="text-muted-foreground select-none">
                   {line.text.startsWith("$") ? "" : "$ "}
                 </span>
               )}
@@ -1517,14 +1518,14 @@ function AgentTerminalPanel({
 
       {/* Terminal footer - timing */}
       <div className="px-3 py-1.5 border-t border-white/[0.04] flex items-center justify-between">
-        <span className="text-xs text-white/20">
+        <span className="text-xs text-muted-foreground">
           {visibleCount}/{agentScenario.lines.length} steps
         </span>
         {isDone && (
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-xs text-white/30"
+            className="text-xs text-muted-foreground"
           >
             {(agentScenario.finishDelay / 1000).toFixed(1)}s
           </motion.span>
@@ -1539,7 +1540,7 @@ function getLineColor(type: TerminalLine["type"]): string {
     case "command":
       return "text-white/90";
     case "output":
-      return "text-white/50";
+      return "text-muted-foreground";
     case "success":
       return "text-emerald-400";
     case "error":

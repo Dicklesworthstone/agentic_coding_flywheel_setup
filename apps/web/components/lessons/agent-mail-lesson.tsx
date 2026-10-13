@@ -333,9 +333,9 @@ function ProblemCard({ problem, solution }: { problem: string; solution: string 
         ✗
       </div>
       <div className="flex-1">
-        <span className="text-white/50 line-through">{problem}</span>
+        <span className="text-muted-foreground line-through">{problem}</span>
       </div>
-      <div className="text-white/50 group-hover:text-white/70 transition-colors">→</div>
+      <div className="text-muted-foreground group-hover:text-white/70 transition-colors">→</div>
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/30 transition-colors">
         ✓
       </div>
@@ -375,7 +375,7 @@ function ConceptCard({
         </div>
         <div>
           <h3 className="font-bold text-white text-lg">{title}</h3>
-          <p className="text-sm text-white/50">{description}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
       <div className="relative">{children}</div>
@@ -407,7 +407,7 @@ function PatternCard({
 
       <div className="relative p-5 border-b border-white/[0.06] bg-white/[0.02]">
         <h3 className="font-bold text-white text-lg">{title}</h3>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
       <div className="relative p-4">
         <CodeBlock code={code} language="python" />
@@ -790,12 +790,12 @@ function ThreadViewer({ message, onClose }: { message: MailMessage; onClose: () 
             </div>
             <div>
               <p className="text-sm font-bold text-white">Thread #{message.threadId}</p>
-              <p className="text-xs text-white/40">{message.subject}</p>
+              <p className="text-xs text-muted-foreground">{message.subject}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/50 hover:text-white hover:bg-white/[0.08] transition"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-muted-foreground hover:text-white hover:bg-white/[0.08] transition"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -809,11 +809,11 @@ function ThreadViewer({ message, onClose }: { message: MailMessage; onClose: () 
               <span className="text-xs font-semibold text-blue-400">
                 {getAgentNameById(message.from)}
               </span>
-              <ArrowRight className="h-3 w-3 text-white/30" />
+              <ArrowRight className="h-3 w-3 text-muted-foreground" />
               <span className="text-xs font-semibold text-emerald-400">
                 {getAgentNameById(message.to)}
               </span>
-              <span className="text-xs text-white/30 ml-auto">{message.timestamp}</span>
+              <span className="text-xs text-muted-foreground ml-auto">{message.timestamp}</span>
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
               <p className="text-sm text-white/70 leading-relaxed">{message.body}</p>
@@ -907,7 +907,7 @@ function AgentInboxCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p
-              className={`font-bold text-sm truncate ${agent.registered ? "text-white" : "text-white/40"}`}
+              className={`font-bold text-sm truncate ${agent.registered ? "text-white" : "text-muted-foreground"}`}
             >
               {agent.name}
             </p>
@@ -922,7 +922,7 @@ function AgentInboxCard({
               </motion.span>
             )}
           </div>
-          <p className="text-xs text-white/40 truncate">{agent.task}</p>
+          <p className="text-xs text-muted-foreground truncate">{agent.task}</p>
         </div>
 
         {/* Online indicator */}
@@ -962,7 +962,7 @@ function AgentInboxCard({
             ))}
           </div>
         ) : (
-          <p className="text-xs text-white/20 italic">No file reservations</p>
+          <p className="text-xs text-muted-foreground italic">No file reservations</p>
         )}
       </div>
 
@@ -988,8 +988,8 @@ function AgentInboxCard({
       {/* Messages */}
       <div className="relative border-t border-white/[0.06]">
         <div className="px-4 py-2 flex items-center gap-1.5">
-          <Inbox className="h-3 w-3 text-white/30" />
-          <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
+          <Inbox className="h-3 w-3 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Messages
           </span>
         </div>
@@ -1010,9 +1010,9 @@ function AgentInboxCard({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/[0.12] transition text-left group/msg cursor-pointer"
                   >
                     {isSender ? (
-                      <Send className="h-3 w-3 text-white/30 shrink-0" />
+                      <Send className="h-3 w-3 text-muted-foreground shrink-0" />
                     ) : (
-                      <Mail className="h-3 w-3 text-white/30 shrink-0" />
+                      <Mail className="h-3 w-3 text-muted-foreground shrink-0" />
                     )}
                     <span className="text-xs text-white/60 truncate flex-1 group-hover/msg:text-white/80 transition-colors">
                       {isSender
@@ -1023,13 +1023,13 @@ function AgentInboxCard({
                     {msg.acknowledged && (
                       <CheckCircle className="h-3 w-3 text-emerald-400 shrink-0" />
                     )}
-                    <Eye className="h-3 w-3 text-white/20 shrink-0 opacity-0 group-hover/msg:opacity-100 transition-opacity" />
+                    <Eye className="h-3 w-3 text-muted-foreground shrink-0 opacity-0 group-hover/msg:opacity-100 transition-opacity" />
                   </motion.button>
                 );
               })}
           </AnimatePresence>
           {agent.messages.filter((m) => m.to === agent.id || m.from === agent.id).length === 0 && (
-            <p className="text-xs text-white/15 italic px-2 py-1">No messages yet</p>
+            <p className="text-xs text-muted-foreground italic px-2 py-1">No messages yet</p>
           )}
         </div>
       </div>
@@ -1119,7 +1119,7 @@ function InteractiveCoordinationSim() {
             </div>
             <div>
               <h3 className="text-base font-bold text-white">Agent Mail System</h3>
-              <p className="text-xs text-white/40">Real-time coordination simulation</p>
+              <p className="text-xs text-muted-foreground">Real-time coordination simulation</p>
             </div>
           </div>
 
@@ -1206,7 +1206,7 @@ function InteractiveCoordinationSim() {
                   <span className="text-xs font-semibold text-white/80">
                     {flyingEnvelope.subject}
                   </span>
-                  <span className="text-xs text-white/40">
+                  <span className="text-xs text-muted-foreground">
                     {getAgentNameById(flyingEnvelope.from)}{" "}
                     <ArrowRight className="inline h-2.5 w-2.5" />{" "}
                     {getAgentNameById(flyingEnvelope.to)}
@@ -1222,7 +1222,7 @@ function InteractiveCoordinationSim() {
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.04] to-transparent flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-white/50" />
+              <FileText className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-semibold text-white/70">File Reservation Map</span>
             </div>
             {/* Legend */}
@@ -1240,7 +1240,7 @@ function InteractiveCoordinationSim() {
                             : "bg-white/60"
                     }`}
                   />
-                  <span className="text-xs text-white/40">{a.name}</span>
+                  <span className="text-xs text-muted-foreground">{a.name}</span>
                 </div>
               ))}
             </div>
@@ -1275,12 +1275,12 @@ function InteractiveCoordinationSim() {
                     }
                   >
                     <FileText
-                      className={`h-5 w-5 ${file.owner ? ownerColors.text : "text-white/20"}`}
+                      className={`h-5 w-5 ${file.owner ? ownerColors.text : "text-muted-foreground"}`}
                     />
                   </motion.div>
 
                   {/* File path */}
-                  <code className="text-xs font-mono text-white/50 text-center leading-tight">
+                  <code className="text-xs font-mono text-muted-foreground text-center leading-tight">
                     {file.path}
                   </code>
 
@@ -1304,7 +1304,7 @@ function InteractiveCoordinationSim() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-white/20"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-muted-foreground"
                       >
                         <Unlock className="h-2.5 w-2.5" />
                         Free
@@ -1334,10 +1334,10 @@ function InteractiveCoordinationSim() {
         {/* ---- Activity Log ---- */}
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.04] to-transparent flex items-center gap-2">
-            <Clock className="h-4 w-4 text-white/50" />
+            <Clock className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-semibold text-white/70">Activity Log</span>
             {activityLog.length > 0 && (
-              <span className="ml-auto text-xs text-white/30 font-mono">
+              <span className="ml-auto text-xs text-muted-foreground font-mono">
                 {activityLog.length} event{activityLog.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -1351,7 +1351,7 @@ function InteractiveCoordinationSim() {
                   exit={{ opacity: 0 }}
                   className="flex items-center justify-center py-6"
                 >
-                  <p className="text-xs text-white/20 italic">
+                  <p className="text-xs text-muted-foreground italic">
                     Start the simulation to see activity
                   </p>
                 </motion.div>
@@ -1366,7 +1366,7 @@ function InteractiveCoordinationSim() {
                     transition={springSmooth}
                     className="flex items-center gap-3 px-5 py-2.5 border-b border-white/[0.03] last:border-0"
                   >
-                    <span className="text-xs font-mono text-white/25 shrink-0 w-16">
+                    <span className="text-xs font-mono text-muted-foreground shrink-0 w-16">
                       {entry.timestamp}
                     </span>
                     <div
@@ -1430,7 +1430,7 @@ function InteractiveCoordinationSim() {
                       Step {currentStep + 1}: {SIM_STEP_DEFS[currentStep].label}
                     </p>
                   </div>
-                  <p className="text-xs text-white/50">{SIM_STEP_DEFS[currentStep].description}</p>
+                  <p className="text-xs text-muted-foreground">{SIM_STEP_DEFS[currentStep].description}</p>
                 </motion.div>
               ) : (
                 <motion.p
@@ -1438,7 +1438,7 @@ function InteractiveCoordinationSim() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="text-sm text-white/40"
+                  className="text-sm text-muted-foreground"
                 >
                   Press Play or Next to begin the coordination simulation
                 </motion.p>
@@ -1566,7 +1566,7 @@ function BestPractice({ title, description }: { title: string; description: stri
         <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
           {title}
         </p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
     </motion.div>
   );
@@ -1586,7 +1586,7 @@ function FunctionRow({ name, purpose }: { name: string; purpose: string }) {
       <code className="text-sm text-primary font-mono font-medium px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/15 transition-colors">
         {name}
       </code>
-      <span className="text-white/50 text-sm group-hover:text-white/70 transition-colors">
+      <span className="text-muted-foreground text-sm group-hover:text-white/70 transition-colors">
         {purpose}
       </span>
     </motion.div>

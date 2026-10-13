@@ -308,7 +308,7 @@ function OutputExplainer({
       className="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] backdrop-blur-xl transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
     >
       <code className={`font-mono text-sm font-medium ${color}`}>{pattern}</code>
-      <span className="text-white/50 group-hover:text-white/70 transition-colors">{"\u2192"}</span>
+      <span className="text-muted-foreground group-hover:text-white/70 transition-colors">{"\u2192"}</span>
       <span className="text-white/60 group-hover:text-white/80 transition-colors">{meaning}</span>
     </motion.div>
   );
@@ -664,7 +664,7 @@ function FileIcon({ type }: { type: ScanFile["icon"] }) {
     case "folder":
       return <FolderOpen className="h-3 w-3 text-blue-400/70" />;
     default:
-      return <FileCode className="h-3 w-3 text-white/40" />;
+      return <FileCode className="h-3 w-3 text-muted-foreground" />;
   }
 }
 
@@ -904,7 +904,7 @@ function InteractiveBugScanner() {
             className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               i === scenarioIdx
                 ? "bg-primary/20 text-primary border border-primary/30"
-                : "bg-white/[0.03] text-white/40 border border-white/[0.06] hover:text-white/60 hover:bg-white/[0.06]"
+                : "bg-white/[0.03] text-muted-foreground border border-white/[0.06] hover:text-foreground hover:bg-white/[0.06]"
             }`}
           >
             {sc.exitCode === 0 ? (
@@ -921,17 +921,17 @@ function InteractiveBugScanner() {
       {/* Scenario Description Bar */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-white/[0.06] bg-white/[0.01]">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Terminal className="h-3.5 w-3.5 text-white/30 shrink-0" />
+          <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <code className="text-xs text-primary/80 font-mono truncate">{scenario.command}</code>
         </div>
-        <span className="text-xs text-white/30 shrink-0">{scenario.description}</span>
+        <span className="text-xs text-muted-foreground shrink-0">{scenario.description}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1px_1fr] min-h-[420px]">
         {/* Left Panel: File Scanner + Code */}
         <div className="relative p-4 overflow-hidden">
           {/* File scanning visualization */}
-          <div className="flex items-center gap-2 mb-3 text-white/40 text-xs">
+          <div className="flex items-center gap-2 mb-3 text-muted-foreground text-xs">
             <FolderOpen className="h-3.5 w-3.5" />
             <span>
               {phase === "scanning"
@@ -972,7 +972,7 @@ function InteractiveBugScanner() {
                     <span className="text-xs font-mono text-white/60 truncate flex-1">
                       {file.name}
                     </span>
-                    <span className="text-xs text-white/30">{file.linesScanned} lines</span>
+                    <span className="text-xs text-muted-foreground">{file.linesScanned} lines</span>
                     {isDone && !hasIssues && (
                       <motion.span
                         initial={{ scale: 0 }}
@@ -1040,7 +1040,7 @@ function InteractiveBugScanner() {
                 transition={springs.smooth}
                 className="overflow-hidden"
               >
-                <div className="flex items-center gap-2 mb-2 text-white/40 text-xs">
+                <div className="flex items-center gap-2 mb-2 text-muted-foreground text-xs">
                   <BarChart3 className="h-3.5 w-3.5" />
                   <span>Severity Heatmap</span>
                 </div>
@@ -1058,7 +1058,7 @@ function InteractiveBugScanner() {
                           animate={{ opacity: 1, x: 0 }}
                           className="flex items-center gap-2"
                         >
-                          <span className="text-xs font-mono text-white/40 w-28 truncate text-right shrink-0">
+                          <span className="text-xs font-mono text-muted-foreground w-28 truncate text-right shrink-0">
                             {row.file.split("/").pop()}
                           </span>
                           <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden flex">
@@ -1093,7 +1093,7 @@ function InteractiveBugScanner() {
                               />
                             )}
                           </div>
-                          <span className="text-xs text-white/30 w-4 text-right">
+                          <span className="text-xs text-muted-foreground w-4 text-right">
                             {row.total}
                           </span>
                         </motion.div>
@@ -1102,15 +1102,15 @@ function InteractiveBugScanner() {
                   <div className="flex items-center gap-3 mt-1.5">
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-red-500" />
-                      <span className="text-xs text-white/30">Critical</span>
+                      <span className="text-xs text-muted-foreground">Critical</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-xs text-white/30">Important</span>
+                      <span className="text-xs text-muted-foreground">Important</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-xs text-white/30">Contextual</span>
+                      <span className="text-xs text-muted-foreground">Contextual</span>
                     </div>
                   </div>
                 </div>
@@ -1120,7 +1120,7 @@ function InteractiveBugScanner() {
 
           {/* Mini Terminal */}
           <div className="mt-3">
-            <div className="flex items-center gap-2 mb-1.5 text-white/40 text-xs">
+            <div className="flex items-center gap-2 mb-1.5 text-muted-foreground text-xs">
               <Terminal className="h-3.5 w-3.5" />
               <span>Terminal</span>
             </div>
@@ -1129,7 +1129,7 @@ function InteractiveBugScanner() {
               className="h-28 rounded-lg bg-black/40 border border-white/[0.06] p-2 overflow-y-auto font-mono text-xs leading-relaxed scrollbar-thin scrollbar-thumb-white/10"
             >
               {terminalLines.length === 0 ? (
-                <span className="text-white/20">
+                <span className="text-muted-foreground">
                   $ {scenario.command}
                   <motion.span
                     animate={inView ? { opacity: [1, 0, 1] } : { opacity: 1 }}
@@ -1155,7 +1155,7 @@ function InteractiveBugScanner() {
                             ? "text-emerald-400"
                             : line.includes("Exit code:")
                               ? "text-red-400"
-                              : "text-white/50"
+                              : "text-muted-foreground"
                     }
                   >
                     {line || "\u00A0"}
@@ -1187,7 +1187,7 @@ function InteractiveBugScanner() {
                 </div>
                 <div className="text-center">
                   <p className="text-white/70 text-sm font-medium">{scenario.label} Scenario</p>
-                  <p className="text-white/40 text-xs mt-1 max-w-[240px]">{scenario.description}</p>
+                  <p className="text-muted-foreground text-xs mt-1 max-w-[240px]">{scenario.description}</p>
                 </div>
                 {scenario.ciMode && (
                   <motion.div
@@ -1254,7 +1254,7 @@ function InteractiveBugScanner() {
                     transition={springs.quick}
                   />
                 </div>
-                <p className="text-xs text-white/30 font-mono">
+                <p className="text-xs text-muted-foreground font-mono">
                   {currentFileIdx < scenario.files.length
                     ? scenario.files[currentFileIdx].name
                     : "Finalizing..."}
@@ -1294,7 +1294,7 @@ function InteractiveBugScanner() {
                   >
                     Exit {scenario.exitCode}
                   </span>
-                  <span className="text-xs text-white/30 ml-auto font-mono">
+                  <span className="text-xs text-muted-foreground ml-auto font-mono">
                     {scenario.findings.length} finding
                     {scenario.findings.length !== 1 ? "s" : ""}
                   </span>
@@ -1332,11 +1332,11 @@ function InteractiveBugScanner() {
                                 >
                                   {styles.label}
                                 </span>
-                                <span className="text-xs text-white/30 ml-auto font-mono shrink-0">
+                                <span className="text-xs text-muted-foreground ml-auto font-mono shrink-0">
                                   {finding.file.split("/").pop()}:{finding.line}:{finding.col}
                                 </span>
                               </div>
-                              <p className="text-xs text-white/50 mt-1 ml-4">
+                              <p className="text-xs text-muted-foreground mt-1 ml-4">
                                 {finding.description}
                               </p>
                             </div>
@@ -1461,7 +1461,7 @@ function InteractiveBugScanner() {
                           ) : (
                             <StepIcon
                               className={`h-3.5 w-3.5 ${
-                                isCurrent ? "text-primary" : "text-white/30"
+                                isCurrent ? "text-primary" : "text-muted-foreground"
                               }`}
                             />
                           )}
@@ -1472,7 +1472,7 @@ function InteractiveBugScanner() {
                               ? "text-emerald-400/80"
                               : isCurrent
                                 ? "text-white/80"
-                                : "text-white/30"
+                                : "text-muted-foreground"
                           }`}
                         >
                           {ws.label}
@@ -1569,7 +1569,7 @@ function InteractiveBugScanner() {
                   className="text-center"
                 >
                   <p className="text-2xl font-bold text-emerald-400">Exit 0</p>
-                  <p className="text-sm text-white/50 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     {hasFindings
                       ? "All issues fixed -- safe to commit!"
                       : "No issues found -- clean code!"}
@@ -1595,7 +1595,7 @@ function InteractiveBugScanner() {
                     whileHover={{ scale: 1.04 }}
                     whileTap={{ scale: 0.96 }}
                     transition={springs.snappy}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.04] text-white/50 border border-white/[0.08] text-xs hover:bg-white/[0.08] hover:text-white/70 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.04] text-muted-foreground border border-white/[0.08] text-xs hover:bg-white/[0.08] hover:text-white/70 transition-colors"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
                     Reset

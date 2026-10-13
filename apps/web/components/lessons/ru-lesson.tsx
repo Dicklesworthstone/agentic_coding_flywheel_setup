@@ -1082,7 +1082,7 @@ function InteractiveRepoSync() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition duration-200 ${
                 activeScenario === s.id
                   ? "bg-white/[0.1] text-white border border-white/[0.15] shadow-sm shadow-white/5"
-                  : "text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.04]"
+                  : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-white/[0.04]"
               } ${isRunning ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
             >
               {s.icon}
@@ -1090,7 +1090,7 @@ function InteractiveRepoSync() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-white/30 mt-1.5 px-1">
+        <p className="text-xs text-muted-foreground mt-1.5 px-1">
           {SCENARIOS.find((s) => s.id === activeScenario)?.description}
         </p>
       </div>
@@ -1131,7 +1131,7 @@ function InteractiveRepoSync() {
       {activeScenario === "parallel-sync" && (
         <div className="relative px-4 pb-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-white/30 font-mono shrink-0">workers:</span>
+            <span className="text-xs text-muted-foreground font-mono shrink-0">workers:</span>
             <div className="flex items-center gap-1.5">
               {workerSlots.map((slot, i) => (
                 <motion.div
@@ -1139,7 +1139,7 @@ function InteractiveRepoSync() {
                   className={`px-2 py-0.5 rounded text-xs font-mono transition duration-300 ${
                     slot
                       ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
-                      : "bg-white/[0.03] text-white/20 border border-white/[0.06]"
+                      : "bg-white/[0.03] text-muted-foreground border border-white/[0.06]"
                   }`}
                   animate={{ scale: 1 }}
                   transition={SPRING}
@@ -1171,8 +1171,8 @@ function InteractiveRepoSync() {
           {/* Git branch graph mini-viz */}
           <div className="mt-3 p-3 rounded-xl bg-black/30 border border-white/[0.06]">
             <div className="flex items-center gap-2 mb-2">
-              <GitBranch className="h-3.5 w-3.5 text-white/40" />
-              <span className="text-xs text-white/40 font-medium">Branch States</span>
+              <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground font-medium">Branch States</span>
             </div>
             <div className="space-y-1">
               {repos
@@ -1182,7 +1182,7 @@ function InteractiveRepoSync() {
                   <BranchRow key={repo.name} repo={repo} />
                 ))}
               {repos.filter((r) => r.status !== "pending").length === 0 && (
-                <p className="text-xs text-white/20 font-mono py-1">
+                <p className="text-xs text-muted-foreground font-mono py-1">
                   Waiting for sync to start...
                 </p>
               )}
@@ -1194,8 +1194,8 @@ function InteractiveRepoSync() {
         <div className="lg:col-span-2">
           <div className="h-full rounded-xl bg-black/50 border border-white/[0.06] overflow-hidden flex flex-col">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
-              <Terminal className="h-3.5 w-3.5 text-white/40" />
-              <span className="text-xs text-white/40 font-mono">output</span>
+              <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground font-mono">output</span>
               <div className="ml-auto flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-red-500/60" />
                 <div className="w-2 h-2 rounded-full bg-amber-500/60" />
@@ -1234,7 +1234,7 @@ function InteractiveRepoSync() {
                                   line.includes("AI") ||
                                   line.includes("Commit")
                                 ? "text-violet-400/80"
-                                : "text-white/50"
+                                : "text-muted-foreground"
                       }`}
                     >
                       {line}
@@ -1242,7 +1242,7 @@ function InteractiveRepoSync() {
                   ))}
                 </AnimatePresence>
                 {terminalLines.length === 0 && (
-                  <span className="text-white/20">Press Run to start...</span>
+                  <span className="text-muted-foreground">Press Run to start...</span>
                 )}
               </div>
             </div>
@@ -1361,7 +1361,7 @@ function SyncRepoTile({
     pending: {
       border: "border-white/[0.06]",
       bg: "bg-white/[0.02]",
-      text: "text-white/30",
+      text: "text-muted-foreground",
       glow: "",
     },
     cloning: {
@@ -1406,7 +1406,7 @@ function SyncRepoTile({
   const style = statusStyles[repo.status];
 
   const statusIcon: Record<RepoSyncStatus, React.ReactNode> = {
-    pending: <FolderGit2 className="h-3.5 w-3.5 text-white/25" />,
+    pending: <FolderGit2 className="h-3.5 w-3.5 text-muted-foreground" />,
     cloning: <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />,
     pulling: <Loader2 className="h-3.5 w-3.5 text-amber-400 animate-spin" />,
     dirty: <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />,
@@ -1477,8 +1477,8 @@ function SyncRepoTile({
           animate={{ opacity: 1 }}
           className="flex items-center gap-1 mb-1.5"
         >
-          <GitBranch className="h-2.5 w-2.5 text-white/20" />
-          <span className="text-xs font-mono text-white/25">{repo.branch}</span>
+          <GitBranch className="h-2.5 w-2.5 text-muted-foreground" />
+          <span className="text-xs font-mono text-muted-foreground">{repo.branch}</span>
           {repo.changedFiles > 0 && repo.status !== "synced" && (
             <span className="text-xs font-mono text-orange-400/70 ml-auto">
               {repo.changedFiles}f
@@ -1560,8 +1560,8 @@ function BranchRow({ repo }: { repo: SyncRepo }) {
         <div className="h-px flex-1 bg-white/[0.08]" />
         {repo.ahead > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
       </div>
-      <span className="text-xs font-mono text-white/40 w-14 truncate">{repo.name}</span>
-      <span className="text-xs font-mono text-white/20 w-10">{repo.branch}</span>
+      <span className="text-xs font-mono text-muted-foreground w-14 truncate">{repo.name}</span>
+      <span className="text-xs font-mono text-muted-foreground w-10">{repo.branch}</span>
       <div className="flex items-center gap-1 ml-auto">
         {repo.ahead > 0 && (
           <span className="text-xs font-mono text-blue-400/60">+{repo.ahead}</span>

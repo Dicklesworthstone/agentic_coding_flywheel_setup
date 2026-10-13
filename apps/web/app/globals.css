@@ -1052,12 +1052,12 @@
 /* ============================================
    AA text floor for long-form dark bodies
    ============================================
-   The guides and the 65 lesson bodies reach for `text-white/20…/45` and
+   The legacy guides and learning overview reach for `text-white/20…/45` and
    zinc/slate-500 for secondary text on near-black. Measured on those
    grounds (#020408–#0a0204) `text-white/50` is the lowest alpha that clears
    WCAG 4.5:1 for text; /40 lands at ≈3.5:1 and /20 at ≈1.7:1. The ~1,000
-   call sites are being converted by hand (bd-hsncl, bd-64cg3); until every
-   file is touched, this scoped rule keeps secondary text readable. It only
+   lesson call sites now use semantic text tokens (bd-152ke); until the other
+   reading surfaces are converted, this scoped rule keeps their text readable. It only
    affects `color`, so decorative borders/backgrounds keep their alpha. */
 .text-aa-floor :is(
   .text-white\/20,

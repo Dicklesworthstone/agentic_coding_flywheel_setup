@@ -379,7 +379,7 @@ function CloudIcon({ x, y }: { x: number; y: number }) {
       <Cloud
         x={x - 16}
         y={y - 8}
-        className="text-white/20"
+        className="text-muted-foreground"
         width={32}
         height={24}
         strokeWidth={1}
@@ -969,14 +969,14 @@ function ScenarioConnect({ active }: { active: boolean }) {
         </div>
         <div className="text-right">
           <span className="text-xs font-semibold text-emerald-400">{current.step}</span>
-          <span className="text-xs text-white/40 ml-2">{current.detail}</span>
+          <span className="text-xs text-muted-foreground ml-2">{current.detail}</span>
         </div>
       </div>
 
       <div className="flex justify-center">
         <button
           onClick={replay}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition duration-300"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-muted-foreground hover:border-white/[0.15] hover:text-white/70 transition duration-300"
         >
           <RefreshCw className="h-3 w-3" /> Replay
         </button>
@@ -1175,7 +1175,7 @@ function ScenarioKeyAuth({ active }: { active: boolean }) {
       <div className="flex justify-center">
         <button
           onClick={replay}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition duration-300"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-muted-foreground hover:border-white/[0.15] hover:text-white/70 transition duration-300"
         >
           <RefreshCw className="h-3 w-3" /> Replay
         </button>
@@ -1624,7 +1624,7 @@ function ScenarioReconnect({ active }: { active: boolean }) {
       <div className="flex justify-center">
         <button
           onClick={replay}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition duration-300"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-muted-foreground hover:border-white/[0.15] hover:text-white/70 transition duration-300"
         >
           <RefreshCw className="h-3 w-3" /> Replay
         </button>
@@ -1667,7 +1667,7 @@ function InteractiveSSHTunnel() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition duration-300 border whitespace-nowrap ${
                 active
                   ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
-                  : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60"
+                  : "bg-white/[0.02] border-white/[0.06] text-muted-foreground hover:border-white/[0.12] hover:text-foreground"
               }`}
             >
               {s.icon}
@@ -1685,7 +1685,7 @@ function InteractiveSSHTunnel() {
             className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition duration-300 border whitespace-nowrap ${
               showUnencrypted
                 ? "bg-red-500/15 border-red-500/40 text-red-400"
-                : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60"
+                : "bg-white/[0.02] border-white/[0.06] text-muted-foreground hover:border-white/[0.12] hover:text-foreground"
             }`}
           >
             {showUnencrypted ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -1698,7 +1698,7 @@ function InteractiveSSHTunnel() {
 
       {/* Scenario description */}
       <div className="px-4 pb-2">
-        <p className="text-xs text-white/40">{meta.description}</p>
+        <p className="text-xs text-muted-foreground">{meta.description}</p>
       </div>
 
       {/* Unencrypted warning */}
@@ -1892,7 +1892,7 @@ function StageCard({
             <h3 className="font-bold text-white group-hover:text-primary transition-colors">
               {title}
             </h3>
-            <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">
+            <span className="text-xs text-muted-foreground group-hover:text-white/70 transition-colors">
               {subtitle}
             </span>
           </div>
@@ -1920,7 +1920,7 @@ function CommandPart({ label, description }: { label: string; description: strin
       <code className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary group-hover:bg-primary/20 group-hover:border-primary/40 transition duration-300">
         {label}
       </code>
-      <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">
+      <span className="text-sm text-muted-foreground group-hover:text-white/70 transition-colors">
         {description}
       </span>
     </motion.div>
@@ -1965,7 +1965,7 @@ function QuizCards() {
               <p className="font-medium text-white group-hover:text-primary transition-colors">
                 {q.question}
               </p>
-              <p className="mt-2 text-sm text-white/50 group-hover:text-white/70 transition-colors">
+              <p className="mt-2 text-sm text-muted-foreground group-hover:text-white/70 transition-colors">
                 {q.answer}
               </p>
             </div>

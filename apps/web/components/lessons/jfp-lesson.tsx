@@ -728,7 +728,7 @@ function RadarChart({ scores, animate }: { scores: QualityScores; animate: boole
             y={lp.y}
             textAnchor="middle"
             dominantBaseline="middle"
-            className="fill-white/50 text-xs font-medium"
+            className="fill-muted-foreground text-xs font-medium"
           >
             {lp.label}
           </text>
@@ -751,7 +751,7 @@ function QualityBar({ label, value, delay }: { label: string; value: number; del
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-white/50">{label}</span>
+        <span className="text-muted-foreground">{label}</span>
         <span className={`font-mono font-semibold ${textColor}`}>{value}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -837,7 +837,7 @@ function PromptEvolutionTab() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                 selectedIdx === i
                   ? "bg-primary/20 text-primary border border-primary/30"
-                  : "bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.12]"
+                  : "bg-white/[0.02] text-muted-foreground border border-white/[0.08] hover:text-foreground hover:border-white/[0.12]"
               }`}
             >
               {cfg.icon}
@@ -859,7 +859,7 @@ function PromptEvolutionTab() {
         >
           <div>
             <h3 className="text-sm font-semibold text-white">{evo.title}</h3>
-            <p className="text-xs text-white/40 mt-0.5">{evo.description}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{evo.description}</p>
           </div>
 
           {/* Version selector: v1 -> v2 -> v3 */}
@@ -871,13 +871,13 @@ function PromptEvolutionTab() {
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
                     activeVersion === vi
                       ? "bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/10"
-                      : "bg-white/[0.02] text-white/30 border border-white/[0.08] hover:text-white/50"
+                      : "bg-white/[0.02] text-muted-foreground border border-white/[0.08] hover:text-foreground"
                   }`}
                 >
                   <span className="font-mono">v{v.version}</span>
                   <span className="hidden sm:inline">{v.label}</span>
                 </button>
-                {vi < 2 && <ArrowRight className="h-3 w-3 text-white/20 shrink-0" />}
+                {vi < 2 && <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />}
               </div>
             ))}
           </div>
@@ -897,7 +897,7 @@ function PromptEvolutionTab() {
                           : "bg-emerald-400"
                     }`}
                   />
-                  <span className="text-xs font-mono text-white/30 uppercase tracking-wider">
+                  <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
                     Version {version.version} - {version.label}
                   </span>
                   <div className="flex-1" />
@@ -945,7 +945,7 @@ function PromptEvolutionTab() {
                   <RadarChart scores={version.scores} animate={true} />
                 </motion.div>
               </AnimatePresence>
-              <p className="text-xs text-white/30 text-center mt-1">Quality Radar</p>
+              <p className="text-xs text-muted-foreground text-center mt-1">Quality Radar</p>
             </div>
           </div>
         </motion.div>
@@ -975,7 +975,7 @@ function VagueVsPreciseTab() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                 selectedIdx === i
                   ? "bg-primary/20 text-primary border border-primary/30"
-                  : "bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60"
+                  : "bg-white/[0.02] text-muted-foreground border border-white/[0.08] hover:text-foreground"
               }`}
             >
               {vpCfg.icon}
@@ -1003,10 +1003,10 @@ function VagueVsPreciseTab() {
                   Vague Prompt
                 </span>
               </div>
-              <p className="font-mono text-xs text-white/50 leading-relaxed">{item.vague}</p>
+              <p className="font-mono text-xs text-muted-foreground leading-relaxed">{item.vague}</p>
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/40">Agent Result Quality</span>
+                  <span className="text-muted-foreground">Agent Result Quality</span>
                   <span className="font-mono font-semibold text-red-400">{item.vagueResult}%</span>
                 </div>
                 <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1041,7 +1041,7 @@ function VagueVsPreciseTab() {
               <p className="font-mono text-xs text-white/70 leading-relaxed">{item.precise}</p>
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/40">Agent Result Quality</span>
+                  <span className="text-muted-foreground">Agent Result Quality</span>
                   <span className="font-mono font-semibold text-emerald-400">
                     {item.preciseResult}%
                   </span>
@@ -1077,7 +1077,7 @@ function VagueVsPreciseTab() {
           >
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-amber-400" />
-              <span className="text-xs text-white/50">Quality Improvement:</span>
+              <span className="text-xs text-muted-foreground">Quality Improvement:</span>
             </div>
             <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
               <motion.div
@@ -1177,7 +1177,7 @@ function TemplateBuilderTab() {
 
   return (
     <div className="space-y-5">
-      <p className="text-xs text-white/40">
+      <p className="text-xs text-muted-foreground">
         Drag to reorder sections. Toggle to include or exclude. Watch the assembled prompt and
         quality score update in real time.
       </p>
@@ -1186,7 +1186,7 @@ function TemplateBuilderTab() {
         {/* Section toggles - drag and drop */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 mb-3">
-            <Layers className="h-3.5 w-3.5 text-white/40" />
+            <Layers className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
               Template Sections
             </span>
@@ -1215,7 +1215,7 @@ function TemplateBuilderTab() {
                       : "border-white/[0.06] bg-white/[0.01] opacity-50"
                 }`}
               >
-                <Grip className="h-3.5 w-3.5 text-white/20 shrink-0" />
+                <Grip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <button
                   onClick={() => toggleSection(section.id)}
                   className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition ${
@@ -1227,7 +1227,7 @@ function TemplateBuilderTab() {
                   {isEnabled && <Check className="h-2.5 w-2.5" />}
                 </button>
                 <span className={`text-xs font-medium ${section.color}`}>{section.label}</span>
-                <span className="flex-1 text-xs text-white/30 truncate font-mono">
+                <span className="flex-1 text-xs text-muted-foreground truncate font-mono">
                   {section.text.split("\n")[0]}
                 </span>
               </motion.div>
@@ -1239,13 +1239,13 @@ function TemplateBuilderTab() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText className="h-3.5 w-3.5 text-white/40" />
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
                 Assembled Prompt
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-white/30">Quality:</span>
+              <span className="text-xs text-muted-foreground">Quality:</span>
               <span
                 className={`text-xs font-mono font-bold ${
                   qualityScore >= 80
@@ -1289,7 +1289,7 @@ function TemplateBuilderTab() {
                     {builtPrompt}
                   </pre>
                 ) : (
-                  <p className="text-xs text-white/30 italic">
+                  <p className="text-xs text-muted-foreground italic">
                     Enable sections to build your prompt template...
                   </p>
                 )}
@@ -1299,7 +1299,7 @@ function TemplateBuilderTab() {
 
           {/* Section count badges */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-white/30">
+            <span className="text-xs text-muted-foreground">
               {enabledSections.size} of {TEMPLATE_SECTIONS.length} sections active
             </span>
             <div className="flex-1" />
@@ -1314,7 +1314,7 @@ function TemplateBuilderTab() {
             {enabledSections.size > 0 && (
               <button
                 onClick={() => setEnabledSections(new Set())}
-                className="text-xs text-white/30 hover:text-white/50 transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Clear all
               </button>
@@ -1393,14 +1393,14 @@ function AgentTerminalTab() {
       case "agent":
         return "text-violet-300";
       default:
-        return "text-white/50";
+        return "text-muted-foreground";
     }
   }
 
   return (
     <div ref={rootRef} className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-muted-foreground">
           Watch a prompt being searched, installed, and executed in an agent terminal.
         </p>
         <button
@@ -1408,7 +1408,7 @@ function AgentTerminalTab() {
           disabled={isRunning}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
             isRunning
-              ? "bg-white/[0.04] text-white/30 border border-white/[0.06] cursor-wait"
+              ? "bg-white/[0.04] text-muted-foreground border border-white/[0.06] cursor-wait"
               : "bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20"
           }`}
         >
@@ -1442,9 +1442,9 @@ function AgentTerminalTab() {
             <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
             <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
           </div>
-          <span className="text-xs text-white/30 font-mono ml-2">agent-terminal -- jfp</span>
+          <span className="text-xs text-muted-foreground font-mono ml-2">agent-terminal -- jfp</span>
           <div className="flex-1" />
-          <Terminal className="h-3 w-3 text-white/20" />
+          <Terminal className="h-3 w-3 text-muted-foreground" />
         </div>
 
         {/* Terminal content */}
@@ -1453,7 +1453,7 @@ function AgentTerminalTab() {
           className="p-4 font-mono text-xs leading-relaxed max-h-[360px] overflow-y-auto space-y-0.5"
         >
           {visibleLines === 0 && !isRunning && (
-            <div className="flex flex-col items-center justify-center py-8 gap-2 text-white/20">
+            <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
               <Send className="h-6 w-6" />
               <p className="text-xs">Click &quot;Run Demo&quot; to start the simulation</p>
             </div>
@@ -1484,13 +1484,13 @@ function AgentTerminalTab() {
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center gap-4 text-xs text-white/30 px-1">
+      <div className="flex items-center gap-4 text-xs text-muted-foreground px-1">
         <span>
           Lines: {visibleLines}/{TERMINAL_LINES.length}
         </span>
         <div className="flex-1 h-px bg-white/[0.06]" />
         <span
-          className={`flex items-center gap-1 ${isRunning ? "text-emerald-400/70" : "text-white/30"}`}
+          className={`flex items-center gap-1 ${isRunning ? "text-emerald-400/70" : "text-muted-foreground"}`}
         >
           <div
             className={`h-1.5 w-1.5 rounded-full ${isRunning ? "bg-emerald-400" : "bg-white/20"}`}
@@ -1523,7 +1523,7 @@ function InteractivePromptGallery() {
           </div>
           <div>
             <h3 className="text-sm font-semibold text-white">Prompt Crafting Lab</h3>
-            <p className="text-xs text-white/30">Explore, compare, build, and test prompts</p>
+            <p className="text-xs text-muted-foreground">Explore, compare, build, and test prompts</p>
           </div>
         </div>
 
@@ -1537,7 +1537,7 @@ function InteractivePromptGallery() {
               aria-pressed={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition flex-1 justify-center ${
-                activeTab === tab.id ? "text-primary" : "text-white/40 hover:text-white/60"
+                activeTab === tab.id ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {activeTab === tab.id && (

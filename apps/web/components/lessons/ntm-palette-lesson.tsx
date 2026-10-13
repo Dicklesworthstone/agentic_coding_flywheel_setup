@@ -746,7 +746,7 @@ function KeyCombo({ keys }: { keys: string[] }) {
     <div className="flex items-center gap-0.5">
       {keys.map((key, i) => (
         <span key={i} className="flex items-center gap-0.5">
-          {i > 0 && <span className="text-white/20 text-xs mx-0.5">+</span>}
+          {i > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
           <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-white/[0.12] bg-white/[0.06] px-1.5 font-mono text-xs font-medium text-white/80 shadow-sm">
             {key}
           </kbd>
@@ -768,7 +768,7 @@ function MiniTerminal({ lines, isTyping }: { lines: string[]; isTyping: boolean 
         <div className="h-2 w-2 rounded-full bg-red-400/60" />
         <div className="h-2 w-2 rounded-full bg-yellow-400/60" />
         <div className="h-2 w-2 rounded-full bg-green-400/60" />
-        <span className="ml-2 text-xs text-white/30 font-mono">ntm palette</span>
+        <span className="ml-2 text-xs text-muted-foreground font-mono">ntm palette</span>
       </div>
       <div className="p-3 font-mono text-xs leading-relaxed">
         {lines.map((line, i) => (
@@ -996,16 +996,16 @@ function InteractivePaletteBrowser() {
           <Command className="h-4 w-4 text-primary" />
           <span>{paletteOpen ? "Close" : "Open"} Command Palette</span>
           <div className="ml-2 flex items-center gap-0.5">
-            <kbd className="rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-white/40">
+            <kbd className="rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
               Ctrl
             </kbd>
-            <span className="text-white/20 text-xs">+</span>
-            <kbd className="rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-white/40">
+            <span className="text-muted-foreground text-xs">+</span>
+            <kbd className="rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
               K
             </kbd>
           </div>
         </motion.button>
-        <span className="text-xs text-white/30">{PALETTE_COMMANDS.length} commands available</span>
+        <span className="text-xs text-muted-foreground">{PALETTE_COMMANDS.length} commands available</span>
       </motion.div>
 
       <AnimatePresence mode="wait">
@@ -1021,7 +1021,7 @@ function InteractivePaletteBrowser() {
             {/* Search bar */}
             <div className="relative border-b border-white/[0.08] bg-black/30">
               <div className="flex items-center gap-3 px-4 py-3">
-                <Search className="h-4 w-4 text-white/30 shrink-0" />
+                <Search className="h-4 w-4 text-muted-foreground shrink-0" />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -1033,7 +1033,7 @@ function InteractivePaletteBrowser() {
                   }}
                   onKeyDown={handleKeyDown}
                   placeholder="Search commands... (type to filter)"
-                  className="flex-1 bg-transparent text-sm text-white/90 placeholder:text-white/30 outline-none"
+                  className="flex-1 bg-transparent text-sm text-white/90 placeholder:text-muted-foreground outline-none"
                 />
                 {searchQuery && (
                   <motion.button
@@ -1045,12 +1045,12 @@ function InteractivePaletteBrowser() {
                       setSelectedIndex(0);
                       searchInputRef.current?.focus();
                     }}
-                    className="rounded-md p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="rounded-md p-0.5 text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
                   >
                     <X className="h-3.5 w-3.5" />
                   </motion.button>
                 )}
-                <div className="flex items-center gap-1 text-white/20">
+                <div className="flex items-center gap-1 text-muted-foreground">
                   <kbd className="rounded border border-white/[0.1] bg-white/[0.04] px-1 py-0.5 font-mono text-xs">
                     <CornerDownLeft className="h-2.5 w-2.5" />
                   </kbd>
@@ -1068,7 +1068,7 @@ function InteractivePaletteBrowser() {
                   className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition ${
                     activeCategoryFilter === null
                       ? "bg-white/[0.12] text-white"
-                      : "bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/60"
+                      : "bg-white/[0.04] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
                   }`}
                 >
                   All
@@ -1088,7 +1088,7 @@ function InteractivePaletteBrowser() {
                     className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition ${
                       activeCategoryFilter === group.name
                         ? `${group.badgeBg} ${group.badgeText}`
-                        : "bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/60"
+                        : "bg-white/[0.04] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
                     }`}
                   >
                     {group.icon}
@@ -1109,8 +1109,8 @@ function InteractivePaletteBrowser() {
                 {!searchQuery && !activeCategoryFilter && recentCommands.length > 0 && (
                   <div className="px-3 pt-3 pb-1">
                     <div className="flex items-center gap-2 px-2 pb-2">
-                      <Clock className="h-3 w-3 text-white/25" />
-                      <span className="text-xs font-medium uppercase tracking-wider text-white/25">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                         Recently Used
                       </span>
                     </div>
@@ -1153,10 +1153,10 @@ function InteractivePaletteBrowser() {
                       <div key={group.name}>
                         <div className="flex items-center gap-2 px-2 py-1.5">
                           <span className={group.badgeText}>{group.icon}</span>
-                          <span className="text-xs font-medium uppercase tracking-wider text-white/25">
+                          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                             {group.name}
                           </span>
-                          <span className="text-xs text-white/15">{items.length}</span>
+                          <span className="text-xs text-muted-foreground">{items.length}</span>
                         </div>
                         <AnimatePresence mode="popLayout">
                           <div className="space-y-0.5">
@@ -1202,12 +1202,12 @@ function InteractivePaletteBrowser() {
                                         )}
                                       </span>
                                       {match.command.params && (
-                                        <span className="max-w-full break-words rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-white/30">
+                                        <span className="max-w-full break-words rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                                           {match.command.params}
                                         </span>
                                       )}
                                     </div>
-                                    <p className="mt-0.5 truncate text-xs text-white/35">
+                                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
                                       {match.command.description}
                                     </p>
                                   </div>
@@ -1218,7 +1218,7 @@ function InteractivePaletteBrowser() {
                                     className={`h-3.5 w-3.5 shrink-0 transition ${
                                       isActive
                                         ? "text-primary"
-                                        : "text-white/15 group-hover/item:text-white/30"
+                                        : "text-muted-foreground group-hover/item:text-foreground"
                                     }`}
                                   />
                                 </motion.button>
@@ -1238,11 +1238,11 @@ function InteractivePaletteBrowser() {
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
                       className="flex flex-col items-center justify-center py-12 text-center"
                     >
-                      <Search className="h-8 w-8 text-white/10 mb-3" />
-                      <p className="text-sm text-white/30">
+                      <Search className="h-8 w-8 text-muted-foreground mb-3" />
+                      <p className="text-sm text-muted-foreground">
                         No commands match &quot;{searchQuery}&quot;
                       </p>
-                      <p className="text-xs text-white/20 mt-1">Try a different search term</p>
+                      <p className="text-xs text-muted-foreground mt-1">Try a different search term</p>
                     </motion.div>
                   )}
                 </div>
@@ -1276,16 +1276,16 @@ function InteractivePaletteBrowser() {
                           )}
                         </div>
                         <h3 className="text-base font-bold text-white">{activeCommand.title}</h3>
-                        <p className="mt-1 text-xs text-white/50">{activeCommand.description}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{activeCommand.description}</p>
 
                         {/* Keybinding visualization */}
                         <div className="mt-3 flex items-center gap-2">
-                          <Keyboard className="h-3.5 w-3.5 text-white/25" />
-                          <span className="text-xs text-white/25 mr-1">Shortcut:</span>
+                          <Keyboard className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground mr-1">Shortcut:</span>
                           <div className="flex items-center gap-1">
                             {activeCommand.shortcut.map((key, i) => (
                               <span key={i} className="flex items-center gap-1">
-                                {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-white/15" />}
+                                {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
                                 <motion.kbd
                                   initial={{ opacity: 0, y: 4 }}
                                   animate={{ opacity: 1, y: 0 }}
@@ -1308,8 +1308,8 @@ function InteractivePaletteBrowser() {
                       {/* Execution preview */}
                       <div className="flex-1 overflow-auto px-5 py-4">
                         <div className="flex items-center gap-2 mb-2">
-                          <Hash className="h-3 w-3 text-white/25" />
-                          <span className="text-xs font-medium uppercase tracking-wider text-white/25">
+                          <Hash className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                             Execution Preview
                           </span>
                         </div>
@@ -1333,7 +1333,7 @@ function InteractivePaletteBrowser() {
                             className="mt-3 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2"
                           >
                             <Lightbulb className="h-3.5 w-3.5 text-amber-400/60 shrink-0" />
-                            <span className="text-xs text-white/40">
+                            <span className="text-xs text-muted-foreground">
                               Accepts parameter:{" "}
                               <code className="rounded bg-white/[0.06] px-1 py-0.5 font-mono text-xs text-white/60">
                                 {activeCommand.params}
@@ -1407,13 +1407,13 @@ function InteractivePaletteBrowser() {
                         className="mb-4"
                       >
                         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-violet-500/10 border border-white/[0.06]">
-                          <Command className="h-7 w-7 text-white/20" />
+                          <Command className="h-7 w-7 text-muted-foreground" />
                         </div>
                       </motion.div>
-                      <p className="text-sm font-medium text-white/30 text-center">
+                      <p className="text-sm font-medium text-muted-foreground text-center">
                         Select a command to preview
                       </p>
-                      <p className="mt-1 text-xs text-white/20 text-center">
+                      <p className="mt-1 text-xs text-muted-foreground text-center">
                         Use arrow keys or click to browse
                       </p>
                       <div className="mt-4 flex items-center gap-3 text-white/60">
@@ -1452,7 +1452,7 @@ function InteractivePaletteBrowser() {
 
             {/* Status bar */}
             <div className="flex items-center justify-between border-t border-white/[0.06] bg-black/20 px-4 py-1.5">
-              <div className="flex items-center gap-3 text-xs text-white/25">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Layers className="h-2.5 w-2.5" />
                   {PALETTE_GROUPS.length} categories
@@ -1462,7 +1462,7 @@ function InteractivePaletteBrowser() {
                   {flatResults.length} / {PALETTE_COMMANDS.length} commands
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-white/25">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Star className="h-2.5 w-2.5 text-amber-400/40 fill-amber-400/30" />
                   {PALETTE_COMMANDS.filter((c) => c.starred).length} starred

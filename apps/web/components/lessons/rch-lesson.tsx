@@ -776,7 +776,7 @@ function healthIcon(h: WorkerHealth) {
 function jobStatusColor(s: BuildJob["status"]): string {
   switch (s) {
     case "queued":
-      return "text-white/50";
+      return "text-muted-foreground";
     case "building":
       return "text-amber-400";
     case "done":
@@ -839,7 +839,7 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
         >
           Local
         </text>
-        <text x="45" y="102" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="12">
+        <text x="45" y="102" textAnchor="middle" fill="var(--muted-foreground)" fontSize="12">
           Machine
         </text>
 
@@ -864,7 +864,7 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
         >
           RCH
         </text>
-        <text x="175" y="102" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="12">
+        <text x="175" y="102" textAnchor="middle" fill="var(--muted-foreground)" fontSize="12">
           Dispatcher
         </text>
 
@@ -971,7 +971,7 @@ function NetworkTopology({ scenario }: { scenario: FleetScenario }) {
                 x={wx}
                 y={wy + 27}
                 textAnchor="middle"
-                fill="rgba(255,255,255,0.5)"
+                fill="var(--muted-foreground)"
                 fontSize="12"
               >
                 {w.cpuCores}c
@@ -1039,7 +1039,7 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       </div>
 
       {/* Host + latency */}
-      <div className="text-xs text-white/30 font-mono mb-2 flex justify-between">
+      <div className="text-xs text-muted-foreground font-mono mb-2 flex justify-between">
         <span>{worker.host}</span>
         <span className={isOffline ? "text-red-400" : ""}>
           {isOffline ? "timeout" : `${worker.latencyMs}ms`}
@@ -1049,8 +1049,8 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       {/* CPU bar */}
       <div className="mb-1">
         <div className="flex justify-between text-xs mb-0.5">
-          <span className="text-white/40">CPU</span>
-          <span className={`font-mono ${worker.cpuPct > 80 ? "text-amber-400" : "text-white/40"}`}>
+          <span className="text-muted-foreground">CPU</span>
+          <span className={`font-mono ${worker.cpuPct > 80 ? "text-amber-400" : "text-muted-foreground"}`}>
             {worker.cpuPct}%
           </span>
         </div>
@@ -1066,8 +1066,8 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       {/* RAM bar */}
       <div className="mb-1.5">
         <div className="flex justify-between text-xs mb-0.5">
-          <span className="text-white/40">RAM</span>
-          <span className="text-white/40 font-mono">{worker.ramPct}%</span>
+          <span className="text-muted-foreground">RAM</span>
+          <span className="text-muted-foreground font-mono">{worker.ramPct}%</span>
         </div>
         <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
           <motion.div
@@ -1082,7 +1082,7 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       {worker.buildProgress > 0 && (
         <div>
           <div className="flex justify-between text-xs mb-0.5">
-            <span className="text-white/40">Build</span>
+            <span className="text-muted-foreground">Build</span>
             <span className={`font-mono ${healthColor(worker.health)}`}>
               {worker.buildProgress}%
             </span>
@@ -1123,12 +1123,12 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
     return (
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
         <div className="flex items-center gap-2 mb-2">
-          <HardDrive className="h-3 w-3 text-white/40" />
+          <HardDrive className="h-3 w-3 text-muted-foreground" />
           <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
             Build Queue
           </span>
         </div>
-        <p className="text-xs text-white/30 italic">No jobs in queue</p>
+        <p className="text-xs text-muted-foreground italic">No jobs in queue</p>
       </div>
     );
   }
@@ -1140,7 +1140,7 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
         <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
           Build Queue
         </span>
-        <span className="ml-auto text-xs text-white/30 font-mono">{jobs.length} jobs</span>
+        <span className="ml-auto text-xs text-muted-foreground font-mono">{jobs.length} jobs</span>
       </div>
       <div className="space-y-1">
         {jobs.map((job, i) => (
@@ -1151,10 +1151,10 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
             transition={{ ...SPRING, delay: i * 0.05 }}
             className={`flex items-center gap-2 px-2 py-1 rounded-md text-xs font-mono ${jobStatusBg(job.status)}`}
           >
-            <span className="text-white/40 w-10 flex-shrink-0">{job.id}</span>
+            <span className="text-muted-foreground w-10 flex-shrink-0">{job.id}</span>
             <span className={`flex-1 truncate ${jobStatusColor(job.status)}`}>{job.crate}</span>
             {job.assignedTo !== null && (
-              <span className="text-white/30 flex-shrink-0">W-{job.assignedTo + 1}</span>
+              <span className="text-muted-foreground flex-shrink-0">W-{job.assignedTo + 1}</span>
             )}
             <span className={`flex-shrink-0 ${jobStatusColor(job.status)}`}>
               {job.status === "queued" && "queued"}
@@ -1191,7 +1191,7 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
       <div className="space-y-2">
         {/* Local */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-white/40 w-12 flex-shrink-0">Local</span>
+          <span className="text-xs font-mono text-muted-foreground w-12 flex-shrink-0">Local</span>
           <div className="flex-1 h-5 rounded-md bg-white/[0.04] border border-white/[0.06] overflow-hidden relative">
             <motion.div
               className="h-full bg-gradient-to-r from-red-500/40 to-orange-500/40 rounded-md"
@@ -1220,7 +1220,7 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
           </div>
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-1.5 text-xs text-white/35">
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Zap className="h-2.5 w-2.5 text-emerald-400" />
         <span>8 workers, 320 total CPU cores vs 8-core local machine</span>
       </div>
@@ -1256,7 +1256,7 @@ function ArtifactTransfer({ mb }: { mb: number }) {
         </div>
         <span className="text-xs font-mono text-teal-300">{mb} MB</span>
       </div>
-      <div className="mt-1.5 flex items-center gap-4 text-xs text-white/30 font-mono">
+      <div className="mt-1.5 flex items-center gap-4 text-xs text-muted-foreground font-mono">
         <span>
           zstd: {mb} MB -&gt; {Math.round(mb * 0.28)} MB
         </span>
@@ -1286,7 +1286,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <div className="w-2 h-2 rounded-full bg-red-400/60" />
         <div className="w-2 h-2 rounded-full bg-amber-400/60" />
         <div className="w-2 h-2 rounded-full bg-emerald-400/60" />
-        <span className="ml-2 text-xs text-white/40 font-mono">rch terminal</span>
+        <span className="ml-2 text-xs text-muted-foreground font-mono">rch terminal</span>
       </div>
       <div ref={scrollRef} className="p-3 max-h-40 overflow-y-auto">
         <AnimatePresence mode="sync">
@@ -1309,7 +1309,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
                           ? "text-amber-300/60"
                           : line === ""
                             ? ""
-                            : "text-white/50"
+                            : "text-muted-foreground"
               }`}
             >
               {line || "\u00A0"}
@@ -1388,7 +1388,7 @@ function InteractiveFleetDashboard() {
             <p className="text-sm font-semibold text-white/90">Compilation Fleet Dashboard</p>
             <Sparkles className="h-4 w-4 text-blue-400" />
           </div>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-muted-foreground">
             Step through scenarios to see how RCH manages remote compilation across a worker fleet
           </p>
         </div>
@@ -1402,7 +1402,7 @@ function InteractiveFleetDashboard() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-white/40 hover:text-white/70 transition-colors"
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-muted-foreground hover:text-white/70 transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </motion.button>
@@ -1425,7 +1425,7 @@ function InteractiveFleetDashboard() {
                   className={`rounded-xl border px-2 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
                     isActive
                       ? `${sColors.border} ${sColors.bg} ${sColors.text}`
-                      : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
+                      : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <Icon className="h-3 w-3" />
@@ -1442,7 +1442,7 @@ function InteractiveFleetDashboard() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-white/40 hover:text-white/70 transition-colors"
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-muted-foreground hover:text-white/70 transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </motion.button>
@@ -1484,22 +1484,22 @@ function InteractiveFleetDashboard() {
         <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs font-mono">
           <div className="flex items-center gap-1.5">
             <Server className="h-3 w-3 text-emerald-400" />
-            <span className="text-white/50">Fleet:</span>
+            <span className="text-muted-foreground">Fleet:</span>
             <span className="text-emerald-400 font-bold">{onlineCount}/8</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Cpu className="h-3 w-3 text-blue-400" />
-            <span className="text-white/50">Cores:</span>
+            <span className="text-muted-foreground">Cores:</span>
             <span className="text-blue-400 font-bold">{totalCores}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Activity className="h-3 w-3 text-amber-400" />
-            <span className="text-white/50">Active:</span>
+            <span className="text-muted-foreground">Active:</span>
             <span className="text-amber-400 font-bold">{activeBuildCount}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Zap className="h-3 w-3 text-violet-400" />
-            <span className="text-white/50">Avg CPU:</span>
+            <span className="text-muted-foreground">Avg CPU:</span>
             <span className="text-violet-400 font-bold">{avgCpu}%</span>
           </div>
         </div>

@@ -1377,7 +1377,7 @@ function InteractiveFilesystemTree() {
         <div className="flex items-center gap-2">
           <FolderOpen className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium text-white/80">Filesystem Explorer</span>
-          <span className="text-xs text-white/30 ml-1">Click directories to explore</span>
+          <span className="text-xs text-muted-foreground ml-1">Click directories to explore</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
@@ -1397,7 +1397,7 @@ function InteractiveFilesystemTree() {
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition duration-200 ${
                 isActive
                   ? "bg-white/10 text-white border border-white/15 shadow-sm"
-                  : "text-white/40 hover:text-white/70 hover:bg-white/[0.04] border border-transparent"
+                  : "text-muted-foreground hover:text-white/70 hover:bg-white/[0.04] border border-transparent"
               }`}
             >
               <span className={isActive ? sc.color : ""}>{sc.icon}</span>
@@ -1418,14 +1418,14 @@ function InteractiveFilesystemTree() {
           className="overflow-hidden"
         >
           <div className="px-5 py-2 border-b border-white/[0.04] bg-white/[0.01]">
-            <p className="text-xs text-white/40">{activeScenario.description}</p>
+            <p className="text-xs text-muted-foreground">{activeScenario.description}</p>
           </div>
         </motion.div>
       </AnimatePresence>
 
       {/* Breadcrumb trail */}
       <div className="border-b border-white/5 px-5 py-2.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
-        <span className="text-xs text-white/40 mr-1 shrink-0">Path:</span>
+        <span className="text-xs text-muted-foreground mr-1 shrink-0">Path:</span>
         <AnimatePresence mode="popLayout">
           {breadcrumbs.map((segment, i) => (
             <motion.span
@@ -1436,12 +1436,12 @@ function InteractiveFilesystemTree() {
               transition={{ delay: i * 0.04, duration: 0.15 }}
               className="flex items-center gap-1 shrink-0"
             >
-              {i > 0 && <ChevronRight className="h-3 w-3 text-white/20" />}
+              {i > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
               <span
                 className={`text-xs font-mono px-1.5 py-0.5 rounded ${
                   i === breadcrumbs.length - 1
                     ? "text-primary bg-primary/10 border border-primary/20"
-                    : "text-white/50 hover:text-white/70 cursor-default"
+                    : "text-muted-foreground hover:text-white/70 cursor-default"
                 }`}
               >
                 {segment}
@@ -1499,7 +1499,7 @@ function InteractiveFilesystemTree() {
       <div className="border-t border-white/[0.06] px-5 py-1.5 flex justify-end">
         <button
           onClick={() => setShowDetail((p) => !p)}
-          className="text-xs text-white/30 hover:text-white/60 transition-colors"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {showDetail ? "Hide details" : "Show details"}
         </button>
@@ -1509,11 +1509,11 @@ function InteractiveFilesystemTree() {
       <div className="border-t border-white/10 bg-black/30 px-5 py-3">
         <div className="flex items-center gap-2 mb-2">
           <Terminal className="h-3.5 w-3.5 text-emerald-500/60" />
-          <span className="text-xs text-white/30 font-mono">terminal</span>
+          <span className="text-xs text-muted-foreground font-mono">terminal</span>
           <div className="flex-1" />
           <button
             onClick={() => setTerminalHistory([...activeScenario.terminalLines])}
-            className="text-xs text-white/20 hover:text-white/50 transition-colors flex items-center gap-1"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
           >
             <Play className="h-2.5 w-2.5" />
             reset
@@ -1531,8 +1531,8 @@ function InteractiveFilesystemTree() {
                   line.startsWith("$")
                     ? "text-emerald-400/80"
                     : line.startsWith("#")
-                      ? "text-white/25 italic"
-                      : "text-white/50"
+                      ? "text-muted-foreground italic"
+                      : "text-muted-foreground"
                 }`}
               >
                 {line}
@@ -1573,7 +1573,7 @@ function FileDetailPanel({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-white truncate">{node.name}</p>
-          <p className="text-xs text-white/30 truncate">{path}</p>
+          <p className="text-xs text-muted-foreground truncate">{path}</p>
         </div>
       </div>
 
@@ -1582,7 +1582,7 @@ function FileDetailPanel({
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-xs text-white/50 leading-relaxed border-l-2 border-primary/30 pl-3"
+          className="text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/30 pl-3"
         >
           {node.description}
         </motion.p>
@@ -1627,8 +1627,8 @@ function DetailRow({
 }) {
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="text-white/25">{icon}</span>
-      <span className="text-white/40 w-14 shrink-0">{label}</span>
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="text-muted-foreground w-14 shrink-0">{label}</span>
       <span className="text-white/70 font-mono truncate">{value}</span>
     </div>
   );
@@ -1664,16 +1664,16 @@ function PermissionsBreakdown({ permissions }: { permissions: string }) {
     >
       <div className="flex items-center gap-2 mb-1">
         <Lock className="h-3 w-3 text-orange-400/70" />
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Permission Breakdown
         </span>
       </div>
 
       {/* Type indicator */}
-      <div className="text-xs text-white/30">
+      <div className="text-xs text-muted-foreground">
         Type: <span className="text-white/60 font-mono">{typeChar}</span>
         {" = "}
-        <span className="text-white/50">
+        <span className="text-muted-foreground">
           {typeChar === "d" ? "directory" : typeChar === "l" ? "symlink" : "file"}
         </span>
       </div>
@@ -1740,11 +1740,11 @@ function PermColumn({
             }`}
           >
             <span
-              className={`font-mono font-bold w-3 text-center ${isSet ? color : "text-white/15"}`}
+              className={`font-mono font-bold w-3 text-center ${isSet ? color : "text-muted-foreground"}`}
             >
               {bit}
             </span>
-            <span className={`${isSet ? "text-white/50" : "text-white/15"}`}>
+            <span className={`${isSet ? "text-muted-foreground" : "text-muted-foreground"}`}>
               {descriptions[labels[i]]}
             </span>
           </div>
@@ -1798,7 +1798,7 @@ function TreeNodeRow({
             transition={{ duration: 0.15 }}
             className="flex shrink-0 items-center"
           >
-            <ChevronRight className="h-3 w-3 text-white/30" />
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
           </motion.span>
         ) : (
           <span className="w-3 shrink-0" />
@@ -1826,12 +1826,12 @@ function TreeNodeRow({
 
         {/* File size hint (compact) */}
         {!isFolder && node.size && (
-          <span className="ml-auto text-xs text-white/20 font-mono shrink-0">{node.size}</span>
+          <span className="ml-auto text-xs text-muted-foreground font-mono shrink-0">{node.size}</span>
         )}
 
         {/* Permission hint on folder */}
         {isFolder && node.permissions && (
-          <span className="ml-auto text-xs text-white/50 font-mono shrink-0 hidden sm:inline">
+          <span className="ml-auto text-xs text-muted-foreground font-mono shrink-0 hidden sm:inline">
             {node.permissions}
           </span>
         )}
@@ -1937,7 +1937,7 @@ function getFileIcon(node: TreeNode, large: boolean, isSelected?: boolean) {
       );
     default:
       return (
-        <FileText className={`${size} shrink-0 ${isSelected ? selectedColor : "text-white/40"}`} />
+        <FileText className={`${size} shrink-0 ${isSelected ? selectedColor : "text-muted-foreground"}`} />
       );
   }
 }

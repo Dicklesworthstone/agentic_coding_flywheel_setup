@@ -592,7 +592,7 @@ function InteractiveDcgDemo() {
             </div>
             <div>
               <p className="text-sm font-bold text-white/90">DCG Control Room</p>
-              <p className="text-xs text-white/40">Command Guard v2.1 active</p>
+              <p className="text-xs text-muted-foreground">Command Guard v2.1 active</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -627,7 +627,7 @@ function InteractiveDcgDemo() {
               className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${
                 activeTab === tab.key
                   ? "bg-white/[0.08] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/60"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {tab.icon}
@@ -638,7 +638,7 @@ function InteractiveDcgDemo() {
 
         {/* Scenario selector */}
         <div>
-          <p className="text-xs uppercase tracking-wider text-white/30 mb-2 font-semibold">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-semibold">
             Select Command to Analyze
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -664,7 +664,7 @@ function InteractiveDcgDemo() {
                     <span
                       className={`truncate ${selectedIdx === i ? threatColor(s.threatLevel) : "text-white/70"}`}
                     >
-                      <span className="text-white/30">$ </span>
+                      <span className="text-muted-foreground">$ </span>
                       {s.command}
                     </span>
                   </div>
@@ -796,9 +796,9 @@ function PipelineView({
   if (!scenario && phase === "idle") {
     return (
       <div className="rounded-xl border border-white/[0.06] bg-black/20 p-8 text-center">
-        <Shield className="h-10 w-10 text-white/20 mx-auto mb-3" />
-        <p className="text-sm text-white/40">Select a command above to see DCG in action</p>
-        <p className="text-xs text-white/25 mt-1">Watch the full interception pipeline animate</p>
+        <Shield className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">Select a command above to see DCG in action</p>
+        <p className="text-xs text-muted-foreground mt-1">Watch the full interception pipeline animate</p>
       </div>
     );
   }
@@ -872,7 +872,7 @@ function PipelineView({
                       : "text-primary"
                     : step.done
                       ? "text-emerald-400"
-                      : "text-white/30"
+                      : "text-muted-foreground"
                 }
               >
                 {step.done ? <CheckCircle className="h-3.5 w-3.5" /> : step.icon}
@@ -885,14 +885,14 @@ function PipelineView({
                       : "text-white/80"
                     : step.done
                       ? "text-emerald-400/80"
-                      : "text-white/30"
+                      : "text-muted-foreground"
                 }`}
               >
                 {step.label}
               </span>
             </motion.div>
             {i < phaseSteps.length - 1 && (
-              <ChevronRight className="h-3 w-3 text-white/20 flex-shrink-0" />
+              <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
             )}
           </div>
         ))}
@@ -917,12 +917,12 @@ function PipelineView({
             <span className="h-2 w-2 rounded-full bg-yellow-500/60" />
             <span className="h-2 w-2 rounded-full bg-green-500/60" />
           </div>
-          <span className="text-xs text-white/30 ml-1 font-mono">dcg-guard</span>
+          <span className="text-xs text-muted-foreground ml-1 font-mono">dcg-guard</span>
           {phase === "verdict" && (
             <button
               type="button"
               onClick={onReset}
-              className="ml-auto flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors"
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -934,7 +934,7 @@ function PipelineView({
           {/* Command being typed */}
           <div className="flex items-start gap-1">
             <span className="text-emerald-400">$</span>
-            <span className="text-white/50">dcg test &quot;</span>
+            <span className="text-muted-foreground">dcg test &quot;</span>
             <span
               className={
                 phase === "verdict"
@@ -959,7 +959,7 @@ function PipelineView({
                 |
               </motion.span>
             )}
-            <span className="text-white/50">&quot; --explain</span>
+            <span className="text-muted-foreground">&quot; --explain</span>
           </div>
 
           {/* Interception notice */}
@@ -972,7 +972,7 @@ function PipelineView({
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
               >
                 <span className="text-sky-400 text-xs">[DCG]</span>
-                <span className="text-white/50 text-xs"> Intercepting command...</span>
+                <span className="text-muted-foreground text-xs"> Intercepting command...</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -989,14 +989,14 @@ function PipelineView({
                 {scenario.rule ? (
                   <div className="text-xs">
                     <span className="text-amber-400">[MATCH]</span>
-                    <span className="text-white/50"> Rule: </span>
+                    <span className="text-muted-foreground"> Rule: </span>
                     <span className="text-amber-300">{scenario.rule}</span>
-                    <span className="text-white/30"> (pack: {scenario.pack})</span>
+                    <span className="text-muted-foreground"> (pack: {scenario.pack})</span>
                   </div>
                 ) : (
                   <div className="text-xs">
                     <span className="text-emerald-400">[SCAN]</span>
-                    <span className="text-white/50"> No destructive patterns matched</span>
+                    <span className="text-muted-foreground"> No destructive patterns matched</span>
                   </div>
                 )}
               </motion.div>
@@ -1018,8 +1018,8 @@ function PipelineView({
                     <div className="text-xs flex items-center gap-1">
                       <XCircle className="h-3 w-3 text-red-400" />
                       <span className="text-red-400 font-bold">BLOCKED</span>
-                      <span className="text-white/30">|</span>
-                      <span className="text-white/50">{scenario.explanation}</span>
+                      <span className="text-muted-foreground">|</span>
+                      <span className="text-muted-foreground">{scenario.explanation}</span>
                     </div>
                     {scenario.safer && (
                       <div className="text-xs">
@@ -1030,7 +1030,7 @@ function PipelineView({
                     {scenario.allowOnceCode && (
                       <div className="text-xs">
                         <span className="text-amber-400"> Bypass:</span>
-                        <span className="text-white/40">
+                        <span className="text-muted-foreground">
                           {" "}
                           dcg allow-once {scenario.allowOnceCode}
                         </span>
@@ -1041,8 +1041,8 @@ function PipelineView({
                   <div className="text-xs flex items-center gap-1">
                     <CheckCircle className="h-3 w-3 text-emerald-400" />
                     <span className="text-emerald-400 font-bold">ALLOWED</span>
-                    <span className="text-white/30">|</span>
-                    <span className="text-white/50">{scenario.explanation}</span>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="text-muted-foreground">{scenario.explanation}</span>
                   </div>
                 )}
               </motion.div>
@@ -1101,8 +1101,8 @@ function PipelineView({
             </div>
 
             {/* Detail card */}
-            <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3 text-xs text-white/50 leading-relaxed">
-              <p className="text-white/30 font-semibold uppercase tracking-wider text-xs mb-1">
+            <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3 text-xs text-muted-foreground leading-relaxed">
+              <p className="text-muted-foreground font-semibold uppercase tracking-wider text-xs mb-1">
                 Analysis Detail
               </p>
               <p>{scenario.detail}</p>
@@ -1132,7 +1132,7 @@ function PipelineView({
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     >
-                      <p className="text-xs text-white/40 mb-2">
+                      <p className="text-xs text-muted-foreground mb-2">
                         Enter the bypass code to allow this command once:
                       </p>
                       <div className="flex gap-2">
@@ -1144,7 +1144,7 @@ function PipelineView({
                             onBypassReset();
                           }}
                           placeholder="DCG-XXXX"
-                          className="flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-1.5 text-xs font-mono text-white/80 placeholder:text-white/20 focus:outline-none focus:border-amber-500/40"
+                          className="flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-1.5 text-xs font-mono text-white/80 placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
                         />
                         <button
                           type="button"
@@ -1252,7 +1252,7 @@ function PacksBrowser({
         <div className="flex items-center gap-2 mb-3">
           <Layers className="h-4 w-4 text-primary" />
           <span className="text-xs font-bold text-white/80">Protection Packs</span>
-          <span className="text-xs text-white/30 ml-auto">
+          <span className="text-xs text-muted-foreground ml-auto">
             {packsList.filter((p) => p.enabled).length}/{packsList.length} enabled
           </span>
         </div>
@@ -1278,24 +1278,24 @@ function PacksBrowser({
                 />
                 <div className="min-w-0">
                   <p
-                    className={`text-xs font-semibold ${p.enabled ? "text-white/80" : "text-white/40"}`}
+                    className={`text-xs font-semibold ${p.enabled ? "text-white/80" : "text-muted-foreground"}`}
                   >
                     {p.name}
                   </p>
-                  <p className="text-xs text-white/30 truncate">{p.desc}</p>
+                  <p className="text-xs text-muted-foreground truncate">{p.desc}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
-                <span className="text-xs text-white/30">{p.rules} rules</span>
+                <span className="text-xs text-muted-foreground">{p.rules} rules</span>
                 <button
                   type="button"
                   onClick={() => onToggle(i)}
-                  className="text-white/50 hover:text-white/80 transition-colors"
+                  className="text-muted-foreground hover:text-white/80 transition-colors"
                 >
                   {p.enabled ? (
                     <ToggleRight className="h-5 w-5 text-emerald-400" />
                   ) : (
-                    <ToggleLeft className="h-5 w-5 text-white/30" />
+                    <ToggleLeft className="h-5 w-5 text-muted-foreground" />
                   )}
                 </button>
               </div>
@@ -1312,7 +1312,7 @@ function PacksBrowser({
             <span className="h-1.5 w-1.5 rounded-full bg-yellow-500/60" />
             <span className="h-1.5 w-1.5 rounded-full bg-green-500/60" />
           </div>
-          <span className="text-xs text-white/20 ml-1 font-mono">terminal</span>
+          <span className="text-xs text-muted-foreground ml-1 font-mono">terminal</span>
         </div>
         <div className="font-mono text-xs space-y-1">
           <p>
@@ -1320,15 +1320,15 @@ function PacksBrowser({
             <span className="text-white/60"> dcg packs</span>
           </p>
           {packsList.map((p) => (
-            <p key={p.name} className="text-white/40">
+            <p key={p.name} className="text-muted-foreground">
               {"  "}
               {p.enabled ? (
                 <span className="text-emerald-400">[on] </span>
               ) : (
-                <span className="text-white/25">[--] </span>
+                <span className="text-muted-foreground">[--] </span>
               )}
-              <span className={p.enabled ? "text-white/60" : "text-white/30"}>{p.name}</span>
-              <span className="text-white/20"> ({p.rules} rules)</span>
+              <span className={p.enabled ? "text-white/60" : "text-muted-foreground"}>{p.name}</span>
+              <span className="text-muted-foreground"> ({p.rules} rules)</span>
             </p>
           ))}
         </div>
@@ -1345,9 +1345,9 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
   if (entries.length === 0) {
     return (
       <div className="rounded-xl border border-white/[0.06] bg-black/20 p-8 text-center">
-        <History className="h-8 w-8 text-white/15 mx-auto mb-2" />
-        <p className="text-xs text-white/30">No commands analyzed yet</p>
-        <p className="text-xs text-white/20 mt-1">
+        <History className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-xs text-muted-foreground">No commands analyzed yet</p>
+        <p className="text-xs text-muted-foreground mt-1">
           Run commands from the Pipeline tab to see history
         </p>
       </div>
@@ -1359,9 +1359,9 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
       <div className="rounded-xl border border-white/[0.06] bg-black/20 overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
-          <History className="h-3.5 w-3.5 text-white/40" />
+          <History className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-semibold text-white/60">Block History</span>
-          <span className="text-xs text-white/30 ml-auto">{entries.length} entries</span>
+          <span className="text-xs text-muted-foreground ml-auto">{entries.length} entries</span>
         </div>
 
         {/* Entries */}
@@ -1376,7 +1376,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
                 i === 0 ? "bg-white/[0.02]" : ""
               }`}
             >
-              <span className="text-xs text-white/25 font-mono w-12 flex-shrink-0">
+              <span className="text-xs text-muted-foreground font-mono w-12 flex-shrink-0">
                 {entry.timestamp}
               </span>
               <span
@@ -1391,7 +1391,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
                 {entry.command}
               </span>
               {entry.rule && (
-                <span className="text-xs text-white/25 font-mono flex-shrink-0 ml-auto">
+                <span className="text-xs text-muted-foreground font-mono flex-shrink-0 ml-auto">
                   {entry.rule}
                 </span>
               )}
@@ -1404,7 +1404,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
           <p className="text-lg font-bold text-white/80">{entries.length}</p>
-          <p className="text-xs text-white/30 uppercase tracking-wider">Total</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Total</p>
         </div>
         <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] p-2 text-center">
           <p className="text-lg font-bold text-red-400">

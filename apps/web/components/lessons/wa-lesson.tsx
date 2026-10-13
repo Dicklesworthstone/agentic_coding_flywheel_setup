@@ -331,7 +331,7 @@ const SCENARIOS: Scenario[] = [
         id: 43,
         name: "idle",
         status: "idle",
-        lines: [{ text: "$ _", color: "text-white/30" }],
+        lines: [{ text: "$ _", color: "text-muted-foreground" }],
         linesChanged: 0,
         filesTouched: 0,
         commandsRun: 0,
@@ -341,7 +341,7 @@ const SCENARIOS: Scenario[] = [
         id: 44,
         name: "idle",
         status: "idle",
-        lines: [{ text: "$ _", color: "text-white/30" }],
+        lines: [{ text: "$ _", color: "text-muted-foreground" }],
         linesChanged: 0,
         filesTouched: 0,
         commandsRun: 0,
@@ -351,7 +351,7 @@ const SCENARIOS: Scenario[] = [
         id: 45,
         name: "idle",
         status: "idle",
-        lines: [{ text: "$ _", color: "text-white/30" }],
+        lines: [{ text: "$ _", color: "text-muted-foreground" }],
         linesChanged: 0,
         filesTouched: 0,
         commandsRun: 0,
@@ -581,7 +581,7 @@ const SCENARIOS: Scenario[] = [
         id: 44,
         name: "idle",
         status: "idle",
-        lines: [{ text: "$ _", color: "text-white/30" }],
+        lines: [{ text: "$ _", color: "text-muted-foreground" }],
         linesChanged: 0,
         filesTouched: 0,
         commandsRun: 0,
@@ -674,7 +674,7 @@ const SCENARIOS: Scenario[] = [
         id: 45,
         name: "idle",
         status: "idle",
-        lines: [{ text: "$ _", color: "text-white/30" }],
+        lines: [{ text: "$ _", color: "text-muted-foreground" }],
         linesChanged: 0,
         filesTouched: 0,
         commandsRun: 0,
@@ -802,7 +802,7 @@ const STATUS_COLORS: Record<
   idle: {
     border: "border-white/[0.08]",
     bg: "bg-white/[0.01]",
-    text: "text-white/30",
+    text: "text-muted-foreground",
     dot: "bg-white/20",
   },
   error: {
@@ -865,7 +865,7 @@ function AgentMiniPane({
           <div className="h-1.5 w-1.5 rounded-full bg-yellow-500/50" />
           <div className="h-1.5 w-1.5 rounded-full bg-green-500/50" />
         </div>
-        <span className="text-xs text-white/40 font-mono ml-1 flex-1 truncate">
+        <span className="text-xs text-muted-foreground font-mono ml-1 flex-1 truncate">
           pane #{pane.id} -- {pane.name}
         </span>
         <motion.div
@@ -926,7 +926,7 @@ function AgentMiniPane({
 function ActivityHeatmap({ files }: { files: FileActivity[] }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
         <FileText className="h-3 w-3" />
         <span>File Activity</span>
       </div>
@@ -952,7 +952,7 @@ function ActivityHeatmap({ files }: { files: FileActivity[] }) {
               transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.05 + 0.2 }}
             />
           </div>
-          <span className="text-xs text-white/30 w-4 text-right font-mono flex-shrink-0">
+          <span className="text-xs text-muted-foreground w-4 text-right font-mono flex-shrink-0">
             #{file.agent}
           </span>
         </motion.div>
@@ -1008,7 +1008,7 @@ function MetricsBar({ panes }: { panes: AgentPaneData[] }) {
             {m.icon}
             <span className="text-sm font-bold font-mono">{m.value}</span>
           </div>
-          <div className="text-xs text-white/40 mt-0.5">{m.label}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{m.label}</div>
         </motion.div>
       ))}
     </div>
@@ -1018,7 +1018,7 @@ function MetricsBar({ panes }: { panes: AgentPaneData[] }) {
 function EventTimeline({ events }: { events: TimelineEvent[] }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
         <Clock className="h-3 w-3" />
         <span>Timeline</span>
       </div>
@@ -1031,11 +1031,11 @@ function EventTimeline({ events }: { events: TimelineEvent[] }) {
             transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.06 }}
             className="flex items-start gap-2 text-xs"
           >
-            <span className="text-white/30 font-mono w-8 flex-shrink-0">{evt.time}</span>
+            <span className="text-muted-foreground font-mono w-8 flex-shrink-0">{evt.time}</span>
             <div className="flex items-center gap-1.5 mt-0.5 flex-shrink-0">
               <div className={`h-1.5 w-1.5 rounded-full ${TIMELINE_DOTS[evt.type]}`} />
-              <Hash className="h-2.5 w-2.5 text-white/20" />
-              <span className="text-white/40 font-mono">{evt.agent}</span>
+              <Hash className="h-2.5 w-2.5 text-muted-foreground" />
+              <span className="text-muted-foreground font-mono">{evt.agent}</span>
             </div>
             <span className={`${TIMELINE_COLORS[evt.type]} flex-1 min-w-0 truncate`}>
               {evt.event}
@@ -1052,7 +1052,7 @@ function MonitorTerminal({ lines, active }: { lines: string[]; active: boolean }
     <div className="rounded-lg border border-white/[0.08] bg-black/60 overflow-hidden">
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02]">
         <BarChart3 className="h-3 w-3 text-cyan-400" />
-        <span className="text-xs text-white/40 font-mono">wa monitor</span>
+        <span className="text-xs text-muted-foreground font-mono">wa monitor</span>
       </div>
       <div className="p-2.5 font-mono text-xs leading-relaxed space-y-0.5">
         {lines.map((line, i) => (
@@ -1174,11 +1174,11 @@ function InteractiveTerminalObserver() {
               className="flex-1 min-w-0"
             >
               <div className="text-white/90 text-sm font-medium">{scenario.label}</div>
-              <div className="text-white/40 text-xs">{scenario.description}</div>
+              <div className="text-muted-foreground text-xs">{scenario.description}</div>
             </motion.div>
           </AnimatePresence>
           {/* Scenario counter */}
-          <div className="text-xs text-white/30 font-mono flex-shrink-0 hidden sm:block">
+          <div className="text-xs text-muted-foreground font-mono flex-shrink-0 hidden sm:block">
             {scenarioIdx + 1}/{totalScenarios}
           </div>
         </div>
@@ -1215,7 +1215,7 @@ function InteractiveTerminalObserver() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
                 activeTab === tab.key
                   ? "bg-white/[0.08] text-white shadow-sm"
-                  : "text-white/40 hover:text-white/60 hover:bg-white/[0.03]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/[0.03]"
               }`}
             >
               {tab.icon}
@@ -1267,7 +1267,7 @@ function InteractiveTerminalObserver() {
 
               {/* Per-agent breakdown */}
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider px-1">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider px-1">
                   <Activity className="h-3 w-3" />
                   <span>Per-Agent Breakdown</span>
                 </div>
@@ -1290,17 +1290,17 @@ function InteractiveTerminalObserver() {
                           <div className="text-xs font-mono text-emerald-400">
                             {pane.linesChanged}
                           </div>
-                          <div className="text-xs text-white/30">lines</div>
+                          <div className="text-xs text-muted-foreground">lines</div>
                         </div>
                         <div>
                           <div className="text-xs font-mono text-cyan-400">{pane.filesTouched}</div>
-                          <div className="text-xs text-white/30">files</div>
+                          <div className="text-xs text-muted-foreground">files</div>
                         </div>
                         <div>
                           <div className="text-xs font-mono text-violet-400">
                             {pane.commandsRun}
                           </div>
-                          <div className="text-xs text-white/30">cmds</div>
+                          <div className="text-xs text-muted-foreground">cmds</div>
                         </div>
                       </div>
                       <div className="w-12 flex-shrink-0 text-right">
@@ -1334,7 +1334,7 @@ function InteractiveTerminalObserver() {
 
               {/* Activity sparkline visualization */}
               <div className="p-3 rounded-lg border border-white/[0.06] bg-black/30">
-                <div className="flex items-center gap-1.5 text-xs text-white/40 uppercase tracking-wider mb-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider mb-2">
                   <Activity className="h-3 w-3" />
                   <span>Agent Activity (last hour)</span>
                 </div>
@@ -1343,7 +1343,7 @@ function InteractiveTerminalObserver() {
                     const colors = STATUS_COLORS[pane.status];
                     return (
                       <div key={pane.id} className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-white/40 w-6">#{pane.id}</span>
+                        <span className="text-xs font-mono text-muted-foreground w-6">#{pane.id}</span>
                         <div className="flex-1 flex items-end gap-px h-4">
                           {Array.from({ length: 20 }).map((_, bi) => {
                             // Deterministic bar height based on pane id and bar index

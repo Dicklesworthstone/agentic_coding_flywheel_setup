@@ -731,15 +731,15 @@ function InteractiveResearchPipeline() {
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06] bg-white/[0.02]">
         <FlaskConical className="h-4 w-4 text-violet-400" />
         <span className="text-sm font-medium text-white/80">Research Session Cockpit</span>
-        <span className="mx-2 text-white/20">|</span>
-        <span className="text-xs text-white/40 font-mono">BR-0847</span>
+        <span className="mx-2 text-muted-foreground">|</span>
+        <span className="text-xs text-muted-foreground font-mono">BR-0847</span>
         <div className="ml-auto flex items-center gap-3">
           <button
             onClick={() => setShowEvidenceBoard(!showEvidenceBoard)}
             className={`text-xs px-2 py-1 rounded border transition cursor-pointer ${
               showEvidenceBoard
                 ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
-                : "border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70"
+                : "border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70"
             }`}
           >
             <Eye className="h-3 w-3 inline mr-1" />
@@ -750,7 +750,7 @@ function InteractiveResearchPipeline() {
             className={`text-xs px-2 py-1 rounded border transition cursor-pointer ${
               isAutoPlaying
                 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                : "border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70"
+                : "border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70"
             }`}
           >
             {isAutoPlaying ? "Pause" : "Auto-play"}
@@ -825,10 +825,10 @@ function InteractiveResearchPipeline() {
       {/* Phase progress bar */}
       <div className="px-4 py-3 border-t border-white/[0.06] bg-white/[0.02]">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xs text-white/50">
+          <span className="text-xs text-muted-foreground">
             Phase {activePhase + 1} of {RESEARCH_PHASES.length}: {currentPhase.label}
           </span>
-          <span className="text-xs text-white/40">
+          <span className="text-xs text-muted-foreground">
             {Math.round(((activePhase + 1) / RESEARCH_PHASES.length) * 100)}%
           </span>
         </div>
@@ -877,7 +877,7 @@ function PhaseTimeline({
                   ? `${phase.borderColor} ${phase.bgColor} ${phase.textColor}`
                   : isPast
                     ? "border-white/[0.12] bg-white/[0.04] text-white/60"
-                    : "border-white/[0.06] bg-white/[0.01] text-white/35 hover:text-white/50 hover:border-white/[0.1]"
+                    : "border-white/[0.06] bg-white/[0.01] text-muted-foreground hover:text-muted-foreground hover:border-white/[0.1]"
               }`}
             >
               {isActive && (
@@ -889,7 +889,7 @@ function PhaseTimeline({
                 />
               )}
               <span
-                className={isActive ? phase.textColor : isPast ? "text-white/50" : "text-white/30"}
+                className={isActive ? phase.textColor : isPast ? "text-muted-foreground" : "text-muted-foreground"}
               >
                 {phase.icon}
               </span>
@@ -899,7 +899,7 @@ function PhaseTimeline({
             </motion.button>
             {i < phases.length - 1 && (
               <div className="flex items-center mx-0.5">
-                <ArrowRight className={`h-3 w-3 ${isPast ? "text-white/30" : "text-white/10"}`} />
+                <ArrowRight className={`h-3 w-3 ${isPast ? "text-muted-foreground" : "text-muted-foreground"}`} />
               </div>
             )}
           </div>
@@ -932,7 +932,7 @@ function MiniTerminal({ phase, lineCount }: { phase: ResearchPhase; lineCount: n
     <div className="rounded-xl border border-white/[0.08] bg-black/40 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Terminal className="h-3.5 w-3.5 text-emerald-400" />
-        <span className="text-xs text-white/50 font-mono">brenner-session</span>
+        <span className="text-xs text-muted-foreground font-mono">brenner-session</span>
         <div className="ml-auto flex gap-1.5">
           <div className="h-2 w-2 rounded-full bg-red-500/50" />
           <div className="h-2 w-2 rounded-full bg-amber-500/50" />
@@ -985,8 +985,8 @@ function CorpusSearchViz({
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Database className="h-3.5 w-3.5 text-violet-400" />
-        <span className="text-xs text-white/50">Corpus Query Fan-out</span>
-        <span className="ml-auto text-xs text-white/30">{visibleCount} sources</span>
+        <span className="text-xs text-muted-foreground">Corpus Query Fan-out</span>
+        <span className="ml-auto text-xs text-muted-foreground">{visibleCount} sources</span>
       </div>
       <div className="p-3">
         {/* Central query node */}
@@ -1024,7 +1024,7 @@ function CorpusSearchViz({
                     style={{ backgroundColor: source.color, animationDelay: `${i * 0.3}s` }}
                   />
                   <span className="text-xs text-white/60 flex-1">{source.label}</span>
-                  <span className="text-xs text-white/30 font-mono">{source.sections}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{source.sections}</span>
                   <span
                     className="text-xs font-medium px-1.5 rounded"
                     style={{ color: source.color, backgroundColor: `${source.color}15` }}
@@ -1056,8 +1056,8 @@ function ConfidencePanel({
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <TrendingUp className="h-3.5 w-3.5 text-amber-400" />
-        <span className="text-xs text-white/50">Hypothesis Confidence</span>
-        <span className="ml-auto text-xs text-white/30">Phase {activePhase + 1}</span>
+        <span className="text-xs text-muted-foreground">Hypothesis Confidence</span>
+        <span className="ml-auto text-xs text-muted-foreground">Phase {activePhase + 1}</span>
       </div>
       <div className="p-3 space-y-3">
         {hypotheses.map((hyp) => {
@@ -1116,7 +1116,7 @@ function ConfidencePanel({
 
         {/* Mini spark history */}
         <div className="mt-2 pt-2 border-t border-white/[0.06]">
-          <span className="text-xs text-white/30 mb-1 block">Confidence trajectory</span>
+          <span className="text-xs text-muted-foreground mb-1 block">Confidence trajectory</span>
           <div className="flex items-end gap-0.5 h-8">
             {RESEARCH_PHASES.map((_, phaseIdx) => {
               const isCurrentOrPast = phaseIdx <= activePhase;
@@ -1174,8 +1174,8 @@ function KnowledgeGraph({
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Network className="h-3.5 w-3.5 text-cyan-400" />
-        <span className="text-xs text-white/50">Knowledge Graph</span>
-        <span className="ml-auto text-xs text-white/30">{nodes.length} concepts</span>
+        <span className="text-xs text-muted-foreground">Knowledge Graph</span>
+        <span className="ml-auto text-xs text-muted-foreground">{nodes.length} concepts</span>
       </div>
       <div className="relative h-[150px] overflow-hidden">
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 340 140">
@@ -1232,7 +1232,7 @@ function KnowledgeGraph({
 
         {/* Phase label */}
         <div className="absolute bottom-2 right-3">
-          <span className="text-xs text-white/20 font-mono">t={activePhase}</span>
+          <span className="text-xs text-muted-foreground font-mono">t={activePhase}</span>
         </div>
       </div>
     </div>
@@ -1296,7 +1296,7 @@ function EvidenceBoard({
       case "contradicts":
         return <ThumbsDown className="h-3 w-3 text-red-400" />;
       default:
-        return <Minus className="h-3 w-3 text-white/40" />;
+        return <Minus className="h-3 w-3 text-muted-foreground" />;
     }
   };
 
@@ -1304,8 +1304,8 @@ function EvidenceBoard({
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Target className="h-3.5 w-3.5 text-pink-400" />
-        <span className="text-xs text-white/50">Evidence Board</span>
-        <span className="ml-auto text-xs text-white/30">{evidence.length} items</span>
+        <span className="text-xs text-muted-foreground">Evidence Board</span>
+        <span className="ml-auto text-xs text-muted-foreground">{evidence.length} items</span>
       </div>
 
       <div ref={boardRef} className="relative p-4">
@@ -1332,7 +1332,7 @@ function EvidenceBoard({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Hypotheses column */}
           <div className="space-y-2">
-            <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
+            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
               Hypotheses
             </span>
             {hypotheses.map((hyp) => {
@@ -1361,7 +1361,7 @@ function EvidenceBoard({
                       transition={{ type: "spring", stiffness: 120, damping: 20 }}
                     />
                   </div>
-                  <span className="text-xs text-white/30 mt-0.5 block">{confidence}%</span>
+                  <span className="text-xs text-muted-foreground mt-0.5 block">{confidence}%</span>
                 </div>
               );
             })}
@@ -1369,7 +1369,7 @@ function EvidenceBoard({
 
           {/* Evidence cards column (spans 2) */}
           <div className="sm:col-span-2 space-y-2">
-            <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
+            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
               Evidence
             </span>
             <AnimatePresence>
@@ -1394,17 +1394,17 @@ function EvidenceBoard({
                   <div className="mt-0.5">{stanceIcon(ev.stance)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-white/70 leading-relaxed">{ev.text}</p>
-                    <span className="text-xs text-white/30 font-mono">{ev.section}</span>
+                    <span className="text-xs text-muted-foreground font-mono">{ev.section}</span>
                   </div>
-                  <span className="text-xs text-white/20 whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
                     <Clock className="h-3 w-3 inline mr-0.5" />P{ev.appearsAtPhase + 1}
                   </span>
                 </motion.div>
               ))}
             </AnimatePresence>
             {evidence.length === 0 && (
-              <div className="text-center py-6 text-white/30 text-xs">
-                <AlertTriangle className="h-4 w-4 mx-auto mb-1 text-white/20" />
+              <div className="text-center py-6 text-muted-foreground text-xs">
+                <AlertTriangle className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
                 No evidence collected yet. Advance through phases.
               </div>
             )}

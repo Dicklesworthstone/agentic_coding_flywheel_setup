@@ -846,7 +846,7 @@ function getCheckIcon(status: ReviewCheck["status"]) {
     case "warn":
       return <AlertTriangle className="h-3 w-3 text-amber-400" />;
     case "pending":
-      return <RefreshCw className="h-3 w-3 text-white/30 animate-spin" />;
+      return <RefreshCw className="h-3 w-3 text-muted-foreground animate-spin" />;
   }
 }
 
@@ -911,7 +911,7 @@ function getLinePrefix(status: PlanLine["status"]) {
     case "modified":
       return { char: "~", color: "text-amber-400" };
     case "unchanged":
-      return { char: " ", color: "text-white/20" };
+      return { char: " ", color: "text-muted-foreground" };
   }
 }
 
@@ -930,7 +930,7 @@ function QualityChart({
   return (
     <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Quality Progression
         </span>
         <motion.span
@@ -1009,7 +1009,7 @@ function ReviewPanel({ checks, animateIn }: { checks: ReviewCheck[]; animateIn: 
   return (
     <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
           <Eye className="h-3 w-3" />
           Automated Checks
         </span>
@@ -1036,7 +1036,7 @@ function ReviewPanel({ checks, animateIn }: { checks: ReviewCheck[]; animateIn: 
           >
             <div className="flex-shrink-0">{getCheckIcon(check.status)}</div>
             <span className="font-medium text-white/70 flex-1">{check.label}</span>
-            <span className="text-white/40 text-xs hidden sm:inline">{check.detail}</span>
+            <span className="text-muted-foreground text-xs hidden sm:inline">{check.detail}</span>
           </motion.div>
         ))}
       </div>
@@ -1079,7 +1079,7 @@ function PlanDocument({
           plan.md
         </span>
         <div className="flex-1" />
-        <span className="text-xs font-mono text-white/30">
+        <span className="text-xs font-mono text-muted-foreground">
           {lines.filter((l) => l.status !== "removed").length} lines
         </span>
       </div>
@@ -1110,7 +1110,7 @@ function PlanDocument({
             >
               <div className={`flex items-start px-1 ${getLineBg(line.status)}`}>
                 {/* Line number */}
-                <span className="w-6 text-right text-xs font-mono text-white/15 select-none py-0.5 flex-shrink-0">
+                <span className="w-6 text-right text-xs font-mono text-muted-foreground select-none py-0.5 flex-shrink-0">
                   {i + 1}
                 </span>
                 {/* Diff prefix */}
@@ -1156,7 +1156,7 @@ function PlanDocument({
                       <div className="flex items-start gap-1.5">
                         <div className="flex-shrink-0 mt-0.5">{cStyle.icon}</div>
                         <div>
-                          <span className="text-xs font-semibold text-white/40 block">
+                          <span className="text-xs font-semibold text-muted-foreground block">
                             {comment.author}
                           </span>
                           <span className={`text-xs ${cStyle.text}`}>{comment.text}</span>
@@ -1183,7 +1183,7 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
           <div className="h-2 w-2 rounded-full bg-amber-500/60" />
           <div className="h-2 w-2 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-xs font-mono text-white/30">terminal</span>
+        <span className="text-xs font-mono text-muted-foreground">terminal</span>
       </div>
       <div
         className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
@@ -1199,7 +1199,7 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
           const isDone = line.includes("[DONE]");
           const isInfo = line.includes("[INFO]");
 
-          let lineColor = "text-white/50";
+          let lineColor = "text-muted-foreground";
           if (isCommand) lineColor = "text-white/80";
           if (isPass) lineColor = "text-emerald-400/80";
           if (isFail) lineColor = "text-red-400/80";
@@ -1372,7 +1372,7 @@ function InteractiveRefinementLoop() {
                       {iteration.quality}%
                     </span>
                   </div>
-                  <span className="text-xs text-white/40">{iteration.subtitle}</span>
+                  <span className="text-xs text-muted-foreground">{iteration.subtitle}</span>
                 </div>
               </motion.div>
             </AnimatePresence>
@@ -1391,7 +1391,7 @@ function InteractiveRefinementLoop() {
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
                 showComments
                   ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                  : "border-white/[0.1] bg-white/[0.04] text-white/50"
+                  : "border-white/[0.1] bg-white/[0.04] text-muted-foreground"
               }`}
             >
               <MessageSquare className="h-3 w-3" />
@@ -1462,13 +1462,13 @@ function InteractiveRefinementLoop() {
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 className="flex items-start gap-2 px-3 py-2 rounded-lg border border-white/[0.06] bg-white/[0.02]"
               >
-                <ArrowRight className="h-3 w-3 text-white/30 mt-0.5 flex-shrink-0" />
-                <span className="text-xs text-white/50">{iteration.changeSummary}</span>
+                <ArrowRight className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <span className="text-xs text-muted-foreground">{iteration.changeSummary}</span>
               </motion.div>
             </AnimatePresence>
 
             {/* Diff legend */}
-            <div className="flex flex-wrap gap-3 px-1 text-xs font-mono text-white/40">
+            <div className="flex flex-wrap gap-3 px-1 text-xs font-mono text-muted-foreground">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-sm bg-emerald-500/40" /> Added
               </span>
@@ -1523,7 +1523,7 @@ function InteractiveRefinementLoop() {
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-colors border-b-2 ${
                       activeTab === tab.key
                         ? "text-white/80 border-white/30 bg-white/[0.03]"
-                        : "text-white/35 border-transparent hover:text-white/50"
+                        : "text-muted-foreground border-transparent hover:text-muted-foreground"
                     }`}
                   >
                     {tab.icon}
@@ -1531,7 +1531,7 @@ function InteractiveRefinementLoop() {
                         its name on phones without an aria-label override. */}
                     <span className="sr-only sm:not-sr-only">{tab.label}</span>
                     {tab.badge && (
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40">
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/[0.06] text-muted-foreground">
                         {tab.badge}
                       </span>
                     )}
@@ -1592,10 +1592,10 @@ function InteractiveRefinementLoop() {
                                 <div className="flex-shrink-0 mt-0.5">{cStyle.icon}</div>
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-xs font-bold text-white/50">
+                                    <span className="text-xs font-bold text-muted-foreground">
                                       {comment.author}
                                     </span>
-                                    <span className="text-xs font-mono text-white/25">
+                                    <span className="text-xs font-mono text-muted-foreground">
                                       line {comment.line + 1}
                                     </span>
                                   </div>
@@ -1632,7 +1632,7 @@ function InteractiveRefinementLoop() {
         {/* Bottom: Convergence timeline */}
         <div className="pt-3 border-t border-white/[0.06]">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-white/40 uppercase tracking-wider flex-shrink-0">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-shrink-0">
               Convergence
             </span>
             <div className="flex-1 flex items-center gap-0.5">

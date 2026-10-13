@@ -968,17 +968,17 @@ function ResourceGauge({
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-white/40">{icon}</span>
+          <span className="text-muted-foreground">{icon}</span>
           <span className="text-xs font-mono font-bold text-white/80 mt-0.5">
             {pct.toFixed(0)}%
           </span>
         </div>
       </div>
       <div className="text-center">
-        <div className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           {label}
         </div>
-        <div className="text-xs font-mono text-white/30">
+        <div className="text-xs font-mono text-muted-foreground">
           {formatMem(value)}/{formatMem(max)} {unit}
         </div>
       </div>
@@ -1002,7 +1002,7 @@ function ProcessTree({ processes }: { processes: SimProcess[] }) {
             <span className={`font-bold ${getStateColor(root.state)}`}>
               {getStateLabel(root.state)}
             </span>
-            <span className="text-white/40">{root.pid}</span>
+            <span className="text-muted-foreground">{root.pid}</span>
             <span className="text-white/70">{root.name}</span>
           </div>
           {children(root.pid).map((child, ci) => {
@@ -1015,11 +1015,11 @@ function ProcessTree({ processes }: { processes: SimProcess[] }) {
                 transition={{ ...SPRING, delay: ci * 0.05 }}
                 className="flex items-center gap-2 ml-4"
               >
-                <span className="text-white/20">{isLast ? "\u2514\u2500" : "\u251C\u2500"}</span>
+                <span className="text-muted-foreground">{isLast ? "\u2514\u2500" : "\u251C\u2500"}</span>
                 <span className={`font-bold ${getStateColor(child.state)}`}>
                   {getStateLabel(child.state)}
                 </span>
-                <span className="text-white/40">{child.pid}</span>
+                <span className="text-muted-foreground">{child.pid}</span>
                 <span className="text-white/60">{child.name}</span>
               </motion.div>
             );
@@ -1041,7 +1041,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
         <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
         <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
-        <span className="text-xs text-white/30 ml-2 font-mono">terminal</span>
+        <span className="text-xs text-muted-foreground ml-2 font-mono">terminal</span>
       </div>
       <div className="p-3 space-y-0.5 max-h-44 overflow-y-auto">
         {lines.map((line, i) => (
@@ -1059,7 +1059,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
                     ? "text-amber-300"
                     : line.includes("terminated") || line.includes("nominal")
                       ? "text-emerald-400"
-                      : "text-white/50"
+                      : "text-muted-foreground"
             }`}
           >
             {line || "\u00A0"}
@@ -1134,25 +1134,25 @@ function KillDialog({
           </div>
           <div>
             <h3 className="text-sm font-semibold text-red-300">Kill Process?</h3>
-            <p className="text-xs text-white/40">This action cannot be undone</p>
+            <p className="text-xs text-muted-foreground">This action cannot be undone</p>
           </div>
         </div>
 
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 mb-4 space-y-1">
           <div className="flex justify-between text-xs">
-            <span className="text-white/40">PID</span>
+            <span className="text-muted-foreground">PID</span>
             <span className="font-mono text-white/70">{proc.pid}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-white/40">Process</span>
+            <span className="text-muted-foreground">Process</span>
             <span className="font-mono text-white/70">{proc.name}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-white/40">Signal</span>
+            <span className="text-muted-foreground">Signal</span>
             <span className="font-mono text-amber-400">SIGTERM (15)</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-white/40">Fallback</span>
+            <span className="text-muted-foreground">Fallback</span>
             <span className="font-mono text-red-400">SIGKILL (9) after 5s</span>
           </div>
         </div>
@@ -1174,7 +1174,7 @@ function KillDialog({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             transition={SPRING}
-            className="flex-1 py-2 rounded-xl border border-white/[0.08] bg-white/[0.04] text-xs text-white/50 hover:bg-white/[0.08] transition-colors"
+            className="flex-1 py-2 rounded-xl border border-white/[0.08] bg-white/[0.04] text-xs text-muted-foreground hover:bg-white/[0.08] transition-colors"
           >
             Cancel
           </motion.button>
@@ -1306,7 +1306,7 @@ function InteractiveProcessTriageDashboard() {
         {/* Header */}
         <div className="text-center">
           <p className="text-sm font-semibold text-white/80">Process Triage Dashboard</p>
-          <p className="text-xs text-white/40 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Navigate scenarios to see how PT diagnoses different system states
           </p>
         </div>
@@ -1321,7 +1321,7 @@ function InteractiveProcessTriageDashboard() {
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
             transition={SPRING}
-            className="p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </motion.button>
@@ -1340,7 +1340,7 @@ function InteractiveProcessTriageDashboard() {
                 className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
                   i === step
                     ? "bg-primary/20 border border-primary/30 text-primary"
-                    : "bg-white/[0.02] border border-white/[0.06] text-white/30 hover:text-white/50 hover:border-white/[0.12]"
+                    : "bg-white/[0.02] border border-white/[0.06] text-muted-foreground hover:text-foreground hover:border-white/[0.12]"
                 }`}
               >
                 {s.icon}
@@ -1358,7 +1358,7 @@ function InteractiveProcessTriageDashboard() {
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
             transition={SPRING}
-            className="p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </motion.button>
@@ -1377,11 +1377,11 @@ function InteractiveProcessTriageDashboard() {
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-primary">{scenario.icon}</span>
                 <span className="text-sm font-semibold text-white/80">{scenario.label}</span>
-                <span className="text-xs text-white/30 ml-auto">
+                <span className="text-xs text-muted-foreground ml-auto">
                   Step {step + 1}/{totalSteps}
                 </span>
               </div>
-              <p className="text-xs text-white/50 leading-relaxed">{scenario.description}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{scenario.description}</p>
             </div>
           </motion.div>
         </AnimatePresence>
@@ -1399,8 +1399,8 @@ function InteractiveProcessTriageDashboard() {
               {/* Gauges */}
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Gauge className="h-3.5 w-3.5 text-white/40" />
-                  <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                  <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     System Resources
                   </span>
                 </div>
@@ -1428,16 +1428,16 @@ function InteractiveProcessTriageDashboard() {
                   />
                   <div className="flex flex-col items-center gap-1.5 justify-center">
                     <div className="text-center space-y-1">
-                      <div className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         Load Avg
                       </div>
                       <div className="font-mono text-xs text-white/70">
                         {res.loadAvg.map((v) => v.toFixed(2)).join(" ")}
                       </div>
-                      <div className="text-xs text-white/30">{res.cpuCores} cores</div>
+                      <div className="text-xs text-muted-foreground">{res.cpuCores} cores</div>
                     </div>
                     <div className="text-center space-y-1 mt-1">
-                      <div className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         Disk I/O
                       </div>
                       <div className="flex gap-3 text-xs font-mono">
@@ -1499,7 +1499,7 @@ function InteractiveProcessTriageDashboard() {
                     whileHover={{ scale: 1.04 }}
                     whileTap={{ scale: 0.96 }}
                     transition={SPRING}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white/[0.04] text-white/50 border border-white/[0.08] text-xs hover:bg-white/[0.08] hover:text-white/70 transition-colors"
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white/[0.04] text-muted-foreground border border-white/[0.08] text-xs hover:bg-white/[0.08] hover:text-white/70 transition-colors"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
                     Re-run
@@ -1516,20 +1516,20 @@ function InteractiveProcessTriageDashboard() {
                   >
                     <div className="flex items-center gap-1.5 text-xs">
                       <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                      <span className="text-white/40">Safe: {safePids.length}</span>
+                      <span className="text-muted-foreground">Safe: {safePids.length}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
                       <div className="h-2 w-2 rounded-full bg-amber-500" />
-                      <span className="text-white/40">Suspicious: {suspiciousPids.length}</span>
+                      <span className="text-muted-foreground">Suspicious: {suspiciousPids.length}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
                       <div className="h-2 w-2 rounded-full bg-red-500" />
-                      <span className="text-white/40">Kill: {killablePids.length}</span>
+                      <span className="text-muted-foreground">Kill: {killablePids.length}</span>
                     </div>
                     {killedPids.size > 0 && (
                       <div className="flex items-center gap-1.5 text-xs">
-                        <Skull className="h-2.5 w-2.5 text-white/30" />
-                        <span className="text-white/30">Killed: {killedPids.size}</span>
+                        <Skull className="h-2.5 w-2.5 text-muted-foreground" />
+                        <span className="text-muted-foreground">Killed: {killedPids.size}</span>
                       </div>
                     )}
                   </motion.div>
@@ -1551,7 +1551,7 @@ function InteractiveProcessTriageDashboard() {
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
               <DiagramScroller label="Process triage table" minWidth={560}>
               {/* Table header */}
-              <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 px-3 py-2 border-b border-white/[0.06] text-xs uppercase tracking-wider text-white/25 font-semibold bg-white/[0.01]">
+              <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 px-3 py-2 border-b border-white/[0.06] text-xs uppercase tracking-wider text-muted-foreground font-semibold bg-white/[0.01]">
                 <span>PID</span>
                 <span>S</span>
                 <span>Process</span>
@@ -1590,7 +1590,7 @@ function InteractiveProcessTriageDashboard() {
                         }`}
                       >
                         <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 items-center">
-                          <span className="font-mono text-xs text-white/40">{proc.pid}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{proc.pid}</span>
                           <span
                             className={`font-mono text-xs font-bold ${getStateColor(proc.state)}`}
                           >
@@ -1598,7 +1598,7 @@ function InteractiveProcessTriageDashboard() {
                           </span>
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span
-                              className={`text-xs truncate ${isKilled ? "line-through text-white/20" : "text-white/70"}`}
+                              className={`text-xs truncate ${isKilled ? "line-through text-muted-foreground" : "text-white/70"}`}
                             >
                               {proc.name}
                             </span>
@@ -1616,7 +1616,7 @@ function InteractiveProcessTriageDashboard() {
                           {/* CPU with bar */}
                           <div className="text-right">
                             <span
-                              className={`font-mono text-xs ${highCpu ? "text-red-400" : "text-white/40"}`}
+                              className={`font-mono text-xs ${highCpu ? "text-red-400" : "text-muted-foreground"}`}
                             >
                               {proc.cpu.toFixed(1)}
                             </span>
@@ -1630,7 +1630,7 @@ function InteractiveProcessTriageDashboard() {
                           {/* Memory */}
                           <div className="text-right">
                             <span
-                              className={`font-mono text-xs ${highMem ? "text-amber-400" : "text-white/40"}`}
+                              className={`font-mono text-xs ${highMem ? "text-amber-400" : "text-muted-foreground"}`}
                             >
                               {formatMem(proc.memory)}
                             </span>
@@ -1641,7 +1641,7 @@ function InteractiveProcessTriageDashboard() {
                             />
                           </div>
                           {/* I/O */}
-                          <span className="text-right font-mono text-xs text-white/30">
+                          <span className="text-right font-mono text-xs text-muted-foreground">
                             {proc.ioRead + proc.ioWrite > 0
                               ? `${formatIO(proc.ioRead + proc.ioWrite)}`
                               : "-"}
@@ -1657,7 +1657,7 @@ function InteractiveProcessTriageDashboard() {
                               />
                             </div>
                             <span
-                              className={`text-xs font-mono w-5 text-right ${isScored ? getDangerTextColor(proc.dangerScore) : "text-white/15"}`}
+                              className={`text-xs font-mono w-5 text-right ${isScored ? getDangerTextColor(proc.dangerScore) : "text-muted-foreground"}`}
                             >
                               {isScored ? (proc.dangerScore * 100).toFixed(0) : "--"}
                             </span>
@@ -1710,31 +1710,31 @@ function InteractiveProcessTriageDashboard() {
                                       ? "Suspicious"
                                       : "Safe"}
                                 </span>
-                                <span className="text-xs text-white/20 ml-auto font-mono">
+                                <span className="text-xs text-muted-foreground ml-auto font-mono">
                                   Score: {(proc.dangerScore * 100).toFixed(0)} | Uptime:{" "}
                                   {proc.uptime} | PPID: {proc.ppid}
                                 </span>
                               </div>
-                              <p className="text-xs text-white/50 leading-relaxed mb-3">
+                              <p className="text-xs text-muted-foreground leading-relaxed mb-3">
                                 {proc.reason}
                               </p>
 
                               {/* Resource detail */}
                               <div className="grid grid-cols-4 gap-3 mb-3">
                                 <div className="text-center">
-                                  <div className="text-xs text-white/25 uppercase">CPU</div>
+                                  <div className="text-xs text-muted-foreground uppercase">CPU</div>
                                   <div className="text-xs font-mono text-white/60">
                                     {proc.cpu.toFixed(1)}%
                                   </div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-xs text-white/25 uppercase">Memory</div>
+                                  <div className="text-xs text-muted-foreground uppercase">Memory</div>
                                   <div className="text-xs font-mono text-white/60">
                                     {formatMem(proc.memory)}
                                   </div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-xs text-white/25 uppercase">
+                                  <div className="text-xs text-muted-foreground uppercase">
                                     I/O Read
                                   </div>
                                   <div className="text-xs font-mono text-white/60">
@@ -1742,7 +1742,7 @@ function InteractiveProcessTriageDashboard() {
                                   </div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-xs text-white/25 uppercase">
+                                  <div className="text-xs text-muted-foreground uppercase">
                                     I/O Write
                                   </div>
                                   <div className="text-xs font-mono text-white/60">
@@ -1794,8 +1794,8 @@ function InteractiveProcessTriageDashboard() {
             {/* Process Tree */}
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <TreePine className="h-3.5 w-3.5 text-white/40" />
-                <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                <TreePine className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Process Tree
                 </span>
               </div>

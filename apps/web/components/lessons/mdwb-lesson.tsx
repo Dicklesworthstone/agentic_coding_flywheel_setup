@@ -757,7 +757,7 @@ function InteractiveWebToMarkdown() {
             <p className="text-sm font-semibold text-white/90">Web-to-Markdown Conversion Studio</p>
             <Sparkles className="h-4 w-4 text-violet-400" />
           </div>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-muted-foreground">
             Watch HTML get fetched, noise stripped, and content converted to clean Markdown
           </p>
         </div>
@@ -771,7 +771,7 @@ function InteractiveWebToMarkdown() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-white/40 hover:text-white/70 transition-colors"
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-muted-foreground hover:text-white/70 transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </motion.button>
@@ -793,7 +793,7 @@ function InteractiveWebToMarkdown() {
                   className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${
                     isActive
                       ? `${pColors.border} ${pColors.bg} ${pColors.text}`
-                      : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60"
+                      : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <Icon className="h-3 w-3" />
@@ -810,7 +810,7 @@ function InteractiveWebToMarkdown() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={SPRING}
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-white/40 hover:text-white/70 transition-colors"
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 text-muted-foreground hover:text-white/70 transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </motion.button>
@@ -839,10 +839,10 @@ function InteractiveWebToMarkdown() {
                 <div className="w-2 h-2 rounded-full bg-amber-400/50" />
                 <div className="w-2 h-2 rounded-full bg-emerald-400/50" />
               </div>
-              <span className="text-xs font-semibold text-white/40 uppercase tracking-wider ml-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-2">
                 HTML Source
               </span>
-              <span className="ml-auto text-xs font-mono text-white/30">
+              <span className="ml-auto text-xs font-mono text-muted-foreground">
                 {page.elements.length} elements
               </span>
             </div>
@@ -893,13 +893,13 @@ function InteractiveWebToMarkdown() {
                               : "text-emerald-400"
                             : isStripped
                               ? "text-red-400/40"
-                              : "text-white/30"
+                              : "text-muted-foreground"
                         }`}
                       >
                         {el.tag}
                       </span>
                       <span
-                        className={`truncate ${isStripped ? "text-white/20" : "text-white/50"}`}
+                        className={`truncate ${isStripped ? "text-muted-foreground" : "text-muted-foreground"}`}
                       >
                         {el.content}
                       </span>
@@ -931,7 +931,7 @@ function InteractiveWebToMarkdown() {
             {/* Markdown header */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
               <FileText className="h-3 w-3 text-emerald-400/60" />
-              <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Markdown Output
               </span>
               <AnimatePresence>
@@ -965,11 +965,11 @@ function InteractiveWebToMarkdown() {
                     className="h-full flex flex-col items-center justify-center gap-3"
                   >
                     <div className="flex items-center gap-1.5">
-                      <Globe className="h-5 w-5 text-white/15" />
-                      <ArrowRight className="h-3 w-3 text-white/10" />
-                      <FileText className="h-5 w-5 text-white/15" />
+                      <Globe className="h-5 w-5 text-muted-foreground" />
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      <FileText className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <span className="text-xs text-white/25">
+                    <span className="text-xs text-muted-foreground">
                       Click Convert to start the pipeline
                     </span>
                   </motion.div>
@@ -991,7 +991,7 @@ function InteractiveWebToMarkdown() {
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="flex items-center gap-2 text-xs text-white/30"
+                        className="flex items-center gap-2 text-xs text-muted-foreground"
                       >
                         <motion.div
                           animate={inView ? { rotate: 360 } : { rotate: 0 }}
@@ -1084,7 +1084,7 @@ function InteractiveWebToMarkdown() {
               {/* Size comparison */}
               <div className="sm:col-span-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Size Comparison
                   </span>
                   <span className="text-xs font-mono text-emerald-400">
@@ -1093,7 +1093,7 @@ function InteractiveWebToMarkdown() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-white/40 w-8 shrink-0 text-right">HTML</span>
+                    <span className="text-xs text-muted-foreground w-8 shrink-0 text-right">HTML</span>
                     <div className="flex-1 h-5 rounded-full bg-white/[0.04] overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
@@ -1108,7 +1108,7 @@ function InteractiveWebToMarkdown() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-white/40 w-8 shrink-0 text-right">MD</span>
+                    <span className="text-xs text-muted-foreground w-8 shrink-0 text-right">MD</span>
                     <div className="flex-1 h-5 rounded-full bg-white/[0.04] overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
@@ -1123,16 +1123,16 @@ function InteractiveWebToMarkdown() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-center gap-4 text-xs text-white/40 pt-1">
+                <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-1">
                   <span>
                     Noise removed: <span className="text-red-300/70 font-medium">{noiseCount}</span>
                   </span>
-                  <span className="text-white/10">|</span>
+                  <span className="text-muted-foreground">|</span>
                   <span>
                     Content kept:{" "}
                     <span className="text-emerald-300/70 font-medium">{contentCount}</span>
                   </span>
-                  <span className="text-white/10">|</span>
+                  <span className="text-muted-foreground">|</span>
                   <span>
                     Token savings:{" "}
                     <span className="text-violet-300/70 font-medium">~{reductionPct}%</span>
@@ -1142,8 +1142,8 @@ function InteractiveWebToMarkdown() {
 
               {/* Quality score meter */}
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 flex flex-col items-center justify-center gap-2">
-                <Gauge className="h-4 w-4 text-white/30" />
-                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <Gauge className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Quality
                 </span>
                 <motion.div
@@ -1201,7 +1201,7 @@ function InteractiveWebToMarkdown() {
                         className={`h-3 w-3 ${
                           i < Math.round(page.qualityScore / 20)
                             ? "text-amber-400 fill-amber-400"
-                            : "text-white/20"
+                            : "text-muted-foreground"
                         }`}
                       />
                     </motion.div>
@@ -1224,7 +1224,7 @@ function InteractiveWebToMarkdown() {
             >
               <div className="flex items-center gap-2 mb-2.5">
                 <Terminal className="h-3.5 w-3.5 text-violet-400/60" />
-                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   MDWB Commands
                 </span>
               </div>
@@ -1240,7 +1240,7 @@ function InteractiveWebToMarkdown() {
                     <code className="text-xs font-mono text-violet-300/80 shrink-0">
                       {c.cmd}
                     </code>
-                    <span className="text-xs text-white/30 ml-auto">{c.desc}</span>
+                    <span className="text-xs text-muted-foreground ml-auto">{c.desc}</span>
                   </motion.div>
                 ))}
               </div>
@@ -1261,7 +1261,7 @@ function InteractiveWebToMarkdown() {
               const Icon = icons[i];
               return (
                 <div key={s} className="flex items-center gap-1.5">
-                  {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-white/15" />}
+                  {i > 0 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
                   <motion.div
                     animate={{
                       scale: isActive ? 1.08 : 1,
@@ -1273,7 +1273,7 @@ function InteractiveWebToMarkdown() {
                         ? "border-white/20 bg-white/[0.06] text-white/80"
                         : isPast
                           ? "border-emerald-500/20 bg-emerald-500/[0.04] text-emerald-400/60"
-                          : "border-white/[0.04] bg-white/[0.01] text-white/20"
+                          : "border-white/[0.04] bg-white/[0.01] text-muted-foreground"
                     }`}
                   >
                     {isActive ? (
@@ -1309,7 +1309,7 @@ function InteractiveWebToMarkdown() {
             disabled={isAnimating}
             className={`flex items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors ${
               isAnimating
-                ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
+                ? "border-white/[0.06] bg-white/[0.02] text-muted-foreground cursor-wait"
                 : `${colors.border} ${colors.bg} ${colors.text} hover:brightness-125`
             }`}
           >
@@ -1344,7 +1344,7 @@ function InteractiveWebToMarkdown() {
                 transition={SPRING}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
-                className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-white/50 hover:text-white/70 transition-colors"
+                className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-muted-foreground hover:text-white/70 transition-colors"
               >
                 <RotateCcw className="h-4 w-4" />
                 Reset

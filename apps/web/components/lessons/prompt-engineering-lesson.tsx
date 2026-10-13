@@ -576,7 +576,7 @@ function VerificationQuestion({ question, purpose }: { question: string; purpose
       </div>
       <div>
         <p className="font-medium text-amber-300 italic">&quot;{question}&quot;</p>
-        <p className="text-sm text-white/50 mt-1">{purpose}</p>
+        <p className="text-sm text-muted-foreground mt-1">{purpose}</p>
       </div>
     </motion.div>
   );
@@ -606,7 +606,7 @@ function FreshEyesCard({
         <h3 className="font-bold text-violet-300">{technique}</h3>
       </div>
       <code className="text-sm text-white/70 font-mono">{example}</code>
-      <p className="text-sm text-white/50 mt-2">{mechanism}</p>
+      <p className="text-sm text-muted-foreground mt-2">{mechanism}</p>
     </motion.div>
   );
 }
@@ -624,8 +624,8 @@ function TemporalConcept({ concept, description }: { concept: string; descriptio
     >
       <Clock className="h-4 w-4 text-primary shrink-0" />
       <span className="font-medium text-white">{concept}</span>
-      <span className="text-white/50">--</span>
-      <span className="text-sm text-white/50">{description}</span>
+      <span className="text-muted-foreground">--</span>
+      <span className="text-sm text-muted-foreground">{description}</span>
     </motion.div>
   );
 }
@@ -643,8 +643,8 @@ function PrincipleCard({ principle, description }: { principle: string; descript
     >
       <Layers className="h-4 w-4 text-blue-400 shrink-0" />
       <span className="font-medium text-blue-300">{principle}</span>
-      <span className="text-white/50">--</span>
-      <span className="text-sm text-white/50">{description}</span>
+      <span className="text-muted-foreground">--</span>
+      <span className="text-sm text-muted-foreground">{description}</span>
     </motion.div>
   );
 }
@@ -1023,7 +1023,7 @@ function InteractivePromptLab() {
           </div>
           <h3 className="font-bold text-white text-lg">Interactive Prompt Engineering Lab</h3>
         </div>
-        <p className="text-sm text-white/50 mt-1 mb-4">
+        <p className="text-sm text-muted-foreground mt-1 mb-4">
           Toggle techniques, watch prompts build layer by layer, and compare agent output quality.
         </p>
 
@@ -1044,7 +1044,7 @@ function InteractivePromptLab() {
                     ? `${t.borderColor} ${t.bgColor} ${t.color} ring-1 ring-white/10`
                     : isEnabled
                       ? `${t.borderColor} ${t.bgColor} ${t.color}`
-                      : "border-white/[0.06] bg-white/[0.01] text-white/30 hover:text-white/50"
+                      : "border-white/[0.06] bg-white/[0.01] text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t.icon}
@@ -1070,7 +1070,7 @@ function InteractivePromptLab() {
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-200 border-b-2 -mb-px ${
                 activeTab === tab.id
                   ? "border-primary text-primary"
-                  : "border-transparent text-white/40 hover:text-white/60"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {tab.icon}
@@ -1165,14 +1165,14 @@ function InteractivePromptLab() {
                 </span>
                 <span className={`h-1.5 w-1.5 rounded-full ${technique.dotColor}`} />
               </div>
-              <p className="text-xs text-white/50 leading-relaxed">{technique.description}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{technique.description}</p>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
-              <div className="flex items-center gap-1 text-xs text-white/40">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Gauge className="h-3 w-3" />
                 <span>{technique.effectiveness}%</span>
               </div>
-              <div className="flex items-center gap-1 text-xs text-white/30">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <span>{technique.tokenCost} tokens</span>
               </div>
             </div>
@@ -1204,7 +1204,7 @@ function PromptBuilderPanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-white/40 uppercase tracking-wider font-medium">
+        <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
           Building prompt layer by layer ({step}/{techniques.length})
         </span>
         <div className="flex gap-2">
@@ -1213,7 +1213,7 @@ function PromptBuilderPanel({
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               onClick={onReset}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs text-white/50 hover:text-white/70 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs text-muted-foreground hover:text-white/70 transition-colors"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -1252,7 +1252,7 @@ function PromptBuilderPanel({
             animate={{ opacity: 1 }}
             className="flex items-center justify-center h-[160px]"
           >
-            <p className="text-white/20 text-center text-xs">
+            <p className="text-muted-foreground text-center text-xs">
               Click &quot;Start Building&quot; to watch prompt layers stack up.
               <br />
               Toggle techniques above to customize which layers appear.
@@ -1333,7 +1333,7 @@ function PromptBuilderPanel({
 function BeforeAfterPanel({ technique }: { technique: Technique }) {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-white/40 mb-3">
+      <p className="text-xs text-muted-foreground mb-3">
         Compare agent output quality <span className="text-rose-400">without</span> vs{" "}
         <span className="text-emerald-400">with</span> the{" "}
         <span className={technique.color}>{technique.label}</span> technique applied.
@@ -1349,11 +1349,11 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
             </span>
           </div>
           <div className="mb-3 rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-xs text-white/30 uppercase tracking-wider">Prompt</span>
-            <p className="font-mono text-xs text-white/50 mt-1">{technique.withoutText}</p>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Prompt</span>
+            <p className="font-mono text-xs text-muted-foreground mt-1">{technique.withoutText}</p>
           </div>
           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-xs text-white/30 uppercase tracking-wider">Agent Output</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Agent Output</span>
             <pre className="font-mono text-xs text-rose-300/60 mt-1 whitespace-pre-wrap leading-relaxed">
               {technique.agentOutputBefore}
             </pre>
@@ -1369,11 +1369,11 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
             </span>
           </div>
           <div className="mb-3 rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-xs text-white/30 uppercase tracking-wider">Prompt</span>
-            <p className="font-mono text-xs text-white/50 mt-1">{technique.withText}</p>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Prompt</span>
+            <p className="font-mono text-xs text-muted-foreground mt-1">{technique.withText}</p>
           </div>
           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
-            <span className="text-xs text-white/30 uppercase tracking-wider">Agent Output</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Agent Output</span>
             <pre className="font-mono text-xs text-emerald-300/60 mt-1 whitespace-pre-wrap leading-relaxed">
               {technique.agentOutputAfter}
             </pre>
@@ -1399,7 +1399,7 @@ function BeforeAfterPanel({ technique }: { technique: Technique }) {
             />
           </div>
         </div>
-        <ChevronRight className="h-4 w-4 text-white/20 shrink-0" />
+        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
         <div className="flex-1">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-emerald-400 uppercase tracking-wider font-medium">
@@ -1443,10 +1443,10 @@ function AnatomyPanel({
       {/* Token budget bar */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-white/40 uppercase tracking-wider font-medium">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
             Token Budget
           </span>
-          <span className={`text-xs font-mono ${isOverBudget ? "text-rose-400" : "text-white/50"}`}>
+          <span className={`text-xs font-mono ${isOverBudget ? "text-rose-400" : "text-muted-foreground"}`}>
             {totalTokens} / {MAX_CONTEXT_TOKENS} tokens
           </span>
         </div>
@@ -1485,7 +1485,7 @@ function AnatomyPanel({
             <div
               key={t.id}
               className={`flex items-center gap-1 text-xs ${
-                enabledTechniques.has(t.id) ? t.color : "text-white/20"
+                enabledTechniques.has(t.id) ? t.color : "text-muted-foreground"
               }`}
             >
               <span
@@ -1503,7 +1503,7 @@ function AnatomyPanel({
 
       {/* Prompt anatomy diagram */}
       <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
-        <h4 className="text-xs text-white/50 uppercase tracking-wider font-semibold mb-3">
+        <h4 className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-3">
           Prompt Anatomy
         </h4>
         <div className="space-y-1.5">
@@ -1528,7 +1528,7 @@ function AnatomyPanel({
                   <span
                     className={`${isEnabled ? t.dotColor : "bg-white/10"} h-2 w-2 rounded-full`}
                   />
-                  <span className={`text-xs font-medium ${isEnabled ? t.color : "text-white/20"}`}>
+                  <span className={`text-xs font-medium ${isEnabled ? t.color : "text-muted-foreground"}`}>
                     {t.shortLabel}
                   </span>
                 </div>
@@ -1545,7 +1545,7 @@ function AnatomyPanel({
                   </div>
                 </div>
                 <span
-                  className={`text-xs font-mono w-12 text-right ${isEnabled ? "text-white/40" : "text-white/15"}`}
+                  className={`text-xs font-mono w-12 text-right ${isEnabled ? "text-muted-foreground" : "text-muted-foreground"}`}
                 >
                   {t.tokenCost}t
                 </span>
@@ -1560,14 +1560,14 @@ function AnatomyPanel({
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-center">
           <Gauge className="h-5 w-5 text-primary mx-auto mb-2" />
           <div className="text-2xl font-bold text-white">{avgEffectiveness}%</div>
-          <div className="text-xs text-white/40 uppercase tracking-wider mt-1">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">
             Avg Effectiveness
           </div>
         </div>
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-center">
           <BarChart3 className="h-5 w-5 text-violet-400 mx-auto mb-2" />
           <div className="text-2xl font-bold text-white">{enabledTechniques.size}</div>
-          <div className="text-xs text-white/40 uppercase tracking-wider mt-1">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">
             Active Techniques
           </div>
         </div>
@@ -1575,14 +1575,14 @@ function AnatomyPanel({
 
       {/* Effectiveness bars per technique */}
       <div className="space-y-2">
-        <h4 className="text-xs text-white/40 uppercase tracking-wider font-medium">
+        <h4 className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
           Technique Effectiveness
         </h4>
         {techniques.map((t, idx) => {
           const isEnabled = enabledTechniques.has(t.id);
           return (
             <div key={t.id} className="flex items-center gap-3">
-              <span className={`text-xs w-16 shrink-0 ${isEnabled ? t.color : "text-white/20"}`}>
+              <span className={`text-xs w-16 shrink-0 ${isEnabled ? t.color : "text-muted-foreground"}`}>
                 {t.shortLabel}
               </span>
               <div className="flex-1 h-2 rounded-full bg-white/[0.04] overflow-hidden">
@@ -1600,7 +1600,7 @@ function AnatomyPanel({
                 />
               </div>
               <span
-                className={`text-xs font-mono w-8 text-right ${isEnabled ? "text-white/50" : "text-white/15"}`}
+                className={`text-xs font-mono w-8 text-right ${isEnabled ? "text-muted-foreground" : "text-muted-foreground"}`}
               >
                 {t.effectiveness}%
               </span>
@@ -1633,7 +1633,7 @@ function TerminalPanel({
   return (
     <div ref={ref} className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40">
+        <span className="text-xs text-muted-foreground">
           Simulated agent session with {enabledCount} technique
           {enabledCount !== 1 ? "s" : ""}
         </span>
@@ -1644,7 +1644,7 @@ function TerminalPanel({
           disabled={isAnimating}
           className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             isAnimating
-              ? "bg-white/[0.04] text-white/20 cursor-not-allowed"
+              ? "bg-white/[0.04] text-muted-foreground cursor-not-allowed"
               : "bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30"
           }`}
         >
@@ -1671,7 +1671,7 @@ function TerminalPanel({
             <span className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
           </div>
-          <span className="text-xs text-white/30 font-mono ml-2">
+          <span className="text-xs text-muted-foreground font-mono ml-2">
             prompt-lab ~ agent-session
           </span>
         </div>
@@ -1683,7 +1683,7 @@ function TerminalPanel({
         >
           {lines.length === 0 && !isAnimating && (
             <div className="flex items-center justify-center h-[200px]">
-              <p className="text-white/15 text-center">
+              <p className="text-muted-foreground text-center">
                 Click &quot;Run Simulation&quot; to see your prompt
                 <br />
                 techniques in action.
@@ -1760,7 +1760,7 @@ function QuickRefItem({
       </div>
       <div>
         <span className="text-xs text-white/60 uppercase">Key Phrases</span>
-        <p className="text-xs text-white/50 font-mono">{key_phrases}</p>
+        <p className="text-xs text-muted-foreground font-mono">{key_phrases}</p>
       </div>
     </motion.div>
   );

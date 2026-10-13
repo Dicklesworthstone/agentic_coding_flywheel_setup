@@ -549,13 +549,13 @@ function InteractiveArchitecture() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white">ACFS Architecture Explorer</h3>
-              <p className="text-xs text-white/40">Click any component to explore</p>
+              <p className="text-xs text-muted-foreground">Click any component to explore</p>
             </div>
           </div>
           {revealedLayers < archLayers.length && (
             <button
               onClick={handleRevealAll}
-              className="px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition duration-300"
+              className="px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-muted-foreground hover:text-white/80 hover:bg-white/[0.08] transition duration-300"
             >
               Reveal All
             </button>
@@ -592,7 +592,7 @@ function InteractiveArchitecture() {
                           {layer.label}
                         </span>
                         <div className="flex-1 h-px bg-white/[0.06]" />
-                        <span className="text-xs text-white/30 font-mono">L{layerIdx + 1}</span>
+                        <span className="text-xs text-muted-foreground font-mono">L{layerIdx + 1}</span>
                       </div>
 
                       {/* Component nodes */}
@@ -680,7 +680,7 @@ function InteractiveArchitecture() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex items-center justify-center gap-2 py-3 text-xs text-white/30"
+                className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground"
               >
                 <Activity className="h-3 w-3" />
                 <span>
@@ -715,7 +715,7 @@ function InteractiveArchitecture() {
                       <h4 className="text-sm font-semibold text-white leading-tight">
                         {selectedData.name}
                       </h4>
-                      <span className="text-xs text-white/40 font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         {selectedLayerData.label}
                       </span>
                     </div>
@@ -729,7 +729,7 @@ function InteractiveArchitecture() {
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                           : selectedData.status === "ready"
                             ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            : "bg-white/5 text-white/40 border border-white/10"
+                            : "bg-white/5 text-muted-foreground border border-white/10"
                       }`}
                     >
                       <div
@@ -750,13 +750,13 @@ function InteractiveArchitecture() {
                   </div>
 
                   {/* Description */}
-                  <p className="text-xs text-white/50 leading-relaxed">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
                     {selectedData.description}
                   </p>
 
                   {/* Commands */}
                   <div>
-                    <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Commands
                     </span>
                     <div className="mt-1.5 space-y-1">
@@ -777,7 +777,7 @@ function InteractiveArchitecture() {
                   {/* Dependencies */}
                   {selectedData.dependencies.length > 0 && (
                     <div>
-                      <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         Depends on
                       </span>
                       <div className="mt-1.5 flex flex-wrap gap-1">
@@ -789,7 +789,7 @@ function InteractiveArchitecture() {
                             <button
                               key={depId}
                               onClick={() => handleComponentClick(depId)}
-                              className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition duration-200 cursor-pointer"
+                              className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-muted-foreground hover:text-white/80 hover:bg-white/[0.08] transition duration-200 cursor-pointer"
                             >
                               {dep?.shortName ?? depId}
                             </button>
@@ -807,8 +807,8 @@ function InteractiveArchitecture() {
                   exit={{ opacity: 0 }}
                   className="rounded-xl border border-dashed border-white/[0.06] bg-white/[0.01] p-6 flex flex-col items-center justify-center text-center"
                 >
-                  <HardDrive className="h-6 w-6 text-white/15 mb-2" />
-                  <p className="text-xs text-white/30">
+                  <HardDrive className="h-6 w-6 text-muted-foreground mb-2" />
+                  <p className="text-xs text-muted-foreground">
                     Select a component to see details, commands, and dependencies
                   </p>
                 </motion.div>
@@ -822,7 +822,7 @@ function InteractiveArchitecture() {
                 <div className="h-2 w-2 rounded-full bg-red-500/60" />
                 <div className="h-2 w-2 rounded-full bg-amber-500/60" />
                 <div className="h-2 w-2 rounded-full bg-emerald-500/60" />
-                <span className="ml-2 text-xs text-white/30 font-mono">terminal</span>
+                <span className="ml-2 text-xs text-muted-foreground font-mono">terminal</span>
               </div>
               {/* Terminal content */}
               <div className="p-3 font-mono text-xs space-y-1.5 min-h-[80px]">
@@ -838,7 +838,7 @@ function InteractiveArchitecture() {
                       <span className="text-emerald-400">
                         {terminalCommands[terminalLine].prompt}
                       </span>
-                      <span className="text-white/30">$</span>
+                      <span className="text-muted-foreground">$</span>
                       <span className="text-white/80">{terminalCommands[terminalLine].cmd}</span>
                       <span
                         className="inline-block w-1.5 h-3.5 bg-primary/60 ml-0.5"
@@ -847,7 +847,7 @@ function InteractiveArchitecture() {
                         }}
                       />
                     </div>
-                    <div className="mt-1 text-white/40 pl-1">
+                    <div className="mt-1 text-muted-foreground pl-1">
                       {terminalCommands[terminalLine].output}
                     </div>
                   </motion.div>
@@ -857,7 +857,7 @@ function InteractiveArchitecture() {
 
             {/* Connection legend */}
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.01] p-3">
-              <span className="text-xs font-semibold text-white/30 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Status Key
               </span>
               <div className="mt-2 space-y-1.5">
@@ -871,15 +871,15 @@ function InteractiveArchitecture() {
                       }}
                     />
                   </div>
-                  <span className="text-xs text-white/40">Active - running and healthy</span>
+                  <span className="text-xs text-muted-foreground">Active - running and healthy</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-amber-400" />
-                  <span className="text-xs text-white/40">Ready - installed, needs auth</span>
+                  <span className="text-xs text-muted-foreground">Ready - installed, needs auth</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-white/20" />
-                  <span className="text-xs text-white/40">Standby - available if needed</span>
+                  <span className="text-xs text-muted-foreground">Standby - available if needed</span>
                 </div>
               </div>
             </div>
@@ -895,7 +895,7 @@ function InteractiveArchitecture() {
               <DataFlowArrow from="tmux" to="Agents" color="text-amber-400" />
               <DataFlowArrow from="NTM" to="All Agents" color="text-rose-400" />
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-white/25">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Lock className="h-3 w-3" />
               <span>End-to-end encrypted</span>
             </div>
@@ -910,12 +910,12 @@ function InteractiveArchitecture() {
 function DataFlowArrow({ from, to, color }: { from: string; to: string; color: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-white/40">{from}</span>
+      <span className="text-xs text-muted-foreground">{from}</span>
       <div className="flex items-center gap-0.5">
         <div className={`w-4 h-px ${color} opacity-40`} />
         <ChevronRight className={`h-2.5 w-2.5 ${color} opacity-40`} />
       </div>
-      <span className="text-xs text-white/40">{to}</span>
+      <span className="text-xs text-muted-foreground">{to}</span>
     </div>
   );
 }

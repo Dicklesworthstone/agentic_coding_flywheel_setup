@@ -491,7 +491,7 @@ function BestPractice({ title, description }: { title: string; description: stri
         <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
           {title}
         </p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
     </motion.div>
   );
@@ -737,11 +737,11 @@ function InteractiveGitHubWorkflow() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white">PR Lifecycle Automation</h3>
-              <p className="text-xs text-white/40">Full workflow with gh CLI</p>
+              <p className="text-xs text-muted-foreground">Full workflow with gh CLI</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-white/30 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+            <span className="text-xs font-mono text-muted-foreground px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
               {activeStage + 1}/{totalStages}
             </span>
           </div>
@@ -843,7 +843,7 @@ function InteractiveGitHubWorkflow() {
               <p className="text-sm font-semibold text-white/80">
                 {WORKFLOW_STAGES[activeStage].label}
               </p>
-              <p className="text-xs text-white/40 mt-1 max-w-md mx-auto">
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
                 {WORKFLOW_STAGES[activeStage].detail}
               </p>
             </motion.div>
@@ -934,15 +934,15 @@ function MiniTerminal({
           <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
         </div>
         <div className="flex items-center gap-2 ml-2">
-          <Terminal className="h-3 w-3 text-white/30" />
-          <span className="text-xs font-mono text-white/30">gh-workflow ~/my-project</span>
+          <Terminal className="h-3 w-3 text-muted-foreground" />
+          <span className="text-xs font-mono text-muted-foreground">gh-workflow ~/my-project</span>
         </div>
       </div>
       {/* Command history + current */}
       <div className="px-4 py-3 space-y-1 min-h-[72px]">
         {/* Previous lines (faded) */}
         {lines.slice(0, -1).map((line, i) => (
-          <div key={`${stage}-prev-${i}`} className="font-mono text-xs text-white/25 truncate">
+          <div key={`${stage}-prev-${i}`} className="font-mono text-xs text-muted-foreground truncate">
             {line}
           </div>
         ))}
@@ -999,7 +999,7 @@ function PRTimeline({
   const completedColor = "bg-emerald-500/60 border-emerald-400/60";
 
   const getIcon = (iconType: string, isActive: boolean, isCompleted: boolean) => {
-    const className = `h-3 w-3 ${isActive ? "text-white" : isCompleted ? "text-white/90" : "text-white/40"}`;
+    const className = `h-3 w-3 ${isActive ? "text-white" : isCompleted ? "text-white/90" : "text-muted-foreground"}`;
     switch (iconType) {
       case "branch":
         return <GitBranch className={className} />;
@@ -1061,7 +1061,7 @@ function PRTimeline({
                 </motion.div>
                 <span
                   className={`text-xs font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
-                    isActive ? "text-white/90" : "text-white/30"
+                    isActive ? "text-white/90" : "text-muted-foreground"
                   }`}
                 >
                   {stage.label}
@@ -1135,9 +1135,9 @@ function CollapsiblePanel({
           <span className="text-xs font-medium text-white/70">{title}</span>
         </div>
         {expanded ? (
-          <ChevronUp className="h-3.5 w-3.5 text-white/30" />
+          <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
         ) : (
-          <ChevronDown className="h-3.5 w-3.5 text-white/30" />
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
         )}
       </button>
       <AnimatePresence initial={false}>
@@ -1271,7 +1271,7 @@ function CreateBranchVisual() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1 }}
-        className="text-xs text-white/30 font-mono"
+        className="text-xs text-muted-foreground font-mono"
       >
         HEAD now at feat/add-auth
       </motion.p>
@@ -1297,7 +1297,7 @@ function MakeChangesVisual({ active }: { active: boolean }) {
         <motion.span
           animate={active ? { opacity: [0.3, 1, 0.3] } : { opacity: 1 }}
           transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
-          className="text-xs text-white/30"
+          className="text-xs text-muted-foreground"
         >
           writing code...
         </motion.span>
@@ -1340,8 +1340,8 @@ function MakeChangesVisual({ active }: { active: boolean }) {
           <span className="text-violet-400/60">export</span>
           <span className="text-blue-400/60">async function</span>
           <span className="text-amber-400/60">authenticate</span>
-          <span className="text-white/30">(</span>
-          <span className="text-white/30">)</span>
+          <span className="text-muted-foreground">(</span>
+          <span className="text-muted-foreground">)</span>
           <motion.span
             animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
             transition={
@@ -1373,7 +1373,7 @@ function CreatePRVisual() {
           </div>
           <div>
             <p className="text-xs font-semibold text-purple-400">PR #43</p>
-            <p className="text-xs text-white/40">feat/add-auth → main</p>
+            <p className="text-xs text-muted-foreground">feat/add-auth → main</p>
           </div>
           <span className="ml-auto inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
             Open
@@ -1381,15 +1381,15 @@ function CreatePRVisual() {
         </div>
 
         <p className="text-sm font-medium text-white/90 mb-1">Add authentication module</p>
-        <p className="text-xs text-white/40 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           Implements OAuth2 login flow with session management. Closes #42
         </p>
 
         {/* Diff stats */}
         <div className="flex items-center gap-3 mb-3">
           <div className="flex items-center gap-1.5">
-            <FileCode className="h-3 w-3 text-white/40" />
-            <span className="text-xs text-white/40">5 files changed</span>
+            <FileCode className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">5 files changed</span>
           </div>
           <span className="text-xs text-emerald-400 font-mono">+362</span>
           <span className="text-xs text-red-400 font-mono">-3</span>
@@ -1431,8 +1431,8 @@ function CreatePRVisual() {
         transition={{ type: "spring", stiffness: 200, damping: 25, delay: 0.5 }}
         className="flex items-center gap-2"
       >
-        <Users className="h-3.5 w-3.5 text-white/30" />
-        <span className="text-xs text-white/40">Review requested from</span>
+        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Review requested from</span>
         <div className="flex -space-x-1">
           {["bg-blue-500", "bg-emerald-500"].map((bg, i) => (
             <div
@@ -1510,7 +1510,7 @@ function CodeReviewVisual({ commentIndex }: { commentIndex: number }) {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-white/50 leading-relaxed">{comment.text}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{comment.text}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1607,7 +1607,7 @@ function CIPipelineVisual({
                       ? "text-emerald-400"
                       : state === "running"
                         ? "text-cyan-400"
-                        : "text-white/40"
+                        : "text-muted-foreground"
                   }`}
                 >
                   {job.label}
@@ -1639,7 +1639,7 @@ function CIPipelineVisual({
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-xs text-white/30 mt-1 block"
+                  className="text-xs text-muted-foreground mt-1 block"
                 >
                   {job.duration}
                 </motion.span>
@@ -1680,7 +1680,7 @@ function CIJobStatusIcon({
       </motion.div>
     );
   }
-  return <CircleDot className="h-3 w-3 text-white/20" />;
+  return <CircleDot className="h-3 w-3 text-muted-foreground" />;
 }
 
 // Stage 5: Merge & Deploy
@@ -1754,7 +1754,7 @@ function MergeDeployVisual({ active }: { active: boolean }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.9 }}
-        className="text-xs text-white/30 font-mono"
+        className="text-xs text-muted-foreground font-mono"
       >
         Issue #42 automatically closed -- Branch deleted
       </motion.p>
@@ -1908,9 +1908,9 @@ function PRDetailPanel({
   if (!prCreated) {
     return (
       <div className="flex flex-col items-center justify-center py-6 text-center">
-        <GitPullRequest className="h-8 w-8 text-white/10 mb-2" />
-        <p className="text-xs text-white/30">PR not yet created</p>
-        <p className="text-xs text-white/20 mt-1">Advance to stage 3 to see PR details</p>
+        <GitPullRequest className="h-8 w-8 text-muted-foreground mb-2" />
+        <p className="text-xs text-muted-foreground">PR not yet created</p>
+        <p className="text-xs text-muted-foreground mt-1">Advance to stage 3 to see PR details</p>
       </div>
     );
   }
@@ -1935,7 +1935,7 @@ function PRDetailPanel({
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2 text-center">
-          <p className="text-xs text-white/30">Files</p>
+          <p className="text-xs text-muted-foreground">Files</p>
           <p className="text-sm font-semibold text-white/70">5</p>
         </div>
         <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/10 p-2 text-center">
@@ -2052,7 +2052,7 @@ function PRCheckRow({
           <Loader2 className="h-3 w-3 text-amber-400 shrink-0" />
         </motion.div>
       )}
-      {status === "pending" && <CircleDot className="h-3 w-3 text-white/20 shrink-0" />}
+      {status === "pending" && <CircleDot className="h-3 w-3 text-muted-foreground shrink-0" />}
       {status === "failed" && <XCircle className="h-3 w-3 text-red-400 shrink-0" />}
       <span
         className={`text-xs font-mono ${
@@ -2060,12 +2060,12 @@ function PRCheckRow({
             ? "text-emerald-400/80"
             : status === "running"
               ? "text-amber-400/80"
-              : "text-white/40"
+              : "text-muted-foreground"
         }`}
       >
         {label}
       </span>
-      {detail && <span className="text-xs text-white/20 ml-auto">{detail}</span>}
+      {detail && <span className="text-xs text-muted-foreground ml-auto">{detail}</span>}
     </div>
   );
 }
@@ -2146,15 +2146,15 @@ function ActivityFeed({ activeStage }: { activeStage: number }) {
             <span className={event.color}>{event.icon}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-white/50 leading-relaxed truncate">{event.text}</p>
-            <p className="text-xs text-white/20">{event.time}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed truncate">{event.text}</p>
+            <p className="text-xs text-muted-foreground">{event.time}</p>
           </div>
         </motion.div>
       ))}
 
       {visibleEvents.length === 0 && (
         <div className="text-center py-4">
-          <p className="text-xs text-white/20">No activity yet</p>
+          <p className="text-xs text-muted-foreground">No activity yet</p>
         </div>
       )}
     </div>

@@ -45,6 +45,11 @@ async function settle(page: Page): Promise<void> {
 
 async function contrastViolations(page: Page): Promise<string[]> {
   await settle(page);
+  return scanContrast(page);
+}
+
+/** Scan an already-settled page without traversing it a second time. */
+async function scanContrast(page: Page): Promise<string[]> {
   await page.addScriptTag({ path: AXE_SOURCE });
   return page.evaluate(async (decorative) => {
     type AxeNode = { target: string[]; failureSummary?: string };
@@ -132,6 +137,34 @@ async function tinyLabels(page: Page): Promise<string[]> {
   }, { decorative: DECORATIVE, requireLessonBody });
 }
 
+/** Informative SVG labels must not depend on faint, translucent white paint. */
+async function faintWhiteSvgLabels(page: Page): Promise<string[]> {
+  return page.evaluate((decorative) => {
+    const failures: string[] = [];
+    for (const label of document.querySelectorAll("main svg text")) {
+      if (label.closest(`${decorative}, .sr-only`)) continue;
+      const text = label.textContent?.trim();
+      const bounds = label.getBoundingClientRect();
+      if (!text || !bounds.width || !bounds.height) continue;
+      const style = getComputedStyle(label);
+      const paint = style.fill.match(/^rgba?\(([^)]+)\)$/)?.[1].split(/[,\s/]+/).map(Number);
+      if (!paint || paint.slice(0, 3).some((channel) => channel !== 255)) continue;
+      let opacity = (paint[3] ?? 1) * Number(style.fillOpacity);
+      let visible = true;
+      for (let ancestor: Element | null = label; ancestor; ancestor = ancestor.parentElement) {
+        const inherited = getComputedStyle(ancestor);
+        if (inherited.visibility !== "visible" || Number(inherited.opacity) === 0) {
+          visible = false;
+          break;
+        }
+        opacity *= Number(inherited.opacity);
+      }
+      if (visible && opacity <= 0.55) failures.push(`${text.slice(0, 90)} (${opacity.toFixed(2)} alpha)`);
+    }
+    return failures;
+  }, DECORATIVE);
+}
+
 test.describe("Instructional text readability (bd-64cg3)", () => {
   test.use({ contextOptions: { reducedMotion: "reduce" } });
   const readingRoutes = [
@@ -164,6 +197,13 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
         viewport: document.documentElement.clientWidth,
       }));
       expect(widths.content).toBe(widths.viewport);
+      if (route.startsWith("/learn/")) {
+        // Secondary lesson colors must work without the old inherited repair.
+        // This is a no-op for migrated pages and reveals legacy class regressions.
+        await page.locator("main").evaluate((main) => main.classList.remove("text-aa-floor"));
+        expect(await scanContrast(page)).toEqual([]);
+        expect(await faintWhiteSvgLabels(page)).toEqual([]);
+      }
       expect(runtimeErrors).toEqual([]);
     });
   }
@@ -210,6 +250,75 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
     expect(await tinyLabels(page)).toContain("P: Individual scale negative control (9.00px)");
     expect(await tinyLabels(page)).toContain("text: Tiny SVG negative control (5.00px)");
     expect(await tinyLabels(page)).toContain("text: Scaled SVG negative control (6.00px)");
+  });
+
+  test("contrast guard rejects faint text and accepts the semantic token", async ({ page }) => {
+    await page.goto("/learn/welcome");
+    await expect(page.locator("main article section").first()).toBeVisible();
+    await settle(page);
+    await page.evaluate(() => {
+      const label = document.createElement("p");
+      label.id = "lesson-contrast-control";
+      label.textContent = "Readable secondary text control";
+      Object.assign(label.style, {
+        position: "fixed", top: "80px", left: "80px", zIndex: "9999",
+        padding: "12px", fontSize: "16px", backgroundColor: "#000",
+        color: "rgba(255,255,255,0.3)",
+      });
+      document.querySelector("main")!.append(label);
+    });
+    const faint = await scanContrast(page);
+    expect(faint.some((violation) => violation.includes("lesson-contrast-control"))).toBe(true);
+    await page.evaluate(() => {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.id = "lesson-svg-color-control";
+      svg.setAttribute("width", "280");
+      svg.setAttribute("height", "48");
+      Object.assign(svg.style, { position: "fixed", top: "140px", left: "40px", zIndex: "9999" });
+      const label = document.createElementNS(svg.namespaceURI, "text");
+      label.textContent = "SVG color policy control";
+      label.setAttribute("x", "8");
+      label.setAttribute("y", "24");
+      label.setAttribute("font-size", "16");
+      label.setAttribute("fill", "rgba(255,255,255,0.35)");
+      svg.append(label);
+      document.querySelector("main")!.append(svg);
+    });
+    expect(await faintWhiteSvgLabels(page)).toContain("SVG color policy control (0.35 alpha)");
+    await page.locator("#lesson-svg-color-control").evaluate((svg) => {
+      svg.style.opacity = "0.25";
+      svg.querySelector("text")!.setAttribute("fill", "white");
+    });
+    // Even reduced-motion CSS finishes a transition on the next paint.
+    await expect.poll(() => faintWhiteSvgLabels(page)).toContain("SVG color policy control (0.25 alpha)");
+    await page.locator("#lesson-contrast-control").evaluate((label) => {
+      label.style.removeProperty("color");
+      label.classList.add("text-muted-foreground");
+    });
+    await page.locator("#lesson-svg-color-control").evaluate((svg) => {
+      svg.querySelector("text")!.setAttribute("fill", "var(--muted-foreground)");
+      svg.style.removeProperty("opacity");
+    });
+    expect(await scanContrast(page)).toEqual([]);
+    await expect.poll(() => faintWhiteSvgLabels(page)).toEqual([]);
+  });
+
+  test("graph analysis keeps dimmed node identifiers readable", async ({ page }) => {
+    await page.goto("/learn/bv");
+    await expect(page.locator("main article section").first()).toBeVisible();
+    await page.getByRole("button", { name: "Run Triage", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Quick Wins", exact: true })).toBeVisible();
+    for (const mode of ["Quick Wins", "Critical Path", "Bottlenecks", "Cycles"]) {
+      await page.getByRole("button", { name: mode, exact: true }).click();
+      const dimmedShapes = page.locator('main svg g[opacity="0.3"], main svg g[opacity="0.25"]');
+      expect(await dimmedShapes.count()).toBeGreaterThan(0);
+      // The analysis still dims non-matching shapes, but their identifiers
+      // must not inherit that dimming or disappear from the graph.
+      await expect(dimmedShapes.locator("text")).toHaveCount(0);
+      const identifiers = page.locator('main svg text').filter({ hasText: /^(DB|AUTH|API)$/ });
+      await expect(identifiers).toHaveCount(3);
+      expect(await faintWhiteSvgLabels(page)).toEqual([]);
+    }
   });
 
   test("reduced motion hydrates cleanly and follows preference changes", async ({ page }) => {

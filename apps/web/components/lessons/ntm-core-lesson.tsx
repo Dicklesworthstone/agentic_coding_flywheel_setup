@@ -732,7 +732,7 @@ function InteractiveNtmOrchestrator() {
             <text
               x={HUB_CX}
               y={HUB_CY + 66}
-              fill="rgba(255,255,255,0.35)"
+              fill="var(--muted-foreground)"
               fontSize="12"
               fontFamily="monospace"
               textAnchor="middle"
@@ -770,7 +770,7 @@ function InteractiveNtmOrchestrator() {
               <text
                 x={HUB_CX}
                 y={HUB_CY + 120}
-                fill="rgba(255,255,255,0.2)"
+                fill="var(--muted-foreground)"
                 fontSize="12"
                 fontFamily="system-ui"
                 textAnchor="middle"
@@ -873,7 +873,7 @@ function InteractiveNtmOrchestrator() {
                   <text
                     x={px + 10}
                     y={py + 45}
-                    fill="rgba(255,255,255,0.5)"
+                    fill="var(--muted-foreground)"
                     fontSize="12"
                     fontFamily="monospace"
                   >
@@ -885,7 +885,7 @@ function InteractiveNtmOrchestrator() {
                     <text
                       x={px + 10}
                       y={py + 63}
-                      fill="rgba(255,255,255,0.45)"
+                      fill="var(--muted-foreground)"
                       fontSize="12"
                       fontFamily="monospace"
                     >
@@ -998,7 +998,7 @@ function InteractiveNtmOrchestrator() {
               stroke="rgba(255,255,255,0.08)"
               strokeWidth={1}
             />
-            <text x={8} y={14} fill="rgba(255,255,255,0.5)" fontSize="12" fontFamily="system-ui">
+            <text x={8} y={14} fill="var(--muted-foreground)" fontSize="12" fontFamily="system-ui">
               tmux layout
             </text>
             {/* Minimap panes */}
@@ -1400,7 +1400,7 @@ function RatioItem({
         <span className="font-medium text-white group-hover:text-primary transition-colors">
           {name}
         </span>
-        <span className="text-white/50"> - {reason}</span>
+        <span className="text-muted-foreground"> - {reason}</span>
       </div>
     </motion.div>
   );
@@ -1428,7 +1428,7 @@ function KeyboardShortcutTable({ shortcuts }: { shortcuts: { keys: string[]; act
                   {key}
                 </kbd>
                 {j < shortcut.keys.length - 1 && (
-                  <span className="text-white/50 text-xs">then</span>
+                  <span className="text-muted-foreground text-xs">then</span>
                 )}
               </span>
             ))}

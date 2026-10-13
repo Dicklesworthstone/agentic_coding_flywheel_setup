@@ -649,7 +649,7 @@ function InteractiveDiagramFixerImpl() {
               className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 scenarioIndex === i
                   ? "bg-white/[0.1] text-white border border-white/[0.1]"
-                  : "text-white/40 hover:text-white/60 border border-transparent"
+                  : "text-muted-foreground hover:text-foreground border border-transparent"
               }`}
             >
               <span className="mr-1 font-mono opacity-50">{sc.icon}</span>
@@ -661,7 +661,7 @@ function InteractiveDiagramFixerImpl() {
         {/* Diagram health score gauge */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
               Diagram Health
             </span>
             <span
@@ -697,8 +697,8 @@ function InteractiveDiagramFixerImpl() {
           {/* Left pane: live repair view */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 px-1">
-              <Eye className="h-3 w-3 text-white/30" />
-              <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
+              <Eye className="h-3 w-3 text-muted-foreground" />
+              <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
                 Live Repair View
               </span>
             </div>
@@ -723,7 +723,7 @@ function InteractiveDiagramFixerImpl() {
                         className="relative whitespace-pre"
                       >
                         {/* Line number gutter */}
-                        <span className="inline-block w-5 text-right mr-2 text-white/15 select-none text-xs">
+                        <span className="inline-block w-5 text-right mr-2 text-muted-foreground select-none text-xs">
                           {i + 1}
                         </span>
                         {isCurrentLine ? (
@@ -735,7 +735,7 @@ function InteractiveDiagramFixerImpl() {
                             <span className="bg-emerald-400/20 text-emerald-300 border-b border-emerald-400/40">
                               {line[repairedCharCount] ?? ""}
                             </span>
-                            <span className="text-white/40">
+                            <span className="text-muted-foreground">
                               {line.substring(repairedCharCount + 1)}
                             </span>
                           </>
@@ -745,8 +745,8 @@ function InteractiveDiagramFixerImpl() {
                               isFullyRepaired
                                 ? "text-emerald-400/80"
                                 : isStillBroken && (phase === "repairing" || phase === "done")
-                                  ? "text-white/30"
-                                  : "text-white/50"
+                                  ? "text-muted-foreground"
+                                  : "text-muted-foreground"
                             }
                           >
                             {line}
@@ -774,8 +774,8 @@ function InteractiveDiagramFixerImpl() {
           {/* Right pane: diff view */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 px-1">
-              <Settings className="h-3 w-3 text-white/30" />
-              <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
+              <Settings className="h-3 w-3 text-muted-foreground" />
+              <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
                 {showDiff ? "Diff View" : "Original (Broken)"}
               </span>
             </div>
@@ -795,8 +795,8 @@ function InteractiveDiagramFixerImpl() {
 
                       if (!hasChanges) {
                         return (
-                          <div key={`diff-same-${i}`} className="whitespace-pre text-white/30">
-                            <span className="inline-block w-4 text-right mr-1 text-white/10 select-none text-xs">
+                          <div key={`diff-same-${i}`} className="whitespace-pre text-muted-foreground">
+                            <span className="inline-block w-4 text-right mr-1 text-muted-foreground select-none text-xs">
                               {" "}
                             </span>
                             {fixedLine}
@@ -846,8 +846,8 @@ function InteractiveDiagramFixerImpl() {
                     transition={{ duration: 0.15 }}
                   >
                     {scenario.broken.map((line, i) => (
-                      <div key={`broken-line-${i}`} className="whitespace-pre text-white/40">
-                        <span className="inline-block w-5 text-right mr-2 text-white/15 select-none text-xs">
+                      <div key={`broken-line-${i}`} className="whitespace-pre text-muted-foreground">
+                        <span className="inline-block w-5 text-right mr-2 text-muted-foreground select-none text-xs">
                           {i + 1}
                         </span>
                         {line}
@@ -862,7 +862,7 @@ function InteractiveDiagramFixerImpl() {
 
         {/* Issues detected */}
         <div className="space-y-2">
-          <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
             Issues Detected
           </span>
           <div className="flex flex-wrap gap-2">
@@ -885,13 +885,13 @@ function InteractiveDiagramFixerImpl() {
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition duration-300 ${
                     issueResolved
                       ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400/70 line-through"
-                      : "border-white/[0.08] bg-white/[0.02] text-white/50"
+                      : "border-white/[0.08] bg-white/[0.02] text-muted-foreground"
                   }`}
                 >
                   {issueResolved ? (
                     <CheckCircle2 className="h-3 w-3 text-emerald-400/60" />
                   ) : (
-                    <Eye className="h-3 w-3 text-white/30" />
+                    <Eye className="h-3 w-3 text-muted-foreground" />
                   )}
                   {issue}
                 </motion.span>
@@ -903,8 +903,8 @@ function InteractiveDiagramFixerImpl() {
         {/* Mini terminal */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 px-1">
-            <Terminal className="h-3 w-3 text-white/30" />
-            <span className="text-xs uppercase tracking-wider text-white/30 font-medium">
+            <Terminal className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
               Terminal Output
             </span>
           </div>
@@ -913,7 +913,7 @@ function InteractiveDiagramFixerImpl() {
             className="rounded-xl border border-white/[0.08] bg-black/60 p-3 font-mono text-xs leading-relaxed max-h-[140px] overflow-y-auto overflow-x-auto"
           >
             {terminalLines.length === 0 ? (
-              <span className="text-white/20">$ waiting for command...</span>
+              <span className="text-muted-foreground">$ waiting for command...</span>
             ) : (
               terminalLines.map((line, i) => {
                 const isCommand = line.startsWith("$");
@@ -933,7 +933,7 @@ function InteractiveDiagramFixerImpl() {
                           ? "text-amber-400/70"
                           : isSuccess
                             ? "text-emerald-400/70"
-                            : "text-white/40"
+                            : "text-muted-foreground"
                     }`}
                   >
                     {line}
@@ -957,8 +957,8 @@ function InteractiveDiagramFixerImpl() {
             className="space-y-1"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs text-white/30">Repair progress</span>
-              <span className="text-xs font-mono text-white/40">
+              <span className="text-xs text-muted-foreground">Repair progress</span>
+              <span className="text-xs font-mono text-muted-foreground">
                 {Math.round(repairProgress * 100)}%
               </span>
             </div>
@@ -981,7 +981,7 @@ function InteractiveDiagramFixerImpl() {
           disabled={phase === "scanning" || phase === "repairing"}
           className={`w-full py-3 rounded-xl border font-medium text-sm flex items-center justify-center gap-2 transition-colors ${
             phase === "scanning" || phase === "repairing"
-              ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-not-allowed"
+              ? "border-white/[0.06] bg-white/[0.02] text-muted-foreground cursor-not-allowed"
               : phase === "done"
                 ? "border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/15"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15"

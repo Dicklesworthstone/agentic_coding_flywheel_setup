@@ -320,7 +320,7 @@ function UpdateItem({
         <span className="text-sm font-medium text-white group-hover:text-primary transition-colors">
           {label}
         </span>
-        <span className="text-xs text-white/50 block">{description}</span>
+        <span className="text-xs text-muted-foreground block">{description}</span>
       </div>
     </motion.div>
   );
@@ -444,7 +444,7 @@ function FrequencyItem({
         <span className="font-bold text-white group-hover:text-primary transition-colors">
           {frequency}
         </span>
-        <span className="text-white/50"> - {recommendation}</span>
+        <span className="text-muted-foreground"> - {recommendation}</span>
       </div>
     </motion.div>
   );
@@ -920,8 +920,8 @@ const STATUS_COLORS: Record<
   idle: {
     bg: "bg-white/[0.02]",
     border: "border-white/[0.06]",
-    text: "text-white/30",
-    icon: "text-white/20",
+    text: "text-muted-foreground",
+    icon: "text-muted-foreground",
   },
   syncing: {
     bg: "bg-amber-500/[0.04]",
@@ -1101,7 +1101,7 @@ function InteractiveUpdatePipeline() {
           <div
             className={`h-2 w-2 rounded-full ${isRunning ? "bg-amber-400 animate-pulse" : allDone ? "bg-emerald-400" : "bg-white/20"}`}
           />
-          <span className="text-xs text-white/40 font-mono">
+          <span className="text-xs text-muted-foreground font-mono">
             {isRunning ? "RUNNING" : allDone ? "DONE" : "READY"}
           </span>
         </div>
@@ -1110,8 +1110,8 @@ function InteractiveUpdatePipeline() {
       {/* Scenario selector stepper */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center gap-2 mb-3">
-          <Settings className="h-4 w-4 text-white/40" />
-          <span className="text-xs font-medium text-white/50 uppercase tracking-wider">
+          <Settings className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             Scenario
           </span>
         </div>
@@ -1130,7 +1130,7 @@ function InteractiveUpdatePipeline() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition duration-200 border ${
                 activeScenario === i
                   ? "border-primary/40 bg-primary/10 text-primary"
-                  : "border-white/[0.06] bg-white/[0.02] text-white/50 hover:text-white/70 hover:border-white/[0.12]"
+                  : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-white/70 hover:border-white/[0.12]"
               } disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               {s.label}
@@ -1144,7 +1144,7 @@ function InteractiveUpdatePipeline() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="mt-2 text-xs text-white/40 leading-relaxed"
+            className="mt-2 text-xs text-muted-foreground leading-relaxed"
           >
             {scenario.description}
           </motion.p>
@@ -1155,8 +1155,8 @@ function InteractiveUpdatePipeline() {
       <div className="px-4 py-3 border-t border-white/[0.04]">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-white/40" />
-            <span className="text-xs font-medium text-white/50 uppercase tracking-wider">
+            <Zap className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Health Dashboard
             </span>
           </div>
@@ -1164,7 +1164,7 @@ function InteractiveUpdatePipeline() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowGraph(!showGraph)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02] text-xs text-white/40 hover:text-white/60 hover:border-white/[0.12] transition"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02] text-xs text-muted-foreground hover:text-foreground hover:border-white/[0.12] transition"
           >
             <Package className="h-3 w-3" />
             {showGraph ? "Grid" : "Graph"}
@@ -1225,8 +1225,8 @@ function InteractiveUpdatePipeline() {
       {/* Mini Terminal */}
       <div className="px-4 py-3 border-t border-white/[0.04]">
         <div className="flex items-center gap-2 mb-2">
-          <Terminal className="h-4 w-4 text-white/40" />
-          <span className="text-xs font-medium text-white/50 uppercase tracking-wider">
+          <Terminal className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             Live Output
           </span>
         </div>
@@ -1235,7 +1235,7 @@ function InteractiveUpdatePipeline() {
           className="rounded-xl bg-black/40 border border-white/[0.06] p-3 h-36 overflow-y-auto font-mono text-xs"
         >
           {terminalOutput.length === 0 ? (
-            <span className="text-white/20">Press &quot;Run Scenario&quot; to start...</span>
+            <span className="text-muted-foreground">Press &quot;Run Scenario&quot; to start...</span>
           ) : (
             terminalOutput.map((line, i) => (
               <TerminalLine key={`${scenario.id}-line-${i}`} line={line} index={i} />
@@ -1288,7 +1288,7 @@ function InteractiveUpdatePipeline() {
       <div className="flex items-center justify-between gap-4 px-4 py-3 border-t border-white/[0.06] bg-white/[0.02]">
         <div className="flex-1">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-white/50">
+            <span className="text-xs text-muted-foreground">
               {allDone
                 ? "Complete"
                 : isRunning
@@ -1305,7 +1305,7 @@ function InteractiveUpdatePipeline() {
               {errorCount > 0 && (
                 <span className="text-xs text-red-400/70">{errorCount} issues</span>
               )}
-              <span className="text-xs text-white/40">{Math.round(totalProgress)}%</span>
+              <span className="text-xs text-muted-foreground">{Math.round(totalProgress)}%</span>
             </div>
           </div>
           <div ref={progressRef} className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1455,7 +1455,7 @@ function RepoStatusIcon({ status, active }: { status: RepoSyncStatus; active: bo
           exit={{ opacity: 0, scale: 0.5 }}
           transition={{ type: "spring", stiffness: 300, damping: 25 }}
         >
-          <Minus className="h-4 w-4 text-white/20" />
+          <Minus className="h-4 w-4 text-muted-foreground" />
         </motion.div>
       )}
       {status === "syncing" && (
@@ -1669,8 +1669,8 @@ function DependencyGraph({
                 x={pos.x}
                 y={pos.y + 29}
                 textAnchor="middle"
-                fill="white"
-                fillOpacity={status === "idle" ? 0.3 : 0.9}
+                fill={status === "idle" ? "var(--muted-foreground)" : "white"}
+                fillOpacity={status === "idle" ? 1 : 0.9}
                 fontSize={12}
                 fontFamily="monospace"
                 fontWeight={600}
@@ -1746,7 +1746,7 @@ function VersionComparisonPanel({
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={onClose}
-          className="text-white/30 hover:text-white/60 transition-colors"
+          className="text-muted-foreground hover:text-foreground transition-colors"
         >
           <XCircle className="h-4 w-4" />
         </motion.button>
@@ -1755,16 +1755,16 @@ function VersionComparisonPanel({
       {/* Version comparison */}
       <div className="flex items-center gap-3 mb-3">
         <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
-          <span className="text-xs text-white/30 block mb-0.5">Current</span>
+          <span className="text-xs text-muted-foreground block mb-0.5">Current</span>
           <code className="text-xs font-mono text-red-400/80">{repo.versionFrom}</code>
         </div>
         <div className="flex items-center">
           <RefreshCw
-            className={`h-4 w-4 ${status === "syncing" ? "text-amber-400 animate-spin" : "text-white/20"}`}
+            className={`h-4 w-4 ${status === "syncing" ? "text-amber-400 animate-spin" : "text-muted-foreground"}`}
           />
         </div>
         <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
-          <span className="text-xs text-white/30 block mb-0.5">Target</span>
+          <span className="text-xs text-muted-foreground block mb-0.5">Target</span>
           <code className="text-xs font-mono text-emerald-400/80">{repo.versionTo}</code>
         </div>
       </div>
@@ -1778,7 +1778,7 @@ function VersionComparisonPanel({
 
       {/* Changelog */}
       <div className="space-y-1">
-        <span className="text-xs text-white/30 uppercase tracking-wider">
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">
           Changelog highlights
         </span>
         {changes.map((change, i) => (
@@ -1787,7 +1787,7 @@ function VersionComparisonPanel({
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.05 }}
-            className="flex items-start gap-2 text-xs text-white/50"
+            className="flex items-start gap-2 text-xs text-muted-foreground"
           >
             <Sparkles className="h-3 w-3 text-primary/50 shrink-0 mt-0.5" />
             <span>{change}</span>
@@ -1798,14 +1798,14 @@ function VersionComparisonPanel({
       {/* Dependencies */}
       {repo.dependsOn.length > 0 && (
         <div className="mt-3 pt-2 border-t border-white/[0.04]">
-          <span className="text-xs text-white/30 uppercase tracking-wider">Depends on</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Depends on</span>
           <div className="flex flex-wrap gap-1 mt-1">
             {repo.dependsOn.map((depId) => {
               const dep = REPOS.find((r) => r.id === depId);
               return (
                 <span
                   key={depId}
-                  className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-white/40 font-mono"
+                  className="text-xs px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-muted-foreground font-mono"
                 >
                   {dep?.shortName ?? depId}
                 </span>
@@ -1836,7 +1836,7 @@ function TerminalLine({ line, index }: { line: string; index: number }) {
     )
       return "text-emerald-400/80";
     if (text.startsWith("[fleet]")) return "text-cyan-400/70";
-    if (text.startsWith("  ")) return "text-white/40";
+    if (text.startsWith("  ")) return "text-muted-foreground";
     if (
       text.includes("Recommendation") ||
       text.includes("Fix:") ||
@@ -1844,7 +1844,7 @@ function TerminalLine({ line, index }: { line: string; index: number }) {
       text.includes("Resolution")
     )
       return "text-violet-400/70";
-    return "text-white/50";
+    return "text-muted-foreground";
   };
 
   return (

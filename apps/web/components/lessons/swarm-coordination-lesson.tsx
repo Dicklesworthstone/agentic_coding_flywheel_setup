@@ -825,7 +825,7 @@ function HexAgentNode({
         x={cx}
         y={cy + 3}
         textAnchor="middle"
-        fill="rgba(255,255,255,0.35)"
+        fill="var(--muted-foreground)"
         fontSize="12"
         fontFamily="system-ui"
       >
@@ -837,7 +837,7 @@ function HexAgentNode({
         x={cx}
         y={cy + 18}
         textAnchor="middle"
-        fill="rgba(255,255,255,0.55)"
+        fill="var(--muted-foreground)"
         fontSize="12"
         fontWeight="500"
         fontFamily="system-ui"
@@ -1016,7 +1016,7 @@ function MessageDot({
 function TaskQueuePanel({ beads }: { beads: SwarmScenario["queueBeads"] }) {
   if (beads.length === 0) {
     return (
-      <div className="text-center text-xs text-white/30 py-2">Queue empty - all tasks complete</div>
+      <div className="text-center text-xs text-muted-foreground py-2">Queue empty - all tasks complete</div>
     );
   }
   return (
@@ -1062,7 +1062,7 @@ function FileReservationPanel({
   const entries = Object.entries(reservations);
   if (entries.length === 0) {
     return (
-      <div className="text-center text-xs text-white/30 py-2">No active file reservations</div>
+      <div className="text-center text-xs text-muted-foreground py-2">No active file reservations</div>
     );
   }
   return (
@@ -1089,7 +1089,7 @@ function FileReservationPanel({
               <span style={{ color: agent.color }} className="shrink-0 font-semibold">
                 {agent.name}
               </span>
-              <span className="text-white/40 truncate">{file}</span>
+              <span className="text-muted-foreground truncate">{file}</span>
             </motion.div>
           );
         });
@@ -1100,7 +1100,7 @@ function FileReservationPanel({
 
 function MailMessagePanel({ messages }: { messages: MailMessage[] }) {
   if (messages.length === 0) {
-    return <div className="text-center text-xs text-white/30 py-2">No active messages</div>;
+    return <div className="text-center text-xs text-muted-foreground py-2">No active messages</div>;
   }
   return (
     <div className="space-y-1">
@@ -1119,9 +1119,9 @@ function MailMessagePanel({ messages }: { messages: MailMessage[] }) {
           <span className="font-semibold" style={{ color: msg.color }}>
             {msg.from}
           </span>
-          <span className="text-white/30">{"\u2192"}</span>
+          <span className="text-muted-foreground">{"\u2192"}</span>
           <span className="font-semibold text-white/70">{msg.to}</span>
-          <span className="text-white/40 ml-auto truncate max-w-[140px]">
+          <span className="text-muted-foreground ml-auto truncate max-w-[140px]">
             &ldquo;{msg.subject}&rdquo;
           </span>
         </motion.div>
@@ -1178,7 +1178,7 @@ function PanelTabBar({
           type="button"
           onClick={() => onSelect(t.key)}
           className={`relative px-3 py-1.5 text-xs font-medium transition-colors ${
-            active === t.key ? "text-white" : "text-white/40 hover:text-white/60"
+            active === t.key ? "text-white" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {t.label}
@@ -1310,7 +1310,7 @@ function InteractiveSwarmOrchestrator() {
           >
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-white/90">{scenario.title}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-white/40">
+              <span className="text-xs px-2 py-0.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-muted-foreground">
                 Step {step + 1}/{totalSteps}
               </span>
             </div>
@@ -1318,7 +1318,7 @@ function InteractiveSwarmOrchestrator() {
               <span className="text-emerald-400 select-none">$</span>
               <span className="text-white/60">{scenario.command}</span>
             </div>
-            <p className="text-xs text-white/40 leading-relaxed">{scenario.subtitle}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{scenario.subtitle}</p>
           </motion.div>
         </AnimatePresence>
       </div>
@@ -1415,8 +1415,8 @@ function InteractiveSwarmOrchestrator() {
       {/* Progress bar */}
       <div className="relative px-5 pb-2">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-white/40">Swarm Progress</span>
-          <span className="text-xs text-white/25 ml-auto">
+          <span className="text-xs font-medium text-muted-foreground">Swarm Progress</span>
+          <span className="text-xs text-muted-foreground ml-auto">
             {HEX_AGENTS.filter((a) => scenario.agentStatuses[a.id] === "done").length}/
             {HEX_AGENTS.length} agents done
           </span>
@@ -1435,7 +1435,7 @@ function InteractiveSwarmOrchestrator() {
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: agent.color, opacity: 0.8 }}
               />
-              <span className="text-white/50">{agent.name}:</span>
+              <span className="text-muted-foreground">{agent.name}:</span>
               <span className="font-medium" style={{ color: palette.text }}>
                 {palette.label}
               </span>

@@ -602,7 +602,7 @@ function MarkdownBlock({
     heading: "text-white/90 font-bold text-xs",
     text: "text-white/60 text-xs",
     code: "text-emerald-400 font-mono text-xs bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1",
-    metadata: "text-white/30 font-mono text-xs italic",
+    metadata: "text-muted-foreground font-mono text-xs italic",
   };
 
   return (
@@ -728,12 +728,12 @@ function PipelineProgressBar({
                     <Icon className="h-4 w-4" style={{ color: providerColor }} />
                   </motion.div>
                 ) : (
-                  <Icon className="h-4 w-4 text-white/20" />
+                  <Icon className="h-4 w-4 text-muted-foreground" />
                 )}
               </motion.div>
               <span
                 className={`text-xs font-medium hidden sm:block ${
-                  isPast ? "text-emerald-400" : isCurrent ? "text-white/80" : "text-white/30"
+                  isPast ? "text-emerald-400" : isCurrent ? "text-white/80" : "text-muted-foreground"
                 }`}
               >
                 {s.label}
@@ -781,18 +781,18 @@ function SizeComparison({ source }: { source: SourceInfo }) {
       {/* Input stats */}
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
         <div className="flex items-center gap-1.5">
-          <Globe className="h-3 w-3 text-white/40" />
-          <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+          <Globe className="h-3 w-3 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Raw Input
           </span>
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-white/50">Size</span>
+            <span className="text-xs text-muted-foreground">Size</span>
             <span className="text-xs font-mono text-white/70">{source.fileSize}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-white/50">Tokens</span>
+            <span className="text-xs text-muted-foreground">Tokens</span>
             <span className="text-xs font-mono text-white/70">
               {source.tokens.toLocaleString()}
             </span>
@@ -968,13 +968,13 @@ function InteractiveConversionPipelineImpl() {
         {/* Header */}
         <div className="text-center space-y-1">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] mb-2">
-            <Layers className="h-3 w-3 text-white/50" />
-            <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+            <Layers className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Live Pipeline
             </span>
           </div>
           <p className="text-sm font-semibold text-white/90">Interactive Conversion Pipeline</p>
-          <p className="text-xs text-white/40 max-w-md mx-auto">
+          <p className="text-xs text-muted-foreground max-w-md mx-auto">
             Select a source to watch CSCTF fetch, parse, and convert a conversation into clean
             Markdown
           </p>
@@ -1012,8 +1012,8 @@ function InteractiveConversionPipelineImpl() {
                     {s.name}
                   </span>
                 </div>
-                <p className="text-xs text-white/30 font-mono truncate">{s.url}</p>
-                <p className="text-xs text-white/50 truncate mt-0.5">{s.title}</p>
+                <p className="text-xs text-muted-foreground font-mono truncate">{s.url}</p>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">{s.title}</p>
               </motion.button>
             );
           })}
@@ -1032,13 +1032,13 @@ function InteractiveConversionPipelineImpl() {
             >
               {/* URL bar */}
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 flex items-center gap-3">
-                <Link2 className="h-3.5 w-3.5 text-white/30 shrink-0" />
+                <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <p className="text-xs font-mono text-white/60 truncate flex-1">
                   https://{source.url}
                 </p>
                 <div className="flex items-center gap-1">
-                  <Clock className="h-3 w-3 text-white/30" />
-                  <span className="text-xs text-white/30 font-mono">
+                  <Clock className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground font-mono">
                     {source.messages.length} msgs
                   </span>
                 </div>
@@ -1052,8 +1052,8 @@ function InteractiveConversionPipelineImpl() {
                 {/* LEFT: Chat Conversation Panel */}
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2 min-h-[200px]">
                   <div className="flex items-center gap-2 mb-2">
-                    <MessageSquare className="h-3 w-3 text-white/40" />
-                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                    <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Source Conversation
                     </span>
                     <div className="flex-1" />
@@ -1097,7 +1097,7 @@ function InteractiveConversionPipelineImpl() {
                         transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         className="pt-2 border-t border-white/[0.06]"
                       >
-                        <span className="text-xs text-white/30 uppercase tracking-wider font-semibold block mb-1.5">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold block mb-1.5">
                           Detected Formats
                         </span>
                         <div className="flex flex-wrap gap-1.5">
@@ -1128,8 +1128,8 @@ function InteractiveConversionPipelineImpl() {
                 {/* RIGHT: Markdown Output Panel */}
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-1.5 min-h-[200px]">
                   <div className="flex items-center gap-2 mb-2">
-                    <FileText className="h-3 w-3 text-white/40" />
-                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                    <FileText className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Markdown Output
                     </span>
                     <div className="flex-1" />
@@ -1160,7 +1160,7 @@ function InteractiveConversionPipelineImpl() {
 
                   {/* Center arrow when nothing to show yet */}
                   {visibleMdLines === 0 && stage !== "done" && (
-                    <div className="flex items-center justify-center h-24 text-white/10">
+                    <div className="flex items-center justify-center h-24 text-muted-foreground">
                       <motion.div
                         animate={inView ? { x: [0, 6, 0] } : { x: 0 }}
                         transition={
@@ -1189,7 +1189,7 @@ function InteractiveConversionPipelineImpl() {
                       exit={{ opacity: 0, scale: 0 }}
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     >
-                      <ArrowRight className="h-5 w-5 text-white/20" />
+                      <ArrowRight className="h-5 w-5 text-muted-foreground" />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1224,7 +1224,7 @@ function InteractiveConversionPipelineImpl() {
                           <FileText className="h-4 w-4 text-blue-400" />
                           <span className="text-xs font-semibold text-blue-400">Markdown</span>
                         </div>
-                        <p className="text-xs font-mono text-white/50 break-all">
+                        <p className="text-xs font-mono text-muted-foreground break-all">
                           {source.title.toLowerCase().replace(/\s+/g, "_")}.md
                         </p>
                         <div className="space-y-1 pt-1">
@@ -1258,7 +1258,7 @@ function InteractiveConversionPipelineImpl() {
                           <FileCode className="h-4 w-4 text-violet-400" />
                           <span className="text-xs font-semibold text-violet-400">HTML</span>
                         </div>
-                        <p className="text-xs font-mono text-white/50 break-all">
+                        <p className="text-xs font-mono text-muted-foreground break-all">
                           {source.title.toLowerCase().replace(/\s+/g, "_")}.html
                         </p>
                         <div className="space-y-1 pt-1">
@@ -1289,7 +1289,7 @@ function InteractiveConversionPipelineImpl() {
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-2 text-xs font-medium text-white/50 hover:text-white/70 transition-colors"
+              className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-2 text-xs font-medium text-muted-foreground hover:text-white/70 transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Try Another Source
@@ -1317,8 +1317,8 @@ function OutputMetric({
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-1.5">
-        <Icon className="h-3 w-3 text-white/30" />
-        <span className="text-xs text-white/40">{label}</span>
+        <Icon className="h-3 w-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
       <span className="text-xs font-mono text-white/60">{value}</span>
     </div>

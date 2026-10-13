@@ -861,7 +861,7 @@ function ContextFillGauge({ fill, animated }: { fill: number; animated: boolean 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/50 font-medium">Context Window</span>
+        <span className="text-xs text-muted-foreground font-medium">Context Window</span>
         <motion.span
           className={`text-xs font-mono font-bold ${getTextColor(fill)}`}
           key={animated ? fill : "idle"}
@@ -902,7 +902,7 @@ function TokenUsageBar({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
         <span className="text-xs font-mono text-white/60">{animated ? formatted : "--"}</span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -940,9 +940,9 @@ function StackTracePanel({ frames, animated }: { frames: StackFrame[]; animated:
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-white/80">{frame.layer}</span>
-              <span className="text-white/30 font-mono truncate">{frame.file}</span>
+              <span className="text-muted-foreground font-mono truncate">{frame.file}</span>
             </div>
-            <p className={`mt-0.5 text-xs ${frame.isError ? "text-red-300/80" : "text-white/50"}`}>
+            <p className={`mt-0.5 text-xs ${frame.isError ? "text-red-300/80" : "text-muted-foreground"}`}>
               {frame.description}
             </p>
           </div>
@@ -1022,7 +1022,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
             className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold shrink-0 ${
               fix.rank === 1
                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                : "bg-white/[0.06] text-white/50 border border-white/[0.08]"
+                : "bg-white/[0.06] text-muted-foreground border border-white/[0.08]"
             }`}
           >
             {fix.rank}
@@ -1036,7 +1036,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
                     ? "text-emerald-400"
                     : fix.confidence >= 80
                       ? "text-amber-400"
-                      : "text-white/40"
+                      : "text-muted-foreground"
                 }`}
               >
                 {animated ? `${fix.confidence}%` : "--%"}
@@ -1075,7 +1075,7 @@ function SessionLogPanel({ entries, animated }: { entries: LogEntry[]; animated:
           className="flex items-start gap-2 py-0.5"
         >
           <div className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${levelDots[entry.level]}`} />
-          <span className="text-xs text-white/30 shrink-0">{entry.time}</span>
+          <span className="text-xs text-muted-foreground shrink-0">{entry.time}</span>
           <span className={`text-xs ${levelColors[entry.level]}`}>{entry.message}</span>
         </motion.div>
       ))}
@@ -1242,7 +1242,7 @@ function InteractiveDebugDashboardImpl() {
             <Shield className="h-4 w-4 text-red-400" />
             <p className="text-sm font-semibold text-white/90">Agent Debug War Room</p>
           </div>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-muted-foreground">
             Step through 6 real debugging scenarios. Click &ldquo;Diagnose&rdquo; to analyze each
             one.
           </p>
@@ -1261,7 +1261,7 @@ function InteractiveDebugDashboardImpl() {
               className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors border ${
                 i === activeIdx
                   ? `${s.borderColor} ${s.bgColor} ${s.color}`
-                  : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60 hover:border-white/[0.12]"
+                  : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground hover:border-white/[0.12]"
               }`}
             >
               {s.icon}
@@ -1285,7 +1285,7 @@ function InteractiveDebugDashboardImpl() {
               <span className={scenario.color}>{scenario.icon}</span>
               <span className={`text-sm font-semibold ${scenario.color}`}>{scenario.title}</span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-white/40">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>
                 Scenario {activeIdx + 1}/{scenarios.length}
               </span>
@@ -1444,7 +1444,7 @@ function InteractiveDebugDashboardImpl() {
             transition={SPRING}
             className={`flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
               activeIdx === 0
-                ? "border-white/[0.04] text-white/20 cursor-not-allowed"
+                ? "border-white/[0.04] text-muted-foreground cursor-not-allowed"
                 : "border-white/[0.1] text-white/60 hover:bg-white/[0.04]"
             }`}
           >
@@ -1508,7 +1508,7 @@ function InteractiveDebugDashboardImpl() {
             transition={SPRING}
             className={`flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
               activeIdx === scenarios.length - 1
-                ? "border-white/[0.04] text-white/20 cursor-not-allowed"
+                ? "border-white/[0.04] text-muted-foreground cursor-not-allowed"
                 : "border-white/[0.1] text-white/60 hover:bg-white/[0.04]"
             }`}
           >

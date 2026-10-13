@@ -782,7 +782,7 @@ function getLangColor(lang: string): string {
     makefile: "text-gray-400 bg-gray-500/10",
     txt: "text-gray-400 bg-gray-500/10",
   };
-  return map[lang] ?? "text-white/40 bg-white/5";
+  return map[lang] ?? "text-muted-foreground bg-white/5";
 }
 
 // =============================================================================
@@ -954,7 +954,7 @@ function InteractiveSourceCombiner() {
         {/* ─── Project Type Stepper ─── */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 mb-2">
-            <Package className="h-4 w-4 text-white/40" />
+            <Package className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium text-white/60">Select Project Type</span>
           </div>
 
@@ -972,7 +972,7 @@ function InteractiveSourceCombiner() {
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-colors duration-200 ${
                     isActive
                       ? "bg-white/[0.08] border-white/[0.2] text-white"
-                      : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:text-white/60 hover:border-white/[0.1]"
+                      : "bg-white/[0.02] border-white/[0.06] text-muted-foreground hover:text-foreground hover:border-white/[0.1]"
                   }`}
                 >
                   <Icon className={`h-4 w-4 ${isActive ? pt.color : ""}`} />
@@ -990,7 +990,7 @@ function InteractiveSourceCombiner() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
-              className="text-xs text-white/40 font-mono pl-1"
+              className="text-xs text-muted-foreground font-mono pl-1"
             >
               {project.description} &mdash; context: {contextLabel}
             </motion.p>
@@ -1001,7 +1001,7 @@ function InteractiveSourceCombiner() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Hash className="h-4 w-4 text-white/40" />
+              <Hash className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium text-white/60">Token Budget</span>
             </div>
             <div className="flex items-center gap-2 font-mono text-sm">
@@ -1014,8 +1014,8 @@ function InteractiveSourceCombiner() {
               >
                 {totalTokens.toLocaleString()}
               </motion.span>
-              <span className="text-white/30">/</span>
-              <span className="text-white/40">{project.contextLimit.toLocaleString()}</span>
+              <span className="text-muted-foreground">/</span>
+              <span className="text-muted-foreground">{project.contextLimit.toLocaleString()}</span>
             </div>
           </div>
 
@@ -1052,7 +1052,7 @@ function InteractiveSourceCombiner() {
             )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-white/30 font-mono">
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
             <span>
               {selectedFiles.length} file{selectedFiles.length !== 1 ? "s" : ""} selected
             </span>
@@ -1072,7 +1072,7 @@ function InteractiveSourceCombiner() {
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono border transition-colors duration-200 ${
               filterActive
                 ? "bg-violet-500/15 border-violet-500/30 text-violet-300"
-                : "bg-white/[0.03] border-white/[0.08] text-white/40 hover:text-white/60"
+                : "bg-white/[0.03] border-white/[0.08] text-muted-foreground hover:text-foreground"
             }`}
           >
             <Filter className="h-3 w-3" />
@@ -1085,7 +1085,7 @@ function InteractiveSourceCombiner() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
-              className="text-xs text-white/30 font-mono"
+              className="text-xs text-muted-foreground font-mono"
             >
               {filteredOutCount} file{filteredOutCount !== 1 ? "s" : ""} filtered out
             </motion.span>
@@ -1098,7 +1098,7 @@ function InteractiveSourceCombiner() {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="px-3 py-1.5 rounded-lg text-xs font-mono border bg-white/[0.03] border-white/[0.08] text-white/40 hover:text-emerald-300 hover:border-emerald-500/30 transition-colors duration-200"
+            className="px-3 py-1.5 rounded-lg text-xs font-mono border bg-white/[0.03] border-white/[0.08] text-muted-foreground hover:text-emerald-300 hover:border-emerald-500/30 transition-colors duration-200"
           >
             Select All
           </motion.button>
@@ -1107,7 +1107,7 @@ function InteractiveSourceCombiner() {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="px-3 py-1.5 rounded-lg text-xs font-mono border bg-white/[0.03] border-white/[0.08] text-white/40 hover:text-red-300 hover:border-red-500/30 transition-colors duration-200"
+            className="px-3 py-1.5 rounded-lg text-xs font-mono border bg-white/[0.03] border-white/[0.08] text-muted-foreground hover:text-red-300 hover:border-red-500/30 transition-colors duration-200"
           >
             Clear
           </motion.button>
@@ -1119,7 +1119,7 @@ function InteractiveSourceCombiner() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-colors duration-200 ${
               showTerminal
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                : "bg-white/[0.03] border-white/[0.08] text-white/40 hover:text-white/60"
+                : "bg-white/[0.03] border-white/[0.08] text-muted-foreground hover:text-foreground"
             }`}
           >
             <Terminal className="h-3 w-3" />
@@ -1138,7 +1138,7 @@ function InteractiveSourceCombiner() {
               className="overflow-hidden"
             >
               <div className="rounded-xl border border-white/[0.08] bg-black/60 p-4 font-mono text-xs space-y-1.5">
-                <div className="flex items-center gap-2 text-white/30 mb-2">
+                <div className="flex items-center gap-2 text-muted-foreground mb-2">
                   <div className="flex gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
                     <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
@@ -1150,10 +1150,10 @@ function InteractiveSourceCombiner() {
                   <span className="text-emerald-400">$</span>{" "}
                   <span className="text-white/80">s2p .</span>
                 </div>
-                <div className="text-white/40">Scanning {sourceFiles.length} files...</div>
+                <div className="text-muted-foreground">Scanning {sourceFiles.length} files...</div>
                 {selectedFiles.length > 0 && (
                   <>
-                    <div className="text-white/40">
+                    <div className="text-muted-foreground">
                       Selected: {selectedFiles.map((f) => f.name).join(", ")}
                     </div>
                     <div className="text-emerald-400">
@@ -1172,7 +1172,7 @@ function InteractiveSourceCombiner() {
                   </>
                 )}
                 {selectedFiles.length === 0 && (
-                  <div className="text-white/30">Toggle files to see s2p output...</div>
+                  <div className="text-muted-foreground">Toggle files to see s2p output...</div>
                 )}
               </div>
             </motion.div>
@@ -1188,7 +1188,7 @@ function InteractiveSourceCombiner() {
                 <FolderOpen className="h-4 w-4 text-amber-400" />
                 <span className="text-sm font-medium text-white/70">Source Files</span>
               </div>
-              <span className="text-xs text-white/30 font-mono">
+              <span className="text-xs text-muted-foreground font-mono">
                 {visibleFiles.filter((f) => !f.isDir).length} files
               </span>
             </div>
@@ -1214,10 +1214,10 @@ function InteractiveSourceCombiner() {
                           animate={{ rotate: isExpanded ? 0 : -90 }}
                           transition={{ type: "spring", stiffness: 200, damping: 25 }}
                         >
-                          <ChevronDown className="h-3 w-3 text-white/30" />
+                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
                         </motion.div>
                         <Folder className="h-3.5 w-3.5 text-amber-400/70" />
-                        <span className="text-xs font-mono text-white/50">{file.name}</span>
+                        <span className="text-xs font-mono text-muted-foreground">{file.name}</span>
                       </motion.button>
                     );
                   }
@@ -1275,12 +1275,12 @@ function InteractiveSourceCombiner() {
                         {isSelected ? (
                           <CheckSquare className="h-3.5 w-3.5 text-emerald-400" />
                         ) : (
-                          <Square className="h-3.5 w-3.5 text-white/25" />
+                          <Square className="h-3.5 w-3.5 text-muted-foreground" />
                         )}
                       </motion.div>
 
                       {/* File icon */}
-                      <File className="h-3.5 w-3.5 text-white/30 shrink-0" />
+                      <File className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
 
                       {/* File info */}
                       <div className="flex-1 min-w-0 flex items-center gap-2">
@@ -1320,7 +1320,7 @@ function InteractiveSourceCombiner() {
                             }}
                           />
                         </div>
-                        <span className="text-xs text-white/30 font-mono w-10 text-right">
+                        <span className="text-xs text-muted-foreground font-mono w-10 text-right">
                           {file.tokens.toLocaleString()}t
                         </span>
                       </div>
@@ -1378,7 +1378,7 @@ function InteractiveSourceCombiner() {
             {/* Size comparison bars */}
             {selectedFiles.length > 0 && (
               <div className="px-4 py-3 border-b border-white/[0.06] space-y-1.5">
-                <div className="text-xs font-mono text-white/30 uppercase tracking-wider mb-2">
+                <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">
                   Token Breakdown
                 </div>
                 {selectedFiles.map((f) => {
@@ -1395,7 +1395,7 @@ function InteractiveSourceCombiner() {
                       }}
                       className="flex items-center gap-2"
                     >
-                      <span className="text-xs font-mono text-white/40 w-28 truncate shrink-0">
+                      <span className="text-xs font-mono text-muted-foreground w-28 truncate shrink-0">
                         {f.name}
                       </span>
                       <div className="flex-1 h-2 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1410,7 +1410,7 @@ function InteractiveSourceCombiner() {
                           }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-white/30 w-12 text-right shrink-0">
+                      <span className="text-xs font-mono text-muted-foreground w-12 text-right shrink-0">
                         {f.tokens.toLocaleString()}
                       </span>
                     </motion.div>
@@ -1454,11 +1454,11 @@ function InteractiveSourceCombiner() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                    className="flex flex-col items-center justify-center h-full min-h-[220px] text-white/20"
+                    className="flex flex-col items-center justify-center h-full min-h-[220px] text-muted-foreground"
                   >
                     <FileCode className="h-10 w-10 mb-3" />
                     <p className="text-sm">Select files to preview prompt</p>
-                    <p className="text-xs mt-1 text-white/50">
+                    <p className="text-xs mt-1 text-muted-foreground">
                       Toggle files in the tree or use Select All
                     </p>
                   </motion.div>

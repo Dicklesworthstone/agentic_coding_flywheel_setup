@@ -577,7 +577,7 @@ function ScoreBar({
   const pct = Math.round(value * 100);
   return (
     <div className="flex items-center gap-2">
-      <span className="w-10 text-xs font-mono text-white/40 text-right">{label}</span>
+      <span className="w-10 text-xs font-mono text-muted-foreground text-right">{label}</span>
       <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
@@ -586,7 +586,7 @@ function ScoreBar({
           className={`h-full rounded-full ${color}`}
         />
       </div>
-      <span className="w-9 text-xs font-mono text-white/50 text-right">{pct}%</span>
+      <span className="w-9 text-xs font-mono text-muted-foreground text-right">{pct}%</span>
     </div>
   );
 }
@@ -620,7 +620,7 @@ function ScenarioStepper({
         whileHover={disabled ? {} : { scale: 1.1 }}
         whileTap={disabled ? {} : { scale: 0.9 }}
         transition={SPRING}
-        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70 disabled:opacity-30 transition-colors"
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 disabled:opacity-30 transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />
       </motion.button>
@@ -663,12 +663,12 @@ function ScenarioStepper({
         whileHover={disabled ? {} : { scale: 1.1 }}
         whileTap={disabled ? {} : { scale: 0.9 }}
         transition={SPRING}
-        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70 disabled:opacity-30 transition-colors"
+        className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 disabled:opacity-30 transition-colors"
       >
         <ChevronRight className="h-4 w-4" />
       </motion.button>
 
-      <span className="ml-2 text-xs font-mono text-white/30">
+      <span className="ml-2 text-xs font-mono text-muted-foreground">
         {activeIndex + 1}/{scenarios.length}
       </span>
     </div>
@@ -706,14 +706,14 @@ function PipelineProgress({ stage }: { stage: PipelineStage }) {
             >
               <span
                 className={
-                  isComplete ? "text-purple-300" : isActive ? "text-purple-400" : "text-white/30"
+                  isComplete ? "text-purple-300" : isActive ? "text-purple-400" : "text-muted-foreground"
                 }
               >
                 {isComplete ? <CheckCircle className="h-3 w-3" /> : s.icon}
               </span>
               <span
                 className={`text-xs font-medium ${
-                  isComplete ? "text-purple-300" : isActive ? "text-purple-400" : "text-white/30"
+                  isComplete ? "text-purple-300" : isActive ? "text-purple-400" : "text-muted-foreground"
                 }`}
               >
                 {s.label}
@@ -758,7 +758,7 @@ function ResultCard({
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-3 w-3 text-white/30 flex-shrink-0" />
+          <FileText className="h-3 w-3 text-muted-foreground flex-shrink-0" />
           <span className="text-xs font-semibold text-white truncate">{result.title}</span>
         </div>
         <span className="flex-shrink-0 text-xs font-mono text-amber-300/70">
@@ -766,10 +766,10 @@ function ResultCard({
         </span>
       </div>
 
-      <p className="text-xs font-mono text-white/30 truncate">{result.file}</p>
+      <p className="text-xs font-mono text-muted-foreground truncate">{result.file}</p>
 
       {/* Snippet with keyword highlights */}
-      <p className="text-xs text-white/50 leading-relaxed">
+      <p className="text-xs text-muted-foreground leading-relaxed">
         {result.keywordMatches.length > 0
           ? highlightSnippet(result.snippet, result.keywordMatches)
           : result.snippet}
@@ -888,7 +888,7 @@ function RelevanceGauge({
         </div>
       </div>
       <div className="text-center space-y-1">
-        <p className="text-xs font-medium text-white/50">Hybrid Relevance</p>
+        <p className="text-xs font-medium text-muted-foreground">Hybrid Relevance</p>
         {improvement > 0 && (
           <motion.p
             initial={{ opacity: 0, y: 4 }}
@@ -919,7 +919,7 @@ function MiniTerminal({ command, isRunning }: { command: string; isRunning: bool
           <div className="h-2 w-2 rounded-full bg-yellow-500/40" />
           <div className="h-2 w-2 rounded-full bg-green-500/40" />
         </div>
-        <span className="text-xs font-mono text-white/30">terminal</span>
+        <span className="text-xs font-mono text-muted-foreground">terminal</span>
       </div>
       <div className="px-3 py-2.5 font-mono text-xs">
         <div className="flex items-center gap-2">
@@ -1084,7 +1084,7 @@ function InteractiveHybridSearch() {
           </div>
           <div>
             <h3 className="text-sm font-bold text-white">Hybrid Search Laboratory</h3>
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-muted-foreground">
               Compare BM25 vs semantic vs hybrid fusion across 6 scenarios
             </p>
           </div>
@@ -1098,7 +1098,7 @@ function InteractiveHybridSearch() {
             transition={SPRING_SNAPPY}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/60 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             <RotateCcw className="h-3 w-3" />
             Reset
@@ -1132,7 +1132,7 @@ function InteractiveHybridSearch() {
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                 active
                   ? "border-purple-500/40 bg-gradient-to-r from-purple-500/15 to-cyan-500/15 text-white"
-                  : "border-white/[0.08] bg-white/[0.02] text-white/40 hover:border-white/[0.15] hover:text-white/60 disabled:opacity-40"
+                  : "border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:border-white/[0.15] hover:text-foreground disabled:opacity-40"
               }`}
             >
               {s.icon}
@@ -1152,7 +1152,7 @@ function InteractiveHybridSearch() {
           transition={SPRING}
           className="text-center"
         >
-          <p className="text-xs text-white/40 max-w-lg mx-auto">{scenario.description}</p>
+          <p className="text-xs text-muted-foreground max-w-lg mx-auto">{scenario.description}</p>
         </motion.div>
       </AnimatePresence>
 
@@ -1201,7 +1201,7 @@ function InteractiveHybridSearch() {
                   transition={SPRING}
                   className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
                 >
-                  <p className="text-xs font-medium text-white/40 mb-2">Query Tokens</p>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Query Tokens</p>
                   <div className="flex flex-wrap gap-2">
                     {scenario.tokens.map((tok, i) => (
                       <motion.span
@@ -1212,7 +1212,7 @@ function InteractiveHybridSearch() {
                         className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-mono ${
                           tok.isHighlighted
                             ? "border-purple-500/30 bg-purple-500/10 text-purple-300"
-                            : "border-white/[0.08] bg-white/[0.02] text-white/50"
+                            : "border-white/[0.08] bg-white/[0.02] text-muted-foreground"
                         }`}
                       >
                         <Hash className="h-2.5 w-2.5" />
@@ -1223,7 +1223,7 @@ function InteractiveHybridSearch() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ ...SPRING, delay: 0.3 }}
-                      className="flex items-center text-xs text-white/20"
+                      className="flex items-center text-xs text-muted-foreground"
                     >
                       <ArrowRight className="h-3 w-3 mx-1" />
                       BM25 + Vector
@@ -1286,7 +1286,7 @@ function InteractiveHybridSearch() {
                         ))}
                       </AnimatePresence>
                       {visibleResults.length === 0 && isRunning && (
-                        <div className="flex items-center justify-center py-6 text-white/20 text-xs">
+                        <div className="flex items-center justify-center py-6 text-muted-foreground text-xs">
                           <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           Scanning...
                         </div>
@@ -1337,7 +1337,7 @@ function InteractiveHybridSearch() {
                         ))}
                       </AnimatePresence>
                       {visibleResults.length === 0 && isRunning && (
-                        <div className="flex items-center justify-center py-6 text-white/20 text-xs">
+                        <div className="flex items-center justify-center py-6 text-muted-foreground text-xs">
                           <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           Embedding...
                         </div>
@@ -1388,7 +1388,7 @@ function InteractiveHybridSearch() {
                         ))}
                       </AnimatePresence>
                       {visibleResults.length === 0 && isRunning && (
-                        <div className="flex items-center justify-center py-6 text-white/20 text-xs">
+                        <div className="flex items-center justify-center py-6 text-muted-foreground text-xs">
                           <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           Fusing...
                         </div>
@@ -1410,7 +1410,7 @@ function InteractiveHybridSearch() {
                   className="space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-white/40">
+                    <p className="text-xs font-medium text-muted-foreground">
                       Ranked Results ({visibleResults.length})
                     </p>
                     {stage === "done" && (
@@ -1422,7 +1422,7 @@ function InteractiveHybridSearch() {
                         transition={SPRING}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 text-xs font-medium text-white/40 hover:text-white/60 transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Gauge className="h-3 w-3" />
                         {showScores ? "Hide Scores" : "Show Scores"}
@@ -1465,7 +1465,7 @@ function InteractiveHybridSearch() {
                       <Sparkles className="h-3.5 w-3.5 text-amber-400" />
                       <span className="text-xs font-semibold text-white">Insight</span>
                     </div>
-                    <p className="text-xs text-white/50 leading-relaxed">{scenario.insight}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{scenario.insight}</p>
 
                     {/* Timing summary */}
                     <div className="flex flex-wrap gap-3 pt-2 border-t border-white/[0.05]">
@@ -1505,7 +1505,7 @@ function InteractiveHybridSearch() {
 
       {/* Idle state */}
       {stage === "idle" && (
-        <div className="text-center py-4 text-white/20 text-xs space-y-2">
+        <div className="text-center py-4 text-muted-foreground text-xs space-y-2">
           <Search className="h-6 w-6 mx-auto opacity-30" />
           <p>Select a scenario and click Run to see the hybrid pipeline in action</p>
         </div>

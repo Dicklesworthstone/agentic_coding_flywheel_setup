@@ -581,7 +581,7 @@ function PipelineStep({
             ? "text-white/60 line-through decoration-white/20"
             : isActive
               ? "text-white/90"
-              : "text-white/30"
+              : "text-muted-foreground"
         }
       >
         {step}
@@ -607,7 +607,7 @@ function ConnectionBadge({
         }`}
       />
       <span
-        className={`text-xs font-mono ${isConnected ? provider.textColor : "text-white/30"}`}
+        className={`text-xs font-mono ${isConnected ? provider.textColor : "text-muted-foreground"}`}
       >
         {isConnected ? "connected" : "standby"}
       </span>
@@ -832,7 +832,7 @@ function InteractiveCloudDownload() {
           </div>
           <div>
             <h3 className="text-sm font-bold text-white">Cloud Image Download Pipeline</h3>
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-muted-foreground">
               Select a provider to simulate the full download pipeline
             </p>
           </div>
@@ -847,7 +847,7 @@ function InteractiveCloudDownload() {
             {phase === "done" ? (
               <CheckCircle className="h-3 w-3 text-emerald-400" />
             ) : (
-              <Loader2 className="h-3 w-3 animate-spin text-white/50" />
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
             )}
             <span className="text-xs font-mono text-white/60 uppercase tracking-wider">
               {PHASE_LABELS[phase]}
@@ -927,7 +927,7 @@ function InteractiveCloudDownload() {
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-400/60" />
                   )}
                 </div>
-                <p className="text-xs text-white/30 truncate font-mono">
+                <p className="text-xs text-muted-foreground truncate font-mono">
                   {provider.urlPattern}
                 </p>
                 <div className="mt-1.5">
@@ -968,16 +968,16 @@ function InteractiveCloudDownload() {
                     <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
                   </div>
-                  <span className="text-xs text-white/30 ml-2 font-mono">
+                  <span className="text-xs text-muted-foreground ml-2 font-mono">
                     giil -- cloud image downloader
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Wifi
-                    className={`h-3 w-3 ${phaseIndex >= 3 ? "text-emerald-400" : "text-white/20"}`}
+                    className={`h-3 w-3 ${phaseIndex >= 3 ? "text-emerald-400" : "text-muted-foreground"}`}
                   />
                   <Shield
-                    className={`h-3 w-3 ${phaseIndex >= 4 ? "text-emerald-400" : "text-white/20"}`}
+                    className={`h-3 w-3 ${phaseIndex >= 4 ? "text-emerald-400" : "text-muted-foreground"}`}
                   />
                 </div>
               </div>
@@ -1030,8 +1030,8 @@ function InteractiveCloudDownload() {
                         transition={{ delay: 0.3 }}
                         className="flex items-center gap-2"
                       >
-                        <ArrowRight className="h-3 w-3 text-white/30" />
-                        <span className="text-white/50">Pattern match:</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Pattern match:</span>
                         <span className={activeProvider.textColor}>
                           {activeProvider.urlPattern}
                         </span>
@@ -1085,7 +1085,7 @@ function InteractiveCloudDownload() {
                       animate={{ opacity: 1 }}
                       className="space-y-2 pl-4"
                     >
-                      <div className="flex items-center gap-2 text-white/50">
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         <Unlock className="h-3 w-3 text-emerald-400" />
                         <span>Access granted - downloading {activeProvider.file.name}</span>
                       </div>
@@ -1112,18 +1112,18 @@ function InteractiveCloudDownload() {
                       {/* Download stats */}
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-3">
-                          <span className="text-white/50">
+                          <span className="text-muted-foreground">
                             {formatBytes(activeProvider.file.sizeBytes, progress)} /{" "}
                             {activeProvider.file.size}
                           </span>
-                          <span className="text-white/30">|</span>
+                          <span className="text-muted-foreground">|</span>
                           <span className={activeProvider.textColor}>
                             {Math.min(progress, 100)}%
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Zap className="h-2.5 w-2.5 text-amber-400/60" />
-                          <span className="text-white/40">
+                          <span className="text-muted-foreground">
                             {phase === "downloading"
                               ? formatSpeed(activeProvider.file.sizeBytes, progress)
                               : activeProvider.file.size}
@@ -1151,7 +1151,7 @@ function InteractiveCloudDownload() {
                             : `Saved to ./${activeProvider.file.name}`}
                         </span>
                       </div>
-                      <div className="text-white/30 text-xs pl-5">
+                      <div className="text-muted-foreground text-xs pl-5">
                         {activeProvider.file.format} | {activeProvider.file.dimensions} |{" "}
                         {activeProvider.file.size} | {activeProvider.file.colorDepth}
                       </div>
@@ -1181,10 +1181,10 @@ function InteractiveCloudDownload() {
                       <div className="flex items-center gap-2 text-xs">
                         <Shield className={`h-3.5 w-3.5 ${activeProvider.textColor}`} />
                         <span className="text-white/70 font-medium">Protocol Analysis</span>
-                        <span className="text-white/30 font-mono">({activeProvider.protocol})</span>
+                        <span className="text-muted-foreground font-mono">({activeProvider.protocol})</span>
                       </div>
                       <motion.div animate={{ rotate: showProtocol ? 90 : 0 }} transition={SPRING}>
-                        <ArrowRight className="h-3 w-3 text-white/30" />
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
                       </motion.div>
                     </button>
 
@@ -1224,16 +1224,16 @@ function InteractiveCloudDownload() {
                                       className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${
                                         phase === "done"
                                           ? `bg-gradient-to-br ${activeProvider.gradient} text-white`
-                                          : "bg-white/[0.06] text-white/30"
+                                          : "bg-white/[0.06] text-muted-foreground"
                                       }`}
                                     >
                                       {i + 1}
                                     </div>
-                                    <span className="text-xs text-white/50 font-mono">
+                                    <span className="text-xs text-muted-foreground font-mono">
                                       {step}
                                     </span>
                                     {i < activeProvider.pipelineSteps.length - 1 && (
-                                      <ArrowRight className="h-2 w-2 text-white/15 flex-shrink-0 ml-auto" />
+                                      <ArrowRight className="h-2 w-2 text-muted-foreground flex-shrink-0 ml-auto" />
                                     )}
                                   </div>
                                 ))}
@@ -1303,7 +1303,7 @@ function InteractiveCloudDownload() {
                           </div>
                           <div className="absolute top-14 left-[38%] right-3 bottom-3 rounded-md bg-white/[0.04] flex items-center justify-center">
                             <div className="text-center">
-                              <ImageIcon className="h-10 w-10 text-white/15 mx-auto" />
+                              <ImageIcon className="h-10 w-10 text-muted-foreground mx-auto" />
                               <div className="mt-2 h-1.5 w-20 rounded bg-white/10 mx-auto" />
                             </div>
                           </div>
@@ -1326,7 +1326,7 @@ function InteractiveCloudDownload() {
                         >
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-muted-foreground mb-0.5 uppercase tracking-wider">
                                 File
                               </p>
                               <p className="text-xs font-mono text-white/80 truncate">
@@ -1334,7 +1334,7 @@ function InteractiveCloudDownload() {
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-muted-foreground mb-0.5 uppercase tracking-wider">
                                 Size
                               </p>
                               <p className="text-xs font-mono text-white/80">
@@ -1342,7 +1342,7 @@ function InteractiveCloudDownload() {
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-muted-foreground mb-0.5 uppercase tracking-wider">
                                 Dimensions
                               </p>
                               <p className="text-xs font-mono text-white/80">
@@ -1350,7 +1350,7 @@ function InteractiveCloudDownload() {
                               </p>
                             </div>
                             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                              <p className="text-xs text-white/30 mb-0.5 uppercase tracking-wider">
+                              <p className="text-xs text-muted-foreground mb-0.5 uppercase tracking-wider">
                                 Format
                               </p>
                               <p className="text-xs font-mono text-white/80">
@@ -1363,12 +1363,12 @@ function InteractiveCloudDownload() {
                           <div className="rounded-lg border border-white/[0.06] bg-black/30 p-3">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-1.5">
-                                <Terminal className="h-3 w-3 text-white/40" />
-                                <span className="text-xs text-white/40 uppercase tracking-wider font-mono">
+                                <Terminal className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground uppercase tracking-wider font-mono">
                                   Command Used
                                 </span>
                               </div>
-                              <Copy className="h-3 w-3 text-white/20" />
+                              <Copy className="h-3 w-3 text-muted-foreground" />
                             </div>
                             <code className={`text-xs ${activeProvider.textColor} break-all`}>
                               giil &quot;{activeProvider.url}&quot;
@@ -1391,7 +1391,7 @@ function InteractiveCloudDownload() {
                 transition={SPRING}
                 className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
               >
-                <div className="flex items-center gap-2 mb-3 text-xs text-white/50">
+                <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
                   <Layers className="h-3.5 w-3.5" />
                   <span>Downloaded Images ({completedDownloads.length})</span>
                 </div>
@@ -1411,7 +1411,7 @@ function InteractiveCloudDownload() {
                       >
                         <div className={`absolute inset-0 bg-gradient-to-br ${p.imageGradient}`} />
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <ImageIcon className="h-4 w-4 text-white/25" />
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <div className="absolute bottom-0 inset-x-0 bg-black/40 px-1.5 py-0.5">
                           <p className="text-xs text-white/60 truncate font-mono">
@@ -1434,7 +1434,7 @@ function InteractiveCloudDownload() {
             exit={{ opacity: 0 }}
             className="text-center py-10 space-y-3"
           >
-            <div className="flex items-center justify-center gap-4 text-white/20">
+            <div className="flex items-center justify-center gap-4 text-muted-foreground">
               <Link className="h-5 w-5" />
               <ArrowRight className="h-4 w-4" />
               <Cloud className="h-6 w-6" />
@@ -1443,10 +1443,10 @@ function InteractiveCloudDownload() {
               <ArrowRight className="h-4 w-4" />
               <ImageIcon className="h-5 w-5" />
             </div>
-            <p className="text-white/30 text-sm">
+            <p className="text-muted-foreground text-sm">
               Select a cloud provider to see the full download pipeline
             </p>
-            <p className="text-white/20 text-xs">
+            <p className="text-muted-foreground text-xs">
               URL paste &rarr; provider detection &rarr; API negotiation &rarr; download &rarr;
               preview
             </p>

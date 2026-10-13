@@ -437,7 +437,7 @@ function CompressionGauge({ percentage, isActive }: { percentage: number; isActi
               className="text-center"
             >
               <span className="text-2xl font-bold font-mono text-emerald-400">{percentage}%</span>
-              <p className="text-xs text-white/40 uppercase tracking-wider mt-0.5">reduced</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">reduced</p>
             </motion.div>
           ) : (
             <motion.div
@@ -447,8 +447,8 @@ function CompressionGauge({ percentage, isActive }: { percentage: number; isActi
               exit={{ opacity: 0 }}
               className="text-center"
             >
-              <Gauge className="h-6 w-6 text-white/20 mx-auto" />
-              <p className="text-xs text-white/30 mt-1">Ratio</p>
+              <Gauge className="h-6 w-6 text-muted-foreground mx-auto" />
+              <p className="text-xs text-muted-foreground mt-1">Ratio</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -476,7 +476,7 @@ function ContextWindowBar({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-white/50 uppercase tracking-wider font-semibold">
+        <span className="text-muted-foreground uppercase tracking-wider font-semibold">
           128k Context Window
         </span>
         <AnimatePresence mode="wait">
@@ -522,7 +522,7 @@ function ContextWindowBar({
           ))}
         </div>
       </div>
-      <div className="flex justify-between text-xs text-white/30 font-mono">
+      <div className="flex justify-between text-xs text-muted-foreground font-mono">
         <span>0</span>
         <span>32k</span>
         <span>64k</span>
@@ -586,7 +586,7 @@ function ParticleBurst({ isActive }: { isActive: boolean }) {
 type CompressionPhase = "idle" | "scanning" | "tokenizing" | "compressing" | "optimizing" | "done";
 
 const PHASE_CONFIG: Record<CompressionPhase, { label: string; color: string }> = {
-  idle: { label: "Ready", color: "text-white/40" },
+  idle: { label: "Ready", color: "text-muted-foreground" },
   scanning: { label: "Parsing JSON...", color: "text-blue-400" },
   tokenizing: { label: "Detecting uniform arrays...", color: "text-cyan-400" },
   compressing: { label: "Dropping quotes and braces...", color: "text-violet-400" },
@@ -779,7 +779,7 @@ function InteractiveTokenCompressorImpl() {
               JSON to TOON Laboratory
             </span>
           </div>
-          <p className="text-xs text-white/40 max-w-md mx-auto">
+          <p className="text-xs text-muted-foreground max-w-md mx-auto">
             Pick a JSON payload, encode it, and watch the token estimate drop. Outputs and counts are
             real <code>toon --stats</code> results.
           </p>
@@ -794,7 +794,7 @@ function InteractiveTokenCompressorImpl() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="flex items-center justify-center w-8 h-8 rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/80 transition-colors"
+            className="flex items-center justify-center w-8 h-8 rounded-xl border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/80 transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </motion.button>
@@ -812,7 +812,7 @@ function InteractiveTokenCompressorImpl() {
                 className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                   selectedSample === i
                     ? `border-white/[0.15] bg-white/[0.06] ${s.color}`
-                    : "border-white/[0.06] bg-white/[0.01] text-white/40 hover:text-white/60"
+                    : "border-white/[0.06] bg-white/[0.01] text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {s.icon}
@@ -832,7 +832,7 @@ function InteractiveTokenCompressorImpl() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="flex items-center justify-center w-8 h-8 rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/80 transition-colors"
+            className="flex items-center justify-center w-8 h-8 rounded-xl border border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/80 transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </motion.button>
@@ -845,7 +845,7 @@ function InteractiveTokenCompressorImpl() {
               className={`w-2 h-2 rounded-full ${isCompressed ? "bg-emerald-400" : isRunning ? "bg-blue-400 animate-pulse" : "bg-white/20"}`}
             />
             <span className="text-xs text-white/60 font-medium">{sample.label}</span>
-            <span className="text-xs text-white/30 font-mono">{sample.lang}</span>
+            <span className="text-xs text-muted-foreground font-mono">{sample.lang}</span>
           </div>
           <PhaseIndicator phase={phase} active={inView} />
         </div>
@@ -861,15 +861,15 @@ function InteractiveTokenCompressorImpl() {
                   <div className="w-2 h-2 rounded-full bg-yellow-400/50" />
                   <div className="w-2 h-2 rounded-full bg-green-400/50" />
                 </div>
-                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   JSON Input
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-white/40">
+                <span className="text-xs font-mono text-muted-foreground">
                   {sample.originalTokens.toLocaleString()} tokens
                 </span>
-                <FileCode className="h-3 w-3 text-white/20" />
+                <FileCode className="h-3 w-3 text-muted-foreground" />
               </div>
             </div>
             <HighlightedCode code={sample.original} phase={phase} />
@@ -884,7 +884,7 @@ function InteractiveTokenCompressorImpl() {
                   <div className="w-2 h-2 rounded-full bg-yellow-400/50" />
                   <div className="w-2 h-2 rounded-full bg-green-400/50" />
                 </div>
-                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   TOON Output
                 </span>
               </div>
@@ -943,7 +943,7 @@ function InteractiveTokenCompressorImpl() {
                     </div>
                     {/* Live token counter */}
                     <div className="text-center">
-                      <p className="text-xs text-white/40 uppercase tracking-wider mb-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                         Token Count
                       </p>
                       <AnimatedCounter
@@ -992,9 +992,9 @@ function InteractiveTokenCompressorImpl() {
                     className="absolute inset-0 flex flex-col items-center justify-center gap-3"
                   >
                     <div className="w-16 h-16 rounded-2xl border border-dashed border-white/[0.1] flex items-center justify-center">
-                      <Minimize2 className="h-6 w-6 text-white/15" />
+                      <Minimize2 className="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <span className="text-xs text-white/25">
+                    <span className="text-xs text-muted-foreground">
                       Click &ldquo;Encode&rdquo; to see the result
                     </span>
                   </motion.div>
@@ -1022,7 +1022,7 @@ function InteractiveTokenCompressorImpl() {
                     <div className="flex items-center gap-4">
                       {/* Before */}
                       <div className="text-center">
-                        <p className="text-xs text-white/40 uppercase tracking-wider mb-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                           Before
                         </p>
                         <motion.div
@@ -1034,7 +1034,7 @@ function InteractiveTokenCompressorImpl() {
                             {sample.originalTokens.toLocaleString()}
                           </span>
                         </motion.div>
-                        <p className="text-xs text-white/30">tokens</p>
+                        <p className="text-xs text-muted-foreground">tokens</p>
                       </div>
 
                       {/* Arrow */}
@@ -1050,7 +1050,7 @@ function InteractiveTokenCompressorImpl() {
 
                       {/* After */}
                       <div className="text-center">
-                        <p className="text-xs text-white/40 uppercase tracking-wider mb-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                           After
                         </p>
                         <motion.div
@@ -1090,7 +1090,7 @@ function InteractiveTokenCompressorImpl() {
                     <div className="flex items-end gap-3 h-32">
                       {/* Before bar */}
                       <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-xs font-mono text-white/40">
+                        <span className="text-xs font-mono text-muted-foreground">
                           {sample.originalTokens}
                         </span>
                         <motion.div
@@ -1099,7 +1099,7 @@ function InteractiveTokenCompressorImpl() {
                           transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.1 }}
                           className="w-10 rounded-t-lg bg-gradient-to-t from-white/[0.08] to-white/[0.15]"
                         />
-                        <span className="text-xs text-white/40 font-medium">Before</span>
+                        <span className="text-xs text-muted-foreground font-medium">Before</span>
                       </div>
                       {/* After bar */}
                       <div className="flex flex-col items-center gap-1.5">
@@ -1130,7 +1130,7 @@ function InteractiveTokenCompressorImpl() {
 
               {/* Compression breakdown */}
               <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-3">
-                <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Where The Savings Come From
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1176,7 +1176,7 @@ function InteractiveTokenCompressorImpl() {
             disabled={isRunning}
             className={`flex items-center gap-2 rounded-2xl border px-6 py-2.5 text-sm font-medium transition-colors ${
               isRunning
-                ? "border-white/[0.06] bg-white/[0.02] text-white/30 cursor-wait"
+                ? "border-white/[0.06] bg-white/[0.02] text-muted-foreground cursor-wait"
                 : "border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
             }`}
           >
@@ -1211,7 +1211,7 @@ function InteractiveTokenCompressorImpl() {
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
-                className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-white/50 hover:text-white/70 transition-colors"
+                className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-2.5 text-sm font-medium text-muted-foreground hover:text-white/70 transition-colors"
               >
                 <RotateCcw className="h-4 w-4" />
                 Reset

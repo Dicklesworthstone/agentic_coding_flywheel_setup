@@ -560,7 +560,7 @@ function formatNumber(n: number): string {
 function getSentimentColor(s: string): string {
   if (s === "positive") return "text-emerald-400";
   if (s === "negative") return "text-rose-400";
-  return "text-white/40";
+  return "text-muted-foreground";
 }
 
 function getSentimentBg(s: string): string {
@@ -701,7 +701,7 @@ function InteractiveArchiveSearch() {
               <div className="text-sm font-semibold text-white/90">
                 X/Twitter Archive Mining Lab
               </div>
-              <div className="text-xs text-white/40">23,847 documents indexed</div>
+              <div className="text-xs text-muted-foreground">23,847 documents indexed</div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-400/70">
@@ -719,18 +719,18 @@ function InteractiveArchiveSearch() {
               className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition text-left ${
                 activeScenario === sc.id
                   ? "bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/5"
-                  : "bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.15] hover:bg-white/[0.04]"
+                  : "bg-white/[0.02] text-muted-foreground border border-white/[0.08] hover:text-foreground hover:border-white/[0.15] hover:bg-white/[0.04]"
               }`}
             >
               <span
-                className={`shrink-0 ${activeScenario === sc.id ? "text-primary" : "text-white/30 group-hover:text-white/50"}`}
+                className={`shrink-0 ${activeScenario === sc.id ? "text-primary" : "text-muted-foreground group-hover:text-muted-foreground"}`}
               >
                 {sc.icon}
               </span>
               <div className="min-w-0">
                 <div className="truncate">{sc.label}</div>
                 <div
-                  className={`text-xs truncate ${activeScenario === sc.id ? "text-primary/60" : "text-white/20"}`}
+                  className={`text-xs truncate ${activeScenario === sc.id ? "text-primary/60" : "text-muted-foreground"}`}
                 >
                   {sc.description}
                 </div>
@@ -747,11 +747,11 @@ function InteractiveArchiveSearch() {
               <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
               <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
             </div>
-            <span className="ml-2 text-xs text-white/30 font-mono">xf archive search</span>
+            <span className="ml-2 text-xs text-muted-foreground font-mono">xf archive search</span>
           </div>
           <div className="p-4 font-mono text-xs space-y-0.5 max-h-40 overflow-y-auto">
             {terminalLines.length === 0 ? (
-              <div className="flex items-center gap-2 text-white/30">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <span className="text-emerald-400">$</span>
                 <span>Select a scenario above to start mining...</span>
                 <motion.span
@@ -781,7 +781,7 @@ function InteractiveArchiveSearch() {
                         ? "text-white/70"
                         : line.includes("Found")
                           ? "text-emerald-400/80"
-                          : "text-white/40"
+                          : "text-muted-foreground"
                     }
                   >
                     {i === 0 && <span className="text-emerald-400 mr-2">$</span>}
@@ -827,7 +827,7 @@ function InteractiveArchiveSearch() {
                           ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
                           : i === pipelineStep
                             ? "bg-sky-500/15 border-sky-500/30 text-sky-400"
-                            : "bg-white/[0.02] border-white/[0.06] text-white/30"
+                            : "bg-white/[0.02] border-white/[0.06] text-muted-foreground"
                       }`}
                     >
                       {i < pipelineStep ? (
@@ -850,7 +850,7 @@ function InteractiveArchiveSearch() {
                     </motion.div>
                     {i < scenario.pipelineSteps.length - 1 && (
                       <ArrowRight
-                        className={`h-3 w-3 shrink-0 ${i < pipelineStep ? "text-emerald-400/50" : "text-white/15"}`}
+                        className={`h-3 w-3 shrink-0 ${i < pipelineStep ? "text-emerald-400/50" : "text-muted-foreground"}`}
                       />
                     )}
                   </div>
@@ -866,13 +866,13 @@ function InteractiveArchiveSearch() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className="flex flex-col items-center justify-center py-12 gap-3 text-white/25"
+            className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground"
           >
             <Search className="h-12 w-12" />
             <span className="text-sm font-medium">
               Choose a mining scenario to explore your archive
             </span>
-            <span className="text-xs text-white/50">
+            <span className="text-xs text-muted-foreground">
               6 scenarios available: search, DMs, Grok, likes, threads, sentiment
             </span>
           </motion.div>
@@ -937,11 +937,11 @@ function InteractiveArchiveSearch() {
                   }}
                   className="flex items-center gap-2 flex-wrap"
                 >
-                  <Hash className="h-3 w-3 text-white/30 shrink-0" />
+                  <Hash className="h-3 w-3 text-muted-foreground shrink-0" />
                   {scenario.indexStats.topHashtags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-xs font-mono px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/40"
+                      className="text-xs font-mono px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-muted-foreground"
                     >
                       {tag}
                     </span>
@@ -1011,7 +1011,7 @@ function InteractiveArchiveSearch() {
                   </div>
                   <div className="flex items-center justify-between mt-1.5 text-xs font-mono">
                     <span className="text-emerald-400">Positive {sentimentCounts.positive}</span>
-                    <span className="text-white/40">Neutral {sentimentCounts.neutral}</span>
+                    <span className="text-muted-foreground">Neutral {sentimentCounts.neutral}</span>
                     <span className="text-rose-400">Negative {sentimentCounts.negative}</span>
                   </div>
                 </motion.div>
@@ -1019,7 +1019,7 @@ function InteractiveArchiveSearch() {
 
               {/* Results summary */}
               <div className="flex items-center justify-between text-xs font-mono px-1">
-                <span className="text-white/40">
+                <span className="text-muted-foreground">
                   Showing {scenario.results.length} of {scenario.totalResults.toLocaleString()}{" "}
                   results
                 </span>
@@ -1050,17 +1050,17 @@ function InteractiveArchiveSearch() {
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.04] border border-white/[0.08]">
                           {getTypeIcon(result.type)}
                         </div>
-                        <span className="text-xs text-white/40 font-mono">{result.date}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{result.date}</span>
                         <span
                           className={`text-xs font-medium px-1.5 py-0.5 rounded border ${getTypeBadgeColor(result.type)}`}
                         >
                           {result.type}
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-white/30">
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         {result.views > 0 && (
                           <span className="flex items-center gap-1">
-                            <Eye className="h-3 w-3 text-white/20" />
+                            <Eye className="h-3 w-3 text-muted-foreground" />
                             {formatNumber(result.views)}
                           </span>
                         )}
@@ -1110,7 +1110,7 @@ function InteractiveArchiveSearch() {
 
                       {/* Relevance score */}
                       <div className="flex items-center gap-2 min-w-[140px]">
-                        <span className="text-xs text-white/40 font-mono shrink-0">
+                        <span className="text-xs text-muted-foreground font-mono shrink-0">
                           {(result.relevance * 100).toFixed(0)}%
                         </span>
                         <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -1140,7 +1140,7 @@ function InteractiveArchiveSearch() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.5 }}
-                  className="flex items-center justify-center gap-2 py-2 text-xs text-white/20 font-mono"
+                  className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground font-mono"
                 >
                   <Download className="h-3 w-3" />
                   xf search &quot;{scenario.id === "keyword" ? "machine learning" : "..."}&quot;
@@ -1166,7 +1166,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-xs text-white/30 uppercase tracking-wide">{label}</div>
+        <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
         <div className="text-xs font-semibold text-white/80 font-mono truncate">{value}</div>
       </div>
     </div>

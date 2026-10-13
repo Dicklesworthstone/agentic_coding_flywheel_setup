@@ -362,7 +362,7 @@ function LessonSidebar({
                                 ? "text-white"
                                 : isCompleted
                                   ? "text-white/70"
-                                  : "text-white/50 group-hover:text-white/80"
+                                  : "text-muted-foreground group-hover:text-white/80"
                             }`}
                           >
                             {lesson.title}
@@ -672,9 +672,8 @@ export function LessonContent({ lesson }: Props) {
         <LessonSidebar completedLessons={completedLessons} currentLessonId={lesson.id} />
 
         {/* id="main-content" is the target of the layout's skip link.
-            text-aa-floor lifts the lessons' text-white/20-/50 labels to the
-            AA floor, as it already does on /learn and the guides. */}
-        <main id="main-content" tabIndex={-1} className="text-aa-floor flex-1 min-w-0">
+            Lesson text uses semantic colors without an inherited alpha floor. */}
+        <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
           {/* Mobile header - ultra premium */}
           <div className="sticky top-0 z-20 xl:hidden">
             <div className="relative border-b border-white/[0.08]">
@@ -694,7 +693,7 @@ export function LessonContent({ lesson }: Props) {
                     <span className="text-sm font-bold text-primary tabular-nums">
                       {lesson.id + 1}
                     </span>
-                    <span className="text-white/50">/</span>
+                    <span className="text-muted-foreground">/</span>
                     <span className="text-sm text-white/60 tabular-nums">{LESSONS.length}</span>
                   </div>
                 </div>
@@ -716,7 +715,7 @@ export function LessonContent({ lesson }: Props) {
                     <BookOpen className="h-4 w-4 text-primary" />
                     <span className="text-sm font-semibold text-white">Lesson {lesson.id + 1}</span>
                   </div>
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.03] border border-white/[0.08] text-white/50">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.03] border border-white/[0.08] text-muted-foreground">
                     <Clock className="h-4 w-4" />
                     <span className="text-sm">{lesson.duration}</span>
                   </div>
@@ -736,7 +735,7 @@ export function LessonContent({ lesson }: Props) {
                 </h1>
 
                 {/* Description with premium typography */}
-                <p className="text-xl lg:text-2xl text-white/50 leading-relaxed font-light">
+                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-light">
                   {lesson.description}
                 </p>
 
@@ -765,7 +764,7 @@ export function LessonContent({ lesson }: Props) {
                       </div>
                       <div className="flex-1">
                         <h2 className="text-xl font-bold text-white mb-2">New to ACFS?</h2>
-                        <p className="text-white/50 mb-6 leading-relaxed">
+                        <p className="text-muted-foreground mb-6 leading-relaxed">
                           Complete the setup wizard first to get the most from these lessons.
                         </p>
                         <Link
@@ -849,7 +848,7 @@ export function LessonContent({ lesson }: Props) {
                         <h3 className="text-2xl font-bold text-white mb-2">
                           {isCompleted ? "Lesson mastered!" : "Ready to level up?"}
                         </h3>
-                        <p className="text-white/50 text-lg">
+                        <p className="text-muted-foreground text-lg">
                           {isCompleted
                             ? accessibleNextLesson
                               ? "Outstanding work! Continue to the next lesson."
@@ -912,7 +911,7 @@ export function LessonContent({ lesson }: Props) {
                         <ChevronLeft className="h-6 w-6 text-white/60 transition duration-500 group-hover:text-white group-hover:-translate-x-1" />
                       </div>
                       <div>
-                        <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">
+                        <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">
                           Previous
                         </div>
                         <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">
@@ -932,7 +931,7 @@ export function LessonContent({ lesson }: Props) {
                     <div className="absolute inset-0 bg-gradient-to-l from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-500" />
                     <div className="relative flex items-center justify-end gap-5">
                       <div>
-                        <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">
+                        <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">
                           Next
                         </div>
                         <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">

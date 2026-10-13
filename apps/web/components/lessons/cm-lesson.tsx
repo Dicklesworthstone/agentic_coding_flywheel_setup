@@ -769,7 +769,7 @@ function MemorySessionArchive({
         <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
           Session Archive
         </span>
-        <span className="ml-auto text-xs text-white/30 font-mono">
+        <span className="ml-auto text-xs text-muted-foreground font-mono">
           {sessions.length} sessions
         </span>
       </div>
@@ -818,8 +818,8 @@ function MemorySessionArchive({
                     {session.topic}
                   </p>
                   <div className="flex items-center gap-1 mt-0.5">
-                    <Clock className="h-2.5 w-2.5 text-white/25" />
-                    <span className="text-xs text-white/30">{session.date}</span>
+                    <Clock className="h-2.5 w-2.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">{session.date}</span>
                   </div>
                 </div>
                 {isSelected && (
@@ -828,7 +828,7 @@ function MemorySessionArchive({
                     animate={{ scale: 1 }}
                     transition={SPRING_CONFIG}
                   >
-                    <ChevronRight className="h-3 w-3 text-white/40" />
+                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
                   </motion.div>
                 )}
                 {isFeeding && (
@@ -1004,7 +1004,7 @@ function MemoryAnalysisEngine({
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-xs text-white/30 mt-3 text-center"
+            className="text-xs text-muted-foreground mt-3 text-center"
           >
             Click a session or run auto-demo to see analysis
           </motion.p>
@@ -1040,7 +1040,7 @@ function MemoryRuleBank({
         <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
           Memory Bank
         </span>
-        <span className="ml-auto text-xs text-white/30 font-mono">{rules.length} rules</span>
+        <span className="ml-auto text-xs text-muted-foreground font-mono">{rules.length} rules</span>
       </div>
 
       <div
@@ -1107,7 +1107,7 @@ function MemoryRuleBank({
                           animate={{ opacity: 1, height: "auto" }}
                           className="flex items-center gap-1 mt-1"
                         >
-                          <span className="text-xs text-white/25">from:</span>
+                          <span className="text-xs text-muted-foreground">from:</span>
                           {rule.sourceSessions.map((sId) => (
                             <span
                               key={sId}
@@ -1187,8 +1187,8 @@ function MemoryContextQuery({
     <div className="mt-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-3">
       {/* Query bar */}
       <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] bg-white/[0.02]">
-        <Search className="h-3.5 w-3.5 text-white/30 shrink-0" />
-        <span className="text-xs text-white/40 flex-1 truncate">
+        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs text-muted-foreground flex-1 truncate">
           {activeQuery ? activeQuery.query : "Describe your task to find relevant memories..."}
         </span>
         {activeQuery && (
@@ -1273,7 +1273,7 @@ function OnboardingSteps() {
           </div>
           <div className="flex-1 min-w-0">
             <code className="text-sm text-primary break-all font-medium">{step.cmd}</code>
-            <p className="text-sm text-white/50 mt-1">{step.desc}</p>
+            <p className="text-sm text-muted-foreground mt-1">{step.desc}</p>
           </div>
         </motion.div>
       ))}
@@ -1359,7 +1359,7 @@ function BestPractice({ title, description }: { title: string; description: stri
         <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
           {title}
         </p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
     </motion.div>
   );

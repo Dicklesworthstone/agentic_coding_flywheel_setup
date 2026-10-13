@@ -646,7 +646,7 @@ function InteractiveGitFlow() {
           </button>
           <button
             onClick={resetFlow}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-xs text-white/50 transition hover:bg-white/[0.08] hover:text-white/70"
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-xs text-muted-foreground transition hover:bg-white/[0.08] hover:text-white/70"
           >
             <RotateCcw className="h-3 w-3" />
             Reset
@@ -683,7 +683,7 @@ function InteractiveGitFlow() {
               initial={false}
               animate={{ opacity: 1 }}
             >
-              <span className="text-xs text-white/40 uppercase tracking-wider">HEAD</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">HEAD</span>
               <motion.div
                 layout
                 transition={SPRING}
@@ -780,13 +780,13 @@ function InteractiveGitFlow() {
                     </div>
                     <button
                       onClick={() => setSelectedCommit(null)}
-                      className="rounded-lg p-1 text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition"
+                      className="rounded-lg p-1 text-muted-foreground hover:text-white/70 hover:bg-white/[0.06] transition"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                   <p className="text-sm text-white/80 mb-2">{selectedCommitData.message}</p>
-                  <div className="flex items-center gap-2 mb-3 text-xs text-white/40">
+                  <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
                     <User className="h-3 w-3" />
                     <span>{selectedCommitData.author}</span>
                   </div>
@@ -817,9 +817,9 @@ function InteractiveGitFlow() {
             files={stagingFiles.filter((f) => f.zone === "working")}
           />
           <div className="flex items-center justify-center py-1.5">
-            <ChevronRight className="h-3 w-3 text-white/20" />
-            <span className="text-xs text-white/20 mx-1">git add</span>
-            <ChevronRight className="h-3 w-3 text-white/20" />
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground mx-1">git add</span>
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
           </div>
           <StagingZone
             title="Staged"
@@ -827,9 +827,9 @@ function InteractiveGitFlow() {
             files={stagingFiles.filter((f) => f.zone === "staging")}
           />
           <div className="flex items-center justify-center py-1.5">
-            <ChevronRight className="h-3 w-3 text-white/20" />
-            <span className="text-xs text-white/20 mx-1">commit</span>
-            <ChevronRight className="h-3 w-3 text-white/20" />
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground mx-1">commit</span>
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
           </div>
           <StagingZone
             title="Committed"
@@ -842,7 +842,7 @@ function InteractiveGitFlow() {
       {/* Step controls */}
       <div className="border-t border-white/[0.06] px-5 py-3">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-white/50 font-mono">
+          <p className="text-xs text-muted-foreground font-mono">
             <span className="text-primary font-semibold">Step {currentStep + 1}/6:</span>{" "}
             {STEP_LABELS[currentStep]}
           </p>
@@ -1024,8 +1024,8 @@ function CommitNode({
       {/* Hash label */}
       <span
         className={`text-xs font-mono ${
-          isSelected ? c.text : "text-white/30"
-        } group-hover:text-white/60 transition-colors whitespace-nowrap`}
+          isSelected ? c.text : "text-muted-foreground"
+        } group-hover:text-foreground transition-colors whitespace-nowrap`}
       >
         {commit.hash.slice(0, 7)}
       </span>
@@ -1088,7 +1088,7 @@ function StagingZone({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-xs text-white/30 italic"
+              className="text-xs text-muted-foreground italic"
             >
               Empty
             </motion.span>
@@ -1153,7 +1153,7 @@ function ConceptCard({
     >
       <h3 className="font-bold text-primary text-lg">{term}</h3>
       <p className="text-white/70 mt-2">{definition}</p>
-      <p className="text-sm text-white/50 mt-2 italic">Example: {example}</p>
+      <p className="text-sm text-muted-foreground mt-2 italic">Example: {example}</p>
     </motion.div>
   );
 }
@@ -1247,7 +1247,7 @@ function BestPractice({ title, description }: { title: string; description: stri
         <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
           {title}
         </p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
     </motion.div>
   );

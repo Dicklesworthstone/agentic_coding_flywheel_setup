@@ -646,7 +646,7 @@ function InteractiveSafetyDemo() {
               <span className="text-xs font-bold text-white/70 uppercase tracking-wider">
                 DCG Terminal
               </span>
-              <span className="ml-auto text-xs text-white/30 font-mono">
+              <span className="ml-auto text-xs text-muted-foreground font-mono">
                 destructive-command-guard v3.1
               </span>
             </div>
@@ -663,7 +663,7 @@ function InteractiveSafetyDemo() {
                 <div className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
                 <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/80" />
                 <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-                <span className="text-xs text-white/20 ml-1">bash</span>
+                <span className="text-xs text-muted-foreground ml-1">bash</span>
               </div>
 
               {activeDcgCmd ? (
@@ -742,7 +742,7 @@ function InteractiveSafetyDemo() {
                   </AnimatePresence>
                 </div>
               ) : (
-                <p className="text-white/30 text-xs">Click a command below to test DCG...</p>
+                <p className="text-muted-foreground text-xs">Click a command below to test DCG...</p>
               )}
             </motion.div>
 
@@ -779,7 +779,7 @@ function InteractiveSafetyDemo() {
               <span className="text-xs font-bold text-white/70 uppercase tracking-wider">
                 SLB Launch Console
               </span>
-              <span className="ml-auto text-xs text-white/30 font-mono">two-person rule</span>
+              <span className="ml-auto text-xs text-muted-foreground font-mono">two-person rule</span>
             </div>
 
             <div className="p-4 space-y-4">
@@ -826,7 +826,7 @@ function InteractiveSafetyDemo() {
                           transition={springSmooth}
                           className="h-8 w-8 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center"
                         >
-                          <Key className="h-4 w-4 text-white/30" />
+                          <Key className="h-4 w-4 text-muted-foreground" />
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -872,7 +872,7 @@ function InteractiveSafetyDemo() {
                           transition={springSmooth}
                           className="h-8 w-8 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center"
                         >
-                          <Key className="h-4 w-4 text-white/30" />
+                          <Key className="h-4 w-4 text-muted-foreground" />
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -913,7 +913,7 @@ function InteractiveSafetyDemo() {
                       <button
                         type="button"
                         onClick={resetSlb}
-                        className="mt-1 text-xs text-white/40 hover:text-white/70 transition-colors underline underline-offset-2"
+                        className="mt-1 text-xs text-muted-foreground hover:text-white/70 transition-colors underline underline-offset-2"
                       >
                         Reset demo
                       </button>
@@ -948,7 +948,7 @@ function InteractiveSafetyDemo() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={springSmooth}
-                      className="text-xs text-white/40 text-center"
+                      className="text-xs text-muted-foreground text-center"
                     >
                       {slbApproval1 && slbApproval2
                         ? "Both approvals in - preparing execution..."
@@ -961,7 +961,7 @@ function InteractiveSafetyDemo() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={springSmooth}
-                      className="text-xs text-white/30 text-center"
+                      className="text-xs text-muted-foreground text-center"
                     >
                       Two approvals required to execute
                     </motion.div>
@@ -976,7 +976,7 @@ function InteractiveSafetyDemo() {
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.06] bg-white/[0.01]">
             <Activity className="h-3.5 w-3.5 text-primary/70" />
-            <span className="text-xs font-bold text-white/50 uppercase tracking-wider">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
               Security Events
             </span>
             <motion.div
@@ -984,7 +984,7 @@ function InteractiveSafetyDemo() {
               transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
               className="ml-auto h-2 w-2 rounded-full bg-emerald-400"
             />
-            <span className="text-xs text-white/30">LIVE</span>
+            <span className="text-xs text-muted-foreground">LIVE</span>
           </div>
           <div className="max-h-40 overflow-y-auto">
             <div className="p-3 space-y-1">
@@ -998,7 +998,7 @@ function InteractiveSafetyDemo() {
                     transition={springSmooth}
                     className="flex items-center gap-2 font-mono text-xs overflow-hidden"
                   >
-                    <span className="text-white/20 shrink-0">[{event.time}]</span>
+                    <span className="text-muted-foreground shrink-0">[{event.time}]</span>
                     <span
                       className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-bold uppercase ${
                         event.type === "blocked"
@@ -1010,7 +1010,7 @@ function InteractiveSafetyDemo() {
                     >
                       {event.type}
                     </span>
-                    <span className="text-white/50 truncate">{event.cmd}</span>
+                    <span className="text-muted-foreground truncate">{event.cmd}</span>
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -1076,7 +1076,7 @@ function CaamFeature({
         <h3 className="font-semibold text-white group-hover:text-primary transition-colors">
           {title}
         </h3>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
     </motion.div>
   );
@@ -1100,8 +1100,8 @@ function UseCase({ scenario, description }: { scenario: string; description: str
         <span className="font-medium text-white group-hover:text-primary transition-colors">
           {scenario}
         </span>
-        <span className="text-white/50 mx-2">—</span>
-        <span className="text-sm text-white/50">{description}</span>
+        <span className="text-muted-foreground mx-2">—</span>
+        <span className="text-sm text-muted-foreground">{description}</span>
       </div>
     </motion.div>
   );

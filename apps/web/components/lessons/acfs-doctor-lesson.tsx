@@ -321,7 +321,7 @@ function ChecklistItem({
   return (
     <div className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]">
       <div className="flex items-center gap-3 shrink-0">
-        <CheckCircle2 className="h-5 w-5 text-white/30 group-hover:text-emerald-400 transition-colors" />
+        <CheckCircle2 className="h-5 w-5 text-muted-foreground group-hover:text-emerald-400 transition-colors" />
         <span
           className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${badgeClass}`}
         >
@@ -332,7 +332,7 @@ function ChecklistItem({
         <span className="text-sm text-white/80 group-hover:text-white transition-colors">
           {task}
         </span>
-        <span className="text-xs text-white/40 block mt-0.5">{detail}</span>
+        <span className="text-xs text-muted-foreground block mt-0.5">{detail}</span>
       </div>
     </div>
   );

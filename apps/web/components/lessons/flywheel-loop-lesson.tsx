@@ -828,7 +828,7 @@ function AnimatedFlywheel() {
                 />
                 <h3 className="font-bold text-white text-sm">
                   {activeNode.label}{" "}
-                  <span className="font-normal text-white/50">({activeNode.sublabel})</span>
+                  <span className="font-normal text-muted-foreground">({activeNode.sublabel})</span>
                 </h3>
               </div>
               <code className="inline-block px-2 py-1 rounded bg-black/30 border border-white/[0.08] text-xs font-mono text-primary mb-3">
@@ -846,7 +846,7 @@ function AnimatedFlywheel() {
                 ))}
               </ul>
               {selectedIdx !== null && (
-                <p className="mt-3 text-xs text-white/30">
+                <p className="mt-3 text-xs text-muted-foreground">
                   Click node again or background to deselect
                 </p>
               )}
@@ -908,7 +908,7 @@ function ToolCard({
           <p className="text-sm text-white/60 mb-3">Use it to:</p>
           <ul className="space-y-1">
             {useCases.map((useCase, i) => (
-              <li key={i} className="text-sm text-white/50 flex items-center gap-2">
+              <li key={i} className="text-sm text-muted-foreground flex items-center gap-2">
                 <div className="h-1 w-1 rounded-full bg-white/40 shrink-0" />
                 {useCase}
               </li>
@@ -1242,7 +1242,7 @@ function MiniTerminal({
           <div className="w-2 h-2 rounded-full bg-yellow-500/60" />
           <div className="w-2 h-2 rounded-full bg-green-500/60" />
         </div>
-        <span className="text-xs text-white/30 font-mono ml-1">{stageName}</span>
+        <span className="text-xs text-muted-foreground font-mono ml-1">{stageName}</span>
       </div>
       <div className="p-3 space-y-1.5 font-mono text-xs min-h-[60px]">
         {commands.map((cmd, i) => (
@@ -1299,7 +1299,7 @@ function VelocityBar({
     >
       <div className="w-16 shrink-0 text-right">
         <span
-          className={`text-xs font-mono ${isCurrent ? "text-white font-bold" : "text-white/40"}`}
+          className={`text-xs font-mono ${isCurrent ? "text-white font-bold" : "text-muted-foreground"}`}
         >
           C{metric.cycle}
         </span>
@@ -1324,18 +1324,18 @@ function VelocityBar({
         </motion.div>
         <div className="absolute inset-0 flex items-center justify-between px-2">
           <span
-            className={`text-xs font-mono ${isReached ? "text-white/90" : "text-white/20"}`}
+            className={`text-xs font-mono ${isReached ? "text-white/90" : "text-muted-foreground"}`}
           >
             {metric.duration}
           </span>
-          <span className={`text-xs ${isReached ? "text-white/60" : "text-white/15"}`}>
+          <span className={`text-xs ${isReached ? "text-white/60" : "text-muted-foreground"}`}>
             {metric.tasks} task{metric.tasks !== 1 ? "s" : ""} &middot; {metric.bugs} bugs
           </span>
         </div>
       </div>
       <div className="w-20 shrink-0">
         <span
-          className={`text-xs ${isCurrent ? "text-white/80 font-medium" : "text-white/30"}`}
+          className={`text-xs ${isCurrent ? "text-white/80 font-medium" : "text-muted-foreground"}`}
         >
           {metric.label}
         </span>
@@ -1464,7 +1464,7 @@ function FlywheelTabButton({
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition duration-200 ${
         isActive
           ? "bg-white/[0.08] text-white border border-white/[0.12]"
-          : "text-white/40 hover:text-white/60 hover:bg-white/[0.04] border border-transparent"
+          : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04] border border-transparent"
       }`}
     >
       <Icon className="h-3 w-3" />
@@ -1720,7 +1720,7 @@ function InteractiveFlywheelCycle() {
               }}
             />
             <span className="text-sm font-medium text-white/70">The Flywheel in Action</span>
-            <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-white/[0.06] text-white/30 border border-white/[0.08]">
+            <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-white/[0.06] text-muted-foreground border border-white/[0.08]">
               {STAGE_COUNT} stages
             </span>
           </div>
@@ -1728,7 +1728,7 @@ function InteractiveFlywheelCycle() {
             <button
               type="button"
               onClick={handleReset}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/50 text-xs font-medium hover:bg-white/[0.06] hover:text-white/70 transition duration-200"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-muted-foreground text-xs font-medium hover:bg-white/[0.06] hover:text-white/70 transition duration-200"
             >
               <RefreshCw className="h-3 w-3" /> Reset
             </button>
@@ -1792,7 +1792,7 @@ function InteractiveFlywheelCycle() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-white/60">Cycle {cycle}</span>
-            <span className="text-white/20">&middot;</span>
+            <span className="text-muted-foreground">&middot;</span>
             <span
               className="text-xs font-medium"
               style={{
@@ -2106,12 +2106,12 @@ function InteractiveFlywheelCycle() {
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-sm">{displayStage.label}</h3>
-                  <span className="text-xs text-white/30">
+                  <span className="text-xs text-muted-foreground">
                     Stage {displayStageIdx + 1} of {STAGE_COUNT}
                   </span>
                 </div>
                 {selectedStageIdx !== null && (
-                  <span className="ml-auto text-xs text-white/30">click again to deselect</span>
+                  <span className="ml-auto text-xs text-muted-foreground">click again to deselect</span>
                 )}
               </div>
               <p className="text-sm text-white/60 mb-4 leading-relaxed">
@@ -2162,9 +2162,9 @@ function InteractiveFlywheelCycle() {
               }}
             >
               <div className="flex items-center gap-2 mb-4">
-                <Clock className="h-4 w-4 text-white/40" />
+                <Clock className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-bold text-white">Velocity Over Cycles</h3>
-                <span className="ml-auto text-xs text-white/30">Time per iteration</span>
+                <span className="ml-auto text-xs text-muted-foreground">Time per iteration</span>
               </div>
               <div className="space-y-2">
                 {CYCLE_METRICS.map((metric, i) => (
@@ -2178,7 +2178,7 @@ function InteractiveFlywheelCycle() {
                 ))}
               </div>
               <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                <span className="text-xs text-white/30">Each cycle compounds improvements</span>
+                <span className="text-xs text-muted-foreground">Each cycle compounds improvements</span>
                 <div className="flex items-center gap-1.5">
                   <TrendingUp className="h-3 w-3 text-emerald-400/60" />
                   <span className="text-xs text-emerald-400/60 font-medium">
@@ -2202,7 +2202,7 @@ function InteractiveFlywheelCycle() {
               }}
             >
               <div className="flex items-center gap-2 mb-4">
-                <Users className="h-4 w-4 text-white/40" />
+                <Users className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-bold text-white">Agent Assignment</h3>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -348,7 +348,7 @@ function SearchPattern({
         <h3 className="font-semibold text-white group-hover:text-primary transition-colors">
           {title}
         </h3>
-        <p className="text-sm text-white/50">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <CodeBlock code={code} />
     </motion.div>
@@ -1220,9 +1220,9 @@ function InteractiveSessionSearch() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-white">Cross-Agent Session Search</h3>
-            <p className="text-xs text-white/40 truncate">{scenario.description}</p>
+            <p className="text-xs text-muted-foreground truncate">{scenario.description}</p>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-white/30">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Database className="h-3.5 w-3.5" />
             <span>{scenario.stats.sessionsSearched} sessions indexed</span>
           </div>
@@ -1251,7 +1251,7 @@ function InteractiveSessionSearch() {
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                     i === activeScenarioIdx
                       ? "bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/10"
-                      : "bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.12]"
+                      : "bg-white/[0.02] text-muted-foreground border border-white/[0.08] hover:text-foreground hover:border-white/[0.12]"
                   } disabled:cursor-not-allowed`}
                 >
                   <SIcon className="h-3 w-3" />
@@ -1280,7 +1280,7 @@ function InteractiveSessionSearch() {
               <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
               <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
             </div>
-            <span className="ml-2 text-xs text-white/30 font-mono">cass-terminal</span>
+            <span className="ml-2 text-xs text-muted-foreground font-mono">cass-terminal</span>
           </div>
           <div className="p-4 font-mono text-xs space-y-1 min-h-[80px] max-h-[120px] overflow-y-auto">
             <AnimatePresence mode="popLayout">
@@ -1299,7 +1299,7 @@ function InteractiveSessionSearch() {
                       ? "text-emerald-400"
                       : line.startsWith("Found")
                         ? "text-primary font-semibold"
-                        : "text-white/40"
+                        : "text-muted-foreground"
                   }
                 >
                   {line}
@@ -1375,7 +1375,7 @@ function InteractiveSessionSearch() {
                 <div className="font-mono text-sm text-white/60">
                   Searching across {scenario.stats.agents} agent indexes...
                 </div>
-                <div className="text-xs text-white/30">
+                <div className="text-xs text-muted-foreground">
                   {scenario.stats.sessionsSearched} sessions | {searchProgress}% complete
                 </div>
               </div>
@@ -1401,8 +1401,8 @@ function InteractiveSessionSearch() {
                     {scenario.stats.totalHits} hit
                     {scenario.stats.totalHits !== 1 ? "s" : ""}
                   </span>
-                  <span className="text-white/30">{scenario.stats.agents} agents</span>
-                  <span className="text-white/30">{scenario.stats.tookMs}ms</span>
+                  <span className="text-muted-foreground">{scenario.stats.agents} agents</span>
+                  <span className="text-muted-foreground">{scenario.stats.tookMs}ms</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {(["claude", "codex", "gemini", "cursor"] as AgentType[])
@@ -1446,7 +1446,7 @@ function InteractiveSessionSearch() {
                     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
                       activeTab === tab.key
                         ? "bg-primary/15 text-primary border border-primary/20"
-                        : "text-white/40 hover:text-white/60"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <tab.icon className="h-3.5 w-3.5" />
@@ -1501,7 +1501,7 @@ function InteractiveSessionSearch() {
                                   <span className={`text-sm font-semibold ${colors.text}`}>
                                     {hit.agentLabel}
                                   </span>
-                                  <div className="text-xs text-white/30 font-mono">
+                                  <div className="text-xs text-muted-foreground font-mono">
                                     {hit.workspace}
                                   </div>
                                 </div>
@@ -1512,7 +1512,7 @@ function InteractiveSessionSearch() {
                                     e.stopPropagation();
                                     handleCopy(hit.id, hit.snippet);
                                   }}
-                                  className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.04] text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors"
+                                  className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.04] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] transition-colors"
                                   title="Copy snippet"
                                 >
                                   {isCopied ? (
@@ -1523,7 +1523,7 @@ function InteractiveSessionSearch() {
                                 </button>
                                 <button
                                   onClick={() => setExpandedHit(isExpanded ? null : hit.id)}
-                                  className="flex h-6 items-center gap-1 px-2 rounded-md bg-white/[0.04] text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors text-xs font-mono"
+                                  className="flex h-6 items-center gap-1 px-2 rounded-md bg-white/[0.04] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] transition-colors text-xs font-mono"
                                 >
                                   {isExpanded ? (
                                     <>
@@ -1540,10 +1540,10 @@ function InteractiveSessionSearch() {
 
                             {/* Session path + timestamp */}
                             <div className="flex items-center justify-between">
-                              <div className="font-mono text-xs text-white/35 truncate flex-1">
+                              <div className="font-mono text-xs text-muted-foreground truncate flex-1">
                                 {hit.sessionPath}:{hit.lineNumber}
                               </div>
-                              <div className="flex items-center gap-1.5 text-xs text-white/25 ml-2 shrink-0">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2 shrink-0">
                                 <Clock className="h-3 w-3" />
                                 {hit.timestamp.slice(0, 10)}
                               </div>
@@ -1552,8 +1552,8 @@ function InteractiveSessionSearch() {
                             {/* Relevance score bar */}
                             <div className="flex items-center gap-3">
                               <div className="flex items-center gap-1.5 shrink-0">
-                                <BarChart3 className="h-3 w-3 text-white/30" />
-                                <span className="text-xs text-white/50 font-mono w-10">
+                                <BarChart3 className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground font-mono w-10">
                                   {hit.score.toFixed(2)}
                                 </span>
                               </div>
@@ -1587,7 +1587,7 @@ function InteractiveSessionSearch() {
                               {hit.tags.map((tag) => (
                                 <span
                                   key={tag}
-                                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] text-xs text-white/40 font-mono border border-white/[0.06]"
+                                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] text-xs text-muted-foreground font-mono border border-white/[0.06]"
                                 >
                                   <Tag className="h-2.5 w-2.5" />
                                   {tag}
@@ -1631,7 +1631,7 @@ function InteractiveSessionSearch() {
                                               isMatch
                                                 ? "text-primary font-semibold bg-primary/10 -mx-2 px-2 py-1 rounded border-l-2 border-primary/40"
                                                 : isUser
-                                                  ? "text-white/50"
+                                                  ? "text-muted-foreground"
                                                   : "text-emerald-400/70"
                                             }`}
                                           >
@@ -1684,7 +1684,7 @@ function InteractiveSessionSearch() {
                   >
                     <div className="flex items-center gap-2 mb-4">
                       <History className="h-4 w-4 text-primary/60" />
-                      <span className="text-xs text-white/50">
+                      <span className="text-xs text-muted-foreground">
                         Session timeline for &quot;{scenario.query}&quot;
                       </span>
                     </div>
@@ -1731,7 +1731,7 @@ function InteractiveSessionSearch() {
                                 <span className={`text-sm font-semibold ${colors.text}`}>
                                   {event.agentLabel}
                                 </span>
-                                <span className="text-xs text-white/30 font-mono flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
                                   {event.date}
                                 </span>
@@ -1741,8 +1741,8 @@ function InteractiveSessionSearch() {
                               </div>
                               {i < scenario.timeline.length - 1 && (
                                 <div className="flex items-center gap-1 mt-2 ml-1">
-                                  <ArrowRight className="h-3 w-3 text-white/20" />
-                                  <span className="text-xs text-white/20">
+                                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">
                                     evolved approach
                                   </span>
                                 </div>
@@ -1762,7 +1762,7 @@ function InteractiveSessionSearch() {
                     >
                       <div className="flex items-start gap-2">
                         <Lightbulb className="h-4 w-4 text-primary/60 mt-0.5 shrink-0" />
-                        <div className="text-xs text-white/50">
+                        <div className="text-xs text-muted-foreground">
                           <span className="text-primary/80 font-medium">Insight:</span> Multiple
                           agents solved &quot;{scenario.query}
                           &quot; problems across {scenario.timeline.length} sessions. The latest
@@ -1789,7 +1789,7 @@ function InteractiveSessionSearch() {
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <Network className="h-4 w-4 text-primary/60" />
-                      <span className="text-xs text-white/50">
+                      <span className="text-xs text-muted-foreground">
                         Extracted knowledge patterns from search results
                       </span>
                     </div>
@@ -1875,7 +1875,7 @@ function InteractiveSessionSearch() {
 
                     {/* Extracted patterns summary */}
                     <div className="space-y-2">
-                      <div className="text-xs text-white/40 font-medium px-1">
+                      <div className="text-xs text-muted-foreground font-medium px-1">
                         Extracted Patterns
                       </div>
                       {scenario.knowledgeNodes
@@ -1899,7 +1899,7 @@ function InteractiveSessionSearch() {
                               }`}
                             />
                             <span className="text-xs text-white/60 flex-1">{node.label}</span>
-                            <span className="text-xs text-white/25 font-mono">
+                            <span className="text-xs text-muted-foreground font-mono">
                               {node.connections.length} connections
                             </span>
                           </motion.div>
@@ -2014,7 +2014,7 @@ function BestPractice({ title, description }: { title: string; description: stri
         <p className="font-semibold text-white group-hover:text-primary transition-colors">
           {title}
         </p>
-        <p className="text-sm text-white/50 mt-1">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
       </div>
     </motion.div>
   );

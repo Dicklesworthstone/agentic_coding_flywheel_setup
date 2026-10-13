@@ -694,7 +694,7 @@ function InteractiveResourceMonitor() {
         {/* Header */}
         <div className="text-center space-y-1">
           <p className="text-sm font-semibold text-white/80">System Resource Monitoring Center</p>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-muted-foreground">
             Select a scenario and toggle SRPS to see real-time resource protection in action
           </p>
         </div>
@@ -846,7 +846,7 @@ function ScenarioSelector({
           className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
             activeIdx === i
               ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70 hover:border-white/[0.15]"
+              : "border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:text-white/70 hover:border-white/[0.15]"
           }`}
         >
           {s.icon}
@@ -978,7 +978,7 @@ function CpuCorePanel({ coreLoads, srpsActive }: { coreLoads: number[]; srpsActi
 
       {/* Aggregate bar */}
       <div className="space-y-1">
-        <div className="flex items-center justify-between text-xs text-white/40">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Total System CPU</span>
           <span className="font-mono">{Math.round(avgLoad)}%</span>
         </div>
@@ -1009,10 +1009,10 @@ function CoreBar({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40 font-mono">C{coreIndex}</span>
+        <span className="text-xs text-muted-foreground font-mono">C{coreIndex}</span>
         <span
           className={`text-xs font-mono ${
-            load > 80 ? "text-red-400" : load > 50 ? "text-amber-400" : "text-white/50"
+            load > 80 ? "text-red-400" : load > 50 ? "text-amber-400" : "text-muted-foreground"
           }`}
         >
           {Math.round(load)}%
@@ -1075,7 +1075,7 @@ function MemoryPanel({
               OOM RISK
             </motion.span>
           )}
-          <span className="font-mono text-xs text-white/50">{Math.round(totalMem)}% used</span>
+          <span className="font-mono text-xs text-muted-foreground">{Math.round(totalMem)}% used</span>
         </div>
       </div>
 
@@ -1088,7 +1088,7 @@ function MemoryPanel({
             <div key={name} className="space-y-0.5">
               <div className="flex items-center justify-between">
                 <span className={`text-xs font-mono ${AGENT_COLORS[i]}`}>{name}</span>
-                <span className="text-xs font-mono text-white/40">
+                <span className="text-xs font-mono text-muted-foreground">
                   {Math.round(memValues[i])}%
                 </span>
               </div>
@@ -1114,9 +1114,9 @@ function MemoryPanel({
       {/* Swap bar */}
       <div className="space-y-1 pt-1 border-t border-white/[0.06]">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-white/40">Swap Usage</span>
+          <span className="text-muted-foreground">Swap Usage</span>
           <span
-            className={`font-mono ${swapPct > 50 ? "text-red-400" : swapPct > 25 ? "text-amber-400" : "text-white/50"}`}
+            className={`font-mono ${swapPct > 50 ? "text-red-400" : swapPct > 25 ? "text-amber-400" : "text-muted-foreground"}`}
           >
             {Math.round(swapPct)}%
           </span>
@@ -1189,7 +1189,7 @@ function MemoryGauge({
         >
           {Math.round(percentage)}%
         </span>
-        <span className="text-xs text-white/40">MEM</span>
+        <span className="text-xs text-muted-foreground">MEM</span>
       </div>
       {oomRisk && (
         <motion.div
@@ -1242,7 +1242,7 @@ function DiskIoPanel({
           <div key={name} className="space-y-1">
             <div className="flex items-center justify-between">
               <span className={`text-xs font-mono ${AGENT_COLORS[i]}`}>{name}</span>
-              <span className="text-xs font-mono text-white/30">
+              <span className="text-xs font-mono text-muted-foreground">
                 R:{Math.round(diskReads[i])} W:{Math.round(diskWrites[i])}
               </span>
             </div>
@@ -1284,11 +1284,11 @@ function DiskIoPanel({
       <div className="flex items-center gap-4 pt-1 border-t border-white/[0.06]">
         <div className="flex items-center gap-1">
           <div className="h-2 w-2 rounded-full bg-sky-500/70" />
-          <span className="text-xs text-white/40">Read</span>
+          <span className="text-xs text-muted-foreground">Read</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="h-2 w-2 rounded-full bg-orange-500/70" />
-          <span className="text-xs text-white/40">Write</span>
+          <span className="text-xs text-muted-foreground">Write</span>
         </div>
       </div>
     </div>
@@ -1336,7 +1336,7 @@ function NetworkPanel({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-white/40 flex items-center gap-1">
+            <span className="text-muted-foreground flex items-center gap-1">
               <ArrowUp className="h-2.5 w-2.5 text-emerald-400" />
               Upload
             </span>
@@ -1352,7 +1352,7 @@ function NetworkPanel({
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-white/40 flex items-center gap-1">
+            <span className="text-muted-foreground flex items-center gap-1">
               <ArrowDown className="h-2.5 w-2.5 text-sky-400" />
               Download
             </span>
@@ -1453,19 +1453,19 @@ function ProcessTable({
             Process Table
           </span>
         </div>
-        <div className="flex items-center gap-1 text-xs text-white/40">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
           Sort by:
           <button
             type="button"
             onClick={() => onSortChange("cpu")}
-            className={`px-1.5 py-0.5 rounded ${sortColumn === "cpu" ? "bg-white/10 text-white/80" : "hover:text-white/60"}`}
+            className={`px-1.5 py-0.5 rounded ${sortColumn === "cpu" ? "bg-white/10 text-white/80" : "hover:text-foreground"}`}
           >
             CPU
           </button>
           <button
             type="button"
             onClick={() => onSortChange("mem")}
-            className={`px-1.5 py-0.5 rounded ${sortColumn === "mem" ? "bg-white/10 text-white/80" : "hover:text-white/60"}`}
+            className={`px-1.5 py-0.5 rounded ${sortColumn === "mem" ? "bg-white/10 text-white/80" : "hover:text-foreground"}`}
           >
             MEM
           </button>
@@ -1473,7 +1473,7 @@ function ProcessTable({
       </div>
 
       {/* Table header */}
-      <div className="grid grid-cols-12 gap-1 text-xs font-semibold text-white/40 uppercase tracking-wider border-b border-white/[0.06] pb-1.5">
+      <div className="grid grid-cols-12 gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-white/[0.06] pb-1.5">
         <span className="col-span-1">PID</span>
         <span className="col-span-2">Process</span>
         <span className="col-span-2">Agent</span>
@@ -1494,7 +1494,7 @@ function ProcessTable({
               idx === 0 ? "bg-white/[0.04] border border-white/[0.06]" : "hover:bg-white/[0.02]"
             }`}
           >
-            <span className="col-span-1 text-white/40">{proc.pid}</span>
+            <span className="col-span-1 text-muted-foreground">{proc.pid}</span>
             <span className="col-span-2 text-white/70">{proc.name}</span>
             <span
               className={`col-span-2 ${AGENT_COLORS[["agent-1", "agent-2", "agent-3", "agent-4"].indexOf(proc.agent)]}`}
@@ -1512,12 +1512,12 @@ function ProcessTable({
               {Math.round(proc.mem)}%
             </span>
             <span
-              className={`col-span-1 text-right ${srpsActive ? "text-emerald-400" : "text-white/40"}`}
+              className={`col-span-1 text-right ${srpsActive ? "text-emerald-400" : "text-muted-foreground"}`}
             >
               {proc.nice}
             </span>
             <span
-              className={`col-span-2 text-right truncate ${srpsActive ? "text-emerald-400/70" : "text-white/30"}`}
+              className={`col-span-2 text-right truncate ${srpsActive ? "text-emerald-400/70" : "text-muted-foreground"}`}
             >
               {proc.rule}
             </span>
@@ -1526,7 +1526,7 @@ function ProcessTable({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-white/30 pt-1 border-t border-white/[0.06]">
+      <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-white/[0.06]">
         <span>4 agent processes tracked by ananicy-cpp</span>
         {srpsActive && (
           <motion.span
@@ -1588,7 +1588,7 @@ function GovernorPanel({
         </motion.div>
         <div>
           <p className="text-sm font-semibold text-emerald-400">SRPS Governor Throttling</p>
-          <p className="text-xs text-white/50 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Scenario: {scenario.label} &mdash; CPU reduced from {Math.round(totalCpu * 2.8)}% to{" "}
             {Math.round(totalCpu)}%
           </p>
@@ -1607,7 +1607,7 @@ function GovernorPanel({
           >
             <ChevronRight className="h-3 w-3 text-emerald-500/50" />
             <span className="font-mono text-emerald-300 w-16">{action.process}</span>
-            <span className="text-white/40">{action.action}</span>
+            <span className="text-muted-foreground">{action.action}</span>
             <span className="ml-auto text-emerald-400/70 font-mono">{action.savings}</span>
           </motion.div>
         ))}
@@ -1617,11 +1617,11 @@ function GovernorPanel({
       <div className="flex items-center gap-4 pt-2 border-t border-emerald-500/10 text-xs">
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-white/50">Governor: active</span>
+          <span className="text-muted-foreground">Governor: active</span>
         </div>
-        <span className="text-white/30">|</span>
-        <span className="text-white/50">Rules matched: {scenario.governorKicks ? 4 : 0}</span>
-        <span className="text-white/30">|</span>
+        <span className="text-muted-foreground">|</span>
+        <span className="text-muted-foreground">Rules matched: {scenario.governorKicks ? 4 : 0}</span>
+        <span className="text-muted-foreground">|</span>
         <span className="text-emerald-400/60">System responsiveness: optimal</span>
       </div>
     </motion.div>
@@ -1641,8 +1641,8 @@ function MiniTerminal({ visibleLines, active }: { visibleLines: number; active: 
           <div className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
           <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-xs text-white/40 font-mono">srps-terminal</span>
-        <Play className="h-3 w-3 text-white/20 ml-auto" />
+        <span className="text-xs text-muted-foreground font-mono">srps-terminal</span>
+        <Play className="h-3 w-3 text-muted-foreground ml-auto" />
       </div>
 
       <div className="font-mono text-xs leading-relaxed space-y-0.5 min-h-[120px]">
@@ -1660,7 +1660,7 @@ function MiniTerminal({ visibleLines, active }: { visibleLines: number; active: 
                     ? "text-sky-400/70"
                     : line.cmd.startsWith("  Governor:")
                       ? "text-amber-400/70"
-                      : "text-white/50"
+                      : "text-muted-foreground"
               }
             >
               {line.cmd}

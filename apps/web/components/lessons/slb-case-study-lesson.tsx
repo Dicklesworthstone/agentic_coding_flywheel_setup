@@ -454,7 +454,7 @@ function IdeaCard() {
             where for potentially damaging commands, the agents have to get one other agent to agree
             with their reasoning and sign off on the command.&quot;
           </p>
-          <div className="mt-3 flex items-center gap-2 text-xs text-white/50">
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
             <Key className="h-3 w-3" />
             <span>Two-person rule for AI agents</span>
           </div>
@@ -502,8 +502,8 @@ function TimelineCard() {
               <step.icon className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 flex items-center gap-3">
-              <span className="text-xs font-mono text-white/50 w-20">{step.time}</span>
-              <ArrowRight className="h-3 w-3 text-white/50 group-hover:text-primary/60 transition-colors" />
+              <span className="text-xs font-mono text-muted-foreground w-20">{step.time}</span>
+              <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary/60 transition-colors" />
               <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">
                 {step.event}
               </span>
@@ -1141,7 +1141,7 @@ function InteractiveBuildTimeline() {
           <Shield className="h-4 w-4 text-primary" />
           <span className="text-sm font-mono font-bold text-white/90">SLB Launch Console</span>
         </div>
-        <span className="ml-auto text-xs font-mono text-white/30">
+        <span className="ml-auto text-xs font-mono text-muted-foreground">
           slb v1.0.0 | two-person-rule
         </span>
       </div>
@@ -1160,7 +1160,7 @@ function InteractiveBuildTimeline() {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition duration-200 border ${
                   isSelected
                     ? `${rc.borderColor} ${rc.bgColor} ${rc.color}`
-                    : "border-white/[0.06] bg-white/[0.01] text-white/50 hover:text-white/70 hover:border-white/[0.12]"
+                    : "border-white/[0.06] bg-white/[0.01] text-muted-foreground hover:text-white/70 hover:border-white/[0.12]"
                 }`}
               >
                 <ScenarioIcon className="h-3.5 w-3.5" />
@@ -1193,7 +1193,7 @@ function InteractiveBuildTimeline() {
 
           {/* Key-Turn SVG Diagram */}
           <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 flex flex-col items-center justify-center">
-            <span className="text-xs font-mono text-white/40 uppercase tracking-wider mb-3">
+            <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-3">
               Dual-Key Authorization
             </span>
             <KeyTurnSVG
@@ -1294,14 +1294,14 @@ function InteractiveBuildTimeline() {
           {/* Audit Trail */}
           <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 max-h-56 overflow-y-auto">
             <div className="flex items-center gap-2 mb-3">
-              <FileText className="h-4 w-4 text-white/50" />
-              <span className="text-xs font-mono text-white/50 uppercase tracking-wider">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
                 Audit Trail
               </span>
             </div>
             <div className="space-y-1 font-mono text-xs">
               {phase === "idle" ? (
-                <span className="text-white/30">Waiting for launch sequence...</span>
+                <span className="text-muted-foreground">Waiting for launch sequence...</span>
               ) : (
                 scenario.auditEntries.slice(0, auditIndex).map((entry, i) => (
                   <motion.div
@@ -1316,7 +1316,7 @@ function InteractiveBuildTimeline() {
                           ? "text-emerald-400/90"
                           : entry.includes("WARNING")
                             ? "text-yellow-400/90"
-                            : "text-white/50"
+                            : "text-muted-foreground"
                     }`}
                   >
                     {entry}
@@ -1330,7 +1330,7 @@ function InteractiveBuildTimeline() {
           <div className="rounded-xl border border-white/[0.08] bg-black/40 p-4 max-h-56 overflow-y-auto">
             <div className="flex items-center gap-2 mb-3">
               <Terminal className="h-4 w-4 text-emerald-400/60" />
-              <span className="text-xs font-mono text-white/50 uppercase tracking-wider">
+              <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
                 Terminal Output
               </span>
             </div>
@@ -1353,7 +1353,7 @@ function InteractiveBuildTimeline() {
                           ? "text-red-400/80"
                           : line.includes("SLB:")
                             ? "text-sky-400/70"
-                            : "text-white/50"
+                            : "text-muted-foreground"
                     }`}
                   >
                     {line}
@@ -1366,7 +1366,7 @@ function InteractiveBuildTimeline() {
 
         {/* Control Bar */}
         <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-          <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
             <ChevronRight className="h-3 w-3" />
             <span>
               {scenario.title} | {scenario.risk} |{" "}
@@ -1376,7 +1376,7 @@ function InteractiveBuildTimeline() {
           <div className="flex items-center gap-2">
             <button
               onClick={resetSimulation}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono text-white/50 hover:text-white/80 hover:border-white/[0.15] transition duration-200"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono text-muted-foreground hover:text-white/80 hover:border-white/[0.15] transition duration-200"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -1386,7 +1386,7 @@ function InteractiveBuildTimeline() {
               disabled={phase !== "idle"}
               className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg border text-xs font-mono font-bold transition duration-200 ${
                 phase !== "idle"
-                  ? "border-white/[0.06] bg-white/[0.01] text-white/30 cursor-not-allowed"
+                  ? "border-white/[0.06] bg-white/[0.01] text-muted-foreground cursor-not-allowed"
                   : `${riskConfig.borderColor} ${riskConfig.bgColor} ${riskConfig.color} hover:brightness-125`
               }`}
             >
@@ -1632,11 +1632,11 @@ function AgentConsole({
       className={`rounded-xl border ${isActive ? borderColor : "border-white/[0.08]"} bg-black/20 p-4 transition-colors duration-500`}
     >
       <div className="flex items-center gap-2 mb-3">
-        <RoleIcon className={`h-3.5 w-3.5 ${isActive ? accentColor : "text-white/30"}`} />
-        <span className={`text-xs font-mono font-bold ${isActive ? accentColor : "text-white/30"}`}>
+        <RoleIcon className={`h-3.5 w-3.5 ${isActive ? accentColor : "text-muted-foreground"}`} />
+        <span className={`text-xs font-mono font-bold ${isActive ? accentColor : "text-muted-foreground"}`}>
           {agentName}
         </span>
-        <span className="text-xs font-mono text-white/20 uppercase ml-auto">{role}</span>
+        <span className="text-xs font-mono text-muted-foreground uppercase ml-auto">{role}</span>
       </div>
 
       <AnimatePresence mode="wait">
@@ -1646,7 +1646,7 @@ function AgentConsole({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="text-xs font-mono text-white/20 py-4 text-center"
+            className="text-xs font-mono text-muted-foreground py-4 text-center"
           >
             {role === "INITIATOR" ? "Ready to initiate..." : "Awaiting review request..."}
           </motion.div>
@@ -1661,7 +1661,7 @@ function AgentConsole({
           >
             {role === "INITIATOR" && (
               <div className="rounded-lg bg-black/30 px-3 py-2">
-                <span className="text-xs font-mono text-white/30 uppercase block mb-1">
+                <span className="text-xs font-mono text-muted-foreground uppercase block mb-1">
                   Command
                 </span>
                 <span className="text-xs font-mono text-emerald-400/80 break-all">
@@ -1670,14 +1670,14 @@ function AgentConsole({
               </div>
             )}
             <div className="rounded-lg bg-black/20 px-3 py-2">
-              <span className="text-xs font-mono text-white/30 uppercase block mb-1">
+              <span className="text-xs font-mono text-muted-foreground uppercase block mb-1">
                 {role === "INITIATOR"
                   ? "Reasoning"
                   : phase === "denied" || phase === "aborted"
                     ? "Denial Reason"
                     : "Review Comment"}
               </span>
-              <span className="text-xs text-white/50 leading-relaxed block">{reasoning}</span>
+              <span className="text-xs text-muted-foreground leading-relaxed block">{reasoning}</span>
             </div>
           </motion.div>
         )}
@@ -1854,12 +1854,12 @@ function StatusRow({
       : value === "BLOCKED" || value === "DENIED"
         ? "text-red-400"
         : phase === "idle"
-          ? "text-white/30"
+          ? "text-muted-foreground"
           : "text-white/60";
 
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs font-mono text-white/30 uppercase">{label}</span>
+      <span className="text-xs font-mono text-muted-foreground uppercase">{label}</span>
       <span className={`text-xs font-mono font-bold ${valueColor}`}>{value}</span>
     </div>
   );
