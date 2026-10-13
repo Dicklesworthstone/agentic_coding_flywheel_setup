@@ -1,0 +1,50 @@
+name: Runtime implementation baseline
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/implementation-snapshot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Capture tracked source and highest-priority remaining work
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD > "$RUNNER_TEMP/acfs-source.tar"
+          sha256sum "$RUNNER_TEMP/acfs-source.tar"
+          git rev-parse HEAD
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for line in Path('.beads/issues.jsonl').read_text().splitlines():
+              bead = json.loads(line)
+              if bead.get('status') in ('open', 'in_progress') and bead.get('priority', 9) <= 1:
+                  print(json.dumps({k: bead.get(k) for k in ('id', 'title', 'priority', 'status', 'description', 'acceptance_criteria', 'dependencies')}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acfs-tracked-source-${{ github.sha }}
+          path: ${{ runner.temp }}/acfs-source.tar
+          retention-days: 3
+          if-no-files-found: error
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Type-check manifest package
+        run: bun run --cwd packages/manifest type-check
+      - name: Exercise plugin core against canonical inputs
+        working-directory: packages/manifest
+        run: bun test src/plugin*.test.ts
