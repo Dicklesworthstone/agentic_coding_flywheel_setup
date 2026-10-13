@@ -15183,6 +15183,40 @@ EOF
     [[ "${UPDATE_HELD_TOOLS[*]}" == "br" ]]
 }
 
+@test "holds: run_cmd --verbose still counts a held tool as skip+held (issue #434)" {
+    write_active_hold br
+    SUCCESS_COUNT=0; SKIP_COUNT=0; FAIL_COUNT=0; HELD_COUNT=0; UPDATE_HELD_TOOLS=()
+    VERBOSE=true; QUIET=false; ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/verbose-update.log"
+    : > "$UPDATE_LOG_FILE"
+
+    run_cmd "Beads Rust" update_run_verified_installer br
+
+    [[ "$FAIL_COUNT" -eq 0 ]]
+    [[ "$SKIP_COUNT" -eq 1 ]]
+    [[ "$HELD_COUNT" -eq 1 ]]
+    [[ "${UPDATE_HELD_TOOLS[*]}" == "br" ]]
+    # The command's own output still reaches the log.
+    grep -q "SKIPPED (hold): br" "$UPDATE_LOG_FILE"
+}
+
+@test "run_cmd --verbose: streams to the log and keeps success/failure accounting" {
+    SUCCESS_COUNT=0; SKIP_COUNT=0; FAIL_COUNT=0
+    VERBOSE=true; QUIET=false; ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/verbose-update.log"
+    : > "$UPDATE_LOG_FILE"
+    say_and_fail() { echo "about to fail"; return 7; }
+
+    run_cmd "ok step" echo "verbose ok output"
+    run_cmd "bad step" say_and_fail
+
+    [[ "$SUCCESS_COUNT" -eq 1 ]]
+    [[ "$FAIL_COUNT" -eq 1 ]]
+    grep -q "verbose ok output" "$UPDATE_LOG_FILE"
+    grep -q "about to fail" "$UPDATE_LOG_FILE"
+    grep -q "Failed: bad step (exit code: 7)" "$UPDATE_LOG_FILE"
+}
+
 @test "holds: or_existing_on_transient wrapper reports held tool as skip" {
     write_active_hold dcg
     SUCCESS_COUNT=0; SKIP_COUNT=0; FAIL_COUNT=0; HELD_COUNT=0; UPDATE_HELD_TOOLS=()

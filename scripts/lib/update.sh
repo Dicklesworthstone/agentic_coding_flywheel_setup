@@ -1923,11 +1923,15 @@ run_cmd() {
         fi
 
         if [[ "$QUIET" != "true" ]] && [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
-            if _run_bounded "$@" 2>&1 | tee -a "$UPDATE_LOG_FILE"; then
-                exit_code=0
-            else
-                exit_code=${PIPESTATUS[0]}
-            fi
+            # Feed tee through a descriptor, not a pipeline: a pipeline runs the
+            # command in a subshell and drops the hold/backoff details it sets,
+            # so a held tool was reported as [fail] (issue #434).
+            local tee_fd="" tee_pid=""
+            exec {tee_fd}> >(tee -a "$UPDATE_LOG_FILE")
+            tee_pid=$!
+            _run_bounded "$@" >&"$tee_fd" 2>&1 || exit_code=$?
+            exec {tee_fd}>&-
+            wait "$tee_pid" 2>/dev/null || true
         elif [[ -n "${UPDATE_LOG_FILE:-}" ]]; then
             if _run_bounded "$@" >> "$UPDATE_LOG_FILE" 2>&1; then
                 exit_code=0
