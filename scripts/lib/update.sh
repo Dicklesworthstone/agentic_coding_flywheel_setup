@@ -418,6 +418,7 @@ REBOOT_REQUIRED=false
 # Logging
 UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-${HOME:-/tmp}/.acfs/logs/updates}"
 UPDATE_LOG_FILE=""
+UPDATE_TMPDIR_SWITCH_NOTE=""
 
 # Version tracking
 declare -gA VERSION_BEFORE=()
@@ -8659,6 +8660,63 @@ update_procwatch_stop() {
 }
 
 
+# ============================================================
+# Temp directory
+# ============================================================
+
+# systemd 256+ mounts /tmp and /dev/shm with usrquota. Once one user's quota
+# is spent, every write by that user there fails (EDQUOT) while df still shows
+# free space and mktemp still succeeds. The nightly unit runs with no TMPDIR,
+# so one over-quota /tmp failed 46 tools in a single run (fmd, 2026-10-13).
+# The probe writes ACFS_TMPDIR_PROBE_BYTES (default 16 MiB, about one large
+# download) so a nearly spent quota is caught too, not only a spent one.
+update_tmpdir_accepts_writes() {
+    local dir="${1:-}" probe="" head_bin="" ok=1
+
+    [[ "$dir" == /* && -d "$dir" && -w "$dir" ]] || return 1
+    head_bin="$(update_system_binary_path head 2>/dev/null)" || return 1
+    probe="$(mktemp "$dir/acfs-tmpprobe.XXXXXX" 2>/dev/null)" || return 1
+    if "$head_bin" -c "${ACFS_TMPDIR_PROBE_BYTES:-16777216}" /dev/zero 2>/dev/null >"$probe"; then
+        ok=0
+    fi
+    rm -f -- "$probe" 2>/dev/null || true
+    return "$ok"
+}
+
+# Keep TMPDIR when it takes a test write; otherwise move this run (and the
+# installers it starts, which inherit TMPDIR) to the first fallback that does.
+update_ensure_writable_tmpdir() {
+    local current="${TMPDIR:-/tmp}" candidate=""
+    local home_tmp="${HOME:-}/.cache/acfs/tmp"
+    local -a candidates=()
+
+    UPDATE_TMPDIR_SWITCH_NOTE=""
+    update_is_read_only_mode && return 0
+    update_tmpdir_accepts_writes "$current" && return 0
+
+    [[ -n "${ACFS_UPDATE_TMPDIR:-}" ]] && candidates+=("${ACFS_UPDATE_TMPDIR%/}")
+    candidates+=("/data/tmp" "/var/tmp")
+    # Only a HOME we own: root updating another user must not leave a
+    # root-owned directory in that user's home.
+    if [[ -n "${HOME:-}" && -O "$HOME" ]] && mkdir -p "$home_tmp" 2>/dev/null; then
+        candidates+=("$home_tmp")
+    fi
+
+    for candidate in "${candidates[@]}"; do
+        [[ "$candidate" != "${current%/}" ]] || continue
+        if update_tmpdir_accepts_writes "$candidate"; then
+            UPDATE_TMPDIR_SWITCH_NOTE="TMPDIR $current refuses writes (full or over quota); using $candidate for this run"
+            echo "acfs update: $UPDATE_TMPDIR_SWITCH_NOTE" >&2
+            TMPDIR="$candidate"
+            export TMPDIR
+            return 0
+        fi
+    done
+
+    echo "acfs update: warning: TMPDIR $current refuses writes and no fallback took a test write; downloads will likely fail" >&2
+    return 0
+}
+
 main() {
     # Ensure PATH includes user tool directories
     ensure_path
@@ -8813,6 +8871,9 @@ main() {
         fi
     fi
 
+    # Every download below goes through TMPDIR, self-update included.
+    update_ensure_writable_tmpdir
+
     # Self-update ACFS before touching any other components.
     # This runs BEFORE init_logging so we get the latest update logic ASAP.
     # Pass original args so re-exec (if update.sh changed) uses the same arguments.
@@ -8820,6 +8881,7 @@ main() {
 
     # Initialize logging
     init_logging
+    [[ -z "$UPDATE_TMPDIR_SWITCH_NOTE" ]] || log_to_file "$UPDATE_TMPDIR_SWITCH_NOTE"
 
     # Process-storm watchdog (#348): capture the evidence a fork-exhaustion
     # event destroys. Read-only; writes only when a threshold trips.

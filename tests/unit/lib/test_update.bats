@@ -16074,3 +16074,91 @@ STUBS
     run acfs_strip_url_userinfo "git@github.com:Dicklesworthstone/agentic_coding_flywheel_setup.git"
     assert_output "git@github.com:Dicklesworthstone/agentic_coding_flywheel_setup.git"
 }
+
+_tmpdir_probe_under_file_size_limit() {
+    ulimit -f 64
+    update_tmpdir_accepts_writes "$1"
+}
+
+@test "tmpdir: probe rejects a dir that takes mktemp but refuses the write" {
+    local dir
+    dir="$(create_temp_dir)"
+
+    run update_tmpdir_accepts_writes "$dir"
+    assert_success
+
+    # A file-size limit stands in for a spent tmpfs usrquota: mktemp still
+    # succeeds, then the write fails, as /tmp did for ubuntu on fmd.
+    run _tmpdir_probe_under_file_size_limit "$dir"
+    assert_failure
+    [ -z "$(ls -A "$dir")" ]
+
+    run update_tmpdir_accepts_writes "$dir/missing"
+    assert_failure
+}
+
+@test "tmpdir: a TMPDIR that takes a test write is kept" {
+    local dir
+    dir="$(create_temp_dir)"
+    export TMPDIR="$dir"
+
+    update_ensure_writable_tmpdir 2>"$HOME/tmpdir.err"
+
+    [ "$TMPDIR" = "$dir" ]
+    [ -z "$UPDATE_TMPDIR_SWITCH_NOTE" ]
+    [ ! -s "$HOME/tmpdir.err" ]
+    [ -z "$(ls -A "$dir")" ]
+}
+
+@test "tmpdir: a TMPDIR that refuses writes moves the run to the first fallback that takes one" {
+    local bad good
+    bad="$(create_temp_dir)"
+    good="$(create_temp_dir)"
+    update_tmpdir_accepts_writes() { [[ "$1" == "$good" ]]; }
+    export TMPDIR="$bad" ACFS_UPDATE_TMPDIR="$good"
+
+    update_ensure_writable_tmpdir 2>"$HOME/tmpdir.err"
+
+    [ "$TMPDIR" = "$good" ]
+    [[ "$UPDATE_TMPDIR_SWITCH_NOTE" == "TMPDIR $bad refuses writes"*"using $good for this run" ]]
+    grep -qF "TMPDIR $bad refuses writes" "$HOME/tmpdir.err"
+}
+
+@test "tmpdir: with no other fallback the run moves to the home cache" {
+    local bad
+    bad="$(create_temp_dir)"
+    update_tmpdir_accepts_writes() { [[ "$1" == "$HOME/.cache/acfs/tmp" ]]; }
+    unset ACFS_UPDATE_TMPDIR
+    export TMPDIR="$bad"
+
+    update_ensure_writable_tmpdir 2>/dev/null
+
+    [ "$TMPDIR" = "$HOME/.cache/acfs/tmp" ]
+    [ -d "$HOME/.cache/acfs/tmp" ]
+}
+
+@test "tmpdir: when nothing takes a write TMPDIR stays and the run warns" {
+    local bad
+    bad="$(create_temp_dir)"
+    update_tmpdir_accepts_writes() { return 1; }
+    unset ACFS_UPDATE_TMPDIR
+    export TMPDIR="$bad"
+
+    run update_ensure_writable_tmpdir
+    assert_success
+    assert_output --partial "no fallback took a test write"
+
+    update_ensure_writable_tmpdir 2>/dev/null
+    [ "$TMPDIR" = "$bad" ]
+    [ -z "$UPDATE_TMPDIR_SWITCH_NOTE" ]
+}
+
+@test "tmpdir: dry-run never writes a probe" {
+    local probed="$HOME/probed"
+    update_tmpdir_accepts_writes() { touch "$probed"; return 1; }
+    export DRY_RUN=true TMPDIR="$(create_temp_dir)"
+
+    update_ensure_writable_tmpdir
+
+    [ ! -e "$probed" ]
+}

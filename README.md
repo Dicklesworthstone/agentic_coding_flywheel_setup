@@ -822,6 +822,11 @@ time to time, or `git pull --rebase` the checkout and then run
 (`updates.runtime_skew`) when the checkout and the deployed runtime disagree, so
 a stack kept current by the nightly cannot silently outrun a stale dispatcher.
 
+**Temp space:** if `TMPDIR` (default `/tmp`) refuses a test write, because it is
+full or over a per-user tmpfs quota, `acfs-update` moves the run to the first of
+`ACFS_UPDATE_TMPDIR`, `/data/tmp`, `/var/tmp` and `~/.cache/acfs/tmp` that
+accepts one.
+
 ### What Gets Updated
 
 | Category | Tools | Method |
