@@ -5623,6 +5623,35 @@ test_status_can_be_sourced_without_running_main() {
 
     cleanup_mock_env
 }
+test_status_resolves_the_bin_dir_once_per_run() {
+    # Each of the 23 tool lookups re-read the state file's bin_dir (~20 ms
+    # apiece, most of a ~0.9 s run). The lookups now share one resolution,
+    # and a sourcing caller is left without a cached value afterwards.
+    setup_mock_env
+
+    local calls_file="$TEST_HOME/bin-dir-calls" output=""
+    output=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" TEST_STATUS_SCRIPT="$STATUS_SH" CALLS_FILE="$calls_file" \
+        bash -c '
+            source "$TEST_STATUS_SCRIPT"
+            eval "$(declare -f _status_preferred_bin_dir | sed "1s/_status_preferred_bin_dir/_real_preferred_bin_dir/")"
+            _status_preferred_bin_dir() { echo x >> "$CALLS_FILE"; _real_preferred_bin_dir "$@"; }
+            status_main --json >/dev/null 2>&1 || true
+            printf "cache=[%s|%s]\n" "$_STATUS_BIN_DIR_CACHE_HOME" "$_STATUS_BIN_DIR_CACHE"
+        ' 2>/dev/null)
+
+    # One call primes the tool-lookup cache; the other is the one-time PATH
+    # setup in _status_prepare_context. Without the cache it was 25.
+    local calls=0
+    [[ -f "$calls_file" ]] && calls="$(wc -l < "$calls_file" | tr -d ' ')"
+    if [[ "$calls" -ge 1 && "$calls" -le 2 && "$output" == "cache=[|]" ]]; then
+        harness_pass "status resolves the bin dir once per run and clears it after"
+    else
+        harness_fail "status resolves the bin dir once per run and clears it after" "calls=$calls output=$output"
+    fi
+
+    cleanup_mock_env
+}
+
 test_status_ignores_relative_home_state_trap() {
     setup_system_state_target_home_only_env
     setup_relative_home_trap
@@ -13394,6 +13423,7 @@ main() {
     test_status_plain_output_avoids_ansi_when_not_tty || true
     test_status_reports_last_updated_timestamp || true
     test_status_last_update_tracks_completed_update_runs || true
+    test_status_resolves_the_bin_dir_once_per_run || true
     test_status_errors_on_malformed_state_json || true
     test_status_uses_installed_layout_under_root_home || true
     test_status_uses_explicit_target_home_when_state_is_missing || true

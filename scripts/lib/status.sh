@@ -406,7 +406,11 @@ _status_binary_path() {
     fi
 
     if [[ -n "$base_home" ]]; then
-        primary_bin_dir="$(_status_preferred_bin_dir "$base_home" 2>/dev/null || true)"
+        if [[ -n "$_STATUS_BIN_DIR_CACHE_HOME" && "$base_home" == "$_STATUS_BIN_DIR_CACHE_HOME" ]]; then
+            primary_bin_dir="$_STATUS_BIN_DIR_CACHE"
+        else
+            primary_bin_dir="$(_status_preferred_bin_dir "$base_home" 2>/dev/null || true)"
+        fi
         [[ -n "$primary_bin_dir" ]] || primary_bin_dir="$base_home/.local/bin"
 
         for candidate in \
@@ -437,6 +441,34 @@ _status_binary_path() {
     done
 
     return 1
+}
+
+# _status_binary_path re-resolved the state file and re-read its bin_dir for
+# every tool (23 command substitutions, ~20 ms each: most of a ~0.9 s status
+# run on Linux hosts). status_main resolves it once for the home the lookups
+# will use; the subshells inherit the cache, and it is cleared on return so a
+# sourcing caller never sees a value from an earlier state.
+_STATUS_BIN_DIR_CACHE_HOME=""
+_STATUS_BIN_DIR_CACHE=""
+
+_status_prime_bin_dir_cache() {
+    local base_home="" current_user=""
+
+    _STATUS_BIN_DIR_CACHE_HOME=""
+    _STATUS_BIN_DIR_CACHE=""
+    if [[ -n "${TARGET_HOME:-}" ]]; then
+        base_home="${TARGET_HOME%/}"
+    elif [[ -n "${TARGET_USER:-}" ]]; then
+        current_user="$(_status_resolve_current_user 2>/dev/null || true)"
+        if [[ -n "$current_user" ]] && [[ "${TARGET_USER:-}" == "$current_user" ]]; then
+            base_home="${_STATUS_CURRENT_HOME:-}"
+        fi
+    else
+        base_home="${_STATUS_CURRENT_HOME:-}"
+    fi
+    [[ -n "$base_home" ]] || return 0
+    _STATUS_BIN_DIR_CACHE="$(_status_preferred_bin_dir "$base_home" 2>/dev/null || true)"
+    _STATUS_BIN_DIR_CACHE_HOME="$base_home"
 }
 
 _status_binary_exists() {
@@ -1327,6 +1359,14 @@ _status_read_nightly_health() {
 }
 
 status_main() {
+    local rc=0
+    _status_main_body "$@" || rc=$?
+    _STATUS_BIN_DIR_CACHE_HOME=""
+    _STATUS_BIN_DIR_CACHE=""
+    return "$rc"
+}
+
+_status_main_body() {
     local parse_status=0
     local _state_file=""
     local -a _warnings=()
@@ -1386,6 +1426,7 @@ status_main() {
         _errors+=("state file invalid JSON")
     fi
 
+    _status_prime_bin_dir_cache
     for cmd in "${_CORE_TOOLS[@]}"; do
         if _status_binary_exists "$cmd"; then
             _tool_count=$((_tool_count + 1))
