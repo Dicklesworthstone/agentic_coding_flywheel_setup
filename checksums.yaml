@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-13T20:31:21+00:00
+# checksums.yaml - Auto-generated 2026-10-14T02:30:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -136,7 +136,7 @@ installers:
 
   pi:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
-    sha256: "025332e59994bb57fab243e9ad3a31aad47a0bae0939bbe3363bc639a9d782a6"
+    sha256: "467001baec1f304511e82e8e9485e292c78f2023645ee367889b6b06fabed8a3"
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
@@ -180,7 +180,7 @@ installers:
 
   ubs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh"
-    sha256: "1baac6b3d0cc059d33b800455e6c8df205c7e8d8afb07911c6872b8314f6f9a4"
+    sha256: "1c21066f9eebda6ad7aabf20becd2cf88a34d871b0c9f4e69de6f42c6bcba88f"
 
   uv:
     url: "https://astral.sh/uv/install.sh"
