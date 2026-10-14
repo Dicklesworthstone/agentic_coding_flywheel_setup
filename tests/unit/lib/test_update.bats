@@ -3460,6 +3460,49 @@ EOF
     assert_success
 }
 
+@test "Atuin guard wrappers read the parent name from /proc, not a ps scan" {
+    # `ps -p` walks every /proc entry: ~0.8 s per typed command on a busy host.
+    local f
+    for f in acfs.manifest.yaml install.sh scripts/generated/install_tools.sh scripts/lib/update.sh; do
+        run grep -F 'IFS= read -r parent_comm < "/proc/${PPID:-0}/comm"' "$PROJECT_ROOT/$f"
+        assert_success
+    done
+}
+
+@test "update_write_atuin_guard_wrapper: history hooks run for a shell parent, skip for an agent parent" {
+    local bin_dir="$HOME/bin" real="$HOME/real-atuin" wrapper="$HOME/bin/atuin"
+    mkdir -p "$bin_dir"
+    printf '#!/usr/bin/env bash\necho "REAL $*"\n' > "$real"
+    chmod +x "$real"
+
+    update_write_atuin_guard_wrapper "$wrapper" "$real"
+    [[ -x "$wrapper" ]]
+
+    local clean_env=(env -u CODEX_CI -u CODEX_THREAD_ID -u CLAUDE_PROJECT_DIR -u AGENT_NAME)
+
+    # Parent is a plain shell: the history hook reaches the real binary.
+    run bash -c '"$@"; true' _ "${clean_env[@]}" "$wrapper" history start -- ls
+    assert_success
+    assert_output "REAL history start -- ls"
+
+    # Agent env var: skipped without touching the real binary.
+    run env CLAUDE_PROJECT_DIR=/x "$wrapper" history end -- ls
+    assert_success
+    assert_output ""
+
+    # Parent process named like an agent (Linux comm comes from the exec'd name).
+    [[ -r /proc/self/comm ]] || skip "parent-name detection by comm is Linux-only"
+    ln -s "$(command -v bash)" "$bin_dir/claude"
+    run "$bin_dir/claude" -c '"$@"; true' _ "${clean_env[@]}" "$wrapper" history start -- ls
+    assert_success
+    assert_output ""
+
+    # Non-history commands always pass through.
+    run "$bin_dir/claude" -c '"$@"; true' _ "${clean_env[@]}" "$wrapper" search foo
+    assert_success
+    assert_output "REAL search foo"
+}
+
 @test "sync_acfs_zsh_loader: removes duplicate local override sourcing" {
     cat > "$HOME/.zshrc" <<'EOF'
 # ACFS loader

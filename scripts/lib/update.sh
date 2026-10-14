@@ -1530,7 +1530,13 @@ _acfs_atuin_agent_context() {
         return 0
     fi
 
-    parent_comm="$(ps -o comm= -p "${PPID:-0}" 2>/dev/null || true)"
+    # Linux: read the parent name directly. `ps -p` still walks every /proc entry,
+    # which cost ~0.8 s per typed command on a 2,600-process host (trj, 2026-10-14).
+    if [[ -r "/proc/${PPID:-0}/comm" ]]; then
+        IFS= read -r parent_comm < "/proc/${PPID:-0}/comm" || parent_comm=""
+    else
+        parent_comm="$(ps -o comm= -p "${PPID:-0}" 2>/dev/null || true)"
+    fi
     case "$parent_comm" in
         claude|codex|cod|cc|agy|antigravity|agy-locked|gmi|gemini|bun|node) return 0 ;;
         *) return 1 ;;
