@@ -258,3 +258,18 @@ These tests cover intent-before-query ordering, per-delivery proof validation,
 batch-envelope binding, journal reconciliation and approved continuation. They
 use protocol fixtures and do not establish live SSH/NTM/provider acceptance or
 task completion.
+
+
+## Offline local recovery audit
+
+Use `--audit` with the same launch state, batch selection, trust files and dispatch
+state to validate only the controller journals. Audit acquires the same locks and
+runs the same launch/dispatch history validators, but it does not construct SSH
+transport, contact a host, query NTM, start agents or send work.
+
+The report labels each selected host `recorded_submitted`,
+`attempted_unconfirmed`, or `not_attempted`. A complete local journal returns
+`recorded`/exit 0; incomplete history returns `partial`/exit 1. These labels
+describe local evidence only: `remote_submission_verified` and
+`agent_execution_verified` are always false. Use `--reconcile` when live
+submission proof is required.
