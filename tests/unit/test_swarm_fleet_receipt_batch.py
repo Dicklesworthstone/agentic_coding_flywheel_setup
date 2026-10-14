@@ -184,7 +184,7 @@ class RecoveryTests(unittest.TestCase):
             with fleet.directory_fd(directory, private=True) as fd:
                 with self.assertRaises(BlockingIOError):
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if mode.startswith("batch-"):
+        if mode.startswith("batch-") or mode == "query-receipt":
             return self.peer(entry, mode)
         return self.fx.peer(entry, mode)
 
