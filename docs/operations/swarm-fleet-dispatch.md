@@ -207,10 +207,10 @@ The command requires Linux and system OpenSSH on the controller, a complete
 trusted ACFS checkout, and already installed native launchers on remote hosts.
 It is not a new installed `acfs` subcommand.
 
-## Batch receipt verification for large fleets
+## Batched immutable receipt reads
 
 Add `--batch-receipts` to `--reconcile` or to an explicitly approved `--resume`
-operation to group receipt reads without changing send authority:
+operation to group immutable intent reads without changing send authority:
 
 ```bash
 acfs-fleet dispatch \
@@ -224,14 +224,13 @@ flag. It changes neither the original journal schema nor its approval digest.
 It is rejected for new preview/send operations and never silently falls back to
 individual queries after a batch failure. Omitting it keeps individual queries.
 
-For each attempted host, the first SSH operation snapshots all selected native
-intents using the same private-file reader. The controller validates each exact
-request locally. Only intents that pass are included in the second SSH operation,
-which runs the fixed NTM receipt query for those operation IDs. A missing or
-invalid intent never authorizes an NTM query, much less another send. When every
-intent is invalid, the second operation is omitted. Thus 32 successfully verified
-deliveries need two SSH operations instead of 64; the 32 local NTM queries still
-run, and network wall-clock improvement depends on the actual host and transport.
+For each attempted host, one SSH operation snapshots up to 32 selected native
+intents with a fixed read-only Python helper. The controller validates each exact
+request locally. Only intents that pass enter the existing single-operation NTM
+receipt query path. A missing or invalid intent never authorizes an NTM query,
+much less another send. Thus 32 successfully verified deliveries need 33 SSH
+operations instead of 64: one bounded intent-read batch plus the same 32 exact
+NTM receipt queries used by ordinary recovery.
 
 Every NTM response goes through the same controller-side operation, payload,
 byte-count, session, target, admission and outcome checks as an individual query.
@@ -241,29 +240,21 @@ Malformed, reordered or mismatched envelopes are unconfirmed. Valid envelopes
 can report individual unavailable or invalid proofs without hiding healthy peers.
 Raw proof is carried only on the private SSH connection, never in user reports.
 
-The fixed remote driver starts no agent and receives no work payload. It uses
-isolated Python and literal process arguments, not commands supplied by a spec.
-It creates no receipt files. Its budget is the existing `--timeout` shared by all
-children in that phase, not one timeout per delivery. A child exceeding that
-budget is terminated in its own query-process group; no agent session is killed.
-A controller-side disconnect still cannot guarantee immediate remote termination,
-but the remote phase has its own finite deadline. Queries left after exhaustion
-are unavailable, never assumed submitted or safe to retry.
+The fixed batch helper starts no agent, receives no work payload, runs no NTM
+process and creates no receipt files. It only opens the reviewed private intent
+paths. NTM verification continues through the existing per-operation query path,
+so its process and timeout behavior are unchanged.
 
-Batch mode has explicit additional bounds: 32 items, 64 KiB of request data,
-64 KiB of combined stdout/stderr per child, 512 KiB combined across the phase,
-and 1 MiB for its framed response. Oversized proof or diagnostics fail closed;
-no truncation can become successful evidence. A transport loss or invalid envelope
-can leave the whole host unconfirmed. The individual mode remains available for
-an operator's separate inspection of unusually large receipts, without deleting
-or changing any original journal, packet, operation ID or approval.
+Batch mode has explicit additional bounds: 32 unique receipt items, 64 KiB of
+request data, 32 KiB per captured intent and 1 MiB for the framed response.
+Unsafe paths, oversized intents, transport loss or an invalid envelope fail
+closed. Omitting the flag keeps the original individual read/query behavior.
 
 ```bash
 python3 -B tests/unit/test_swarm_fleet_receipt_batch.py -v
 ```
 
-These tests run the real private reader and bounded remote-driver processes as an
-unprivileged user, with an executable NTM protocol fixture. They also exercise
-actual journal reconciliation and approved continuation, showing that only the
-untouched host can receive a new send. They do not establish live SSH/NTM/provider
-acceptance or task completion.
+These tests cover intent-before-query ordering, per-delivery proof validation,
+batch-envelope binding, journal reconciliation and approved continuation. They
+use protocol fixtures and do not establish live SSH/NTM/provider acceptance or
+task completion.
