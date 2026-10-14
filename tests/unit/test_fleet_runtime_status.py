@@ -68,14 +68,14 @@ class RuntimeStatusTests(unittest.TestCase):
         report = fx.install()
         version = fx.run_cli(["version"], installed=True)
         self.assertEqual(version.returncode, 0, version.stderr)
-        self.assertEqual(json.loads(version.stdout)["schema"], "acfs.fleet-runtime.v5")
-        self.assertEqual(set(json.loads(version.stdout)["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test", "publish"})
+        self.assertEqual(json.loads(version.stdout)["schema"], "acfs.fleet-runtime.v6")
+        self.assertEqual(set(json.loads(version.stdout)["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test", "publish", "provision"})
         result = fx.run_cli(["runtimes"], installed=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         rows = {r["runtime"]: r for r in json.loads(result.stdout)["runtimes"]}
         self.assertEqual(set(rows), {old_id, report["runtime"]})
         self.assertEqual(set(rows[old_id]["commands"]), {"launch", "prepare", "dispatch"})
-        self.assertEqual(set(rows[report["runtime"]]["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test", "publish"})
+        self.assertEqual(set(rows[report["runtime"]]["commands"]), {"launch", "prepare", "dispatch", "status", "collect", "test", "publish", "provision"})
         self.assertTrue(rows[report["runtime"]]["current"])
         self.assertEqual(fx.members(old), before)
 
@@ -216,7 +216,7 @@ for name, raw in (("known", fixture.known), ("identity", fixture.key)):
         self.assertEqual(set(rows), {v1, v2, current["runtime"]})
         self.assertEqual(rows[v1]["commands"], ["launch", "prepare", "dispatch"])
         self.assertEqual(rows[v2]["commands"], ["launch", "prepare", "dispatch", "status"])
-        self.assertEqual(rows[current["runtime"]]["commands"], ["launch", "prepare", "dispatch", "status", "collect", "test", "publish"])
+        self.assertEqual(rows[current["runtime"]]["commands"], ["launch", "prepare", "dispatch", "status", "collect", "test", "publish", "provision"])
         for old in (v1, v2):
             result = fx.run_cli(["--runtime", old, "collect", "--help"], installed=True)
             self.assertEqual(result.returncode, 2)
@@ -237,6 +237,7 @@ for name, raw in (("known", fixture.known), ("identity", fixture.key)):
             "acfs.fleet-runtime.v3": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py"},
             "acfs.fleet-runtime.v4": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py", "swarm-fleet-test.py"},
             "acfs.fleet-runtime.v5": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py", "swarm-fleet-test.py", "swarm-fleet-publish.py"},
+            "acfs.fleet-runtime.v6": set(LEGACY_FILES) | {"swarm-fleet-status.py", "swarm-fleet-collect.py", "swarm-fleet-test.py", "swarm-fleet-publish.py", "swarm-fleet-provision.py"},
         }
         self.assertEqual(set(runtime.FILES_BY_SCHEMA), set(expected))
         for schema, names in expected.items():
