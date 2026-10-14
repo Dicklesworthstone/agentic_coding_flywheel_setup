@@ -6,7 +6,7 @@ Bead in an exported snapshot is not proof of task execution or accepted results.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import importlib.util
 import json
@@ -261,17 +261,59 @@ def observe_host(host, attempted, saved_targets, selected, checked, max_age):
 
 
 def journal_identity(path):
-    """Private watch binding, never copied into a status report."""
+    """Snapshot a validated, locked journal; keep all receipt hashes private."""
     if path is None:
         return None
     with fleet.directory_fd(path, private=True) as fd:
         info = os.fstat(fd)
+        names = os.listdir(fd)
+        require(1 <= len(names) <= 33 and "intent.json" in names, "invalid_watch_journal")
+        records = {name: digest(fleet.read_at(fd, name)) for name in sorted(names)}
         return {"device": info.st_dev, "inode": info.st_ino,
-                "intent_sha256": digest(fleet.read_at(fd, "intent.json"))}
+                "intent_sha256": records["intent.json"], "records_sha256": records}
+
+
+def bind_watch_history(previous, current):
+    """Allow validated additions, never erase or rewrite already observed proof."""
+    if previous:
+        require(set(previous) == set(current), "watch_source_changed")
+        for name in ("launch_plan_sha256", "dispatch_plan_sha256"):
+            require(previous[name] == current[name], "watch_source_changed")
+        for name in ("launch", "dispatch"):
+            before, after = previous[name], current[name]
+            if before is None or after is None:
+                require(before is after, "watch_source_changed")
+                continue
+            require(type(before) is dict and set(before) == set(after)
+                    and all(before[k] == after[k] for k in ("device", "inode", "intent_sha256")),
+                    "watch_source_changed")
+            require(type(before["records_sha256"]) is dict
+                    and all(after["records_sha256"].get(k) == v
+                            for k, v in before["records_sha256"].items()), "watch_history_changed")
+    previous.update(current)
+
+
+@contextmanager
+def watch_directories(launch_path, dispatch_path):
+    """Pin directories even during initial contention, without holding locks."""
+    launch_path = Path(os.path.abspath(launch_path))
+    if dispatch_path is not None:
+        dispatch_path = Path(os.path.abspath(dispatch_path))
+        require(dispatch_path != launch_path and launch_path not in dispatch_path.parents,
+                "dispatch_state_must_be_outside_launch_journal")
+    with ExitStack() as stack:
+        sources = [(path, stack.enter_context(fleet.directory_fd(path, private=True)))
+                   for path in (launch_path, dispatch_path) if path is not None]
+        def guard():
+            for path, original in sources:
+                with fleet.directory_fd(path, private=True) as current:
+                    require(os.path.samestat(os.fstat(original), os.fstat(current)), "watch_source_changed")
+        guard()
+        yield guard
 
 
 def collect(launch_path, dispatch_path, known, identity, invoke, max_age=300, *, workers=1,
-            cancel_event=None, watch_binding=None):
+            cancel_event=None, watch_binding=None, watch_guard=None):
     require(type(max_age) is int and 1 <= max_age <= 86400, "invalid_export_max_age")
     # Library callers with custom transports opt into concurrency explicitly.
     # The CLI's transport is thread-safe and uses four host workers by default.
@@ -299,6 +341,8 @@ def collect(launch_path, dispatch_path, known, identity, invoke, max_age=300, *,
                     if invalidated:
                         raise invalidated[0]
                     try:
+                        if watch_guard is not None:
+                            watch_guard()
                         launch_guard()
                         work_guard()
                     except BaseException as exc:
@@ -311,8 +355,7 @@ def collect(launch_path, dispatch_path, known, identity, invoke, max_age=300, *,
                            "launch_plan_sha256": report["launch_plan_sha256"],
                            "dispatch_plan_sha256": report["dispatch_plan_sha256"]}
                 guard()
-                require(not watch_binding or watch_binding == binding, "watch_source_changed")
-                watch_binding.update(binding)
+                bind_watch_history(watch_binding, binding)
             def checked(entry, action):
                 guard()
                 require(not cancelled.is_set(), "operation_cancelled")
@@ -432,24 +475,47 @@ def watch(args, known, identity, cancelled):
     """Finite, non-overlapping observations; no journal locks are held in delays."""
     stop_at = time.monotonic() + args.watch
     previous, binding, sample, attention_seen = None, {}, 0, False
+    previous_sample, skipped = None, 0
     interval = args.interval if args.interval is not None else 5
-    while time.monotonic() < stop_at:
-        invoke = transport(known, identity, args.timeout, args.deadline,
-                           cancel_event=cancelled, stop_at=stop_at)
-        report, code = collect(args.launch_state, args.dispatch_state, known, identity, invoke,
-                               args.export_max_age, workers=args.workers,
-                               cancel_event=cancelled, watch_binding=binding)
-        sample += 1
-        attention_seen |= code != 0
-        report["watch"] = {"sample": sample, "duration_seconds": args.watch,
-                           "interval_seconds": interval, "attention_seen": attention_seen,
-                           "changes": observation_changes(previous, report)}
-        emit(report, jsonl=True)
-        previous = report
-        remaining = stop_at - time.monotonic()
-        if remaining <= 0:
-            break
-        require(not cancelled.wait(min(interval, remaining)), "operation_cancelled")
+    with watch_directories(args.launch_state, args.dispatch_state) as source_guard:
+        while time.monotonic() < stop_at:
+            source_guard()
+            require(not cancelled.is_set(), "operation_cancelled")
+            invoke = transport(known, identity, args.timeout, args.deadline,
+                               cancel_event=cancelled, stop_at=stop_at)
+            started = datetime.now(timezone.utc).isoformat()
+            busy = False
+            try:
+                report, code = collect(args.launch_state, args.dispatch_state, known, identity, invoke,
+                                       args.export_max_age, workers=args.workers, cancel_event=cancelled,
+                                       watch_binding=binding, watch_guard=source_guard)
+            except fleet.Refused as exc:
+                # Only cooperative lock contention is retriable. No remote
+                # probes were started and no locked receipt is read unlocked.
+                if str(exc) != "fleet_operation_in_progress" or cancelled.is_set():
+                    raise
+                source_guard()
+                busy, code = True, 1
+                skipped += 1
+                report = {"schema": SCHEMA, "status": "busy", "code": "fleet_operation_in_progress",
+                          "read_only": True, "starts_agents": False, "sends_prompts": False,
+                          "modifies_beads": False, "task_completion_verified": False,
+                          "started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
+                          "hosts": [], "summary": None}
+            sample += 1
+            attention_seen |= code != 0
+            report["watch"] = {"sample": sample, "duration_seconds": args.watch,
+                               "interval_seconds": interval, "attention_seen": attention_seen,
+                               "observation_skipped": busy, "previous_observation_sample": previous_sample,
+                               "skipped_samples_since_previous_observation": skipped,
+                               "changes": [] if busy else observation_changes(previous, report)}
+            emit(report, jsonl=True)
+            if not busy:
+                previous, previous_sample, skipped = report, sample, 0
+            remaining = stop_at - time.monotonic()
+            if remaining <= 0:
+                break
+            require(not cancelled.wait(min(interval, remaining)), "operation_cancelled")
     require(sample > 0, "watch_no_sample")
     return 1 if attention_seen else 0
 

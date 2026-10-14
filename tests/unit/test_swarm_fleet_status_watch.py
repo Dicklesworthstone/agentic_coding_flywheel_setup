@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Finite watch scheduling, evidence transitions, and pinned journals without SSH."""
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import fcntl
 import io
@@ -324,6 +325,249 @@ class WatchTests(unittest.TestCase):
             self.assertEqual(status.cli(), 2)
         self.assertEqual(emit.call_count, 1)
         close.assert_called_once_with()
+
+    def test_starting_during_recovery_emits_busy_then_observes_without_ssh_while_locked(self):
+        for journal in (self.fx.launch_path, self.fx.work_path):
+            with self.subTest(journal=journal), fleet.directory_fd(journal, private=True) as fd:
+                self.fx.calls.clear()
+                before = self.fx.snapshot()
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                def release():
+                    if not self.fx.calls:
+                        self.assertEqual(before, self.fx.snapshot())
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                reports, code, _, _, _ = self.run_watch(clock=Clock(release))
+            self.assertEqual(code, 1)
+            self.assertEqual([r["status"] for r in reports], ["busy", "observed", "observed"])
+            busy = reports[0]
+            self.assertEqual(busy["code"], "fleet_operation_in_progress")
+            self.assertEqual(busy["hosts"], [])
+            self.assertIsNone(busy["summary"])
+            self.assertTrue(busy["watch"]["observation_skipped"])
+            self.assertEqual(reports[1]["watch"]["skipped_samples_since_previous_observation"], 1)
+            self.assertEqual(len(self.fx.calls), 24)
+            self.assertEqual(before, self.fx.snapshot())
+
+    def test_lock_held_for_whole_watch_is_bounded_and_never_reported_healthy(self):
+        with fleet.directory_fd(self.fx.launch_path, private=True) as fd:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            reports, code, clock, output, _ = self.run_watch()
+        self.assertEqual((code, clock.now, output.flushes), (1, 105, 3))
+        self.assertTrue(all(r["status"] == "busy" and r["summary"] is None for r in reports))
+        self.assertTrue(all(r["watch"]["attention_seen"] for r in reports))
+        self.assertEqual(self.fx.calls, [])
+
+    def test_lock_gap_keeps_changes_relative_to_last_actual_observation(self):
+        waits = 0
+        with fleet.directory_fd(self.fx.work_path, private=True) as fd:
+            def switch_lock():
+                nonlocal waits
+                waits += 1
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB if waits == 1 else fcntl.LOCK_UN)
+            reports, code, _, _, _ = self.run_watch(clock=Clock(switch_lock))
+        self.assertEqual(code, 1)
+        self.assertEqual([r["status"] for r in reports], ["observed", "busy", "observed"])
+        self.assertIsNone(reports[1]["summary"])
+        self.assertEqual(reports[1]["watch"]["changes"], [])
+        self.assertEqual(reports[2]["watch"]["previous_observation_sample"], 1)
+        self.assertEqual(reports[2]["watch"]["skipped_samples_since_previous_observation"], 1)
+        self.assertEqual(reports[2]["watch"]["changes"], [])
+        self.assertEqual(len(self.fx.calls), 24)
+
+    def test_receipt_rewriting_between_samples_is_not_append_only(self):
+        for journal in (self.fx.launch_path, self.fx.work_path):
+            for name in ("one.attempt.json", "one.result.json"):
+                with self.subTest(journal=journal, name=name):
+                    binding = {}
+                    path = journal / name
+                    original = path.read_bytes()
+                    work_path = None if journal == self.fx.launch_path else self.fx.work_path
+                    try:
+                        status.collect(self.fx.launch_path, work_path, self.fx.known, self.fx.key,
+                                       self.fx.observe, watch_binding=binding)
+                        self.fx.calls.clear()
+                        path.write_bytes(original + b" ")
+                        with self.assertRaisesRegex(fleet.Refused, "watch_history_changed"):
+                            status.collect(self.fx.launch_path, work_path, self.fx.known, self.fx.key,
+                                           self.fx.observe, watch_binding=binding)
+                        self.assertEqual(self.fx.calls, [])
+                    finally:
+                        path.write_bytes(original)
+
+    def test_changed_launch_target_cannot_be_rebound_as_original_on_next_sample(self):
+        binding = {}
+        status.collect(self.fx.launch_path, None, self.fx.known, self.fx.key,
+                       self.fx.observe, watch_binding=binding)
+        self.fx.calls.clear()
+        path = self.fx.launch_path / "two.result.json"
+        value = fleet.decode(path.read_bytes())
+        value["targets"][0]["pane_pid"] = "999"
+        path.write_bytes(fleet.encoded(value))
+        with self.assertRaisesRegex(fleet.Refused, "watch_history_changed"):
+            status.collect(self.fx.launch_path, None, self.fx.known, self.fx.key,
+                           self.fx.observe, watch_binding=binding)
+        self.assertEqual(self.fx.calls, [])
+
+    def test_coherent_history_rollback_is_refused_before_remote_observation(self):
+        for suffix in ("result", "attempt"):
+            with self.subTest(suffix=suffix):
+                parent = self.root / suffix
+                parent.mkdir()
+                fx = fixtures.FleetFixture(parent, send=False)
+                binding = {}
+                status.collect(fx.launch_path, None, fx.known, fx.key, fx.observe, watch_binding=binding)
+                fx.calls.clear()
+                (fx.launch_path / "two.result.json").rename(parent / "retained-result.json")
+                if suffix == "attempt":
+                    (fx.launch_path / "two.attempt.json").rename(parent / "retained-attempt.json")
+                with self.assertRaisesRegex(fleet.Refused, "watch_history_changed"):
+                    status.collect(fx.launch_path, None, fx.known, fx.key, fx.observe, watch_binding=binding)
+                self.assertEqual(fx.calls, [])
+
+    def test_dispatch_rollback_is_not_mistaken_for_unattempted_work(self):
+        binding = {}
+        status.collect(self.fx.launch_path, self.fx.work_path, self.fx.known, self.fx.key,
+                       self.fx.observe, watch_binding=binding)
+        self.fx.calls.clear()
+        for suffix in ("attempt", "result"):
+            (self.fx.work_path / ("two." + suffix + ".json")).rename(self.root / ("retained-" + suffix + ".json"))
+        with self.assertRaisesRegex(fleet.Refused, "watch_history_changed"):
+            status.collect(self.fx.launch_path, self.fx.work_path, self.fx.known, self.fx.key,
+                           self.fx.observe, watch_binding=binding)
+        self.assertEqual(self.fx.calls, [])
+
+    def test_initial_busy_directory_cannot_be_replaced_before_first_observation(self):
+        for name in ("launch", "work"):
+            with self.subTest(name=name):
+                parent = self.root / ("busy-" + name)
+                parent.mkdir()
+                fx = fixtures.FleetFixture(parent)
+                self.args.launch_state, self.args.dispatch_state = str(fx.launch_path), str(fx.work_path)
+                path = parent / name
+                with fleet.directory_fd(path, private=True) as fd:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    def replace():
+                        retained = parent / "retained-original"
+                        path.rename(retained)
+                        shutil.copytree(retained, path)
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    with self.assertRaisesRegex(fleet.Refused, "watch_source_changed"):
+                        self.run_watch(clock=Clock(replace), factory=lambda *a, **kw: fx.observe)
+                self.assertEqual(fx.calls, [])
+
+    def test_source_guard_is_checked_inside_first_sample_before_remote_calls(self):
+        def replace_between_guard_and_collect(*args, **kwargs):
+            path = self.fx.launch_path
+            retained = self.root / "retained-first-source"
+            path.rename(retained)
+            shutil.copytree(retained, path)
+            return self.fx.observe
+        with self.assertRaisesRegex(fleet.Refused, "watch_source_changed"):
+            self.run_watch(factory=replace_between_guard_and_collect)
+        self.assertEqual(self.fx.calls, [])
+
+    def test_new_results_become_immutable_after_legitimate_launch_resume(self):
+        parent = self.root / "resume-launch"
+        parent.mkdir()
+        fx = fixtures.FleetFixture(parent, launch=False, send=False)
+        with fleet.directory_fd(fx.launch_path, private=True) as fd:
+            fleet.publish(fd, "one.attempt.json", fleet.host_intent(fx.plan, fx.hosts[0]))
+        binding = {}
+        def sample():
+            return status.collect(fx.launch_path, None, fx.known, fx.key, fx.observe, watch_binding=binding)
+        self.assertEqual(sample()[1], 1)
+        result, code = fleet.execute(fx.plan, "resume", fleet.digest(fleet.encoded(fx.plan)), fx.native)
+        self.assertEqual((code, result["status"]), (0, "ready"))
+        report, code = sample()
+        self.assertEqual((code, report["summary"]["verified_live_agents"]), (0, 4))
+        self.assertFalse(report["starts_agents"])
+        fx.calls.clear()
+        (fx.launch_path / "two.result.json").rename(parent / "retained-new-result.json")
+        with self.assertRaisesRegex(fleet.Refused, "watch_history_changed"):
+            sample()
+        self.assertEqual(fx.calls, [])
+
+    def test_watch_survives_actual_cooperating_dispatch_resume(self):
+        parent = self.root / "resume-dispatch"
+        parent.mkdir()
+        fx = fixtures.FleetFixture(parent, send_failure="one")
+        self.args.launch_state, self.args.dispatch_state = str(fx.launch_path), str(fx.work_path)
+        spec = {"schema": dispatch.SPEC_SCHEMA, "hosts": [
+            {"id": e["host"]["id"], "batch": e["batch"]} for e in fx.work["hosts"]]}
+        entered, release = threading.Event(), threading.Event()
+        recovery_calls, observer_calls, futures, waits = [], [], [], []
+        def recover_peer(entry, mode):
+            recovery_calls.append((entry["host"]["id"], mode))
+            if not entered.is_set():
+                entered.set()  # Actual resume already holds both journal locks.
+                self.assertTrue(release.wait(3))
+            if mode in ("read-receipt", "query-receipt"):
+                return fx.observe(entry, mode)
+            return fx.preview(entry, mode)
+        def observer(entry, mode):
+            self.assertFalse(entered.is_set() and not release.is_set())
+            observer_calls.append((entry["host"]["id"], mode))
+            return fx.observe(entry, mode)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            def interval():
+                waits.append(len(observer_calls))
+                if len(waits) == 1:
+                    futures.append(pool.submit(dispatch.execute, str(fx.launch_path), spec, fx.known, fx.key,
+                        str(fx.work_path), 360, "resume", fleet.digest(fleet.encoded(fx.work)), recover_peer))
+                    self.assertTrue(entered.wait(3))
+                elif len(waits) == 2:
+                    self.assertEqual(waits[0], waits[1])  # Busy sample did not probe.
+                    release.set()
+                    result, code = futures[0].result(timeout=3)
+                    self.assertEqual((code, result["status"]), (0, "submitted"))
+            try:
+                reports, code, _, _, _ = self.run_watch(clock=Clock(interval), factory=lambda *a, **kw: observer)
+            finally:
+                release.set()
+        self.assertEqual(code, 1)
+        self.assertEqual([r["status"] for r in reports], ["attention", "busy", "observed"])
+        self.assertEqual(reports[0]["summary"]["confirmed_submissions"], 2)
+        self.assertIsNone(reports[1]["summary"])
+        self.assertEqual(reports[2]["summary"]["confirmed_submissions"], 4)
+        self.assertEqual(reports[2]["watch"]["previous_observation_sample"], 1)
+        self.assertEqual(reports[2]["watch"]["skipped_samples_since_previous_observation"], 1)
+        self.assertEqual([(h, m) for h, m in recovery_calls if m == "send"], [("two", "send")])
+        self.assertFalse(any(m in ("send", "preview") for _, m in observer_calls))
+        self.assertTrue(all(not r["sends_prompts"] and not r["starts_agents"] for r in reports))
+
+    def test_initial_busy_journal_corruption_is_fatal_after_lock_release(self):
+        path = self.fx.work_path / "intent.json"
+        with fleet.directory_fd(self.fx.work_path, private=True) as fd:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            def corrupt_and_release():
+                path.write_bytes(b"not-json")
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            with self.assertRaisesRegex(fleet.Refused, "invalid_json"):
+                self.run_watch(clock=Clock(corrupt_and_release))
+        self.assertEqual(self.fx.calls, [])
+
+    def test_cancellation_during_busy_interval_releases_directory_handles(self):
+        clock = Clock()
+        clock.on_wait = clock.set
+        before = len(os.listdir("/proc/self/fd"))
+        with fleet.directory_fd(self.fx.launch_path, private=True) as fd:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(fleet.Refused, "operation_cancelled"):
+                self.run_watch(clock=clock)
+        self.assertEqual(self.fx.calls, [])
+        self.assertEqual(len(os.listdir("/proc/self/fd")), before)
+
+    def test_invalid_dispatch_path_is_not_masked_by_busy_launch(self):
+        for nested in (False, True):
+            path = self.fx.launch_path / "nested" if nested else self.fx.launch_path
+            if nested:
+                path.mkdir(mode=0o700)
+            self.args.dispatch_state = str(path)
+            with self.subTest(nested=nested), fleet.directory_fd(self.fx.launch_path, private=True) as fd:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaisesRegex(fleet.Refused, "dispatch_state_must_be_outside_launch_journal"):
+                    self.run_watch()
+        self.assertEqual(self.fx.calls, [])
 
     def test_real_cli_flushes_before_exit_and_stops_at_finite_watch_duration(self):
         known, key = self.root / "known", self.root / "key"

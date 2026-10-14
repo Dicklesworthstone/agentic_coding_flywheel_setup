@@ -147,15 +147,46 @@ validation and child cleanup can extend wall-clock completion; no new remote
 budget is granted after the watch deadline. SSH trust bytes are retained from
 the start, and each sample re-queries evidence instead of reusing a prior success.
 
-The original launch/dispatch plan digests, intent bytes and directory identities
-are pinned on the first sample. Replacing a journal, even with identical files,
-or changing its intent stops the watch before any new remote calls. Legitimate
-append-only progress in the same journals can be observed between samples; the
-watch itself never resumes or repairs them. A busy, corrupt or incompatible
-journal is a local error, not permission to switch fleets or retry a send.
+Journal directories are pinned when watch starts, before the first lock attempt.
+Their descriptors stay open without holding a lock, so even an initially busy
+journal cannot be silently replaced before the first observation. Original plan
+digests and intent bytes are bound on the first validated sample. Every observed
+attempt/result file is also bound by its exact byte hash. Later samples permit
+only validated additions: a removed receipt, rewritten result, or coherent
+rollback to an earlier journal prefix stops observation before new remote calls.
+Newly appended receipts become immutable for subsequent samples too.
 
-Normal watch completion returns **1 if any sample needed attention**, even when
-the final sample is healthy, and 0 otherwise. Local errors return 2; signals keep
+Legitimate append-only launch or dispatch recovery can proceed between samples.
+The watch does not resume anything itself, reconstruct receipts, approve another
+operation, or resend work. Replacing a directory, changing the original plan,
+malformed state, unsafe paths, and incompatible source evidence remain fatal.
+
+### Watching while another controller holds a journal lock
+
+In watch mode only, cooperative lock contention emits a `busy` JSON line with
+`code: "fleet_operation_in_progress"`, `hosts: []`, and `summary: null`. This is
+an **observation gap**, not a claim that the fleet has zero agents, that previous
+submissions remain verified, or that recovery has succeeded. No remote probes
+are started for that sample, no locked journal is read without its lock, and no
+previous host states or counters are copied into the busy line.
+
+The ordinary finite watch deadline and interval still apply. The next tick tries
+the journal locks again; after acquisition, all source, append-only-history and
+remote-evidence checks run anew. This also supports starting a watch while an
+existing journal is already busy. A corrupt journal is not retried as contention.
+Single-sample status retains its existing behavior: a busy journal returns a
+local error rather than waiting.
+
+`watch.observation_skipped` distinguishes a busy tick from an actual observation.
+`watch.previous_observation_sample` identifies the last non-busy sample, and
+`watch.skipped_samples_since_previous_observation` reports the intervening gap.
+Busy lines have no changes. The next observed sample compares against the last
+actual observation and explicitly reports how many ticks were skipped; it does
+not imply continuous visibility or synthesize transitions during that gap.
+
+Normal watch completion returns **1 if any sample needed attention or was busy**,
+even when the final sample is healthy, and 0 otherwise. A watch that spends its
+entire budget waiting on locks returns 1 with no observed host counters. Local errors return 2; signals keep
 their 128-plus-signal exit codes. Errors after argument parsing use the same
 single-line JSON format in watch mode. A closed downstream pipe stops output
 without a traceback. A healthy watch still does not certify completed work or
@@ -173,4 +204,8 @@ The suite constructs launch and dispatch journals through the existing productio
 controllers with protocol fixtures, then exercises the observer and its original
 journal/receipt validators. The fixed remote export reader also runs as a real
 unprivileged Python process through literal shell argument transport against real
-files. These tests do not replace live OpenSSH/VPS/NTM/provider acceptance.
+files. Recovery-watch tests run the actual cooperating dispatch-resume controller
+against those journals while a watch is active; only the remote protocol peer is
+substituted. They verify that the resumed controller sends only to the untouched
+host, the observer never sends, and removed or rewritten history cannot be adopted.
+These tests do not replace live OpenSSH/VPS/NTM/provider acceptance.
