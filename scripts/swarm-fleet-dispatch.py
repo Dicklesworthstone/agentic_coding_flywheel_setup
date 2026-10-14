@@ -6,11 +6,14 @@ their selected hosts. Preview opens SSH connections but sends no work. --send
 requires the preview digest and can start paid model work; it never starts agents.
 """
 import argparse
+import base64
+import binascii
 from contextlib import contextmanager
 import fcntl
 import importlib.util
 import os
 from pathlib import Path
+import secrets
 import shlex
 import signal
 import subprocess
@@ -32,6 +35,7 @@ STATE_SCHEMA = "acfs.swarm-fleet-dispatch-state.v1"
 NATIVE_SCHEMA = "acfs.swarm-dispatch.v1"
 POLICY = "original-fleet-reviewed-native-batches-v1"
 SEND_ATTEMPTED = False
+BATCH_RECEIPT_SCHEMA = "acfs.swarm-fleet-receipt-batch.v1"
 
 # Fixed read-only remote program, not code supplied by a batch/spec. It snapshots
 # an original private native delivery intent without depending on a live pane,
@@ -66,6 +70,109 @@ try:
 except (OSError, ValueError):
     sys.exit(2)
 '''
+
+
+# Fixed read-only multi-receipt reader. It never runs NTM or any command from
+# journal data; controller-side validation still decides which operations may
+# enter the existing single-operation NTM receipt query path.
+READ_RECEIPT_BATCH = r'''import base64, hashlib, json, os, re, stat, sys
+def check(ok):
+    if not ok:
+        raise ValueError()
+def pairs(items):
+    result = {}
+    for key, value in items:
+        check(key not in result)
+        result[key] = value
+    return result
+def read_private(path, uid):
+    check(type(path) is str and path.startswith('/') and len(path) <= 4096
+          and re.search(r'[\x00-\x1f\x7f]', path) is None
+          and all(p not in ('', '.', '..') for p in path.split('/')[1:]))
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in path.split('/')[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+            info = os.fstat(fd)
+            sticky = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+            check(info.st_uid in (0, uid) and (not info.st_mode & 0o022 or sticky))
+        handle = os.open(path.rsplit('/', 1)[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+        with os.fdopen(handle, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            check(stat.S_ISREG(info.st_mode) and info.st_uid == uid and info.st_nlink == 1
+                  and not info.st_mode & 0o077)
+            raw = stream.read(32769)
+            check(len(raw) <= 32768)
+            return raw
+    finally:
+        os.close(fd)
+try:
+    check(os.geteuid() != 0 and len(sys.argv) == 2)
+    raw = sys.argv[1].encode('utf-8')
+    check(len(raw) <= 65536)
+    request = json.loads(raw.decode('utf-8'), object_pairs_hook=pairs,
+                         parse_constant=lambda _: check(False))
+    check(type(request) is dict and set(request) == {'nonce', 'items'}
+          and type(request['nonce']) is str and re.fullmatch(r'[a-f0-9]{32}', request['nonce'])
+          and type(request['items']) is list and 1 <= len(request['items']) <= 32)
+    seen, rows, uid = set(), [], os.geteuid()
+    for item in request['items']:
+        check(type(item) is dict and set(item) == {'operation_id', 'receipt'})
+        op, path = item['operation_id'], item['receipt']
+        check(type(op) is str and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', op)
+              and op not in seen)
+        seen.add(op)
+        try:
+            body = read_private(path, uid)
+            rows.append({'operation_id': op, 'status': 'captured',
+                         'stdout_base64': base64.b64encode(body).decode('ascii')})
+        except (OSError, ValueError):
+            rows.append({'operation_id': op, 'status': 'unavailable',
+                         'code': 'native_receipt_unavailable'})
+    result = {'schema': 'acfs.swarm-fleet-receipt-batch.v1',
+              'request_sha256': hashlib.sha256(raw).hexdigest(), 'rows': rows}
+    output = json.dumps(result, sort_keys=True, ensure_ascii=True, allow_nan=False).encode('ascii')
+    check(len(output) <= 1048576)
+    sys.stdout.buffer.write(output + b'\n')
+except (OSError, ValueError, UnicodeError, RecursionError, TypeError):
+    sys.exit(2)
+'''
+
+
+def receipt_read_batch(entry, deliveries, invoke):
+    items = [{"operation_id": d["request"]["operation_id"], "receipt": d["receipt"]} for d in deliveries]
+    request = {"nonce": secrets.token_hex(16), "items": items}
+    require(len(encoded(request)) <= 65536, "receipt_batch_request_limit")
+    command = "exec /usr/bin/python3 -I -c " + shlex.quote(READ_RECEIPT_BATCH) + " " + shlex.quote(encoded(request).decode())
+    code, raw = invoke({**entry, "receipt_batch": request, "receipt_batch_command": command}, "batch-read-receipts")
+    require(type(code) is int and code == 0 and type(raw) is bytes, "receipt_batch_unavailable")
+    value = decode(raw)
+    require(type(value) is dict and set(value) == {"schema", "request_sha256", "rows"}
+            and value["schema"] == BATCH_RECEIPT_SCHEMA
+            and value["request_sha256"] == digest(encoded(request))
+            and type(value["rows"]) is list and len(value["rows"]) == len(items),
+            "receipt_batch_identity_mismatch")
+    frames = []
+    for item, row in zip(items, value["rows"]):
+        require(type(row) is dict and row.get("operation_id") == item["operation_id"],
+                "receipt_batch_item_mismatch")
+        if row.get("status") == "unavailable":
+            require(set(row) == {"operation_id", "status", "code"}
+                    and row["code"] == "native_receipt_unavailable", "receipt_batch_error_invalid")
+            frames.append((None, row["code"]))
+            continue
+        require(set(row) == {"operation_id", "status", "stdout_base64"}
+                and row["status"] == "captured" and type(row["stdout_base64"]) is str,
+                "receipt_batch_frame_invalid")
+        try:
+            body = base64.b64decode(row["stdout_base64"], validate=True)
+        except (ValueError, binascii.Error):
+            raise fleet.Refused("receipt_batch_encoding_invalid") from None
+        require(len(body) <= 32768, "receipt_batch_output_limit")
+        frames.append((body, None))
+    return frames
 
 
 def lock(fd):
@@ -116,7 +223,13 @@ def select_batches(spec, launch, history):
 
 
 def remote_command(entry, mode):
-    require(mode in ("launch-status", "preview", "send", "read-receipt", "query-receipt"), "invalid_dispatch_operation")
+    require(mode in ("launch-status", "preview", "send", "read-receipt", "query-receipt", "batch-read-receipts"),
+            "invalid_dispatch_operation")
+    if mode == "batch-read-receipts":
+        require(type(entry.get("receipt_batch_command")) is str
+                and entry["receipt_batch_command"].startswith("exec /usr/bin/python3 -I -c "),
+                "invalid_receipt_batch_command")
+        return entry["receipt_batch_command"]
     if mode == "read-receipt":
         path = fleet.absolute_path(entry["delivery"]["receipt"])
         return "exec python3 -I -c " + shlex.quote(READ_RECEIPT) + " " + shlex.quote(path)
@@ -384,7 +497,51 @@ def query_submission(entry, delivery, invoke):
             "submission_not_confirmed")
 
 
-def recover(context, selected, mode, approval, invoke, source_guard):
+
+def query_submissions_batched_reads(entry, invoke):
+    """Batch immutable intent reads; preserve the existing NTM query path."""
+    deliveries = entry["deliveries"]
+    frames = receipt_read_batch(entry, deliveries, invoke)
+    failures, saved = [None] * len(deliveries), {}
+    for index, (delivery, (raw, error)) in enumerate(zip(deliveries, frames)):
+        if error is not None:
+            failures[index] = error
+            continue
+        try:
+            body = decode(raw)
+            require(type(body) is dict and set(body) == {"schema", "request", "target"}
+                    and body["schema"] == "acfs.packet-delivery.v1"
+                    and encoded(body["request"]) == encoded(delivery["request"])
+                    and type(body["target"]) is str and 1 <= len(body["target"]) <= 128
+                    and all(32 <= ord(ch) < 127 for ch in body["target"]), "native_receipt_mismatch")
+            saved[index] = body
+        except fleet.Refused as exc:
+            failures[index] = str(exc)
+    for index, delivery in enumerate(deliveries):
+        if failures[index] is not None:
+            continue
+        try:
+            query = {**entry, "delivery": delivery}
+            code, raw = invoke(query, "query-receipt")
+            require(type(code) is int and code == 0 and type(raw) is bytes, "ntm_receipt_unavailable")
+            value = decode(raw)
+            require(type(value) is dict, "ntm_receipt_invalid")
+            operation, outcome = value.get("operation"), value.get("outcome")
+            request, target = delivery["request"], saved[index]["target"]
+            require(value.get("success") is True and value.get("session") == request["session"]
+                    and type(operation) is dict and operation.get("operation_id") == request["operation_id"]
+                    and operation.get("payload_sha256") == request["payload_sha256"]
+                    and type(operation.get("payload_bytes")) is int and operation["payload_bytes"] == request["payload_bytes"]
+                    and operation.get("status") == "completed" and type(outcome) is dict
+                    and outcome.get("success") is True and outcome.get("targets") == [target]
+                    and outcome.get("successful") == [target] and outcome.get("failed") == []
+                    and operation.get("admissions") == [{"target": target, "state": "submitted"}],
+                    "submission_not_confirmed")
+        except fleet.Refused as exc:
+            failures[index] = str(exc)
+    return failures
+
+def recover(context, selected, mode, approval, invoke, source_guard, *, batch_receipts=False):
     with fleet.directory_fd(context["state_directory"], private=True) as fd:
         lock(fd)
         plan, history, records = read_dispatch_history(fd, context, selected)
@@ -404,6 +561,17 @@ def recover(context, selected, mode, approval, invoke, source_guard):
                 continue
             entry, row = plan["hosts"][index], report["hosts"][index]
             row.update(status="submitted", reconciled_only=True)
+            if batch_receipts:
+                try:
+                    failures = query_submissions_batched_reads(entry, checked_invoke)
+                except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+                    failures = [str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable"] * len(entry["deliveries"])
+                for detail, failure in zip(row["deliveries"], failures):
+                    detail["status"] = "submitted" if failure is None else "unconfirmed"
+                    if failure is not None:
+                        detail["code"] = failure
+                        row["status"], confirmed = "unconfirmed", False
+                continue
             for delivery, detail in zip(entry["deliveries"], row["deliveries"]):
                 try:
                     query_submission(entry, delivery, checked_invoke)
@@ -443,10 +611,12 @@ def recover(context, selected, mode, approval, invoke, source_guard):
         return send_pending(plan, pending, fd, records, report, checked_invoke, source_guard)
 
 
-def execute(launch_path, batches, known, identity, state_dir, timeout, mode, approval, invoke):
+def execute(launch_path, batches, known, identity, state_dir, timeout, mode, approval, invoke, *, batch_receipts=False):
     global SEND_ATTEMPTED
     SEND_ATTEMPTED = False
     require(mode in ("preview", "send", "reconcile", "resume", "audit"), "invalid_dispatch_operation")
+    require(type(batch_receipts) is bool and (not batch_receipts or mode in ("reconcile", "resume")),
+            "batch_receipts_requires_reconciliation_or_resume")
     require((approval is not None) == (mode in ("send", "resume"))
             and (approval is None or fleet.matches(r"[0-9a-f]{64}", approval)), "send_requires_exact_approval")
     require(type(timeout) is int and 1 <= timeout <= 600, "invalid_timeout")
@@ -462,7 +632,7 @@ def execute(launch_path, batches, known, identity, state_dir, timeout, mode, app
         if mode == "audit":
             return audit_local_history(context, selected, guard)
         if mode in ("reconcile", "resume"):
-            return recover(context, selected, mode, approval, invoke, guard)
+            return recover(context, selected, mode, approval, invoke, guard, batch_receipts=batch_receipts)
         prepared, errors = [], []
         for entry in selected:
             guard()
@@ -496,6 +666,8 @@ def main(arguments=None):
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--state-dir", required=True, help="New dispatch journal, outside the launch journal")
     parser.add_argument("--timeout", type=int, default=360, help="Per SSH call, 1..600 seconds")
+    parser.add_argument("--batch-receipts", action="store_true",
+                        help="Batch immutable receipt reads during --reconcile/--resume; never resends")
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--send", action="store_true", help="Send approved work; may consume paid model quota")
     action.add_argument("--reconcile", action="store_true", help="Query attempted submissions only; no writes or sends")
@@ -504,10 +676,13 @@ def main(arguments=None):
     parser.add_argument("--accept-plan", help="Exact dispatch preview digest; not the fleet launch digest")
     args = parser.parse_args(arguments)
     mode = "audit" if args.audit else "resume" if args.resume else "reconcile" if args.reconcile else "send" if args.send else "preview"
+    require(not args.batch_receipts or mode in ("reconcile", "resume"),
+            "batch_receipts_requires_reconciliation_or_resume")
     known, identity = fleet.read_input(args.known_hosts, private=False), fleet.read_input(args.identity_file)
     invoke = None if mode == "audit" else transport(known, identity, args.timeout)
     result, code = execute(args.launch_state, decode(fleet.read_input(args.batches)), known, identity,
-                           args.state_dir, args.timeout, mode, args.accept_plan, invoke)
+                           args.state_dir, args.timeout, mode, args.accept_plan, invoke,
+                           batch_receipts=args.batch_receipts)
     print(encoded(result).decode(), end="")
     return code
 
