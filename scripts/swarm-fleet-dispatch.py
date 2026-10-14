@@ -334,6 +334,28 @@ def read_dispatch_history(fd, context, selected):
     return plan, history, records
 
 
+def audit_local_history(context, selected, source_guard):
+    """Validate immutable local recovery evidence without contacting any host."""
+    with fleet.directory_fd(context["state_directory"], private=True) as fd:
+        lock(fd)
+        plan, history, records = read_dispatch_history(fd, context, selected)
+        source_guard()
+        fleet.state_unchanged(fd, plan, records)
+        rows = []
+        for entry, (attempted, result_exists) in zip(plan["hosts"], history):
+            state = "recorded_submitted" if result_exists else "attempted_unconfirmed" if attempted else "not_attempted"
+            rows.append({"id": entry["host"]["id"], "status": state,
+                         "deliveries": len(entry["deliveries"])})
+        complete = all(result_exists for _, result_exists in history)
+        report = {"schema": SCHEMA, "operation": "audit", "status": "recorded" if complete else "partial",
+                  "plan_sha256": digest(encoded(plan)), "starts_agents": False, "send_attempted": False,
+                  "agent_execution_verified": False, "remote_submission_verified": False,
+                  "local_history_only": True, "hosts": rows}
+        source_guard()
+        fleet.state_unchanged(fd, plan, records)
+        return report, 0 if complete else 1
+
+
 def query_submission(entry, delivery, invoke):
     """Snapshot the native intent, then query NTM's exact operation; never send."""
     query = {**entry, "delivery": delivery}
@@ -424,7 +446,7 @@ def recover(context, selected, mode, approval, invoke, source_guard):
 def execute(launch_path, batches, known, identity, state_dir, timeout, mode, approval, invoke):
     global SEND_ATTEMPTED
     SEND_ATTEMPTED = False
-    require(mode in ("preview", "send", "reconcile", "resume"), "invalid_dispatch_operation")
+    require(mode in ("preview", "send", "reconcile", "resume", "audit"), "invalid_dispatch_operation")
     require((approval is not None) == (mode in ("send", "resume"))
             and (approval is None or fleet.matches(r"[0-9a-f]{64}", approval)), "send_requires_exact_approval")
     require(type(timeout) is int and 1 <= timeout <= 600, "invalid_timeout")
@@ -437,6 +459,8 @@ def execute(launch_path, batches, known, identity, state_dir, timeout, mode, app
     with launch_context(launch_path, known, identity) as (launch, history, records, guard):
         selected = select_batches(batches, launch, history)
         context = plan_context(launch_path, launch, records, known, identity, state_dir, timeout)
+        if mode == "audit":
+            return audit_local_history(context, selected, guard)
         if mode in ("reconcile", "resume"):
             return recover(context, selected, mode, approval, invoke, guard)
         prepared, errors = [], []
@@ -476,13 +500,14 @@ def main(arguments=None):
     action.add_argument("--send", action="store_true", help="Send approved work; may consume paid model quota")
     action.add_argument("--reconcile", action="store_true", help="Query attempted submissions only; no writes or sends")
     action.add_argument("--resume", action="store_true", help="Confirm attempted hosts, then send only to untouched hosts")
+    action.add_argument("--audit", action="store_true", help="Validate local launch/dispatch journals only; never opens SSH")
     parser.add_argument("--accept-plan", help="Exact dispatch preview digest; not the fleet launch digest")
     args = parser.parse_args(arguments)
-    mode = "resume" if args.resume else "reconcile" if args.reconcile else "send" if args.send else "preview"
+    mode = "audit" if args.audit else "resume" if args.resume else "reconcile" if args.reconcile else "send" if args.send else "preview"
     known, identity = fleet.read_input(args.known_hosts, private=False), fleet.read_input(args.identity_file)
+    invoke = None if mode == "audit" else transport(known, identity, args.timeout)
     result, code = execute(args.launch_state, decode(fleet.read_input(args.batches)), known, identity,
-                           args.state_dir, args.timeout, mode, args.accept_plan,
-                           transport(known, identity, args.timeout))
+                           args.state_dir, args.timeout, mode, args.accept_plan, invoke)
     print(encoded(result).decode(), end="")
     return code
 
