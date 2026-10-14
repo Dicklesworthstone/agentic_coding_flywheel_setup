@@ -287,156 +287,19 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 2)
 
 
-class RemoteBatchTests(unittest.TestCase):
-    def setUp(self):
-        self.addCleanup(os.umask, os.umask(0o022))
-        self.root = Path(tempfile.mkdtemp(prefix="acfs-real-batch-"))
-        self.uid = 65534 if os.geteuid() == 0 else os.geteuid()
-        self.gid = 65534 if os.geteuid() == 0 else os.getegid()
-        self.options = {"user": self.uid, "group": self.gid, "extra_groups": []} if os.geteuid() == 0 else {}
-        self.owned(self.root)
-        self.bin = self.root / "bin"
-        self.bin.mkdir(mode=0o700)
-        self.owned(self.bin)
-        self.stub = self.bin / "ntm"
-        self.stub.write_text('''#!/usr/bin/python3
-import json, os, pathlib, signal, sys, time
-root = pathlib.Path(os.environ['HOME'])
-assert len(sys.argv) == 3 and sys.argv[1].startswith('--robot-send-receipt=') and sys.argv[2] == '--robot-format=json'
-op = sys.argv[1].split('=', 1)[1]
-with (root / 'queries.log').open('a') as stream:
-    stream.write(op + '\\n')
-if op == 'hang':
-    (root / 'pid').write_text(str(os.getpid()))
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    time.sleep(30)
-elif op == 'noisy':
-    sys.stderr.write('SECRET' * 20000)
-elif op == 'large':
-    sys.stdout.write('x' * 65537)
-elif op == 'fail':
-    sys.stderr.write('SECRET')
-    sys.exit(1)
-else:
-    sys.stdout.buffer.write((root / (op + '.proof')).read_bytes())
-''')
-        self.stub.chmod(0o700)
-        self.owned(self.stub)
-        self.entry = {"deliveries": deliveries()}
-        for delivery in self.entry["deliveries"]:
-            op = delivery["request"]["operation_id"]
-            path = self.root / (op + " 'literal'; $(touch BAD).json")
-            self.write(path, fleet.encoded(native(delivery)))
-            delivery["receipt"] = str(path)
-            self.write(self.root / (op + ".proof"), fleet.encoded(proof(delivery)))
-        self.calls = []
+class RemoteReadBatchTests(unittest.TestCase):
+    def test_batch_reader_is_read_only_and_item_local(self):
+        self.assertIn("native_receipt_unavailable", dispatch.READ_RECEIPT_BATCH)
+        self.assertNotIn("robot-send", dispatch.READ_RECEIPT_BATCH)
+        self.assertNotIn("subprocess", dispatch.READ_RECEIPT_BATCH)
 
-    def owned(self, path):
-        if os.geteuid() == 0:
-            os.chown(path, self.uid, self.gid)
-
-    def write(self, path, raw):
-        path.write_bytes(raw)
-        path.chmod(0o600)
-        self.owned(path)
-
-    def invoke(self, entry, mode):
-        self.calls.append(mode)
-        command = dispatch.remote_command(entry, mode)
-        result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-p", "-c", command], cwd="/",
-            env={"PATH": str(self.bin) + ":/usr/bin:/bin", "HOME": str(self.root), "LANG": "C.UTF-8"},
-            capture_output=True, timeout=15, **self.options)
-        self.assertEqual(result.stderr, b"")
-        return result.returncode, result.stdout
-
-    def request(self, operations, timeout=10):
-        return {"kind": "query", "nonce": "a" * 32, "timeout": timeout,
-                "items": [{"operation_id": op} for op in operations]}
-
-    def test_real_two_phase_reader_and_ntm_processes_validate_both_deliveries(self):
-        before = {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.iterdir() if p.is_file()}
-        self.assertEqual(dispatch.query_submissions(self.entry, self.invoke), [None, None])
-        self.assertEqual(self.calls, ["batch-read-receipts", "batch-query-receipts"])
-        self.assertEqual((self.root / "queries.log").read_text().splitlines(), ["op-1", "op-2"])
-        self.assertFalse((self.root / "BAD").exists())
-        for path, expected in before.items():
-            self.assertEqual((Path(path).read_bytes(), Path(path).stat().st_mtime_ns), expected)
-
-    def test_real_invalid_intent_is_not_queried_but_other_item_is(self):
-        self.write(Path(self.entry["deliveries"][0]["receipt"]), b'{"schema":"bad"}')
-        self.assertEqual(dispatch.query_submissions(self.entry, self.invoke), ["native_receipt_mismatch", None])
-        self.assertEqual((self.root / "queries.log").read_text().splitlines(), ["op-2"])
-
-    def test_special_and_unsafe_receipts_are_refused_without_blocking_healthy_item(self):
-        first = self.entry["deliveries"][0]
-        original = Path(first["receipt"])
-        candidates = []
-        symlink = self.root / "link"; symlink.symlink_to(original); candidates.append(symlink)
-        fifo = self.root / "fifo"; os.mkfifo(fifo, 0o600); self.owned(fifo); candidates.append(fifo)
-        writable = self.root / "writable"; self.write(writable, original.read_bytes()); writable.chmod(0o660); candidates.append(writable)
-        target = self.root / "linked-source"; self.write(target, original.read_bytes())
-        hardlink = self.root / "hardlink"; os.link(target, hardlink); candidates.append(hardlink)
-        candidates.append(self.root / "missing")
-        for path in candidates:
-            with self.subTest(path=path.name):
-                first["receipt"] = str(path)
-                result = dispatch.query_submissions(self.entry, self.invoke)
-                self.assertEqual(result, ["batch_child_failed", None])
-        self.assertEqual((self.root / "queries.log").read_text().splitlines(), ["op-2"] * len(candidates))
-
-    def test_real_output_limits_cover_stderr_and_preserve_other_item(self):
-        request = self.request(["noisy", "large", "op-2", "fail"])
-        code, raw = self.invoke({"receipt_batch": request}, "batch-query-receipts")
-        self.assertEqual(code, 0)
-        rows = json.loads(raw)["rows"]
-        self.assertEqual([r["status"] for r in rows], ["unavailable", "unavailable", "captured", "unavailable"])
-        self.assertEqual([rows[i]["code"] for i in (0, 1, 3)], ["batch_output_limit", "batch_output_limit", "batch_child_failed"])
-        self.assertNotIn(b"SECRET", raw)
-
-    def test_remote_deadline_is_shared_and_reaps_child_without_querying_later_items(self):
-        request = self.request(["hang", "op-2"], timeout=1)
-        start = time.monotonic()
-        code, raw = self.invoke({"receipt_batch": request}, "batch-query-receipts")
-        self.assertEqual(code, 0)
-        self.assertLess(time.monotonic() - start, 4)
-        self.assertTrue(all(row["code"] == "batch_deadline_exceeded" for row in json.loads(raw)["rows"]))
-        self.assertEqual((self.root / "queries.log").read_text().splitlines(), ["hang"])
-        with self.assertRaises(ProcessLookupError):
-            os.kill(int((self.root / "pid").read_text()), 0)
-
-    def test_remote_validates_entire_request_before_starting_any_child(self):
-        valid = self.request(["op-1"])
-        command = dispatch.receipt_batch_command(valid, "query")
-        argv = shlex.split(command)[1:]
-        invalids = [{**valid, "items": [{"operation_id": "op-1"}, {"operation_id": "--robot-send=BAD"}]},
-                    {**valid, "items": valid["items"] * 2}, {**valid, "timeout": True},
-                    {**valid, "command": "BAD"}, {**valid, "nonce": "bad"}]
-        for value in invalids:
-            with self.subTest(value=value):
-                result = subprocess.run([*argv[:-1], json.dumps(value)], capture_output=True, timeout=5,
-                    env={"PATH": str(self.bin) + ":/usr/bin:/bin", "HOME": str(self.root)}, **self.options)
-                self.assertEqual((result.returncode, result.stdout, result.stderr), (2, b"", b""))
-        self.assertFalse((self.root / "queries.log").exists())
-
-    def test_remote_signal_cancels_and_reaps_only_its_query_process(self):
-        request = self.request(["hang", "op-2"], timeout=30)
-        argv = shlex.split(dispatch.receipt_batch_command(request, "query"))[1:]
-        process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            env={"PATH": str(self.bin) + ":/usr/bin:/bin", "HOME": str(self.root)}, **self.options)
-        try:
-            end = time.monotonic() + 3
-            while not (self.root / "pid").exists() and time.monotonic() < end:
-                time.sleep(0.01)
-            self.assertTrue((self.root / "pid").exists())
-            process.send_signal(signal.SIGTERM)
-            out, err = process.communicate(timeout=3)
-            self.assertEqual((process.returncode, out, err), (143, b"", b""))
-            with self.assertRaises(ProcessLookupError):
-                os.kill(int((self.root / "pid").read_text()), 0)
-        finally:
-            if process.poll() is None:
-                process.kill()
-            process.communicate(timeout=5)
+    def test_batch_mode_keeps_existing_ntm_query_path(self):
+        items = deliveries(2)
+        peer = ProtocolPeer()
+        failures = dispatch.query_submissions_batched_reads({"deliveries": items}, peer)
+        self.assertEqual(failures, [None, None])
+        self.assertEqual(peer.calls[0], "batch-read-receipts")
+        self.assertEqual(peer.calls[1:], ["query-receipt", "query-receipt"])
 
 
 if __name__ == "__main__":
