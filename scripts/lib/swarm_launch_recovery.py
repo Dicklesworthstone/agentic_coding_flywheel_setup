@@ -183,41 +183,73 @@ def run(argv, repo, timeout):
             process.wait()
 
 
-def observe(request, timeout):
+def target_bindings(values, request):
+    """Bind every saved slot explicitly, or retain the strict layout policy."""
+    if not values:
+        return None
+    require(len(values) == len(request["agents"]),
+            "Supply exactly one --target SLOT:%PANE for every saved launch slot.")
+    bindings = {}
+    for value in values:
+        match = re.fullmatch(r"([1-9][0-9]?):(%[0-9]{1,20})", value)
+        require(match is not None, "Use --target SLOT:%PANE with a stable tmux pane ID.")
+        slot, pane = int(match[1]), match[2]
+        require(slot not in bindings and pane not in bindings.values(),
+                "Recovery target slots and panes must be distinct.")
+        bindings[slot] = pane
+    require(set(bindings) == set(range(1, len(request["agents"]) + 1)),
+            "Recovery targets must cover every saved launch slot exactly once.")
+    return bindings
+
+
+def observe(request, timeout, bindings=None):
     tmux = shutil.which("tmux")
     require(tmux is not None, "tmux is unavailable.")
     data = run([os.path.abspath(tmux), "list-panes", "-s", "-t",
                 "=" + request["session"], "-F", FORMAT], request["repo"], timeout)
     rows = data.decode("utf-8").splitlines()
-    require(len(rows) == len(request["agents"]), "Observed pane count does not match the saved launch.")
-    panes = []
+    if bindings is None:
+        require(len(rows) == len(request["agents"]), "Observed pane count does not match the saved launch.")
+    selected = set(bindings.values()) if bindings is not None else None
+    panes, identities = [], []
     for row in rows:
         fields = row.split("\t")
         require(len(fields) == 11, "Unrecognized pane observation.")
         session, sid, created, pane, pid, server, cwd, dead, kind, window, index = fields
         require(session == request["session"] and re.fullmatch(r"\$[0-9]+", sid)
-                and re.fullmatch(r"%[0-9]+", pane)
+                and re.fullmatch(r"%[0-9]{1,20}", pane)
                 and all(re.fullmatch(r"[0-9]{1,20}", v) for v in (created, pid, server, window, index))
                 and int(pid) > 0 and int(server) > 0 and int(created) > 0
-                and dead == "0" and kind in ("claude", "codex"),
-                "Every observed pane must be a live native agent in the saved session.")
+                and dead in ("0", "1"), "Invalid pane identity in the saved session.")
+        identity = {"session_id": sid, "session_created": created, "pane": pane,
+            "pane_pid": pid, "server_pid": server, "agent_type": kind,
+            "position": (int(window), int(index))}
+        identities.append(identity)
+        # Explicit selection permits unrelated helper panes, but never ambiguous
+        # pane IDs or a response assembled from different sessions/servers.
+        if selected is not None and pane not in selected:
+            continue
+        require(dead == "0" and kind in ("claude", "codex"),
+                "Every selected pane must be a live native agent in the saved session.")
         current, repo = clean_path(cwd).resolve(strict=True), Path(request["repo"])
         require(current == repo or repo in current.parents, "A native pane is outside the saved repository.")
-        panes.append({"session_id": sid, "session_created": created, "pane": pane,
-            "pane_pid": pid, "server_pid": server, "agent_type": kind,
-            "position": (int(window), int(index))})
-    require(len({p["pane"] for p in panes}) == len(panes)
-            and len({p["position"] for p in panes}) == len(panes)
-            and len({p["pane_pid"] for p in panes}) == len(panes), "Observed panes are not distinct.")
-    require(len({(p["session_id"], p["session_created"], p["server_pid"]) for p in panes}) == 1,
+        panes.append(identity)
+    require(len({p["pane"] for p in identities}) == len(identities)
+            and len({p["position"] for p in identities}) == len(identities)
+            and len({p["pane_pid"] for p in identities}) == len(identities), "Observed panes are not distinct.")
+    require(len({(p["session_id"], p["session_created"], p["server_pid"]) for p in identities}) == 1,
             "Observed panes do not belong to one stable session.")
+    require(len(panes) == len(request["agents"]), "A selected recovery pane is missing.")
     require(Counter(p["agent_type"] for p in panes)
             == Counter(a["agent_type"] for a in request["agents"]), "Observed native-agent mix changed.")
     ordered = sorted(panes, key=lambda p: p["position"])
     by_type = {kind: iter([p for p in ordered if p["agent_type"] == kind]) for kind in ("claude", "codex")}
+    by_pane = {p["pane"]: p for p in panes}
     targets = []
     for slot, agent in enumerate(request["agents"], 1):
-        pane = next(by_type[agent["agent_type"]]).copy()
+        pane = (by_pane[bindings[slot]] if bindings is not None
+                else next(by_type[agent["agent_type"]])).copy()
+        require(pane["agent_type"] == agent["agent_type"], "Selected pane does not match its saved slot's agent type.")
         pane.pop("position")
         targets.append({**pane, "slot": slot, "agent_name": agent["agent_name"]})
     return targets
@@ -240,6 +272,8 @@ def main(arguments=None):
         description="Recover an unconfirmed launch by explicitly adopting its observed native panes. "
                     "Preview first. Never launches agents, sends work, or replaces an existing result.")
     parser.add_argument("--receipt", required=True, help="Existing private launch intent, not its result")
+    parser.add_argument("--target", action="append", default=[], metavar="SLOT:%PANE",
+                        help="Bind every saved slot to an exact pane; leave other session panes untouched")
     parser.add_argument("--adopt", action="store_true", help="Create the missing result for the exact reviewed topology")
     parser.add_argument("--expect-sha256", help="Recovery digest from this command's preview, not the original launch digest")
     parser.add_argument("--timeout", type=int, choices=range(1, 31), default=10, metavar="1..30")
@@ -250,16 +284,18 @@ def main(arguments=None):
     with locked_parent(receipt) as (fd, parent_info):
         raw, intent_info = read_private(fd, receipt.name)
         request = validate_request(parse(raw), receipt)
+        bindings = target_bindings(args.target, request)
+        selection = "explicit" if bindings is not None else "layout"
         no_result(fd, result_name)
-        targets = observe(request, args.timeout)
+        targets = observe(request, args.timeout, bindings)
         approval = {"schema": RECOVERY_SCHEMA, "intent_sha256": digest(raw),
-            "request": request, "targets": targets,
+            "request": request, "targets": targets, "selection": selection,
             "policy_sha256": digest(Path(__file__).read_bytes())}
         review_hash = digest(encode(approval))
         require(args.expect_sha256 is None or args.expect_sha256 == review_hash,
                 "Recovery request or native pane identities changed; preview recovery again.")
         report = {"schema": RECOVERY_SCHEMA, "status": "preview", "receipt": str(receipt),
-            "review_sha256": review_hash, "targets": targets, "starts_agents": False,
+            "review_sha256": review_hash, "targets": targets, "selection": selection, "starts_agents": False,
             "work_dispatched": False, "agent_mail_registered": False,
             "original_launch_verified": False, "result_created": False,
             "note": "Approval adopts these current native panes, not proof of the original spawn. "
@@ -267,9 +303,11 @@ def main(arguments=None):
         if not args.adopt:
             report["adopt_command"] = shlex.join(["acfs", "swarm", "launch", "--recover",
                 "--receipt", str(receipt), "--timeout", str(args.timeout),
+                *[part for slot, pane in sorted((bindings or {}).items())
+                  for part in ("--target", f"{slot}:{pane}")],
                 "--adopt", "--expect-sha256", review_hash])
         else:
-            require(observe(request, args.timeout) == targets, "Native pane identities changed during recovery.")
+            require(observe(request, args.timeout, bindings) == targets, "Native pane identities changed during recovery.")
             current, current_info = read_private(fd, receipt.name)
             require(current == raw and os.path.samestat(current_info, intent_info), "Launch intent changed during recovery.")
             directory(receipt.parent)
@@ -277,11 +315,11 @@ def main(arguments=None):
             no_result(fd, result_name)
             publish(fd, result_name, {"schema": SCHEMA, "request": request, "targets": targets,
                 "recovery": {"schema": RECOVERY_SCHEMA, "review_sha256": review_hash,
-                    "intent_sha256": digest(raw), "original_launch_verified": False,
+                    "intent_sha256": digest(raw), "selection": selection, "original_launch_verified": False,
                     "adopted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}})
             report.update(status="ready", result_created=True)
             try:
-                require(observe(request, args.timeout) == targets, "Native panes changed after result publication.")
+                require(observe(request, args.timeout, bindings) == targets, "Native panes changed after result publication.")
             except (RecoveryError, OSError, UnicodeError) as exc:
                 report.update(status="unconfirmed", error=str(exc) if isinstance(exc, RecoveryError)
                               else "Unable to recheck native panes. Preserve the published result.")
