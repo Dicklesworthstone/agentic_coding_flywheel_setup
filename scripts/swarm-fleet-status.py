@@ -5,9 +5,11 @@ This command does not launch, send, resume, repair journals, or run br. A closed
 Bead in an exported snapshot is not proof of task execution or accepted results.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import importlib.util
+import json
 import os
 from pathlib import Path
 import secrets
@@ -15,6 +17,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 sys.dont_write_bytecode = True
@@ -145,16 +148,22 @@ def remote_command(entry, mode):
     return "exec /usr/bin/python3 -I -c " + shlex.quote(READ_WORK) + " " + shlex.quote(encoded(request).decode())
 
 
-def transport(known, identity, timeout, deadline, *, runner=fleet.capture, ssh="/usr/bin/ssh"):
+def transport(known, identity, timeout, deadline, *, runner=None, ssh="/usr/bin/ssh", cancel_event=None, stop_at=None):
     """Keep strict fleet SSH and bound the entire sample, not just each call."""
     end = time.monotonic() + deadline
+    if stop_at is not None:
+        end = min(end, stop_at)
     def invoke(entry, mode):
+        require(cancel_event is None or not cancel_event.is_set(), "operation_cancelled")
         require(time.monotonic() < end, "status_deadline_exceeded")
         command = remote_command(entry, mode)
         def status_runner(argv, _timeout, env):
             remaining = end - time.monotonic()
             require(remaining > 0, "status_deadline_exceeded")
-            return runner([*argv[:-1], command], min(timeout, remaining), env)
+            args = ([*argv[:-1], command], min(timeout, remaining), env)
+            if runner is None:
+                return fleet.capture(*args, cancel_event=cancel_event)
+            return runner(*args)
         with fleet.transport(known, identity, timeout, runner=status_runner, ssh=ssh) as call:
             return call(entry["host"], "reconcile")
     return invoke
@@ -217,8 +226,58 @@ def work_snapshot(entry, invoke, max_age):
             "items": value["items"]}
 
 
-def collect(launch_path, dispatch_path, known, identity, invoke, max_age=300):
+def observe_host(host, attempted, saved_targets, selected, checked, max_age):
+    """Keep each host's dependent receipt reads sequential and independently reported."""
+    row = {"id": host["id"], "requested_agents": len(host["request"]["agents"]),
+           "agents": {"status": "not_attempted", "verified_live_agents": 0},
+           "deliveries": [], "work": {"status": "not_selected"}}
+    if attempted:
+        live = fleet.remote_result(host, "reconcile", lambda _host, _mode: checked({"host": host}, "launch-status"))
+        if live["status"] == "ready" and saved_targets is not None and live["targets"] != saved_targets:
+            live = {"status": "unconfirmed", "code": "original_targets_changed"}
+        row["agents"] = {"status": "live" if live["status"] == "ready" else "unconfirmed",
+                         "code": live["code"], "verified_live_agents": len(host["request"]["agents"]) if live["status"] == "ready" else 0,
+                         "local_result_present": saved_targets is not None}
+    if host["id"] in selected:
+        entry, (sent, result_present) = selected[host["id"]]
+        row["local_dispatch_result_present"] = result_present
+        for delivery in entry["deliveries"]:
+            detail = {"slot": delivery["slot"], "bead_id": delivery["request"]["bead_id"],
+                      "operation_id": delivery["request"]["operation_id"], "status": "not_attempted"}
+            if sent:
+                try:
+                    dispatch.query_submission(entry, delivery, checked)
+                    detail["status"] = "submitted"
+                except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+                    detail.update(status="unconfirmed", code=str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable")
+            row["deliveries"].append(detail)
+        row["work"] = {"status": "not_attempted"}
+        if sent:
+            try:
+                row["work"] = work_snapshot(entry, checked, max_age)
+            except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
+                row["work"] = {"status": "unavailable", "code": str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable"}
+    return row
+
+
+def journal_identity(path):
+    """Private watch binding, never copied into a status report."""
+    if path is None:
+        return None
+    with fleet.directory_fd(path, private=True) as fd:
+        info = os.fstat(fd)
+        return {"device": info.st_dev, "inode": info.st_ino,
+                "intent_sha256": digest(fleet.read_at(fd, "intent.json"))}
+
+
+def collect(launch_path, dispatch_path, known, identity, invoke, max_age=300, *, workers=1,
+            cancel_event=None, watch_binding=None):
     require(type(max_age) is int and 1 <= max_age <= 86400, "invalid_export_max_age")
+    # Library callers with custom transports opt into concurrency explicitly.
+    # The CLI's transport is thread-safe and uses four host workers by default.
+    require(type(workers) is int and 1 <= workers <= 16, "invalid_status_workers")
+    require(watch_binding is None or type(watch_binding) is dict, "invalid_watch_binding")
+    cancelled = cancel_event if cancel_event is not None else threading.Event()
     launch_path = str(Path(os.path.abspath(launch_path)))
     report = {"schema": SCHEMA, "status": "observed", "read_only": True, "starts_agents": False,
               "sends_prompts": False, "modifies_beads": False, "task_completion_verified": False,
@@ -231,49 +290,65 @@ def collect(launch_path, dispatch_path, known, identity, invoke, max_age=300):
             report["launch_plan_sha256"] = digest(encoded(launch))
             report["dispatch_plan_sha256"] = digest(encoded(work)) if work else None
             selected = {e["host"]["id"]: (e, h) for e, h in zip(work["hosts"], work_history)} if work else {}
+            guard_lock, invalidated = threading.Lock(), []
             def guard():
-                launch_guard()
-                work_guard()
+                # Directory iteration shares descriptors. Serialize validation,
+                # not SSH. A detected mutation stays fatal even if bytes are
+                # restored before the last worker finishes or a host catches it.
+                with guard_lock:
+                    if invalidated:
+                        raise invalidated[0]
+                    try:
+                        launch_guard()
+                        work_guard()
+                    except BaseException as exc:
+                        invalidated.append(exc)
+                        cancelled.set()
+                        raise
+            if watch_binding is not None:
+                guard()
+                binding = {"launch": journal_identity(launch_path), "dispatch": journal_identity(dispatch_path),
+                           "launch_plan_sha256": report["launch_plan_sha256"],
+                           "dispatch_plan_sha256": report["dispatch_plan_sha256"]}
+                guard()
+                require(not watch_binding or watch_binding == binding, "watch_source_changed")
+                watch_binding.update(binding)
             def checked(entry, action):
                 guard()
+                require(not cancelled.is_set(), "operation_cancelled")
                 try:
                     return invoke(entry, action)
                 finally:
                     guard()
-            for host, (attempted, saved_targets) in zip(launch["spec"]["hosts"], history):
+            def observe(index):
                 guard()
-                row = {"id": host["id"], "requested_agents": len(host["request"]["agents"]),
-                       "agents": {"status": "not_attempted", "verified_live_agents": 0},
-                       "deliveries": [], "work": {"status": "not_selected"}}
-                if attempted:
-                    live = fleet.remote_result(host, "reconcile", lambda _host, _mode: checked({"host": host}, "launch-status"))
-                    if live["status"] == "ready" and saved_targets is not None and live["targets"] != saved_targets:
-                        live = {"status": "unconfirmed", "code": "original_targets_changed"}
-                    row["agents"] = {"status": "live" if live["status"] == "ready" else "unconfirmed",
-                                     "code": live["code"], "verified_live_agents": len(host["request"]["agents"]) if live["status"] == "ready" else 0,
-                                     "local_result_present": saved_targets is not None}
-                if host["id"] in selected:
-                    entry, (sent, result_present) = selected[host["id"]]
-                    row["local_dispatch_result_present"] = result_present
-                    for delivery in entry["deliveries"]:
-                        detail = {"slot": delivery["slot"], "bead_id": delivery["request"]["bead_id"],
-                                  "operation_id": delivery["request"]["operation_id"], "status": "not_attempted"}
-                        if sent:
-                            try:
-                                dispatch.query_submission(entry, delivery, checked)
-                                detail["status"] = "submitted"
-                            except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
-                                detail.update(status="unconfirmed", code=str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable")
-                        row["deliveries"].append(detail)
-                    row["work"] = {"status": "not_attempted"}
-                    if sent:
-                        try:
-                            row["work"] = work_snapshot(entry, checked, max_age)
-                        except (fleet.Refused, OSError, subprocess.SubprocessError) as exc:
-                            row["work"] = {"status": "unavailable", "code": str(exc) if isinstance(exc, fleet.Refused) else "remote_unavailable"}
+                require(not cancelled.is_set(), "operation_cancelled")
+                attempted, saved_targets = history[index]
+                row = observe_host(launch["spec"]["hosts"][index], attempted, saved_targets,
+                                   selected, checked, max_age)
                 guard()
-                report["hosts"].append(row)
+                return row
+            count = len(history)
+            report["observation_workers"] = min(workers, count)
+            if workers == 1:
+                report["hosts"] = [observe(i) for i in range(count)]
+            else:
+                pool = ThreadPoolExecutor(max_workers=min(workers, count), thread_name_prefix="acfs-status")
+                try:
+                    pending = {pool.submit(observe, i): i for i in range(count)}
+                    rows = [None] * count
+                    for future in as_completed(pending):
+                        rows[pending[future]] = future.result()
+                        guard()
+                    report["hosts"] = rows
+                except BaseException:
+                    cancelled.set()
+                    raise
+                finally:
+                    # Keep both journal locks until every local probe is gone.
+                    pool.shutdown(wait=True, cancel_futures=True)
             guard()
+            require(not cancelled.is_set(), "operation_cancelled")
     summarize(report)
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
     return report, 0 if report["status"] == "observed" else 1
@@ -303,6 +378,82 @@ def summarize(report):
     report["status"] = "attention" if attention else "observed"
 
 
+def observation_states(report):
+    """Compare evidence states, not ticking ages, changing nonces, or cached work."""
+    states = {}
+    for row in report["hosts"]:
+        host = row["id"]
+        states[(host, "agents", "")] = {k: row["agents"].get(k) for k in
+                                         ("status", "code", "verified_live_agents")}
+        for delivery in row["deliveries"]:
+            states[(host, "delivery", delivery["operation_id"])] = {
+                k: delivery.get(k) for k in ("status", "code")}
+        work = row["work"]
+        states[(host, "export", "")] = {k: work.get(k) for k in ("status", "code")}
+        # Stale/unavailable exports cannot carry a last-known closed state into
+        # the current sample. The full report retains stale evidence separately.
+        items = {i["bead_id"]: i["status"] for i in work["items"]} if work["status"] == "recent" else {}
+        for delivery in row["deliveries"]:
+            bead = delivery["bead_id"]
+            states[(host, "bead", bead)] = items.get(bead, "unobserved")
+    return states
+
+
+def observation_changes(previous, current):
+    if previous is None:
+        return []
+    before, after = observation_states(previous), observation_states(current)
+    changes = []
+    for key in dict.fromkeys([*after, *before]):
+        if before.get(key) != after.get(key):
+            host, kind, identity = key
+            change = {"host": host, "kind": kind, "before": before.get(key), "after": after.get(key)}
+            if identity:
+                change["id"] = identity
+            changes.append(change)
+    return changes
+
+
+def emit(report, *, jsonl=False):
+    if jsonl:
+        print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False), flush=True)
+    else:
+        print(encoded(report).decode(), end="")
+
+
+def close_output():
+    try:
+        sys.stdout.close()
+    except OSError:
+        pass
+
+
+def watch(args, known, identity, cancelled):
+    """Finite, non-overlapping observations; no journal locks are held in delays."""
+    stop_at = time.monotonic() + args.watch
+    previous, binding, sample, attention_seen = None, {}, 0, False
+    interval = args.interval if args.interval is not None else 5
+    while time.monotonic() < stop_at:
+        invoke = transport(known, identity, args.timeout, args.deadline,
+                           cancel_event=cancelled, stop_at=stop_at)
+        report, code = collect(args.launch_state, args.dispatch_state, known, identity, invoke,
+                               args.export_max_age, workers=args.workers,
+                               cancel_event=cancelled, watch_binding=binding)
+        sample += 1
+        attention_seen |= code != 0
+        report["watch"] = {"sample": sample, "duration_seconds": args.watch,
+                           "interval_seconds": interval, "attention_seen": attention_seen,
+                           "changes": observation_changes(previous, report)}
+        emit(report, jsonl=True)
+        previous = report
+        remaining = stop_at - time.monotonic()
+        if remaining <= 0:
+            break
+        require(not cancelled.wait(min(interval, remaining)), "operation_cancelled")
+    require(sample > 0, "watch_no_sample")
+    return 1 if attention_seen else 0
+
+
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--launch-state", required=True, help="Original private fleet launch journal")
@@ -311,15 +462,26 @@ def main(arguments=None):
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--timeout", type=int, default=10, help="Per SSH call deadline, 1..600 seconds")
     parser.add_argument("--deadline", type=int, default=120, help="Total remote observation budget, 1..3600 seconds")
+    parser.add_argument("--workers", type=int, default=4, help="Concurrent hosts, 1..16 (default 4); one shared deadline")
     parser.add_argument("--export-max-age", type=int, default=300, help="Recent export threshold, 1..86400 seconds; never proves live DB sync")
+    parser.add_argument("--watch", type=int, metavar="SECONDS", help="Observe repeatedly for 1..86400 seconds; flushed JSON Lines")
+    parser.add_argument("--interval", type=int, metavar="SECONDS", help="Delay between completed watch samples, 1..3600 (default 5)")
     args = parser.parse_args(arguments)
     require(1 <= args.timeout <= 600 and 1 <= args.deadline <= 3600, "invalid_status_timeout")
+    require(1 <= args.workers <= 16, "invalid_status_workers")
+    require(args.watch is None or 1 <= args.watch <= 86400, "invalid_watch_duration")
+    require(args.interval is None or args.watch is not None and 1 <= args.interval <= 3600,
+            "interval_requires_watch_and_1_to_3600_seconds")
     known = fleet.read_input(args.known_hosts, private=False)
     identity = fleet.read_input(args.identity_file)
     require(known and identity, "empty_ssh_trust_input")
+    cancelled = threading.Event()
+    if args.watch is not None:
+        return watch(args, known, identity, cancelled)
     report, code = collect(args.launch_state, args.dispatch_state, known, identity,
-                           transport(known, identity, args.timeout, args.deadline), args.export_max_age)
-    print(encoded(report).decode(), end="")
+                           transport(known, identity, args.timeout, args.deadline, cancel_event=cancelled),
+                           args.export_max_age, workers=args.workers, cancel_event=cancelled)
+    emit(report)
     return code
 
 
@@ -330,12 +492,22 @@ def cli():
         signal.signal(sig, stop)
     try:
         return main()
+    except BrokenPipeError:
+        # A downstream reader can stop a watch without another write or a
+        # traceback. All probes have already been joined before emit().
+        close_output()
+        return 1
     except (fleet.Refused, OSError, subprocess.SubprocessError, fleet.Interrupted) as exc:
         interrupted = isinstance(exc, fleet.Interrupted)
-        print(encoded({"schema": SCHEMA, "status": "interrupted" if interrupted else "error",
+        report = {"schema": SCHEMA, "status": "interrupted" if interrupted else "error",
                        "code": str(exc) if isinstance(exc, fleet.Refused) else "status_observation_failed",
                        "read_only": True, "starts_agents": False, "sends_prompts": False,
-                       "modifies_beads": False, "task_completion_verified": False}).decode(), end="")
+                       "modifies_beads": False, "task_completion_verified": False}
+        jsonl = any(arg == "--watch" or arg.startswith("--watch=") for arg in sys.argv[1:])
+        try:
+            emit(report, jsonl=jsonl)
+        except BrokenPipeError:
+            close_output()
         return 128 + exc.signum if interrupted else 2
 
 

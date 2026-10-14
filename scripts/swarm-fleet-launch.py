@@ -257,9 +257,10 @@ def ssh_argv(host, mode, known_fd, identity_fd, ssh="/usr/bin/ssh"):
                    "-l", host["user"], "--", host["host"], command]
 
 
-def capture(argv, timeout, env, *, limit=LIMIT):
+def capture(argv, timeout, env, *, limit=LIMIT, cancel_event=None):
     """Bound both pipes in memory and terminate only our own SSH process group."""
     require(type(limit) is int and 1 <= limit <= 64 * LIMIT, "invalid_capture_limit")
+    require(cancel_event is None or not cancel_event.is_set(), "operation_cancelled")
     process = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, start_new_session=True)
     output, size = bytearray(), 0
@@ -270,6 +271,7 @@ def capture(argv, timeout, env, *, limit=LIMIT):
                 os.set_blocking(stream.fileno(), False)
                 selector.register(stream, selectors.EVENT_READ)
             while selector.get_map() or process.poll() is None:
+                require(cancel_event is None or not cancel_event.is_set(), "operation_cancelled")
                 remaining = deadline - time.monotonic()
                 require(remaining > 0, "ssh_timeout")
                 for key, _ in selector.select(min(remaining, 0.05)):

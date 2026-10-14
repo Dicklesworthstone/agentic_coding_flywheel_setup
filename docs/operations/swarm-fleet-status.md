@@ -77,6 +77,21 @@ retry, reassignment, reservation, stop, or queue mutation.
 
 ## Output and failure handling
 
+The CLI observes up to four hosts concurrently by default. Set `--workers 1`
+for serial observation or choose another limit from 1 through 16. All workers
+share the same sample deadline; a stalled host does not serially consume the
+budget before its concurrently scheduled peers can be inspected. A sufficiently
+small budget can still leave queued hosts unconfirmed. Each host's receipt and
+work queries remain ordered, and output always follows the original fleet order,
+not response order. `observation_workers` reports the effective host limit.
+
+Both journal locks remain held until all workers finish. Journal validation is
+serialized around remote calls, and any detected local mutation invalidates the
+whole sample even if another process subsequently restores the bytes. Signals
+and invalidation cancel outstanding local SSH process groups and queued probes
+before releasing those locks. Cancellation never kills remote agents, retries a
+send, or turns an incomplete observation into a successful one.
+
 Output is one JSON document, schema `acfs.swarm-fleet-status.v1`, with per-host
 agent, delivery, and work evidence, separate summary counters, and observation
 start/finish timestamps. Hosts retain the original fleet order. It is a sequence
@@ -96,8 +111,8 @@ Exit **2** is a local input, journal, lock, or execution error. Signals return
 allowed 1..3600 seconds), so many unavailable hosts cannot multiply the wait
 without limit. Remaining observations after budget exhaustion are unconfirmed;
 there is no second connection attempt or permissive SSH fallback. This budget
-excludes local journal validation and bounded child cleanup. Polling/scheduling
-is left to the operator; the command performs one sample and exits.
+excludes local journal validation and bounded child cleanup. Without `--watch`,
+the command performs one sample and exits.
 
 Local journals remain unchanged and are locked against cooperating launch/send/
 resume controllers while observed. Concurrent journal replacement or mutation
@@ -109,10 +124,49 @@ includes the SSH host and installed native tools; these checks are not a sandbox
 against a malicious same-user process. Transient local SSH trust snapshots use
 the existing fleet transport; no persistent status file is written automatically.
 
+## Watch evidence changes over a bounded interval
+
+Append `--watch 300 --interval 10` to the same command to observe for five minutes,
+waiting ten seconds after each completed sample. `--watch` requires an explicit
+duration from 1 through 86400 seconds. The interval defaults to five seconds and
+accepts 1 through 3600. There are no overlapping samples or catch-up bursts, and
+both journal locks are released before every delay so a cooperating controller
+can make legitimate progress. Each sample retains its independent journal checks.
+
+Watch output is **JSON Lines**, one complete, flushed status document per line.
+Each includes `watch.sample`, `watch.attention_seen` and `watch.changes`. Changes
+distinguish agent liveness, delivery evidence, export availability and individual
+Bead states. The first sample has no changes. Ticking ages alone do not generate
+changes; crossing the staleness threshold does. A stale or unavailable export
+makes its current Bead states `unobserved` rather than carrying forward a cached
+`closed` state. Every full report still includes its ordinary evidence counters.
+
+All samples share one monotonic watch deadline. Their individual `--deadline`
+and `--timeout` budgets are shortened to the remaining watch time. Local
+validation and child cleanup can extend wall-clock completion; no new remote
+budget is granted after the watch deadline. SSH trust bytes are retained from
+the start, and each sample re-queries evidence instead of reusing a prior success.
+
+The original launch/dispatch plan digests, intent bytes and directory identities
+are pinned on the first sample. Replacing a journal, even with identical files,
+or changing its intent stops the watch before any new remote calls. Legitimate
+append-only progress in the same journals can be observed between samples; the
+watch itself never resumes or repairs them. A busy, corrupt or incompatible
+journal is a local error, not permission to switch fleets or retry a send.
+
+Normal watch completion returns **1 if any sample needed attention**, even when
+the final sample is healthy, and 0 otherwise. Local errors return 2; signals keep
+their 128-plus-signal exit codes. Errors after argument parsing use the same
+single-line JSON format in watch mode. A closed downstream pipe stops output
+without a traceback. A healthy watch still does not certify completed work or
+authenticated model readiness, and it never changes the fleet.
+
 ## Validation
 
 ```bash
 python3 -B tests/unit/test_swarm_fleet_status.py -v
+python3 -B tests/unit/test_swarm_fleet_status_parallel.py -v
+python3 -B tests/unit/test_swarm_fleet_status_watch.py -v
 ```
 
 The suite constructs launch and dispatch journals through the existing production
