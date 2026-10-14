@@ -21,6 +21,10 @@ setup() {
     export UPDATE_LOG_DIR="$HOME/.acfs/logs/updates"
     
     source_lib "update"
+    # update.sh looks for a .git checkout and falls back to
+    # /data/projects/agentic_coding_flywheel_setup, so an exported test tree
+    # (no .git) on a fleet host ran against that host's checkout instead.
+    ACFS_REPO_ROOT="$PROJECT_ROOT"
     
     # Mock date
     stub_command "date" "2025-01-01"
