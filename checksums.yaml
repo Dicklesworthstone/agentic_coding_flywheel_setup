@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-14T18:46:10+00:00
+# checksums.yaml - Auto-generated 2026-10-14T19:01:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -56,7 +56,7 @@ installers:
 
   csctf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh"
-    sha256: "41c88bdf7c211e96f73fd9865fde6251eeb3c611a4f6db51a9af3af4f332f000"
+    sha256: "141745248d42bbacb22081f7de1528f31c29c3537d1c7c3989f3a635fc2d9524"
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
@@ -100,7 +100,7 @@ installers:
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
-    sha256: "d75b934f506269f3cb003a8b7de26849dcf298c30b4c6610c976ac8e0517b461"
+    sha256: "dd2b3adcfe134687adac28577037e844fc9cfa21f890582334ac7472a287dbb4"
 
   ms:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh"
@@ -144,7 +144,7 @@ installers:
 
   rano:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh"
-    sha256: "4cb824eaaebb1230bfbd210861b93c96bf7aa0f5111940c282985698734cdfe9"
+    sha256: "e1a3d877f072c9046eaaf9eb165b79feefd728dd8a2ab95cbead589df73a350d"
 
   rch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh"
@@ -168,7 +168,7 @@ installers:
 
   slb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/simultaneous_launch_button/main/scripts/install.sh"
-    sha256: "dc9b0680d581b481147dc9b89f3cf78c9d0e3fbfcae19185c66aaae1e0b1bedd"
+    sha256: "52f0ef85f2e5199bdc4e7c5a416ec31072c6e7068b09d1ec6569e74d9ff050cd"
 
   srps:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/system_resource_protection_script/main/install.sh"
