@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-14T19:30:20+00:00
+# checksums.yaml - Auto-generated 2026-10-14T19:46:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -60,11 +60,11 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "470fb6ad0b886e3a1c9e801f3c074d7fc36ec572faf277b9666aea07eccc3567"
+    sha256: "a62e0030f292ee273cc87b28f57e6bf1cf9c1aee931dacc471cfe769518073b8"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
-    sha256: "cd1de09094f36e47e0dfe568221465ba5eb1300aa4e2bfcff03b4e46143bae1b"
+    sha256: "34881b30b1d94bbaba62ba8fd21dc99c17968abc4b17ba45ee9ae72b502b3bf8"
 
   ee:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
@@ -76,7 +76,7 @@ installers:
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"
-    sha256: "ddec389bb4ad5342f315912eae3cde8b578f22bd18aa0d2189d45c0ff8ae89e6"
+    sha256: "0dab8c60ce855e33d747bab69f04223d9cf893d4dbc0f892eeca2ad852ef2afc"
 
   gemini_patch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh"
@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "855a4f5c61df5fe4db71d710000c08e911401ed57ba569d516b4992374946741"
+    sha256: "6058ab3c7c3fac2cec006a21f271703ee68bb92985cb105427dfc377b0b6f05d"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
@@ -104,7 +104,7 @@ installers:
 
   ms:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh"
-    sha256: "5233b2130670b8036643ce414d212fa6b610a10ec5e7cf4961df34a7fec58601"
+    sha256: "5b31fc2d1bb03c2f0d4b805639f07ee5525e71bc6562bc59cc601ea87893c405"
 
   ntm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh"
@@ -160,7 +160,7 @@ installers:
 
   s2p:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"
-    sha256: "3090ed08ffc0856723ea1befc0ff6e5986a440c38b45037c684b20b8b3b538c7"
+    sha256: "03dccaa9ba5c633136aa1e467ffd82ae63f1f35f0a3fd5946d2450e59df9e0cb"
 
   sbh:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
@@ -188,7 +188,7 @@ installers:
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
-    sha256: "760e899895e01fc2c013a9968a3ef0e1d3ec362a05fa62e3fd4501d2808640b5"
+    sha256: "e742581b86309beca86492d551b2ea8f25c98655221afce4e798764a3bffa85f"
 
   zoxide:
     url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
