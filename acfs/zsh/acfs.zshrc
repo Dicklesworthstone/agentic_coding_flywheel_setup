@@ -287,8 +287,10 @@ export UV_LINK_MODE=copy
 # and every command in a fresh shell pays it.
 #
 # nvm.sh is also the only thing that puts node on PATH, so it can't just be
-# dropped. Resolve the node bin directly (cheap), then source nvm.sh with
-# --no-use so the `nvm` function still exists without the auto-use cost.
+# dropped. Resolve the node bin directly with zsh builtins, and load nvm.sh
+# (and its completion) only when `nvm` itself is first run. Even with --no-use,
+# parsing nvm.sh costs 108-146 ms per shell on a loaded host (trj, 2026-10-14),
+# and every cat/ls/sort/tail exec there costs 10-35 ms.
 # nvm 0.40+ installs under $XDG_CONFIG_HOME/nvm when that is set (common on
 # Arch/Omarchy), and the user may have pointed NVM_DIR elsewhere; honour both.
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -299,11 +301,22 @@ if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     if [[ -z "${NVM_BIN:-}" || ! -x "${NVM_BIN}/node" ]]; then
         # A pinned default alias is a concrete version (v26.0.0); symbolic ones
         # ("node", "lts/*") need nvm to resolve, so fall back to newest installed.
-        _acfs_nvm_default="$(command cat "$NVM_DIR/alias/default" 2>/dev/null)"
+        _acfs_nvm_default=""
+        [[ -r "$NVM_DIR/alias/default" ]] && _acfs_nvm_default="$(<"$NVM_DIR/alias/default")"
         if [[ "$_acfs_nvm_default" == v* && -x "$NVM_DIR/versions/node/$_acfs_nvm_default/bin/node" ]]; then
             _acfs_nvm_bin="$NVM_DIR/versions/node/$_acfs_nvm_default/bin"
         else
-            _acfs_nvm_bin="$(command ls -1d "$NVM_DIR"/versions/node/v*/bin 2>/dev/null | command sort -V | command tail -n 1)"
+            # Newest installed version: numeric glob sort, descending (= sort -V | tail -n 1).
+            # The zsh glob qualifiers sit inside eval so the file stays bash-parseable.
+            _acfs_nvm_newest_bin() {
+                emulate -L zsh
+                local -a bins
+                # shellcheck disable=SC2016
+                eval 'bins=("$NVM_DIR"/versions/node/v*/bin(N-/nOn))'
+                _acfs_nvm_bin="${bins[1]:-}"
+            }
+            _acfs_nvm_newest_bin
+            unset -f _acfs_nvm_newest_bin
         fi
         if [[ -n "${_acfs_nvm_bin:-}" && -x "$_acfs_nvm_bin/node" ]]; then
             case ":$PATH:" in
@@ -314,9 +327,15 @@ if [[ -s "$NVM_DIR/nvm.sh" ]]; then
         fi
         unset _acfs_nvm_default _acfs_nvm_bin
     fi
-    source "$NVM_DIR/nvm.sh" --no-use
+    if ! typeset -f nvm >/dev/null 2>&1; then
+        nvm() {
+            unset -f nvm
+            source "$NVM_DIR/nvm.sh" --no-use
+            [[ -s "$NVM_DIR/bash_completion" ]] && source "$NVM_DIR/bash_completion"
+            nvm "$@"
+        }
+    fi
 fi
-[[ -s "$NVM_DIR/bash_completion" ]] && source "$NVM_DIR/bash_completion"
 
 # Zoxide (better cd)
 command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
