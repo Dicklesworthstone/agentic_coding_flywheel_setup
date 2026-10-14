@@ -10613,7 +10613,6 @@ EOF
 test_doctor_deep_optional_probes_use_target_home_under_root_home() {
     setup_installed_layout_env
 
-    mkdir -p "$TEST_TARGET_HOME/.asb"
     cat > "$TEST_TARGET_HOME/.local/bin/asb" <<EOF
 #!/usr/bin/env bash
 if [[ "\${HOME:-}" != "$TEST_TARGET_HOME" ]]; then

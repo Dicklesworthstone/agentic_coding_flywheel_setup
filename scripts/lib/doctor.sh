@@ -4020,7 +4020,7 @@ deep_check_stack_tools() {
         "deep.stack.asb" \
         "Agent Settings Backup operational probe" \
         "asb" \
-        "test -d \"$HOME/.asb\" && asb list" \
+        "Run: asb list" \
         "asb list" \
         "asb help"
 
