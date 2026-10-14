@@ -417,7 +417,17 @@ cloud_tool_guide_line() {
         bv) printf '%s\n' '- `bv` (beads_viewer): graph-aware triage over beads. Use ONLY `--robot-*` flags (bare `bv` opens a blocking TUI): `bv --robot-triage`, `bv --robot-next`, `bv --robot-plan`.' ;;
         am) printf '%s\n' "- \`am\` / \`mcp-agent-mail\` (Agent Mail): agent messaging and file reservations. MCP registration status is in \`$ACFS_CLOUD_STATE_DIR/setup.log\`; use \`am --help\` for CLI access." ;;
         ast-grep) printf '%s\n' '- `ast-grep`: structural code search used by UBS. Use this name because Linux may have an unrelated `sg` command.' ;;
-        ubs) printf '%s\n' '- `ubs` (Ultimate Bug Scanner): run `ubs <changed files>` before every commit. Default exit 0 can include warnings; read the report. Use `ubs <changed files> --ci --fail-on-warning` when warnings must fail the check.' ;;
+        ubs)
+            printf '%s\n' '- `ubs` (Ultimate Bug Scanner): scan changed files before every commit. Default exit 0 can include warnings; read the report. Add `--ci --fail-on-warning` when warnings must fail the check.'
+            if [[ -d "$ACFS_CLOUD_ROOT/.local/share/ubs/modules" ]]; then
+                # The complete bundle lives with this installation. HOME or
+                # XDG_DATA_HOME may select another, unpopulated module cache.
+                printf '  Use these bundled modules for offline scans; replace the example file path:\n\n  ```bash\n  ubs --module-dir=%s path/to/changed-file\n  ```\n' \
+                    "$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share/ubs/modules")"
+            else
+                printf '%s\n' '  Run `ubs <changed files>`; this upstream-only installation downloads modules on first use.'
+            fi
+            ;;
         cass) printf '%s\n' '- `cass` (session search): `cass search "query" --robot --limit 5`. Always pass `--robot` or `--json`; bare `cass` opens a TUI.' ;;
         cm) printf '%s\n' '- `cm` (CASS Memory): `cm context "<task>" --json` before starting work to pull relevant procedural memory.' ;;
         ms) printf '%s\n' '- `ms` (meta_skill): in a writable project, initialize local state once with `ms init --robot`, then index your skill directory with `ms index <skill-directory> --robot` and search with `ms search "query" --robot`. Reuse existing `.ms`, `MS_ROOT` or `MS_CONFIG` state; with configured overrides, skip this initialization recipe. Local initialization preserves an existing `.ms`; do not add `--global` or `--force`.' ;;

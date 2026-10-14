@@ -29,6 +29,13 @@ publisher = importlib.util.module_from_spec(publisher_spec)
 publisher_spec.loader.exec_module(publisher)
 
 
+def parse_json_report(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(f'Malformed setup/publisher report: {text!r}') from error
+
+
 class MirrorPublisher(unittest.TestCase):
     def setUp(self):
         self.stage = Path(tempfile.mkdtemp(prefix="acfs-publisher-test-"))
@@ -218,7 +225,7 @@ class MirrorPublisher(unittest.TestCase):
             publisher.publish_jsm_fallback(entry, self.stage)
         args = run.call_args_list[1].args
         self.assertEqual(args[:5], ("gh", "api", f"repos/{publisher.FALLBACK_REPO}/releases", "--method", "POST"))
-        body = json.loads(Path(args[6]).read_text())
+        body = parse_json_report(Path(args[6]).read_text())
         self.assertEqual(body["tag_name"], publisher.FALLBACK_TAG)
         self.assertEqual(body["target_commitish"], "main")
         self.assertEqual(body["make_latest"], "false")
@@ -331,19 +338,19 @@ class MirrorPublisher(unittest.TestCase):
         with mock.patch.object(publisher, "run", return_value=json.dumps(release)) as run, \
                 mock.patch.object(publisher, "fetch", return_value=data):
             publisher.publish_jsm_fallback(entry, self.stage)
-            original = json.loads(json.dumps(entry))
+            original = parse_json_report(json.dumps(entry))
             publisher.publish_jsm_fallback(entry, self.stage)
         self.assertEqual(entry, original)
         self.assertEqual(run.call_count, 2)
 
     def test_partial_refresh_keeps_all_unselected_tools(self):
-        current = json.loads((ROOT / 'cloud-mirror.json').read_text())
+        current = parse_json_report((ROOT / 'cloud-mirror.json').read_text())
         replacement = {'version': 'updated', 'sha256': 'a' * 64}
         output = self.stage / 'candidate.json'
         argv = ['publisher', '--stage', str(self.stage), '--output', str(output), '--tools', 'bv']
         with mock.patch('sys.argv', argv), mock.patch.object(publisher, 'prepare', return_value=('bv', replacement)):
             publisher.main()
-        candidate = json.loads(output.read_text())
+        candidate = parse_json_report(output.read_text())
         self.assertEqual(set(candidate['tools']), set(current['tools']))
         self.assertEqual(candidate['tools']['bv'], replacement)
         self.assertEqual(candidate['tools']['br'], current['tools']['br'])
@@ -405,7 +412,15 @@ if url not in mapping:
 if url.endswith('/hang'): time.sleep(60)
 pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).read_bytes())
 ''')
-        timeout = shutil.which("timeout") or shutil.which("gtimeout")
+        timeout = None
+        for name in ('timeout', 'gtimeout'):
+            candidate = shutil.which(name)
+            if candidate:
+                version = subprocess.run([candidate, '--version'], capture_output=True,
+                                         text=True, timeout=5)
+                if version.returncode == 0 and 'GNU coreutils' in version.stdout:
+                    timeout = candidate
+                    break
         if not timeout:
             self.fail("GNU timeout is required to test the actual process deadline")
         (self.bin / "timeout").symlink_to(timeout)
@@ -461,7 +476,7 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
     def test_download_requests_disable_curl_config_and_request_identity_bytes(self):
         self.bundle()
         self.run_setup()
-        requests = [json.loads(line) for line in (self.root / 'request-args').read_text().splitlines()]
+        requests = [parse_json_report(line) for line in (self.root / 'request-args').read_text().splitlines()]
         self.assertEqual(len(requests), 2)
         for args in requests:
             self.assertEqual(args[0], '-q')
@@ -611,6 +626,30 @@ else:
         guide = (writable / '.acfs/cloud/AGENTS.md').read_text()
         self.assertIn(str(writable / '.acfs/cloud/setup.log'), guide)
         self.assertIn('generic\\ tools/.local/bin', guide)
+        self.assertFalse((self.home / '.claude').exists())
+        self.assertFalse((self.home / '.codex').exists())
+
+    def test_bundled_ubs_guide_quotes_its_cache_without_changing_provider_homes(self):
+        member = tarfile.TarInfo('share/ubs/modules/data.json')
+        member.size = 2
+        self.bundle('ubs', extra=(member, b'{}'))
+        writable = self.root / "tools ' quoted ` ticks $ dollars$(touch ubs-injected)"
+        self.run_setup('ubs', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable))
+        guide = (writable / '.acfs/cloud/AGENTS.md').read_text()
+        commands = re.findall(r'  ```bash\n  (ubs --module-dir=[^\n]+)\n  ```', guide)
+        self.assertEqual(len(commands), 1, guide)
+        # This receiver tests the authored command's argv and quoting only;
+        # the real public scanner is exercised separately in Linux validation.
+        self.command('ubs', '#!/bin/sh\nprintf "%s\\0" "$@"\n')
+        script = self.root / 'ubs-cache-guide.sh'
+        script.write_text(commands[0], encoding='utf-8')
+        result = subprocess.run(['bash', str(script)], cwd=self.root, env=self.env,
+                                capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split(b'\0'), [
+            ('--module-dir=' + str(writable / '.local/share/ubs/modules')).encode(),
+            b'path/to/changed-file', b''])
+        self.assertFalse((self.root / 'ubs-injected').exists())
         self.assertFalse((self.home / '.claude').exists())
         self.assertFalse((self.home / '.codex').exists())
 
@@ -1211,7 +1250,7 @@ exec(compile(source, '<setup-python>', 'exec'))
         metadata = config.stat()
         before = config.read_bytes()
         self.run_setup('am')
-        migrated = json.loads(config.read_text())
+        migrated = parse_json_report(config.read_text())
         self.assertEqual(migrated['preferences'], original['preferences'])
         self.assertEqual(migrated['mcpServers']['another-server'], original['mcpServers']['another-server'])
         self.assertEqual(migrated['mcpServers']['mcp-agent-mail']['env'], {'KEEP': 'value'})
@@ -1245,7 +1284,7 @@ exec(compile(source, '<setup-python>', 'exec'))
         config.write_text(json.dumps({'mcpServers': {'mcp-agent-mail': {
             'command': str(self.home / '.local/bin/mcp-agent-mail'), 'args': []}}}))
         self.run_setup('am', CLAUDE_CONFIG_DIR=str(directory))
-        self.assertEqual(json.loads(config.read_text())['mcpServers']['mcp-agent-mail']['args'], ['serve-stdio'])
+        self.assertEqual(parse_json_report(config.read_text())['mcpServers']['mcp-agent-mail']['args'], ['serve-stdio'])
         self.assertTrue(guide.read_text().startswith('Custom instructions.\n'))
         self.assertIn('`am` / `mcp-agent-mail`', guide.read_text())
         self.assertFalse((self.home / '.claude').exists())
