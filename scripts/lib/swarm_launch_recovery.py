@@ -32,10 +32,15 @@ FORMAT = "\t".join(("#{session_name}", "#{session_id}", "#{session_created}",
     "#{pane_dead}", "#{pane_current_command}", "#{window_index}", "#{pane_index}"))
 PROFILES = ("balanced", "codex-heavy", "review-heavy", "docs-heavy")
 WORKLOADS = ("light", "standard", "heavy")
+STARTUP_SHELLS = ("bash", "zsh", "sh", "dash", "fish")
 
 
 class RecoveryError(Exception):
     pass
+
+
+class PaneNotReady(RecoveryError):
+    """Only incomplete topology or a known startup shell is safe to poll."""
 
 
 def require(condition, message):
@@ -209,9 +214,13 @@ def observe(request, timeout, bindings=None):
                 "=" + request["session"], "-F", FORMAT], request["repo"], timeout)
     rows = data.decode("utf-8").splitlines()
     if bindings is None:
-        require(len(rows) == len(request["agents"]), "Observed pane count does not match the saved launch.")
+        require(len(rows) <= len(request["agents"]), "Observed pane count exceeds the saved launch.")
     selected = set(bindings.values()) if bindings is not None else None
     panes, identities = [], []
+    pending = False
+    expected_types = Counter(a["agent_type"] for a in request["agents"])
+    expected_panes = {pane: request["agents"][slot - 1]["agent_type"]
+                      for slot, pane in (bindings or {}).items()}
     for row in rows:
         fields = row.split("\t")
         require(len(fields) == 11, "Unrecognized pane observation.")
@@ -229,19 +238,29 @@ def observe(request, timeout, bindings=None):
         # pane IDs or a response assembled from different sessions/servers.
         if selected is not None and pane not in selected:
             continue
-        require(dead == "0" and kind in ("claude", "codex"),
-                "Every selected pane must be a live native agent in the saved session.")
+        require(dead == "0", "A selected recovery pane is dead.")
+        require(kind in ("claude", "codex") or kind in STARTUP_SHELLS,
+                "A selected pane is not a supported native agent or startup shell.")
         current, repo = clean_path(cwd).resolve(strict=True), Path(request["repo"])
         require(current == repo or repo in current.parents, "A native pane is outside the saved repository.")
+        if kind in STARTUP_SHELLS:
+            pending = True
+        elif bindings is not None:
+            require(kind == expected_panes[pane], "Selected pane does not match its saved slot's agent type.")
         panes.append(identity)
     require(len({p["pane"] for p in identities}) == len(identities)
             and len({p["position"] for p in identities}) == len(identities)
             and len({p["pane_pid"] for p in identities}) == len(identities), "Observed panes are not distinct.")
-    require(len({(p["session_id"], p["session_created"], p["server_pid"]) for p in identities}) == 1,
+    require(not identities or len({(p["session_id"], p["session_created"], p["server_pid"])
+                                    for p in identities}) == 1,
             "Observed panes do not belong to one stable session.")
-    require(len(panes) == len(request["agents"]), "A selected recovery pane is missing.")
-    require(Counter(p["agent_type"] for p in panes)
-            == Counter(a["agent_type"] for a in request["agents"]), "Observed native-agent mix changed.")
+    native_types = Counter(p["agent_type"] for p in panes if p["agent_type"] in ("claude", "codex"))
+    require(not (native_types - expected_types), "Observed native-agent mix changed.")
+    # Inspect every row before classifying readiness. A warming pane must not
+    # hide a malformed row, duplicate identity, dead agent or wrong provider.
+    if pending or len(panes) < len(request["agents"]):
+        raise PaneNotReady("Requested panes are missing or still running startup shells.")
+    require(native_types == expected_types, "Observed native-agent mix changed.")
     ordered = sorted(panes, key=lambda p: p["position"])
     by_type = {kind: iter([p for p in ordered if p["agent_type"] == kind]) for kind in ("claude", "codex")}
     by_pane = {p["pane"]: p for p in panes}
@@ -253,6 +272,33 @@ def observe(request, timeout, bindings=None):
         pane.pop("position")
         targets.append({**pane, "slot": slot, "agent_name": agent["agent_name"]})
     return targets
+
+
+def preview_observation(request, timeout, bindings, wait):
+    """Read-only readiness polling under one overall deadline, never a launch."""
+    if not wait:
+        return observe(request, timeout, bindings), 1
+    deadline = time.monotonic() + wait
+    previous, attempts = None, 0
+    while True:
+        remaining = deadline - time.monotonic()
+        require(remaining > 0, "Recovery readiness deadline expired; no result was created.")
+        attempts += 1
+        try:
+            targets = observe(request, min(timeout, remaining), bindings)
+        except PaneNotReady:
+            previous = None
+        else:
+            require(time.monotonic() < deadline, "Recovery readiness deadline expired; no result was created.")
+            if targets == previous:
+                return targets, attempts
+            previous = targets
+        # The sleep consumes the same budget as the subprocesses. Fatal probe
+        # errors are never retried, and every successful preview needs two
+        # consecutive identical native-identity snapshots when waiting.
+        remaining = deadline - time.monotonic()
+        require(remaining > 0, "Recovery readiness deadline expired; no result was created.")
+        time.sleep(min(0.25, remaining))
 
 
 def publish(fd, name, value):
@@ -277,7 +323,10 @@ def main(arguments=None):
     parser.add_argument("--adopt", action="store_true", help="Create the missing result for the exact reviewed topology")
     parser.add_argument("--expect-sha256", help="Recovery digest from this command's preview, not the original launch digest")
     parser.add_argument("--timeout", type=int, choices=range(1, 31), default=10, metavar="1..30")
+    parser.add_argument("--wait", type=int, choices=range(0, 301), default=0, metavar="0..300",
+                        help="Preview only: wait this many seconds for two stable native-pane observations")
     args = parser.parse_args(arguments)
+    require(not (args.adopt and args.wait), "--wait is preview-only; review the observed identities before adopting.")
     require(not args.adopt or args.expect_sha256 is not None, "Preview recovery first, then use --adopt --expect-sha256.")
     receipt = clean_path(os.path.abspath(args.receipt))
     result_name = receipt.name + ".result.json"
@@ -287,7 +336,14 @@ def main(arguments=None):
         bindings = target_bindings(args.target, request)
         selection = "explicit" if bindings is not None else "layout"
         no_result(fd, result_name)
-        targets = observe(request, args.timeout, bindings)
+        targets, observations = preview_observation(request, args.timeout, bindings, args.wait)
+        # Waiting may outlive a noncooperating writer. Do not advertise a valid
+        # preview for an intent or directory that changed while observing.
+        current, current_info = read_private(fd, receipt.name)
+        require(current == raw and os.path.samestat(current_info, intent_info), "Launch intent changed during recovery.")
+        directory(receipt.parent)
+        require(os.path.samestat(receipt.parent.stat(), parent_info), "Receipt parent changed during recovery.")
+        no_result(fd, result_name)
         approval = {"schema": RECOVERY_SCHEMA, "intent_sha256": digest(raw),
             "request": request, "targets": targets, "selection": selection,
             "policy_sha256": digest(Path(__file__).read_bytes())}
@@ -298,6 +354,7 @@ def main(arguments=None):
             "review_sha256": review_hash, "targets": targets, "selection": selection, "starts_agents": False,
             "work_dispatched": False, "agent_mail_registered": False,
             "original_launch_verified": False, "result_created": False,
+            "readiness_observations": observations,
             "note": "Approval adopts these current native panes, not proof of the original spawn. "
                     "Names are intended packet identities, not verified Agent Mail registrations."}
         if not args.adopt:
