@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-14T12:16:22+00:00
+# checksums.yaml - Auto-generated 2026-10-14T17:30:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -144,7 +144,7 @@ installers:
 
   rano:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh"
-    sha256: "75f7d94469cbe405fcdd657a3ae7bbe790c363ce87c8aa50c14c402b245e1108"
+    sha256: "4cb824eaaebb1230bfbd210861b93c96bf7aa0f5111940c282985698734cdfe9"
 
   rch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh"
