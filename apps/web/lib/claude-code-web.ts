@@ -14,7 +14,7 @@ export const CLAUDE_CODE_WEB_SCRIPT_URL = `https://raw.githubusercontent.com/Dic
 export const CLAUDE_CODE_WEB_SCRIPT_SOURCE_URL = `https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/${CLAUDE_CODE_WEB_SCRIPT_PATH}`;
 
 /** What to paste into the environment dialog's "Setup script" field. */
-export const CLOUD_SETUP_DOWNLOAD_COMMAND = `curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' ${CLAUDE_CODE_WEB_SCRIPT_URL}`;
+export const CLOUD_SETUP_DOWNLOAD_COMMAND = `curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' -H 'Accept-Encoding: identity' ${CLAUDE_CODE_WEB_SCRIPT_URL}`;
 
 function cloudBootstrapDownload(failureExit: 0 | 1): string {
   return `acfs_cloud_setup="$(${CLOUD_SETUP_DOWNLOAD_COMMAND})" || { printf '%s\\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit ${failureExit}; }`;

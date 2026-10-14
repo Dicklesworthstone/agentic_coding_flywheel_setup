@@ -287,7 +287,7 @@ class MirrorPublisher(unittest.TestCase):
         with mock.patch.object(publisher.subprocess, "check_output", return_value="{}") as command:
             publisher.run("gh", "api", "repos/example/tool/releases/latest")
         self.assertEqual(command.call_args.args[0][-2:],
-                         ("--header", "User-Agent: OpenAI File Downloader, XaiImageApiFetch/1.0"))
+                         ("--header", "User-Agent: acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)"))
 
     def test_jsm_public_fallback_rejects_staging_and_remote_digest_mismatch(self):
         data, entry, release = self.jsm_fallback()
@@ -480,7 +480,7 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertEqual(len(requests), 2)
         for args in requests:
             self.assertEqual(args[0], '-q')
-            self.assertEqual(args[args.index('-A') + 1], 'OpenAI File Downloader, XaiImageApiFetch/1.0')
+            self.assertEqual(args[args.index('-A') + 1], 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)')
             self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
             self.assertEqual(args[args.index('--proto') + 1], '=https')
             self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
@@ -533,7 +533,7 @@ else:
         self.assertEqual(args[args.index('--proto-redir') + 1], '=https')
         self.assertEqual(args[args.index('--connect-timeout') + 1], '5')
         self.assertEqual(args[args.index('--max-time') + 1], '20')
-        self.assertEqual(args[args.index('-A') + 1], 'OpenAI File Downloader, XaiImageApiFetch/1.0')
+        self.assertEqual(args[args.index('-A') + 1], 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)')
         self.assertEqual(args[args.index('-H') + 1], 'Accept-Encoding: identity')
         self.assertEqual(guide.read_text(), content)
         self.assertFalse((self.home / '.claude/CLAUDE.md').exists())

@@ -40,7 +40,7 @@ TOOLS = {
 
 def run(*args):
     if args[:2] == ("gh", "api"):
-        args = (*args, "--header", "User-Agent: OpenAI File Downloader, XaiImageApiFetch/1.0")
+        args = (*args, "--header", "User-Agent: acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)")
     return subprocess.check_output(args, text=True, timeout=300)
 
 
@@ -51,7 +51,7 @@ def digest(data):
 def fetch(url):
     if not url.startswith("https://"):
         raise ValueError("HTTPS required")
-    request = urllib.request.Request(url, headers={"User-Agent": "OpenAI File Downloader, XaiImageApiFetch/1.0", "Accept": "*/*"})
+    request = urllib.request.Request(url, headers={"User-Agent": "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)", "Accept": "*/*"})
     with urllib.request.urlopen(request, timeout=120) as response:
         if not response.url.startswith("https://"):
             raise ValueError("Insecure redirect")

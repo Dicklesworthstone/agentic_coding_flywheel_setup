@@ -704,7 +704,7 @@ _alert_fail_closed_streak() {
     local alert_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
     # Optional push notification
     if [[ "$push_due" == true ]]; then
-        if curl -fsS -m 10 -A "OpenAI File Downloader, XaiImageApiFetch/1.0" \
+        if curl -fsS -m 10 -A "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)" \
             -d "$alert_msg" "https://ntfy.sh/${ACFS_NTFY_TOPIC}" \
             >>"$LOG_FILE" 2>&1; then
             _fail_alert_record "$reason" "" "$FAIL_PUSH_ALERT_FILE"

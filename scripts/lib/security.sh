@@ -212,6 +212,9 @@ _acfs_is_interactive() {
 # curl defaults: enforce HTTPS (including redirects) when supported
 ACFS_CURL_BIN=""
 ACFS_CURL_BASE_ARGS=()
+# Honest client identity for every ACFS download: name this project, never
+# borrow another product's or company's crawler User-Agent.
+ACFS_HTTP_USER_AGENT='acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)'
 
 acfs_security_configure_curl() {
     local curl_help=""
@@ -219,10 +222,10 @@ acfs_security_configure_curl() {
     ACFS_CURL_BIN="$(acfs_security_curl_binary_path 2>/dev/null || true)"
     # Pin executable bytes, not an HTTP compression envelope. Asking for the
     # identity representation also keeps download-size limits on those bytes.
-    ACFS_CURL_BASE_ARGS=(-q -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' --connect-timeout 30 --max-time 300 -fsSL)
+    ACFS_CURL_BASE_ARGS=(-q -A "$ACFS_HTTP_USER_AGENT" -H 'Accept-Encoding: identity' --connect-timeout 30 --max-time 300 -fsSL)
 
     if [[ -n "$ACFS_CURL_BIN" ]] && curl_help="$("$ACFS_CURL_BIN" --help all 2>/dev/null)" && [[ "$curl_help" == *"--proto"* ]]; then
-        ACFS_CURL_BASE_ARGS=(-q -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' -H 'Accept-Encoding: identity' --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
+        ACFS_CURL_BASE_ARGS=(-q -A "$ACFS_HTTP_USER_AGENT" -H 'Accept-Encoding: identity' --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
     fi
 }
 
@@ -404,7 +407,7 @@ acfs_download_to_file() {
         local retained_headers
         retained_headers="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-hdr.XXXXXX")" || return 1
         printf 'Retaining download headers: %s\n' "$retained_headers" >&2
-        if acfs_curl -A 'OpenAI File Downloader, XaiImageApiFetch/1.0' \
+        if acfs_curl -A "$ACFS_HTTP_USER_AGENT" \
             --proto '=https' --proto-redir '=https' \
             --connect-timeout 15 --max-time 45 --max-filesize 1048576 \
             "$url" -o "$output_path" -D "$retained_headers"; then
