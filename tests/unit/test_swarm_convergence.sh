@@ -573,6 +573,119 @@ test_incomplete_exports_never_emit_reports() {
     pass "incomplete_exports_never_emit_reports"
 }
 
+test_selection_and_evidence_ordering() {
+    local work="$ARTIFACT_DIR/selection" mode
+    mkdir -p "$work/.beads" || return 1
+    cat > "$work/epic.json" <<'JSON'
+[
+  {"id":"bd-epic","title":"Selection","success_criteria":["Quartz pipeline tests","Cobalt","Xenon"],"dependencies":[
+    {"id":"bd-1","title":"Quartz `override`","status":"open"},
+    {"issue_id":"bd-10"},
+    {"depends_on_id":"bd-2"},
+    {"id":"bd-10","title":"Other Quartz","status":"open"},
+    {"id":"","issue_id":"bd-skip"},
+    {"id":"bd-missing","title":"Cobalt placeholder"},
+    {"id":"bd-unrelated","title":"Billing","status":"closed"}
+  ]},
+  {"id":"ignored-epic","success_criteria":["Not selected"]}
+]
+JSON
+    cat > "$work/issues.json" <<'JSON'
+[
+  {"id":"bd-10","title":"Quartz pipeline","status":"closed","close_reason":"tests verified"},
+  {"id":"bd-10","title":"Not first","status":"open"},
+  {"id":"bd-1","title":"Not the override","status":"closed","close_reason":"tests verified"},
+  {"id":"bd-2","title":"Quartz pipeline","status":"closed","close_reason":"tests verified"},
+  {"id":"bd-skip","title":"Xenon","status":"closed","close_reason":"tests verified"},
+  {"id":"unselected","title":"Xenon","status":"closed","close_reason":"tests verified"}
+]
+JSON
+    cat > "$work/commits.json" <<'JSON'
+[
+  {"hash":"a","subject":"Quartz tests bd-10 first `proof`"},
+  {"hash":"b","subject":"Quartz bd-1 second"},
+  {"hash":"c","subject":"bd-1 third"},
+  {"hash":"d","subject":"bd-1 fourth"},
+  {"hash":"e","subject":"bd-2 proof"}
+]
+JSON
+    jq -c '.[]' "$work/issues.json" > "$work/.beads/issues.jsonl" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/commits.json" \
+            > "$work/file.$mode" || return 1
+        (
+            cd "$work" || exit 1
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" --commits-file "$work/commits.json"
+        ) > "$work/snapshot.$mode" || return 1
+        cmp "$work/file.$mode" "$work/snapshot.$mode" || return 1
+    done
+    jq -e '
+        .schema_version == 1 and .epic.id == "bd-epic" and .status == "warn"
+        and .summary == {criteria_total:3,satisfied:1,weakly_verified:1,missing:1,child_beads:6,over_broad_children:1}
+        and [.criteria[0].evidence[].bead_id] == ["bd-10","bd-2","bd-1"]
+        and [.criteria[0].evidence[].match_score] == [3,3,2]
+        and [.criteria[0].evidence[].status] == ["closed","closed","open"]
+        and .criteria[0].evidence[0].title == "Quartz pipeline"
+        and .criteria[0].evidence[2].commit_subjects == ["Quartz tests bd-10 first \u0027proof\u0027","Quartz bd-1 second","bd-1 third"]
+        and .criteria[1].evidence[0].status == "unknown"
+        and .over_broad_children == [{bead_id:"bd-unrelated",title:"Billing",status:"closed"}]
+        and .suggested_bead_titles == ["Add evidence for epic criterion: Xenon"]
+        and all(.. | objects; (has("_scores") or has("_proofy")) | not)
+    ' "$work/file.json" >/dev/null || return 1
+    pass "selection_and_evidence_ordering"
+}
+
+test_many_children_complete_reports() {
+    local work="$ARTIFACT_DIR/many-children" mode format
+    mkdir -p "$work/.beads" || return 1
+    jq -n '
+        ["quartz","cobalt","amber","bronze","cedar","violet","magenta","silver","copper","indigo","sienna","topaz"] as $terms
+        | {id:"bd-epic",title:"Large graph",success_criteria:($terms + ["zirconium","hafnium"]),
+           dependencies:([range(0;1024) | {id:("bd-leaf-" + tostring)}] + [{id:"bd-tail"},{id:"bd-unrelated",title:"Billing"}])}
+    ' > "$work/epic.json" || return 1
+    jq -n '
+        ["quartz","cobalt","amber","bronze","cedar","violet","magenta","silver","copper","indigo","sienna","topaz"] as $terms
+        | [range(0;1024) | {id:("noise-" + tostring),title:"Unrelated history"}]
+          + [range(0;1024) | {id:("bd-leaf-" + tostring),title:$terms[. % 12],
+              status:(if ((. / 12 | floor) % 3) == 0 then "closed" else "open" end),
+              close_reason:"tests verified",description:("history " * 512)}]
+          + [{id:"bd-tail",title:"zirconium",status:"closed",close_reason:"tests verified"}]
+    ' > "$work/issues.json" || return 1
+    printf '[]\n' > "$work/commits.json"
+    [[ $(wc -c < "$work/issues.json") -gt 4194304 ]] || return 1
+    jq -c '.[]' "$work/issues.json" > "$work/issues.jsonl" || return 1
+    cp "$work/issues.jsonl" "$work/.beads/issues.jsonl" || return 1
+    sha256sum "$work/epic.json" "$work/issues.json" "$work/issues.jsonl" "$work/.beads/issues.jsonl" \
+        > "$work/inputs.sha256" || return 1
+    # Exercise complete reports, not just the collectors. No timing gate: the
+    # corpus must be fully audited on slower CI hosts too, never truncated.
+    for mode in json markdown; do
+        for format in json jsonl; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+                --issues-file "$work/issues.$format" --commits-file "$work/commits.json" \
+                > "$work/$format.output.$mode" || return 1
+        done
+        (
+            cd "$work" || exit 1
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" --commits-file "$work/commits.json"
+        ) > "$work/snapshot.output.$mode" || return 1
+        cmp "$work/json.output.$mode" "$work/jsonl.output.$mode" || return 1
+        cmp "$work/json.output.$mode" "$work/snapshot.output.$mode" || return 1
+    done
+    jq -e '
+        .summary == {criteria_total:14,satisfied:13,weakly_verified:0,missing:1,child_beads:1026,over_broad_children:1}
+        and .status == "warn"
+        and all(.criteria[:12][]; .status == "satisfied" and (.evidence | length) == 6
+            and all(.evidence[]; .match_score == 1 and .status == "closed"))
+        and .criteria[12].evidence == [{bead_id:"bd-tail",title:"zirconium",status:"closed",match_score:1,commit_subjects:[]}]
+        and .criteria[13].status == "missing"
+        and .over_broad_children == [{bead_id:"bd-unrelated",title:"Billing",status:"unknown"}]
+    ' "$work/json.output.json" >/dev/null || return 1
+    sha256sum -c "$work/inputs.sha256" >/dev/null || return 1
+    pass "many_children_complete_reports"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -600,6 +713,8 @@ main() {
     run_test test_large_child_id_filters_do_not_use_argv
     run_test test_live_collection_includes_closed_and_deferred_without_sync
     run_test test_incomplete_exports_never_emit_reports
+    run_test test_selection_and_evidence_ordering
+    run_test test_many_children_complete_reports
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

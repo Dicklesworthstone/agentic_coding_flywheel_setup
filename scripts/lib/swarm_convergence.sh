@@ -214,7 +214,11 @@ swarm_convergence_collect_issues_json() {
         child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
         swarm_convergence_read_json_or_jsonl "$jq_bin" .beads/issues.jsonl \
             | "$jq_bin" --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
-                map(select(.id as $id | $child_ids[0] | index($id)))
+                (reduce $child_ids[0][] as $id ({};
+                    if ($id | type) == "string" then .[$id] = true else . end)) as $wanted
+                | map(select(.id as $id |
+                    if ($id | type) == "string" then $wanted[$id] == true
+                    else ($child_ids[0] | index($id)) != null end))
             '
         return $?
     fi
@@ -277,7 +281,23 @@ def epic_doc:
   if ($epic_input | type) == "array" then ($epic_input[0] // {}) else $epic_input end;
 def issue_list: arr($issues_input);
 def commit_list: arr($commits_input);
-def issue_for($id): first(issue_list[]? | select(.id == $id)) // {};
+def child_ids:
+  [arr(epic_doc.dependencies)[]?
+   | (.id // .issue_id // .depends_on_id // "") | select(. != "")];
+def issue_index:
+  (reduce child_ids[] as $id ({};
+    if ($id | type) == "string" then .[$id] = true else . end)) as $wanted
+  | reduce issue_list[]? as $issue ({};
+      if ($issue.id | type) == "string" then
+        if $wanted[$issue.id] == true and (has($issue.id) | not) then
+          .[$issue.id] = $issue
+        else . end
+      else . end);
+def issue_for($id; $index):
+  # Preserve first-record-wins for duplicate IDs, and the existing equality
+  # behavior for non-string legacy IDs without putting them in object keys.
+  if ($id | type) == "string" then $index[$id] // {}
+  else first(issue_list[]? | select(.id == $id)) // {} end;
 def commits_for($id): [commit_list[]? | select((.subject // "") | contains($id))];
 
 def criteria_from_description($description):
@@ -297,11 +317,11 @@ def criteria:
   if (epic_doc.success_criteria | type) == "array" then epic_doc.success_criteria
   else criteria_from_description(epic_doc.description) end;
 
-def child_issues:
+def child_issues($index):
   [arr(epic_doc.dependencies)[]?
    | (.id // .issue_id // .depends_on_id // "") as $id
    | select($id != "")
-   | (issue_for($id)) as $issue
+   | (issue_for($id; $index)) as $issue
    | (commits_for($id)) as $commits
    | {
        id: $id,
@@ -326,19 +346,17 @@ def child_text($c):
     ($c.commits[]?.subject // "")
   ] | join(" ") | ascii_downcase);
 
-def proofy($c):
-  (child_text($c) | test("test|tests|artifact|artifacts|commit|evidence|passed|coverage|logs|fixture|support-bundle|dashboard|report|verified|verification"));
+def proofy($body):
+  ($body | test("test|tests|artifact|artifacts|commit|evidence|passed|coverage|logs|fixture|support-bundle|dashboard|report|verified|verification"));
 
-def match_score($criterion; $c):
-  (tokens($criterion)) as $terms
-  | (child_text($c)) as $body
-  | [$terms[] | . as $term | select($body | contains($term))] | unique | length;
+def match_score($terms; $body):
+  [$terms[] | . as $term | select($body | contains($term))] | unique | length;
 
-def criterion_report($criterion):
-  [child_issues[] | . as $c | (match_score($criterion; $c)) as $score | select($score > 0) | $c + {match_score: $score}] as $matches
+def criterion_report($criterion; $position; $children):
+  [$children[] | . as $c | ._scores[$position] as $score | select($score > 0) | $c + {match_score: $score}] as $matches
   | [$matches[] | select(.status == "closed")] as $closed
   | [$matches[] | select(.status != "closed")] as $open
-  | [$closed[] | select(proofy(.))] as $strong
+  | [$closed[] | select(._proofy)] as $strong
   | {
       criterion: $criterion,
       status: (if ($strong | length) > 0 then "satisfied" elif (($closed | length) > 0 or ($open | length) > 0) then "weakly_verified" else "missing" end),
@@ -355,8 +373,18 @@ def criterion_report($criterion):
       suggested_bead_title: (if (($matches | length) == 0) then ("Add evidence for epic criterion: " + ($criterion | sub("[.]$"; ""))) else null end)
     };
 
-(criteria | map(criterion_report(.))) as $criteria_reports
-| [child_issues[] as $child | select([criteria[] | match_score(.; $child)] | max <= 0) | {
+# Build the graph/evidence once, not once per criterion plus every summary.
+# Cache each criterion-child score for both evidence and over-broad accounting.
+# Only the explicit report projections below are emitted; caches stay internal.
+(criteria | map({criterion: ., terms: tokens(.)})) as $criteria
+| issue_index as $index
+| [child_issues($index)[] | . as $child | child_text($child) as $body
+   | $child + {
+       _proofy: proofy($body),
+       _scores: [$criteria[] | match_score(.terms; $body)]
+     }] as $children
+| ($criteria | to_entries | map(criterion_report(.value.criterion; .key; $children))) as $criteria_reports
+| [$children[] as $child | select($child._scores | max <= 0) | {
     bead_id: $child.id,
     title: safe_title($child.title),
     status: $child.status
@@ -381,7 +409,7 @@ def criterion_report($criterion):
       satisfied: ([$criteria_reports[] | select(.status == "satisfied")] | length),
       weakly_verified: ([$criteria_reports[] | select(.status == "weakly_verified")] | length),
       missing: ([$criteria_reports[] | select(.status == "missing")] | length),
-      child_beads: (child_issues | length),
+      child_beads: ($children | length),
       over_broad_children: ($over_broad | length)
     },
     criteria: $criteria_reports,
