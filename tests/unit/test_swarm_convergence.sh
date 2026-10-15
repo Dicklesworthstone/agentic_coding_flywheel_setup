@@ -275,6 +275,16 @@ printf 'br %s\n' "$*" >> "$MOCK_CALLS"
 case "$*" in
     'show bd-epic --json --no-auto-import --no-auto-flush') cat "$MOCK_EPIC" ;;
     'list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush') cat "$MOCK_ISSUES"; exit "${MOCK_BR_LIST_EXIT:-0}" ;;
+    'show --json --no-auto-import --no-auto-flush -- '*)
+        shift 5
+        jq -s --rawfile requested <(printf '%s\n' "$@") '
+            ($requested | split("\n")[:-1]) as $ids
+            | (if length == 1 and (.[0] | type) == "array" then .[0]
+               elif length == 1 and (.[0].issues | type) == "array" then .[0].issues
+               else . end)
+            | map(select(.id as $id | $ids | index($id)))
+        ' "$MOCK_ISSUES"
+        ;;
     *) echo "Unexpected or mutating br command: $*" >&2; exit 90 ;;
 esac
 exit "${MOCK_BR_EXIT:-0}"
@@ -316,6 +326,7 @@ test_large_live_export_and_beads_snapshot() {
             printf 'br show bd-epic --json --no-auto-import --no-auto-flush\n'
             if [[ "$source" == live ]]; then
                 printf 'br list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush\n'
+                printf 'br show --json --no-auto-import --no-auto-flush -- bd-capacity bd-status\n'
             fi
             printf 'git log --format=%%H %%s --all --no-show-signature --no-notes --no-patch --color=never --no-decorate --encoding=UTF-8\n'
         } > "$ARTIFACT_DIR/$source.expected-calls"
@@ -582,7 +593,14 @@ for flag in --no-auto-import --no-auto-flush; do
     fi
 done
 case "$1" in
-    show) cat "$MOCK_WORK/epic.json" ;;
+    show)
+        if [[ "$2" == bd-epic ]]; then
+            cat "$MOCK_WORK/epic.json"
+        else
+            [[ "$*" == 'show --json --no-auto-import --no-auto-flush -- bd-archived bd-deferred' ]] || exit 90
+            jq '[.[] | select(.id == "bd-archived" or .id == "bd-deferred")]' "$MOCK_WORK/issues.json"
+        fi
+        ;;
     list)
         jq --arg flags " $* " '
             map(select(.status != "closed" or ($flags | contains(" --all "))))
@@ -1068,6 +1086,269 @@ test_large_native_graph_and_real_git() {
     pass "large_native_graph_and_real_git"
 }
 
+prepare_detail_tools() {
+    local work="$1"
+    mkdir -p "$work/bin" "$work/live" || return 1
+    cat > "$work/bin/br" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+jq -n -c --rawfile args <(printf '%s\n' "$@") '$args | split("\n")[:-1]' >> "$MOCK_WORK/calls.jsonl"
+case "$*" in
+    'show bd-epic --json --no-auto-import --no-auto-flush') cat "$MOCK_WORK/epic.json"; exit 0 ;;
+    'list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush')
+        cat "$MOCK_WORK/list.json"; exit "${MOCK_LIST_EXIT:-0}" ;;
+esac
+[[ "$#" -ge 6 && "$1" == show && "$2" == --json && "$3" == --no-auto-import &&
+   "$4" == --no-auto-flush && "$5" == -- ]] || { echo 'unexpected br command' >&2; exit 90; }
+shift 5
+bytes=0
+bad=false
+for id in "$@"; do
+    bytes=$((bytes + ${#id} + 1))
+    [[ "$id" != "${MOCK_BAD_ID:-}" ]] || bad=true
+done
+(( $# <= 128 && bytes <= 32768 )) || { echo 'unbounded detail request' >&2; exit 91; }
+mode=ok
+[[ "$bad" == false ]] || mode="${MOCK_DETAIL_MODE:-ok}"
+if [[ "$mode" == truncated ]]; then
+    printf '[{"id":'
+    exit 0
+fi
+jq --rawfile requested <(printf '%s\n' "$@") --arg mode "$mode" '
+    ($requested | split("\n")[:-1]) as $ids
+    | [.[] | select(.id as $id | $ids | index($id))]
+    | if $mode == "missing" then .[1:]
+      elif $mode == "duplicate" then . + [.[0]]
+      elif $mode == "unexpected" then . + [{id:"bd-unexpected"}]
+      elif $mode == "page" then {issues:.,total:(length + 1),has_more:true,offset:0}
+      elif $mode == "comments" then .[0].comments = ["malformed"]
+      elif $mode == "revision" then .[0].updated_at = "changed-revision"
+      else . end
+' "$MOCK_WORK/details.json"
+[[ "$mode" != exit ]] || { echo 'detail transport failed' >&2; exit 23; }
+SH
+    chmod +x "$work/bin/br" || return 1
+}
+
+run_detail_audit() {
+    local work="$1" mode="$2"
+    shift 2
+    (
+        cd "$work/live" || exit 1
+        PATH="$work/bin:$PATH" MOCK_WORK="$work" bash "$SWARM_CONVERGENCE_SH" \
+            "--$mode" --epic bd-epic --commits-file "$work/commits.json" "$@"
+    )
+}
+
+test_live_comment_evidence_matches_full_exports() {
+    local work="$ARTIFACT_DIR/live-comments" mode
+    prepare_detail_tools "$work" || return 1
+    cat > "$work/epic.json" <<'JSON'
+{"id":"bd-epic","title":"Comment evidence","acceptance_criteria":"- Zirconium\n- Quartz\n- Xenon","dependents":[
+  {"id":"bd-closed","dependency_type":"parent-child"},
+  {"id":"bd-open","dependency_type":"parent-child"},
+  {"id":"bd-deferred","dependency_type":"parent-child"}
+]}
+JSON
+    cat > "$work/details.json" <<'JSON'
+[
+  {"id":"bd-closed","title":"Implementation","status":"closed","updated_at":"revision-1","comments":[{"text":"Zirconium tests passed with artifacts."}]},
+  {"id":"bd-open","title":"Implementation","status":"open","updated_at":"revision-2","comments":[{"text":"Quartz verification logs captured."}]},
+  {"id":"bd-deferred","title":"Implementation","status":"deferred","updated_at":"revision-3","comments":[{"text":"Xenon tests passed."}]},
+  {"id":"bd-noise","title":"Zirconium Quartz Xenon tests","status":"closed","comments":[]}
+]
+JSON
+    # Model the real list projection: no comments, even though they exist.
+    jq 'map(del(.comments)) | {issues:.,total:length,offset:0,has_more:false}' \
+        "$work/details.json" > "$work/list.json" || return 1
+    printf '[]\n' > "$work/commits.json"
+    sha256sum "$work/epic.json" "$work/list.json" "$work/details.json" "$work/commits.json" > "$work/input.sha256" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/details.json" --commits-file "$work/commits.json" > "$work/expected.$mode" || return 1
+        run_detail_audit "$work" "$mode" > "$work/actual.$mode" 2> "$work/$mode.stderr" || return 1
+        cmp "$work/expected.$mode" "$work/actual.$mode" || return 1
+        [[ ! -s "$work/$mode.stderr" ]] || return 1
+    done
+    jq -e '.summary == {criteria_total:3,satisfied:1,weakly_verified:2,missing:0,child_beads:3,over_broad_children:0}
+        and .criteria[0].evidence[0].bead_id == "bd-closed"
+        and .criteria[1].evidence[0].bead_id == "bd-open"
+        and .criteria[2].evidence[0].bead_id == "bd-deferred"' "$work/actual.json" >/dev/null || return 1
+    jq -s -e '[.[] | select(.[0] == "show" and .[1] == "--json") | .[5:]] ==
+        [["bd-closed","bd-deferred","bd-open"],["bd-closed","bd-deferred","bd-open"]]' "$work/calls.jsonl" >/dev/null || return 1
+    sha256sum -c "$work/input.sha256" >/dev/null || return 1
+    pass "live_comment_evidence_matches_full_exports"
+}
+
+test_live_detail_batches_bound_count_and_bytes() {
+    local shape work mode
+    for shape in count bytes unicode; do
+        work="$ARTIFACT_DIR/detail-batches-$shape"
+        prepare_detail_tools "$work" || return 1
+        jq -n --arg shape "$shape" '
+            (if $shape == "count" then 257 else 40 end) as $count
+            | [range(0;$count) | {
+                id:("bd-child-" + (10000 + . | tostring) +
+                    (if $shape == "bytes" then ("q" * 6000)
+                     elif $shape == "unicode" then ("\u03bb" * 3000) else "" end)),
+                title:"Implementation",status:"closed",updated_at:"same-revision",
+                comments:[{text:("Zirconium tests passed " + ("z" * 4096))}]
+            }]' > "$work/details.json" || return 1
+        jq 'map(del(.comments))' "$work/details.json" > "$work/list.json" || return 1
+        jq '{id:"bd-epic",success_criteria:["Zirconium"],dependents:
+            [.[] | {id:.id,dependency_type:"parent-child"}]}' "$work/details.json" > "$work/epic.json" || return 1
+        printf '[]\n' > "$work/commits.json"
+        [[ $(wc -c < "$work/details.json") -gt 131072 ]] || return 1
+        for mode in json markdown; do
+            : > "$work/calls.jsonl"
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+                --issues-file "$work/details.json" --commits-file "$work/commits.json" > "$work/expected.$mode" || return 1
+            LC_ALL=C.UTF-8 run_detail_audit "$work" "$mode" > "$work/actual.$mode" 2> "$work/$mode.stderr" || return 1
+            cmp "$work/expected.$mode" "$work/actual.$mode" || return 1
+            jq -s -e --slurpfile expected "$work/details.json" '
+                [.[] | select(.[0] == "show" and .[1] == "--json") | .[5:]] as $batches
+                | ($batches | length) > 1
+                and all($batches[]; length <= 128 and (map(utf8bytelength + 1) | add) <= 32768)
+                and ([$batches[][]] | sort) == ($expected[0] | map(.id) | sort)
+            ' "$work/calls.jsonl" >/dev/null || return 1
+        done
+    done
+    pass "live_detail_batches_bound_count_and_bytes"
+}
+
+test_live_details_preserve_list_selection_and_overrides() {
+    local work="$ARTIFACT_DIR/detail-selection" mode
+    prepare_detail_tools "$work" || return 1
+    cat > "$work/epic.json" <<'JSON'
+{"id":"bd-epic","success_criteria":["Zirconium","Quartz"],"dependencies":[
+  {"issue_id":"bd-first","title":"Dependency override","status":"open"},
+  {"id":"bd-first"}, {"depends_on_id":"-literal id"}, {"id":"bd-missing"}
+]}
+JSON
+    cat > "$work/details.json" <<'JSON'
+[
+  {"id":"bd-first","title":"Canonical","status":"closed","comments":[{"text":"Zirconium tests passed"}]},
+  {"id":"-literal id","title":"Canonical","status":"closed","comments":[{"text":"Quartz tests passed"}]},
+  {"id":"bd-noise","title":"Must not query","comments":[]}
+]
+JSON
+    cat > "$work/list.json" <<'JSON'
+[
+  {"id":"bd-first","title":"First list record","status":"closed"},
+  {"id":"bd-first","title":"Second list record","status":"deferred"},
+  {"id":"-literal id","title":"Literal ID","status":"closed"},
+  {"id":"bd-noise","title":"Unrelated","status":"closed"}
+]
+JSON
+    jq --slurpfile details "$work/details.json" 'map(. as $row |
+        . + {comments: (first($details[0][] | select(.id == $row.id)).comments)})' \
+        "$work/list.json" > "$work/expected-issues.json" || return 1
+    printf '[]\n' > "$work/commits.json"
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/expected-issues.json" --commits-file "$work/commits.json" > "$work/expected.$mode" || return 1
+        run_detail_audit "$work" "$mode" > "$work/actual.$mode" 2> "$work/$mode.stderr" || return 1
+        cmp "$work/expected.$mode" "$work/actual.$mode" || return 1
+    done
+    jq -s -e '[.[] | select(.[0] == "show" and .[1] == "--json") | .[5:]] ==
+        [["-literal id","bd-first"],["-literal id","bd-first"]]' "$work/calls.jsonl" >/dev/null || return 1
+    # The legacy duplicate-dependency rule can choose the stronger closed
+    # duplicate. It must still use the first stored list record for that ID.
+    jq -e '.summary.child_beads == 4 and .criteria[0].status == "satisfied"
+        and .criteria[0].evidence[0].title == "First list record"
+        and .criteria[1].evidence[0].title == "Literal ID"' "$work/actual.json" >/dev/null || return 1
+    pass "live_details_preserve_list_selection_and_overrides"
+}
+
+test_failed_live_detail_batches_never_emit_reports() {
+    local work="$ARTIFACT_DIR/detail-batches-count" mode failure expected_calls
+    for failure in truncated exit missing duplicate unexpected page comments revision; do
+        for mode in json markdown; do
+            : > "$work/calls.jsonl"
+            if MOCK_BAD_ID=bd-child-10128 MOCK_DETAIL_MODE="$failure" run_detail_audit "$work" "$mode" \
+                > "$work/failure-$failure-$mode.stdout" 2> "$work/failure-$failure-$mode.stderr"; then
+                echo "Unexpected success for detail failure: $failure" >&2
+                return 1
+            fi
+            [[ ! -s "$work/failure-$failure-$mode.stdout" ]] || return 1
+            grep -Eq 'live child details|issues input|failed to read issues input' "$work/failure-$failure-$mode.stderr" || return 1
+            # A malformed/failed second read stops the third. Revision checks
+            # happen when merging the collected details with the list rows.
+            expected_calls=2
+            [[ "$failure" != revision ]] || expected_calls=3
+            jq -s -e --argjson expected "$expected_calls" \
+                '[.[] | select(.[0] == "show" and .[1] == "--json")] | length == $expected' \
+                "$work/calls.jsonl" >/dev/null || return 1
+        done
+    done
+    # A successful JSON prefix from a failed list command cannot start reads.
+    : > "$work/calls.jsonl"
+    if MOCK_LIST_EXIT=24 run_detail_audit "$work" json > "$work/list-failure.stdout" 2> "$work/list-failure.stderr"; then
+        return 1
+    fi
+    [[ ! -s "$work/list-failure.stdout" ]] || return 1
+    jq -s -e '[.[] | select(.[0] == "show" and .[1] == "--json")] | length == 0' \
+        "$work/calls.jsonl" >/dev/null || return 1
+    pass "failed_live_detail_batches_never_emit_reports"
+}
+
+test_live_detail_ids_validate_before_exec() {
+    local work="$ARTIFACT_DIR/detail-invalid-ids" id mode index=0
+    prepare_detail_tools "$work" || return 1
+    printf '[]\n' > "$work/commits.json"
+    for id in '"line\nbreak"' '"nul\u0000byte"' '"tab\tbyte"' '"return\rbyte"' '"del\u007fbyte"' \
+        '("z" * 16385)' '("\u03bb" * 8193)' '42'; do
+        index=$((index + 1))
+        jq -n "[{id:($id),status:\"closed\"}]" > "$work/list.json" || return 1
+        jq '{id:"bd-epic",success_criteria:["Zirconium"],dependencies:[.[] | {id:.id}]}' \
+            "$work/list.json" > "$work/epic.json" || return 1
+        for mode in json markdown; do
+            : > "$work/calls.jsonl"
+            if run_detail_audit "$work" "$mode" > "$work/bad-$index-$mode.stdout" 2> "$work/bad-$index-$mode.stderr"; then
+                return 1
+            fi
+            [[ ! -s "$work/bad-$index-$mode.stdout" ]] || return 1
+            grep -q 'live child details: IDs' "$work/bad-$index-$mode.stderr" || return 1
+            jq -s -e '[.[] | select(.[0] == "show" and .[1] == "--json")] | length == 0' \
+                "$work/calls.jsonl" >/dev/null || return 1
+        done
+    done
+    pass "live_detail_ids_validate_before_exec"
+}
+
+test_empty_and_offline_sources_do_not_read_live_details() {
+    local work="$ARTIFACT_DIR/detail-source-isolation" mode
+    prepare_detail_tools "$work" || return 1
+    printf '{"id":"bd-epic","success_criteria":["Zirconium"],"dependencies":[{"id":"bd-absent"}]}\n' > "$work/epic.json"
+    printf '[]\n' > "$work/list.json"
+    printf '[]\n' > "$work/commits.json"
+    for mode in json markdown; do
+        : > "$work/calls.jsonl"
+        run_detail_audit "$work" "$mode" > "$work/empty.$mode" || return 1
+        jq -s -e '[.[] | select(.[0] == "show" and .[1] == "--json")] | length == 0' \
+            "$work/calls.jsonl" >/dev/null || return 1
+        # Explicit files and local snapshots remain self-contained. The mock
+        # detail file deliberately does not exist, so accidental reads fail.
+        (
+            cd "$work/live" || exit 1
+            PATH="$work/bin:$PATH" MOCK_WORK="$work" bash "$SWARM_CONVERGENCE_SH" "--$mode" \
+                --epic-file "$work/epic.json" --issues-file "$work/list.json" --commits-file "$work/commits.json"
+        ) > "$work/file.$mode" || return 1
+        mkdir -p "$work/offline/.beads" || return 1
+        cp "$work/list.json" "$work/offline/.beads/issues.jsonl" || return 1
+        (
+            cd "$work/offline" || exit 1
+            PATH="$work/bin:$PATH" MOCK_WORK="$work" bash "$SWARM_CONVERGENCE_SH" "--$mode" \
+                --epic-file "$work/epic.json" --commits-file "$work/commits.json"
+        ) > "$work/snapshot.$mode" || return 1
+        cmp "$work/empty.$mode" "$work/file.$mode" || return 1
+        cmp "$work/empty.$mode" "$work/snapshot.$mode" || return 1
+        jq -s -e 'length == 2' "$work/calls.jsonl" >/dev/null || return 1
+    done
+    pass "empty_and_offline_sources_do_not_read_live_details"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -1108,6 +1389,12 @@ main() {
     run_test test_unverifiable_epics_never_pass
     run_test test_malformed_native_fields_never_emit_reports
     run_test test_large_native_graph_and_real_git
+    run_test test_live_comment_evidence_matches_full_exports
+    run_test test_live_detail_batches_bound_count_and_bytes
+    run_test test_live_details_preserve_list_selection_and_overrides
+    run_test test_failed_live_detail_batches_never_emit_reports
+    run_test test_live_detail_ids_validate_before_exec
+    run_test test_empty_and_offline_sources_do_not_read_live_details
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

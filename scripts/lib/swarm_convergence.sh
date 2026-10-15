@@ -265,11 +265,67 @@ swarm_convergence_collect_epic_json() {
     "$br_bin" show "$SWARM_CONVERGENCE_EPIC_ID" --json --no-auto-import --no-auto-flush
 }
 
+swarm_convergence_collect_detail_batch() {
+    local jq_bin="$1" br_bin="$2"
+    shift 2
+
+    # Only a byte/count-bounded set of IDs goes in argv, never issue payloads.
+    # The end-of-options marker prevents an ID from becoming a br option.
+    "$br_bin" show --json --no-auto-import --no-auto-flush -- "$@" \
+        | swarm_convergence_normalize_json "$jq_bin" issues \
+        | "$jq_bin" -c --rawfile requested <(printf '%s\n' "$@") '
+            ($requested | split("\n")[:-1] | sort) as $ids
+            | if (map(.id) | sort) != $ids then
+                error("live child details: missing, duplicate, or unexpected issue IDs")
+              elif any(.[]; .comments != null and
+                   (.comments | (type == "array" and all(.[];
+                       type == "object" and (.text | type) == "string")) | not)) then
+                error("live child details: comments must be objects with string text")
+              else .[] end
+        '
+}
+
+swarm_convergence_collect_live_details() {
+    local jq_bin="$1" br_bin="$2" issues_json="$3"
+    local ids_text="" id="" bytes=0
+    local -a batch=()
+    # Bash length must measure bytes, including under UTF-8 user locales.
+    local LC_ALL=C
+
+    # Validate the complete selected ID set before executing any detail read.
+    # Reject line/NUL delimiters and individually oversized IDs explicitly.
+    ids_text="$("$jq_bin" -r '
+        def valid_id:
+            if type == "string" then
+                length > 0 and utf8bytelength <= 16384 and
+                (test("[\u0000-\u001f\u007f]") | not)
+            else false end;
+        if all(.[]; .id | valid_id) then map(.id) | unique[]
+        else error("live child details: IDs must be non-empty strings without control characters, at most 16384 bytes") end
+    ' <<< "$issues_json")" || return $?
+    [[ -n "$ids_text" ]] || return 0
+
+    while IFS= read -r id; do
+        if (( ${#batch[@]} >= 128 || bytes + ${#id} + 1 > 32768 )); then
+            swarm_convergence_collect_detail_batch "$jq_bin" "$br_bin" "${batch[@]}" || return $?
+            batch=()
+            bytes=0
+        fi
+        batch+=("$id")
+        bytes=$((bytes + ${#id} + 1))
+    done <<< "$ids_text"
+    if (( ${#batch[@]} > 0 )); then
+        swarm_convergence_collect_detail_batch "$jq_bin" "$br_bin" "${batch[@]}" || return $?
+    fi
+    return 0
+}
+
 swarm_convergence_collect_issues_json() {
     local jq_bin="$1"
     local epic_json="$2"
     local br_bin=""
     local child_ids_json=""
+    local listed_json=""
 
     child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
     if [[ -n "$SWARM_CONVERGENCE_ISSUES_FILE" ]]; then
@@ -289,8 +345,25 @@ swarm_convergence_collect_issues_json() {
     }
     # The default work queue hides closed/deferred issues. Auditing an epic
     # needs their evidence too, without any version-dependent result limit.
-    "$br_bin" list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush \
-        | swarm_convergence_normalize_json "$jq_bin" issues "$child_ids_json"
+    listed_json="$("$br_bin" list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush \
+        | swarm_convergence_normalize_json "$jq_bin" issues "$child_ids_json")" || return $?
+
+    # br list supplies labels and counts, but does not hydrate comments. A
+    # child whose only verification is a comment must audit exactly as it does
+    # from a full export. Keep list order/duplicates/fields; enrich comments
+    # only, without silently accepting missing or stale detail responses.
+    swarm_convergence_collect_live_details "$jq_bin" "$br_bin" "$listed_json" \
+        | "$jq_bin" -s --slurpfile listed <(printf '%s\n' "$listed_json") '
+            (reduce .[] as $detail ({}; .[$detail.id] = $detail)) as $details
+            | $listed[0] | map(
+                $details[.id] as $detail
+                | if $detail == null then
+                    error("live child details: missing issue " + .id)
+                  elif .updated_at != null and $detail.updated_at != null and
+                       .updated_at != $detail.updated_at then
+                    error("live child details: issue changed during collection: " + .id + "; retry the audit")
+                  else . + {comments: ($detail.comments // [])} end)
+        '
 }
 
 swarm_convergence_collect_commits_json() {
