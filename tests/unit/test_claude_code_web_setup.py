@@ -110,6 +110,17 @@ class MirrorPublisher(unittest.TestCase):
         self.assertEqual(publisher.digest(packed), entry["sha256"])
         self.assertEqual(publisher.archive_files(packed, entry["file"]), {"bin/bv": b"bin"})
 
+    def test_latest_release_metadata_rejects_non_objects_and_malformed_json(self):
+        for response in ("", "<html>upstream failed</html>", "[]", "null", "42"):
+            with self.subTest(response=response):
+                with mock.patch.object(publisher, "run", return_value=response) as run, \
+                        mock.patch.object(publisher, "fetch") as fetch, \
+                        self.assertRaisesRegex(ValueError, "release metadata"):
+                    publisher.prepare("bv", self.stage)
+                self.assertEqual(run.call_count, 1)
+                fetch.assert_not_called()
+        self.assertEqual(list(self.stage.iterdir()), [])
+
     def test_jfp_packages_baseline_when_both_cpu_assets_exist(self):
         work = self.stage / "jfp/v1.0.3"
         work.mkdir(parents=True)
@@ -312,6 +323,42 @@ class MirrorPublisher(unittest.TestCase):
             publisher.publish_jsm_fallback(entry, self.stage)
         self.assertEqual(entry["source"]["url"], "https://vendor.invalid/jsm.tar.gz")
         self.assertNotIn("upstream_url", entry["source"])
+
+    def test_public_fallback_malformed_error_retains_original_command(self):
+        _, entry, _ = self.jsm_fallback()
+        for response in ("not JSON", "[]", "null", '{"status":"403"}', ""):
+            failure = subprocess.CalledProcessError(1, ["gh", "api"], output=response)
+            with self.subTest(response=response):
+                with mock.patch.object(publisher, "run", side_effect=failure) as run, \
+                        mock.patch.object(publisher, "fetch") as fetch, \
+                        self.assertRaises(subprocess.CalledProcessError) as caught:
+                    publisher.publish_jsm_fallback(entry, self.stage)
+                self.assertIs(caught.exception, failure)
+                self.assertEqual(run.call_count, 1, "Malformed error must never create a release")
+                fetch.assert_not_called()
+                self.assertEqual(entry["source"]["url"], "https://vendor.invalid/jsm.tar.gz")
+                self.assertNotIn("upstream_url", entry["source"])
+
+    def test_public_fallback_rechecks_metadata_after_creation_and_upload(self):
+        data, entry, release = self.jsm_fallback()
+        missing = subprocess.CalledProcessError(1, ["gh", "api"], output='{"status":"404"}')
+        for phase in ("create", "upload"):
+            for index, response in enumerate(("not JSON", "[]")):
+                stage = self.stage / f"{phase}-{index}"
+                work = stage / "jsm/v1.2.3"
+                work.mkdir(parents=True)
+                (work / entry["source"]["asset"]).write_bytes(data)
+                replies = ([missing, "created", response] if phase == "create" else
+                           [json.dumps({**release, "assets": []}), "uploaded", response])
+                with self.subTest(phase=phase, response=response):
+                    with mock.patch.object(publisher, "run", side_effect=replies) as run, \
+                            mock.patch.object(publisher, "fetch") as fetch, \
+                            self.assertRaisesRegex(ValueError, "GitHub release metadata"):
+                        publisher.publish_jsm_fallback(entry, stage)
+                    self.assertEqual(run.call_count, 3)
+                    fetch.assert_not_called()
+                    self.assertEqual(entry["source"]["url"], "https://vendor.invalid/jsm.tar.gz")
+                    self.assertNotIn("upstream_url", entry["source"])
 
     def test_jsm_public_fallback_rejects_collisions_and_nonpublic_releases(self):
         data, entry, release = self.jsm_fallback()

@@ -155,20 +155,20 @@
       ],
       "fallback": {
         "format": "acfs-overlay",
-        "sha256": "1b331f2b77aeef5da0a66b78346dbd09dc56ff2858b48fba65f7d2d2ab1fa027",
-        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/ubs-v5.5.0-linux-x86_64-1b331f2b77aeef5da0a66b78346dbd09dc56ff2858b48fba65f7d2d2ab1fa027.tar.gz"
+        "sha256": "f3daefa2a98cf588cdf6530009677eee9d13a6eb7c9e7682dc37e3d6866027c4",
+        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/ubs-v5.5.3-linux-x86_64-f3daefa2a98cf588cdf6530009677eee9d13a6eb7c9e7682dc37e3d6866027c4.tar.gz"
       },
-      "file": "ubs/v5.5.0/1b331f2b77aeef5da0a66b78346dbd09dc56ff2858b48fba65f7d2d2ab1fa027/ubs-linux-x86_64.tar.gz",
-      "sha256": "1b331f2b77aeef5da0a66b78346dbd09dc56ff2858b48fba65f7d2d2ab1fa027",
+      "file": "ubs/v5.5.3/f3daefa2a98cf588cdf6530009677eee9d13a6eb7c9e7682dc37e3d6866027c4/ubs-linux-x86_64.tar.gz",
+      "sha256": "f3daefa2a98cf588cdf6530009677eee9d13a6eb7c9e7682dc37e3d6866027c4",
       "source": {
         "asset": "ubs",
         "repo": "Dicklesworthstone/ultimate_bug_scanner",
-        "sha256": "7bafd261efdf32da252f004d70c954256855ff7d78fe441d7b7fdef70e87099d",
-        "tag": "v5.5.0",
-        "url": "https://github.com/Dicklesworthstone/ultimate_bug_scanner/releases/download/v5.5.0/ubs",
+        "sha256": "c3863fb17ce68d3f13d9f05e5fa2cc21981eb2e8aac855b28c1a6fdee1af3c9e",
+        "tag": "v5.5.3",
+        "url": "https://github.com/Dicklesworthstone/ultimate_bug_scanner/releases/download/v5.5.3/ubs",
         "verification": "minisign+sha256"
       },
-      "version": "v5.5.0"
+      "version": "v5.5.3"
     }
   }
 }

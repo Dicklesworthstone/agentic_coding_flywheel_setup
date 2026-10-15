@@ -44,6 +44,17 @@ def run(*args):
     return subprocess.check_output(args, text=True, timeout=300)
 
 
+def gh_release(endpoint):
+    """Read release metadata without mistaking malformed output for a release."""
+    try:
+        release = json.loads(run("gh", "api", endpoint))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid GitHub release metadata from {endpoint}") from error
+    if not isinstance(release, dict):
+        raise ValueError(f"GitHub release metadata must be an object: {endpoint}")
+    return release
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -139,10 +150,7 @@ def prepare(tool, stage):
             {"name": "SHA256SUMS", "digest": "sha256:" + digest(checksums), "browser_download_url": f"{relay}/{version}/SHA256SUMS"},
         ]}
     else:
-        try:
-            release = json.loads(run("gh", "api", f"repos/{repo}/releases/latest"))
-        except json.JSONDecodeError as error:
-            raise ValueError(f"{repo}: gh returned invalid release metadata") from error
+        release = gh_release(f"repos/{repo}/releases/latest")
     version = release["tag_name"]
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", version):
         raise ValueError("Unsafe release tag")
@@ -285,11 +293,15 @@ def publish_public_asset(tool, version, sha, data, stage):
             output.write(data)
     endpoint = f"repos/{FALLBACK_REPO}/releases/tags/{FALLBACK_TAG}"
     try:
-        release = json.loads(run("gh", "api", endpoint))
+        release = gh_release(endpoint)
     except subprocess.CalledProcessError as error:
         # Only an actual missing release permits creation, never an auth,
         # rate-limit or transport failure. Preserve all other diagnostics.
-        if str(json.loads(error.output or "{}").get("status")) != "404":
+        try:
+            failure = json.loads(error.output or "{}")
+        except json.JSONDecodeError:
+            raise error
+        if not isinstance(failure, dict) or str(failure.get("status")) != "404":
             raise
         release = None
     if release is None:
@@ -301,7 +313,7 @@ def publish_public_asset(tool, version, sha, data, stage):
                        "cloud environments. cloud-mirror.json pins SHA256 and upstream provenance. "
                        "Assets are content addressed and never replaced. This is not the latest ACFS release."}, output)
         run("gh", "api", f"repos/{FALLBACK_REPO}/releases", "--method", "POST", "--input", str(body))
-        release = json.loads(run("gh", "api", endpoint))
+        release = gh_release(endpoint)
     if release.get("draft", True) or release.get("tag_name") != FALLBACK_TAG:
         raise ValueError(f"{tool}: fallback release is not public or has the wrong tag")
     matches = [item for item in release["assets"] if item["name"] == name]
@@ -311,7 +323,7 @@ def publish_public_asset(tool, version, sha, data, stage):
         upload = f"https://uploads.github.com/repos/{FALLBACK_REPO}/releases/{release['id']}/assets?name={name}"
         run("gh", "api", upload, "--method", "POST", "--header", "Content-Type: application/gzip",
             "--input", str(asset))
-        release = json.loads(run("gh", "api", endpoint))
+        release = gh_release(endpoint)
         matches = [item for item in release["assets"] if item["name"] == name]
     if len(matches) != 1 or matches[0].get("digest") != "sha256:" + sha:
         raise ValueError(f"{tool}: fallback GitHub asset digest mismatch/missing")
