@@ -111,10 +111,13 @@ swarm_convergence_binary_path() {
 swarm_convergence_normalize_json() {
     local jq_bin="$1"
     local kind="$2"
+    local child_ids_json="${3:-}"
 
-    # Slurp before emitting anything: a malformed trailing record must not turn
-    # a valid prefix into a successful (but incomplete) audit.
-    "$jq_bin" -s --arg kind "$kind" '
+    # Consume the entire stream before emitting anything, but retain only the
+    # selected records for JSONL. A malformed suffix or incomplete envelope
+    # must fail even when it contains no children relevant to this epic.
+    "$jq_bin" -n --arg kind "$kind" \
+        --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
         def invalid($message): error($kind + " input: " + $message);
         def objects: type == "array" and all(.[]; type == "object");
         def object_list:
@@ -132,7 +135,40 @@ swarm_convergence_normalize_json() {
                 else .issues end
              else . end)
             | if objects then . else invalid("expected an array of objects or an issues wrapper") end;
-        if $kind == "epic" then
+        def jsonl_record:
+            if type == "object" and (.id | type) == "string" then [.]
+            else invalid("expected an issue array, issues wrapper, or JSONL issue objects") end;
+        (reduce $child_ids[0][]? as $id ({};
+            if ($id | type) == "string" then .[$id] = true else . end)) as $wanted
+        | def selected:
+            if ($child_ids | length) == 0 then .
+            else map(select(.id as $id |
+                if ($id | type) == "string" then $wanted[$id] == true
+                else ($child_ids[0] | index($id)) != null end)) end;
+        if $kind == "issues" then
+            # Defer the first value until the next value or EOF distinguishes
+            # a single array/wrapper from JSONL. JSONL issue records may have
+            # an unrelated field called "issues"; preserve that distinction.
+            reduce inputs as $value ({count:0, first:null, out:[]};
+                if .count == 0 then .first = $value
+                else
+                    (if .count == 1 then
+                        (.first | jsonl_record | selected) as $first
+                        | .out = $first | .first = null
+                     else . end)
+                    | ($value | jsonl_record | selected) as $next
+                    | .out += $next
+                end
+                | .count += 1)
+            | if .count == 0 then []
+              elif .count == 1 then
+                .first
+                | (if type == "array" or (type == "object" and has("issues")) then object_list
+                   else jsonl_record end)
+                | selected
+              else .out end
+        else [inputs]
+        | if $kind == "epic" then
             if length != 1 then invalid("expected exactly one JSON value")
             else .[0]
                 | (if type == "array" then .[0] else . end) as $epic
@@ -145,15 +181,10 @@ swarm_convergence_normalize_json() {
                     invalid("success_criteria must be an array of strings")
                   else . end
             end
-        elif $kind == "issues" then
-            if length == 1 and (.[0] | type) == "array" then .[0] | object_list
-            elif length == 1 and (.[0] | type) == "object" and (.[0] | has("issues")) then
-                .[0] | object_list
-            elif all(.[]; type == "object" and (.id | type) == "string") then .
-            else invalid("expected an issue array, issues wrapper, or JSONL issue objects") end
         else
             if length != 1 then invalid("expected exactly one JSON value")
             else .[0] | object_list end
+        end
         end
     '
 }
@@ -161,13 +192,14 @@ swarm_convergence_normalize_json() {
 swarm_convergence_read_json_or_jsonl() {
     local jq_bin="$1"
     local path="$2"
+    local child_ids_json="${3:-}"
 
     [[ -f "$path" ]] || {
         echo "Error: file not found: $path" >&2
         return 2
     }
 
-    swarm_convergence_normalize_json "$jq_bin" issues < "$path"
+    swarm_convergence_normalize_json "$jq_bin" issues "$child_ids_json" < "$path"
 }
 
 swarm_convergence_child_ids_json() {
@@ -205,21 +237,14 @@ swarm_convergence_collect_issues_json() {
     local br_bin=""
     local child_ids_json=""
 
+    child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
     if [[ -n "$SWARM_CONVERGENCE_ISSUES_FILE" ]]; then
-        swarm_convergence_read_json_or_jsonl "$jq_bin" "$SWARM_CONVERGENCE_ISSUES_FILE"
+        swarm_convergence_read_json_or_jsonl "$jq_bin" "$SWARM_CONVERGENCE_ISSUES_FILE" "$child_ids_json"
         return $?
     fi
 
     if [[ -f ".beads/issues.jsonl" ]]; then
-        child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
-        swarm_convergence_read_json_or_jsonl "$jq_bin" .beads/issues.jsonl \
-            | "$jq_bin" --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
-                (reduce $child_ids[0][] as $id ({};
-                    if ($id | type) == "string" then .[$id] = true else . end)) as $wanted
-                | map(select(.id as $id |
-                    if ($id | type) == "string" then $wanted[$id] == true
-                    else ($child_ids[0] | index($id)) != null end))
-            '
+        swarm_convergence_read_json_or_jsonl "$jq_bin" .beads/issues.jsonl "$child_ids_json"
         return $?
     fi
 
@@ -230,7 +255,8 @@ swarm_convergence_collect_issues_json() {
     }
     # The default work queue hides closed/deferred issues. Auditing an epic
     # needs their evidence too, without any version-dependent result limit.
-    "$br_bin" list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush
+    "$br_bin" list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush \
+        | swarm_convergence_normalize_json "$jq_bin" issues "$child_ids_json"
 }
 
 swarm_convergence_collect_commits_json() {
@@ -250,11 +276,22 @@ swarm_convergence_collect_commits_json() {
         return 0
     }
     child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
-    "$git_bin" log --format='%H%x1f%s%x1e' --all 2>/dev/null \
-        | "$jq_bin" -R -s --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
-            split("\u001e")[:-1]
-            | map(split("\u001f") | {hash: .[0], subject: (.[1] // "")})
-            | map(select(.subject as $subject | any($child_ids[0][]; . as $id | $subject | contains($id))))
+    # %s is a single line, whereas arbitrary control-character delimiters may
+    # occur inside the subject itself. Split only after the full object ID.
+    # Suppress config-dependent extra output (notably notes and signatures).
+    # Consume history one line at a time and retain only matching evidence;
+    # unrelated history must not be slurped into a second in-memory copy.
+    "$git_bin" log --format='%H %s' --all --no-show-signature --no-notes \
+        --no-patch --color=never --no-decorate --encoding=UTF-8 \
+        | "$jq_bin" -R -n --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
+            [inputs
+             | index(" ") as $end
+             | if (($end == 40 or $end == 64) and
+                   (.[:$end] | test("^[0-9a-f]+$"))) then
+                 {hash: .[:$end], subject: .[$end + 1:]}
+               else error("commits input: malformed git log record") end
+             | select(.subject as $subject |
+                 any($child_ids[0][]; . as $id | $subject | contains($id)))]
         '
 }
 
@@ -489,7 +526,7 @@ swarm_convergence_main() {
         echo "Error: failed to read epic input" >&2
         return 2
     }
-    issues_json="$(swarm_convergence_collect_issues_json "$jq_bin" "$epic_json" | swarm_convergence_normalize_json "$jq_bin" issues)" || {
+    issues_json="$(swarm_convergence_collect_issues_json "$jq_bin" "$epic_json")" || {
         echo "Error: failed to read issues input" >&2
         return 2
     }

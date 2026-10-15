@@ -283,12 +283,12 @@ SH
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'git %s\n' "$*" >> "$MOCK_CALLS"
-[[ "$*" == 'log --format=%H%x1f%s%x1e --all' ]] || exit 91
+[[ "$*" == 'log --format=%H %s --all --no-show-signature --no-notes --no-patch --color=never --no-decorate --encoding=UTF-8' ]] || exit 91
 cat "$MOCK_GIT_LOG"
 exit "${MOCK_GIT_EXIT:-0}"
 SH
     chmod +x "$ARTIFACT_DIR/live-bin/br" "$ARTIFACT_DIR/live-bin/git" || return 1
-    jq -j '.[] | .hash + "\u001f" + .subject + "\u001e"' "$ARTIFACT_DIR/large-commits.json" \
+    jq -r '.[] | ("0" * 40) + " " + .subject' "$ARTIFACT_DIR/large-commits.json" \
         > "$ARTIFACT_DIR/live-git.log" || return 1
 }
 
@@ -317,7 +317,7 @@ test_large_live_export_and_beads_snapshot() {
             if [[ "$source" == live ]]; then
                 printf 'br list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush\n'
             fi
-            printf 'git log --format=%%H%%x1f%%s%%x1e --all\n'
+            printf 'git log --format=%%H %%s --all --no-show-signature --no-notes --no-patch --color=never --no-decorate --encoding=UTF-8\n'
         } > "$ARTIFACT_DIR/$source.expected-calls"
         cmp "$ARTIFACT_DIR/$source.expected-calls" "$calls" || return 1
         if [[ "$source" == snapshot ]]; then
@@ -424,6 +424,94 @@ test_real_git_collection_is_read_only() {
     pass "real_git_collection_is_read_only"
 }
 
+test_git_subjects_survive_delimiters_and_user_config() {
+    local work="$ARTIFACT_DIR/git-subjects" mode subject
+    mkdir -p "$work" || return 1
+    git init -q -b main "$work" || return 1
+    local subjects=(
+        $'Notes\037bd-proof zirconium tests passed'
+        $'Notes\036bd-proof zirconium fixtures passed'
+        $'bd-proof zirconium "quotes" \\ tabs\t Unicode Ω verified'
+    )
+    for subject in "${subjects[@]}" ""; do
+        git -C "$work" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false \
+            commit -q --allow-empty --allow-empty-message -m "$subject" || return 1
+    done
+    git -C "$work" -c user.name=Test -c user.email=test@example.invalid \
+        notes add -m 'bd-proof forged note evidence, not a commit subject' || return 1
+    git -C "$work" config log.showSignature true || return 1
+    git -C "$work" config log.showNotes true || return 1
+    git -C "$work" config color.ui always || return 1
+    git -C "$work" config i18n.logOutputEncoding ISO-8859-1 || return 1
+    printf '%s\n' '{"id":"bd-epic","success_criteria":["Zirconium verified"],"dependencies":[{"id":"bd-proof","status":"closed"}]}' \
+        > "$work/epic.json"
+    printf '[]\n' > "$work/issues.json"
+    printf '%s\n' "${subjects[@]}" | jq -R -s 'split("\n")[:-1] | reverse' > "$work/subjects.json" || return 1
+    jq 'map({hash:"unused",subject:.})' "$work/subjects.json" > "$work/commits.json" || return 1
+    git -C "$work" show-ref > "$work/refs.before" || return 1
+    sha256sum "$work/.git/config" > "$work/config.sha256" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/commits.json" > "$work/expected.$mode" || return 1
+        (cd "$work" && bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file epic.json --issues-file issues.json) \
+            > "$work/actual.$mode" 2> "$work/$mode.stderr" || return 1
+        cmp "$work/expected.$mode" "$work/actual.$mode" || return 1
+        [[ ! -s "$work/$mode.stderr" ]] || return 1
+    done
+    jq -e '.summary.satisfied == 1 and (.criteria[0].evidence[0].commit_subjects | length) == 3' \
+        "$work/actual.json" >/dev/null || return 1
+    git -C "$work" show-ref > "$work/refs.after" || return 1
+    cmp "$work/refs.before" "$work/refs.after" || return 1
+    sha256sum -c "$work/config.sha256" >/dev/null || return 1
+    pass "git_subjects_survive_delimiters_and_user_config"
+}
+
+test_large_git_history_keeps_tail_evidence() {
+    local work="$ARTIFACT_DIR/git-history" mode
+    mkdir -p "$work" || return 1
+    printf '%s\n' '{"id":"bd-epic","success_criteria":["Zirconium verified"],"dependencies":[{"id":"bd-proof","status":"closed"}]}' \
+        > "$work/epic.json"
+    printf '[]\n' > "$work/issues.json"
+    # Over 32 MiB of unrelated history followed by the only relevant commit.
+    # Its subject also exceeds common per-argument limits. No truncation can
+    # satisfy this regression; compare the complete report in both formats.
+    jq -n -r '("x" * 1024) as $padding | range(0;32768) | ("0" * 40) + " Unrelated " + tostring + $padding' \
+        > "$work/history.log" || return 1
+    jq -n '[{hash:("a" * 64),subject:(("z" * 262144) + " bd-proof zirconium tests passed")}]' \
+        > "$work/commits.json" || return 1
+    jq -r '.[] | .hash + " " + .subject' "$work/commits.json" >> "$work/history.log" || return 1
+    [[ $(wc -c < "$work/history.log") -gt 33554432 ]] || return 1
+    sha256sum "$work/history.log" > "$work/history.sha256" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/commits.json" > "$work/expected.$mode" || return 1
+        PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$work/calls" MOCK_GIT_LOG="$work/history.log" \
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" > "$work/actual.$mode" 2> "$work/$mode.stderr" || return 1
+        cmp "$work/expected.$mode" "$work/actual.$mode" || return 1
+        [[ ! -s "$work/$mode.stderr" ]] || return 1
+    done
+    jq -e '.summary.satisfied == 1' "$work/actual.json" >/dev/null || return 1
+    sha256sum -c "$work/history.sha256" >/dev/null || return 1
+    pass "large_git_history_keeps_tail_evidence"
+}
+
+test_malformed_git_records_never_emit_reports() {
+    local work="$ARTIFACT_DIR/git-record-errors" mode bad index=0
+    mkdir -p "$work" || return 1
+    for bad in '' 'signature chatter' 'bad-hash bd-capacity' \
+        '000000000000000000000000000000000000000z bd-capacity'; do
+        index=$((index + 1))
+        printf '%040d bd-capacity tests passed\n%s\n' 0 "$bad" > "$work/log-$index"
+        for mode in json markdown; do
+            PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$work/calls" MOCK_GIT_LOG="$work/log-$index" \
+                expect_input_failure "git-record-$index-$mode" 'malformed git log record' "--$mode" \
+                --epic-file "$ARTIFACT_DIR/complete_epic.json" --issues-file "$ARTIFACT_DIR/complete_issues.json" || return 1
+        done
+    done
+    pass "malformed_git_records_never_emit_reports"
+}
+
 test_empty_and_single_issue_jsonl() {
     local issues mode format
     for mode in json markdown; do
@@ -453,7 +541,7 @@ test_large_child_id_filters_do_not_use_argv() {
     jq -n '{id:"bd-epic",dependencies:[range(0;20000) | {id:("bd-child-" + tostring)}]}' \
         > "$ARTIFACT_DIR/large-children-epic.json" || return 1
     printf '{"id":"bd-child-19999"}\n' > "$work/.beads/issues.jsonl"
-    printf 'hash\037Verify bd-child-19999\036' > "$ARTIFACT_DIR/large-children-git.log"
+    printf '%040d Verify bd-child-19999\n' 0 > "$ARTIFACT_DIR/large-children-git.log"
     (
         cd "$work" || exit 1
         export PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$ARTIFACT_DIR/large-children.calls"
@@ -468,7 +556,7 @@ test_large_child_id_filters_do_not_use_argv() {
             > "$ARTIFACT_DIR/large-children-commits.json" || exit 1
     ) || return 1
     jq -e '. == [{id:"bd-child-19999"}]' "$ARTIFACT_DIR/large-children-issues.json" >/dev/null || return 1
-    jq -e '. == [{hash:"hash",subject:"Verify bd-child-19999"}]' "$ARTIFACT_DIR/large-children-commits.json" >/dev/null || return 1
+    jq -e '. == [{hash:("0" * 40),subject:"Verify bd-child-19999"}]' "$ARTIFACT_DIR/large-children-commits.json" >/dev/null || return 1
     pass "large_child_id_filters_do_not_use_argv"
 }
 
@@ -686,6 +774,73 @@ test_many_children_complete_reports() {
     pass "many_children_complete_reports"
 }
 
+test_jsonl_stream_selection_and_late_failures() {
+    local work="$ARTIFACT_DIR/jsonl-stream" mode source suffix index=0
+    mkdir -p "$work/.beads" || return 1
+    cp "$ARTIFACT_DIR/complete_epic.json" "$work/epic.json" || return 1
+    cp "$ARTIFACT_DIR/complete_commits.json" "$work/commits.json" || return 1
+    jq -c '.[0]' "$ARTIFACT_DIR/complete_issues.json" > "$work/issues.jsonl" || return 1
+    jq -nc '("x" * 2048) as $padding | range(0;16384) | {id:("noise-" + tostring),description:$padding}' \
+        >> "$work/issues.jsonl" || return 1
+    jq -c '.[1]' "$ARTIFACT_DIR/complete_issues.json" >> "$work/issues.jsonl" || return 1
+    [[ $(wc -c < "$work/issues.jsonl") -gt 33554432 ]] || return 1
+    cp "$work/issues.jsonl" "$work/.beads/issues.jsonl" || return 1
+    sha256sum "$work/issues.jsonl" "$work/.beads/issues.jsonl" > "$work/inputs.sha256" || return 1
+    for source in file snapshot live; do
+        for mode in json markdown; do
+            (
+                cd "$work" || exit 1
+                local args=("--$mode" --epic-file "$work/epic.json" --commits-file "$work/commits.json")
+                case "$source" in
+                    file) args+=(--issues-file "$work/issues.jsonl") ;;
+                    live)
+                        cd "$ARTIFACT_DIR" || exit 1
+                        export PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$work/calls" MOCK_ISSUES="$work/issues.jsonl"
+                        ;;
+                esac
+                bash "$SWARM_CONVERGENCE_SH" "${args[@]}"
+            ) > "$work/$source.$mode" 2> "$work/$source.$mode.stderr" || return 1
+            cmp "$ARTIFACT_DIR/small.$mode" "$work/$source.$mode" || return 1
+            [[ ! -s "$work/$source.$mode.stderr" ]] || return 1
+        done
+    done
+    sha256sum -c "$work/inputs.sha256" >/dev/null || return 1
+    # With no selected children, the entire suffix must still be validated.
+    printf '{"id":"bd-epic","dependencies":[]}\n' > "$work/empty-epic.json"
+    for suffix in '{"id":' '17' '{"issues":[]}'; do
+        index=$((index + 1))
+        { cat "$work/issues.jsonl"; printf '%s\n' "$suffix"; } > "$work/bad-$index.jsonl"
+        for mode in json markdown; do
+            expect_input_failure "stream-suffix-$index-$mode" 'issues' "--$mode" \
+                --epic-file "$work/empty-epic.json" --issues-file "$work/bad-$index.jsonl" \
+                --commits-file "$work/commits.json" || return 1
+        done
+    done
+    pass "jsonl_stream_selection_and_late_failures"
+}
+
+test_jsonl_first_value_disambiguation() {
+    local work="$ARTIFACT_DIR/jsonl-shapes" mode shape
+    mkdir -p "$work" || return 1
+    # In a multi-record JSONL stream, "issues" may be an ordinary issue field.
+    # In a single object it denotes the legacy envelope. Do not guess early.
+    jq '.[0].issues = false' "$ARTIFACT_DIR/complete_issues.json" > "$work/array.json" || return 1
+    jq -c '.[]' "$work/array.json" > "$work/records.jsonl" || return 1
+    jq '{issues:.,total:length,offset:0,has_more:false}' "$work/array.json" > "$work/wrapper.json" || return 1
+    for mode in json markdown; do
+        for shape in array.json records.jsonl wrapper.json; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$ARTIFACT_DIR/complete_epic.json" \
+                --issues-file "$work/$shape" --commits-file "$ARTIFACT_DIR/complete_commits.json" \
+                > "$work/$shape.$mode" || return 1
+            cmp "$ARTIFACT_DIR/small.$mode" "$work/$shape.$mode" || return 1
+        done
+        { cat "$work/wrapper.json"; printf '{"id":"extra"}\n'; } > "$work/mixed.json"
+        expect_input_failure "stream-mixed-$mode" 'issues' "--$mode" --epic-file "$ARTIFACT_DIR/complete_epic.json" \
+            --issues-file "$work/mixed.json" --commits-file "$ARTIFACT_DIR/complete_commits.json" || return 1
+    done
+    pass "jsonl_first_value_disambiguation"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -709,12 +864,17 @@ main() {
     run_test test_malformed_inputs_never_emit_reports
     run_test test_live_collection_failures_never_emit_reports
     run_test test_real_git_collection_is_read_only
+    run_test test_git_subjects_survive_delimiters_and_user_config
+    run_test test_large_git_history_keeps_tail_evidence
+    run_test test_malformed_git_records_never_emit_reports
     run_test test_empty_and_single_issue_jsonl
     run_test test_large_child_id_filters_do_not_use_argv
     run_test test_live_collection_includes_closed_and_deferred_without_sync
     run_test test_incomplete_exports_never_emit_reports
     run_test test_selection_and_evidence_ordering
     run_test test_many_children_complete_reports
+    run_test test_jsonl_stream_selection_and_late_failures
+    run_test test_jsonl_first_value_disambiguation
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
