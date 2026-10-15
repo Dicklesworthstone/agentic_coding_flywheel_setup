@@ -108,6 +108,44 @@ swarm_convergence_binary_path() {
     printf '%s\n' "$path_value"
 }
 
+swarm_convergence_normalize_json() {
+    local jq_bin="$1"
+    local kind="$2"
+
+    # Slurp before emitting anything: a malformed trailing record must not turn
+    # a valid prefix into a successful (but incomplete) audit.
+    "$jq_bin" -s --arg kind "$kind" '
+        def invalid($message): error($kind + " input: " + $message);
+        def objects: type == "array" and all(.[]; type == "object");
+        def object_list:
+            (if type == "object" and (.issues | type) == "array" then .issues else . end)
+            | if objects then . else invalid("expected an array of objects or an issues wrapper") end;
+        if $kind == "epic" then
+            if length != 1 then invalid("expected exactly one JSON value")
+            else .[0]
+                | (if type == "array" then .[0] else . end) as $epic
+                | if ($epic | type) != "object" then
+                    invalid("expected an epic object or a non-empty array of epic objects")
+                  elif ($epic.dependencies != null and ($epic.dependencies | objects | not)) then
+                    invalid("dependencies must be an array of objects")
+                  elif ($epic.success_criteria != null and
+                        ($epic.success_criteria | (type == "array" and all(.[]; type == "string")) | not)) then
+                    invalid("success_criteria must be an array of strings")
+                  else . end
+            end
+        elif $kind == "issues" then
+            if length == 1 and (.[0] | type) == "array" then .[0] | object_list
+            elif length == 1 and (.[0] | type) == "object" and (.[0] | has("issues")) then
+                .[0] | object_list
+            elif all(.[]; type == "object" and (.id | type) == "string") then .
+            else invalid("expected an issue array, issues wrapper, or JSONL issue objects") end
+        else
+            if length != 1 then invalid("expected exactly one JSON value")
+            else .[0] | object_list end
+        end
+    '
+}
+
 swarm_convergence_read_json_or_jsonl() {
     local jq_bin="$1"
     local path="$2"
@@ -117,11 +155,7 @@ swarm_convergence_read_json_or_jsonl() {
         return 2
     }
 
-    if "$jq_bin" . "$path" >/dev/null 2>&1; then
-        cat "$path"
-    else
-        "$jq_bin" -s '.' "$path"
-    fi
+    swarm_convergence_normalize_json "$jq_bin" issues < "$path"
 }
 
 swarm_convergence_child_ids_json() {
@@ -139,8 +173,8 @@ swarm_convergence_collect_epic_json() {
     local br_bin=""
 
     if [[ -n "$SWARM_CONVERGENCE_EPIC_FILE" ]]; then
-        cat "$SWARM_CONVERGENCE_EPIC_FILE"
-        return 0
+        cat -- "$SWARM_CONVERGENCE_EPIC_FILE"
+        return $?
     fi
 
     br_bin="$(swarm_convergence_binary_path br 2>/dev/null || true)"
@@ -159,15 +193,16 @@ swarm_convergence_collect_issues_json() {
 
     if [[ -n "$SWARM_CONVERGENCE_ISSUES_FILE" ]]; then
         swarm_convergence_read_json_or_jsonl "$jq_bin" "$SWARM_CONVERGENCE_ISSUES_FILE"
-        return 0
+        return $?
     fi
 
     if [[ -f ".beads/issues.jsonl" ]]; then
-        child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")"
-        "$jq_bin" -s --argjson child_ids "$child_ids_json" '
-            map(select(.id as $id | $child_ids | index($id)))
-        ' .beads/issues.jsonl
-        return 0
+        child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
+        swarm_convergence_read_json_or_jsonl "$jq_bin" .beads/issues.jsonl \
+            | "$jq_bin" --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
+                map(select(.id as $id | $child_ids[0] | index($id)))
+            '
+        return $?
     fi
 
     br_bin="$(swarm_convergence_binary_path br 2>/dev/null || true)"
@@ -185,8 +220,8 @@ swarm_convergence_collect_commits_json() {
     local child_ids_json=""
 
     if [[ -n "$SWARM_CONVERGENCE_COMMITS_FILE" ]]; then
-        cat "$SWARM_CONVERGENCE_COMMITS_FILE"
-        return 0
+        cat -- "$SWARM_CONVERGENCE_COMMITS_FILE"
+        return $?
     fi
 
     git_bin="$(swarm_convergence_binary_path git 2>/dev/null || true)"
@@ -194,12 +229,12 @@ swarm_convergence_collect_commits_json() {
         printf '[]\n'
         return 0
     }
-    child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")"
+    child_ids_json="$(swarm_convergence_child_ids_json "$jq_bin" "$epic_json")" || return $?
     "$git_bin" log --format='%H%x1f%s%x1e' --all 2>/dev/null \
-        | "$jq_bin" -R -s --argjson child_ids "$child_ids_json" '
+        | "$jq_bin" -R -s --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
             split("\u001e")[:-1]
             | map(split("\u001f") | {hash: .[0], subject: (.[1] // "")})
-            | map(select(.subject as $subject | any($child_ids[]; . as $id | $subject | contains($id))))
+            | map(select(.subject as $subject | any($child_ids[0][]; . as $id | $subject | contains($id))))
         '
 }
 
@@ -346,12 +381,18 @@ swarm_convergence_build_report() {
     local issues_json="$3"
     local commits_json="$4"
 
+    # Only bounded metadata and descriptor paths belong in argv. Bash's printf
+    # builtin streams each normalized document independently, without temporary
+    # files or execve's per-argument/total argument-size limits (#454).
     "$jq_bin" -n \
         --arg epic_id "$SWARM_CONVERGENCE_EPIC_ID" \
-        --argjson epic_input "$epic_json" \
-        --argjson issues_input "$issues_json" \
-        --argjson commits_input "$commits_json" \
-        "$(swarm_convergence_jq_filter)"
+        --slurpfile epic_documents <(printf '%s\n' "$epic_json") \
+        --slurpfile issues_documents <(printf '%s\n' "$issues_json") \
+        --slurpfile commits_documents <(printf '%s\n' "$commits_json") \
+        '$epic_documents[0] as $epic_input |
+         $issues_documents[0] as $issues_input |
+         $commits_documents[0] as $commits_input |
+        '"$(swarm_convergence_jq_filter)"
 }
 
 swarm_convergence_emit_markdown() {
@@ -400,11 +441,23 @@ swarm_convergence_main() {
         return 2
     }
 
-    epic_json="$(swarm_convergence_collect_epic_json)" || return $?
-    issues_json="$(swarm_convergence_collect_issues_json "$jq_bin" "$epic_json")" || return $?
-    commits_json="$(swarm_convergence_collect_commits_json "$jq_bin" "$epic_json")" || return $?
+    epic_json="$(swarm_convergence_collect_epic_json | swarm_convergence_normalize_json "$jq_bin" epic)" || {
+        echo "Error: failed to read epic input" >&2
+        return 2
+    }
+    issues_json="$(swarm_convergence_collect_issues_json "$jq_bin" "$epic_json" | swarm_convergence_normalize_json "$jq_bin" issues)" || {
+        echo "Error: failed to read issues input" >&2
+        return 2
+    }
+    commits_json="$(swarm_convergence_collect_commits_json "$jq_bin" "$epic_json" | swarm_convergence_normalize_json "$jq_bin" commits)" || {
+        echo "Error: failed to read commits input" >&2
+        return 2
+    }
 
-    report="$(swarm_convergence_build_report "$jq_bin" "$epic_json" "$issues_json" "$commits_json")"
+    report="$(swarm_convergence_build_report "$jq_bin" "$epic_json" "$issues_json" "$commits_json")" || {
+        echo "Error: failed to build convergence report" >&2
+        return 2
+    }
     if [[ "$SWARM_CONVERGENCE_JSON" == "true" ]]; then
         printf '%s\n' "$report"
     else
