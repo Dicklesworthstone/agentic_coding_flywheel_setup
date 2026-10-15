@@ -118,7 +118,19 @@ swarm_convergence_normalize_json() {
         def invalid($message): error($kind + " input: " + $message);
         def objects: type == "array" and all(.[]; type == "object");
         def object_list:
-            (if type == "object" and (.issues | type) == "array" then .issues else . end)
+            (if type == "object" and (.issues | type) == "array" then
+                # A page is valid JSON, but not a complete evidence source.
+                # Check metadata before unwrapping so it cannot be lost during
+                # normalization or local child filtering. Legacy wrappers with
+                # no pagination metadata remain valid.
+                if has("has_more") and .has_more != false then
+                    invalid("incomplete export: has_more must be false; provide all pages or use br list --all --deferred --limit 0 --json")
+                elif has("offset") and .offset != 0 then
+                    invalid("incomplete export: offset must be 0")
+                elif has("total") and .total != (.issues | length) then
+                    invalid("incomplete export: total must equal the number of supplied records")
+                else .issues end
+             else . end)
             | if objects then . else invalid("expected an array of objects or an issues wrapper") end;
         if $kind == "epic" then
             if length != 1 then invalid("expected exactly one JSON value")
@@ -182,7 +194,9 @@ swarm_convergence_collect_epic_json() {
         echo "Error: br is required unless --epic-file is provided" >&2
         return 2
     }
-    "$br_bin" show "$SWARM_CONVERGENCE_EPIC_ID" --json
+    # Disable implicit import/export even for reads: an advisory audit must not
+    # synchronize or otherwise change the users Beads store.
+    "$br_bin" show "$SWARM_CONVERGENCE_EPIC_ID" --json --no-auto-import --no-auto-flush
 }
 
 swarm_convergence_collect_issues_json() {
@@ -210,7 +224,9 @@ swarm_convergence_collect_issues_json() {
         printf '[]\n'
         return 0
     }
-    "$br_bin" list --json
+    # The default work queue hides closed/deferred issues. Auditing an epic
+    # needs their evidence too, without any version-dependent result limit.
+    "$br_bin" list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush
 }
 
 swarm_convergence_collect_commits_json() {

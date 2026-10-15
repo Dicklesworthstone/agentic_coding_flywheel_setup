@@ -273,8 +273,8 @@ prepare_live_tools() {
 set -euo pipefail
 printf 'br %s\n' "$*" >> "$MOCK_CALLS"
 case "$*" in
-    'show bd-epic --json') cat "$MOCK_EPIC" ;;
-    'list --json') cat "$MOCK_ISSUES"; exit "${MOCK_BR_LIST_EXIT:-0}" ;;
+    'show bd-epic --json --no-auto-import --no-auto-flush') cat "$MOCK_EPIC" ;;
+    'list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush') cat "$MOCK_ISSUES"; exit "${MOCK_BR_LIST_EXIT:-0}" ;;
     *) echo "Unexpected or mutating br command: $*" >&2; exit 90 ;;
 esac
 exit "${MOCK_BR_EXIT:-0}"
@@ -313,8 +313,10 @@ test_large_live_export_and_beads_snapshot() {
         ) > "$ARTIFACT_DIR/$source.output.json" 2> "$ARTIFACT_DIR/$source.stderr" || return 1
         cmp "$ARTIFACT_DIR/small.json" "$ARTIFACT_DIR/$source.output.json" || return 1
         {
-            printf 'br show bd-epic --json\n'
-            if [[ "$source" == live ]]; then printf 'br list --json\n'; fi
+            printf 'br show bd-epic --json --no-auto-import --no-auto-flush\n'
+            if [[ "$source" == live ]]; then
+                printf 'br list --json --all --deferred --limit 0 --no-auto-import --no-auto-flush\n'
+            fi
             printf 'git log --format=%%H%%x1f%%s%%x1e --all\n'
         } > "$ARTIFACT_DIR/$source.expected-calls"
         cmp "$ARTIFACT_DIR/$source.expected-calls" "$calls" || return 1
@@ -470,6 +472,107 @@ test_large_child_id_filters_do_not_use_argv() {
     pass "large_child_id_filters_do_not_use_argv"
 }
 
+test_live_collection_includes_closed_and_deferred_without_sync() {
+    local work="$ARTIFACT_DIR/live-completeness" mode
+    mkdir -p "$work/bin" || return 1
+    cat > "$work/epic.json" <<'JSON'
+{"id":"bd-epic","title":"Archive acceptance","success_criteria":["Archived checks passed.","Deferred deployment rehearsed."],"dependencies":[{"id":"bd-archived"},{"id":"bd-deferred"}]}
+JSON
+    # More than a historical default page, with the actual evidence at the end.
+    jq -n '[range(0;80) | {id:("noise-" + tostring),status:"open",title:"Unrelated"}] + [
+        {id:"bd-archived",title:"Archive",status:"closed",close_reason:"Archived checks passed with tests."},
+        {id:"bd-deferred",title:"Deployment",status:"deferred",close_reason:"Deferred deployment rehearsed."}
+    ]' > "$work/issues.json" || return 1
+    printf '[]\n' > "$work/commits.json"
+    printf 'unchanged\n' > "$work/store-state"
+    cat > "$work/bin/br" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+for flag in --no-auto-import --no-auto-flush; do
+    if [[ " $* " != *" $flag "* ]]; then
+        printf 'implicit synchronization\n' > "$MOCK_WORK/store-state"
+    fi
+done
+case "$1" in
+    show) cat "$MOCK_WORK/epic.json" ;;
+    list)
+        jq --arg flags " $* " '
+            map(select(.status != "closed" or ($flags | contains(" --all "))))
+            | map(select(.status != "deferred" or ($flags | contains(" --deferred "))))
+            | . as $all
+            | (if ($flags | contains(" --limit 0 ")) then . else .[:50] end)
+            | {issues:.,total:($all | length),offset:0,has_more:(length < ($all | length))}
+        ' "$MOCK_WORK/issues.json"
+        ;;
+    *) echo "Unexpected or mutating command: $*" >&2; exit 90 ;;
+esac
+SH
+    chmod +x "$work/bin/br" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/commits.json" \
+            > "$work/expected.$mode" || return 1
+        (
+            cd "$work" || exit 1
+            PATH="$work/bin:$PATH" MOCK_WORK="$work" bash "$SWARM_CONVERGENCE_SH" \
+                --epic bd-epic "--$mode" --commits-file "$work/commits.json"
+        ) > "$work/actual.$mode" 2> "$work/$mode.stderr" || return 1
+        cmp "$work/expected.$mode" "$work/actual.$mode" || return 1
+        [[ $(cat "$work/store-state") == unchanged ]] || return 1
+    done
+    jq -e '.summary.satisfied == 1 and .summary.weakly_verified == 1 and .summary.missing == 0
+        and .criteria[0].evidence[0].bead_id == "bd-archived"
+        and .criteria[1].evidence[0].status == "deferred"' "$work/actual.json" >/dev/null || return 1
+    pass "live_collection_includes_closed_and_deferred_without_sync"
+}
+
+test_incomplete_exports_never_emit_reports() {
+    local mode source metadata name work
+    local epic="$ARTIFACT_DIR/complete_epic.json"
+    local issues="$ARTIFACT_DIR/complete_issues.json"
+    local commits="$ARTIFACT_DIR/complete_commits.json"
+    local index=0
+    for metadata in \
+        '{has_more:true}' '{has_more:"false"}' '{has_more:null}' \
+        '{offset:1}' '{offset:-1}' '{offset:"0"}' '{offset:null}' \
+        '{total:3}' '{total:1}' '{total:"2"}' '{total:null}'; do
+        index=$((index + 1))
+        jq "{issues:.} + $metadata" "$issues" > "$ARTIFACT_DIR/incomplete-$index.json" || return 1
+        for mode in json markdown; do
+            for source in file live snapshot; do
+                name="incomplete-$index-$mode-$source"
+                work="$ARTIFACT_DIR/$name"
+                mkdir -p "$work" || return 1
+                if [[ "$source" == snapshot ]]; then
+                    mkdir -p "$work/.beads" || return 1
+                    cp "$ARTIFACT_DIR/incomplete-$index.json" "$work/.beads/issues.jsonl" || return 1
+                fi
+                (
+                    cd "$work" || exit 1
+                    export PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$work/calls"
+                    export MOCK_ISSUES="$ARTIFACT_DIR/incomplete-$index.json"
+                    args=("--$mode" --epic-file "$epic" --commits-file "$commits")
+                    if [[ "$source" == file ]]; then
+                        args+=(--issues-file "$MOCK_ISSUES")
+                    fi
+                    expect_input_failure "$name" 'incomplete export' "${args[@]}"
+                ) || return 1
+            done
+        done
+    done
+    # Complete modern envelopes and unpaginated legacy wrappers are equivalent.
+    for metadata in '{total:2,offset:0,limit:0,has_more:false}' '{total:2,offset:0,limit:50,has_more:false}' '{}'; do
+        jq "{issues:.} + $metadata" "$issues" > "$ARTIFACT_DIR/complete-envelope.json" || return 1
+        for mode in json markdown; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$epic" \
+                --issues-file "$ARTIFACT_DIR/complete-envelope.json" --commits-file "$commits" \
+                > "$ARTIFACT_DIR/complete-envelope.output.$mode" || return 1
+            cmp "$ARTIFACT_DIR/small.$mode" "$ARTIFACT_DIR/complete-envelope.output.$mode" || return 1
+        done
+    done
+    pass "incomplete_exports_never_emit_reports"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -495,6 +598,8 @@ main() {
     run_test test_real_git_collection_is_read_only
     run_test test_empty_and_single_issue_jsonl
     run_test test_large_child_id_filters_do_not_use_argv
+    run_test test_live_collection_includes_closed_and_deferred_without_sync
+    run_test test_incomplete_exports_never_emit_reports
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
