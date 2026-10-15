@@ -30,6 +30,9 @@ Options:
 
 The command is advisory-only. It reports satisfied, weakly verified, and
 missing criteria, then suggests follow-up Bead titles without mutating Beads.
+Criteria come from success_criteria, a Success criteria description section,
+or Beads acceptance_criteria (in that order). Checkboxes are not evidence.
+Native parent-child dependents supplement legacy dependency-based children.
 EOF
 }
 
@@ -120,6 +123,27 @@ swarm_convergence_normalize_json() {
         --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
         def invalid($message): error($kind + " input: " + $message);
         def objects: type == "array" and all(.[]; type == "object");
+        def relation_id: .id // .issue_id // .depends_on_id // "";
+        def native_children:
+            . as $epic
+            | (reduce ($epic.dependencies // [])[] as $dep ({};
+                ($dep | relation_id) as $id
+                | if ($id | type) == "string" then .[$id] = true else . end)) as $known
+            | reduce ($epic.dependents // [])[] as $dep
+                ({out:($epic.dependencies // []), seen:$known};
+                # Incoming blockers and related issues are not epic children.
+                # Preserve legacy dependency order/overrides, including its
+                # duplicate semantics; only newly discovered children dedupe.
+                if $dep.dependency_type == "parent-child" then
+                    ($dep | relation_id) as $id
+                    | if ($id | type) != "string" or $id == "" then
+                        invalid("parent-child dependent must have a non-empty string ID")
+                      elif $id == $epic.id then
+                        invalid("epic cannot be its own parent-child dependent")
+                      elif .seen[$id] == true then .
+                      else .out += [$dep] | .seen[$id] = true end
+                else . end)
+            | $epic + {dependencies:.out};
         def object_list:
             (if type == "object" and (.issues | type) == "array" then
                 # A page is valid JSON, but not a complete evidence source.
@@ -176,10 +200,20 @@ swarm_convergence_normalize_json() {
                     invalid("expected an epic object or a non-empty array of epic objects")
                   elif ($epic.dependencies != null and ($epic.dependencies | objects | not)) then
                     invalid("dependencies must be an array of objects")
+                  elif ($epic.dependents != null and ($epic.dependents | objects | not)) then
+                    invalid("dependents must be an array of objects")
+                  elif ($epic.acceptance_criteria != null and ($epic.acceptance_criteria | type) != "string") then
+                    invalid("acceptance_criteria must be a string")
                   elif ($epic.success_criteria != null and
                         ($epic.success_criteria | (type == "array" and all(.[]; type == "string")) | not)) then
                     invalid("success_criteria must be an array of strings")
-                  else . end
+                  else
+                    # Normalize once so issue selection, commit collection and
+                    # scoring all use the same augmented graph. Keep the first
+                    # epic selection convention for array-form br show output.
+                    ($epic | native_children) as $normalized
+                    | if type == "array" then .[0] = $normalized else $normalized end
+                  end
             end
         else
             if length != 1 then invalid("expected exactly one JSON value")
@@ -350,9 +384,44 @@ def criteria_from_description($description):
     )
   | .out;
 
+def criteria_from_acceptance($body):
+  # Beads stores free-form Markdown, not a success_criteria array. Extract
+  # lists/checklists without interpreting a checked box as verification.
+  # Fenced examples are not requirements; preserve marker/length rules so
+  # a shorter fence or one with trailing text cannot end an example early.
+  (text($body) | gsub("\r\n"; "\n") | split("\n")) as $lines
+  | reduce $lines[] as $line
+      ({fence:"", width:0, items:[], prose:[], continuation:false};
+      ($line | capture("^[ \\t]*(?<marker>`{3,}|~{3,})(?<tail>.*)$")? // null) as $f
+      | if .fence != "" then
+          if $f != null and ($f.marker[:1] == .fence) and
+             ($f.marker | length) >= .width and ($f.tail | test("^[ \\t]*$")) then
+            .fence = "" | .width = 0
+          else . end
+        elif $f != null and ($f.marker[:1] != "`" or ($f.tail | contains("`") | not)) then
+          .fence = $f.marker[:1] | .width = ($f.marker | length)
+        elif ($line | test("^[ \\t]*#{1,6}[ \\t]+")) then .continuation = false
+        elif ($line | test("^[ \\t]*([-*+][ \\t]+|[0-9]+[.)][ \\t]+)")) then
+          ($line | sub("^[ \\t]*([-*+][ \\t]+|[0-9]+[.)][ \\t]+)"; "")
+                 | sub("^\\[[ xX]\\][ \\t]*"; "")
+                 | sub("[ \\t\\r]+$"; "")) as $item
+          | if $item != "" then .items += [$item] | .continuation = true
+            else .continuation = false end
+        elif ($line | test("^[[:space:]]*$")) then .continuation = false
+        elif .continuation and ($line | test("^[ \\t]+")) then
+          .items[-1] += (" " + ($line | sub("^[ \\t]+"; "") | sub("[ \\t\\r]+$"; "")))
+        else .prose += [$line] | .continuation = false end)
+  | if (.items | length) > 0 then .items
+    else (.prose | join("\n") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "")) as $prose
+         | if $prose == "" then [] else [$prose] end
+    end;
+
 def criteria:
   if (epic_doc.success_criteria | type) == "array" then epic_doc.success_criteria
-  else criteria_from_description(epic_doc.description) end;
+  else criteria_from_description(epic_doc.description) as $legacy
+       | if ($legacy | length) > 0 then $legacy
+         else criteria_from_acceptance(epic_doc.acceptance_criteria) end
+  end;
 
 def child_issues($index):
   [arr(epic_doc.dependencies)[]?
@@ -428,7 +497,7 @@ def criterion_report($criterion; $position; $children):
   }] as $over_broad
 | {
     schema_version: 1,
-    status: (if any($criteria_reports[]; .status == "missing") then "warn" else "pass" end),
+    status: (if ($criteria_reports | length) == 0 or any($criteria_reports[]; .status == "missing") then "warn" else "pass" end),
     advisory_only: true,
     mutations: {
       creates_beads: false,
@@ -451,7 +520,9 @@ def criterion_report($criterion; $position; $children):
     },
     criteria: $criteria_reports,
     over_broad_children: $over_broad,
-    suggested_bead_titles: ([$criteria_reports[] | .suggested_bead_title // empty])
+    suggested_bead_titles: (if ($criteria_reports | length) == 0 then
+      ["Define acceptance criteria for epic: " + safe_title(epic_doc.id // $epic_id)]
+      else [$criteria_reports[] | .suggested_bead_title // empty] end)
   }
 JQ
 }
@@ -494,6 +565,10 @@ swarm_convergence_emit_markdown() {
       "- Over-broad children: `\(.summary.over_broad_children)`",
       "",
       "## Criteria",
+      (if .summary.criteria_total == 0 then
+        "No auditable criteria found. Add success_criteria, a Success criteria description section, or acceptance_criteria.",
+        ("Suggested follow-up: `" + .suggested_bead_titles[0] + "`")
+       else empty end),
       (.criteria[] | "### \(.status | ascii_upcase)\n\(.criterion)\n\nEvidence:\n" + (if (.evidence | length) == 0 then "- None" else (.evidence | map("- `\(.bead_id)` \(.status): \(.title)") | join("\n")) end) + (if .suggested_bead_title then "\n\nSuggested follow-up: `" + .suggested_bead_title + "`" else "" end)),
       "",
       "## Over-Broad Children",

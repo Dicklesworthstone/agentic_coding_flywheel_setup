@@ -841,6 +841,233 @@ test_jsonl_first_value_disambiguation() {
     pass "jsonl_first_value_disambiguation"
 }
 
+test_native_beads_criteria_and_children() {
+    local work="$ARTIFACT_DIR/native-beads" mode source
+    mkdir -p "$work/.beads" || return 1
+    # br show flattens Issue.acceptance_criteria and places parent-child
+    # children in dependents (beads_rust src/format/output.rs::IssueDetails).
+    # The checked marker is deliberately varied; only child evidence counts.
+    jq '.[0] | .description = "Native Beads epic" |
+        .acceptance_criteria = "- [ ] Capacity report recommends agent counts.\n* [X] Swarm status view works from local state." |
+        .dependents = [.dependencies[] | .dependency_type = "parent-child"] |
+        del(.dependencies)' "$ARTIFACT_DIR/complete_epic.json" > "$work/epic.json" || return 1
+    cp "$ARTIFACT_DIR/large-issues.jsonl" "$work/.beads/issues.jsonl" || return 1
+    sha256sum "$work/epic.json" "$work/.beads/issues.jsonl" > "$work/input.sha256" || return 1
+    for mode in json markdown; do
+        for source in json jsonl snapshot live; do
+            (
+                local args=("--$mode" --commits-file "$ARTIFACT_DIR/complete_commits.json")
+                if [[ "$source" == live ]]; then
+                    mkdir -p "$work/live" || exit 1
+                    cd "$work/live" || exit 1
+                    export PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$work/calls"
+                    export MOCK_EPIC="$work/epic.json" MOCK_ISSUES="$ARTIFACT_DIR/large-issues.json"
+                    args+=(--epic bd-epic)
+                else
+                    cd "$work" || exit 1
+                    args+=(--epic-file "$work/epic.json")
+                    if [[ "$source" != snapshot ]]; then
+                        args+=(--issues-file "$ARTIFACT_DIR/large-issues.$source")
+                    fi
+                fi
+                bash "$SWARM_CONVERGENCE_SH" "${args[@]}"
+            ) > "$work/$source.$mode" 2> "$work/$source.$mode.stderr" || return 1
+            # The full report must match the original legacy fixture, not just
+            # its counts: titles, scores, evidence order and schema included.
+            cmp "$ARTIFACT_DIR/small.$mode" "$work/$source.$mode" || return 1
+        done
+    done
+    sha256sum -c "$work/input.sha256" >/dev/null || return 1
+    # Exercise Git collection too: a child ID present only in dependents must
+    # be considered by the collector, not just by the report filter.
+    (
+        cd "$work" || exit 1
+        PATH="$ARTIFACT_DIR/live-bin:$PATH" MOCK_CALLS="$work/git.calls" \
+            MOCK_GIT_LOG="$ARTIFACT_DIR/live-git.log" \
+            bash "$SWARM_CONVERGENCE_SH" --json --epic-file "$work/epic.json"
+    ) > "$work/git.json" || return 1
+    cmp "$ARTIFACT_DIR/small.json" "$work/git.json" || return 1
+    pass "native_beads_criteria_and_children"
+}
+
+test_acceptance_markdown_and_precedence() {
+    local work="$ARTIFACT_DIR/acceptance" index mode
+    mkdir -p "$work" || return 1
+    # Input text and independently specified expected criteria. Fences include
+    # shorter closers, wrong markers and trailing text, plus CRLF and wrapped
+    # list items. Ordinary prose remains one criterion rather than vanishing.
+    cat > "$work/cases.json" <<'JSON'
+[
+  {"text":"- [ ] Capacity report recommends agent counts.\n* [X] Swarm status view works from local state.","expected":["Capacity report recommends agent counts.","Swarm status view works from local state."]},
+  {"text":"## Acceptance\r\n1. Capacity report recommends\r\n   agent counts.\r\n2) Swarm status view works from local state.\r\n","expected":["Capacity report recommends agent counts.","Swarm status view works from local state."]},
+  {"text":"Examples follow:\n````md\n- [x] Not a requirement\n```\n- Still an example\n```` trailing text\n- Still an example\n````\n+ [x] Capacity report recommends agent counts.\n~~~md\n- More examples\n```\n- Wrong closer\n~~~\n- [ ] Swarm status view works from local state.","expected":["Capacity report recommends agent counts.","Swarm status view works from local state."]},
+  {"text":"  Capacity report recommends agent counts.\nSwarm status view works from local state.  ","expected":["Capacity report recommends agent counts.\nSwarm status view works from local state."]},
+  {"text":"- [ ]\n- [X] Capacity report recommends agent counts.","expected":["Capacity report recommends agent counts."]}
+]
+JSON
+    for index in 0 1 2 3 4; do
+        jq --slurpfile cases "$work/cases.json" --argjson index "$index" '
+            .[0] | .description = "Native criteria" |
+            .acceptance_criteria = $cases[0][$index].text' \
+            "$ARTIFACT_DIR/complete_epic.json" > "$work/epic.json" || return 1
+        jq --slurpfile cases "$work/cases.json" --argjson index "$index" '
+            .success_criteria = $cases[0][$index].expected' "$work/epic.json" > "$work/expected-epic.json" || return 1
+        for mode in json markdown; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+                --issues-file "$ARTIFACT_DIR/complete_issues.json" --commits-file "$ARTIFACT_DIR/complete_commits.json" \
+                > "$work/actual-$index.$mode" || return 1
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/expected-epic.json" \
+                --issues-file "$ARTIFACT_DIR/complete_issues.json" --commits-file "$ARTIFACT_DIR/complete_commits.json" \
+                > "$work/expected-$index.$mode" || return 1
+            cmp "$work/expected-$index.$mode" "$work/actual-$index.$mode" || return 1
+        done
+        jq -e --slurpfile cases "$work/cases.json" --argjson index "$index" \
+            '[.criteria[].criterion] == $cases[0][$index].expected' "$work/actual-$index.json" >/dev/null || return 1
+    done
+    # Native text is a fallback; it cannot replace explicitly selected legacy
+    # criteria. Test both explicit-array and description-section precedence.
+    for index in description array; do
+        jq --arg form "$index" '.[0] | .acceptance_criteria = "Conflicting requirement" |
+            if $form == "array" then .success_criteria = ["Capacity report recommends agent counts.","Swarm status view works from local state."] else . end' \
+            "$ARTIFACT_DIR/complete_epic.json" > "$work/precedence-$index.json" || return 1
+        for mode in json markdown; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/precedence-$index.json" \
+                --issues-file "$ARTIFACT_DIR/complete_issues.json" --commits-file "$ARTIFACT_DIR/complete_commits.json" \
+                > "$work/precedence-$index.output.$mode" || return 1
+            cmp "$ARTIFACT_DIR/small.$mode" "$work/precedence-$index.output.$mode" || return 1
+        done
+    done
+    pass "acceptance_markdown_and_precedence"
+}
+
+test_native_relations_preserve_selection() {
+    local work="$ARTIFACT_DIR/native-selection" mode
+    mkdir -p "$work" || return 1
+    cat > "$work/epic.json" <<'JSON'
+{"id":"bd-epic","title":"Native selection","success_criteria":["Quartz","Xenon"],"dependencies":[
+  {"issue_id":"bd-legacy","title":"Quartz override","status":"open"},
+  {"id":"bd-legacy","title":"Quartz duplicate","status":"open"}
+],"dependents":[
+  {"id":"bd-legacy","title":"Must not override","status":"closed","dependency_type":"parent-child"},
+  {"id":"bd-native","title":"Quartz native","status":"closed","dependency_type":"parent-child"},
+  {"id":"bd-native","title":"Must not duplicate","status":"open","dependency_type":"parent-child"},
+  {"id":"bd-downstream","title":"Xenon","status":"closed","dependency_type":"blocks"},
+  {"id":"bd-related","title":"Xenon","status":"closed","dependency_type":"related"}
+]}
+JSON
+    cat > "$work/issues.json" <<'JSON'
+[
+  {"id":"bd-legacy","title":"Quartz stored","status":"closed","close_reason":"tests passed"},
+  {"id":"bd-native","title":"Quartz native","status":"closed","close_reason":"tests passed"},
+  {"id":"bd-downstream","title":"Xenon","status":"closed","close_reason":"tests passed"},
+  {"id":"bd-related","title":"Xenon","status":"closed","close_reason":"tests passed"}
+]
+JSON
+    printf '[]\n' > "$work/commits.json"
+    jq '.dependencies += [.dependents[1]] | del(.dependents)' "$work/epic.json" > "$work/legacy-epic.json" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/commits.json" > "$work/native.$mode" || return 1
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/legacy-epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/commits.json" > "$work/legacy.$mode" || return 1
+        cmp "$work/legacy.$mode" "$work/native.$mode" || return 1
+    done
+    jq -e '.summary.child_beads == 3 and .summary.satisfied == 1 and .summary.missing == 1
+        and .criteria[1].evidence == []
+        and any(.criteria[0].evidence[]; .bead_id == "bd-legacy" and .status == "open" and .title == "Quartz override")' \
+        "$work/native.json" >/dev/null || return 1
+    pass "native_relations_preserve_selection"
+}
+
+test_unverifiable_epics_never_pass() {
+    local work="$ARTIFACT_DIR/unverifiable" index=0 body mode
+    mkdir -p "$work" || return 1
+    printf '[]\n' > "$work/empty.json"
+    for body in '{}' '{acceptance_criteria:" "}' '{acceptance_criteria:"## Acceptance\n```md\n- example\n```"}' \
+        '{success_criteria:[],acceptance_criteria:"Ignored explicit override"}' ; do
+        index=$((index + 1))
+        jq -n "{id:\"bd-epic\",title:\"No criteria\"} + $body" > "$work/epic.json" || return 1
+        for mode in json markdown; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+                --issues-file "$work/empty.json" --commits-file "$work/empty.json" > "$work/$index.$mode" || return 1
+        done
+        jq -e '.schema_version == 1 and .status == "warn" and .summary.criteria_total == 0
+            and .summary.satisfied == 0 and .criteria == []
+            and .suggested_bead_titles == ["Define acceptance criteria for epic: bd-epic"]' "$work/$index.json" >/dev/null || return 1
+        grep -q 'No auditable criteria found' "$work/$index.markdown" || return 1
+    done
+    # A checkbox on the epic alone must not manufacture child evidence.
+    printf '{"id":"bd-epic","acceptance_criteria":"- [X] Capacity recommendations verified"}\n' > "$work/checked.json"
+    bash "$SWARM_CONVERGENCE_SH" --json --epic-file "$work/checked.json" \
+        --issues-file "$work/empty.json" --commits-file "$work/empty.json" > "$work/checked.output.json" || return 1
+    jq -e '.status == "warn" and .summary.missing == 1 and .summary.satisfied == 0
+        and .criteria[0].criterion == "Capacity recommendations verified"
+        and .criteria[0].evidence == []' "$work/checked.output.json" >/dev/null || return 1
+    pass "unverifiable_epics_never_pass"
+}
+
+test_malformed_native_fields_never_emit_reports() {
+    local index=0 expression mode
+    for expression in '.acceptance_criteria = []' '.acceptance_criteria = {}' '.acceptance_criteria = false' \
+        '.dependents = {}' '.dependents = [17]' \
+        '.dependents = [{dependency_type:"parent-child"}]' \
+        '.dependents = [{id:17,dependency_type:"parent-child"}]' \
+        '.dependents = [{id:"bd-epic",dependency_type:"parent-child"}]'; do
+        index=$((index + 1))
+        jq ".[0] | $expression" "$ARTIFACT_DIR/complete_epic.json" > "$ARTIFACT_DIR/bad-native-$index.json" || return 1
+        for mode in json markdown; do
+            expect_input_failure "bad-native-$index-$mode" 'epic input' "--$mode" \
+                --epic-file "$ARTIFACT_DIR/bad-native-$index.json" --issues-file "$ARTIFACT_DIR/complete_issues.json" \
+                --commits-file "$ARTIFACT_DIR/complete_commits.json" || return 1
+        done
+    done
+    pass "malformed_native_fields_never_emit_reports"
+}
+
+test_large_native_graph_and_real_git() {
+    local work="$ARTIFACT_DIR/native-large" mode format before after
+    mkdir -p "$work/.beads" || return 1
+    jq '.acceptance_criteria = (.success_criteria | map("- [ ] " + .) | join("\n")) |
+        .dependents = [.dependencies[] | .dependency_type = "parent-child" | .notes = ("history " * 32)] |
+        del(.success_criteria, .dependencies)' "$ARTIFACT_DIR/many-children/epic.json" > "$work/epic.json" || return 1
+    [[ $(wc -c < "$work/epic.json") -gt 131072 ]] || return 1
+    cp "$ARTIFACT_DIR/many-children/issues.jsonl" "$work/.beads/issues.jsonl" || return 1
+    for mode in json markdown; do
+        for format in json jsonl; do
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+                --issues-file "$ARTIFACT_DIR/many-children/issues.$format" \
+                --commits-file "$ARTIFACT_DIR/many-children/commits.json" > "$work/$format.output.$mode" || return 1
+            cmp "$ARTIFACT_DIR/many-children/json.output.$mode" "$work/$format.output.$mode" || return 1
+        done
+    done
+    # Real Git evidence for the native graph, with no br/Git mocks. Keep all
+    # inputs and reports outside the repository except the tracked snapshot.
+    git -C "$work" init -q -b main || return 1
+    git -C "$work" add .beads/issues.jsonl || return 1
+    git -C "$work" -c user.name=Fixture -c user.email=fixture@example.invalid \
+        commit -q -m 'bd-tail zirconium verification tests passed' || return 1
+    before="$(git -C "$work" rev-parse HEAD)" || return 1
+    sha256sum "$work/.beads/issues.jsonl" > "$work/snapshot.sha256" || return 1
+    for mode in json markdown; do
+        git -C "$work" status --porcelain=v1 --untracked-files=no > "$work/status.before" || return 1
+        (
+            cd "$work" || exit 1
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json"
+        ) > "$work/git.$mode" 2> "$work/git.$mode.stderr" || return 1
+        [[ ! -s "$work/git.$mode.stderr" ]] || return 1
+        git -C "$work" status --porcelain=v1 --untracked-files=no > "$work/status.after" || return 1
+        cmp "$work/status.before" "$work/status.after" || return 1
+    done
+    jq -e '.summary.child_beads == 1026 and .summary.criteria_total == 14
+        and .summary.satisfied == 13 and .summary.missing == 1
+        and .criteria[12].evidence[0].commit_subjects == ["bd-tail zirconium verification tests passed"]' \
+        "$work/git.json" >/dev/null || return 1
+    after="$(git -C "$work" rev-parse HEAD)" || return 1
+    [[ "$before" == "$after" ]] || return 1
+    sha256sum -c "$work/snapshot.sha256" >/dev/null || return 1
+    pass "large_native_graph_and_real_git"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -875,6 +1102,12 @@ main() {
     run_test test_many_children_complete_reports
     run_test test_jsonl_stream_selection_and_late_failures
     run_test test_jsonl_first_value_disambiguation
+    run_test test_native_beads_criteria_and_children
+    run_test test_acceptance_markdown_and_precedence
+    run_test test_native_relations_preserve_selection
+    run_test test_unverifiable_epics_never_pass
+    run_test test_malformed_native_fields_never_emit_reports
+    run_test test_large_native_graph_and_real_git
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
