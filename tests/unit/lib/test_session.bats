@@ -99,31 +99,37 @@ teardown() {
 # Reject stats/aggregation calls so neither output mode can silently use them.
 mock_session_search() {
     check_cass_installed() { return 0; }
+    session_now_iso() { printf '%s\n' '2026-10-15T12:00:00Z'; }
     cass() {
         [[ "$1" == search && "$2" == '*' ]] || return 91
         shift 2
-        local days=0 limit=0 agent=""
+        local since="" until="" limit=0 agent=""
         while [[ $# -gt 0 ]]; do
             case "$1" in
-                --days) days=$2; shift 2 ;;
+                --since) since=$2; shift 2 ;;
+                --until) until=$2; shift 2 ;;
                 --limit) limit=$2; shift 2 ;;
                 --agent) agent=$2; shift 2 ;;
-                --json) shift ;;
+                --fields) shift 2 ;;
+                --json|--robot-meta) shift ;;
                 *) return 92 ;;
             esac
         done
-        jq -n --argjson days "$days" --argjson limit "$limit" --arg agent "$agent" '
+        jq -n --arg since "$since" --arg until "$until" --argjson limit "$limit" --arg agent "$agent" '
+            ("2026-10-15T12:00:00Z" | fromdateiso8601) as $clock |
             [{source_path:"/recent/a",agent:"codex",workspace:"/project/a",age:0},
              {source_path:"/recent/b",agent:"claude_code",workspace:"/project/b",age:0},
              {source_path:"/recent/c",agent:"codex",workspace:"/project/a",age:0},
              {source_path:"/recent/d",agent:"codex",workspace:"/project/d",age:0},
              {source_path:"/historical",agent:"codex",workspace:"/old",age:2}] |
-            map(select(.age < $days and ($agent == "" or .agent == $agent))) |
-            {hits: .[:$limit]}'
+            map(select(($clock - .age*86400) >= ($since|fromdateiso8601) and
+                ($clock - .age*86400) <= ($until|fromdateiso8601) and
+                ($agent == "" or .agent == $agent))) |
+            {hits: .[:$limit], _meta:{next_cursor:null}}'
     }
 }
 
-@test "list_sessions: one day and three hit limit share exact text and JSON results" {
+@test "list_sessions: one day and three session limit share exact text and JSON results" {
     mock_session_search
     local listing text
     listing=$(list_sessions --days 1 --limit 3 --json)
@@ -218,11 +224,16 @@ mock_session_search() {
 @test "list_sessions: repeated message hits count once per source session" {
     check_cass_installed() { return 0; }
     cass() {
-        echo '{"hits":[{"source_path":"/a","agent":"codex","workspace":"/p"},{"source_path":"/a","agent":"codex","workspace":"/p"},{"source_path":"/a","source_id":"remote","agent":"codex","workspace":"/p"}]}'
+        echo '{"hits":[{"source_path":"/a","agent":"codex","workspace":"/p"},{"source_path":"/a","agent":"codex","workspace":"/p"},{"source_path":"/a","source_id":"remote","agent":"codex","workspace":"/p"}],"_meta":{"next_cursor":null}}'
     }
     run list_sessions --json
     assert_success
     [[ $(jq '.total' <<< "$output") == 2 ]]
+}
+
+@test "list_sessions: paginated discovery shell regressions" {
+    run bash "$PROJECT_ROOT/scripts/tests/test_session_listing.sh"
+    assert_success
 }
 
 @test "session library: sources under set -u without HOME" {

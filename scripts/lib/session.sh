@@ -699,45 +699,118 @@ list_sessions() {
         return 1
     fi
 
-    # Build CASS search command
-    local cass_args=("search" "*" "--limit" "$limit" "--days" "$days")
+    check_session_deps || return 1
+
+    # Freeze the window once. Re-evaluating --days on each page can change the
+    # cursor's filter fingerprint and lose sessions at the moving boundary.
+    local window now_iso since until page_limit
+    now_iso=$(session_now_iso) || return 1
+    if ! window=$(acfs_session_jq -ecn --arg now "$now_iso" --arg days "$days" --arg limit "$limit" '
+        ($limit | tonumber) as $limit |
+        if $limit > 10000 then error("--limit must not exceed 10000 sessions") else . end |
+        ($now | fromdateiso8601) as $end |
+        {since: (($end - ($days | tonumber) * 86400) | todateiso8601),
+         until: $now, page_limit: ([1000, ([100, $limit] | max)] | min)}
+    '); then
+        log_error "Unable to construct session search window or limit"
+        return 1
+    fi
+    since=$(acfs_session_jq -r '.since' <<< "$window") || return 1
+    until=$(acfs_session_jq -r '.until' <<< "$window") || return 1
+    page_limit=$(acfs_session_jq -r '.page_limit' <<< "$window") || return 1
+
+    # Fetch metadata rather than full transcripts. CASS limits message hits;
+    # ACFS limits distinct sessions, so those two limits must be independent.
+    local cass_args=("search" "*" "--limit" "$page_limit" "--since" "$since" "--until" "$until"
+        "--json" "--robot-meta" "--fields" "source_path,source_id,agent,workspace,created_at,title")
 
     if [[ -n "$agent" ]]; then
         cass_args+=("--agent" "$agent")
     fi
 
-    check_session_deps || return 1
-    local response listing
-    # Capture status separately: a pipeline would hide CASS failures behind jq.
-    if ! response=$(cass "${cass_args[@]}" --json); then
-        log_error "Failed to query CASS"
-        return 1
-    fi
-    # Search hits are messages, so multiple hits can refer to one session.
-    # This is a bounded discovery page, not an archive-wide conversation count.
-    if ! listing=$(acfs_session_jq -es --arg days "$days" --arg limit "$limit" --arg agent "$agent" '
-        if length != 1 then error("expected one CASS response") else .[0] end |
-        if type != "object" or has("error") or .budget.timed_out == true or (.hits | type) != "array"
-        then error("invalid CASS search response") else . end |
-        if all(.hits[];
-            type == "object" and
-            (.source_path | type == "string" and length > 0) and
-            (.agent | type == "string") and (.workspace | type == "string"))
-        then .hits else error("invalid CASS search hit") end |
-        reduce .[] as $hit ([];
-            if any(.[]; .source_path == $hit.source_path and .source_id == ($hit.source_id // "local"))
-            then . else . + [{source_path: $hit.source_path,
-                source_id: ($hit.source_id // "local"), agent: $hit.agent,
-                workspace: $hit.workspace, created_at: $hit.created_at,
-                title: ($hit.title // "")}] end) |
-        .[:($limit | tonumber)] |
-        {sessions: ., total: length,
-         by_agent: (group_by(.agent) | map({agent: .[0].agent, count: length})),
-         by_workspace: (group_by(.workspace) | map({workspace: .[0].workspace, count: length})),
+    local response listing cursor="" pages=0 done_listing=false
+    local state='{"sessions":[],"seen":{},"cursors":{},"hits_scanned":0}'
+    local cursor_args=()
+    while [[ "$done_listing" != true ]]; do
+        # A broken backend must not turn a discovery command into an endless
+        # scan. Reaching this safety bound is an error, never a partial success.
+        if [[ "$pages" -ge 1000 ]]; then
+            log_error "Session discovery exceeded 1000 CASS pages; narrow --days or --agent"
+            return 1
+        fi
+        # Capture status separately: a pipeline would hide CASS failures behind jq.
+        if ! response=$(cass "${cass_args[@]}" "${cursor_args[@]}"); then
+            log_error "Failed to query CASS"
+            return 1
+        fi
+        pages=$((pages + 1))
+        # Feed accumulated metadata through stdin, not argv (large result sets
+        # otherwise hit the OS argument-size limit). Validate every page before
+        # publishing anything, including pages after a successful first one.
+        if ! state=$(acfs_session_jq -ecs --arg limit "$limit" '
+            def optional_false: . == null or . == false;
+            if length != 2 then error("expected one CASS response") else . end |
+            .[0] as $state | .[1] |
+            if type != "object" or has("error") or (.hits | type) != "array"
+            then error("invalid CASS search response") else . end |
+            if (._meta | type) != "object" or (._meta | has("next_cursor") | not)
+            then error("missing CASS pagination metadata") else . end |
+            if ((.budget == null or (.budget | type) == "object") and
+                (.budget.timed_out | optional_false) and
+                (._meta.timed_out | optional_false) and
+                (._meta.partial_results | optional_false)) | not
+            then error("incomplete CASS search response") else . end |
+            if (._meta.next_cursor == null or
+                (._meta.next_cursor | type == "string" and length > 0)) | not
+            then error("invalid CASS pagination cursor") else . end |
+            if all(.hits[];
+                type == "object" and
+                (.source_path | type == "string" and test("\\S")) and
+                (.agent | type == "string" and test("\\S")) and
+                (.workspace | type == "string") and
+                (.source_id == null or (.source_id | type == "string" and length > 0)) and
+                (.title == null or (.title | type == "string")) and
+                (.created_at == null or (.created_at | type == "number"))) | not
+            then error("invalid CASS search hit") else . end |
+            . as $page |
+            reduce .hits[] as $hit ($state;
+                ([$hit.source_id // "local", $hit.source_path] | tojson) as $key |
+                if .seen[$key] == true or (.sessions | length) >= ($limit | tonumber)
+                then . else
+                    .seen[$key] = true |
+                    .sessions += [{source_path: $hit.source_path,
+                        source_id: ($hit.source_id // "local"), agent: $hit.agent,
+                        workspace: $hit.workspace, created_at: $hit.created_at,
+                        title: ($hit.title // "")}]
+                end) |
+            .hits_scanned += ($page.hits | length) |
+            .next_cursor = $page._meta.next_cursor |
+            .done = ((.sessions | length) >= ($limit | tonumber) or .next_cursor == null) |
+            if .done then .
+            elif .cursors[.next_cursor] == true then error("CASS pagination cursor cycle")
+            else .cursors[.next_cursor] = true end
+        ' <<< "$state"$'\n'"$response"); then
+            log_error "Invalid or incomplete JSON search results from CASS"
+            return 1
+        fi
+        done_listing=$(acfs_session_jq -r '.done' <<< "$state") || return 1
+        if [[ "$done_listing" != true ]]; then
+            cursor=$(acfs_session_jq -r '.next_cursor' <<< "$state") || return 1
+            cursor_args=("--cursor" "$cursor")
+        fi
+    done
+
+    if ! listing=$(acfs_session_jq -e --arg days "$days" --arg limit "$limit" --arg agent "$agent" \
+        --arg since "$since" --arg until "$until" --argjson pages "$pages" '
+        {sessions: .sessions, total: (.sessions | length),
+         by_agent: (.sessions | group_by(.agent) | map({agent: .[0].agent, count: length})),
+         by_workspace: (.sessions | group_by(.workspace) | map({workspace: .[0].workspace, count: length})),
          query_info: {days: ($days | tonumber), agent: $agent,
-                      limit: ($limit | tonumber), offset: 0}}
-    ' <<< "$response"); then
-        log_error "Invalid JSON search results from CASS"
+                      limit: ($limit | tonumber), limit_unit: "sessions", offset: 0,
+                      since: $since, until: $until, pages: $pages,
+                      hits_scanned: .hits_scanned, exhausted: (.next_cursor == null)}}
+    ' <<< "$state"); then
+        log_error "Failed to assemble session listing"
         return 1
     fi
 
@@ -754,7 +827,7 @@ list_sessions() {
                 (.by_workspace[] | "    \(.workspace): \(.count) sessions")
              end),
             "  Listed Sessions: \(.total)",
-            "  Discovery is limited to \(.query_info.limit) matching CASS hits.",
+            "  Limit: \(.query_info.limit) distinct sessions; scanned \(.query_info.hits_scanned) matching hits across \(.query_info.pages) pages.",
             "Use: cass export <session-path> --format json to export"
         ' <<< "$listing"
     fi
