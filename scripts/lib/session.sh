@@ -654,7 +654,7 @@ list_sessions() {
                     log_error "--days requires a numeric value"
                     return 1
                 fi
-                if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ "$2" == "0" ]]; then
+                if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ ! "$2" =~ [1-9] ]]; then
                     log_error "--days requires a positive integer"
                     return 1
                 fi
@@ -674,7 +674,7 @@ list_sessions() {
                     log_error "--limit requires a numeric value"
                     return 1
                 fi
-                if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ "$2" == "0" ]]; then
+                if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ ! "$2" =~ [1-9] ]]; then
                     log_error "--limit requires a positive integer"
                     return 1
                 fi
@@ -682,7 +682,8 @@ list_sessions() {
                 shift 2
                 ;;
             *)
-                shift
+                log_error "Unknown session list argument: $1"
+                return 1
                 ;;
         esac
     done
@@ -705,50 +706,57 @@ list_sessions() {
         cass_args+=("--agent" "$agent")
     fi
 
+    check_session_deps || return 1
+    local response listing
+    # Capture status separately: a pipeline would hide CASS failures behind jq.
+    if ! response=$(cass "${cass_args[@]}" --json); then
+        log_error "Failed to query CASS"
+        return 1
+    fi
+    # Search hits are messages, so multiple hits can refer to one session.
+    # This is a bounded discovery page, not an archive-wide conversation count.
+    if ! listing=$(acfs_session_jq -es --arg days "$days" --arg limit "$limit" --arg agent "$agent" '
+        if length != 1 then error("expected one CASS response") else .[0] end |
+        if type != "object" or has("error") or .budget.timed_out == true or (.hits | type) != "array"
+        then error("invalid CASS search response") else . end |
+        if all(.hits[];
+            type == "object" and
+            (.source_path | type == "string" and length > 0) and
+            (.agent | type == "string") and (.workspace | type == "string"))
+        then .hits else error("invalid CASS search hit") end |
+        reduce .[] as $hit ([];
+            if any(.[]; .source_path == $hit.source_path and .source_id == ($hit.source_id // "local"))
+            then . else . + [{source_path: $hit.source_path,
+                source_id: ($hit.source_id // "local"), agent: $hit.agent,
+                workspace: $hit.workspace, created_at: $hit.created_at,
+                title: ($hit.title // "")}] end) |
+        .[:($limit | tonumber)] |
+        {sessions: ., total: length,
+         by_agent: (group_by(.agent) | map({agent: .[0].agent, count: length})),
+         by_workspace: (group_by(.workspace) | map({workspace: .[0].workspace, count: length})),
+         query_info: {days: ($days | tonumber), agent: $agent,
+                      limit: ($limit | tonumber), offset: 0}}
+    ' <<< "$response"); then
+        log_error "Invalid JSON search results from CASS"
+        return 1
+    fi
+
     if [[ "$output_json" == "true" ]]; then
-        # JSON output: aggregate by session with stats
-        cass "${cass_args[@]}" --json --aggregate agent,workspace 2>/dev/null | jq '
-            {
-                sessions: (.aggregations // []) | map({
-                    agent: .agent,
-                    workspace: .workspace,
-                    count: .count
-                }),
-                total: .count,
-                query_info: {
-                    limit: .limit,
-                    offset: .offset
-                }
-            }
-        ' 2>/dev/null || echo '{"error": "Failed to query CASS"}'
+        printf '%s\n' "$listing"
     else
-        # Human-readable output
-        echo ""
-        echo "Recent Sessions (last ${days} days):"
-        echo ""
-
-        # Get stats by agent
-        local stats
-        stats=$(cass stats --json 2>/dev/null)
-
-        if [[ -n "$stats" ]]; then
-            echo "$stats" | jq -r '
-                "  By Agent:",
+        acfs_session_jq -r '
+            "Recent Sessions (last \(.query_info.days) days):",
+            (if .total == 0 then "  No matching sessions found." else
+                (.sessions[] | "  \(.agent) | \(.workspace) | \(.source_path)"),
+                "", "  By Agent (listed sessions):",
                 (.by_agent[] | "    \(.agent): \(.count) sessions"),
-                "",
-                "  Top Workspaces:",
-                (.top_workspaces[:5][] | "    \(.workspace): \(.count) sessions")
-            ' 2>/dev/null
-
-            echo ""
-            echo "  Date Range: $(echo "$stats" | jq -r '.date_range.oldest[:10]') to $(echo "$stats" | jq -r '.date_range.newest[:10]')"
-            echo "  Total Conversations: $(echo "$stats" | jq -r '.conversations')"
-            echo "  Total Messages: $(echo "$stats" | jq -r '.messages')"
-        fi
-
-        echo ""
-        echo "Use: cass search \"<query>\" to find specific sessions"
-        echo "Use: cass export <session-path> --format json to export"
+                "  Workspaces (listed sessions):",
+                (.by_workspace[] | "    \(.workspace): \(.count) sessions")
+             end),
+            "  Listed Sessions: \(.total)",
+            "  Discovery is limited to \(.query_info.limit) matching CASS hits.",
+            "Use: cass export <session-path> --format json to export"
+        ' <<< "$listing"
     fi
 }
 
