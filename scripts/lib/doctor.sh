@@ -2169,6 +2169,169 @@ _acfs_doctor_admin_group_name() {
 }
 
 # Check identity
+# Read-only: never feed source text to a shell or invoke apt here. Optional paths
+# are for isolated fixtures; normal doctor always examines the installed system.
+check_ubuntu_archive_suites() {
+    local report status="pass" rc=0
+    if ! command -v python3 >/dev/null 2>&1; then
+        check "system.ubuntu_archive_suites" "Ubuntu archive suites" "warn" "python3 unavailable; sources not inspected"
+        return
+    fi
+    report=$(python3 - "${1:-/etc/os-release}" "${2:-/etc/apt}" <<'ACFS_APT_AUDIT_PY'
+import pathlib
+import re
+import shlex
+import sys
+from urllib.parse import urlsplit
+
+def audit(os_release, apt):
+    problems, entries = [], []
+    def error(where, message):
+        problems.append(f"{where}: {message}")
+    # Parse os-release as data, including quoted values, without executing it.
+    metadata = {}
+    try:
+        for line in os_release.read_text().splitlines():
+            if not line.strip() or line.lstrip().startswith('#'):
+                continue
+            key, value = line.split('=', 1)
+            if key in metadata:
+                raise ValueError('duplicate release field')
+            words = shlex.split(value)
+            metadata[key] = words[0] if len(words) == 1 else ''
+    except (OSError, ValueError):
+        return ['Installed release metadata unreadable or malformed; manual review required'], 1
+    if metadata.get('ID') != 'ubuntu':
+        return ['Not Ubuntu; archive suite check not applicable'], 3
+    release = metadata.get('VERSION_CODENAME', '')
+    if not re.fullmatch(r'[a-z]+', release) or metadata.get('UBUNTU_CODENAME', release) != release:
+        return ['Installed Ubuntu codename missing or ambiguous; manual review required'], 1
+
+    def official(uri):
+        parsed = urlsplit(uri)
+        host = parsed.hostname or ''
+        # Do not infer Ubuntu ownership from a vendor's suite or /ubuntu path.
+        return (parsed.scheme in ('http', 'https', 'mirror+http', 'mirror+https')
+                and (host == 'archive.ubuntu.com' or host.endswith('.archive.ubuntu.com')
+                     or host in ('security.ubuntu.com', 'ports.ubuntu.com',
+                                 'old-releases.ubuntu.com', 'mirrors.ubuntu.com'))
+                and parsed.path.rstrip('/') in ('/ubuntu', '/ubuntu-ports', '/mirrors.txt'))
+
+    def record(where, fields, path):
+        enabled = fields.get('enabled', 'yes').lower()
+        if enabled == 'no':
+            return
+        if enabled != 'yes':
+            raise ValueError('invalid Enabled field')
+        for key in ('types', 'uris', 'suites'):
+            if not fields.get(key):
+                raise ValueError(f'missing {key}')
+        if not set(fields['types'].split()) <= {'deb', 'deb-src'}:
+            raise ValueError('invalid source type')
+        uris = fields['uris'].split()
+        for uri in uris:
+            parsed = urlsplit(uri)
+            if not parsed.scheme:
+                raise ValueError('URI missing scheme')
+        suites = fields['suites'].split()
+        if not fields.get('components') and not all(s.endswith('/') for s in suites):
+            raise ValueError('missing components')
+        if not any(official(uri) for uri in uris):
+            return
+        bad = [suite for suite in suites if suite not in
+               {release, release + '-updates', release + '-security',
+                release + '-backports', release + '-proposed'}]
+        if bad:
+            error(where, f"enabled Ubuntu suites {', '.join(bad)} disagree with installed {release}")
+        entries.append((path.name, where, suites, bool(bad), fields, uris))
+
+    try:
+        files = ([apt / 'sources.list'] if (apt / 'sources.list').exists() else [])
+        directory = apt / 'sources.list.d'
+        if directory.exists():
+            files += sorted(p for p in directory.iterdir() if
+                            re.fullmatch(r'[A-Za-z0-9_.-]+\.(list|sources)', p.name))
+    except OSError:
+        return ['Cannot enumerate APT sources; manual review required'], 1
+    for path in files:
+        try:
+            text = path.read_text()
+            if path.suffix == '.sources':
+                fields, start, last = {}, 1, None
+                def flush():
+                    if fields:
+                        record(f'{path}:{start}', fields, path)
+                for number, line in enumerate(text.splitlines() + [''], 1):
+                    if not line.strip():
+                        flush()
+                        fields, start, last = {}, number + 1, None
+                    elif line.lstrip().startswith('#'):
+                        continue
+                    elif line[0].isspace():
+                        if last is None:
+                            raise ValueError(f'orphan continuation at line {number}')
+                        fields[last] += '\n' + line.strip()
+                    else:
+                        key, sep, value = line.partition(':')
+                        key = key.lower()
+                        if not sep or not re.fullmatch(r'[a-z][a-z0-9-]*', key) or key in fields:
+                            raise ValueError(f'invalid or duplicate field at line {number}')
+                        fields[key], last = value.strip(), key
+            else:
+                for number, line in enumerate(text.splitlines(), 1):
+                    line = line.split('#', 1)[0].strip()
+                    if not line:
+                        continue
+                    match = re.fullmatch(r'(deb|deb-src)\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S+)(?:\s+(.*))?', line)
+                    if not match:
+                        raise ValueError(f'malformed one-line source at line {number}')
+                    kind, options, uri, suite, components = match.groups()
+                    fields = dict(types=kind, uris=uri, suites=suite, components=components or '')
+                    for option in (options or '').split():
+                        key, sep, value = option.partition('=')
+                        if not sep or not value or key in fields:
+                            raise ValueError(f'invalid/duplicate option at line {number}')
+                        fields[key.lower()] = value
+                    record(f'{path}:{number}', fields, path)
+        except (OSError, UnicodeError, ValueError) as exc:
+            # No file contents (potential credentials/inline keys) in diagnostics.
+            error(path, f'cannot fully inspect source file ({type(exc).__name__}); manual review required')
+
+    # Detect trust disagreements even when the suites themselves are current.
+    trust = {}
+    for name, where, suites, bad, fields, uris in entries:
+        signature = tuple(fields.get(k, '') for k in
+                          ('signed-by', 'trusted', 'allow-insecure', 'allow-weak', 'allow-downgrade-to-insecure'))
+        for uri in uris:
+            if not official(uri):
+                continue
+            for suite in suites:
+                key = (uri.rstrip('/'), suite)
+                if key in trust and trust[key][0] != signature:
+                    error(where, f'conflicting trust settings for {suite}; also {trust[key][1]}')
+                trust[key] = signature, where
+    if (any(n == 'ubuntu.sources' and bad for n, _, _, bad, _, _ in entries)
+            and any(n == 'ubuntu-acfs-temp.sources' and not bad for n, _, _, bad, _, _ in entries)):
+        problems.append('Legacy ACFS upgrade layout detected: old-release ubuntu.sources alongside current-release ubuntu-acfs-temp.sources. Filenames do not authorize removal or replacement.')
+    if problems:
+        problems.append('Read-only check; no sources changed. Follow docs/operations/ubuntu-upgrade.md#mixed-ubuntu-archive-suites-463; preserve unique entries and trust options. Do not run a global suite substitution.')
+    return problems or [f'Inspected {len(entries)} enabled official Ubuntu archive entries; no suite mismatch with {release}. Vendor/custom mirrors require separate verification'], 1 if problems else 0
+
+if __name__ == '__main__':
+    messages, status = audit(pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]))
+    print('\n'.join(messages))
+    sys.exit(status)
+ACFS_APT_AUDIT_PY
+    ) || rc=$?
+    case "$rc" in
+        0) ;;
+        3) status="skip" ;;
+        *) status="warn" ;;
+    esac
+    check "system.ubuntu_archive_suites" "Ubuntu archive suites" "$status" "$report" \
+        "Review Ubuntu source suites and recovery guidance: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/docs/operations/ubuntu-upgrade.md#mixed-ubuntu-archive-suites-463"
+}
+
 check_identity() {
     section "Identity"
 
@@ -6135,6 +6298,7 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     fi
 
     check_identity
+    check_ubuntu_archive_suites
     check_workspace
     check_shell
     check_core_tools

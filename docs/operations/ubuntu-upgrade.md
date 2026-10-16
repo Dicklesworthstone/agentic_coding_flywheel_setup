@@ -10,6 +10,74 @@ Ordinary installs keep supported Ubuntu 22.04/24.04 LTS hosts on their current r
 - Resume via systemd service
 - State persistence across reboots
 
+## Mixed Ubuntu archive suites (#463)
+
+`acfs doctor` performs a read-only source audit on every normal run (including
+JSON output), under `system.ubuntu_archive_suites`. It reads the installed
+Ubuntu codename from `/etc/os-release`, then inspects enabled deb822 stanzas and
+one-line entries in `/etc/apt/sources.list` and active `.list`/`.sources` files
+in `/etc/apt/sources.list.d`. It reports filenames, line numbers and conflicting
+suites. Commented entries, `Enabled: no` stanzas and backup/disabled filenames
+are excluded. Malformed or unreadable active files require manual review.
+Vendor suite labels alone never establish an Ubuntu mismatch. Official archive,
+security, ports, old-releases, country archive endpoints and the Ubuntu mirror
+list are recognized; independently hosted custom mirrors require manual
+verification of their authenticated Release metadata (`Origin: Ubuntu`). A clean
+audit does not establish package provenance or complete update delivery.
+
+The specific legacy layout is an old-release `ubuntu.sources` alongside a
+current-release `ubuntu-acfs-temp.sources`. ACFS versions before v0.10.0 could
+restore the former after a successful upgrade. Current normal upgrades no longer
+call that workaround. Updating ACFS alone does not reconcile these files.
+
+### Manual recovery
+
+Do this only after reviewing the actual contents and authorizing the specific
+changes. Neither filename, nor the doctor's layout recognition, authorizes
+deleting or disabling a repository. There is deliberately no automatic repair.
+
+1. Confirm `ID=ubuntu`, `VERSION_ID` and `VERSION_CODENAME` in `/etc/os-release`
+   agree with the completed upgrade and `/var/log/dist-upgrade/main.log`. If the
+   upgrade is incomplete or metadata is ambiguous, stop and investigate it first.
+2. Inventory **all** enabled entries, including custom mirrors and vendor
+   repositories. Compare URIs, types (`deb`/`deb-src`), suites, components,
+   architectures (including add/remove modifiers), Signed-By paths or inline
+   keys, Trusted and all other options. Keep credentials out of shared reports.
+   A missing Signed-By is not equivalent to an explicit keyring. Conflicting
+   trust settings need an administrator's decision, not an automatic merge.
+3. Back up `/etc/apt/sources.list` if present and the complete
+   `/etc/apt/sources.list.d` directory, retaining ownership, modes, symlinks and
+   contents, to a fresh root-owned directory outside the active source paths.
+   Verify the backup and record every proposed changed file. Refuse existing
+   backup or staging names. Retain this backup until validation is complete.
+4. Stage a complete candidate source set outside `/etc/apt`. For each obsolete
+   Ubuntu entry, decide whether to retarget it to the installed release or remove
+   a verified duplicate from the candidate. Preserve every unique current-release
+   repository, component, architecture and trust option, including entries in the
+   temporary file. Keep unrelated vendor entries unchanged. Do not globally
+   replace codenames, copy one file over another, or simply disable the temp file.
+5. Validate candidate syntax and the full set for duplicate/trust conflicts.
+   Test an authenticated refresh using APT's `Dir::Etc::sourcelist` and
+   `Dir::Etc::sourceparts` pointing to the candidate, and `Dir::State::lists`
+   pointing to a separate writable staging directory. Use
+   `apt-get -o APT::Update::Error-Mode=any update` with those overrides; require
+   exit status zero and no authentication errors. Never use `trusted=yes`,
+   allow-insecure flags, or ignore a failed refresh to make validation pass.
+6. With other package managers stopped, install the reviewed files preserving
+   ownership/modes, using same-filesystem staged renames for individual files.
+   Multiple source-file replacements are not one atomic transaction: keep APT
+   idle until the entire set is installed. Run
+   `sudo apt-get -o APT::Update::Error-Mode=any update` and require success, then
+   rerun doctor and inspect `apt-cache policy` for obsolete origins.
+7. On any failure, restore **every changed file** from the verified backup and
+   remove only newly introduced files identified in your change inventory. Use
+   same-filesystem staged restores, then refresh with error mode `any`. Report
+   rollback refresh failures explicitly; do not claim successful recovery.
+8. Separately review `apt-get -s full-upgrade` against the refreshed lists and
+   installed package origins. Source reconciliation does not authorize package
+   upgrades, removals or downgrades. The issue reporter's zero-change simulation
+   applies only to that host's cache and package state.
+
 ## Architecture
 
 ### Components
