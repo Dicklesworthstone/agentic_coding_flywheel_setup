@@ -14,6 +14,7 @@ SWARM_CONVERGENCE_EPIC_ID=""
 SWARM_CONVERGENCE_EPIC_FILE=""
 SWARM_CONVERGENCE_ISSUES_FILE=""
 SWARM_CONVERGENCE_COMMITS_FILE=""
+SWARM_CONVERGENCE_EXPORT_FILE=""
 
 swarm_convergence_usage() {
     cat <<'EOF'
@@ -26,6 +27,7 @@ Options:
   --epic-file FILE     Read br show <epic> --json output from a file
   --issues-file FILE   Read Beads issue JSON/JSONL from a file
   --commits-file FILE  Read commit evidence JSON from a file
+  --export-file FILE   Audit --epic ID from one complete Beads JSON/JSONL export
   --help, -h           Show this help
 
 The command is advisory-only. It reports satisfied, weakly verified, and
@@ -33,6 +35,9 @@ missing criteria, then suggests follow-up Bead titles without mutating Beads.
 Criteria come from success_criteria, a Success criteria description section,
 or Beads acceptance_criteria (in that order). Checkboxes are not evidence.
 Native parent-child dependents supplement legacy dependency-based children.
+With --export-file, no br database is needed or consulted. It replaces both
+--epic-file and --issues-file. Git evidence still comes from the current
+repository unless --commits-file is supplied (use an empty array for none).
 EOF
 }
 
@@ -79,6 +84,14 @@ swarm_convergence_parse_args() {
                 SWARM_CONVERGENCE_COMMITS_FILE="$2"
                 shift 2
                 ;;
+            --export-file)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --export-file requires a path" >&2
+                    return 2
+                fi
+                SWARM_CONVERGENCE_EXPORT_FILE="$2"
+                shift 2
+                ;;
             --help|-h)
                 swarm_convergence_usage
                 return 100
@@ -93,6 +106,11 @@ swarm_convergence_parse_args() {
 
     if [[ -z "$SWARM_CONVERGENCE_EPIC_ID" && -z "$SWARM_CONVERGENCE_EPIC_FILE" ]]; then
         echo "Error: provide --epic or --epic-file" >&2
+        return 2
+    fi
+    if [[ -n "$SWARM_CONVERGENCE_EXPORT_FILE" ]] &&
+       [[ -z "$SWARM_CONVERGENCE_EPIC_ID" || -n "$SWARM_CONVERGENCE_EPIC_FILE" || -n "$SWARM_CONVERGENCE_ISSUES_FILE" ]]; then
+        echo "Error: --export-file requires --epic and cannot be combined with --epic-file or --issues-file" >&2
         return 2
     fi
 }
@@ -115,11 +133,12 @@ swarm_convergence_normalize_json() {
     local jq_bin="$1"
     local kind="$2"
     local child_ids_json="${3:-}"
+    local export_epic_id="${4:-}"
 
     # Consume the entire stream before emitting anything, but retain only the
     # selected records for JSONL. A malformed suffix or incomplete envelope
     # must fail even when it contains no children relevant to this epic.
-    "$jq_bin" -n --arg kind "$kind" \
+    "$jq_bin" -n --arg kind "$kind" --arg export_epic_id "$export_epic_id" \
         --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
         def invalid($message): error($kind + " input: " + $message);
         def objects: type == "array" and all(.[]; type == "object");
@@ -169,27 +188,72 @@ swarm_convergence_normalize_json() {
             else map(select(.id as $id |
                 if ($id | type) == "string" then $wanted[$id] == true
                 else ($child_ids[0] | index($id)) != null end)) end;
-        if $kind == "issues" then
+        # Raw Beads exports carry outgoing edges with issue_id as the source,
+        # not the target. br show expands those edges and adds dependents.
+        # Reconstruct that view only for the explicit export mode; do not
+        # reinterpret the existing --epic-file dependency aliases.
+        def export_record:
+            if (.id | type) != "string" or .id == "" then
+                invalid("export records must have non-empty string IDs")
+            elif .dependencies != null and (.dependencies | objects | not) then
+                invalid("export dependencies must be an array of objects")
+            else . end
+            | . as $issue
+            | .dependencies = [(.dependencies // [])[] |
+                if any([.type, .dependency_type][];
+                       . != null and (type != "string" or . == "")) then
+                    invalid("export dependency type must be a non-empty string")
+                else . end
+                |
+                if has("depends_on_id") then
+                    if (.depends_on_id | type) != "string" or .depends_on_id == "" or
+                       (.issue_id != null and .issue_id != $issue.id) then
+                        invalid("export dependency has an invalid target or mismatched source")
+                    else . + {id:.depends_on_id, dependency_type:(.type // .dependency_type)} end
+                else . end];
+        def accumulate($records):
+            if $kind != "export" then .out += ($records | selected)
+            else reduce $records[] as $record (.;
+                ($record | export_record) as $issue
+                | if .seen[$issue.id] then
+                    if $issue.id == $export_epic_id then invalid("duplicate epic ID in export") else . end
+                  else
+                    .seen[$issue.id] = true
+                    | if $issue.id == $export_epic_id then .epic = $issue else . end
+                    | if any($issue.dependencies[];
+                             .id == $export_epic_id and .dependency_type == "parent-child") then
+                        if $issue.id == $export_epic_id then invalid("epic cannot be its own child")
+                        else .out += [{id:$issue.id, title:$issue.title, status:$issue.status,
+                                       priority:$issue.priority, dependency_type:"parent-child"}] end
+                      else . end
+                  end)
+            end;
+        if $kind == "issues" or $kind == "export" then
             # Defer the first value until the next value or EOF distinguishes
             # a single array/wrapper from JSONL. JSONL issue records may have
             # an unrelated field called "issues"; preserve that distinction.
-            reduce inputs as $value ({count:0, first:null, out:[]};
+            reduce inputs as $value ({count:0, first:null, out:[], seen:{}, epic:null};
                 if .count == 0 then .first = $value
                 else
                     (if .count == 1 then
-                        (.first | jsonl_record | selected) as $first
-                        | .out = $first | .first = null
+                        (.first | jsonl_record) as $first
+                        | accumulate($first) | .first = null
                      else . end)
-                    | ($value | jsonl_record | selected) as $next
-                    | .out += $next
+                    | ($value | jsonl_record) as $next
+                    | accumulate($next)
                 end
                 | .count += 1)
-            | if .count == 0 then []
-              elif .count == 1 then
-                .first
+            | if .count == 1 then
+                (.first
                 | (if type == "array" or (type == "object" and has("issues")) then object_list
-                   else jsonl_record end)
-                | selected
+                   else jsonl_record end)) as $records
+                | accumulate($records) | .first = null
+              else . end
+            | if $kind == "export" then
+                if .epic == null then invalid("epic ID not found in export: " + $export_epic_id)
+                elif .epic.dependents != null and (.epic.dependents | objects | not) then
+                    invalid("dependents must be an array of objects")
+                else .epic + {dependents:((.epic.dependents // []) + .out)} end
               else .out end
         else [inputs]
         | if $kind == "epic" then
@@ -649,13 +713,14 @@ swarm_convergence_emit_markdown() {
     ' <<< "$report"
 }
 
-swarm_convergence_main() {
+swarm_convergence_main() (
     local parse_status=0
     local jq_bin=""
     local epic_json=""
     local issues_json=""
     local commits_json=""
     local report=""
+    local export_dir=""
 
     swarm_convergence_parse_args "$@" || parse_status=$?
     case "$parse_status" in
@@ -670,10 +735,38 @@ swarm_convergence_main() {
         return 2
     }
 
-    epic_json="$(swarm_convergence_collect_epic_json | swarm_convergence_normalize_json "$jq_bin" epic)" || {
-        echo "Error: failed to read epic input" >&2
-        return 2
-    }
+    if [[ -n "$SWARM_CONVERGENCE_EXPORT_FILE" ]]; then
+        [[ -f "$SWARM_CONVERGENCE_EXPORT_FILE" ]] || {
+            echo "Error: export file not found: $SWARM_CONVERGENCE_EXPORT_FILE" >&2
+            return 2
+        }
+        # Both passes must read the same captured bytes, not a changing file or
+        # different databases. Keep bulk data on disk, in a private directory.
+        # The subshell scopes cleanup without replacing a callers EXIT trap.
+        export_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-convergence-export.XXXXXXXX")" || {
+            echo "Error: cannot create private export workspace" >&2
+            return 2
+        }
+        trap 'rm -f -- "$export_dir/issues.json"; rmdir -- "$export_dir"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        umask 077
+        cat -- "$SWARM_CONVERGENCE_EXPORT_FILE" > "$export_dir/issues.json" || {
+            echo "Error: failed to capture export input" >&2
+            return 2
+        }
+        SWARM_CONVERGENCE_ISSUES_FILE="$export_dir/issues.json"
+        epic_json="$(swarm_convergence_normalize_json "$jq_bin" export "" "$SWARM_CONVERGENCE_EPIC_ID" \
+            < "$SWARM_CONVERGENCE_ISSUES_FILE" | swarm_convergence_normalize_json "$jq_bin" epic)" || {
+            echo "Error: failed to resolve epic from export" >&2
+            return 2
+        }
+    else
+        epic_json="$(swarm_convergence_collect_epic_json | swarm_convergence_normalize_json "$jq_bin" epic)" || {
+            echo "Error: failed to read epic input" >&2
+            return 2
+        }
+    fi
     issues_json="$(swarm_convergence_collect_issues_json "$jq_bin" "$epic_json")" || {
         echo "Error: failed to read issues input" >&2
         return 2
@@ -692,6 +785,6 @@ swarm_convergence_main() {
     else
         swarm_convergence_emit_markdown "$report" "$jq_bin"
     fi
-}
+)
 
 swarm_convergence_main "$@"

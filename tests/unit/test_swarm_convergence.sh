@@ -1349,6 +1349,187 @@ test_empty_and_offline_sources_do_not_read_live_details() {
     pass "empty_and_offline_sources_do_not_read_live_details"
 }
 
+test_export_only_native_graph_matches_expanded_inputs() {
+    local work="$ARTIFACT_DIR/export-only" mode format
+    mkdir -p "$work/bin" "$work/tmp with spaces" "$work/.beads" || return 1
+    # A real JSONL export stores the parent relation on the CHILD. The epic
+    # can occur last and its raw outgoing issue_id names itself, not a child.
+    cat > "$work/export.json" <<'JSON'
+[
+ {"id":"other-epic","acceptance_criteria":"Do not audit this epic"},
+ {"id":"bd-native","title":"Quartz","status":"closed","comments":[{"text":"Quartz verification tests passed"}],"dependencies":[{"issue_id":"bd-native","depends_on_id":"bd-epic","type":"parent-child"}]},
+ {"id":"bd-legacy","title":"Xenon","status":"open","comments":[{"text":"Xenon tests drafted"}]},
+ {"id":"bd-downstream","title":"Zirconium","status":"closed","close_reason":"tests passed","dependencies":[{"issue_id":"bd-downstream","depends_on_id":"bd-epic","type":"blocks"}]},
+ {"id":"bd-related","title":"Zirconium","status":"closed","close_reason":"tests passed","dependencies":[{"issue_id":"bd-related","depends_on_id":"bd-epic","type":"related"}]},
+ {"id":"bd-grandchild","title":"Zirconium","status":"closed","close_reason":"tests passed","dependencies":[{"issue_id":"bd-grandchild","depends_on_id":"bd-native","type":"parent-child"}]},
+ {"id":"bd-native","title":"Must not replace first record","status":"open","dependencies":[]},
+ {"id":"bd-detached","title":"Zirconium","status":"closed","dependencies":[]},
+ {"id":"bd-detached","title":"Zirconium","status":"closed","close_reason":"tests passed","dependencies":[{"issue_id":"bd-detached","depends_on_id":"bd-epic","type":"parent-child"}]},
+ {"id":"bd-epic","title":"Export audit","status":"open","acceptance_criteria":"- [ ] Quartz\n- [X] Xenon\n- [ ] Zirconium","dependencies":[{"issue_id":"bd-epic","depends_on_id":"bd-legacy","type":"blocks"}]}
+]
+JSON
+    cat > "$work/expanded-epic.json" <<'JSON'
+{"id":"bd-epic","title":"Export audit","status":"open","acceptance_criteria":"- [ ] Quartz\n- [X] Xenon\n- [ ] Zirconium","dependencies":[{"id":"bd-legacy","dependency_type":"blocks"}],"dependents":[{"id":"bd-native","title":"Quartz","status":"closed","dependency_type":"parent-child"}]}
+JSON
+    jq -c '.[]' "$work/export.json" > "$work/export.jsonl" || return 1
+    jq '{issues:.,total:length,offset:0,has_more:false}' "$work/export.json" > "$work/export.wrapper" || return 1
+    printf '[]\n' > "$work/commits.json"
+    # Neither br nor a local snapshot may override the explicit export.
+    printf 'invalid local snapshot\n' > "$work/.beads/issues.jsonl"
+    cat > "$work/bin/br" <<'SH'
+#!/usr/bin/env bash
+printf 'unexpected br call\n' >> "$EXPORT_CALLS"
+exit 91
+SH
+    chmod +x "$work/bin/br" || return 1
+    sha256sum "$work/export.json" "$work/export.jsonl" "$work/export.wrapper" > "$work/input.sha256" || return 1
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/expanded-epic.json" \
+            --issues-file "$work/export.json" --commits-file "$work/commits.json" > "$work/expected.$mode" || return 1
+        for format in json jsonl wrapper; do
+            (
+                cd "$work" || exit 1
+                PATH="$work/bin:$PATH" EXPORT_CALLS="$work/br.calls" TMPDIR="$work/tmp with spaces" \
+                    bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic bd-epic \
+                    --export-file "$work/export.$format" --commits-file "$work/commits.json"
+            ) > "$work/$format.$mode" 2> "$work/$format.$mode.stderr" || return 1
+            cmp "$work/expected.$mode" "$work/$format.$mode" || return 1
+            [[ ! -s "$work/$format.$mode.stderr" ]] || return 1
+        done
+    done
+    [[ ! -e "$work/br.calls" && -z "$(find "$work/tmp with spaces" -mindepth 1 -print)" ]] || return 1
+    sha256sum -c "$work/input.sha256" >/dev/null || return 1
+    jq -e '.schema_version == 1 and .summary.child_beads == 2 and .summary.criteria_total == 3
+        and .summary.satisfied == 1 and .summary.weakly_verified == 1 and .summary.missing == 1
+        and .criteria[0].evidence[0].bead_id == "bd-native" and .criteria[2].evidence == []' \
+        "$work/json.json" >/dev/null || return 1
+    pass "export_only_native_graph_matches_expanded_inputs"
+}
+
+test_export_rejects_incomplete_or_ambiguous_graphs() {
+    local work="$ARTIFACT_DIR/export-only" index=0 expression mode
+    for expression in 'map(select(.id != "bd-epic"))' '. + [.[-1]]' \
+        '.[-1].dependencies[0].issue_id = "wrong-source"' \
+        '.[-1].dependencies[0].depends_on_id = null' \
+        '.[-1].dependencies[0].type = 17' \
+        '.[-1].dependencies[0].type = false' '.[-1].dependencies[0].type = ""' \
+        '.[-1].dependencies = [{issue_id:"bd-epic",depends_on_id:"bd-epic",type:"parent-child"}]' \
+        '.[0].dependencies = [17]' '.[0].id = null' \
+        '{issues:.,total:(length+1),offset:0,has_more:false}' \
+        '{issues:.,offset:1,has_more:false}' '{issues:.,has_more:true}' \
+        '.[-1].acceptance_criteria = []' '.[-1].dependents = {}'; do
+        index=$((index + 1))
+        jq "$expression" "$work/export.json" > "$work/invalid-$index.json" || return 1
+        for mode in json markdown; do
+            TMPDIR="$work/tmp with spaces" expect_input_failure "export-invalid-$index-$mode" 'input' \
+                "--$mode" --epic bd-epic --export-file "$work/invalid-$index.json" \
+                --commits-file "$work/commits.json" || return 1
+        done
+    done
+    cat "$work/export.jsonl" > "$work/truncated.jsonl" || return 1
+    printf '{"id":\n' >> "$work/truncated.jsonl"
+    for mode in json markdown; do
+        TMPDIR="$work/tmp with spaces" expect_input_failure "export-truncated-$mode" 'export' \
+            "--$mode" --epic bd-epic --export-file "$work/truncated.jsonl" \
+            --commits-file "$work/commits.json" || return 1
+        expect_input_failure "export-no-path-$mode" 'requires a path' "--$mode" --epic bd-epic --export-file || return 1
+        expect_input_failure "export-no-id-$mode" 'provide --epic' "--$mode" --export-file "$work/export.json" || return 1
+        expect_input_failure "export-missing-$mode" 'export file not found' "--$mode" --epic bd-epic \
+            --export-file "$work/absent" || return 1
+        expect_input_failure "export-conflict-epic-$mode" 'cannot be combined' "--$mode" --epic bd-epic \
+            --export-file "$work/export.json" --epic-file "$work/expanded-epic.json" || return 1
+        expect_input_failure "export-conflict-issues-$mode" 'cannot be combined' "--$mode" --epic bd-epic \
+            --issues-file "$work/export.json" --export-file "$work/export.json" || return 1
+    done
+    [[ -z "$(find "$work/tmp with spaces" -mindepth 1 -print)" ]] || return 1
+    pass "export_rejects_incomplete_or_ambiguous_graphs"
+}
+
+test_export_capture_is_private_and_used_for_both_passes() {
+    local work="$ARTIFACT_DIR/export-capture" cat_bin
+    mkdir -p "$work/bin" "$work/tmp" || return 1
+    cp "$ARTIFACT_DIR/export-only/export.jsonl" "$work/input.jsonl" || return 1
+    cat_bin="$(command -v cat)" || return 1
+    # Replace the source AFTER copying it. Resolution and evidence selection
+    # must still use the captured bytes. This mutation is only in a fixture.
+    cat > "$work/bin/cat" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${2:-}" == "$EXPORT_SOURCE" ]]; then
+    # A setgid parent can add the setgid bit; group/world access must still
+    # be absent, and the owner must retain all three directory permissions.
+    [[ $(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d -perm -700 ! -perm /077 | wc -l) -eq 1 ]]
+    "$REAL_CAT" "$@"
+    printf 'not JSON anymore\n' > "$EXPORT_SOURCE"
+    printf 'captured\n' >> "$EXPORT_COPY_LOG"
+else
+    exec "$REAL_CAT" "$@"
+fi
+SH
+    chmod +x "$work/bin/cat" || return 1
+    PATH="$work/bin:$PATH" TMPDIR="$work/tmp" REAL_CAT="$cat_bin" \
+        EXPORT_SOURCE="$work/input.jsonl" EXPORT_COPY_LOG="$work/copies" \
+        bash "$SWARM_CONVERGENCE_SH" --json --epic bd-epic --export-file "$work/input.jsonl" \
+        --commits-file "$ARTIFACT_DIR/export-only/commits.json" > "$work/report.json" || return 1
+    cmp "$ARTIFACT_DIR/export-only/expected.json" "$work/report.json" || return 1
+    [[ $(wc -l < "$work/copies") -eq 1 && -z "$(find "$work/tmp" -mindepth 1 -print)" ]] || return 1
+    # Allocation failure is diagnosed, and the caller retains its own trap.
+    TMPDIR="$work/absent" expect_input_failure export-mktemp 'private export workspace' \
+        --json --epic bd-epic --export-file "$work/input.jsonl" || return 1
+    (
+        trap 'printf "caller trap\n" > "$work/caller-exit"' EXIT
+        # shellcheck disable=SC1090
+        source "$SWARM_CONVERGENCE_SH" --help >/dev/null
+    ) || return 1
+    [[ -s "$work/caller-exit" ]] || return 1
+    pass "export_capture_is_private_and_used_for_both_passes"
+}
+
+test_large_export_only_graph_with_real_git() {
+    local work="$ARTIFACT_DIR/export-large" mode before
+    mkdir -p "$work/.beads" "$work/tmp" || return 1
+    # >32 MiB of unrelated history, with the desired epic at EOF. Every
+    # selected record has native raw edges; none requires a live br database.
+    jq -cn 'range(0;16384) | {id:("history-"+tostring),description:("z"*2048)}' \
+        > "$work/.beads/issues.jsonl" || return 1
+    jq -cn 'range(0;513) | {id:("child-"+tostring),title:"Quartz",status:"closed",
+        comments:[{text:"Quartz verification tests passed"}],dependencies:[
+        {issue_id:("child-"+tostring),depends_on_id:"export-epic",type:"parent-child"}]}' \
+        >> "$work/.beads/issues.jsonl" || return 1
+    printf '{"id":"export-epic","title":"Large export","acceptance_criteria":"- [ ] Quartz"}\n' \
+        >> "$work/.beads/issues.jsonl"
+    [[ $(wc -c < "$work/.beads/issues.jsonl") -gt 33554432 ]] || return 1
+    jq -n '{id:"export-epic",title:"Large export",acceptance_criteria:"- [ ] Quartz",
+        dependents:[range(0;513)|{id:("child-"+tostring),title:"Quartz",status:"closed",dependency_type:"parent-child"}]}' \
+        > "$work/expanded.json" || return 1
+    git -C "$work" init -q -b main || return 1
+    git -C "$work" add .beads/issues.jsonl || return 1
+    git -C "$work" -c user.name=Fixture -c user.email=fixture@example.invalid \
+        commit -q -m 'child-512 Quartz verification tests passed' || return 1
+    before="$(git -C "$work" rev-parse HEAD)" || return 1
+    sha256sum "$work/.beads/issues.jsonl" > "$work/input.sha256" || return 1
+    for mode in json markdown; do
+        (
+            cd "$work" || exit 1
+            TMPDIR="$work/tmp" bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic export-epic \
+                --export-file "$work/.beads/issues.jsonl"
+        ) > "$work/export.$mode" 2> "$work/export.$mode.stderr" || return 1
+        (
+            cd "$work" || exit 1
+            bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/expanded.json"
+        ) > "$work/expected.$mode" || return 1
+        cmp "$work/expected.$mode" "$work/export.$mode" || return 1
+        [[ ! -s "$work/export.$mode.stderr" ]] || return 1
+    done
+    jq -e '.summary.child_beads == 513 and .summary.criteria_total == 1 and .summary.satisfied == 1' \
+        "$work/export.json" >/dev/null || return 1
+    [[ "$(git -C "$work" rev-parse HEAD)" == "$before" ]] || return 1
+    [[ -z "$(git -C "$work" status --porcelain --untracked-files=no)" ]] || return 1
+    [[ -z "$(find "$work/tmp" -mindepth 1 -print)" ]] || return 1
+    sha256sum -c "$work/input.sha256" >/dev/null || return 1
+    pass "large_export_only_graph_with_real_git"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -1395,6 +1576,10 @@ main() {
     run_test test_failed_live_detail_batches_never_emit_reports
     run_test test_live_detail_ids_validate_before_exec
     run_test test_empty_and_offline_sources_do_not_read_live_details
+    run_test test_export_only_native_graph_matches_expanded_inputs
+    run_test test_export_rejects_incomplete_or_ambiguous_graphs
+    run_test test_export_capture_is_private_and_used_for_both_passes
+    run_test test_large_export_only_graph_with_real_git
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
