@@ -302,5 +302,54 @@ if [[ -e /dev/full ]]; then
     list_sessions --json > /dev/full 2> "$WORK/stderr" || STATUS=$?
     assert 'output write failures propagate' test "$STATUS" -ne 0
 fi
+# Workspace/recent helpers must use CASS's first-class session enumeration.
+cass() {
+    { printf '%q ' "$@"; printf '\n'; } >> "$WORK/calls"
+    [[ "${1:-}" == sessions && "${2:-}" == --workspace && "${4:-}" == --limit && "${6:-}" == --json ]] || return 97
+    printf '%s\n' '{"sessions":[{"path":"/tmp/acfs-recent-session.jsonl","agent":"codex","workspace":"/project/a","source_id":"local","message_count":4},{"path":"/tmp/older.jsonl","agent":"codex","workspace":"/project/a","source_id":"local","message_count":2}]}'
+}
+: > "$WORK/calls"
+STATUS=0
+get_workspace_sessions "/project/a" 2 > "$WORK/stdout" 2> "$WORK/stderr" || STATUS=$?
+assert 'workspace helper succeeds through native CASS sessions' test "$STATUS" -eq 0
+assert 'workspace helper preserves native session payload' bash -c 'jq -e '\''(.sessions|length)==2 and .sessions[0].path=="/tmp/acfs-recent-session.jsonl"'\'' "$1" >/dev/null' _ "$WORK/stdout"
+assert 'workspace helper never uses wildcard search' bash -c '! grep -q '\''search '\'' "$1"' _ "$WORK/calls"
+assert 'workspace helper forwards workspace and session limit' grep -Fq 'sessions --workspace /project/a --limit 2 --json' "$WORK/calls"
+
+cass() { printf '%s\n' '{"sessions":"not-an-array"}'; }
+STATUS=0
+get_workspace_sessions "/project/a" 2 > "$WORK/stdout" 2> "$WORK/stderr" || STATUS=$?
+assert 'malformed native session JSON is rejected without stdout' no_success
+cass() { printf '%s\n' '{"sessions":[]}'; }
+STATUS=0
+export_recent_session "/project/a" json > "$WORK/stdout" 2> "$WORK/stderr" || STATUS=$?
+assert 'empty recent-session result fails without fabricated export' no_success
+
+for value in 0 00 -1 1.5 nope 10001; do
+    : > "$WORK/calls"
+    STATUS=0
+    get_workspace_sessions "/project/a" "$value" > "$WORK/stdout" 2> "$WORK/stderr" || STATUS=$?
+    assert "invalid workspace limit $value is rejected before CASS" bash -c '[[ $1 != 0 && ! -s "$2" ]]' _ "$STATUS" "$WORK/calls"
+done
+
+recent_file="$WORK/recent export.jsonl"
+printf '%s\n' '{"dummy":true}' > "$recent_file"
+cass() {
+    { printf '%q ' "$@"; printf '\n'; } >> "$WORK/calls"
+    if [[ "${1:-}" == sessions ]]; then
+        jq -cn --arg path "$recent_file" '{sessions:[{path:$path,agent:"codex",workspace:"/project/a",source_id:"local"}]}'
+    elif [[ "${1:-}" == export ]]; then
+        printf '%s\n' '[{"timestamp":"2026-10-15T12:00:00Z","type":"session_meta","payload":{"id":"native-recent","cwd":"/project/a","originator":"codex"}},{"timestamp":"2026-10-15T12:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"hello"}},{"timestamp":"2026-10-15T12:00:02Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"reply"}]}}]'
+    else
+        return 98
+    fi
+}
+: > "$WORK/calls"
+STATUS=0
+export_recent_session "/project/a" json > "$WORK/stdout" 2> "$WORK/stderr" || STATUS=$?
+assert 'recent-session export succeeds from native session result' test "$STATUS" -eq 0
+assert 'recent-session export called native sessions first' bash -c 'head -n1 "$1" | grep -Fq "sessions --workspace /project/a --limit 1 --json"' _ "$WORK/calls"
+assert 'recent-session export uses the returned path verbatim' grep -Fq 'export '"$(printf '%q' "$recent_file")"' --format json' "$WORK/calls"
+
 printf 'Session listing: %s assertions passed; %s failed\n' "$passed" "$failed"
 [[ "$failed" == 0 ]]

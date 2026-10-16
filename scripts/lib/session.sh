@@ -854,18 +854,55 @@ list_sessions() {
     fi
 }
 
-# Get session details for a specific workspace
-# Usage: get_workspace_sessions <workspace_path> [--limit N]
+# Get canonical session details for a specific workspace.
+# Usage: get_workspace_sessions <workspace_path> [limit]
 get_workspace_sessions() {
-    local workspace="$1"
+    local workspace="${1:-}"
     local limit="${2:-10}"
+    local response=""
 
+    if [[ -z "$workspace" ]]; then
+        log_error "Workspace path required"
+        return 1
+    fi
+    if [[ ! "$limit" =~ ^[0-9]+$ ]] || [[ ! "$limit" =~ [1-9] ]] || [[ "$limit" -gt 10000 ]]; then
+        log_error "Workspace session limit must be an integer from 1 to 10000"
+        return 1
+    fi
+    if [[ $# -gt 2 ]]; then
+        log_error "Unexpected workspace session argument: ${3}"
+        return 1
+    fi
     if ! check_cass_installed; then
         log_error "CASS not installed"
         return 1
     fi
+    check_session_deps || return 1
 
-    cass search "*" --workspace "$workspace" --limit "$limit" --json 2>/dev/null
+    # CASS has a first-class session enumeration surface. Do not approximate
+    # workspace sessions with wildcard message hits: one conversation can have
+    # many messages, and provider stores may contain multiple conversations.
+    if ! response=$(cass sessions --workspace "$workspace" --limit "$limit" --json); then
+        log_error "Failed to list CASS sessions for workspace: $workspace"
+        return 1
+    fi
+    if ! acfs_session_jq -es '
+        if length != 1 then false else .[0] |
+        type == "object" and (has("error") | not) and
+        (.sessions | type == "array") and
+        all(.sessions[];
+            type == "object" and
+            (.path | type == "string" and test("\\S")) and
+            (.agent | type == "string" and test("\\S")) and
+            (.workspace == null or (.workspace | type == "string")) and
+            (.source_id == null or (.source_id | type == "string" and length > 0)))
+        end
+    ' <<< "$response" >/dev/null; then
+        log_error "Invalid JSON session results from CASS"
+        return 1
+    fi
+
+    printf '%s\n' "$response"
 }
 
 # ============================================================
@@ -1011,21 +1048,35 @@ export_session() {
     return "$status"
 }
 
-# Find and export the most recent session in a workspace
-# Usage: export_recent_session [workspace] [--format json|markdown]
+# Find and export the most recent session in a workspace.
+# Usage: export_recent_session [workspace] [json|markdown]
 export_recent_session() {
     local workspace="${1:-$(pwd)}"
     local format="${2:-json}"
+    local response="" recent_session=""
 
-    if ! check_cass_installed; then
-        log_error "CASS not installed"
+    if [[ $# -gt 2 ]]; then
+        log_error "Unexpected recent-session export argument: ${3}"
         return 1
     fi
+    case "$format" in
+        json|markdown) ;;
+        *)
+            log_error "Unsupported export format: $format (expected json or markdown)"
+            return 1
+            ;;
+    esac
 
-    # Find the most recent session file in the workspace
-    local recent_session
-    recent_session=$(cass search "*" --workspace "$workspace" --limit 1 --json 2>/dev/null | jq -r '.hits[0].source_path // empty')
-
+    # Use CASS's native session ordering, not the first wildcard message hit.
+    # A high-scoring message is not necessarily the most recent conversation.
+    response=$(get_workspace_sessions "$workspace" 1) || return 1
+    if ! recent_session=$(acfs_session_jq -er '
+        if (.sessions | length) == 0 then empty
+        else .sessions[0].path end
+    ' <<< "$response"); then
+        log_error "No sessions found for workspace: $workspace"
+        return 1
+    fi
     if [[ -z "$recent_session" ]]; then
         log_error "No sessions found for workspace: $workspace"
         return 1
