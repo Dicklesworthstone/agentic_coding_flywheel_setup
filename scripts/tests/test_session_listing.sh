@@ -54,7 +54,7 @@ cass() {
     fi
     # These assertions exercise argv forwarding rather than trusting headings.
     if [[ "$MODE" == check_contract ]]; then
-        [[ "$meta" == true && "$fields" == source_path,source_id,agent,workspace,created_at,title && "$since" == '2026-10-14T12:00:00Z' && "$until" == '2026-10-15T12:00:00Z' ]] || return 94
+        [[ "$meta" == true && "$fields" == source_path,source_id,conversation_id,agent,workspace,created_at,title && "$since" == '2026-10-14T12:00:00Z' && "$until" == '2026-10-15T12:00:00Z' ]] || return 94
         [[ "$agent" == codex ]] || return 95
     fi
     case "$MODE:$offset" in
@@ -62,7 +62,23 @@ cass() {
         late_failed:3) printf '{"hits":[]}\n'; return 42 ;;
         malformed:*) printf '%s' "$BAD_RESPONSE"; return 0 ;;
         late_malformed:3) printf '%s' "$BAD_RESPONSE"; return 0 ;;
+        canonical_conflict:0)
+            printf '%s\n' '{"hits":[{"source_path":"/recent/a","source_id":"local","conversation_id":41,"agent":"codex","workspace":"/p"}],"_meta":{"next_cursor":"page:3:opaque token*"}}'
+            return 0 ;;
+        canonical_conflict:3) printf '%s' "$BAD_RESPONSE"; return 0 ;;
         unending:*) printf '{"hits":[],"_meta":{"next_cursor":"page:%s:opaque token*"}}\n' "$((offset + 3))"; return 0 ;;
+        canonical:*)
+            # Two conversations share a provider store. Repeated message hits,
+            # including across pages, must not consume the session limit.
+            jq -cn --argjson offset "$offset" '
+                [{source_path:"/shared/store.db",source_id:"local",conversation_id:41,agent:"codex",workspace:"/p"},
+                 {source_path:"/shared/store.db",source_id:"local",conversation_id:41,agent:"codex",workspace:"/p"},
+                 {source_path:"/shared/store.db",source_id:"local",conversation_id:42,agent:"codex",workspace:"/p"},
+                 {source_path:"/shared/store.db",source_id:"local",conversation_id:42,agent:"codex",workspace:"/p"},
+                 {source_path:"/shared/store.db",source_id:"remote",conversation_id:41,agent:"codex",workspace:"/remote"},
+                 {source_path:"/unselected",source_id:"local",conversation_id:99,agent:"codex",workspace:"/other"}] |
+                {hits:.[$offset:($offset+3)],_meta:{next_cursor:(if $offset == 0 then "page:3:opaque token*" else null end)}}'
+            return 0 ;;
     esac
     local response
     response=$(jq -c --argjson limit "$limit" --argjson offset "$offset" \
@@ -135,6 +151,75 @@ assert 'empty text is explicit' grep -q 'No matching sessions' "$WORK/stdout"
 MODE=provenance
 run_list --json
 assert 'identical paths on different sources stay distinct' json_is '.total == 2'
+assert 'missing canonical IDs remain explicit, not invented' json_is 'all(.sessions[]; .conversation_id == null and .identity_kind == "source_path")'
+MODE=canonical
+run_list --days 1 --limit 3 --json
+assert 'canonical discovery succeeds' test "$STATUS" -eq 0
+assert 'same-path canonical conversations remain distinct across pages' json_is '.total == 3 and [.sessions[] | [.source_id,.conversation_id]] == [["local",41],["local",42],["remote",41]]'
+assert 'canonical coordinates survive discovery without path rewriting' json_is 'all(.sessions[]; .source_path == "/shared/store.db" and .identity_kind == "canonical")'
+assert 'canonical identity determines aggregate counts' json_is '.by_agent == [{agent:"codex",count:3}] and .by_workspace == [{workspace:"/p",count:2},{workspace:"/remote",count:1}]'
+assert 'canonical discovery continues past duplicate-heavy first page' test "$(wc -l < "$WORK/calls")" -eq 2
+run_list --days 1 --limit 3
+assert 'text distinguishes first local conversation' grep -Fq 'source="local" | conversation=41' "$WORK/stdout"
+assert 'text distinguishes second local conversation' grep -Fq 'source="local" | conversation=42' "$WORK/stdout"
+assert 'text distinguishes remote conversation with same path and ID' grep -Fq 'source="remote" | conversation=41' "$WORK/stdout"
+assert 'canonical text and JSON agree on total' grep -q 'Listed Sessions: 3' "$WORK/stdout"
+run_list --days 1 --limit 1 --json
+assert 'session limit still caps canonical discovery' json_is '.total == 1 and .sessions[0].conversation_id == 41'
+assert 'satisfied canonical limit does not fetch another page' test "$(wc -l < "$WORK/calls")" -eq 1
+
+# Identity changes within or between pages cannot silently relabel a session.
+# Include an id-less hit mixed with a canonical one for the same source/path;
+# there is no sound basis to call those one session or two.
+for conflict in '{"workspace":"/changed"}' '{"agent":"other"}' '{"source_path":"/changed"}' '{"conversation_id":null}'; do
+    BAD_RESPONSE=$(jq -cn --argjson conflict "$conflict" '
+        {source_path:"/recent/a",source_id:"local",conversation_id:41,agent:"codex",workspace:"/p"} as $hit |
+        {hits:[$hit,($hit + $conflict)],_meta:{next_cursor:null}}')
+    for MODE in malformed canonical_conflict; do
+        if [[ "$MODE" == canonical_conflict ]]; then
+            BAD_RESPONSE=$(jq -c '.hits = [.hits[1]]' <<< "$BAD_RESPONSE")
+        fi
+        for format in text json; do
+            args=(--days 1 --limit 10)
+            [[ "$format" == text ]] || args+=(--json)
+            run_list "${args[@]}"
+            assert "$MODE/$format rejects conflicting canonical identity $conflict" no_success
+            if [[ "$conflict" == *conversation_id* ]]; then
+                assert 'ambiguous identity has an explicit diagnostic' grep -q 'ambiguous CASS session identity' "$WORK/stderr"
+            else
+                assert 'identity drift has an explicit diagnostic' grep -q 'conflicting CASS session identity' "$WORK/stderr"
+            fi
+        done
+    done
+done
+for bad_id in 'false' '0' '-1' '1.5' '"41"' '[]' '{}' '9007199254740992' '9007199254740993'; do
+    BAD_RESPONSE='{"hits":[{"source_path":"/a","source_id":"local","conversation_id":'"$bad_id"',"agent":"codex","workspace":"/p"}],"_meta":{"next_cursor":null}}'
+    MODE=malformed
+    run_list --json
+    assert "invalid or imprecise canonical ID $bad_id fails without output" no_success
+done
+MODE=malformed
+BAD_RESPONSE='{"hits":[{"source_path":"/a","conversation_id":9007199254740991,"agent":"codex","workspace":"/p"}],"_meta":{"next_cursor":null}}'
+run_list --json
+assert 'largest exactly supported canonical ID is preserved' json_is '.sessions[0].conversation_id == 9007199254740991'
+BAD_RESPONSE='{"hits":[{"source_path":"/shared","agent":"codex","workspace":"/p"},{"source_path":"/shared","agent":"claude_code","workspace":"/p"}],"_meta":{"next_cursor":null}}'
+run_list --json
+assert 'path-only identity cannot merge different agent stores' json_is '.total == 2 and all(.sessions[]; .identity_kind == "source_path")'
+BAD_RESPONSE='{"hits":[{"source_path":"/shared","agent":"codex","workspace":"/p"},{"source_path":"/shared","conversation_id":41,"agent":"codex","workspace":"/p"}],"_meta":{"next_cursor":null}}'
+run_list --json
+assert 'path-only followed by canonical identity is also refused' no_success
+BAD_RESPONSE=$(jq -cn '{hits:[{source_path:"/p\nforged row",source_id:"remote\u001b[2J",conversation_id:41,agent:"code\tx",workspace:"/p\nforged summary"}],_meta:{next_cursor:null}}')
+run_list --json
+assert 'JSON preserves the exact canonical path and source' json_is '.sessions[0].source_path == "/p\nforged row" and .sessions[0].source_id == "remote\u001b[2J"'
+run_list
+assert 'text safely quotes multiline paths without inventing rows' grep -Fq '/p\nforged row' "$WORK/stdout"
+assert 'text safely quotes control characters in source names' grep -Fq 'source="remote\u001b[2J"' "$WORK/stdout"
+assert 'text never emits raw escape or tab bytes from metadata' bash -c '! LC_ALL=C grep -qE "$2" "$1"' _ "$WORK/stdout" $'\033|\t'
+# Accumulated identities exceed Linux single-argument limits. Keep the actual
+# library and real jq in this check, not a reimplementation of the reducer.
+BAD_RESPONSE=$(jq -cn '{hits:[range(1;1201) | {source_path:("/shared/" + ("x" * 180)),source_id:"local",conversation_id:.,agent:"codex",workspace:"/p"}],_meta:{next_cursor:null}}')
+run_list --limit 1200 --json
+assert 'large canonical metadata stays off argv and retains every ID' json_is '.total == 1200 and [.sessions[].conversation_id] == [range(1;1201)]'
 MODE=empty_page
 run_list --days 1 --limit 10 --json
 assert 'an empty page with a fresh cursor does not imply exhaustion' json_is '.total == 2 and [.sessions[].source_path] == ["/recent/a","/recent/d"]'

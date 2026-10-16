@@ -721,15 +721,17 @@ list_sessions() {
 
     # Fetch metadata rather than full transcripts. CASS limits message hits;
     # ACFS limits distinct sessions, so those two limits must be independent.
+    # A provider store can contain multiple canonical conversations. Retain
+    # all three coordinates required by CASS canonical transcript reads.
     local cass_args=("search" "*" "--limit" "$page_limit" "--since" "$since" "--until" "$until"
-        "--json" "--robot-meta" "--fields" "source_path,source_id,agent,workspace,created_at,title")
+        "--json" "--robot-meta" "--fields" "source_path,source_id,conversation_id,agent,workspace,created_at,title")
 
     if [[ -n "$agent" ]]; then
         cass_args+=("--agent" "$agent")
     fi
 
     local response listing cursor="" pages=0 done_listing=false
-    local state='{"sessions":[],"seen":{},"cursors":{},"hits_scanned":0}'
+    local state='{"sessions":[],"seen":{},"path_kinds":{},"cursors":{},"hits_scanned":0}'
     local cursor_args=()
     while [[ "$done_listing" != true ]]; do
         # A broken backend must not turn a discovery command into an endless
@@ -749,6 +751,10 @@ list_sessions() {
         # publishing anything, including pages after a successful first one.
         if ! state=$(acfs_session_jq -ecs --arg limit "$limit" '
             def optional_false: . == null or . == false;
+            # jq builds using IEEE-754 numbers cannot safely distinguish IDs
+            # beyond 2^53-1. Refuse them instead of merging rounded identities.
+            def canonical_id:
+                type == "number" and . >= 1 and . <= 9007199254740991 and . == floor;
             if length != 2 then error("expected one CASS response") else . end |
             .[0] as $state | .[1] |
             if type != "object" or has("error") or (.hits | type) != "array"
@@ -769,17 +775,31 @@ list_sessions() {
                 (.agent | type == "string" and test("\\S")) and
                 (.workspace | type == "string") and
                 (.source_id == null or (.source_id | type == "string" and length > 0)) and
+                (.conversation_id == null or (.conversation_id | canonical_id)) and
                 (.title == null or (.title | type == "string")) and
                 (.created_at == null or (.created_at | type == "number"))) | not
             then error("invalid CASS search hit") else . end |
             . as $page |
             reduce .hits[] as $hit ($state;
-                ([$hit.source_id // "local", $hit.source_path] | tojson) as $key |
-                if .seen[$key] == true or (.sessions | length) >= ($limit | tonumber)
+                ($hit.source_id // "local") as $source |
+                (if $hit.conversation_id == null then "source_path" else "canonical" end) as $kind |
+                ([$source, $hit.agent, $hit.source_path] | tojson) as $path_key |
+                (if $kind == "canonical" then [$kind, $source, $hit.conversation_id]
+                 else [$kind, $source, $hit.agent, $hit.source_path] end | tojson) as $key |
+                if .path_kinds[$path_key] != null and .path_kinds[$path_key] != $kind
+                then error("ambiguous CASS session identity: mixed canonical and path-only hits")
+                elif (.seen | has($key)) then
+                    .sessions[.seen[$key]] as $existing |
+                    if $existing.source_path != $hit.source_path or
+                       $existing.agent != $hit.agent or $existing.workspace != $hit.workspace
+                    then error("conflicting CASS session identity metadata") else . end
+                elif (.sessions | length) >= ($limit | tonumber)
                 then . else
-                    .seen[$key] = true |
+                    .path_kinds[$path_key] = $kind |
+                    .seen[$key] = (.sessions | length) |
                     .sessions += [{source_path: $hit.source_path,
-                        source_id: ($hit.source_id // "local"), agent: $hit.agent,
+                        source_id: $source, conversation_id: $hit.conversation_id,
+                        identity_kind: $kind, agent: $hit.agent,
                         workspace: $hit.workspace, created_at: $hit.created_at,
                         title: ($hit.title // "")}]
                 end) |
@@ -820,15 +840,16 @@ list_sessions() {
         acfs_session_jq -r '
             "Recent Sessions (last \(.query_info.days) days):",
             (if .total == 0 then "  No matching sessions found." else
-                (.sessions[] | "  \(.agent) | \(.workspace) | \(.source_path)"),
+                (.sessions[] | "  \(.agent | @json) | \(.workspace | @json) | \(.source_path | @json) | source=\(.source_id | @json) | conversation=\(.conversation_id // "unavailable")"),
                 "", "  By Agent (listed sessions):",
-                (.by_agent[] | "    \(.agent): \(.count) sessions"),
+                (.by_agent[] | "    \(.agent | @json): \(.count) sessions"),
                 "  Workspaces (listed sessions):",
-                (.by_workspace[] | "    \(.workspace): \(.count) sessions")
+                (.by_workspace[] | "    \(.workspace | @json): \(.count) sessions")
              end),
             "  Listed Sessions: \(.total)",
             "  Limit: \(.query_info.limit) distinct sessions; scanned \(.query_info.hits_scanned) matching hits across \(.query_info.pages) pages.",
-            "Use: cass export <session-path> --format json to export"
+            "Canonical CASS reads require source_path, source_id and conversation_id together.",
+            "For path-only entries, verify the source before exporting a provider file."
         ' <<< "$listing"
     fi
 }
