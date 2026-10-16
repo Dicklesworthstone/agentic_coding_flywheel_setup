@@ -1530,6 +1530,62 @@ test_large_export_only_graph_with_real_git() {
     pass "large_export_only_graph_with_real_git"
 }
 
+
+test_commit_evidence_requires_exact_bead_id() {
+    local work="$ARTIFACT_DIR/exact-commit-id" mode
+    mkdir -p "$work" || return 1
+    cat > "$work/epic.json" <<'JSON'
+{"id":"bd-epic","title":"Exact commit evidence","success_criteria":["Quartz validation"],"dependencies":[{"id":"bd-12","title":"Quartz validation","status":"closed"}]}
+JSON
+    cat > "$work/issues.json" <<'JSON'
+[{"id":"bd-12","title":"Quartz validation","status":"closed","close_reason":"Implemented."}]
+JSON
+    cat > "$work/near-miss-commits.json" <<'JSON'
+[
+  {"hash":"a","subject":"test: bd-123 quartz tests passed"},
+  {"hash":"b","subject":"test: xbd-12 quartz tests passed"},
+  {"hash":"c","subject":"test: bd-12-extra quartz tests passed"},
+  {"hash":"d","subject":"test: bd-12.1 quartz tests passed"}
+]
+JSON
+    cat > "$work/exact-commits.json" <<'JSON'
+[{"hash":"e","subject":"test(bd-12): quartz tests passed"}]
+JSON
+    for mode in json markdown; do
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/near-miss-commits.json" \
+            > "$work/near-miss.$mode" || return 1
+        bash "$SWARM_CONVERGENCE_SH" "--$mode" --epic-file "$work/epic.json" \
+            --issues-file "$work/issues.json" --commits-file "$work/exact-commits.json" \
+            > "$work/exact.$mode" || return 1
+    done
+    jq -e '.summary.satisfied == 0 and .summary.weakly_verified == 1
+        and .criteria[0].evidence[0].commit_subjects == []' "$work/near-miss.json" >/dev/null || return 1
+    jq -e '.summary.satisfied == 1 and .summary.weakly_verified == 0
+        and .criteria[0].evidence[0].commit_subjects == ["test(bd-12): quartz tests passed"]' \
+        "$work/exact.json" >/dev/null || return 1
+
+    git -C "$work" init -q -b main || return 1
+    git -C "$work" -c user.name=Fixture -c user.email=fixture@example.invalid \
+        commit --allow-empty -q -m 'test: bd-123 quartz tests passed' || return 1
+    (
+        cd "$work" || exit 1
+        bash "$SWARM_CONVERGENCE_SH" --json --epic-file "$work/epic.json" --issues-file "$work/issues.json"
+    ) > "$work/git-near-miss.json" || return 1
+    jq -e '.summary.satisfied == 0 and .summary.weakly_verified == 1
+        and .criteria[0].evidence[0].commit_subjects == []' "$work/git-near-miss.json" >/dev/null || return 1
+    git -C "$work" -c user.name=Fixture -c user.email=fixture@example.invalid \
+        commit --allow-empty -q -m 'test(bd-12): quartz tests passed' || return 1
+    (
+        cd "$work" || exit 1
+        bash "$SWARM_CONVERGENCE_SH" --json --epic-file "$work/epic.json" --issues-file "$work/issues.json"
+    ) > "$work/git-exact.json" || return 1
+    jq -e '.summary.satisfied == 1
+        and .criteria[0].evidence[0].commit_subjects == ["test(bd-12): quartz tests passed"]' \
+        "$work/git-exact.json" >/dev/null || return 1
+    pass "commit_evidence_requires_exact_bead_id"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -1580,6 +1636,7 @@ main() {
     run_test test_export_rejects_incomplete_or_ambiguous_graphs
     run_test test_export_capture_is_private_and_used_for_both_passes
     run_test test_large_export_only_graph_with_real_git
+    run_test test_commit_evidence_requires_exact_bead_id
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

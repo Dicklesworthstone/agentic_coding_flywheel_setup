@@ -455,6 +455,17 @@ swarm_convergence_collect_commits_json() {
     "$git_bin" log --format='%H %s' --all --no-show-signature --no-notes \
         --no-patch --color=never --no-decorate --encoding=UTF-8 \
         | "$jq_bin" -R -n --slurpfile child_ids <(printf '%s\n' "$child_ids_json") '
+            def bead_id_in_subject($id; $subject):
+                ($id | tostring) as $needle
+                | ($subject | tostring) as $body
+                | ($needle | length) as $width
+                | any($body | indices($needle)[]?;
+                    . as $offset
+                    | ($body[$offset - 1:$offset] // "") as $before
+                    | ($body[$offset + $width:$offset + $width + 1] // "") as $after
+                    | (($offset == 0) or ($before | test("[A-Za-z0-9._-]") | not))
+                      and (($offset + $width == ($body | length)) or
+                           ($after | test("[A-Za-z0-9._-]") | not)));
             [inputs
              | index(" ") as $end
              | if (($end == 40 or $end == 64) and
@@ -462,7 +473,7 @@ swarm_convergence_collect_commits_json() {
                  {hash: .[:$end], subject: .[$end + 1:]}
                else error("commits input: malformed git log record") end
              | select(.subject as $subject |
-                 any($child_ids[0][]; . as $id | $subject | contains($id)))]
+                 any($child_ids[0][]; . as $id | bead_id_in_subject($id; $subject)))]
         '
 }
 
@@ -506,7 +517,18 @@ def issue_for($id; $index):
   # behavior for non-string legacy IDs without putting them in object keys.
   if ($id | type) == "string" then $index[$id] // {}
   else first(issue_list[]? | select(.id == $id)) // {} end;
-def commits_for($id): [commit_list[]? | select((.subject // "") | contains($id))];
+def bead_id_in_subject($id; $subject):
+  ($id | tostring) as $needle
+  | ($subject | tostring) as $body
+  | ($needle | length) as $width
+  | any($body | indices($needle)[]?;
+      . as $offset
+      | ($body[$offset - 1:$offset] // "") as $before
+      | ($body[$offset + $width:$offset + $width + 1] // "") as $after
+      | (($offset == 0) or ($before | test("[A-Za-z0-9._-]") | not))
+        and (($offset + $width == ($body | length)) or
+             ($after | test("[A-Za-z0-9._-]") | not)));
+def commits_for($id): [commit_list[]? | select(bead_id_in_subject($id; (.subject // "")))];
 
 def criteria_from_description($description):
   (text($description) | split("\n")) as $lines
