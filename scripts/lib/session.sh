@@ -1034,7 +1034,64 @@ export_recent_session() {
     export_session "$recent_session" --format "$format"
 }
 
-# Convert CASS export JSON to our schema format
+# Shared text projection for CASS exports and native Codex conversion. Keep
+# provider parsing in one place so importing and resuming preserve the same
+# conversational messages. Tool payloads and reasoning are not dialogue.
+acfs_session_transcript_jq_defs() {
+    cat <<'JQ'
+def transcript_text:
+    if . == null then ""
+    elif type == "string" then .
+    elif type == "array" then
+        map(if type == "string" then .
+            elif type != "object" then error("invalid transcript content block")
+            elif (.type == null or .type == "text" or .type == "input_text" or .type == "output_text") then
+                if (.text | type) == "string" then .text else error("invalid transcript text") end
+            else "" end) | join("")
+    else error("invalid transcript content") end;
+
+def transcript_timestamp:
+    if . == null then "" elif type == "string" then .
+    else error("invalid transcript timestamp") end;
+
+def single_session_id:
+    unique | if length == 1 and (.[0] | type == "string" and test("\\S")) then .[0]
+    else error("expected exactly one source session ID") end;
+
+def codex_session_id:
+    [.[] | select(.type == "session_meta") | .payload.id] | single_session_id;
+
+def codex_messages:
+    reduce .[] as $entry ({messages: [], mirror: null};
+        if $entry.type == "event_msg" and
+           ($entry.payload.type == "task_started" or $entry.payload.type == "task_complete" or
+            $entry.payload.type == "turn_started" or $entry.payload.type == "turn_complete") then
+            .mirror = null
+        else
+            (if $entry.type == "event_msg" and
+                ($entry.payload.type == "user_message" or $entry.payload.type == "agent_message") then
+                {role: (if $entry.payload.type == "user_message" then "user" else "assistant" end),
+                 content: ($entry.payload.message | transcript_text),
+                 timestamp: ($entry.timestamp | transcript_timestamp), encoding: "event"}
+             elif $entry.type == "response_item" and
+                  ($entry.payload.type == null or $entry.payload.type == "message") and
+                  ($entry.payload.role == "user" or $entry.payload.role == "assistant") then
+                {role: $entry.payload.role, content: ($entry.payload.content | transcript_text),
+                 timestamp: ($entry.timestamp | transcript_timestamp), encoding: "response"}
+             else null end) as $message |
+            if $message == null or $message.content == "" then .
+            # Pair adjacent event/response representations, never globally
+            # unique() message text: genuine repeated turns must survive.
+            elif .mirror != null and .mirror.encoding != $message.encoding and
+                 .mirror.role == $message.role and .mirror.content == $message.content then
+                .mirror = null
+            else .messages += [($message | del(.encoding))] | .mirror = $message end
+        end) | .messages;
+JQ
+}
+
+# Convert a single supported CASS export to our schema format. The caller must
+# sanitize this projection before publishing it (import_session does so).
 # Usage: convert_to_acfs_schema <cass.json | raw_json>
 # Returns: ACFS-schema JSON to stdout
 convert_to_acfs_schema() {
@@ -1044,135 +1101,76 @@ convert_to_acfs_schema() {
         return 1
     fi
 
-    # Normalize agent hint (best-effort). CASS exports don't reliably include
-    # an "agent type" field, so callers can pass a hint (e.g., inferred from path).
+    check_session_deps || return 1
     case "$agent_hint" in
-        claude-code|codex|gemini) ;;
-        "") agent_hint="" ;;
-        *) agent_hint="unknown" ;;
+        claude_code) agent_hint="claude-code" ;;
+        ""|unknown|claude-code|codex) ;;
+        *) log_error "Unsupported CASS export agent hint: $agent_hint"; return 1 ;;
     esac
 
-    local filter
+    local defs filter
+    defs=$(acfs_session_transcript_jq_defs) || return 1
     filter="$(
         cat <<'JQ'
-        def is_claude_export:
-          any(.[]?; (.type == "user" or .type == "assistant") and (.sessionId? | type) == "string");
-
-        def is_codex_export:
-          any(.[]?; .type == "event_msg" and ((.payload.type? // "") == "user_message" or (.payload.type? // "") == "agent_message"));
-
-        def content_to_text:
-          if type == "string" then .
-          elif type == "array" then
-            (
-              [
-                .[]? |
-                if type == "string" then .
-                elif type == "object" then
-                  # Only include user-visible text blocks; exclude "thinking" / tool blocks.
-                  if ((.type? // "") == "text" or (.type? // "") == "input_text" or (.type? // "") == "output_text" or (.type? // "") == "") and (.text? | type) == "string" then .text
-                  else "" end
-                else "" end
-              ] | join("")
-            )
-          else "" end;
-
-        def messages:
-          if is_claude_export then
-            [
-              .[] |
-              select(.type == "user" or .type == "assistant") |
-	              {
-	                role: (.message.role // .type // "unknown"),
-	                content: (.message.content | content_to_text),
-	                timestamp: (.timestamp // ""),
-	                sessionId: (.sessionId? // ""),
-	                model: (.message.model? // "")
-	              }
-	            ]
-          elif is_codex_export then
-            [
-              .[] |
-              select(.type == "event_msg") |
-              select((.payload.type? // "") == "user_message" or (.payload.type? // "") == "agent_message") |
-              {
-                role: (if (.payload.type? // "") == "user_message" then "user" else "assistant" end),
-                content: (.payload.message? // "" | tostring),
-                timestamp: (.timestamp // "")
-              }
-            ]
-          else
-            []
-          end;
-
+        if length != 1 then error("expected one CASS export document") else .[0] end |
+        if type != "array" then error("expected a CASS record array")
+        elif all(.[]; type == "object") | not then error("invalid CASS record") else . end |
+        any(.[]; .type == "user" or .type == "assistant") as $claude |
+        any(.[]; .type == "session_meta" or .type == "event_msg" or .type == "response_item") as $codex |
+        if $claude == $codex then error("unrecognized or mixed CASS export formats") else . end |
+        (if $claude then "claude-code" else "codex" end) as $agent |
+        if $agent_hint != "" and $agent_hint != "unknown" and $agent_hint != $agent
+        then error("CASS export agent hint conflicts with its records") else . end |
+        (if $claude then
+            [.[] | select(.type == "user" or .type == "assistant") | .sessionId] | single_session_id
+         else codex_session_id end) as $id |
+        (if $claude then
+            [.[] | select(.type == "user" or .type == "assistant") |
+             if .message.role != null and .message.role != .type
+             then error("conflicting Claude message role") else . end |
+             {role: .type, content: (.message.content | transcript_text),
+              timestamp: (.timestamp | transcript_timestamp)} | select(.content != "")]
+         else codex_messages end) as $messages |
+        if ($messages | length) == 0 then error("source session has no conversational messages") else . end |
+        (if $claude then [.[] | .message.model?]
+         else [.[] | select(.type == "turn_context") | .payload.model?] end |
+         map(select(type == "string" and length > 0)) | .[0] // "unknown") as $model |
         {
             schema_version: 1,
             exported_at: (now | todateiso8601),
-            session_id: (
-              if is_claude_export then
-                messages as $msgs |
-                ([$msgs[] | .sessionId? | select(type == "string" and length > 0)] | .[0] // "unknown")
-              elif is_codex_export then
-                ([.[] | select(.type == "session_meta") | .payload.id? | select(type == "string" and length > 0)] | .[0] // "unknown")
-              else
-                "unknown"
-              end
-            ),
-            agent: (if ($agent_hint | length) > 0 then $agent_hint else "unknown" end),
-            model: (
-              if is_claude_export then
-                (
-	                  [
-	                    messages[] |
-	                    select(.role == "assistant") |
-	                    (.model? // "") |
-	                    select(type == "string" and length > 0)
-	                  ] | .[0] // "unknown"
-	                )
-              elif is_codex_export then
-                ([.[] | select(.type == "turn_context") | .payload.model? | select(type == "string" and length > 0)] | .[0] // "unknown")
-              else
-                "unknown"
-              end
-            ),
+            session_id: $id,
+            agent: $agent,
+            model: $model,
             summary: "Exported session",
             duration_minutes: 0,
             stats: {
-                turns: (messages | length),
+                turns: ($messages | length),
                 files_created: 0,
                 files_modified: 0,
                 commands_run: 0
             },
             outcomes: [],
             key_prompts: [],
-            sanitized_transcript: [
-                messages[] |
-                {
-                    role: (.role // "unknown"),
-                    content: (.content // ""),
-                    timestamp: (.timestamp // "")
-                }
-                | select(.content | type == "string")
-                | select((.content | length) > 0)
-            ]
+            sanitized_transcript: $messages
         }
 JQ
     )"
+    filter="$defs"$'\n'"$filter"
 
     # Prefer raw JSON when the argument clearly looks like JSON.
     if [[ "$input" == "{"* || "$input" == "["* ]]; then
-        jq --arg agent_hint "$agent_hint" "$filter" 2>/dev/null <<<"$input"
+        acfs_session_jq -es --arg agent_hint "$agent_hint" "$filter" <<<"$input"
         return $?
     fi
 
     # Prefer a readable path (regular file or FIFO like /dev/fd/*).
     if [[ -r "$input" ]]; then
-        jq --arg agent_hint "$agent_hint" "$filter" "$input" 2>/dev/null
+        acfs_session_jq -es --arg agent_hint "$agent_hint" "$filter" -- "$input"
         return $?
     fi
 
     # Fall back to treating the input as raw JSON.
-    jq --arg agent_hint "$agent_hint" "$filter" 2>/dev/null <<<"$input"
+    acfs_session_jq -es --arg agent_hint "$agent_hint" "$filter" <<<"$input"
 }
 
 # ============================================================
@@ -1478,49 +1476,16 @@ parse_native_claude_to_canonical() {
 parse_native_codex_to_canonical() {
     local input_file="$1"
     local workspace_hint="$2"
-    jq -s --arg workspace_hint "$workspace_hint" '
-        def flatten_content:
-            if . == null then ""
-            elif type == "string" then .
-            elif type == "array" then
-                ([ .[]? |
-                    if . == null then ""
-                    elif type == "string" then .
-                    elif type == "object" then (.text? // .content? // .message? // "")
-                    else "" end
-                 ] | join(""))
-            elif type == "object" then (.text? // .content? // .message? // "")
-            else "" end;
-
+    local defs
+    defs=$(acfs_session_transcript_jq_defs) || return 1
+    acfs_session_jq -es --arg workspace_hint "$workspace_hint" "$defs"'
+        if all(.[]; type == "object") | not then error("invalid Codex record") else . end |
         {
             workspace: (([ .[] | select(.type == "session_meta") | .payload.cwd? | select(type == "string" and length > 0) ] | .[0]) // ($workspace_hint // "/tmp")),
-            source_session_id: (([ .[] | select(.type == "session_meta") | .payload.id? | select(type == "string" and length > 0) ] | .[0]) // "unknown"),
-            messages: [
-                .[] |
-                if (.type == "event_msg" and ((.payload.type? // "") == "user_message")) then
-                    {
-                        role: "user",
-                        content: ((.payload.message? // "") | tostring),
-                        timestamp: (.timestamp? // "")
-                    }
-                elif (.type == "event_msg" and ((.payload.type? // "") == "agent_reasoning")) then
-                    {
-                        role: "assistant",
-                        content: ((.payload.text? // "") | tostring),
-                        timestamp: (.timestamp? // "")
-                    }
-                elif (.type == "response_item") then
-                    {
-                        role: (if ((.payload.role? // "assistant") | ascii_downcase) == "user" then "user" else "assistant" end),
-                        content: ((.payload.content? // "") | flatten_content),
-                        timestamp: (.timestamp? // "")
-                    }
-                else empty end |
-                select(.content | type == "string") |
-                select((.content | length) > 0)
-            ]
+            source_session_id: codex_session_id,
+            messages: codex_messages
         }
-    ' "$input_file"
+    ' -- "$input_file"
 }
 
 parse_native_gemini_to_canonical() {
@@ -2425,7 +2390,7 @@ generate_session_id() {
 
 # Import a session file for local viewing/reference
 # Usage: import_session <file> [--dry-run]
-import_session() {
+import_session() (
     local file=""
     local dry_run=false
     local sessions_dir=""
@@ -2433,8 +2398,22 @@ import_session() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run) dry_run=true; shift ;;
-            -*) log_warn "Unknown option: $1"; shift ;;
-            *) file="$1"; shift ;;
+            --)
+                shift
+                if [[ -n "$file" || $# != 1 ]]; then
+                    log_error "Exactly one session file is required"
+                    return 1
+                fi
+                file="$1"; shift
+                ;;
+            -*) log_error "Unknown session import option: $1"; return 1 ;;
+            *)
+                if [[ -n "$file" ]]; then
+                    log_error "Exactly one session file is required"
+                    return 1
+                fi
+                file="$1"; shift
+                ;;
         esac
     done
 
@@ -2449,81 +2428,65 @@ import_session() {
         return 1
     fi
 
-    if ! jq -e . "$file" >/dev/null 2>&1; then
+    check_session_deps || return 1
+
+    # Parse the caller's file once into a private snapshot. All validation,
+    # summaries and persistence use that snapshot, not a second read of a file
+    # which may have changed. This subshell owns its EXIT trap; caller traps and
+    # umask are unaffected, including when the library is used without set -e.
+    local tmp_source="" tmp_normalized="" tmp_publish=""
+    umask 077
+    trap 'acfs_session_remove_temp_files "$tmp_source" "$tmp_normalized" "$tmp_publish"' EXIT
+    tmp_source=$(mktemp "${TMPDIR:-/tmp}/acfs_session_import.XXXXXX") || return 1
+    tmp_normalized=$(mktemp "${TMPDIR:-/tmp}/acfs_session_normalized.XXXXXX") || return 1
+    if ! acfs_session_jq -es '
+        if length == 1 then .[0] else error("expected one session export document") end
+    ' -- "$file" > "$tmp_source"; then
         log_error "Invalid JSON: $file"
         return 1
     fi
 
-    # Detect format
-    local is_cass=false is_acfs=false
-    if jq -e 'type == "array"' "$file" >/dev/null 2>&1; then
-        # CASS exports can begin with snapshot/event records before conversation messages.
-        # Detect by scanning entries rather than assuming .[0] is a message record.
-        jq -e 'any(.[]?; (.type == "user" or .type == "assistant") and (.sessionId? | type) == "string")' "$file" >/dev/null 2>&1 && is_cass=true
-        jq -e 'any(.[]?; .type == "event_msg" and ((.payload.type? // "") == "user_message" or (.payload.type? // "") == "agent_message"))' "$file" >/dev/null 2>&1 && is_cass=true
-    fi
-    jq -e 'type == "object" and .schema_version' "$file" >/dev/null 2>&1 && is_acfs=true
-
-    # Extract metadata
-    local session_id agent turn_count first_ts last_ts
-    if [[ "$is_cass" == "true" ]]; then
-        session_id=$(jq -r '
-            if any(.[]?; .type == "user" or .type == "assistant") then
-                ([.[] | select(.type == "user" or .type == "assistant") | .sessionId] | map(select(type == "string" and length > 0)) | .[0]) // "unknown"
-            else
-                ([.[] | select(.type == "session_meta") | .payload.id?] | map(select(type == "string" and length > 0)) | .[0]) // "unknown")
-            end
-        ' "$file")
-        agent="$(infer_agent_from_cass_export "$file")"
-        turn_count=$(jq '
-            if any(.[]?; .type == "user" or .type == "assistant") then
-                ([.[] | select(.type == "user" or .type == "assistant")] | length)
-            else
-                ([.[] | select(.type == "event_msg" and ((.payload.type? // "") == "user_message" or (.payload.type? // "") == "agent_message"))] | length)
-            end
-        ' "$file")
-        first_ts=$(jq -r '
-            if any(.[]?; .type == "user" or .type == "assistant") then
-                ([.[] | select(.type == "user" or .type == "assistant") | .timestamp] | map(select(type == "string")) | .[0]) // ""
-            else
-                ([.[] | select(.type == "event_msg" and ((.payload.type? // "") == "user_message" or (.payload.type? // "") == "agent_message")) | .timestamp] | map(select(type == "string")) | .[0]) // ""
-            end
-        ' "$file")
-        last_ts=$(jq -r '
-            if any(.[]?; .type == "user" or .type == "assistant") then
-                ([.[] | select(.type == "user" or .type == "assistant") | .timestamp] | map(select(type == "string")) | .[-1]) // ""
-            else
-                ([.[] | select(.type == "event_msg" and ((.payload.type? // "") == "user_message" or (.payload.type? // "") == "agent_message")) | .timestamp] | map(select(type == "string")) | .[-1]) // ""
-            end
-        ' "$file")
-    elif [[ "$is_acfs" == "true" ]]; then
-        if ! validate_session_export "$file"; then
+    if acfs_session_jq -e 'type == "array"' "$tmp_source" >/dev/null; then
+        if ! convert_to_acfs_schema "$tmp_source" > "$tmp_normalized"; then
+            log_error "Failed to convert CASS export to ACFS schema"
             return 1
         fi
-        session_id=$(jq -r '.session_id // "unknown"' "$file")
-        agent=$(jq -r '.agent // "unknown"' "$file")
-        turn_count=$(jq '.stats.turns // 0' "$file")
-        first_ts=$(jq -r '.exported_at // ""' "$file")
-        last_ts="$first_ts"
-        local ver; ver=$(jq -r '.schema_version' "$file")
-        [[ "$ver" != "1" ]] && log_warn "Schema version $ver may not be compatible"
+    elif acfs_session_jq -e 'type == "object" and has("schema_version")' "$tmp_source" >/dev/null; then
+        cp -- "$tmp_source" "$tmp_normalized" || return 1
     else
         log_error "Unrecognized session format"; return 1
     fi
 
-    if ! acfs_session_validate_id "$session_id" "Imported source session ID"; then
+    validate_session_export "$tmp_normalized" || return 1
+    if ! acfs_session_jq -e '
+        (.sanitized_transcript | type == "array") and
+        all(.sanitized_transcript[];
+            type == "object" and (.role == "user" or .role == "assistant") and
+            (.content | type == "string") and
+            (.timestamp == null or (.timestamp | type == "string")))
+    ' "$tmp_normalized" >/dev/null; then
+        log_error "Invalid session transcript"
         return 1
     fi
+    # Dry runs must exercise the same normalization and secret-removal path.
+    if ! sanitize_session_export "$tmp_normalized"; then
+        log_error "Sanitization failed; refusing to import unsanitized session"
+        return 1
+    fi
+    validate_session_export "$tmp_normalized" || return 1
 
-    echo ""
-    echo "Session Summary:"
-    echo "  Session ID: $session_id"
-    echo "  Agent: $agent"
-    echo "  Messages: $turn_count"
-    echo "  Time: ${first_ts%T*} to ${last_ts%T*}"
+    local summary
+    summary=$(acfs_session_jq -r '
+        "Session Summary:",
+        "  Session ID: \(.session_id | @json)",
+        "  Agent: \(.agent | @json)",
+        "  Messages: \(.sanitized_transcript | length)",
+        "  Time: \((.sanitized_transcript[0].timestamp // .exported_at // "unknown") | @json) to \((.sanitized_transcript[-1].timestamp // .exported_at // "unknown") | @json)"
+    ' "$tmp_normalized") || return 1
 
     if [[ "$dry_run" == "true" ]]; then
-        echo ""; echo "(Dry run - nothing imported)"; return 0
+        printf '\n%s\n\n(Dry run - nothing imported)\n' "$summary"
+        return $?
     fi
 
     sessions_dir="$(acfs_session_storage_dir)" || return 1
@@ -2543,62 +2506,16 @@ import_session() {
     dest="$(acfs_session_child_path "$sessions_dir" "${local_id}.json")" || return 1
     acfs_session_require_new_destination "$sessions_dir" "$dest" || return 1
 
-    if [[ "$is_cass" == "true" ]]; then
-        local tmp_dest
-        tmp_dest=$(mktemp "${sessions_dir}/.${local_id}.XXXXXX.tmp" 2>/dev/null) || {
-            log_error "Failed to create temp file for import in: $sessions_dir"
-            return 1
-        }
-
-        if ! convert_to_acfs_schema "$file" "$agent" > "$tmp_dest"; then
-            acfs_session_remove_temp_files "$tmp_dest"
-            log_error "Failed to convert CASS export to ACFS schema"
-            return 1
-        fi
-
-        # Always sanitize imported output before persisting.
-        if ! sanitize_session_export "$tmp_dest"; then
-            acfs_session_remove_temp_files "$tmp_dest"
-            log_error "Sanitization failed; refusing to import unsanitized session"
-            return 1
-        fi
-
-        if ! acfs_session_publish_new_file "$tmp_dest" "$sessions_dir" "$dest"; then
-            acfs_session_remove_temp_files "$tmp_dest"
-            log_error "Failed to write imported session: $dest"
-            return 1
-        fi
-    else
-        local tmp_dest
-        tmp_dest=$(mktemp "${sessions_dir}/.${local_id}.XXXXXX.tmp" 2>/dev/null) || {
-            log_error "Failed to create temp file for import in: $sessions_dir"
-            return 1
-        }
-
-        if ! cp -- "$file" "$tmp_dest"; then
-            acfs_session_remove_temp_files "$tmp_dest"
-            log_error "Failed to copy session export into staging file"
-            return 1
-        fi
-
-        # Always sanitize imported output before persisting.
-        if ! sanitize_session_export "$tmp_dest"; then
-            acfs_session_remove_temp_files "$tmp_dest"
-            log_error "Sanitization failed; refusing to import unsanitized session"
-            return 1
-        fi
-
-        if ! acfs_session_publish_new_file "$tmp_dest" "$sessions_dir" "$dest"; then
-            acfs_session_remove_temp_files "$tmp_dest"
-            log_error "Failed to write imported session: $dest"
-            return 1
-        fi
+    # Stage on the destination filesystem for an atomic, no-clobber publish.
+    tmp_publish=$(mktemp "${sessions_dir}/.${local_id}.XXXXXX.tmp") || return 1
+    if ! cp -- "$tmp_normalized" "$tmp_publish" ||
+       ! acfs_session_publish_new_file "$tmp_publish" "$sessions_dir" "$dest"; then
+        log_error "Failed to write imported session: $dest"
+        return 1
     fi
 
-    echo ""
-    echo "Imported as: $local_id"
-    echo "View with: show_session $local_id"
-}
+    printf '\n%s\n\nImported as: %s\nView with: show_session %s\n' "$summary" "$local_id" "$local_id"
+)
 
 # Show an imported session
 # Usage: show_session <id> [--format json|markdown|summary]

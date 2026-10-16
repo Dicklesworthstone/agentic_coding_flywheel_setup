@@ -236,6 +236,11 @@ mock_session_search() {
     assert_success
 }
 
+@test "import_session: complete recovery pipeline shell regressions" {
+    run bash "$PROJECT_ROOT/scripts/tests/test_session_import.sh"
+    assert_success
+}
+
 @test "session library: sources under set -u without HOME" {
     run env -i PATH="/usr/bin:/bin" bash -c 'set -euo pipefail; source "$1"; printf "<%s>\n" "${ACFS_SESSIONS_DIR:-}"' _ "$PROJECT_ROOT/scripts/lib/session.sh"
     assert_success
