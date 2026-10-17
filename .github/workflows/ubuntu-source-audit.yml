@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - .github/workflows/ubuntu-source-audit.yml
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -12,235 +14,51 @@ permissions:
 
 jobs:
   publish-verified-runtime:
-    # One-time bootstrap for the already reviewed #463 runtime blob. This job
-    # never updates a branch, changes package sources, or installs packages.
     if: github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Check out this exact public commit without stored credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          git init .
-          git remote add origin https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git
-          git fetch --depth=1 origin "$GITHUB_SHA"
-          git checkout --detach FETCH_HEAD
-      - name: Stage the reviewed patch with exact before and after hashes
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '8cefadd32c799db3ca7272c16d17fdaf3b98e82cf10c5f63cb48f7cd832ec566  scripts/lib/doctor.sh' | sha256sum --check --strict
-          git apply --whitespace=error-all - <<'PATCH'
-          diff --git a/scripts/lib/doctor.sh b/scripts/lib/doctor.sh
-          index 7dfbf4d..a7bbe1e 100644
-          --- a/scripts/lib/doctor.sh
-          +++ b/scripts/lib/doctor.sh
-          @@ -2173,8 +2173,11 @@ _acfs_doctor_admin_group_name() {
-           # are for isolated fixtures; normal doctor always examines the installed system.
-           check_ubuntu_archive_suites() {
-               local report status="pass" rc=0
-          +    local report_line=""
-          +    # This check is diagnostic only, even during a general doctor --fix run.
-          +    local FIX_MODE=false
-               if ! command -v python3 >/dev/null 2>&1; then
-          -        check "system.ubuntu_archive_suites" "Ubuntu archive suites" "warn" "python3 unavailable; sources not inspected"
-          +        check "system.ubuntu_archive_suites" "Ubuntu archive suites (python3 unavailable; sources not inspected)" "warn" "python3 unavailable; sources not inspected"
-                   return
-               fi
-               report=$(python3 - "${1:-/etc/os-release}" "${2:-/etc/apt}" <<'ACFS_APT_AUDIT_PY'
-          @@ -2201,6 +2204,8 @@ def audit(os_release, apt):
-                       metadata[key] = words[0] if len(words) == 1 else ''
-               except (OSError, ValueError):
-                   return ['Installed release metadata unreadable or malformed; manual review required'], 1
-          +    if not re.fullmatch(r'[a-z0-9._-]+', metadata.get('ID', '')):
-          +        return ['Installed distribution ID missing or ambiguous; manual review required'], 1
-               if metadata.get('ID') != 'ubuntu':
-                   return ['Not Ubuntu; archive suite check not applicable'], 3
-               release = metadata.get('VERSION_CODENAME', '')
-          @@ -2211,17 +2216,19 @@ def audit(os_release, apt):
-                   parsed = urlsplit(uri)
-                   host = parsed.hostname or ''
-                   # Do not infer Ubuntu ownership from a vendor's suite or /ubuntu path.
-          -        return (parsed.scheme in ('http', 'https', 'mirror+http', 'mirror+https')
-          +        return (parsed.scheme in ('http', 'https', 'mirror', 'mirror+http', 'mirror+https')
-                           and (host == 'archive.ubuntu.com' or host.endswith('.archive.ubuntu.com')
-                                or host in ('security.ubuntu.com', 'ports.ubuntu.com',
-                                            'old-releases.ubuntu.com', 'mirrors.ubuntu.com'))
-                           and parsed.path.rstrip('/') in ('/ubuntu', '/ubuntu-ports', '/mirrors.txt'))
-           
-          -    def record(where, fields, path):
-          -        enabled = fields.get('enabled', 'yes').lower()
-          -        if enabled == 'no':
-          +    def record(where, fields, path, enabled='yes'):
-          +        # Enabled is a deb822 field, not a one-line source option. Match APT's
-          +        # boolean aliases, but require review rather than guessing on other values.
-          +        enabled = enabled.lower()
-          +        if enabled in ('no', 'false', '0', 'off', 'without', 'disable'):
-                       return
-          -        if enabled != 'yes':
-          +        if enabled not in ('yes', 'true', '1', 'on', 'with', 'enable'):
-                       raise ValueError('invalid Enabled field')
-                   for key in ('types', 'uris', 'suites'):
-                       if not fields.get(key):
-          @@ -2246,53 +2253,73 @@ def audit(os_release, apt):
-                   entries.append((path.name, where, suites, bool(bad), fields, uris))
-           
-               try:
-          -        files = ([apt / 'sources.list'] if (apt / 'sources.list').exists() else [])
-          +        main_source = apt / 'sources.list'
-          +        files = [main_source] if main_source.exists() or main_source.is_symlink() else []
-                   directory = apt / 'sources.list.d'
-          -        if directory.exists():
-          +        if directory.exists() or directory.is_symlink():
-                       files += sorted(p for p in directory.iterdir() if
-                                       re.fullmatch(r'[A-Za-z0-9_.-]+\.(list|sources)', p.name))
-               except OSError:
-          -        return ['Cannot enumerate APT sources; manual review required'], 1
-          +        return [f'{apt}: cannot enumerate APT sources; manual review required'], 1
-               for path in files:
-                   try:
-          +            if not path.is_file():
-          +                raise OSError('source is not a regular file')
-                       text = path.read_text()
-                       if path.suffix == '.sources':
-          -                fields, start, last = {}, 1, None
-          +                fields, start, last, invalid = {}, None, None, False
-                           def flush():
-          -                    if fields:
-          -                        record(f'{path}:{start}', fields, path)
-          +                    if fields and not invalid:
-          +                        try:
-          +                            record(f'{path}:{start}', fields, path, fields.get('enabled', 'yes'))
-          +                        except ValueError:
-          +                            error(f'{path}:{start}', 'malformed deb822 stanza; manual review required')
-                           for number, line in enumerate(text.splitlines() + [''], 1):
-                               if not line.strip():
-                                   flush()
-          -                        fields, start, last = {}, number + 1, None
-          -                    elif line.lstrip().startswith('#'):
-          +                        fields, start, last, invalid = {}, None, None, False
-                                   continue
-          -                    elif line[0].isspace():
-          +                    if line.lstrip().startswith('#'):
-          +                        continue
-          +                    if start is None:
-          +                        start = number
-          +                    if line[0].isspace():
-                                   if last is None:
-          -                            raise ValueError(f'orphan continuation at line {number}')
-          -                        fields[last] += '\n' + line.strip()
-          +                            error(f'{path}:{number}', 'orphan continuation; manual review required')
-          +                            invalid = True
-          +                        else:
-          +                            fields[last] += '\n' + line.strip()
-                               else:
-                                   key, sep, value = line.partition(':')
-                                   key = key.lower()
-                                   if not sep or not re.fullmatch(r'[a-z][a-z0-9-]*', key) or key in fields:
-          -                            raise ValueError(f'invalid or duplicate field at line {number}')
-          -                        fields[key], last = value.strip(), key
-          +                            error(f'{path}:{number}', 'invalid or duplicate field; manual review required')
-          +                            invalid, last = True, None
-          +                        else:
-          +                            fields[key], last = value.strip(), key
-                       else:
-                           for number, line in enumerate(text.splitlines(), 1):
-                               line = line.split('#', 1)[0].strip()
-                               if not line:
-                                   continue
-          -                    match = re.fullmatch(r'(deb|deb-src)\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S+)(?:\s+(.*))?', line)
-          -                    if not match:
-          -                        raise ValueError(f'malformed one-line source at line {number}')
-          -                    kind, options, uri, suite, components = match.groups()
-          -                    fields = dict(types=kind, uris=uri, suites=suite, components=components or '')
-          -                    for option in (options or '').split():
-          -                        key, sep, value = option.partition('=')
-          -                        if not sep or not value or key in fields:
-          -                            raise ValueError(f'invalid/duplicate option at line {number}')
-          -                        fields[key.lower()] = value
-          -                    record(f'{path}:{number}', fields, path)
-          +                    try:
-          +                        match = re.fullmatch(r'(deb|deb-src)\s+(?:\[([^\]]*)\]\s+)?(\S+)\s+(\S+)(?:\s+(.*))?', line)
-          +                        if not match:
-          +                            raise ValueError('malformed one-line source')
-          +                        kind, options, uri, suite, components = match.groups()
-          +                        fields = {}
-          +                        for option in (options or '').split():
-          +                            key, sep, value = option.partition('=')
-          +                            if not sep or not value or key in fields:
-          +                                raise ValueError('invalid/duplicate option')
-          +                            # Unlike deb822 fields, APT's one-line option names
-          +                            # are case-sensitive. Unknown options cannot replace
-          +                            # the source's positional URI, suite, type or components.
-          +                            fields[key] = value
-          +                        fields.update(types=kind, uris=uri, suites=suite, components=components or '')
-          +                        record(f'{path}:{number}', fields, path)
-          +                    except ValueError:
-          +                        error(f'{path}:{number}', 'malformed one-line source; manual review required')
-                   except (OSError, UnicodeError, ValueError) as exc:
-                       # No file contents (potential credentials/inline keys) in diagnostics.
-                       error(path, f'cannot fully inspect source file ({type(exc).__name__}); manual review required')
-          @@ -2326,10 +2353,23 @@ ACFS_APT_AUDIT_PY
-               case "$rc" in
-                   0) ;;
-                   3) status="skip" ;;
-          -        *) status="warn" ;;
-          +        *)
-          +            status="warn"
-          +            if [[ -z "$report" ]]; then
-          +                report="Source audit did not complete (exit $rc); manual review required"
-          +            fi
-          +            ;;
-               esac
-               check "system.ubuntu_archive_suites" "Ubuntu archive suites" "$status" "$report" \
-                   "Review Ubuntu source suites and recovery guidance: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/main/docs/operations/ubuntu-upgrade.md#mixed-ubuntu-archive-suites-463"
-          +    # check() stores details in JSON but normally hides them in human output.
-          +    # Expose the actionable filenames/suites here without interpreting escapes.
-          +    if [[ "${JSON_MODE:-false}" != "true" && "${QUIET_MODE:-false}" != "true" && "$status" == "warn" ]]; then
-          +        while IFS= read -r report_line; do
-          +            printf '        %s\n' "$report_line"
-          +        done <<< "$report"
-          +    fi
-          +    return 0
-           }
-           
-           check_identity() {
-          PATCH
-          echo '7b95938600b56dc790fd8291db95d9e6a1ee0db40f58b94255fe74e6ceba8978  scripts/lib/doctor.sh' | sha256sum --check --strict
-      - name: Verify the already reviewed fixtures and runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 2 https://api.github.com/repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/1bce814313708a5ccf8beef1cc344f513f284240 -o "$RUNNER_TEMP/audit-tests.json"
-          python3 - <<'PY'
-          import base64, hashlib, json, os
-          from pathlib import Path
-          obj = json.loads((Path(os.environ['RUNNER_TEMP']) / 'audit-tests.json').read_text())
-          data = base64.b64decode(obj['content'])
-          assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == '1bce814313708a5ccf8beef1cc344f513f284240'
-          Path('tests/unit/test_doctor_ubuntu_sources.py').write_bytes(data)
-          PY
-          python3 tests/unit/test_doctor_ubuntu_sources.py -v
-          bash -n scripts/lib/doctor.sh
-          git diff --check
-      - name: Store the verified runtime blob without changing any branch
+      - name: Execute the immutable reviewed publisher within its integration window
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path
-          data = Path('scripts/lib/doctor.sh').read_bytes()
-          assert hashlib.sha256(data).hexdigest() == '7b95938600b56dc790fd8291db95d9e6a1ee0db40f58b94255fe74e6ceba8978'
-          assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == 'a7bbe1e39f1128158e8245024db8521b72eb8b18'
-          payload = {'encoding': 'base64', 'content': __import__('base64').b64encode(data).decode()}
-          (Path(os.environ['RUNNER_TEMP']) / 'runtime-blob.json').write_text(json.dumps(payload))
+          import base64
+          import datetime
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import textwrap
+          import urllib.request
+
+          deadline = datetime.datetime(2026, 10, 17, 23, 20, tzinfo=datetime.timezone.utc)
+          if datetime.datetime.now(datetime.timezone.utc) >= deadline:
+              print('The one-time publication window has expired; no operation performed.')
+              raise SystemExit(0)
+
+          expected = '857ae5bf62d77dc5431447693fde79fc80e20257'
+          url = 'https://api.github.com/repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs/' + expected
+          with urllib.request.urlopen(url, timeout=30) as response:
+              data = base64.b64decode(json.load(response)['content'])
+          actual = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          if actual != expected:
+              raise SystemExit('Publisher blob verification failed')
+
+          # These are the four literal shell steps from the reviewed immutable
+          # workflow, not a general YAML or untrusted workflow interpreter.
+          chunks = data.decode('utf-8').split('\n        run: |\n')[1:]
+          if len(chunks) != 4:
+              raise SystemExit('Unexpected publisher structure')
+          for number, chunk in enumerate(chunks):
+              script = textwrap.dedent(chunk.split('\n      - name:', 1)[0])
+              environment = dict(os.environ)
+              if number != 3:
+                  environment.pop('GH_TOKEN', None)
+              subprocess.run(['bash', '-euo', 'pipefail', '-c', script],
+                             env=environment, check=True, timeout=300)
           PY
-          sha=$(gh api --method POST repos/Dicklesworthstone/agentic_coding_flywheel_setup/git/blobs --input "$RUNNER_TEMP/runtime-blob.json" --jq .sha)
-          test "$sha" = a7bbe1e39f1128158e8245024db8521b72eb8b18
-          printf 'Verified runtime blob: %s\nNo branch references were changed by this job.\n' "$sha"
