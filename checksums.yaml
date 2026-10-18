@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-18T19:18:21+00:00
+# checksums.yaml - Auto-generated 2026-10-17T19:00:22+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -16,7 +16,7 @@ installers:
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
-    sha256: "69c7c0e057084ede4536de25f856c037f4649dcf8f29cc98a64ac52340320a99"
+    sha256: "e632c6d1dc71e75c9710caf5f645c11131f0d94c859ed6b4266444e11240abdb"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
@@ -124,7 +124,7 @@ installers:
 
   opencode:
     url: "https://opencode.ai/install"
-    sha256: "a2dd59522b9a091b6cdb2e4870c0f2135f7da09807cd5a7e04222d4316925b72"
+    sha256: "fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e"
 
   pcr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
