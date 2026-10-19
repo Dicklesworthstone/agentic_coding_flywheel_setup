@@ -3152,7 +3152,7 @@ sync_acfs_zshrc() {
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "ok" "acfs.zshrc" "would sync from repo (changed)"
+        log_item "skip" "acfs.zshrc" "dry-run: would sync from repo (changed)"
         return 0
     fi
 
@@ -3191,7 +3191,7 @@ sync_acfs_zsh_loader() {
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "ok" "acfs.zsh loader" "would remove duplicate ~/.zshrc.local sourcing from ~/.zshrc"
+        log_item "skip" "acfs.zsh loader" "dry-run: would remove duplicate ~/.zshrc.local sourcing from ~/.zshrc"
         return 0
     fi
 
@@ -3247,7 +3247,7 @@ sync_acfs_profile_paths() {
 
     if [[ ! -f "$user_profile" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "ok" "acfs.profile" "would create login PATH including ~/.atuin/bin"
+            log_item "skip" "acfs.profile" "dry-run: would create login PATH including ~/.atuin/bin"
             return 0
         fi
 
@@ -3264,7 +3264,7 @@ sync_acfs_profile_paths() {
 
     if grep -Fxq "$legacy_path_line" "$user_profile" 2>/dev/null; then
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "ok" "acfs.profile" "would update login PATH to include ~/.atuin/bin"
+            log_item "skip" "acfs.profile" "dry-run: would update login PATH to include ~/.atuin/bin"
             return 0
         fi
 
@@ -3281,7 +3281,7 @@ sync_acfs_profile_paths() {
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "ok" "acfs.profile" "would add login PATH including ~/.atuin/bin"
+        log_item "skip" "acfs.profile" "dry-run: would add login PATH including ~/.atuin/bin"
         return 0
     fi
 
@@ -3305,7 +3305,7 @@ sync_acfs_zprofile_paths() {
 
     if [[ ! -f "$user_zprofile" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "ok" "acfs.zprofile" "would create login PATH including ~/.atuin/bin"
+            log_item "skip" "acfs.zprofile" "dry-run: would create login PATH including ~/.atuin/bin"
             return 0
         fi
 
@@ -3322,7 +3322,7 @@ sync_acfs_zprofile_paths() {
 
     if grep -Fxq "$legacy_path_line" "$user_zprofile" 2>/dev/null; then
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "ok" "acfs.zprofile" "would update login PATH to include ~/.atuin/bin"
+            log_item "skip" "acfs.zprofile" "dry-run: would update login PATH to include ~/.atuin/bin"
             return 0
         fi
 
@@ -3339,7 +3339,7 @@ sync_acfs_zprofile_paths() {
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "ok" "acfs.zprofile" "would add login PATH including ~/.atuin/bin"
+        log_item "skip" "acfs.zprofile" "dry-run: would add login PATH including ~/.atuin/bin"
         return 0
     fi
 
@@ -5722,6 +5722,39 @@ _acfs_remote_main_head() {
     git -C "$ACFS_REPO_ROOT" ls-remote --heads origin main 2>/dev/null | awk 'NR==1 { print $1 }'
 }
 
+# Describe what a real self-update would do, using only local objects and the
+# remote head from ls-remote: no fetch, no ref updates, no working-tree change.
+# The commit count is known only when origin/main's commit is already local.
+_acfs_self_update_preview() {
+    local local_head="$1"
+    local remote_head="$2"
+    local range="${local_head:0:12}..${remote_head:0:12}"
+    local preview="" commit_count=""
+
+    if git -C "$ACFS_REPO_ROOT" cat-file -e "${remote_head}^{commit}" 2>/dev/null; then
+        if git -C "$ACFS_REPO_ROOT" merge-base --is-ancestor "$local_head" "$remote_head" 2>/dev/null; then
+            commit_count="$(git -C "$ACFS_REPO_ROOT" rev-list --count "${local_head}..${remote_head}" 2>/dev/null || true)"
+            preview="would fast-forward main $range (${commit_count:-?} commits)"
+        elif git -C "$ACFS_REPO_ROOT" merge-base --is-ancestor "$remote_head" "$local_head" 2>/dev/null; then
+            printf 'local main is ahead of origin/main (%s); nothing to pull\n' "${remote_head:0:12}"
+            return 0
+        else
+            printf 'local main has diverged from origin/main (%s); the ff-only pull would fail\n' "${remote_head:0:12}"
+            return 0
+        fi
+    else
+        # Without origin/main's commit there is no way to tell a fast-forward
+        # from a divergence, so do not promise one.
+        preview="would fetch, then fast-forward main $range if possible (commit count unknown until fetched)"
+    fi
+
+    # The real run refuses to pull over tracked local modifications.
+    if [[ -n "$(git --no-optional-locks -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+        preview+="; tracked local modifications would block the pull"
+    fi
+    printf '%s; nothing fetched or pulled\n' "$preview"
+}
+
 # ------------------------------------------------------------
 # Self-Update: Update ACFS itself before anything else
 # ------------------------------------------------------------
@@ -5757,7 +5790,7 @@ update_acfs_self() {
             return 0
         fi
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "ok" "ACFS self-update" "would recover incomplete git bootstrap"
+            log_item "skip" "ACFS self-update" "dry-run: would recover incomplete git bootstrap"
             return 0
         fi
         log_to_file "Detected incomplete git bootstrap — attempting recovery..."
@@ -5793,7 +5826,7 @@ update_acfs_self() {
         fi
 
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_item "ok" "ACFS self-update" "would bootstrap git checkout from https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git"
+            log_item "skip" "ACFS self-update" "dry-run: would bootstrap git checkout from https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git"
             return 0
         fi
 
@@ -5896,7 +5929,10 @@ update_acfs_self() {
         if [[ "$local_head" == "$remote_head" ]]; then
             log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
         else
-            log_item "ok" "ACFS" "would update (remote main differs)"
+            # A preview is not an update: report it as skipped work, with the
+            # detail always visible, so the summary never counts it as updated.
+            log_item "skip" "ACFS self-update" \
+                "dry-run: $(_acfs_self_update_preview "$local_head" "$remote_head")"
         fi
         return 0
     fi
@@ -5935,12 +5971,6 @@ update_acfs_self() {
     local commit_count
     commit_count=$(git -C "$ACFS_REPO_ROOT" rev-list --count "HEAD..origin/main" 2>/dev/null) || commit_count="?"
     log_to_file "Found $commit_count new commit(s)"
-
-    # Dry run mode
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "ok" "ACFS" "would update ($commit_count new commits)"
-        return 0
-    fi
 
     # Skip full git pull if tracked files have local modifications to avoid
     # merge conflicts. Use --untracked-files=no because ~/.acfs/ contains

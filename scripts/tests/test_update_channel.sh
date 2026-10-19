@@ -367,6 +367,12 @@ dry_run_self_update_output=$(
                     printf "2222222222222222222222222222222222222222\trefs/heads/main\n"
                     return 0
                     ;;
+                *"cat-file -e 2222222222222222222222222222222222222222^{commit}"*)
+                    return 1
+                    ;;
+                *"status --porcelain --untracked-files=no"*)
+                    return 0
+                    ;;
                 *)
                     printf "unexpected git call: %s\n" "$*" >&2
                     return 98
@@ -379,10 +385,94 @@ dry_run_self_update_output=$(
 ) || true
 
 if ! echo "$dry_run_self_update_output" | grep -q '^FETCH_CALLED=yes$' \
-    && echo "$dry_run_self_update_output" | grep -q '^ok|ACFS|would update (remote main differs)$'; then
+    && ! echo "$dry_run_self_update_output" | grep -q 'unexpected git call' \
+    && echo "$dry_run_self_update_output" | grep -qxF 'skip|ACFS self-update|dry-run: would fetch, then fast-forward main 111111111111..222222222222 if possible (commit count unknown until fetched); nothing fetched or pulled'; then
     pass "ACFS self-update dry-run uses a non-mutating remote probe instead of git fetch"
 else
     fail "ACFS self-update dry-run still triggered git fetch or lost its preview output: $dry_run_self_update_output"
+fi
+
+# ============================================================
+section "Test 3f1: ACFS self-update dry-run previews a real checkout without moving it (GH #465)"
+# ============================================================
+# Real git objects; only the network probe and the origin URL are stubbed.
+self_update_preview_root="$(mktemp -d "${TMPDIR:-/tmp}/acfs-self-update-preview.XXXXXX")"
+self_update_preview_output=$(
+    SELF_UPDATE_PREVIEW_ROOT="$self_update_preview_root" bash -c '
+        set -uo pipefail
+        source "'"$UPDATE_SH"'"
+        root="$SELF_UPDATE_PREVIEW_ROOT/checkout"
+        command git init -q -b main "$root"
+        command git -C "$root" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
+        old_head="$(command git -C "$root" rev-parse HEAD)"
+        command git -C "$root" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m two
+        command git -C "$root" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m three
+        new_head="$(command git -C "$root" rev-parse HEAD)"
+        # Leave main at the old commit; the newer commits stay as local objects.
+        command git -C "$root" update-ref refs/heads/main "$old_head"
+        printf "tracked\n" > "$root/file.txt"
+        command git -C "$root" add file.txt
+        command git -C "$root" -c user.name=t -c user.email=t@example.invalid commit -q -m tracked
+        diverged_head="$(command git -C "$root" rev-parse HEAD)"
+        # Not named remote_head: update_acfs_self has a local of that name,
+        # which would shadow it inside the git stub below.
+        stub_remote_head="$new_head"
+
+        ACFS_REPO_ROOT="$root"
+        DRY_RUN=true
+        QUIET=true
+        UPDATE_SELF=true
+        ACFS_SELF_UPDATE_DONE=false
+        UPDATE_LOG_FILE="/dev/null"
+        ACFS_VERSION_DISPLAY="vtest"
+        SUCCESS_COUNT=0
+        SKIP_COUNT=0
+        FAIL_COUNT=0
+        NO_COLOR=1
+        RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
+        git() {
+            case "$*" in
+                *"remote get-url origin"*)
+                    printf "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git\n"; return 0 ;;
+                *"ls-remote --heads origin main"*)
+                    printf "%s\trefs/heads/main\n" "$stub_remote_head"; return 0 ;;
+                *" fetch "*|*" pull "*|*" merge "*|*" reset "*|*" checkout "*)
+                    echo "MUTATING_GIT_CALL=$*"; return 99 ;;
+            esac
+            command git "$@"
+        }
+        log_item() {
+            printf "%s|%s|%s\n" "$1" "$2" "${3:-}"
+            case "$1" in ok) SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) ;; skip) SKIP_COUNT=$((SKIP_COUNT + 1)) ;; esac
+        }
+
+        # Diverged: main carries a local commit that origin/main lacks.
+        update_acfs_self
+        # Behind: point main back at the ancestor of origin/main.
+        command git -C "$root" update-ref refs/heads/main "$old_head"
+        command git -C "$root" read-tree -u --reset "$old_head"
+        update_acfs_self
+        # Behind with a tracked modification: the real run would refuse to pull.
+        printf "dirty\n" > "$root/file.txt"
+        command git -C "$root" add file.txt
+        update_acfs_self
+        printf "HEAD_AFTER=%s\n" "$(command git -C "$root" rev-parse HEAD)"
+        printf "OLD_HEAD=%s\n" "$old_head"
+        printf "DIVERGED_HEAD=%s\n" "$diverged_head"
+        printf "COUNTS=%s/%s/%s\n" "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+    ' 2>&1
+) || true
+
+self_update_old_head="$(printf '%s\n' "$self_update_preview_output" | sed -n 's/^OLD_HEAD=//p')"
+if ! printf '%s\n' "$self_update_preview_output" | grep -q 'MUTATING_GIT_CALL' \
+    && printf '%s\n' "$self_update_preview_output" | grep -Eq '^skip\|ACFS self-update\|dry-run: local main has diverged from origin/main \([0-9a-f]{12}\); the ff-only pull would fail$' \
+    && printf '%s\n' "$self_update_preview_output" | grep -Eq '^skip\|ACFS self-update\|dry-run: would fast-forward main [0-9a-f]{12}\.\.[0-9a-f]{12} \(2 commits\); nothing fetched or pulled$' \
+    && printf '%s\n' "$self_update_preview_output" | grep -Eq '^skip\|ACFS self-update\|dry-run: would fast-forward main [0-9a-f]{12}\.\.[0-9a-f]{12} \(2 commits\); tracked local modifications would block the pull; nothing fetched or pulled$' \
+    && printf '%s\n' "$self_update_preview_output" | grep -qx "HEAD_AFTER=$self_update_old_head" \
+    && printf '%s\n' "$self_update_preview_output" | grep -qx 'COUNTS=0/3/0'; then
+    pass "ACFS self-update dry-run reports range, divergence and blockers as skipped work without moving the checkout"
+else
+    fail "ACFS self-update dry-run preview is wrong or mutated the checkout: $self_update_preview_output"
 fi
 
 # ============================================================
