@@ -7682,8 +7682,20 @@ update_stack() {
         fi
     fi
 
-    # RCH (Remote Compilation Helper) - always install/update and keep daemon/fleet setup active
-    run_cmd "RCH" update_run_verified_installer rch --easy-mode
+    # RCH (Remote Compilation Helper) - always install/update and keep daemon/fleet setup active.
+    # An operator's RCH_SKIP_SKILL=1 (for example in a drop-in for
+    # acfs-nightly-update.service) tells the installer to leave the rch agent
+    # skill alone when another tool manages it
+    # (Dicklesworthstone/remote_compilation_helper#93). Forward it as an
+    # explicit installer env assignment: when the installer runs for another
+    # user through sudo, sudo drops the caller's environment. Binary, hook and
+    # daemon updates are unaffected; rch installers that predate the variable
+    # ignore it.
+    if [[ "${RCH_SKIP_SKILL:-}" == "1" ]]; then
+        run_cmd "RCH" update_run_verified_installer_with_env rch "RCH_SKIP_SKILL=1" --easy-mode
+    else
+        run_cmd "RCH" update_run_verified_installer rch --easy-mode
+    fi
 
     # GIIL (Google Image Inline Linker) - always install/update
     run_cmd "GIIL" update_run_verified_installer giil
@@ -8506,6 +8518,10 @@ ENVIRONMENT VARIABLES:
                      check finds them running a replaced binary, e.g. "cm" or
                      "cm,cass" (default: unset, report only). For the nightly
                      run only, set it in a drop-in for acfs-nightly-update.service.
+  RCH_SKIP_SKILL     Set to 1 to update rch but leave its Claude/Codex agent
+                     skill untouched (for a skill another tool manages).
+                     Forwarded to the rch installer; versions that predate
+                     it ignore it.
 
 TROUBLESHOOTING:
   - If apt is locked: wait for other package operations to finish.

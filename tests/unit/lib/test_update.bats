@@ -1876,6 +1876,75 @@ _setup_stack_agent_mail_gate_fixture() {
     assert_failure
 }
 
+# remote_compilation_helper#93: RCH_SKIP_SKILL=1 must reach the rch installer
+# as an explicit env assignment (sudo drops the caller's environment when the
+# installer runs for another user), and nothing changes when it is unset or
+# not "1".
+@test "update_stack forwards RCH_SKIP_SKILL=1 to the rch installer only when set to 1" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
+    local calls_file="$HOME/verified-installer-calls"
+    local value=""
+
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    UPDATE_STACK=true
+    ABORT_ON_FAILURE=false
+    ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://example.test/install-am.sh")
+
+    update_require_security() { return 0; }
+    get_checksum() { printf '%s\n' "abc123"; }
+    verify_checksum() {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'exit 0'
+    }
+    update_target_user() { id -un; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_run_logged_passthrough() { return 0; }
+    update_source_stack_lib() { return 1; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_binary_exists() { return 1; }
+    update_run_verified_installer() {
+        printf 'plain:%s\n' "$*" >> "$calls_file"
+        return 0
+    }
+    update_run_verified_installer_with_env() {
+        printf 'env:%s\n' "$*" >> "$calls_file"
+        return 0
+    }
+    update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() { return 0; }
+    update_run_verified_installer_or_existing_on_transient() { return 0; }
+    update_run_slb_verified_install() { return 0; }
+    update_run_fsfs_installer() { return 0; }
+
+    export RCH_SKIP_SKILL=1
+    run update_stack
+    assert_success
+    run grep -Fx "env:rch RCH_SKIP_SKILL=1 --easy-mode" "$calls_file"
+    assert_success
+    run grep -Fx "plain:rch --easy-mode" "$calls_file"
+    assert_failure
+
+    for value in "" 0 true; do
+        : > "$calls_file"
+        if [[ -n "$value" ]]; then export RCH_SKIP_SKILL="$value"; else unset RCH_SKIP_SKILL; fi
+        run update_stack
+        assert_success
+        run grep -Fx "plain:rch --easy-mode" "$calls_file"
+        assert_success
+        run grep -F "RCH_SKIP_SKILL" "$calls_file"
+        assert_failure
+    done
+    unset RCH_SKIP_SKILL
+}
+
 @test "update_stack honors abort-on-failure for MCP Agent Mail target-home failure" {
     update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
