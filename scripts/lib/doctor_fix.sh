@@ -2363,6 +2363,28 @@ doctor_fix_atuin_configured_socket() {
     ' "$config_file" 2>/dev/null | tail -n1
 }
 
+# Resolve a configured daemon.socket_path the way atuin >= 18.9 does
+# (shellexpand::full: a leading ~, $VAR, ${VAR}), with ~ and HOME as the
+# runtime user's home (#460). rc 1 when it names any other variable, whose
+# value depends on the environment of whoever reads the config.
+# Mirrors doctor_atuin_resolve_socket_path in doctor.sh.
+doctor_fix_atuin_resolve_socket_path() {
+    local value="${1:-}"
+    local home="${2:-}"
+    [[ -n "$value" && "$home" == /* ]] || return 1
+
+    # shellcheck disable=SC2088 # matching a literal ~ from the config text
+    case "$value" in
+        "~") value="$home" ;;
+        "~/"*) value="$home/${value:2}" ;;
+    esac
+    value="${value//'${HOME}'/"$home"}"
+    value="${value//'$HOME/'/"$home/"}"
+    [[ "$value" != *'$HOME' ]] || value="${value%'$HOME'}$home"
+    [[ "$value" != *'$'* ]] || return 1
+    printf '%s\n' "$value"
+}
+
 # Stop any running atuin daemon. Split out so tests can replace it: the real
 # thing signals processes system-wide. The bracketed pattern cannot match the
 # command line of a shell that is running this very hint (#404).
@@ -2440,7 +2462,16 @@ fix_atuin_daemon_socket() {
     configured_socket="$(doctor_fix_atuin_configured_socket "$config_file")"
     local need_pin=false
     [[ -n "$configured_socket" ]] || need_pin=true
-    local target_socket="${configured_socket:-$default_socket}"
+    local target_socket="$default_socket"
+    # Wait for the path atuin will bind, not the literal config text: a
+    # "~/..." value never exists as a file under that name (#460).
+    if [[ "$need_pin" != "true" ]] \
+        && ! target_socket="$(doctor_fix_atuin_resolve_socket_path "$configured_socket" "$runtime_home")"; then
+        doctor_fix_log WARN "atuin daemon.socket_path ($configured_socket) depends on environment variables; not restarting the daemon on a path doctor cannot resolve"
+        FIXES_MANUAL+=("$check_id|Pin daemon.socket_path to an absolute path by hand|set socket_path = \"$default_socket\" under [daemon] in $config_file")
+        FIX_MANUAL=$((FIX_MANUAL + 1))
+        return 1
+    fi
 
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
         if [[ "$need_pin" == "true" ]]; then
@@ -2468,8 +2499,9 @@ fix_atuin_daemon_socket() {
             return 1
         fi
 
-        # Insert under an existing [daemon] table, else append one. Atuin does
-        # not expand env vars in config.toml, so the literal path is written.
+        # Insert under an existing [daemon] table, else append one. Write an
+        # absolute path: atuin expands ~ and $VARS here only from 18.9 on,
+        # and an absolute path means the same socket to every version.
         local tmp_config="$config_file.acfs-tmp.$$"
         local wrote=false
         if grep -Eq '^\[daemon\]' "$config_file"; then

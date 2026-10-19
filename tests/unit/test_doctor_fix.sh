@@ -4955,6 +4955,65 @@ test_fix_atuin_daemon_socket_only_restarts_when_already_pinned() {
     return 0
 }
 
+test_fix_atuin_daemon_socket_restarts_on_the_expanded_tilde_path() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    doctor_fix_atuin_start_daemon() { printf 'start:%s\n' "$2" >> "$ATUIN_TEST_MARKER"; return 0; }
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    # atuin expands this itself; waiting for a file literally named "~/..."
+    # could never succeed (#460).
+    printf '[daemon]\nenabled = true\nsocket_path = "~/.local/share/atuin/atuin.sock"\n' > "$HOME/.config/atuin/config.toml"
+    local before; before="$(cat "$HOME/.config/atuin/config.toml")"
+
+    start_autofix_session >/dev/null || { echo "  Failed to start autofix session"; cleanup_test_env; return 1; }
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    local rc=$?
+
+    if [[ "$(cat "$HOME/.config/atuin/config.toml")" != "$before" ]]; then
+        echo "  the user's ~ socket_path pin was rewritten"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if [[ $rc -ne 0 ]] || ! grep -Fxq "start:$HOME/.local/share/atuin/atuin.sock" "$ATUIN_TEST_MARKER"; then
+        echo "  expected a restart on the expanded path (rc=$rc): $(tr '\n' ' ' < "$ATUIN_TEST_MARKER")"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    end_autofix_session >/dev/null
+    cleanup_test_env
+    return 0
+}
+
+test_fix_atuin_daemon_socket_leaves_env_dependent_path_to_the_user() {
+    setup_test_env
+    export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
+    stub_atuin_stop_daemon
+    doctor_fix_atuin_start_daemon() { printf 'start:%s\n' "$2" >> "$ATUIN_TEST_MARKER"; return 0; }
+    write_fake_atuin "$HOME/.local/bin" "$ATUIN_TEST_MARKER"
+    mkdir -p "$HOME/.config/atuin"
+    # shellcheck disable=SC2016 # the literal variable names are the fixture
+    printf '[daemon]\nenabled = true\nsocket_path = "$TMPDIR/atuin-$UID/atuin.sock"\n' > "$HOME/.config/atuin/config.toml"
+    local before; before="$(cat "$HOME/.config/atuin/config.toml")"
+
+    start_autofix_session >/dev/null || { echo "  Failed to start autofix session"; cleanup_test_env; return 1; }
+    DOCTOR_FIX_YES=true
+    dispatch_fix "shell.atuin_daemon" "warn" "" >/dev/null 2>&1
+    local rc=$?
+
+    if [[ "$(cat "$HOME/.config/atuin/config.toml")" != "$before" ]] || [[ -f "$ATUIN_TEST_MARKER" ]]; then
+        echo "  config or daemon touched for a path doctor cannot resolve"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    if [[ $rc -eq 0 ]] || [[ $FIX_MANUAL -ne 1 ]] || [[ $FIX_APPLIED -ne 0 ]]; then
+        echo "  expected a manual action only; got rc=$rc manual=$FIX_MANUAL applied=$FIX_APPLIED"
+        end_autofix_session >/dev/null; cleanup_test_env; return 1
+    fi
+    end_autofix_session >/dev/null
+    cleanup_test_env
+    return 0
+}
+
 test_fix_atuin_daemon_socket_reports_failed_restart() {
     setup_test_env
     export ATUIN_TEST_MARKER="$ACFS_STATE_DIR/atuin.marker"
@@ -5072,6 +5131,8 @@ main() {
     run_test test_fix_atuin_daemon_socket_pins_existing_daemon_table_and_restarts
     run_test test_fix_atuin_daemon_socket_appends_table_when_missing
     run_test test_fix_atuin_daemon_socket_only_restarts_when_already_pinned
+    run_test test_fix_atuin_daemon_socket_restarts_on_the_expanded_tilde_path
+    run_test test_fix_atuin_daemon_socket_leaves_env_dependent_path_to_the_user
     run_test test_fix_atuin_daemon_socket_reports_failed_restart
     run_test test_fix_dcg_hook_uninstalls_when_record_change_fails
     run_test test_dcg_hook_already_installed_detects_hook_wiring

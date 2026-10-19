@@ -2586,6 +2586,30 @@ check_cosign_version() {
     fi
 }
 
+# Resolve a configured daemon.socket_path the way atuin does. atuin >= 18.9
+# passes it through shellexpand::full (a leading ~, $VAR and ${VAR}), so
+# "~/.local/share/atuin/atuin.sock" names the same socket as the absolute path
+# the daemon binds (#460). ~ and HOME are the runtime user's home. Any other
+# variable comes from the environment of whichever shell or daemon reads the
+# config, which doctor cannot see: rc 1, nothing printed.
+# Mirrors doctor_fix_atuin_resolve_socket_path in doctor_fix.sh.
+doctor_atuin_resolve_socket_path() {
+    local value="${1:-}"
+    local home="${2:-}"
+    [[ -n "$value" && "$home" == /* ]] || return 1
+
+    # shellcheck disable=SC2088 # matching a literal ~ from the config text
+    case "$value" in
+        "~") value="$home" ;;
+        "~/"*) value="$home/${value:2}" ;;
+    esac
+    value="${value//'${HOME}'/"$home"}"
+    value="${value//'$HOME/'/"$home/"}"
+    [[ "$value" != *'$HOME' ]] || value="${value%'$HOME'}$home"
+    [[ "$value" != *'$'* ]] || return 1
+    printf '%s\n' "$value"
+}
+
 # Atuin daemon health (#359 follow-up to #358): compare the configured
 # daemon.socket_path against the socket actually bound. A daemon-enabled atuin
 # with an unreachable socket passes the bare binary check above while adding
@@ -2633,6 +2657,17 @@ check_atuin_daemon() {
         return 0
     fi
 
+    # Compare what atuin will actually use, not the literal config text (#460).
+    local resolved_socket=""
+    if ! resolved_socket="$(doctor_atuin_resolve_socket_path "$configured_socket" "$runtime_home")"; then
+        check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
+            "socket_path ($configured_socket) depends on environment variables, so the shell and the daemon can resolve different sockets (#358)" \
+            "set socket_path under [daemon] in ~/.config/atuin/config.toml to an absolute path, e.g. \"$runtime_home/.local/share/atuin/atuin-daemon.sock\", then restart the atuin daemon"
+        return 0
+    fi
+    local configured_display="$resolved_socket"
+    [[ "$resolved_socket" == "$configured_socket" ]] || configured_display="$configured_socket -> $resolved_socket"
+
     local ss_bin=""
     ss_bin="$(command -v ss 2>/dev/null || true)"
     if [[ -z "$ss_bin" ]]; then
@@ -2643,8 +2678,8 @@ check_atuin_daemon() {
     local bound_sockets=""
     bound_sockets="$("$ss_bin" -xl 2>/dev/null | grep -oE '[^[:space:]]*atuin[^[:space:]]*\.sock[^[:space:]]*' | sort -u || true)"
 
-    if [[ -n "$bound_sockets" ]] && grep -Fxq "$configured_socket" <<< "$bound_sockets"; then
-        check "shell.atuin_daemon" "Atuin daemon socket" "pass" "daemon bound to configured socket ($configured_socket)"
+    if [[ -n "$bound_sockets" ]] && grep -Fxq "$resolved_socket" <<< "$bound_sockets"; then
+        check "shell.atuin_daemon" "Atuin daemon socket" "pass" "daemon bound to configured socket ($configured_display)"
     elif [[ -n "$bound_sockets" ]]; then
         local bound_first=""
         bound_first="$(head -n1 <<< "$bound_sockets")"
@@ -2653,12 +2688,12 @@ check_atuin_daemon() {
         # agent tool wrapper): a plain `pkill -f 'atuin daemon'` killed that
         # shell before the restart half ever ran (#404).
         check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
-            "socket mismatch: config=$configured_socket bound=$bound_first -- the shell connects to the configured path, so history writes stall against the wrong daemon" \
+            "socket mismatch: config=$configured_display bound=$bound_first -- the shell connects to the configured path, so history writes stall against the wrong daemon" \
             "restart the atuin daemon so it binds the configured path: pkill -f '[a]tuin daemon' 2>/dev/null; (setsid atuin daemon >/dev/null 2>&1 &)   (or: acfs doctor --fix --yes)"
-    elif [[ -S "$configured_socket" ]]; then
+    elif [[ -S "$resolved_socket" ]]; then
         check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
-            "stale socket: $configured_socket exists but no daemon is listening (every command pays a failed connect)" \
-            "rm -f '$configured_socket' && (setsid atuin daemon >/dev/null 2>&1 &)"
+            "stale socket: $resolved_socket exists but no daemon is listening (every command pays a failed connect)" \
+            "rm -f '$resolved_socket' && (setsid atuin daemon >/dev/null 2>&1 &)"
     else
         check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
             "daemon.enabled is true but no atuin daemon socket is bound (daemon not running)" \
@@ -4864,27 +4899,134 @@ check_network_github() {
     fi
 }
 
+# Print "<URI><TAB><components>" for every enabled binary ("deb") source:
+# one-line entries from sources.list and sources.list.d/*.list (with or without
+# "[options]"), then deb822 stanzas from sources.list.d/*.sources, each set in
+# file-name order. A stanza whose Enabled: field is one of apt's false values
+# (no, false, off, without, disable; any case) is skipped. Read-only text
+# parsing; nothing is executed (#462).
+_acfs_doctor_apt_source_uris() {
+    local apt_dir="${1:-/etc/apt}"
+    local -a list_files=() sources_files=()
+    local file=""
+
+    [[ -f "$apt_dir/sources.list" ]] && list_files+=("$apt_dir/sources.list")
+    for file in "$apt_dir"/sources.list.d/*; do
+        [[ -f "$file" ]] || continue
+        case "${file##*/}" in
+            *.list) list_files+=("$file") ;;
+            *.sources) sources_files+=("$file") ;;
+        esac
+    done
+
+    if [[ ${#list_files[@]} -gt 0 ]]; then
+        awk '
+            { sub(/#.*/, "") }
+            $1 == "deb" {
+                i = 2
+                if ($i ~ /^\[/) {
+                    while (i <= NF && $i !~ /\]$/) i++
+                    i++
+                }
+                if (i > NF) next
+                # deb [options] URI suite component...
+                comps = ""
+                for (k = i + 2; k <= NF; k++) comps = comps " " $k
+                print $i "\t" comps
+            }
+        ' "${list_files[@]}" 2>/dev/null || true
+    fi
+    if [[ ${#sources_files[@]} -gt 0 ]]; then
+        awk '
+            function flush(   n, k, u, off) {
+                off = tolower(enabled)
+                gsub(/[ \t\r]+$/, "", off)
+                if (types ~ /(^|[ \t])deb([ \t]|$)/ && off !~ /^(no|false|off|without|disable)$/) {
+                    n = split(uris, u, /[ \t]+/)
+                    for (k = 1; k <= n; k++) if (u[k] != "") print u[k] "\t " comps
+                }
+                types = ""; uris = ""; comps = ""; enabled = ""; last = ""
+            }
+            FNR == 1 { flush() }
+            /^[ \t]*#/ { next }
+            /^[ \t]*$/ { flush(); next }
+            /^[ \t]/ {
+                if (last == "uris") uris = uris " " $0
+                else if (last == "components") comps = comps " " $0
+                next
+            }
+            {
+                key = tolower($0); sub(/:.*/, "", key)
+                val = $0; sub(/^[^:]*:[ \t]*/, "", val)
+                last = key
+                if (key == "types") types = val
+                else if (key == "uris") uris = val
+                else if (key == "components") comps = val
+                else if (key == "enabled") enabled = val
+            }
+            END { flush() }
+        ' "${sources_files[@]}" 2>/dev/null || true
+    fi
+}
+
+# Choose the distribution archive among the enabled sources: an http(s) URI
+# whose path is /ubuntu, /ubuntu-ports or /debian, or a mirror that serves
+# Ubuntu's archive under another path (e.g. /ubuntu/packages), recognized by
+# the restricted, universe or multiverse components that only Ubuntu's archive
+# uses. A regional archive is preferred over a security host (security.* or a
+# path ending in /security). Vendor repositories are never chosen. The
+# repository base path is kept, so the probe asks for <base>/dists/ (#462).
+_acfs_doctor_apt_mirror_url() {
+    local uri="" components="" path="" host="" archive="" security=""
+    while IFS=$'\t' read -r uri components; do
+        case "$uri" in
+            http://*|https://*) ;;
+            *) continue ;;
+        esac
+        host="${uri#*://}"
+        path="/${host#*/}"
+        [[ "$host" == */* ]] || path="/"
+        host="${host%%/*}"
+        path="${path%/}"
+        case "$path" in
+            /ubuntu|/ubuntu-ports|/debian) ;;
+            *)
+                [[ " $components " =~ [[:space:]](restricted|universe|multiverse)[[:space:]] ]] || continue
+                ;;
+        esac
+        if [[ "$host" == security.* || "$path" == */security ]]; then
+            [[ -n "$security" ]] || security="${uri%/}"
+        else
+            archive="${uri%/}"
+            break
+        fi
+    done < <(_acfs_doctor_apt_source_uris "${1:-/etc/apt}")
+    printf '%s\n' "${archive:-$security}"
+}
+
 # check_network_apt_mirror - APT mirror reachability check
 # Related: bead bd-31ps.7.2
 # Tests connectivity to the configured APT mirror
 check_network_apt_mirror() {
+    local apt_dir="${1:-/etc/apt}"
     local curl_bin=""
     curl_bin="$(_acfs_doctor_system_binary_path curl 2>/dev/null || true)"
     if [[ -z "$curl_bin" ]]; then
         return  # Already warned in github check
     fi
 
-    # Detect the primary APT mirror from sources.list
-    local mirror_url=""
-    if [[ -f /etc/apt/sources.list ]]; then
-        mirror_url=$(grep -m1 "^deb http" /etc/apt/sources.list 2>/dev/null | awk '{print $2}' | sed 's|/ubuntu.*||') || true
-    fi
-    if [[ -z "$mirror_url" ]] && [[ -d /etc/apt/sources.list.d ]]; then
-        mirror_url=$(grep -rh "^deb http" /etc/apt/sources.list.d/ 2>/dev/null | head -1 | awk '{print $2}' | sed 's|/ubuntu.*||') || true
+    if [[ ! -d "$apt_dir" ]]; then
+        check "deep.network.apt_mirror" "APT mirror" "skip" "APT is not configured on this system"
+        return
     fi
 
+    local mirror_url=""
+    mirror_url="$(_acfs_doctor_apt_mirror_url "$apt_dir")"
+
     if [[ -z "$mirror_url" ]]; then
-        check "deep.network.apt_mirror" "APT mirror" "warn" "could not detect mirror URL"
+        check "deep.network.apt_mirror" "APT mirror" "warn" \
+            "could not detect an enabled Ubuntu or Debian archive in $apt_dir/sources.list or $apt_dir/sources.list.d/" \
+            "apt-cache policy  # lists the sources apt actually uses"
         return
     fi
 
