@@ -369,6 +369,37 @@ JSON
     else fail "leading-zero timing values are decimal seconds"; fi
 }
 
+test_transcript_only_max_bytes_is_explained_in_checkpoint_mode() {
+    local home="$ARTIFACT_DIR/max-bytes-checkpoint/.acfs" log="$ARTIFACT_DIR/max-bytes-transcript.log"
+    local args_text="" output="" status="" index=0
+    local -a args=()
+    mkdir -p "$home"
+    # GH #455: the help lists --max-bytes, but only transcript mode reads it.
+    for args_text in '--json --max-bytes 1024 --stale-seconds 600' '--max-bytes=1024 --json' '--max-bytes 1024'; do
+        index=$((index + 1))
+        read -r -a args <<< "$args_text"
+        set +e
+        output="$(bash "$RESCUE_SH" --acfs-home "$home" "${args[@]}" 2>&1)"
+        status=$?
+        set -e
+        if [[ "$status" == 2 && "$output" == *"--max-bytes only applies with --log-file"* && "$output" != *"unknown rescue option"* ]]; then
+            pass "checkpoint-mode --max-bytes form $index names the transcript-only option"
+        else fail "checkpoint-mode --max-bytes form $index names the transcript-only option" "status=$status output=$output"; fi
+    done
+    printf '%s\n' '=== ACFS Install Log ===' 'No space left on device' > "$log"
+    set +e
+    output="$(bash "$RESCUE_SH" --json --max-bytes 1024 --log-file "$log" 2>/dev/null)"
+    status=$?
+    set -e
+    if [[ "$status" == 1 ]] && jq -e '.schema == "acfs.installer-transcript.v1" and .primary_cause == "disk"' <<< "$output" >/dev/null; then
+        pass "--max-bytes before --log-file still reaches transcript mode"
+    else fail "--max-bytes before --log-file still reaches transcript mode" "status=$status output=$output"; fi
+    output="$(bash "$RESCUE_SH" --help)"
+    if [[ "$output" == *"acfs rescue --log-file PATH [--max-bytes N] [--json]"* && "$output" == *"Transcript mode"* ]]; then
+        pass "rescue help separates transcript-only options"
+    else fail "rescue help separates transcript-only options"; fi
+}
+
 test_invalid_doctor_counters_do_not_clear_warnings() {
     local home="$ARTIFACT_DIR/invalid-doctor/.acfs" value="" index=0 output="" status=""
     write_json "$home/state.json" <<'JSON'
@@ -506,6 +537,7 @@ main() {
     run_test test_doctor_dispatches_rescue_subcommand
     run_test test_invalid_checkpoint_shapes_never_look_healthy
     run_test test_timing_options_are_literal_bounded_decimals
+    run_test test_transcript_only_max_bytes_is_explained_in_checkpoint_mode
     run_test test_invalid_doctor_counters_do_not_clear_warnings
     run_test test_option_like_search_paths_remain_paths
     run_test test_option_like_json_filename_is_literal

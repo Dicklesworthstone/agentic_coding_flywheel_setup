@@ -59,6 +59,8 @@ Both human and JSON errors omit offending argument values and filesystem paths.
 ANSI styling and OSC hyperlink payloads are removed before pattern matching.
 
 The default is a bounded 1 MiB tail. `--max-bytes N` accepts 1024 through 8388608.
+It belongs to transcript mode only: without `--log-file` it exits 2 with a message
+saying so, because checkpoint mode reads no transcript.
 When a tail cuts a line, that incomplete first line is discarded; lines over
 65536 characters are omitted and counted. Earlier evidence can therefore be
 missing. JSON states whether line numbers refer to the original file or only

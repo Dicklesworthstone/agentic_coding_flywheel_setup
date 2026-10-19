@@ -271,13 +271,12 @@ ACFS_TRANSCRIPT_PY
 rescue_usage() {
     cat <<'EOF'
 Usage: acfs rescue [options]
+       acfs rescue --log-file PATH [--max-bytes N] [--json]
 
 Read-only recovery advisor for first-run ACFS installer problems.
 
-Options:
+Checkpoint options (default mode):
   --json                     Output machine-readable JSON
-  --log-file PATH             Explain a local installer transcript instead of probing checkpoints
-  --max-bytes N               Transcript tail limit, 1024..8388608 (default: 1048576)
   --state-file PATH          Read installer state from PATH
   --summary-file PATH        Read install_summary JSON from PATH
   --doctor-file PATH         Read acfs doctor --json output from PATH
@@ -286,6 +285,11 @@ Options:
   --now-epoch SECONDS        Override current time for stale checkpoint checks
   --stale-seconds SECONDS    Running checkpoint age before warning (default: 3600)
   -h, --help                 Show this help
+
+Transcript mode (accepts only these options; checkpoint options are rejected):
+  --log-file PATH            Explain a local installer transcript instead of probing checkpoints
+  --max-bytes N              Transcript tail limit, 1024..8388608 (default: 1048576)
+  --json                     Output machine-readable JSON
 EOF
 }
 
@@ -1066,6 +1070,12 @@ rescue_parse_args() {
             -h|--help|help)
                 rescue_usage
                 exit 0
+                ;;
+            --max-bytes|--max-bytes=*)
+                # Only the transcript analyzer reads a tail; rescue_main routes
+                # every --log-file invocation there before this parser runs.
+                echo "Error: --max-bytes only applies with --log-file PATH (see: acfs rescue --help)" >&2
+                return 2
                 ;;
             *)
                 echo "Error: unknown rescue option (see: acfs rescue --help)" >&2
