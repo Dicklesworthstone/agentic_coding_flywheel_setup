@@ -5375,13 +5375,24 @@ update_run_verified_installer_with_env() {
         return 1
     fi
 
+    # Give the installer a private TMPDIR and remove it when the installer
+    # returns, whatever its exit status (#451).
+    local installer_env="$bash_env_assignment"
+    local installer_tmpdir=""
+    installer_tmpdir="$(update_private_installer_tmpdir "$tool" "$bash_env_assignment")"
+    [[ -z "$installer_tmpdir" ]] \
+        || installer_env="${bash_env_assignment:+$bash_env_assignment$'\n'}TMPDIR=$installer_tmpdir"
+
     # Retain the current binary as <binary>.prev so a broken release can be
     # rolled back after the post-install smoke check (issue #357).
     update_snapshot_tool_binary "$tool"
 
     local exit_code=0
-    update_run_in_target_context "$bash_env_assignment" bash "$tmp_install" "$@" </dev/null || exit_code=$?
+    update_run_in_target_context "$installer_env" bash "$tmp_install" "$@" </dev/null || exit_code=$?
     rm -f "$tmp_install" 2>/dev/null || true
+    if [[ -n "$installer_tmpdir" ]]; then
+        update_remove_target_installer_tmpdir "$tool" "$installer_tmpdir" || true
+    fi
     # A verified upstream script may use any exit code. It cannot manufacture
     # the pre-execution checksum-refusal classification used by callers.
     [[ "$exit_code" == "$UPDATE_EXIT_CHECKSUM" ]] && exit_code=1
@@ -5453,6 +5464,44 @@ update_prepare_target_installer_tmpdir() {
     fi
 
     printf '%s\n' "$tmpdir"
+}
+
+# Prepare the private TMPDIR for one verified installer run (#451). Upstream
+# installers whose own cleanup is broken (a trap that runs after its `local` is
+# gone, a temp-dir array filled in a subshell) or that keep their scratch on
+# purpose would otherwise leave a directory in the shared TMPDIR on every
+# nightly run. Prints the directory to pass as TMPDIR; the caller removes it
+# with update_remove_target_installer_tmpdir when the installer returns.
+# Prints nothing when the caller's env assignment ($2) already sets TMPDIR (that
+# caller owns it) or when no directory can be made (the installer then runs
+# without a private one, and the update log says which TMPDIR it gets).
+update_private_installer_tmpdir() {
+    local tool="${1:-}"
+    local env_assignment="${2:-}"
+    local tmpdir=""
+    local target_user=""
+    local current_user=""
+
+    [[ $'\n'"$env_assignment" != *$'\n'TMPDIR=* ]] || return 0
+    tmpdir="$(update_prepare_target_installer_tmpdir "$tool" 2>/dev/null)" || tmpdir=""
+    if [[ "$tmpdir" == /* && "$tmpdir" != *[[:space:]]* ]]; then
+        printf '%s\n' "$tmpdir"
+        return 0
+    fi
+
+    # This process's TMPDIR reaches the installer only when
+    # update_run_in_target_context runs it as the same user, or switches users
+    # with runuser. It switches with sudo whenever sudo exists, and sudo's
+    # env_reset drops TMPDIR.
+    target_user="$(update_target_user 2>/dev/null || true)"
+    current_user="$(update_current_user 2>/dev/null || true)"
+    if [[ -n "$target_user" && "$target_user" != "$current_user" ]] \
+        && update_system_binary_path sudo >/dev/null 2>&1; then
+        log_to_file "No private TMPDIR for the $tool installer; it runs as $target_user through sudo, which does not pass TMPDIR on, so it uses that user's default (normally /tmp)"
+    else
+        log_to_file "No private TMPDIR for the $tool installer; it inherits TMPDIR=${TMPDIR:-/tmp}"
+    fi
+    return 0
 }
 
 # Remove one per-run TMPDIR made by update_prepare_target_installer_tmpdir.
@@ -7496,11 +7545,25 @@ update_stack() {
                         fi
                     fi
 
+                    # Like every verified installer, Agent Mail's gets a private
+                    # TMPDIR that is removed once it returns (#451).
+                    local am_installer_env=$'AM_INSTALL_SKIP_MCP_SETUP=1\nAM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1'
+                    local am_installer_tmpdir=""
+                    local am_installer_rc=0
+                    if [[ -z "$target_context_error" ]]; then
+                        am_installer_tmpdir="$(update_private_installer_tmpdir "$tool" "$am_installer_env")"
+                        [[ -z "$am_installer_tmpdir" ]] || am_installer_env+=$'\n'"TMPDIR=$am_installer_tmpdir"
+                        update_run_logged_passthrough update_run_in_target_context "$am_installer_env" bash "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes || am_installer_rc=$?
+                        if [[ -n "$am_installer_tmpdir" ]]; then
+                            update_remove_target_installer_tmpdir "$tool" "$am_installer_tmpdir" || true
+                        fi
+                    fi
+
                     if [[ -n "$target_context_error" ]]; then
                         rm -f "$tmp_install" 2>/dev/null || true
                         tmp_install=""
                         update_finish_cmd_fail "MCP Agent Mail" "$target_context_error"
-                    elif update_run_logged_passthrough update_run_in_target_context $'AM_INSTALL_SKIP_MCP_SETUP=1\nAM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1' bash "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes; then
+                    elif [[ "$am_installer_rc" -eq 0 ]]; then
                         if update_source_stack_lib; then
                             ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
                         fi

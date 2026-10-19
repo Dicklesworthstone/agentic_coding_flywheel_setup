@@ -12558,6 +12558,191 @@ _setup_update_target_tmpdir_stubs() {
     [[ "$(cat "$TEST_RM_ARGS")" == "-rf --one-file-system -- $TEST_TARGET_HOME/.cache/acfs/installer-tmp/cass.ABC123" ]]
 }
 
+# GH #451: every verified installer, not only cass, runs with a private TMPDIR
+# that is gone when the installer returns. These use the real mkdir/mktemp/rm.
+_setup_verified_installer_private_tmpdir() {
+    TEST_TARGET_HOME="$BATS_TEST_TMPDIR/private-tmp-home"
+    TEST_INSTALLER_ENV="$BATS_TEST_TMPDIR/installer-env"
+    TEST_INSTALLER_STATUS=0
+    mkdir -p "$TEST_TARGET_HOME"
+    declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
+
+    update_require_security() { return 0; }
+    get_checksum() { printf '%s\n' "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; }
+    verify_checksum() { printf '%s\n' '#!/usr/bin/env bash' 'exit 0'; }
+    update_snapshot_tool_binary() { return 0; }
+    update_verify_tool_or_rollback() { return 0; }
+    update_target_user() { printf '%s\n' "tester"; }
+    update_target_home() { printf '%s\n' "$TEST_TARGET_HOME"; }
+    update_run_in_target_context() {
+        local env_assignment="$1"
+        shift
+        if [[ "$1" == bash ]]; then
+            printf '%s\n' "$env_assignment" > "$TEST_INSTALLER_ENV"
+            # Leave scratch behind, as installers with broken cleanup do.
+            local tmpdir=""
+            tmpdir="$(sed -n 's/^TMPDIR=//p' <<< "$env_assignment")"
+            [[ -z "$tmpdir" ]] || { mkdir -p "$tmpdir/leftover" && : > "$tmpdir/leftover/download.tar.gz"; }
+            return "$TEST_INSTALLER_STATUS"
+        fi
+        "$@"
+    }
+}
+
+@test "verified installer runs every tool in a private TMPDIR and removes it afterwards (#451)" {
+    _setup_verified_installer_private_tmpdir
+
+    run update_run_verified_installer_with_env "test_tool" "INSTALL_DIR=/opt/x" "--flag"
+    assert_success
+
+    local used_tmpdir=""
+    used_tmpdir="$(sed -n 's/^TMPDIR=//p' "$TEST_INSTALLER_ENV")"
+    [[ "$used_tmpdir" == "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/test_tool."* ]]
+    grep -qx 'INSTALL_DIR=/opt/x' "$TEST_INSTALLER_ENV"
+    [[ ! -e "$used_tmpdir" ]]
+    # Only this run's directory goes; the shared parent stays.
+    [[ -d "$TEST_TARGET_HOME/.cache/acfs/installer-tmp" ]]
+}
+
+@test "verified installer removes its private TMPDIR without masking a failure (#451)" {
+    _setup_verified_installer_private_tmpdir
+    TEST_INSTALLER_STATUS=7
+
+    run update_run_verified_installer_with_env "test_tool" "" "--flag"
+    assert_failure 7
+
+    local used_tmpdir=""
+    used_tmpdir="$(sed -n 's/^TMPDIR=//p' "$TEST_INSTALLER_ENV")"
+    [[ "$used_tmpdir" == "$TEST_TARGET_HOME/.cache/acfs/installer-tmp/test_tool."* ]]
+    [[ ! -e "$used_tmpdir" ]]
+}
+
+@test "verified installer keeps a caller-supplied TMPDIR and leaves it for the caller (#451)" {
+    _setup_verified_installer_private_tmpdir
+    local caller_tmp="$BATS_TEST_TMPDIR/caller-tmp"
+    mkdir -p "$caller_tmp"
+
+    run update_run_verified_installer_with_env "test_tool" "TMPDIR=$caller_tmp" "--flag"
+    assert_success
+
+    [[ "$(grep -c '^TMPDIR=' "$TEST_INSTALLER_ENV")" == 1 ]]
+    grep -qx "TMPDIR=$caller_tmp" "$TEST_INSTALLER_ENV"
+    [[ -f "$caller_tmp/leftover/download.tar.gz" ]]
+    [[ ! -d "$TEST_TARGET_HOME/.cache/acfs/installer-tmp" ]]
+}
+
+@test "verified installer still runs when no private TMPDIR can be made (#451)" {
+    _setup_verified_installer_private_tmpdir
+    update_target_home() { return 1; }
+
+    run update_run_verified_installer_with_env "test_tool" "" "--flag"
+    assert_success
+    run grep -c '^TMPDIR=' "$TEST_INSTALLER_ENV"
+    assert_output "0"
+}
+
+# Without a private TMPDIR, the log line must name the TMPDIR the installer
+# really gets: root running it for another user goes through sudo, which drops
+# TMPDIR, so "inherits TMPDIR=..." would be wrong there (#451).
+@test "no-private-TMPDIR log line names the TMPDIR the installer actually gets (#451)" {
+    _setup_verified_installer_private_tmpdir
+    update_target_home() { return 1; }
+    local operator_tmp="$BATS_TEST_TMPDIR/operator-tmp"
+    local current="" sudo_present=""
+    update_current_user() { printf '%s\n' "$current"; }
+    update_system_binary_path() {
+        [[ "$1" == sudo && "$sudo_present" == true ]] || return 1
+        printf '%s\n' /usr/bin/sudo
+    }
+
+    # Root updating another user's install: sudo switches users.
+    current=root sudo_present=true
+    UPDATE_LOG_FILE="$BATS_TEST_TMPDIR/update-sudo.log"
+    [[ -z "$(TMPDIR="$operator_tmp" update_private_installer_tmpdir test_tool "")" ]]
+    grep -qF "No private TMPDIR for the test_tool installer; it runs as tester through sudo, which does not pass TMPDIR on" "$UPDATE_LOG_FILE"
+    if grep -qF "inherits" "$UPDATE_LOG_FILE"; then
+        fail "sudo case claims the installer inherits TMPDIR: $(cat "$UPDATE_LOG_FILE")"
+    fi
+
+    # The target user updating its own install: TMPDIR passes straight through.
+    current=tester sudo_present=true
+    UPDATE_LOG_FILE="$BATS_TEST_TMPDIR/update-same-user.log"
+    [[ -z "$(TMPDIR="$operator_tmp" update_private_installer_tmpdir test_tool "")" ]]
+    grep -qF "No private TMPDIR for the test_tool installer; it inherits TMPDIR=$operator_tmp" "$UPDATE_LOG_FILE"
+
+    # No sudo: runuser switches users and keeps TMPDIR.
+    current=root sudo_present=false
+    UPDATE_LOG_FILE="$BATS_TEST_TMPDIR/update-runuser.log"
+    [[ -z "$(TMPDIR="$operator_tmp" update_private_installer_tmpdir test_tool "")" ]]
+    grep -qF "No private TMPDIR for the test_tool installer; it inherits TMPDIR=$operator_tmp" "$UPDATE_LOG_FILE"
+}
+
+# The Agent Mail installer runs outside update_run_verified_installer_with_env,
+# so it needs the same private TMPDIR, removed on success and on failure.
+@test "update_stack runs the Agent Mail installer in a private TMPDIR and removes it (#451)" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
+    local env_file="$HOME/am-installer-env"
+    local status=""
+
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    UPDATE_STACK=true
+    ABORT_ON_FAILURE=false
+    ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    UPDATE_LOG_FILE="$HOME/update.log"
+
+    declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://example.test/install-am.sh")
+
+    update_require_security() { return 0; }
+    get_checksum() { printf '%s\n' "abc123"; }
+    verify_checksum() {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'exit 0'
+    }
+    update_target_user() { id -un; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_run_logged_passthrough() {
+        # $1 is update_run_in_target_context, $2 the installer's env assignment.
+        printf '%s\n' "$2" > "$env_file"
+        local tmpdir=""
+        tmpdir="$(sed -n 's/^TMPDIR=//p' <<< "$2")"
+        [[ -z "$tmpdir" ]] || { mkdir -p "$tmpdir/mcp-agent-mail-install.ABC" && : > "$tmpdir/am-sqlite-fallback.sql"; }
+        return "$TEST_AM_INSTALLER_STATUS"
+    }
+    update_source_stack_lib() { return 0; }
+    _stack_repair_agent_mail_cli_symlink() { return 0; }
+    _stack_configure_agent_mail_service() { return 0; }
+    _stack_wait_for_agent_mail_health() { return 0; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_binary_exists() { return 1; }
+    update_run_verified_installer() { return 0; }
+    update_run_verified_installer_with_env() { return 0; }
+    update_run_slb_verified_install() { return 0; }
+    update_run_fsfs_installer() { return 0; }
+
+    for status in 0 1; do
+        TEST_AM_INSTALLER_STATUS="$status"
+        SUCCESS_COUNT=0
+        FAIL_COUNT=0
+        SKIP_COUNT=0
+        : > "$env_file"
+        run update_stack
+        assert_success
+
+        grep -qx 'AM_INSTALL_SKIP_MCP_SETUP=1' "$env_file"
+        grep -qx 'AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1' "$env_file"
+        local used_tmpdir=""
+        used_tmpdir="$(sed -n 's/^TMPDIR=//p' "$env_file")"
+        [[ "$used_tmpdir" == "$HOME/.cache/acfs/installer-tmp/mcp_agent_mail."* ]] || fail "status $status: TMPDIR=$used_tmpdir"
+        [[ ! -e "$used_tmpdir" ]] || fail "status $status: $used_tmpdir was left behind"
+        [[ -d "$HOME/.cache/acfs/installer-tmp" ]]
+    done
+    # The last pass failed: still reported as an installer failure.
+    assert_output --partial "installer failed"
+}
+
 _run_stack_cass_target_tmpdir() {
     local installer_status="$1"
     TARGET_HOME="$BATS_TEST_TMPDIR/stack-target-home"
