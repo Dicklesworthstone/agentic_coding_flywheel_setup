@@ -1296,11 +1296,23 @@ reports the new release while the live watcher still runs the old code. ACFS
 compares what each *service* executes (`/proc/<pid>/exe`, which is not the same
 thing as what `PATH` resolves) against the installed binary, and warns with both
 paths and hashes from `acfs services status`, `acfs doctor`, and the end of
-`acfs update`. Nothing is restarted automatically: the warning names the exact
-per-service restart command so you can pick a quiescent moment. `acfs services
-drift` runs the check on demand (`--robot` for one `service|state|detail` line
-per service). The comparison needs procfs, so it reports `unknown` on platforms
-without one.
+`acfs update`. By default nothing is restarted automatically: the warning names
+the exact per-service restart command so you can pick a quiescent moment. To
+have `acfs update` restart chosen services when, and only when, this check finds
+them stale, list them in `ACFS_UPDATE_RESTART_SERVICES` (comma- or
+space-separated, e.g. `cm` or `cm,cass`; #464). Each restart is confirmed with
+the same check and reported; a listed name that is not a managed service is
+reported and ignored. To limit it to the nightly run, set it in a drop-in:
+
+```bash
+systemctl --user edit acfs-nightly-update.service
+# [Service]
+# Environment=ACFS_UPDATE_RESTART_SERVICES=cm
+```
+
+`acfs services drift` runs the check on demand (`--robot` for one
+`service|state|detail` line per service). The comparison needs procfs, so it
+reports `unknown` on platforms without one.
 
 This lifecycle command is distinct from `acfs services-setup`, which configures
 credentials and integrations rather than background processes.

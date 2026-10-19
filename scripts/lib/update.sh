@@ -8174,13 +8174,25 @@ update_shell() {
 # new release while the live watcher runs the old, now-deleted inode (issue
 # #381). Report it loudly; never restart a service group behind the operator's
 # back, because that would cut off in-flight agent work.
+#
+# Opt-in (#464): ACFS_UPDATE_RESTART_SERVICES names services (comma- or
+# space-separated, e.g. "cm" or "cm,cass") that the operator has chosen to have
+# restarted when, and only when, this report finds them stale. Unset keeps the
+# report-only default. Set it in a drop-in for acfs-nightly-update.service to
+# limit it to the nightly run.
 update_report_service_binary_drift() {
     local services_script=""
     local drift_output=""
     local service="" state="" detail=""
     local timeout_bin=""
     local -a drift_cmd=()
+    local -a restart_cmd=()
+    local -a known_services=()
+    local -a stale_services=()
+    local -a requested_names=()
+    local -a restart_services=()
     local reported=false
+    local name="" output="" restart_rc=0
 
     [[ "$DRY_RUN" == "true" ]] && return 0
 
@@ -8197,6 +8209,7 @@ update_report_service_binary_drift() {
     [[ -n "$drift_output" ]] || return 0
 
     while IFS='|' read -r service state detail; do
+        [[ -n "$service" ]] && known_services+=("$service")
         [[ -n "$service" && "$state" == "stale" ]] || continue
         if [[ "$reported" != "true" ]]; then
             reported=true
@@ -8207,11 +8220,51 @@ update_report_service_binary_drift() {
         printf "${YELLOW}  %s: %s${NC}\n" "$service" "$detail"
         printf "${DIM}    Restart just this service: acfs services restart %s${NC}\n" "$service"
         log_to_file "SERVICE BINARY DRIFT: $service: $detail"
+        stale_services+=("$service")
     done <<< "$drift_output"
 
-    if [[ "$reported" == "true" ]]; then
+    [[ "$reported" == "true" ]] || return 0
+
+    # Restart only the stale services the operator listed. Names are matched
+    # against the services the drift report itself returned, so an unknown or
+    # misspelled entry restarts nothing; say so rather than ignore it silently.
+    local requested="${ACFS_UPDATE_RESTART_SERVICES:-}"
+    read -r -a requested_names <<< "${requested//,/ }"
+    for name in "${requested_names[@]+"${requested_names[@]}"}"; do
+        if [[ " ${known_services[*]} " != *" $name "* ]]; then
+            log_to_file "ACFS_UPDATE_RESTART_SERVICES: ignoring unknown service '$name' (managed: ${known_services[*]})"
+            printf "${DIM}    ACFS_UPDATE_RESTART_SERVICES: ignoring unknown service '%s' (managed: %s)${NC}\n" "$name" "${known_services[*]}"
+            continue
+        fi
+        [[ " ${stale_services[*]} " == *" $name "* ]] || continue
+        [[ " ${restart_services[*]-} " == *" $name "* ]] || restart_services+=("$name")
+    done
+
+    for service in "${restart_services[@]+"${restart_services[@]}"}"; do
+        restart_cmd=(bash "$services_script" restart "$service")
+        [[ -z "$timeout_bin" ]] || restart_cmd=("$timeout_bin" 300 "${restart_cmd[@]}")
+        restart_rc=0
+        output="$("${restart_cmd[@]}" 2>&1)" || restart_rc=$?
+        log_to_file "ACFS_UPDATE_RESTART_SERVICES: acfs services restart $service exited $restart_rc: $output"
+        if [[ $restart_rc -ne 0 ]]; then
+            printf "${YELLOW}  Restart of %s failed (exit %s); it still runs the old binary. Details in the update log.${NC}\n" "$service" "$restart_rc"
+            continue
+        fi
+        # Confirm with the same check that found the drift.
+        state="$("${drift_cmd[@]}" 2>/dev/null | awk -F'|' -v s="$service" '$1 == s { print $2 "|" $3; exit }' || true)"
+        if [[ "${state%%|*}" == "ok" ]]; then
+            printf "${GREEN}  Restarted %s; it now runs the installed binary (ACFS_UPDATE_RESTART_SERVICES)${NC}\n" "$service"
+            log_to_file "ACFS_UPDATE_RESTART_SERVICES: $service restarted and verified"
+        else
+            printf "${YELLOW}  Restarted %s, but the drift check now reports: %s${NC}\n" "$service" "${state:-no result}"
+            log_to_file "ACFS_UPDATE_RESTART_SERVICES: $service restarted; drift check reports ${state:-no result}"
+        fi
+    done
+
+    if [[ ${#restart_services[@]} -lt ${#stale_services[@]} ]]; then
         printf "${DIM}    A restart interrupts that service (Agent Mail stays up unless you restart it too);${NC}\n"
         printf "${DIM}    pick a quiescent moment so in-flight agent work is not cut off.${NC}\n"
+        printf "${DIM}    To restart chosen services automatically when this happens: ACFS_UPDATE_RESTART_SERVICES=<names>${NC}\n"
     fi
     return 0
 }
@@ -8448,6 +8501,11 @@ LOGS:
 ENVIRONMENT VARIABLES:
   ACFS_HOME          Base directory for ACFS (default: ~/.acfs)
   ACFS_VERSION       Override version string in logs
+  ACFS_UPDATE_RESTART_SERVICES
+                     Managed services to restart when the end-of-update drift
+                     check finds them running a replaced binary, e.g. "cm" or
+                     "cm,cass" (default: unset, report only). For the nightly
+                     run only, set it in a drop-in for acfs-nightly-update.service.
 
 TROUBLESHOOTING:
   - If apt is locked: wait for other package operations to finish.

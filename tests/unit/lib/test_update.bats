@@ -16493,6 +16493,98 @@ STUBS
     refute_output --partial "cm: pid 43"
 }
 
+# A fake acfs-services.sh for #464: `drift --robot` reports cm and cass stale
+# until `restart <svc>` flips that service to ok; restarts are recorded.
+_write_drift_restart_fake() {
+    local fake_home="$1"
+    local restart_rc="${2:-0}"
+    mkdir -p "$fake_home/scripts/lib"
+    cat > "$fake_home/scripts/lib/acfs-services.sh" <<EOF
+#!/usr/bin/env bash
+state_dir="$fake_home"
+case "\$1" in
+    drift)
+        for s in agent-mail cm cass; do
+            if [[ "\$s" == agent-mail || -e "\$state_dir/restarted-\$s" ]]; then
+                printf '%s|ok|pid 1 runs /home/u/.local/bin/%s\n' "\$s" "\$s"
+            else
+                printf '%s|stale|pid 42 runs a deleted executable (%s)\n' "\$s" "\$s"
+            fi
+        done
+        ;;
+    restart)
+        printf '%s\n' "\$2" >> "\$state_dir/restart-calls"
+        [[ $restart_rc -eq 0 ]] || exit $restart_rc
+        : > "\$state_dir/restarted-\$2"
+        ;;
+esac
+EOF
+    chmod +x "$fake_home/scripts/lib/acfs-services.sh"
+}
+
+_run_drift_report() {
+    run bash -c '
+        source "$1"
+        set +e
+        fake_home="$2"
+        update_runtime_acfs_home() { printf "%s\n" "$fake_home"; }
+        DRY_RUN=false
+        update_report_service_binary_drift
+        echo "RC=$?"
+    ' _ "$PROJECT_ROOT/scripts/lib/update.sh" "$1"
+}
+
+@test "drift report restarts only the stale services named in ACFS_UPDATE_RESTART_SERVICES (#464)" {
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464"
+    _write_drift_restart_fake "$fake_home"
+
+    ACFS_UPDATE_RESTART_SERVICES="cm, agent-mail cm" _run_drift_report "$fake_home"
+
+    assert_output --partial "cm: pid 42 runs a deleted executable (cm)"
+    assert_output --partial "cass: pid 42 runs a deleted executable (cass)"
+    assert_output --partial "Restarted cm; it now runs the installed binary"
+    refute_output --partial "Restarted cass"
+    refute_output --partial "Restarted agent-mail"
+    # cass is still stale and not opted in, so the manual guidance stays.
+    assert_output --partial "acfs services restart cass"
+    assert_output --partial "RC=0"
+    # agent-mail was listed but is current; cm was listed twice.
+    [[ "$(cat "$fake_home/restart-calls")" == "cm" ]]
+}
+
+@test "drift report restarts nothing without ACFS_UPDATE_RESTART_SERVICES (#464)" {
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464-unset"
+    _write_drift_restart_fake "$fake_home"
+
+    unset ACFS_UPDATE_RESTART_SERVICES
+    _run_drift_report "$fake_home"
+
+    assert_output --partial "Updated tools are installed but not live"
+    assert_output --partial "ACFS_UPDATE_RESTART_SERVICES=<names>"
+    refute_output --partial "Restarted"
+    [[ ! -e "$fake_home/restart-calls" ]]
+}
+
+@test "drift report names an unknown ACFS_UPDATE_RESTART_SERVICES entry and restarts nothing for it (#464)" {
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464-unknown"
+    _write_drift_restart_fake "$fake_home"
+
+    ACFS_UPDATE_RESTART_SERVICES="cmm" _run_drift_report "$fake_home"
+
+    assert_output --partial "ignoring unknown service 'cmm' (managed: agent-mail cm cass)"
+    [[ ! -e "$fake_home/restart-calls" ]]
+}
+
+@test "drift report says when an opted-in restart fails (#464)" {
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home-464-fail"
+    _write_drift_restart_fake "$fake_home" 3
+
+    ACFS_UPDATE_RESTART_SERVICES="cass" _run_drift_report "$fake_home"
+
+    assert_output --partial "Restart of cass failed (exit 3); it still runs the old binary"
+    assert_output --partial "RC=0"
+}
+
 @test "acfs update skips the drift report during a dry run (#381)" {
     run bash -c '
         source "$1"
