@@ -1019,7 +1019,7 @@ const NETWORK_LEVELS = [
     icon: CircleCheck,
     tone: "text-emerald-400/80",
     verdict: "Tested",
-    detail: "Our cold Claude run installed all eleven executables in 53 seconds through verified public GitHub fallbacks, including JSM. The mirror is blocked and UBS fetches its modules on first use. Organization policies may still block downloads; read the summary.",
+    detail: "An earlier cold Claude run installed all eleven executables in 53 seconds through verified public GitHub fallbacks. The current UBS fallback also bundles its pinned modules and helpers; it needs no module downloads after setup. A fresh hosted run of that updated bundle remains to be checked. Organization policies may still block downloads; read the summary.",
   },
   {
     name: "None",
@@ -1270,7 +1270,7 @@ export default function CloudAgentsPage() {
             </Disclosure>
             <Disclosure title="Options and environment variables" summary="Pick tools, a data root, a deadline or a pinned ref.">
               <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-                Set options inline on the bash side of the pipe, where the setup script sees them. Your {agent.name} recipe, installing four tools:
+                Set options inline on the bash side of the pipe, where the setup script sees them. Your {agent.name} recipe, installing five tools including ast-grep for UBS:
               </p>
               <CodePanel text={cloudSubsetRecipe(agent.id)} title={`${agent.name} · subset install`} label={`Subset install example for ${agent.name}`} copyLabel={`Copy subset install example for ${agent.name}`} />
               <table className="mt-6 hidden w-full text-left text-sm md:table">

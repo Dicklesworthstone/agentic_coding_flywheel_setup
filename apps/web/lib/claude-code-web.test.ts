@@ -233,8 +233,8 @@ describe("cloud agent page data", () => {
   test("subset recipes keep each agent's own mode and stay valid bash", () => {
     for (const agent of CLOUD_AGENTS) {
       const recipe = cloudSubsetRecipe(agent.id);
-      expect(recipe).toContain('| ACFS_CLOUD_TOOLS="br bv am ubs" ');
-      expect(recipe.replace(' ACFS_CLOUD_TOOLS="br bv am ubs"', "")).toBe(agent.script ?? GENERIC_CLOUD_SETUP_SCRIPT);
+      expect(recipe).toContain('| ACFS_CLOUD_TOOLS="br bv am ubs ast-grep" ');
+      expect(recipe.replace(' ACFS_CLOUD_TOOLS="br bv am ubs ast-grep"', "")).toBe(agent.script ?? GENERIC_CLOUD_SETUP_SCRIPT);
       const result = spawnSync("bash", ["-n"], { input: recipe, encoding: "utf8" });
       expect(result.status).toBe(0);
     }
@@ -373,6 +373,7 @@ exit 22
 printf '%s\\0' "$@" > "$ACFS_TEST_CURL_ARGS"
 cat <<'BOOTSTRAP'
 printf '%s' "\${ACFS_CLOUD_AGENT:-claude}" > bootstrap-mode
+printf '%s' "\${ACFS_CLOUD_TOOLS:-}" > bootstrap-tools
 BOOTSTRAP
 `, { mode: 0o755 });
     for (const agent of CLOUD_AGENTS.filter((entry) => entry.script)) {
@@ -394,6 +395,8 @@ BOOTSTRAP
         ]);
         expect(readFileSync(join(repo, "bootstrap-mode"), "utf8"))
           .toBe(agent.id === "claude" ? "claude" : agent.id === "codex" ? "codex" : "generic");
+        expect(readFileSync(join(repo, "bootstrap-tools"), "utf8"))
+          .toBe(kind === "subset" ? "br bv am ubs ast-grep" : "");
       }
     }
   });

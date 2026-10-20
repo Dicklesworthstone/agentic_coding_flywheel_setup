@@ -108,7 +108,7 @@ export const CLOUD_AGENTS: CloudAgent[] = [
  * recipe's ACFS_CLOUD_AGENT means a Claude user never copies generic mode
  * (which skips CLAUDE.md and MCP registration) by accident.
  */
-export function cloudSubsetRecipe(agentId: string, tools = "br bv am ubs"): string {
+export function cloudSubsetRecipe(agentId: string, tools = "br bv am ubs ast-grep"): string {
   const script = CLOUD_AGENTS.find((agent) => agent.id === agentId)?.script ?? GENERIC_CLOUD_SETUP_SCRIPT;
   return script.replace(" | ", ` | ACFS_CLOUD_TOOLS="${tools}" `);
 }
