@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-20T17:31:03+00:00
+# checksums.yaml - Auto-generated 2026-10-20T21:31:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -52,7 +52,7 @@ installers:
 
   cm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh"
-    sha256: "9be8b208b161930cd8e07253728218c1b73e56df36b7a13f9bd728e289ff3661"
+    sha256: "1825765482b3f6cdd239f86e1f67dafdcb5877326997e9a0cffc56ca2e5f20d8"
 
   csctf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh"
