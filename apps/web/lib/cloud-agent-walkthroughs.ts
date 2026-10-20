@@ -102,7 +102,8 @@ export type CloudWalkthrough = {
 };
 
 const domains = "raw.githubusercontent.com\ndownloads.agent-flywheel.com";
-const verifyHomeTools = `Read $HOME/.acfs/cloud/setup.log and the generated tool guide. In the task shell, export PATH="$HOME/.local/bin:$PATH". Run --version for br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp. Report every missing or failed executable and the relevant setup-log reason. An exit-0 setup does not mean all tools installed.`;
+const verifyTrackerTools = "If the repository already has a .beads tracker, run br ready --json and bv --robot-triage from its root and report any failures.";
+const verifyHomeTools = `Read $HOME/.acfs/cloud/setup.log and the generated tool guide. In the task shell, export PATH="$HOME/.local/bin:$PATH". Run --version for br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp. Report every missing or failed executable and the relevant setup-log reason. ${verifyTrackerTools} An exit-0 setup does not mean all tools installed.`;
 const claudeScreenshot = (file: string, width: number, height: number, alt: string, caption: string, highlights: ScreenshotHighlight[]): SetupScreenshot => ({
   src: `/cloud-agents/${file}.png`, width, height, alt, caption: `${caption} · Claude Code, 8 Oct 2026`, highlights,
 });
@@ -231,7 +232,7 @@ export const CLOUD_WALKTHROUGHS: Record<string, CloudWalkthrough> = {
       {
         id: "publish", title: "Run setup, check the log, then Publish",
         paragraphs: ["Ask Codex in the setup conversation to run the saved Install script and check the generated setup log and tool versions. Resolve missing tools before relying on them.", "Save the environment draft, then choose Publish. Wait for Environment published. Saving the script alone does not prepare the filesystem used by new tasks."],
-        paste: { title: "Setup verification request", text: "Run the saved Install script if it has not run yet. Read <repo>/.acfs-cloud/.acfs/cloud/setup.log and <repo>/.acfs-cloud/.codex/AGENTS.md. Set PATH to <repo>/.acfs-cloud/.local/bin and run --version for br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp. Report each failure and confirm the prepared files are present before I publish this environment.", label: "Copy Codex setup verification request" },
+        paste: { title: "Setup verification request", text: `Run the saved Install script if it has not run yet. Read <repo>/.acfs-cloud/.acfs/cloud/setup.log and <repo>/.acfs-cloud/.codex/AGENTS.md. Prepend <repo>/.acfs-cloud/.local/bin to PATH, preserving its existing entries, and run --version for br, bv, am, mcp-agent-mail, ubs, cass, cm, ms, ast-grep, jsm and jfp. ${verifyTrackerTools} Report each failure and confirm the prepared files are present before I publish this environment.`, label: "Copy Codex setup verification request" },
       },
       {
         id: "new-task", title: "Start a new task with the tool instructions",

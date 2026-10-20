@@ -230,6 +230,21 @@ describe("cloud agent page data", () => {
     expect(Object.values(mirror.tools).flatMap((tool) => tool.bins).sort()).toEqual([...CLOUD_EXECUTABLES].sort());
   });
 
+  test("first-session checks exercise existing trackers and preserve the Codex shell path", () => {
+    for (const [id, stepId] of [
+      ["claude", "start-and-check"], ["codex", "publish"], ["amp", "fresh-orb"],
+      ["devin", "verify"], ["generic", "verify"],
+    ]) {
+      const check = CLOUD_WALKTHROUGHS[id].steps.find((step) => step.id === stepId)?.paste?.text;
+      if (!check) throw new Error(`Missing first-session check for ${id}`);
+      expect(check).toContain("If the repository already has a .beads tracker");
+      expect(check).toContain("br ready --json and bv --robot-triage");
+      expect(getCloudAgentSetupInstructions(id)).toContain(check);
+    }
+    const codex = CLOUD_WALKTHROUGHS.codex.steps.find((step) => step.id === "publish")?.paste?.text;
+    expect(codex).toContain("Prepend <repo>/.acfs-cloud/.local/bin to PATH, preserving its existing entries");
+  });
+
   test("subset recipes keep each agent's own mode and stay valid bash", () => {
     for (const agent of CLOUD_AGENTS) {
       const recipe = cloudSubsetRecipe(agent.id);
