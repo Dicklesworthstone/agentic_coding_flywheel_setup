@@ -520,6 +520,32 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertTrue((self.home / ".local/bin/br").is_file())
         self.assertNotIn("github.com/", (self.root / "requests").read_text())
 
+    def test_ubs_subset_installs_ast_grep_once_and_exposes_it_to_later_tasks(self):
+        self.bundle('ubs')
+        self.bundle('ast-grep')
+        for tools in ('ubs', 'ubs ast-grep', 'ast-grep\tubs'):
+            with self.subTest(tools=tools):
+                before = (self.root / 'requests').read_text().splitlines() if (self.root / 'requests').exists() else []
+                self.run_setup(tools, ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+                requests = (self.root / 'requests').read_text().splitlines()[len(before):]
+                self.assertEqual(requests.count('https://mirror.invalid/v1/ast-grep/v1/bundle.tar.gz'), 1)
+                guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+                self.assertIn('`ast-grep`: structural code search used by UBS', guide)
+                if tools == 'ubs':
+                    self.assertIn('ACFS_CLOUD_TOOLS=ubs\\ ast-grep', guide)
+                probe = self.probe_from_guide('ast-grep')
+                self.assertEqual(probe.returncode, 0, probe.stderr)
+                self.assertEqual(probe.stdout.strip(), 'ast-grep 1.2.3')
+
+    def test_ubs_subset_reports_blocked_ast_grep_dependency(self):
+        self.bundle('ubs')
+        output = self.run_setup('ubs')
+        self.assertIn('ubs 1.2.3 (verified prebuilt)', output)
+        guide = (self.home / '.claude/CLAUDE.md').read_text()
+        self.assertIn('Not installed at setup time:', guide)
+        self.assertIn('- `ast-grep`:', guide)
+        self.assertFalse((self.home / '.local/bin/ast-grep').exists())
+
     def test_download_requests_disable_curl_config_and_request_identity_bytes(self):
         self.bundle()
         self.run_setup()
@@ -562,6 +588,7 @@ else:
 
     def test_generated_rerun_preserves_mode_root_and_hardened_fetch(self):
         self.bundle('ubs')
+        self.bundle('ast-grep')
         writable = self.root / 'writable root with spaces'
         options = dict(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable), ACFS_CLOUD_TIMEOUT='7')
         self.run_setup('ubs', **options)
@@ -572,7 +599,7 @@ else:
         self.assertNotIn('exit 0 means clean', content)
         result, args = self.run_generated_rerun(content)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('ACFS cloud setup: ubs\n', result.stderr.replace('\033[0m', ''))
+        self.assertIn('ACFS cloud setup: ubs ast-grep\n', result.stderr.replace('\033[0m', ''))
         self.assertIn('whole tool job timeout: 7s', result.stderr)
         self.assertIn('ubs 1.2.3 (already installed)', result.stderr)
         self.assertEqual(args[0], '-q')

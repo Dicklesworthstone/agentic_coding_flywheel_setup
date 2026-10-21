@@ -50,6 +50,43 @@ jobs:
             timeout --kill-after=1 5 "$HOME/.local/bin/$tool" --version
           done
           test -s "$HOME/.codex/AGENTS.md"
+          export PATH="$HOME/.local/bin:$PATH"
+          smoke="$HOME/.acfs/cloud"
+          printf '%s\n' 'export function sum(a, b) { return a + b; }' > "$smoke/safe.js"
+          printf '%s\n' 'export function run(source) { return eval(source); }' > "$smoke/unsafe.js"
+          # First scans must use the provisioned tools and bundled helpers.
+          # Fail and retain any attempted curl/wget dependency downloads.
+          mkdir "$smoke/offline-bin"
+          export ACFS_SMOKE_NETWORK_LOG="$smoke/scan-network-attempts.log"
+          for downloader in curl wget; do
+            cat > "$smoke/offline-bin/$downloader" <<'SH'
+          #!/bin/sh
+          printf '%s\n' "$0 $*" >> "$ACFS_SMOKE_NETWORK_LOG"
+          exit 97
+          SH
+            chmod 755 "$smoke/offline-bin/$downloader"
+          done
+          export PATH="$smoke/offline-bin:$PATH"
+          timeout --kill-after=2 60 ubs --ci --fail-on-warning --format=json "$smoke/safe.js" > "$smoke/safe-report.json"
+          if timeout --kill-after=2 60 ubs --ci --fail-on-warning --format=json "$smoke/unsafe.js" > "$smoke/unsafe-report.json"; then
+            echo 'UBS missed the unsafe eval smoke input' >&2
+            exit 1
+          else
+            unsafe_rc=$?
+            test "$unsafe_rc" -eq 1
+          fi
+          python3 - "$smoke" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          safe = json.loads((root / 'safe-report.json').read_text())
+          unsafe = json.loads((root / 'unsafe-report.json').read_text())
+          assert safe['status'] == unsafe['status'] == 'ok', 'Scan did not complete'
+          assert safe['totals']['files'] == unsafe['totals']['files'] == 1, 'Scan did not analyze its input'
+          assert safe['totals']['critical'] == safe['totals']['warning'] == 0, 'Safe control was flagged'
+          assert unsafe['totals']['critical'] > 0, 'Unsafe control had no critical findings'
+          assert not (root / 'scan-network-attempts.log').exists(), 'Scan attempted a dependency download'
+          print('Public UBS safe/unsafe scans passed without curl/wget downloads')
+          PY
       - name: Retain public smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4

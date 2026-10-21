@@ -505,11 +505,11 @@ The bootstrap downloads completely before it runs, with a 20-second transfer lim
 
 **Left out on purpose:** everything in `install.sh` that provisions a long-lived machine (users, zsh theming, the Ubuntu upgrade, systemd services, Tailscale, PostgreSQL, Vault, cloud CLIs), plus `ntm` (no interactive terminal to drive), `dcg` (it installs a user-level Claude Code hook, and cloud sessions only run hooks from the repository's `.claude/settings.json`), `rch` (needs SSH build workers), and `caam`, `ru`, `slb`.
 
-**Options**, set inline so the setup script itself sees them (for example `curl -fsSL … | ACFS_CLOUD_TOOLS="br bv am ubs ast-grep" bash`). Include ast-grep when selecting UBS so its structural checks are available:
+**Options**, set inline so the setup script itself sees them (for example `curl -fsSL … | ACFS_CLOUD_TOOLS="br bv am ubs ast-grep" bash`). Selecting UBS automatically includes ast-grep so its structural checks are available without a first-scan download:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `ACFS_CLOUD_TOOLS` | `br bv am ubs cass cm ms ast-grep jsm jfp` | Which tools to install |
+| `ACFS_CLOUD_TOOLS` | `br bv am ubs cass cm ms ast-grep jsm jfp` | Which tools to install; `ubs` also selects `ast-grep` |
 | `ACFS_CLOUD_TIMEOUT` | `180` | Deadline for each tool's job (download, install and version checks) in seconds; 1–180 |
 | `ACFS_CLOUD_REINSTALL` | `0` | `1` reinstalls tools that are already on PATH (to update inside a running session) |
 | `ACFS_CLOUD_AGENT` | `claude` | `codex` writes a Codex instruction guide and skips Claude MCP registration |

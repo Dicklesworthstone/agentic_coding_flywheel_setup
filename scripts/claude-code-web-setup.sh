@@ -40,6 +40,7 @@
 #   ACFS_CLOUD_SKILL_DIR optional absolute repository skill directory for Codex
 #   ACFS_CLOUD_TOOLS     space-separated subset of tools to install
 #                        (default: br bv am ubs cass cm ms ast-grep jsm jfp)
+#                        Selecting ubs also includes its ast-grep dependency.
 #   ACFS_CLOUD_TIMEOUT   whole tool job timeout in seconds (default: 180, max: 180)
 #   ACFS_CLOUD_REINSTALL 1 = reinstall tools that are already on PATH
 #   ACFS_REF             ACFS git ref that supplies cloud-mirror.json (default: main)
@@ -630,7 +631,7 @@ PY
 
 cloud_main() {
     set -uo pipefail
-    local started tool bin status detail pid selected=" "
+    local started tool bin status detail pid selected=" " needs_ast_grep=0 has_ast_grep=0
     local -a pids=()
     started=$(date +%s)
     case "$ACFS_CLOUD_AGENT" in
@@ -650,6 +651,17 @@ cloud_main() {
     for bin in python3 curl timeout; do
         command -v "$bin" >/dev/null || { cloud_warn "Required command missing: $bin"; return 0; }
     done
+    # Resolve the runtime dependency during setup, through the same pinned
+    # bundle path. A UBS-only subset must not defer a GitHub download until
+    # the agent's first scan, when network access may already be restricted.
+    for tool in $ACFS_CLOUD_TOOLS; do
+        [[ "$tool" == ubs ]] && needs_ast_grep=1
+        [[ "$tool" == ast-grep ]] && has_ast_grep=1
+    done
+    if [[ "$needs_ast_grep" == 1 && "$has_ast_grep" == 0 ]]; then
+        ACFS_CLOUD_TOOLS+=" ast-grep"
+        cloud_detail "Including ast-grep, required by UBS"
+    fi
     ACFS_CLOUD_WORK="$(mktemp -d "${TMPDIR:-/tmp}/acfs-cloud.XXXXXX")" || return 0
     if ! mkdir -p "$ACFS_CLOUD_STATE_DIR/logs" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_WORK/status"; then
         cloud_warn "Cannot write the install directories; choose a writable ACFS_CLOUD_ROOT"
