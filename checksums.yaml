@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-21T01:01:21+00:00
+# checksums.yaml - Auto-generated 2026-10-21T21:05:12+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -16,7 +16,7 @@ installers:
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
-    sha256: "e632c6d1dc71e75c9710caf5f645c11131f0d94c859ed6b4266444e11240abdb"
+    sha256: "69c7c0e057084ede4536de25f856c037f4649dcf8f29cc98a64ac52340320a99"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
@@ -124,7 +124,7 @@ installers:
 
   opencode:
     url: "https://opencode.ai/install"
-    sha256: "fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e"
+    sha256: "a2dd59522b9a091b6cdb2e4870c0f2135f7da09807cd5a7e04222d4316925b72"
 
   pcr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
@@ -156,7 +156,7 @@ installers:
 
   rust:
     url: "https://sh.rustup.rs"
-    sha256: "7d0ea0f8eba7fa1ebfe998091cd7ec4501e33ec5ca6b884eb4d894d7da5170af"
+    sha256: "9502b514362a21096210d498f143b8cdacda365d3dfcf45e8f5541e089ccafc0"
 
   s2p:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"
@@ -184,7 +184,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff"
+    sha256: "1f5390d273b0158bd5eaa3527ae049f3667baa881abb1e7c883dd637d84432f9"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
