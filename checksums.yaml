@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-21T21:05:12+00:00
+# checksums.yaml - Auto-generated 2026-10-21T21:46:20+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -36,7 +36,7 @@ installers:
 
   caam:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh"
-    sha256: "b15a445cbec6471bb15453fefaf48e8d1740eb60342ad0aa5ef789868ffaba0d"
+    sha256: "31b5cec3c8551c64ff99a009da886b3715706ac823a15b3c4950803f7658c2c4"
 
   casr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
@@ -56,7 +56,7 @@ installers:
 
   csctf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh"
-    sha256: "141745248d42bbacb22081f7de1528f31c29c3537d1c7c3989f3a635fc2d9524"
+    sha256: "f22f92d30d8afea5c54c63d2515b35df415c6174e4a804200339293fe7ef155c"
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
