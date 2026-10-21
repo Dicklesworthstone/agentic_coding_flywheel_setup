@@ -8,17 +8,17 @@
         "am",
         "mcp-agent-mail"
       ],
-      "file": "am/v0.3.38/9549252e3fe0de917587b6fa0617e4e2a56b9b707607380b7ab36ad3e4519c28/am-linux-x86_64.tar.gz",
-      "sha256": "9549252e3fe0de917587b6fa0617e4e2a56b9b707607380b7ab36ad3e4519c28",
+      "file": "am/v0.3.39/629142551c0331646878b2b4c1366f78c2587cd997cc011bbc288762bf909a10/am-linux-x86_64.tar.gz",
+      "sha256": "629142551c0331646878b2b4c1366f78c2587cd997cc011bbc288762bf909a10",
       "source": {
         "asset": "mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz",
         "repo": "Dicklesworthstone/mcp_agent_mail_rust",
-        "sha256": "951599b29977b56c676e2c0e92d967fcf90d5ba37da2857d8d5214eb67af4502",
-        "tag": "v0.3.38",
-        "url": "https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/v0.3.38/mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz",
+        "sha256": "23f121b013da0c920136ce29192ed654ef2678ec8b9251af7dbde4a5791fb7a3",
+        "tag": "v0.3.39",
+        "url": "https://github.com/Dicklesworthstone/mcp_agent_mail_rust/releases/download/v0.3.39/mcp-agent-mail-x86_64-unknown-linux-musl.tar.xz",
         "verification": "minisign+sha256"
       },
-      "version": "v0.3.38"
+      "version": "v0.3.39"
     },
     "ast-grep": {
       "bins": [
@@ -40,17 +40,17 @@
       "bins": [
         "br"
       ],
-      "file": "br/v0.7.4/8d0098c5997dfb74f3166c4f93d5c559e2a244904e8c16ebd72611e2d1609c3f/br-linux-x86_64.tar.gz",
-      "sha256": "8d0098c5997dfb74f3166c4f93d5c559e2a244904e8c16ebd72611e2d1609c3f",
+      "file": "br/v0.7.6/420011172111aad58a4c8cf384053efe0592cb0e4be8f3c3d2cfc2bd0b612896/br-linux-x86_64.tar.gz",
+      "sha256": "420011172111aad58a4c8cf384053efe0592cb0e4be8f3c3d2cfc2bd0b612896",
       "source": {
-        "asset": "br-0.7.4-linux_musl_amd64.tar.gz",
+        "asset": "br-0.7.6-linux_musl_amd64.tar.gz",
         "repo": "Dicklesworthstone/beads_rust",
-        "sha256": "5263fa20f988588b88320856e7a1086505d28a2456628b85cc8f6ec51e0af732",
-        "tag": "v0.7.4",
-        "url": "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.7.4/br-0.7.4-linux_musl_amd64.tar.gz",
+        "sha256": "28b89f8f26540a4c9e6242b3c9fc93bcdd89f4ec0b9c9792895028c53f5bf2bd",
+        "tag": "v0.7.6",
+        "url": "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.7.6/br-0.7.6-linux_musl_amd64.tar.gz",
         "verification": "minisign+sha256"
       },
-      "version": "v0.7.4"
+      "version": "v0.7.6"
     },
     "bv": {
       "bins": [
