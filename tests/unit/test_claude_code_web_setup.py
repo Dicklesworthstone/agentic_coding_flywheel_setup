@@ -1471,6 +1471,47 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertEqual(list(self.home.iterdir()), [])
         self.assertEqual((runtime / 'config.toml').read_text(), 'Keep provider config.\n')
 
+    def test_custom_root_guide_scopes_agent_mail_storage_to_its_command(self):
+        binary = b'''#!/bin/sh
+if [ "$1" = --version ]; then
+    echo 'am 1.2.3'
+else
+    printf '%s\\0%s\\0%s\\0%s\\0' "$STORAGE_ROOT" "${DATABASE_URL-}" "${XDG_DATA_HOME-}" "$HOME"
+fi
+'''
+        self.bundle('am', content=binary)
+        self.home.chmod(0o555)
+        writable = self.root / "mail tools ' quoted ` ticks $ dollars$(touch mail-injected)"
+        self.run_setup('am', ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable))
+        guide = (writable / '.codex/AGENTS.md').read_text()
+        blocks = re.findall(r'```bash\n(.*?)\n```', guide, re.S)
+        commands = [block for block in blocks if block.startswith('STORAGE_ROOT=')]
+        self.assertEqual(len(commands), 1, 'Guide must explain writable Agent Mail without global exports')
+        self.assertIn('reuse its existing configuration', guide)
+        path_commands = [block for block in blocks if block.startswith('export PATH=')]
+        self.assertEqual(len(path_commands), 1)
+        script = self.root / 'mail-state-guide.sh'
+        with script.open('x') as output:
+            output.write(path_commands[0] + '\n')
+            output.write(commands[0] + '\n')
+            output.write('printf "%s\\0%s\\0%s\\0%s\\0" "${STORAGE_ROOT-}" "${DATABASE_URL-}" "${XDG_DATA_HOME-}" "$HOME"')
+        cases = [('', '', ''), (str(self.root / 'existing mail'), '', ''),
+                 ('', str(self.root / 'existing XDG'), ''),
+                 ('', '', 'sqlite:///existing-mail.db'),
+                 (str(self.root / 'existing mail'), str(self.root / 'existing XDG'), 'sqlite:///existing-mail.db')]
+        for storage, xdg, database in cases:
+            with self.subTest(storage=storage, xdg=xdg, database=database):
+                result = subprocess.run(['bash', str(script)], cwd=self.root,
+                                        env={**self.env, 'STORAGE_ROOT': storage, 'XDG_DATA_HOME': xdg, 'DATABASE_URL': database},
+                                        capture_output=True, timeout=5, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = storage or str(Path(xdg or str(writable / '.local/share')) / 'mcp-agent-mail/git_mailbox_repo')
+                self.assertEqual(result.stdout.split(b'\0'), [
+                    expected.encode(), database.encode(), xdg.encode(), str(self.home).encode(),
+                    storage.encode(), database.encode(), xdg.encode(), str(self.home).encode(), b''])
+        self.assertFalse((self.root / 'mail-injected').exists())
+        self.assertEqual(list(self.home.iterdir()), [])
+
     def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
         self.bundle()
         writable = self.root / 'workspace tools ` quoted'

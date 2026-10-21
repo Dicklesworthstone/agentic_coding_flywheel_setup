@@ -110,6 +110,18 @@ describe("cloud agent page data", () => {
     expect(script).toContain('if [[ -z "${XDG_DATA_HOME:-}" ]]; then');
   });
 
+  test("Agent Mail task guidance connects command-scoped writable storage", () => {
+    const instruction = "Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.";
+    for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {
+      expect(text).toContain(instruction);
+      expect(readme).toContain(text);
+    }
+    for (const provider of ["codex", "amp", "devin", "grok", "generic"]) {
+      expect(getCloudAgentSetupInstructions(provider)).toContain(instruction);
+    }
+    expect(script).toContain(instruction);
+  });
+
   test("MS task guidance connects project initialization, indexing and robot search", () => {
     const instruction = "Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.";
     for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {

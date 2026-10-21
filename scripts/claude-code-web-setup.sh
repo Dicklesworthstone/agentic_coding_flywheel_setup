@@ -483,6 +483,9 @@ cloud_write_guide() {
         block+=$'For JFP\'s prompt cache in this writable data root, run:\n\n```bash\n'
         block+="export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}"$'\n```\n\n'
         block+=$'This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable.\n\n'
+        block+=$'For Agent Mail with a read-only HOME and no configured archive, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
+        block+="STORAGE_ROOT=\${STORAGE_ROOT:-\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")}/mcp-agent-mail/git_mailbox_repo} am --help"$'\n```\n\n'
+        block+=$'If Agent Mail is already configured, reuse its existing configuration. This command-scoped value preserves an explicit STORAGE_ROOT or XDG_DATA_HOME and does not change the shell\'s STORAGE_ROOT, DATABASE_URL, HOME or provider configuration. Existing configured state paths must be writable.\n\n'
     fi
     if [[ ${#installed[@]} -gt 0 ]]; then
         block+="$(printf '%s\n' "${installed[@]}")"$'\n'
@@ -604,6 +607,7 @@ export PATH={bins}:"$PATH"
 Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
 Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
 For a custom data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
+Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.
