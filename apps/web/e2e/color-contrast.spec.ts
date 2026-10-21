@@ -495,3 +495,88 @@ test.describe("Instructional text readability (bd-64cg3)", () => {
     await expect(exhibit.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
   });
 });
+
+test.describe("Complete guide crash recovery", () => {
+  test.use({ contextOptions: { reducedMotion: "no-preference" } });
+
+  async function readProgress(page: Page): Promise<number> {
+    const value = await page.getByRole("progressbar", { name: "ScarletCave progress" }).getAttribute("aria-valuenow");
+    if (value === null || !/^\d+$/.test(value)) throw new Error("Missing numeric simulation progress");
+    return Number(value);
+  }
+
+  test("pause, manual advance and resume control real simulation progress", async ({ page }) => {
+    await page.goto("/complete-guide");
+    const simulation = page.getByRole("region", { name: "Fungible Agent Crash Recovery", exact: true });
+    await simulation.scrollIntoViewIfNeeded();
+    await expect.poll(() => readProgress(page)).toBeGreaterThan(10);
+    await simulation.getByRole("button", { name: "Pause simulation", exact: true }).click();
+    const paused = await readProgress(page);
+    await page.waitForTimeout(600);
+    expect(await readProgress(page)).toBe(paused);
+    await simulation.getByRole("button", { name: "Advance simulation by one second" }).click();
+    await expect.poll(() => readProgress(page)).toBeGreaterThan(paused);
+    const advanced = await readProgress(page);
+    await simulation.getByRole("button", { name: "Resume simulation", exact: true }).click();
+    await expect.poll(() => readProgress(page)).toBeGreaterThan(advanced);
+  });
+
+  test("reduced motion allows manual recovery and completion without autoplay", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/complete-guide");
+    const simulation = page.getByRole("region", { name: "Fungible Agent Crash Recovery", exact: true });
+    await simulation.scrollIntoViewIfNeeded();
+    const progress = simulation.getByRole("progressbar", { name: "ScarletCave progress" });
+    await expect(progress).toHaveAttribute("aria-valuenow", "10");
+    await page.waitForTimeout(600);
+    await expect(progress).toHaveAttribute("aria-valuenow", "10");
+    const agent = simulation.getByRole("button", { name: "Kill agent ScarletCave", exact: true });
+    await agent.click();
+    if (await agent.getByText("Tap Again to Kill", { exact: true }).isVisible()) await agent.click();
+    await expect(simulation.getByRole("button", { name: "Agent ScarletCave is crashed" })).toBeDisabled();
+    const advance = simulation.getByRole("button", { name: "Advance simulation by one second" });
+    // The real simulation advances at least one percent per tick. Sixty
+    // manual seconds cover all eight beads without mocking its randomness.
+    for (let step = 0; step < 60 && await advance.isEnabled(); step++) await advance.click();
+    await expect(simulation.getByText(/^Recovered:/)).toHaveText(/Recovered:\s*[1-9]/);
+    await expect(simulation.getByText(/^Completed:/)).toHaveText("Completed: 8");
+    await expect(advance).toBeDisabled();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(simulation.getByRole("button", { name: "Pause simulation", exact: true })).toBeDisabled();
+    await expect(simulation.locator(".animate-pulse")).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await simulation.getByRole("button", { name: "Reset Swarm" }).click();
+    await expect(progress).toHaveAttribute("aria-valuenow", "10");
+    await page.waitForTimeout(600);
+    await expect(progress).toHaveAttribute("aria-valuenow", "10");
+    await expect(advance).toBeEnabled();
+    // With every worker crashed, preserve one bookkeeping step before idle.
+    const workers = simulation.getByRole("button", { name: /^Kill agent / });
+    while (await workers.count() > 0) {
+      const worker = workers.first();
+      await worker.click();
+      if (await worker.getByText("Tap Again to Kill", { exact: true }).isVisible()) await worker.click();
+    }
+    await advance.click();
+    await expect(simulation.getByText(/^Orphaned:/)).toHaveText("Orphaned: 6");
+    await expect(advance).toBeDisabled();
+  });
+
+  test("scrolling away stops progress and returning resumes it", async ({ page }) => {
+    await page.goto("/complete-guide");
+    const simulation = page.getByRole("region", { name: "Fungible Agent Crash Recovery", exact: true });
+    await simulation.scrollIntoViewIfNeeded();
+    await expect.poll(() => readProgress(page)).toBeGreaterThan(10);
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    await expect.poll(async () => {
+      const bounds = await simulation.boundingBox();
+      return bounds !== null && bounds.y > (page.viewportSize()?.height ?? 0);
+    }).toBe(true);
+    await page.waitForTimeout(300);
+    const offscreen = await readProgress(page);
+    await page.waitForTimeout(600);
+    expect(await readProgress(page)).toBe(offscreen);
+    await simulation.scrollIntoViewIfNeeded();
+    await expect.poll(() => readProgress(page)).toBeGreaterThan(offscreen);
+  });
+});

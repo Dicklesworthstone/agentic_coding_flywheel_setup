@@ -9,6 +9,7 @@ import { AnimatePresence, motion, useInView, useReducedMotion } from "@/componen
 
 const AGENT_NAMES = ["ScarletCave", "BlueLake", "CoralBadger", "JadePeak", "AmberFox", "IvoryOwl"];
 const AGENT_COLORS = ["#ef4444", "#3b82f6", "#f97316", "#10b981", "#f59e0b", "#8b5cf6"];
+const TICK_MS = 200;
 
 const BEAD_TITLES = [
   "br-101: Upload pipeline",
@@ -172,23 +173,39 @@ function tick(state: SimState): SimState {
 
 export function CrashRecoveryViz() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const isInView = useInView(containerRef, { once: true, margin: "-200px" });
+  const isInView = useInView(containerRef);
   const prefersReducedMotion = useReducedMotion();
   const rm = prefersReducedMotion ?? false;
 
   const [state, setState] = useState<SimState>(createInitialState);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
+  // A final tick must still mark pending work orphaned after the last crash.
+  const hasWork = state.completed < state.beads.length && (
+    state.agents.some((agent) => agent.alive) || state.beads.some((bead) => bead.status === "in_progress")
+  );
+  const running = isInView && !rm && !paused && hasWork;
+  const canAdvance = hasWork && (rm || paused);
 
-  // Simulation loop gated by visibility
+  // Reading another section, reduced motion, and a finished swarm need no timer.
   useEffect(() => {
-    if (!isInView) return;
+    if (!running) return;
 
     const interval = setInterval(() => {
       setState((prev) => tick(prev));
-    }, 200);
+    }, TICK_MS);
 
     return () => clearInterval(interval);
-  }, [isInView]);
+  }, [running]);
+
+  const advance = useCallback(() => {
+    setState((previous) => {
+      let next = previous;
+      // One manual step covers one simulated second without timed animation.
+      for (let elapsed = 0; elapsed < 1000; elapsed += TICK_MS) next = tick(next);
+      return next;
+    });
+  }, []);
 
   // Mobile: auto-dismiss selection after 900ms
   useEffect(() => {
@@ -240,6 +257,8 @@ export function CrashRecoveryViz() {
   return (
     <div
       ref={containerRef}
+      role="region"
+      aria-label="Fungible Agent Crash Recovery"
       className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl"
     >
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
@@ -258,13 +277,37 @@ export function CrashRecoveryViz() {
               <span className="sm:hidden">Tap an agent, then tap again to kill it.</span>
             </p>
           </div>
-          <button
-            onClick={reset}
-            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08] hover:border-[#FF5500]/30 active:scale-95 transition min-h-[44px]"
-          >
-            Reset Swarm
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {!rm && (
+              <button
+                type="button"
+                onClick={() => setPaused((previous) => !previous)}
+                disabled={!hasWork}
+                aria-label={paused ? "Resume simulation" : "Pause simulation"}
+                className="min-h-[44px] rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-zinc-300 transition hover:border-[#FF5500]/30 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {paused ? "Resume" : "Pause"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={advance}
+              disabled={!canAdvance}
+              aria-label="Advance simulation by one second"
+              className="min-h-[44px] rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-zinc-300 transition hover:border-[#FF5500]/30 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Step +1s
+            </button>
+            <button
+              type="button"
+              onClick={reset}
+              className="min-h-[44px] rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-zinc-300 transition hover:border-[#FF5500]/30 hover:bg-white/[0.08]"
+            >
+              Reset Swarm
+            </button>
+          </div>
         </div>
+        {rm && <p className="mt-3 text-xs text-zinc-400">Reduced motion: use Step +1s to advance at your own pace.</p>}
 
         {/* Metrics */}
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs">
@@ -285,7 +328,7 @@ export function CrashRecoveryViz() {
           </div>
           {orphanedCount > 0 && (
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
+              <div className={`h-2 w-2 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)] ${running ? "animate-pulse" : ""}`} />
               <span className="text-orange-400 font-semibold">Orphaned: {orphanedCount}</span>
             </div>
           )}
@@ -315,6 +358,7 @@ export function CrashRecoveryViz() {
             return (
               <motion.button
                 key={agent.id}
+                type="button"
                 onClick={() => handleAgentClick(agent.id)}
                 disabled={!agent.alive}
                 aria-label={
@@ -332,8 +376,8 @@ export function CrashRecoveryViz() {
               >
                 {/* Agent name + status dot */}
                 <div className="flex items-center gap-2 mb-3">
-                  <div // slop-ok(S25-pulse-dot): pulses only while the simulated agent is alive; it stops when the crash hits
-                    className={`h-3 w-3 rounded-full shrink-0 ${agent.alive && !rm ? "animate-pulse" : ""}`}
+                  <div // slop-ok(S25-pulse-dot): pulses only for a live agent in the visible, running simulation
+                    className={`h-3 w-3 rounded-full shrink-0 ${agent.alive && running ? "animate-pulse" : ""}`}
                     style={{
                       backgroundColor: agent.alive ? agent.color : "#666",
                       boxShadow: agent.alive ? `0 0 8px ${agent.color}60` : "none",
@@ -348,7 +392,14 @@ export function CrashRecoveryViz() {
                     <div className="text-xs text-zinc-500 mb-1.5 truncate">
                       {BEAD_TITLES[agent.currentBead]}
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      role="progressbar"
+                      aria-label={`${agent.name} progress`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.floor(agent.progress)}
+                      className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden"
+                    >
                       <motion.div
                         className="h-full rounded-full"
                         style={{ backgroundColor: agent.color }}
