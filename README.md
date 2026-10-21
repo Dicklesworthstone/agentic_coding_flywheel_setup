@@ -537,13 +537,15 @@ The same public bundles work in a Linux x86_64 Codex cloud environment. In **Wor
 
 ```bash
 #!/bin/bash
+(
 set -o pipefail
 acfs_cloud_root="$(git rev-parse --show-toplevel)" || exit 1
 acfs_cloud_setup="$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh)" || { printf '%s\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit 1; }
 printf '%s\n' "$acfs_cloud_setup" | ACFS_CLOUD_SKILL_DIR="$acfs_cloud_root/.agents/skills/acfs-cloud-tools" ACFS_CLOUD_AGENT=codex ACFS_CLOUD_ROOT="$acfs_cloud_root/.acfs-cloud" bash || exit 1
 acfs_cloud_exclude="$(git rev-parse --git-path info/exclude)" || exit 1
 mkdir -p "$(dirname "$acfs_cloud_exclude")" || exit 1
-printf '/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$acfs_cloud_exclude"
+printf '\n/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n' >> "$acfs_cloud_exclude"
+) || exit 1
 ```
 
 Enable internet access and add `raw.githubusercontent.com` and `downloads.agent-flywheel.com` to **Additional allowed domains**. These public downloads need no secrets or ownership of the tool repositories. The recipe installs into the writable repository workspace because hosted home/config paths can be read-only, and excludes its data directory through local Git metadata. It preserves `HOME` and `CODEX_HOME`. Review `<repo>/.acfs-cloud/.acfs/cloud/setup.log`, then **Publish** the prepared environment. After changing its setup, **Republish** for new tasks. See OpenAI's [current cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments).
@@ -574,9 +576,11 @@ The provider-neutral template writes `$HOME/.acfs/cloud/AGENTS.md` and does not 
 
 ```bash
 #!/bin/bash
+(
 set -o pipefail
 acfs_cloud_setup="$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' -H 'Accept-Encoding: identity' https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/scripts/claude-code-web-setup.sh)" || { printf '%s\n' 'ACFS cloud bootstrap download failed; tools were not installed. Check network access and retry.' >&2; exit 1; }
 printf '%s\n' "$acfs_cloud_setup" | ACFS_CLOUD_AGENT=generic bash
+) || exit 1
 ```
 
 Include these instructions in each task:

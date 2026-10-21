@@ -355,6 +355,74 @@ describe("cloud agent page data", () => {
     expect(readFileSync(exclude, "utf8")).toContain("/.acfs-cloud/\n/.agents/skills/acfs-cloud-tools/\n");
   });
 
+  test("successful setup recipes preserve the caller's shell options and variables", () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-caller-shell-")));
+    const bin = join(workspace, "bin");
+    const template = join(workspace, "empty-template");
+    mkdirSync(bin);
+    mkdirSync(template);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+    env.GIT_CONFIG_NOSYSTEM = "1";
+    env.GIT_CONFIG_GLOBAL = "/dev/null";
+    env.GIT_TEMPLATE_DIR = template;
+    env.PATH = `${bin}:${process.env.PATH}`;
+    writeFileSync(join(bin, "curl"), "#!/bin/sh\nprintf '%s\\n' ':'\n", { mode: 0o755 });
+    for (const agent of CLOUD_AGENTS.filter((entry) => ["claude", "codex", "generic"].includes(entry.id))) {
+      for (const [kind, recipe] of [["full", agent.script!], ["subset", cloudSubsetRecipe(agent.id)]]) {
+        for (const pipefail of [false, true]) {
+          const repo = join(workspace, `${agent.id}-${kind}-${pipefail} with spaces`);
+          mkdirSync(repo);
+          expect(spawnSync("git", ["init", "--quiet", repo], { env, encoding: "utf8" }).status).toBe(0);
+          const source = `set ${pipefail ? "-" : "+"}o pipefail
+acfs_cloud_root='keep root'
+acfs_cloud_setup='keep setup'
+acfs_cloud_exclude='keep exclusions'
+${recipe}
+printf '%s\\0' "$acfs_cloud_root" "$acfs_cloud_setup" "$acfs_cloud_exclude"
+if [[ -o pipefail ]]; then printf on; else printf off; fi
+`;
+          const result = spawnSync("bash", ["-c", source], { cwd: repo, env, encoding: "utf8" });
+          expect(result.status).toBe(0);
+          expect(result.stdout.split("\0")).toEqual(["keep root", "keep setup", "keep exclusions", pipefail ? "on" : "off"]);
+          expect(result.stderr).toBe("");
+        }
+      }
+    }
+  });
+
+  test("Codex exclusions start on a new line when existing rules lack a trailing newline", () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-codex-exclude-")));
+    const repo = join(workspace, "repository with spaces");
+    const bin = join(workspace, "bin");
+    const template = join(workspace, "empty-template");
+    mkdirSync(repo);
+    mkdirSync(bin);
+    mkdirSync(template);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+    env.GIT_CONFIG_NOSYSTEM = "1";
+    env.GIT_CONFIG_GLOBAL = "/dev/null";
+    env.GIT_TEMPLATE_DIR = template;
+    env.PATH = `${bin}:${process.env.PATH}`;
+    expect(spawnSync("git", ["init", "--quiet", repo], { env, encoding: "utf8" }).status).toBe(0);
+    const exclude = join(repo, ".git/info/exclude");
+    mkdirSync(dirname(exclude), { recursive: true });
+    const original = "# Keep my exclusions\nkeep-local";
+    writeFileSync(exclude, original);
+    writeFileSync(join(bin, "curl"), `#!/bin/sh
+cat <<'BOOTSTRAP'
+mkdir -p "$ACFS_CLOUD_ROOT/runtime" "$ACFS_CLOUD_SKILL_DIR"
+printf local > "$ACFS_CLOUD_ROOT/runtime/sentinel"
+printf local > "$ACFS_CLOUD_SKILL_DIR/SKILL.md"
+BOOTSTRAP
+`, { mode: 0o755 });
+    const result = spawnSync("bash", ["-c", CODEX_CLOUD_SETUP_SCRIPT], { cwd: repo, env, encoding: "utf8" });
+    expect(result.status).toBe(0);
+    const ignored = ["keep-local", ".acfs-cloud/runtime/sentinel", ".agents/skills/acfs-cloud-tools/SKILL.md"].map((path) =>
+      spawnSync("git", ["check-ignore", "--no-index", "--quiet", path], { cwd: repo, env, encoding: "utf8" }).status);
+    expect(ignored).toEqual([0, 0, 0]);
+    expect(readFileSync(exclude, "utf8")).toStartWith(original + "\n");
+  });
+
   test("failed bootstrap downloads never execute partial content in full and subset recipes", () => {
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), "acfs-failed-bootstrap-")));
     const bin = join(workspace, "bin");
@@ -381,7 +449,7 @@ exit 22
           const exclude = join(repo, ".git/info/exclude");
           mkdirSync(dirname(exclude), { recursive: true });
           writeFileSync(exclude, "# Keep my exclusions\n");
-          const source = agent.id === "claude" ? `${recipe}\nprintf continued > existing-setup-ran\n` : recipe;
+          const source = `${recipe}\nprintf continued > existing-setup-ran\n`;
           const result = spawnSync("bash", ["-c", source], { cwd: repo, env, encoding: "utf8" });
           const label = `${agent.id}-${kind}-${partial ? "partial" : "missing"}`;
           if (existsSync(join(repo, "partial-bootstrap-ran"))) failures.push(`${label}: failed download bytes executed`);
@@ -390,6 +458,7 @@ exit 22
             failures.push(`${label}: unexpected exit ${result.status}`);
           }
           if (agent.id === "claude" && !existsSync(join(repo, "existing-setup-ran"))) failures.push(`${label}: following setup command skipped`);
+          if (agent.id !== "claude" && existsSync(join(repo, "existing-setup-ran"))) failures.push(`${label}: failed required setup continued`);
           if (readFileSync(exclude, "utf8") !== "# Keep my exclusions\n") failures.push(`${label}: exclusions changed`);
         }
       }
