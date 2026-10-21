@@ -122,6 +122,18 @@ describe("cloud agent page data", () => {
     expect(script).toContain(instruction);
   });
 
+  test("JSM task guidance connects writable state without redirecting the provider home", () => {
+    const instruction = "Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.";
+    for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {
+      expect(text).toContain(instruction);
+      expect(readme).toContain(text);
+    }
+    for (const provider of ["codex", "amp", "devin", "grok", "generic"]) {
+      expect(getCloudAgentSetupInstructions(provider)).toContain(instruction);
+    }
+    expect(script).toContain(instruction);
+  });
+
   test("MS task guidance connects project initialization, indexing and robot search", () => {
     const instruction = "Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.";
     for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {

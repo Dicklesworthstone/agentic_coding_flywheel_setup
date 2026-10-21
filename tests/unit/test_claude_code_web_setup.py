@@ -1438,6 +1438,48 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertFalse((self.root / 'jfp-injected').exists())
         self.assertEqual(list(self.home.iterdir()), [])
 
+    def test_custom_root_guide_scopes_jsm_state_and_preserves_existing_paths(self):
+        binary = b'''#!/bin/sh
+if [ "$1" = --version ]; then
+    echo 'jsm 1.2.3'
+else
+    printf '%s\\0%s\\0%s\\0%s\\0%s\\0' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "${JSM_PROFILE_ROOT-}" "$HOME"
+fi
+'''
+        self.bundle('jsm', content=binary)
+        self.home.chmod(0o555)
+        writable = self.root / "jsm tools ' quoted ` ticks $ dollars$(touch jsm-injected)"
+        self.run_setup('jsm', ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_ROOT=str(writable))
+        guide = (writable / '.codex/AGENTS.md').read_text()
+        blocks = re.findall(r'```bash\n(.*?)\n```', guide, re.S)
+        commands = [block for block in blocks if block.startswith('XDG_CONFIG_HOME=')]
+        self.assertEqual(len(commands), 1, 'Guide must explain writable JSM state without global XDG exports')
+        self.assertIn('skill installation targets', guide)
+        self.assertIn('JSM_PROFILE_ROOT', guide)
+        path_commands = [block for block in blocks if block.startswith('export PATH=')]
+        self.assertEqual(len(path_commands), 1)
+        script = self.root / 'jsm-state-guide.sh'
+        with script.open('x') as output:
+            output.write(path_commands[0] + '\n' + commands[0] + '\n')
+            output.write('printf "%s\\0%s\\0%s\\0%s\\0%s\\0" "${XDG_CONFIG_HOME-}" "${XDG_DATA_HOME-}" "${XDG_CACHE_HOME-}" "${JSM_PROFILE_ROOT-}" "$HOME"')
+        cases = [('', '', '', ''), (str(self.root / 'existing config'), '', '', ''),
+                 ('', str(self.root / 'existing data'), '', ''), ('', '', str(self.root / 'existing cache'), ''),
+                 ('', '', '', str(self.root / 'existing profile')),
+                 tuple(str(self.root / ('existing ' + name)) for name in ('config', 'data', 'cache', 'profile'))]
+        for config, data, cache, profile in cases:
+            with self.subTest(config=config, data=data, cache=cache, profile=profile):
+                result = subprocess.run(['bash', str(script)], cwd=self.root,
+                                        env={**self.env, 'XDG_CONFIG_HOME': config, 'XDG_DATA_HOME': data,
+                                             'XDG_CACHE_HOME': cache, 'JSM_PROFILE_ROOT': profile},
+                                        capture_output=True, timeout=5, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = [config or str(writable / '.config'), data or str(writable / '.local/share'),
+                            cache or str(writable / '.cache'), profile, str(self.home),
+                            config, data, cache, profile, str(self.home)]
+                self.assertEqual(result.stdout.split(b'\0'), [value.encode() for value in expected] + [b''])
+        self.assertFalse((self.root / 'jsm-injected').exists())
+        self.assertEqual(list(self.home.iterdir()), [])
+
     def test_custom_root_guide_selects_writable_search_and_memory_state(self):
         self.bundle()
         self.home.chmod(0o555)

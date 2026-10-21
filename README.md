@@ -556,6 +556,7 @@ Read <repo>/.acfs-cloud/.codex/AGENTS.md for the installed flywheel tools and <r
 In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-cloud"; export PATH="$acfs_cloud_root/.local/bin:$PATH" before using the tools.
 Follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell so search data, memory and prompt caches use the writable workspace; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
+Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Check br --version, bv --version, ubs --version and jsm --version before starting work.
 Use br ready --json and bv --robot-triage; never open their interactive TUIs.
@@ -585,6 +586,7 @@ Read $HOME/.acfs/cloud/AGENTS.md and $HOME/.acfs/cloud/setup.log before starting
 In each task shell, run export PATH="$HOME/.local/bin:$PATH".
 If using a custom writable data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
+Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Check br --version, bv --version, ubs --version and jsm --version; report missing tools from the setup log.
 Use the existing repository tracker with br ready --json and bv --robot-triage. Never open their interactive TUIs.

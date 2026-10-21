@@ -483,6 +483,9 @@ cloud_write_guide() {
         block+=$'For JFP\'s prompt cache in this writable data root, run:\n\n```bash\n'
         block+="export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}"$'\n```\n\n'
         block+=$'This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable.\n\n'
+        block+=$'For JSM state with a read-only HOME and no configured profile, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
+        block+="XDG_CONFIG_HOME=\${XDG_CONFIG_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.config")} XDG_DATA_HOME=\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")} XDG_CACHE_HOME=\${XDG_CACHE_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.cache")} jsm --help"$'\n```\n\n'
+        block+=$'Reuse existing JSM configuration. These command-scoped defaults preserve explicit XDG paths and leave HOME and the parent shell unchanged. JSM_PROFILE_ROOT, when set, takes precedence and must be writable. Configuration and cache paths do not redirect skill installation targets: inspect jsm config show and select writable skill directories supported by your provider before installing. Skill discovery and premium access still require their own checks.\n\n'
         block+=$'For Agent Mail with a read-only HOME and no configured archive, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
         block+="STORAGE_ROOT=\${STORAGE_ROOT:-\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")}/mcp-agent-mail/git_mailbox_repo} am --help"$'\n```\n\n'
         block+=$'If Agent Mail is already configured, reuse its existing configuration. This command-scoped value preserves an explicit STORAGE_ROOT or XDG_DATA_HOME and does not change the shell\'s STORAGE_ROOT, DATABASE_URL, HOME or provider configuration. Existing configured state paths must be writable.\n\n'
@@ -608,6 +611,7 @@ Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
 Follow the guide's robot/JSON commands and use the repository's existing Beads tracker.
 For a custom data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
+Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.
