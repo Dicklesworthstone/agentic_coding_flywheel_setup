@@ -640,13 +640,16 @@ PY
 cloud_main() {
     set -uo pipefail
     local started tool bin status detail pid selected=" " needs_ast_grep=0 has_ast_grep=0
-    local -a pids=()
+    local -a pids=() tools=()
     started=$(date +%s)
     case "$ACFS_CLOUD_AGENT" in
         claude|codex|generic) ;;
         *) cloud_warn "ACFS_CLOUD_AGENT must be claude or codex or generic"; return 0 ;;
     esac
     ACFS_CLOUD_TOOLS="${ACFS_CLOUD_TOOLS:-$ACFS_CLOUD_DEFAULT_TOOLS}"
+    # Split only on whitespace, never on checkout filenames matching a glob.
+    # Flatten newlines because read otherwise stops after the first line.
+    IFS=$' \t\n' read -r -a tools <<< "${ACFS_CLOUD_TOOLS//$'\n'/ }"
     ACFS_CLOUD_TIMEOUT="${ACFS_CLOUD_TIMEOUT:-180}"
     if [[ ! "$ACFS_CLOUD_TIMEOUT" =~ ^([1-9]|[1-9][0-9]|1[0-7][0-9]|180)$ ]]; then
         cloud_warn "ACFS_CLOUD_TIMEOUT must be an integer from 1 to 180"
@@ -662,11 +665,12 @@ cloud_main() {
     # Resolve the runtime dependency during setup, through the same pinned
     # bundle path. A UBS-only subset must not defer a GitHub download until
     # the agent's first scan, when network access may already be restricted.
-    for tool in $ACFS_CLOUD_TOOLS; do
+    for tool in "${tools[@]}"; do
         [[ "$tool" == ubs ]] && needs_ast_grep=1
         [[ "$tool" == ast-grep ]] && has_ast_grep=1
     done
     if [[ "$needs_ast_grep" == 1 && "$has_ast_grep" == 0 ]]; then
+        tools+=(ast-grep)
         ACFS_CLOUD_TOOLS+=" ast-grep"
         cloud_detail "Including ast-grep, required by UBS"
     fi
@@ -688,7 +692,7 @@ cloud_main() {
         printf '{}' > "$ACFS_CLOUD_WORK/cloud-mirror.json"
     fi
 
-    for tool in $ACFS_CLOUD_TOOLS; do
+    for tool in "${tools[@]}"; do
         bin="$(cloud_tool_field "$tool" 3)"
         if [[ -z "$bin" ]]; then
             cloud_warn "Unknown tool '$tool' (known: $ACFS_CLOUD_DEFAULT_TOOLS)"
@@ -722,7 +726,7 @@ cloud_main() {
     fi
 
     cloud_step "Summary ($(( $(date +%s) - started ))s)"
-    for tool in $ACFS_CLOUD_TOOLS; do
+    for tool in "${tools[@]}"; do
         [[ -f "$ACFS_CLOUD_WORK/status/$tool" ]] || continue
         IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/$tool"
         if [[ "$status" == "ok" ]]; then

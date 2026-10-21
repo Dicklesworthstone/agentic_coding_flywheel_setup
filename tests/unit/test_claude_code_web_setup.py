@@ -520,6 +520,48 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertTrue((self.home / ".local/bin/br").is_file())
         self.assertNotIn("github.com/", (self.root / "requests").read_text())
 
+    def test_tool_selection_never_expands_checkout_filenames(self):
+        self.bundle('br')
+        self.bundle('ubs')
+        self.bundle('ast-grep')
+        checkout = self.root / 'checkout'
+        checkout.mkdir()
+        for name in ('br', 'ubs', 'ast-grep'):
+            (checkout / name).write_text('Existing project file.\n')
+        for selection in ('b?', '[bu]*', '*'):
+            with self.subTest(selection=selection):
+                before = (self.root / 'requests').read_text().splitlines() if (self.root / 'requests').exists() else []
+                output = self.run_setup(selection, cwd=checkout, ACFS_CLOUD_AGENT='generic')
+                self.assertIn("Unknown tool '" + selection + "'", output)
+                requests = (self.root / 'requests').read_text().splitlines()[len(before):]
+                self.assertEqual(requests, [MANIFEST_URL])
+                self.assertEqual(list((self.home / '.local/bin').iterdir()), [])
+                self.assertNotIn('Including ast-grep', output)
+        output = self.run_setup('br\t*\n br', cwd=checkout, ACFS_CLOUD_AGENT='generic')
+        self.assertIn("Unknown tool '*'", output)
+        self.assertIn('br 1.2.3 (verified prebuilt)', output)
+        requests = (self.root / 'requests').read_text().splitlines()
+        self.assertEqual(requests.count('https://mirror.invalid/v1/br/v1/bundle.tar.gz'), 1)
+        self.assertFalse((self.home / '.local/bin/ubs').exists())
+        self.assertFalse((self.home / '.local/bin/ast-grep').exists())
+        for name in ('br', 'ubs', 'ast-grep'):
+            self.assertEqual((checkout / name).read_text(), 'Existing project file.\n')
+
+    def test_multiline_tool_selection_keeps_later_tools_and_dependencies(self):
+        for tool in ('br', 'ubs', 'ast-grep'):
+            self.bundle(tool)
+        self.run_setup('br\nubs\tbr', ACFS_CLOUD_AGENT='generic')
+        requests = (self.root / 'requests').read_text().splitlines()
+        for tool in ('br', 'ubs', 'ast-grep'):
+            self.assertTrue((self.home / '.local/bin' / tool).is_file())
+            self.assertEqual(requests.count('https://mirror.invalid/v1/' + tool + '/v1/bundle.tar.gz'), 1)
+        guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
+        result, _ = self.run_generated_rerun(guide)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for tool in ('br', 'ubs', 'ast-grep'):
+            self.assertIn(tool + ' 1.2.3 (already installed)', result.stderr)
+        self.assertEqual((self.home / '.acfs/cloud/AGENTS.md').read_text(), guide)
+
     def test_ubs_subset_installs_ast_grep_once_and_exposes_it_to_later_tasks(self):
         self.bundle('ubs')
         self.bundle('ast-grep')
