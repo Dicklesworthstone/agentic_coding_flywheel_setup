@@ -580,3 +580,24 @@ test.describe("Complete guide crash recovery", () => {
     await expect.poll(() => readProgress(page)).toBeGreaterThan(offscreen);
   });
 });
+
+test.describe("Complete guide reduced motion", () => {
+  test.use({ contextOptions: { reducedMotion: "reduce" } });
+
+  test("all guide sections are fully visible without scrolling", async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    page.on("pageerror", (error) => runtimeErrors.push(error.message));
+    await page.goto("/complete-guide");
+    const sections = page.locator("main section[id]");
+    await expect(sections).toHaveCount(11);
+    await expect.poll(() => sections.evaluateAll((elements) => elements.map((element) => {
+      let opacity = 1;
+      for (let node: Element | null = element; node; node = node.parentElement) {
+        opacity *= Number(getComputedStyle(node).opacity);
+      }
+      return opacity;
+    }))).toEqual(Array.from({ length: 11 }, () => 1));
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(runtimeErrors).toEqual([]);
+  });
+});

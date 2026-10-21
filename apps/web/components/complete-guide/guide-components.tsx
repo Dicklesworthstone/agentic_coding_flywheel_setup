@@ -80,9 +80,9 @@ export function GuideSection({ id, number, title, icon, children }: GuideSection
     <motion.section
       ref={ref}
       id={id}
-      initial={rm ? {} : { opacity: 0, y: 40 }}
-      animate={isInView ? { opacity: 1, y: 0 } : {}}
-      transition={rm ? {} : { type: "spring", stiffness: 80, damping: 20, mass: 1 }}
+      initial={rm ? false : { opacity: 0, y: 40 }}
+      animate={rm || isInView ? { opacity: 1, y: 0 } : {}}
+      transition={rm ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 20, mass: 1 }}
       className="relative scroll-mt-32 pb-24 md:pb-32 w-full"
     >
       {/* Subtle Side Label for desktop */}
