@@ -5259,6 +5259,9 @@ acfs_optional_module_install_failed() {
         return 0
     fi
     log_warn "$display installation may have failed"
+    if type -t state_step_optional &>/dev/null; then
+        state_step_optional "${CURRENT_PHASE:-stack}" "${CURRENT_STEP:-}" || true
+    fi
     record_skipped_tool "$module_id" "verified installer failed"
     return 0
 }
@@ -7208,7 +7211,7 @@ acfs_arch_pkg_install() {
     # (Arch wiki: "never -Sy then -S"), so the first call is a full `-Syu`,
     # exactly what Omarchy's own installer does.
     if [[ "${ACFS_ARCH_DB_SYNCED:-false}" != "true" ]]; then
-        if try_step "Refreshing pacman database and upgrading system (pacman -Syu)" \
+        if try_step_optional "Refreshing pacman database and upgrading system (pacman -Syu)" \
             "${sudo_cmd[@]}" "$pacman_bin" -Syu --noconfirm; then
             ACFS_ARCH_DB_SYNCED=true
         else
@@ -7227,7 +7230,10 @@ acfs_arch_pkg_install() {
         fi
     fi
 
-    try_step "Installing (pacman): $*" "${sudo_cmd[@]}" "$pacman_bin" -S --needed --noconfirm "$@" || return 1
+    # This primitive is also used for optional packages and batch attempts
+    # followed by individual recovery. Its caller decides whether failure is
+    # fatal; recording it here would poison a successfully recovered phase.
+    try_step_optional "Installing (pacman): $*" "${sudo_cmd[@]}" "$pacman_bin" -S --needed --noconfirm "$@" || return 1
 }
 
 # Install a package list one-by-one, reporting which packages failed, so one
@@ -7770,7 +7776,7 @@ acfs_is_externally_managed_user() {
     local passwd_entry=""
     local local_entry=""
 
-    [[ -n "$user" && -r /etc/passwd ]] || return 1
+    [[ -n "$user" ]] || return 1
     passwd_entry="$(acfs_early_getent_passwd_entry "$user" 2>/dev/null || true)"
     [[ -n "$passwd_entry" ]] || return 1
 
@@ -8055,11 +8061,27 @@ EOF
     # Set zsh as default shell for target user. Some environments expose user
     # entries via NSS but do not allow local chsh updates, so fall back to an
     # interactive bash-to-zsh handoff there.
-    if acfs_is_externally_managed_user "$TARGET_USER"; then
-        log_warn "Shell for $TARGET_USER is managed outside /etc/passwd; installing a bash-to-zsh handoff instead of using chsh"
-        try_step "Configuring bash-to-zsh handoff" acfs_configure_external_shell_handoff "$TARGET_HOME" "$TARGET_USER" || return 1
-    else
-        acfs_configure_login_shell "$TARGET_USER" "$TARGET_HOME" || return 1
+    local current_shell
+    local current_shell_entry=""
+    local zsh_path
+    local chsh_path=""
+    current_shell_entry="$(acfs_early_getent_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
+    current_shell=""
+    if [[ -n "$current_shell_entry" ]]; then
+        IFS=: read -r _ _ _ _ _ _ current_shell <<< "$current_shell_entry"
+    fi
+    zsh_path="$(acfs_early_system_binary_path zsh 2>/dev/null || true)"
+    chsh_path="$(acfs_early_system_binary_path chsh 2>/dev/null || true)"
+    if [[ -n "$zsh_path" ]] && [[ "$current_shell" != *"zsh"* ]]; then
+        if acfs_is_externally_managed_user "$TARGET_USER"; then
+            log_warn "Shell for $TARGET_USER is managed outside /etc/passwd; installing a bash-to-zsh handoff instead of using chsh"
+            try_step "Configuring bash-to-zsh handoff" acfs_configure_external_shell_handoff "$TARGET_HOME" "$TARGET_USER" || return 1
+        elif [[ -n "$chsh_path" ]]; then
+            log_detail "Setting zsh as default shell for $TARGET_USER"
+            try_step "Setting zsh as default shell" $SUDO "$chsh_path" -s "$zsh_path" "$TARGET_USER" || true
+        else
+            log_warn "Could not locate chsh; leaving the default shell unchanged for $TARGET_USER"
+        fi
     fi
 
     log_success "Shell setup complete"
@@ -8207,14 +8229,14 @@ install_cli_tools() {
             # truly required binary is still missing afterwards.
             log_detail "Batch install failed, trying packages individually"
             acfs_arch_pkg_install_each "${arch_required_pkgs[@]}" || true
-            local req_bin=""
-            for req_bin in rg tmux fzf jq gh; do
-                if ! binary_installed "$req_bin"; then
-                    log_error "Required tool '$req_bin' could not be installed via pacman"
-                    return 1
-                fi
-            done
         fi
+        local req_bin=""
+        for req_bin in rg tmux fzf direnv jq git-lfs lsof dig strace rsync zstd gum gh minisign sqlite3 nc; do
+            if ! binary_installed "$req_bin"; then
+                log_error "Required tool '$req_bin' could not be installed via pacman"
+                return 1
+            fi
+        done
     else
         log_detail "Installing required apt packages"
         # libsqlite3-dev: utils.caut links the system libsqlite3 (rusqlite
@@ -8264,7 +8286,7 @@ install_cli_tools() {
         # an installed-but-dead docker would make `docker ps` and lazydocker
         # fail until the user enables it by hand.
         if pacman -Qq docker &>/dev/null && command_exists systemctl && [[ -d /run/systemd/system ]]; then
-            try_step "Enabling Docker service" $SUDO systemctl enable --now docker.service || log_warn "Docker installed but its service could not be started (optional)"
+            try_step_optional "Enabling Docker service" $SUDO systemctl enable --now docker.service || log_warn "Docker installed but its service could not be started (optional)"
         fi
     else
         log_detail "Installing optional apt packages"
@@ -8924,11 +8946,11 @@ install_agents_phase() {
         acfs_ensure_primary_bin_dir 2>/dev/null || true
 
         log_detail "Installing Claude Code (native) for $TARGET_USER"
-        try_step "Installing Claude Code (native)" acfs_run_verified_upstream_script_as_target "claude" "bash" latest || true
+        try_step_optional "Installing Claude Code (native)" acfs_run_verified_upstream_script_as_target "claude" "bash" latest || true
 
         if [[ ! -x "$claude_bin_local" && ! -x "$claude_bin_bun" ]]; then
             log_detail "Claude Code not found in standard paths; attempting bun install"
-            try_step "Installing Claude Code (bun)" run_as_target "$bun_bin" install -g --trust @anthropic-ai/claude-code@latest || true
+            try_step_optional "Installing Claude Code (bun)" run_as_target "$bun_bin" install -g --trust @anthropic-ai/claude-code@latest || true
         fi
 
         # Best-effort: if claude landed in ~/.claude/*, link it into ~/.local/bin.
@@ -11353,17 +11375,31 @@ run_smoke_test() {
         ((warnings += 1))
     fi
 
-    # Non-critical: PostgreSQL service running
+    # Essential CLI tools must work in the target user's environment. Historical
+    # phase flags and the presence of unrelated agent binaries are insufficient.
+    local essential_cli
+    for essential_cli in direnv git-lfs strace lsof dig nc; do
+        ((critical_total += 1))
+        if _smoke_run_as_target "command -v $essential_cli >/dev/null"; then
+            ((critical_passed += 1))
+        else
+            echo "✖ Required CLI missing: $essential_cli" >&2
+            ((critical_failed += 1))
+        fi
+    done
+
+    # PostgreSQL is essential unless explicitly excluded.
     if [[ "$SKIP_POSTGRES" == "true" ]]; then
         echo "⚠️ PostgreSQL: skipped (optional)" >&2
         ((warnings += 1))
-    elif command_exists systemctl && [[ -d /run/systemd/system ]] && systemctl is-active --quiet postgresql 2>/dev/null; then
-        echo "✅ PostgreSQL: running" >&2
-    elif command_exists pg_isready && pg_isready -q 2>/dev/null; then
-        echo "✅ PostgreSQL: running" >&2
+    elif _smoke_run_as_target "PGCONNECT_TIMEOUT=5 psql -h /var/run/postgresql -d postgres -Atqc 'SELECT 1' | grep -qx 1"; then
+        echo "✅ PostgreSQL: local query succeeded as $TARGET_USER" >&2
+        ((critical_total += 1))
+        ((critical_passed += 1))
     else
-        echo "⚠️ PostgreSQL: not running (optional)" >&2
-        ((warnings += 1))
+        echo "✖ PostgreSQL: not running" >&2
+        ((critical_total += 1))
+        ((critical_failed += 1))
     fi
 
     # Non-critical: Vault installed

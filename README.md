@@ -43,7 +43,7 @@
 > reorder these. Each download is buffered before execution so a failed request cannot concatenate
 > a partial installer with the fallback response.
 
-The installer is **idempotent**—if interrupted, simply re-run it. It will automatically resume from the last completed phase without prompts.
+The installer is **idempotent**—if interrupted, simply re-run it. Resume revisits installation phases and uses component checks to repair incomplete installations.
 
 > **Using a cloud agent instead of a VPS?** The [cloud agent guide](https://agent-flywheel.com/cloud-agents) has tested Claude Code / Codex setups and researched recipes for other Linux agents. See [cloud environments](#cloud-agent-environments).
 
@@ -461,22 +461,6 @@ Omarchy (and Arch Linux generally) is supported by the **same one-liner** — no
 
 Everything else — language runtimes, AI agents, and the flywheel tool stack — installs identically to Ubuntu.
 
-When configuring a login shell, both installer paths require an executable zsh
-pathname listed literally in `/etc/shells`. They prefer `/usr/bin/zsh`, then
-`/bin/zsh`, then another approved zsh entry. PATH order and usrmerge aliases
-cannot authorize an unlisted shell. If no approved executable exists, or `chsh`
-fails or leaves a different account shell, the shell phase fails explicitly.
-Noninteractive installation requires root or working passwordless sudo to
-change a local account's shell. Externally managed accounts retain the existing
-bash-to-zsh handoff instead of changing their identity-provider account.
-
-Before changing a local login shell, ACFS saves its original value in
-`~/.shell.pre-oh-my-zsh` without overwriting an earlier recovery value. Keep the
-current session open if verification fails. To recover, inspect that file and
-use `sudo chsh -s /path/to/original/shell username`, then confirm the result with
-`getent passwd username`. A failed post-change check attempts to restore the
-shell observed immediately before that installation and reports recovery failures.
-
 ---
 
 ## Cloud agent environments
@@ -699,7 +683,7 @@ The installer provisions a few keys in `~/.claude/settings.json`, always merging
 ### Resume Capability
 
 The installer tracks progress in `~/.acfs/state.json`. If interrupted:
-- Re-run the same command—it resumes from the last completed phase
+- Re-run the same command—it revisits component checks and repairs incomplete installation phases
 - No prompts or confirmations needed (with `--yes`)
 - Already-installed tools are detected and skipped
 
@@ -3447,7 +3431,7 @@ The installer is **checkpointed**. Simply re-run it:
 { acfs_installer="$(curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh")" || acfs_installer="$(curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh")"; } && printf '%s\n' "$acfs_installer" | bash -s -- --yes --mode vibe
 ```
 
-It will skip already-completed phases and resume where it left off.
+It revisits installation phases even when an older checkpoint marked them complete. Component checks skip working installations while missing dependencies and interrupted service setup can be repaired. Mandatory step failures remain in `partial_phases` and prevent phase completion; explicitly optional failures remain non-fatal. Final success requires the essential CLI tools and, unless explicitly skipped, a working local PostgreSQL query as the target user.
 
 ### How do I update tools?
 
@@ -4161,11 +4145,11 @@ When the installer runs, it follows this decision tree:
 def should_run_phase(phase_id):
     state = load_state_file()
 
-    if phase_id in state.completed_phases:
-        return SKIP  # Already done
-
     if phase_id in state.skipped_phases:
         return SKIP  # User explicitly skipped
+
+    # Historical completion is evidence of an attempt, not installed health.
+    # Re-enter phases; their component checks decide what needs repair.
 
     if state.failed_phase == phase_id:
         if user_wants_retry():

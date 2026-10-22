@@ -309,6 +309,10 @@ _handle_step_failure() {
     LAST_ERROR_PHASE="$CURRENT_PHASE"
     LAST_ERROR_STEP="$description"
 
+    if type -t state_phase_fail &>/dev/null; then
+        state_phase_fail "$CURRENT_PHASE" "$description" "$LAST_ERROR" || true
+    fi
+
     if [[ "$TRY_STEP_VERBOSE" == "1" ]]; then
         echo "[TRY_STEP] FAILED: $description (exit code $exit_code)" >&2
         echo "[TRY_STEP] Error: $LAST_ERROR" >&2

@@ -59,6 +59,7 @@ fi
 #   "started_at": "2025-01-15T10:30:00Z",     # When installation started
 #   "last_updated": "2025-01-15T10:42:00Z",   # Last state update timestamp
 #   "completed_phases": ["user_setup", ...],  # Phases that completed successfully
+#   "partial_phases": {"cli_tools": {"failures": [{"step": "packages", "error": "denied"}]}},
 #   "current_phase": "cli_tools",             # Phase currently in progress (null if idle)
 #   "current_step": "Installing ripgrep",     # Step within current phase (null if idle)
 #   "failed_phase": null,                     # Phase where failure occurred (null if no failure)
@@ -1904,6 +1905,12 @@ state_phase_start() {
         ') || { _state_release_lock; return 1; }
     fi
 
+    # Starting an attempt invalidates stale completion immediately. Keep a
+    # partial marker even if the process dies before any step reports failure.
+    new_state=$(echo "$new_state" | jq --arg phase "$phase_id" '
+        .completed_phases = ((.completed_phases // []) - [$phase]) |
+        .partial_phases[$phase] = {failures: []}
+    ') || { _state_release_lock; return 1; }
     local save_result=0
     state_save "$new_state" || save_result=$?
     _state_release_lock
@@ -1961,6 +1968,15 @@ state_phase_complete() {
         return 1
     fi
 
+    # A swallowed mandatory-step failure still makes this attempt partial.
+    if echo "$state" | jq -e --arg phase "$phase_id" '
+        (.partial_phases[$phase].failures // [] | length) > 0 or
+        (.failed_phase // "") == $phase
+    ' >/dev/null; then
+        _state_release_lock
+        return 1
+    fi
+
     # Calculate duration if start time was recorded
     local start_time duration
     start_time=$(echo "$state" | jq -r '.phase_start_time // empty')
@@ -1987,14 +2003,7 @@ state_phase_complete() {
         .phase_durations[$phase] = $dur |
         .current_phase = null |
         .current_step = null |
-        # A tolerated step failure (try_step ... || true) records failed_* for
-        # this phase and then the phase completes. Since state_phase_start only
-        # clears failed_* for the phase being started, a completed phase would
-        # otherwise carry a stale "Previous failure at:" forever and steer the
-        # resume hint at the wrong phase.
-        (if (.failed_phase // "") == $phase then
-            .failed_phase = null | .failed_step = null | .failed_error = null
-         else . end) |
+        del(.partial_phases[$phase]) |
         del(.phase_start_time)
     '); then
         _state_release_lock
@@ -2039,6 +2048,8 @@ state_phase_fail() {
         .failed_phase = $phase |
         .failed_step = (if $preserve_detailed_failure then $state.failed_step else $step end) |
         .failed_error = (if $preserve_detailed_failure then ($state.failed_error // $err) else $err end) |
+        .completed_phases = ((.completed_phases // []) - [$phase]) |
+        .partial_phases[$phase].failures += [{step: $step, error: $err}] |
         .current_phase = null |
         .current_step = null
     '); then
@@ -2050,6 +2061,24 @@ state_phase_fail() {
     state_save "$new_state" || save_result=$?
     _state_release_lock
     return $save_result
+}
+
+# Reclassify a recorded step only after the caller has established that the
+# manifest makes it optional. Never clear other mandatory failures.
+state_step_optional() {
+    local phase_id="$1" step="$2" state new_state result=0
+    _state_acquire_lock || return 1
+    state=$(state_load) || { _state_release_lock; return 1; }
+    new_state=$(echo "$state" | jq --arg phase "$phase_id" --arg step "$step" '
+        .partial_phases[$phase].failures =
+            [(.partial_phases[$phase].failures // [])[] | select(.step != $step)] |
+        if .failed_phase == $phase and .failed_step == $step then
+            .failed_phase = null | .failed_step = null | .failed_error = null
+        else . end
+    ') || { _state_release_lock; return 1; }
+    state_save "$new_state" || result=$?
+    _state_release_lock
+    return "$result"
 }
 
 # Mark a phase as skipped
@@ -2129,7 +2158,11 @@ state_is_phase_completed() {
     if command -v jq &>/dev/null; then
         local state
         state=$(state_load) || return 1
-        echo "$state" | jq -e --arg phase "$phase_id" '.completed_phases | index($phase) != null' &>/dev/null
+        echo "$state" | jq -e --arg phase "$phase_id" '
+            (.completed_phases | index($phase) != null) and
+            (.partial_phases[$phase] == null) and
+            ((.failed_phase // "") != $phase)
+        ' &>/dev/null
     else
         # Fallback: Check for exact match with JSON quote boundaries to avoid
         # false positives (e.g., "base" matching "database"). The completed
@@ -2214,6 +2247,9 @@ state_should_skip_phase() {
 
     # Skip if already completed
     if state_is_phase_completed "$phase_id"; then
+        # Historical phase flags cannot attest to installed state (#474).
+        # Re-enter idempotent installation phases so their component checks
+        # can repair missing dependencies and interrupted service setup.
         # Bug #213: When --only selects a module whose parent phase is already
         # completed, the phase must re-run so the module installer can execute.
         # Check whether any requested module belongs to this phase.
@@ -2221,7 +2257,10 @@ state_should_skip_phase() {
             return 1
         fi
 
-        return 0
+        case "$phase_id" in
+            user_setup|filesystem|shell_setup|cli_tools|languages|agents|cloud_db|stack|finalize) ;;
+            *) return 0 ;;
+        esac
     fi
 
     # Skip if in skipped_phases
@@ -2830,7 +2869,8 @@ run_phase() {
     fi
 
     # Record phase start
-    state_phase_start "$phase_id" "Starting $human_name"
+    state_phase_start "$phase_id" "Starting $human_name" || return 1
+    local module_failures_before="${ACFS_MODULE_FAILURES[*]:-}"
     local_progress_record_installer_phase "$phase_id" "started" 2>/dev/null || true
 
     # Execute the phase function
@@ -2847,13 +2887,16 @@ run_phase() {
     end_time=$(date +%s)
     local duration=$((end_time - start_time))
 
-    if [[ $exit_code -eq 0 ]]; then
+    if [[ "${ACFS_MODULE_FAILURES[*]:-}" != "$module_failures_before" ]]; then
+        exit_code=1
+    fi
+    if [[ $exit_code -eq 0 ]] && state_phase_complete "$phase_id"; then
         # Success - mark phase as completed
-        state_phase_complete "$phase_id"
         local_progress_record_installer_phase "$phase_id" "completed" 2>/dev/null || true
         _run_phase_log_success "$display_name" "$duration"
         return 0
     else
+        [[ $exit_code -ne 0 ]] || exit_code=1
         # Failure - record failure state
         local error_msg="Phase '$human_name' failed with exit code $exit_code"
         state_phase_fail "$phase_id" "Execution failed" "$error_msg"
