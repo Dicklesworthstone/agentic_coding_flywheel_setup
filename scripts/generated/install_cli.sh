@@ -498,6 +498,28 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: direnv version (root)"
+    else
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+direnv version
+INSTALL_CLI_MODERN
+        then
+            log_error "cli.modern: verify failed: direnv version"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: jq --version (root)"
+    else
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+jq --version
+INSTALL_CLI_MODERN
+        then
+            log_error "cli.modern: verify failed: jq --version"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verify: gh --version (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'

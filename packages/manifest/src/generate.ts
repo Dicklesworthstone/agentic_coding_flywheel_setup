@@ -2156,6 +2156,39 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
   lines.push(")");
   lines.push("");
 
+  // Live verification for resume and installation completion (#474). Keep
+  // checks separate, in the same context as generated install verification.
+  // Explicitly tolerated `|| true` checks cannot block phase completion.
+  lines.push("declare -gA ACFS_MODULE_VERIFY_COUNT=(");
+  for (const module of orderedModules) {
+    const requiredChecks = module.verify.filter((command) => !isOptionalVerifyCommand(command));
+    lines.push(`  ['${module.id}']="${requiredChecks.length}"`);
+  }
+  lines.push(")");
+  lines.push("");
+
+  lines.push("# Verification commands are serialized shell source; quoted tildes expand when");
+  lines.push("# the command is interpreted in its child shell, not while loading this index.");
+  lines.push("# shellcheck disable=SC2088");
+  lines.push("declare -gA ACFS_MODULE_VERIFY_COMMAND=(");
+  for (const module of orderedModules) {
+    const requiredChecks = module.verify.filter((command) => !isOptionalVerifyCommand(command));
+    for (const [index, command] of requiredChecks.entries()) {
+      const commandLines = command.replace(/^\|?\n?/, "").trim().split("\n");
+      const check = commandLinesWithChildHelperPreludes(commandLines).join("\n");
+      lines.push(`  ['${module.id}.${index}']=${shellQuote(check)}`);
+    }
+  }
+  lines.push(")");
+  lines.push("");
+
+  lines.push("declare -gA ACFS_MODULE_VERIFY_RUN_AS=(");
+  for (const module of orderedModules) {
+    lines.push(`  ['${module.id}']="${escapeBash(module.run_as)}"`);
+  }
+  lines.push(")");
+  lines.push("");
+
   // Plugin provenance metadata (bd-vv8x5)
   lines.push("declare -gA ACFS_MODULE_PLUGIN_PACKAGE=(");
   for (const module of orderedModules) {

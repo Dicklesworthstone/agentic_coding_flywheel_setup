@@ -331,6 +331,13 @@ run_test_3() {
 
     SMOKE_TEST_FAILED=false
     acfs_report_success_if_clean 42
+    assert "D3b. persisted required failure suppresses success after in-memory errors clear" "$([[ $completion_calls -eq 0 && $report_calls -eq 0 && $summary_calls -eq 0 && $webhook_calls -eq 0 && $notification_calls -eq 0 ]] && echo true || echo false)"
+
+    # The first scenario deliberately left a failed stack phase on disk. A
+    # clean-success scenario needs its own clean state, not only empty arrays.
+    ACFS_STATE_FILE="$TMPROOT/clean-success-state.json"
+    state_init
+    acfs_report_success_if_clean 42
     assert "D4. clean run emits each success side effect exactly once" "$([[ $completion_calls -eq 1 && $report_calls -eq 1 && $summary_calls -eq 1 && $webhook_calls -eq 1 && $notification_calls -eq 1 ]] && echo true || echo false)"
 
     ONLY_MODULES=("stack.ntm" "stack.mcp_agent_mail")
@@ -396,6 +403,10 @@ run_test_3() {
     ACFS_MODULE_FAILURES=()
     SMOKE_TEST_FAILED=false
     ACFS_INSTALL_PARTIAL_FAILURE=0
+    exit_status=0; acfs_install_terminal_exit_status || exit_status=$?
+    assert "D15b. persisted partial phases still make the installer exit 1" "$([[ $exit_status -eq 1 ]] && echo true || echo false)"
+    ACFS_STATE_FILE="$TMPROOT/clean-exit-state.json"
+    state_init
     exit_status=0; acfs_install_terminal_exit_status || exit_status=$?
     assert "D16. a clean run exits 0" "$([[ $exit_status -eq 0 ]] && echo true || echo false)"
 

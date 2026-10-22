@@ -1692,18 +1692,132 @@ acfs_module_is_installed() {
     esac
 }
 
-# Check if a module should be skipped (already installed)
+# Verify the module's required checks in their authored execution context.
+# Completion records and installed_check are only hints: a binary can exist
+# while its dependencies, configuration, or service are still unusable (#474).
+# This deliberately ignores --force-reinstall, which controls installation,
+# not whether the installed result is functional.
+acfs_verify_module() {
+    local module_id="${1:-}"
+    local authored_status=0
+
+    [[ -n "$module_id" ]] || return 1
+    # The orchestrator owns distro-specific and non-generated installation
+    # paths. Its verifier can replace a generic manifest probe when those
+    # authored paths intentionally install a different service or location.
+    # Return 2 means no override; every other nonzero result fails closed.
+    if declare -f acfs_verify_authored_module >/dev/null 2>&1; then
+        if acfs_verify_authored_module "$module_id"; then
+            return 0
+        else
+            authored_status=$?
+        fi
+        [[ "$authored_status" == "2" ]] || return 1
+    fi
+    acfs_verify_module_commands "$module_id"
+}
+
+# Kept separate so an authored verifier can require the manifest checks AND
+# additional readiness (for example PostgreSQL accepting connections) without
+# recursively re-entering its own override.
+acfs_verify_module_commands() {
+    local module_id="${1:-}"
+    local map_name=""
+    local map_decl=""
+    local count=""
+    local check_index=0
+    local check_cmd=""
+    local run_as=""
+
+    [[ -n "$module_id" && "${ACFS_MANIFEST_INDEX_LOADED:-false}" == "true" ]] || return 1
+    for map_name in ACFS_MODULE_VERIFY_COUNT ACFS_MODULE_VERIFY_COMMAND ACFS_MODULE_VERIFY_RUN_AS; do
+        map_decl="$(declare -p "$map_name" 2>/dev/null || true)"
+        [[ "$map_decl" == declare\ -A* ]] || return 1
+    done
+
+    count="${ACFS_MODULE_VERIFY_COUNT[$module_id]:-}"
+    [[ "$count" =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+    run_as="${ACFS_MODULE_VERIFY_RUN_AS[$module_id]:-}"
+    case "$run_as" in
+        root|target_user|current) ;;
+        *) return 1 ;;
+    esac
+
+    for ((check_index = 0; check_index < count; check_index++)); do
+        check_cmd="${ACFS_MODULE_VERIFY_COMMAND[$module_id.$check_index]:-}"
+        [[ -n "$check_cmd" ]] || return 1
+        # Use the same strict child-shell helpers as the generated installer.
+        # Separate invocations preserve check isolation and ensure an early
+        # failure cannot be concealed by a later successful command.
+        case "$run_as" in
+            root)
+                run_as_root_shell "$check_cmd" >/dev/null 2>&1 || return 1
+                ;;
+            target_user)
+                run_as_target_shell "$check_cmd" >/dev/null 2>&1 || return 1
+                ;;
+            current)
+                run_as_current_shell "$check_cmd" >/dev/null 2>&1 || return 1
+                ;;
+        esac
+    done
+    return 0
+}
+
+# Validate selected modules belonging to a numeric manifest phase. Optional
+# modules do not block phase completion unless explicitly requested with --only,
+# matching the generated installer's optional-module failure handling.
+acfs_verify_phase_modules() {
+    local phase="${1:-}"
+    local module=""
+    local map_name=""
+    local map_decl=""
+    local had_failure=false
+
+    [[ -n "$phase" && "${ACFS_MANIFEST_INDEX_LOADED:-false}" == "true" ]] || return 1
+    for map_name in ACFS_MODULE_PHASE ACFS_MODULE_OPTIONAL; do
+        map_decl="$(declare -p "$map_name" 2>/dev/null || true)"
+        [[ "$map_decl" == declare\ -A* ]] || return 1
+    done
+    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+        [[ "${ACFS_MODULE_PHASE[$module]:-}" == "$phase" ]] || continue
+        acfs_module_supports_family "$module" || continue
+        if [[ "${ACFS_MODULE_OPTIONAL[$module]:-0}" == "1" ]] && ! acfs_module_explicitly_selected "$module"; then
+            continue
+        fi
+        if ! acfs_verify_module "$module"; then
+            log_warn "Required module is not ready: $module"
+            had_failure=true
+        fi
+    done
+    [[ "$had_failure" == "false" ]]
+}
+
+# Check if a module should be skipped (already installed and verified)
 # Returns 0 (true) if should skip, 1 (false) if should install
 acfs_should_skip_module() {
     local module_id="$1"
+    local authored_status=0
 
     # If force reinstall, don't skip
     if _acfs_force_reinstall_enabled; then
         return 1
     fi
 
-    # Check if installed
-    if acfs_module_is_installed "$module_id"; then
+    # Authored verifiers know about valid alternate locations (for example
+    # ~/.config/nvm or /usr/local/bin). Their functional result is stronger
+    # evidence than a generic presence probe tied to one installation layout.
+    if declare -f acfs_verify_authored_module >/dev/null 2>&1; then
+        if acfs_verify_authored_module "$module_id"; then
+            return 0
+        else
+            authored_status=$?
+        fi
+        [[ "$authored_status" == "2" ]] || return 1
+    fi
+
+    # A presence-only probe must not hide failed configuration or dependencies.
+    if acfs_module_is_installed "$module_id" && acfs_verify_module_commands "$module_id"; then
         return 0
     fi
 

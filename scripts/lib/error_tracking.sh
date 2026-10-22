@@ -101,7 +101,7 @@ set_phase() {
     LAST_ERROR_OUTPUT=""
 
     # Update state file if state functions are available
-    if type -t state_phase_start &>/dev/null; then
+    if [[ "${_ACFS_RUNNING_PHASE:-}" != "$phase_id" ]] && type -t state_phase_start &>/dev/null; then
         # Best-effort: state tracking requires a valid state file (and usually jq).
         # Never let state tracking abort the installer under `set -e`.
         state_phase_start "$phase_id" || true
@@ -116,10 +116,9 @@ clear_phase() {
     CURRENT_PHASE_NAME=""
     CURRENT_STEP=""
 
-    # Update state file if state functions are available
+    # Required failures cannot become successful simply by clearing context.
     if [[ -n "$completed_phase" ]] && type -t state_phase_complete &>/dev/null; then
-        # Best-effort: never abort phase completion on state write errors.
-        state_phase_complete "$completed_phase" || true
+        state_phase_complete "$completed_phase" || return 1
     fi
 }
 
@@ -141,6 +140,7 @@ clear_phase() {
 try_step() {
     local description="$1"
     shift
+    local required="${_ACFS_STEP_REQUIRED:-true}"
 
     # Update step context
     CURRENT_STEP="$description"
@@ -149,6 +149,9 @@ try_step() {
     if type -t state_step_update &>/dev/null; then
         # Best-effort: state writes can fail early (no state file yet) or if jq is missing.
         state_step_update "$description" || true
+    fi
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" running "$required" || true
     fi
 
     # Log step start if logging available
@@ -226,6 +229,9 @@ try_step() {
     fi
 
     if [[ $exit_code -eq 0 ]]; then
+        if type -t state_step_result &>/dev/null; then
+            state_step_result "$CURRENT_PHASE" "$description" success "$required" || true
+        fi
         # Success - clear error state
         LAST_ERROR=""
         LAST_ERROR_CODE=0
@@ -266,7 +272,9 @@ try_step() {
     fi
 
     # Update state file with failure info
-    if type -t state_phase_fail &>/dev/null; then
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" failed "$required" "$LAST_ERROR" || true
+    elif [[ "$required" == "true" ]] && type -t state_phase_fail &>/dev/null; then
         state_phase_fail "$CURRENT_PHASE" "$description" "$LAST_ERROR" || true
     fi
 
@@ -295,7 +303,9 @@ try_step_eval() {
         LAST_ERROR_CODE=1
         LAST_ERROR_OUTPUT="$LAST_ERROR"
         LAST_ERROR_TIME=$(date -Iseconds)
-        if type -t state_phase_fail &>/dev/null; then
+        if type -t state_step_result &>/dev/null; then
+            state_step_result "$CURRENT_PHASE" "$description" failed "${_ACFS_STEP_REQUIRED:-true}" "$LAST_ERROR" || true
+        elif [[ "${_ACFS_STEP_REQUIRED:-true}" == "true" ]] && type -t state_phase_fail &>/dev/null; then
             state_phase_fail "$CURRENT_PHASE" "$description" "$LAST_ERROR" || true
         fi
         if type -t log_error &>/dev/null; then
@@ -323,8 +333,16 @@ try_step_eval() {
 try_step_optional() {
     local description="$1"
     shift
+    # Bash's dynamic scope carries optionality through nested installer helpers.
+    # A failed optional package's internal try_step must not dirty the phase.
+    local _ACFS_STEP_REQUIRED=false
+    local saved_error="${LAST_ERROR:-}" saved_code="${LAST_ERROR_CODE:-0}"
+    local saved_output="${LAST_ERROR_OUTPUT:-}" saved_time="${LAST_ERROR_TIME:-}"
 
     CURRENT_STEP="$description"
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" running false || true
+    fi
 
     if type -t log_detail &>/dev/null; then
         log_detail "$description (optional)..."
@@ -334,10 +352,20 @@ try_step_optional() {
     "$@" >/dev/null 2>&1 || exit_code=$?
 
     if [[ $exit_code -ne 0 ]]; then
+        if type -t state_step_result &>/dev/null; then
+            state_step_result "$CURRENT_PHASE" "$description" failed false "Optional step failed with exit code $exit_code" || true
+        fi
         if type -t log_warn &>/dev/null; then
             log_warn "$description failed (non-critical)"
         fi
+    elif type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" success false || true
     fi
+
+    LAST_ERROR="$saved_error"
+    LAST_ERROR_CODE="$saved_code"
+    LAST_ERROR_OUTPUT="$saved_output"
+    LAST_ERROR_TIME="$saved_time"
 
     return "$exit_code"
 }
@@ -354,6 +382,11 @@ try_step_retry() {
     local delay="$2"
     local description="$3"
     shift 3
+    local required="${_ACFS_STEP_REQUIRED:-true}"
+
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" running "$required" || true
+    fi
 
     local attempt=1
     local exit_code=0
@@ -374,6 +407,9 @@ try_step_retry() {
         "$@" >/dev/null 2>&1 || exit_code=$?
 
         if [[ $exit_code -eq 0 ]]; then
+            if type -t state_step_result &>/dev/null; then
+                state_step_result "$CURRENT_PHASE" "$description" success "$required" || true
+            fi
             return 0
         fi
 
@@ -390,7 +426,9 @@ try_step_retry() {
     LAST_ERROR_CODE=$exit_code
     LAST_ERROR_TIME=$(date -Iseconds)
 
-    if type -t state_phase_fail &>/dev/null; then
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" failed "$required" "$LAST_ERROR" || true
+    elif [[ "$required" == "true" ]] && type -t state_phase_fail &>/dev/null; then
         state_phase_fail "$CURRENT_PHASE" "$description" "$LAST_ERROR" || true
     fi
 
@@ -545,7 +583,6 @@ _run_phase_context_only() {
     fi
 
     clear_phase
-    return 0
 }
 
 # Check if a phase should be skipped (already completed or explicitly skipped)
@@ -802,12 +839,16 @@ retry_with_backoff() {
 try_step_with_backoff() {
     local description="$1"
     shift
+    local required="${_ACFS_STEP_REQUIRED:-true}"
 
     # Update step context
     CURRENT_STEP="$description"
 
     if type -t state_step_update &>/dev/null; then
         state_step_update "$description" || true
+    fi
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" running "$required" || true
     fi
 
     if type -t log_detail &>/dev/null; then
@@ -816,6 +857,9 @@ try_step_with_backoff() {
 
     local exit_code=0
     if retry_with_backoff "$description" "$@"; then
+        if type -t state_step_result &>/dev/null; then
+            state_step_result "$CURRENT_PHASE" "$description" success "$required" || true
+        fi
         # Success
         LAST_ERROR=""
         LAST_ERROR_CODE=0
@@ -826,7 +870,9 @@ try_step_with_backoff() {
     fi
 
     # Failure - error context already set by retry_with_backoff
-    if type -t state_phase_fail &>/dev/null; then
+    if type -t state_step_result &>/dev/null; then
+        state_step_result "$CURRENT_PHASE" "$description" failed "$required" "$LAST_ERROR" || true
+    elif [[ "$required" == "true" ]] && type -t state_phase_fail &>/dev/null; then
         state_phase_fail "$CURRENT_PHASE" "$description" "$LAST_ERROR" || true
     fi
 

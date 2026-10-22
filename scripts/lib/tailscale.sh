@@ -22,13 +22,37 @@ _tailscale_get_sudo() {
     if [[ $EUID -eq 0 ]]; then
         echo ""
     else
-        echo "sudo"
+        echo "sudo -n"
     fi
 }
 
 # Check if systemd is available
 _tailscale_has_systemd() {
     command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]
+}
+
+# A working client binary does not prove that the daemon was enabled or
+# started. Retry interrupted/failed service setup without reinstalling the
+# package, and require the actual resulting service state before success.
+_tailscale_ensure_service() {
+    local sudo_cmd="${1:-}"
+    if ! _tailscale_has_systemd; then
+        log_detail "  Skipping systemd service setup (no systemd)"
+        return 0
+    fi
+
+    if ! systemctl is-enabled --quiet tailscaled || ! systemctl is-active --quiet tailscaled; then
+        log_detail "  Enabling and starting tailscaled service..."
+        if ! $sudo_cmd systemctl enable --now tailscaled >/dev/null 2>&1; then
+            log_error "Tailscale is installed but its service could not be enabled or started"
+            return 1
+        fi
+    fi
+    if ! systemctl is-enabled --quiet tailscaled || ! systemctl is-active --quiet tailscaled; then
+        log_error "Tailscale service is still not enabled and active"
+        return 1
+    fi
+    return 0
 }
 
 # Get Tailscale backend state (jq optional)
@@ -88,14 +112,15 @@ _tailscale_get_codename() {
 install_tailscale() {
     local sudo_cmd
     sudo_cmd=$(_tailscale_get_sudo)
+    local version=""
 
-    # Check if already installed
-    if command -v tailscale &>/dev/null; then
+    # Only a functional client may bypass package installation. Even then,
+    # retry daemon setup that a previous interrupted run never completed.
+    if command -v tailscale &>/dev/null && version="$(tailscale version 2>/dev/null)"; then
         log_detail "Tailscale already installed"
-        local version
-        version=$(tailscale version 2>/dev/null | head -1 || echo "unknown")
-        log_detail "  Version: $version"
-        return 0
+        log_detail "  Version: ${version%%$'\n'*}"
+        _tailscale_ensure_service "$sudo_cmd"
+        return $?
     fi
 
     log_detail "Installing Tailscale..."
@@ -166,24 +191,14 @@ install_tailscale() {
         fi
     fi
 
-    # Enable and start the daemon (if systemd available)
-    if _tailscale_has_systemd; then
-        log_detail "  Enabling tailscaled service..."
-        $sudo_cmd systemctl enable tailscaled >/dev/null 2>&1 || true
-        $sudo_cmd systemctl start tailscaled >/dev/null 2>&1 || true
-    else
-        log_detail "  Skipping systemd service setup (no systemd)"
-    fi
-
     # Verify installation
-    if command -v tailscale &>/dev/null; then
-        local version
-        version=$(tailscale version 2>/dev/null | head -1 || echo "installed")
-        log_success "Tailscale installed (v$version)"
+    if command -v tailscale &>/dev/null && version="$(tailscale version 2>/dev/null)"; then
+        _tailscale_ensure_service "$sudo_cmd" || return 1
+        log_success "Tailscale installed (v${version%%$'\n'*})"
         log_detail "  Run 'sudo tailscale up' to authenticate"
         return 0
     else
-        log_error "Tailscale installation failed - binary not found"
+        log_error "Tailscale installation failed - binary missing or not functional"
         return 1
     fi
 }

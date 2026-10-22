@@ -222,7 +222,7 @@ EOF
     assert_output "Something blew up"
 }
 
-@test "state: retrying the failed phase clears its stale diagnosis" {
+@test "state: starting a retry preserves failure until the failed work recovers" {
     state_init
     state_phase_start "phase1" "first step"
     state_phase_fail "phase1" "broken step" "Something blew up"
@@ -231,22 +231,379 @@ EOF
     assert_success
 
     run state_get ".failed_phase"
-    assert_output ""
+    assert_output "phase1"
     run state_get ".failed_step"
-    assert_output ""
+    assert_output "broken step"
     run state_get ".failed_error"
+    assert_output "Something blew up"
+
+    run state_phase_complete "phase1"
+    assert_failure
+
+    state_step_result "phase1" "broken step" success
+    run state_phase_complete "phase1"
+    assert_success
+    run state_get ".failed_phase"
     assert_output ""
+}
+
+@test "state: swallowed mandatory failures block phase completion" {
+    state_init
+    state_phase_start cli_tools
+    state_step_result cli_tools packages failed true 'sudo: a password is required'
+    state_step_result cli_tools diagnostics success
+
+    run state_phase_complete cli_tools
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+    run state_get '.partial_phases | index("cli_tools") != null'
+    assert_output true
+    run state_get '.phase_steps.cli_tools.packages.error'
+    assert_output 'sudo: a password is required'
+    run state_has_required_failures
+    assert_success
+}
+
+@test "state: a required result that could not be persisted blocks completion" {
+    state_init
+    state_phase_start cli_tools
+    local original_writer
+    original_writer="$(declare -f state_write_atomic)"
+    state_write_atomic() { return 1; }
+    state_step_result cli_tools packages failed true 'sudo denied' || true
+    eval "$original_writer"
+
+    state_step_result cli_tools diagnostics success
+    run state_phase_complete cli_tools
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+
+    # A fresh attempt can recover once writes and the required work succeed.
+    state_phase_start cli_tools
+    state_step_result cli_tools packages success
+    run state_phase_complete cli_tools
+    assert_success
+}
+
+@test "state: malformed required-step metadata fails the success guard closed" {
+    state_init
+    state_update '.phase_steps = "invalid"'
+    run state_has_required_failures
+    assert_success
+}
+
+@test "state: missing jq cannot turn a previous completion into a successful run" {
+    state_init
+    state_phase_complete cli_tools
+    local marker="$BATS_TEST_TMPDIR/phase-executed"
+    fixture_phase() { touch "$marker"; }
+    command() {
+        if [[ "${1:-}" == -v && "${2:-}" == jq ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    run run_phase cli_tools CLI fixture_phase
+    assert_failure
+    [[ ! -e "$marker" ]]
+    run state_has_required_failures
+    assert_success
+}
+
+@test "state: recovering one required step preserves another failure" {
+    state_init
+    state_phase_start cloud_db
+    state_step_result cloud_db package failed true 'package installation failed'
+    state_step_result cloud_db service failed true 'service did not start'
+    state_step_result cloud_db service success
+
+    run state_get '.failed_step'
+    assert_output package
+    run state_phase_complete cloud_db
+    assert_failure
+
+    state_step_result cloud_db package success
+    state_phase_complete cloud_db
+    run state_has_required_failures
+    assert_failure
+}
+
+@test "state: optional failures remain recorded without blocking completion" {
+    state_init
+    state_phase_start cli_tools
+    state_step_result cli_tools required success true
+    state_step_result cli_tools optional failed false 'optional unavailable'
+    state_phase_complete cli_tools
+
+    run state_is_phase_completed cli_tools
+    assert_success
+    run state_get '.phase_steps.cli_tools.optional.status'
+    assert_output failed
+    run state_has_required_failures
+    assert_failure
+}
+
+@test "state: live verification only reconciles previous attempts" {
+    state_init
+    state_phase_start cloud_db
+    state_step_result cloud_db package failed true 'dependency unavailable'
+    state_phase_start cloud_db
+    state_step_result cloud_db service failed true 'privileged command denied'
+
+    run state_phase_reconcile cloud_db
+    assert_failure
+    run state_get '.phase_steps.cloud_db.package.status'
+    assert_output failed
+
+    state_step_result cloud_db service success
+    state_phase_reconcile cloud_db
+    state_phase_complete cloud_db
+    run state_get '.phase_steps.cloud_db.package.status'
+    assert_output verified
+    run state_get '.phase_steps.cloud_db.package.error'
+    assert_output 'dependency unavailable'
+}
+
+@test "state: interrupted phase invalidates completion and retains running work" {
+    state_init
+    state_phase_complete languages
+    state_phase_start languages
+    state_step_result languages runtime running
+    state_mark_interrupted
+
+    run state_is_phase_completed languages
+    assert_failure
+    run state_get '.partial_phases | index("languages") != null'
+    assert_output true
+    run state_get '.phase_steps.languages.runtime.status'
+    assert_output failed
+    run state_get '.failed_error'
+    assert_output 'Installation interrupted'
+    run state_has_required_failures
+    assert_success
+}
+
+@test "state: legacy completion does not override a failure marker" {
+    state_init
+    state_update '.completed_phases = ["cli_tools"] | .failed_phase = "cli_tools" | .failed_step = "packages" | .failed_error = "denied"'
+    run state_is_phase_completed cli_tools
+    assert_failure
+    state_phase_start cli_tools
+    run state_phase_complete cli_tools
+    assert_failure
+    state_step_result cli_tools packages success
+    state_phase_complete cli_tools
+    run state_is_phase_completed cli_tools
+    assert_success
+}
+
+@test "state: legacy object partial records migrate without losing failures" {
+    state_init
+    state_update '.completed_phases = ["cli_tools"] | .partial_phases = {cli_tools: {failures: [{step: "packages", error: "denied"}]}, cloud_db: {failures: []}}'
+    run state_is_phase_completed cli_tools
+    assert_failure
+    state_phase_start cli_tools
+    run state_get '.phase_steps.cli_tools.packages.error'
+    assert_output denied
+    run state_phase_complete cli_tools
+    assert_failure
+    state_step_result cli_tools packages success
+    state_phase_complete cli_tools
+    jq -e '.partial_phases == ["cloud_db"] and .phase_steps.cli_tools.packages.status == "success"' "$ACFS_STATE_FILE"
+}
+
+@test "state: mandatory failure cannot be erased by phase completion" {
+    state_init
+    state_phase_start cli_tools
+    state_phase_fail cli_tools "sudo pacman" "permission denied"
+    run state_phase_complete cli_tools
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+    run state_get .failed_step
+    assert_output "sudo pacman"
+    jq -e '.phase_steps.cli_tools["sudo pacman"].error == "permission denied"' "$ACFS_STATE_FILE"
+}
+
+@test "state: failures in another phase do not erase partial phase evidence" {
+    state_init
+    state_phase_start cli_tools
+    state_phase_fail cli_tools packages denied
+    state_phase_start cloud_db
+    state_phase_fail cloud_db postgres denied
+    run state_phase_complete cli_tools
+    assert_failure
+}
+
+@test "state: interrupted attempt invalidates stale completion and retry can recover" {
+    state_init
+    state_phase_complete cli_tools
+    state_phase_start cli_tools
+    run state_is_phase_completed cli_tools
+    assert_failure
+    jq -e '.partial_phases | index("cli_tools") != null' "$ACFS_STATE_FILE"
+    state_phase_fail cli_tools dependency missing
+    state_phase_start cli_tools
+    state_step_result cli_tools dependency success
+    state_phase_complete cli_tools
+    run state_is_phase_completed cli_tools
+    assert_success
+    jq -e '.partial_phases == [] and .failed_phase == null' "$ACFS_STATE_FILE"
+}
+
+@test "state: interruption after a successful step retains that success" {
+    state_init
+    state_phase_start finalize
+    state_step_result finalize configuration running
+    state_step_result finalize configuration success
+    state_mark_interrupted
+    run state_get '.phase_steps.finalize.configuration.status'
+    assert_output success
+    run state_get '.partial_phases | index("finalize") != null'
+    assert_output true
+    run state_has_required_failures
+    assert_success
+}
+
+@test "state: run_phase rejects swallowed mandatory failure and recovers" {
+    state_init
+    broken_phase() { state_phase_fail cli_tools "sudo install" denied; return 0; }
+    run run_phase cli_tools CLI broken_phase
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+    repaired_phase() { state_step_result cli_tools "sudo install" success; }
+    run run_phase cli_tools CLI repaired_phase
+    assert_success
+    run state_is_phase_completed cli_tools
+    assert_success
+}
+
+@test "state: explicit optional step failure does not dirty the phase" {
+    source_lib error_tracking
+    state_init
+    optional_phase() { try_step_optional optional false || true; }
+    run run_phase cli_tools CLI optional_phase
+    assert_success
+}
+
+@test "state: optional reclassification retains unrelated mandatory failures" {
+    state_init
+    state_phase_start cli_tools
+    state_phase_fail cli_tools packages denied
+    state_phase_fail cli_tools optional unavailable
+    state_step_optional cli_tools optional
+    run state_phase_complete cli_tools
+    assert_failure
+    jq -e '[.phase_steps.cli_tools[] | select(.required)] | length == 1' "$ACFS_STATE_FILE"
+    run state_get '.failed_step'
+    assert_output packages
+}
+
+@test "state: failed privileged command is partial until dependency recovery" {
+    source_lib error_tracking
+    state_init
+    dependency="$BATS_TEST_TMPDIR/dependency"
+    fake_sudo() { [[ -f "$dependency" ]] || return 1; }
+    install_phase() {
+        set_phase cli_tools CLI
+        try_step "sudo package install" fake_sudo || true
+    }
+    run run_phase cli_tools CLI install_phase
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+    touch "$dependency"
+    run run_phase cli_tools CLI install_phase
+    assert_success
+    jq -e '.partial_phases == []' "$ACFS_STATE_FILE"
+}
+
+@test "state: module failures cannot hide behind successful phase return" {
+    state_init
+    declare -a ACFS_MODULE_FAILURES=()
+    module_phase() { ACFS_MODULE_FAILURES+=("required module failed verification"); return 0; }
+    run run_phase cli_tools CLI module_phase
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+}
+
+@test "state: explicit phase skip still overrides stale completion" {
+    state_init
+    state_phase_complete cli_tools
+    state_phase_skip cli_tools
+    run state_should_skip_phase cli_tools
+    assert_success
+}
+
+@test "installer: smoke rejects missing essential tools and required database until repaired" {
+    eval "$(sed -n '/^run_smoke_test() {/,/^}/p' "$PROJECT_ROOT/install.sh")"
+    TARGET_USER=tester
+    TARGET_HOME="$BATS_TEST_TMPDIR/target"
+    ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    MODE=vibe
+    SKIP_POSTGRES=false
+    SKIP_VAULT=true
+    SKIP_CLOUD=true
+    mkdir -p "$ACFS_BIN_DIR" "$TARGET_HOME/.bun/bin" "$TARGET_HOME/.cargo/bin"
+    local binary
+    for binary in uv claude codex agy agy-locked agy-real onboard; do
+        touch "$ACFS_BIN_DIR/$binary"
+        chmod +x "$ACFS_BIN_DIR/$binary"
+    done
+    touch "$TARGET_HOME/.bun/bin/bun" "$TARGET_HOME/.cargo/bin/cargo"
+    chmod +x "$TARGET_HOME/.bun/bin/bun" "$TARGET_HOME/.cargo/bin/cargo"
+    acfs_early_system_binary_path() { printf /bin/true; }
+    acfs_early_getent_passwd_entry() { printf 'tester:x:1000:1000::/home/tester:/bin/zsh'; }
+    user_login_shell_configured() { return 0; }
+    binary_installed() { return 0; }
+    run_as_target() { return 1; }
+    acfs_smoke_install_fix_command() { printf repair; }
+    missing_cli=true
+    missing_db=true
+    required_db=true
+    acfs_postgres_ready() { [[ "$missing_db" != true ]]; }
+    acfs_legacy_module_is_required() { [[ "$required_db" == true ]]; }
+    _smoke_run_as_target() {
+        if [[ "$1" == 'command -v direnv >/dev/null' && "$missing_cli" == true ]]; then
+            return 1
+        fi
+        return 0
+    }
+    run run_smoke_test
+    assert_failure
+    assert_output --partial 'Required CLI missing: direnv'
+    assert_output --partial 'PostgreSQL: required server is not functional'
+    missing_cli=false
+    run run_smoke_test
+    assert_failure
+    missing_db=false
+    run run_smoke_test
+    assert_success
+    assert_output --partial '15/15 critical passed'
+    missing_db=true
+    required_db=false
+    run run_smoke_test
+    assert_success
+    assert_output --partial 'PostgreSQL: not running (optional)'
+    SKIP_POSTGRES=true
+    run run_smoke_test
+    assert_success
+    assert_output --partial '14/14 critical passed'
 }
 
 @test "state: skip logic" {
     state_init
-    
+
     run state_phase_skip "skipped_phase"
     assert_success
-    
+
     run state_should_skip_phase "skipped_phase"
     assert_success # Returns 0 (true)
-    
+
     run state_should_skip_phase "other_phase"
     assert_failure # Returns 1 (false)
 }
@@ -360,12 +717,10 @@ EOF
     assert_failure
 }
 
-@test "state: historical installation phase completion cannot suppress repair" {
+@test "state: completed phase is skipped only after live verification" {
     state_init
     state_phase_complete "cli_tools"
 
-    # A default install may have a populated effective plan during resume; that
-    # must not force completed phases to run unless --only/--only-phase is active.
     # shellcheck source=../../../scripts/generated/manifest_index.sh
     source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
     ACFS_MANIFEST_INDEX_LOADED=true
@@ -383,167 +738,14 @@ EOF
 
     run state_should_skip_phase "cli_tools"
     assert_failure
-}
 
-@test "state: mandatory failure cannot be erased by phase completion" {
-    state_init
-    state_phase_start cli_tools
-    state_phase_fail cli_tools "sudo pacman" "permission denied"
-    run state_phase_complete cli_tools
-    assert_failure
-    run state_is_phase_completed cli_tools
-    assert_failure
-    run state_get .failed_step
-    assert_output "sudo pacman"
-    jq -e '.partial_phases.cli_tools.failures[0].error == "permission denied"' "$ACFS_STATE_FILE"
-}
-
-@test "state: failures in another phase do not erase partial phase evidence" {
-    state_init
-    state_phase_start cli_tools
-    state_phase_fail cli_tools packages denied
-    state_phase_start cloud_db
-    state_phase_fail cloud_db postgres denied
-    run state_phase_complete cli_tools
-    assert_failure
-}
-
-@test "state: interrupted attempt invalidates stale completion and retry can recover" {
-    state_init
-    state_phase_complete cli_tools
-    state_phase_start cli_tools
-    run state_is_phase_completed cli_tools
-    assert_failure
-    jq -e '.partial_phases.cli_tools != null' "$ACFS_STATE_FILE"
-    state_phase_fail cli_tools dependency missing
-    state_phase_start cli_tools
-    state_phase_complete cli_tools
-    run state_is_phase_completed cli_tools
+    acfs_verify_phase() { [[ "$1" == cli_tools && "$2" == resume ]]; }
+    run state_should_skip_phase "cli_tools"
     assert_success
-    jq -e '.partial_phases.cli_tools == null and .failed_phase == null' "$ACFS_STATE_FILE"
-}
 
-@test "state: run_phase rejects swallowed mandatory failure and recovers" {
-    state_init
-    broken_phase() { state_phase_fail cli_tools "sudo install" denied; return 0; }
-    run run_phase cli_tools CLI broken_phase
+    acfs_verify_phase() { return 1; }
+    run state_should_skip_phase "cli_tools"
     assert_failure
-    run state_is_phase_completed cli_tools
-    assert_failure
-    repaired_phase() { return 0; }
-    run run_phase cli_tools CLI repaired_phase
-    assert_success
-    run state_is_phase_completed cli_tools
-    assert_success
-}
-
-@test "state: explicit optional step failure does not dirty the phase" {
-    source_lib error_tracking
-    state_init
-    optional_phase() { try_step_optional optional false || true; }
-    run run_phase cli_tools CLI optional_phase
-    assert_success
-}
-
-@test "state: optional reclassification retains unrelated mandatory failures" {
-    state_init
-    state_phase_start cli_tools
-    state_phase_fail cli_tools packages denied
-    state_phase_fail cli_tools optional unavailable
-    state_step_optional cli_tools optional
-    run state_phase_complete cli_tools
-    assert_failure
-    jq -e '.partial_phases.cli_tools.failures | length == 1' "$ACFS_STATE_FILE"
-}
-
-@test "state: failed privileged command is partial until dependency recovery" {
-    source_lib error_tracking
-    state_init
-    dependency="$BATS_TEST_TMPDIR/dependency"
-    fake_sudo() { [[ -f "$dependency" ]] || return 1; }
-    install_phase() {
-        set_phase cli_tools CLI
-        try_step "sudo package install" fake_sudo || true
-    }
-    run run_phase cli_tools CLI install_phase
-    assert_failure
-    run state_is_phase_completed cli_tools
-    assert_failure
-    touch "$dependency"
-    run run_phase cli_tools CLI install_phase
-    assert_success
-    jq -e '.partial_phases.cli_tools == null' "$ACFS_STATE_FILE"
-}
-
-@test "state: module failures cannot hide behind successful phase return" {
-    state_init
-    declare -a ACFS_MODULE_FAILURES=()
-    module_phase() { ACFS_MODULE_FAILURES+=("required module failed verification"); return 0; }
-    run run_phase cli_tools CLI module_phase
-    assert_failure
-    run state_is_phase_completed cli_tools
-    assert_failure
-}
-
-@test "state: explicit phase skip still overrides stale completion" {
-    state_init
-    state_phase_complete cli_tools
-    state_phase_skip cli_tools
-    run state_should_skip_phase cli_tools
-    assert_success
-}
-
-@test "installer: smoke rejects missing essential tools and database until repaired" {
-    # Load the actual smoke function without executing installer main.
-    eval "$(sed -n '/^run_smoke_test() {/,/^}/p' "$PROJECT_ROOT/install.sh")"
-    TARGET_USER=tester
-    TARGET_HOME="$BATS_TEST_TMPDIR/target"
-    ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
-    MODE=vibe
-    SKIP_POSTGRES=false
-    SKIP_VAULT=true
-    SKIP_CLOUD=true
-    mkdir -p "$ACFS_BIN_DIR" "$TARGET_HOME/.bun/bin" "$TARGET_HOME/.cargo/bin"
-    local binary
-    for binary in uv claude codex agy agy-locked agy-real onboard; do
-        touch "$ACFS_BIN_DIR/$binary"
-        chmod +x "$ACFS_BIN_DIR/$binary"
-    done
-    touch "$TARGET_HOME/.bun/bin/bun" "$TARGET_HOME/.cargo/bin/cargo"
-    chmod +x "$TARGET_HOME/.bun/bin/bun" "$TARGET_HOME/.cargo/bin/cargo"
-    acfs_early_system_binary_path() { printf /bin/true; }
-    acfs_early_getent_passwd_entry() { printf 'tester:x:1000:1000::/home/tester:/bin/zsh'; }
-    user_login_shell_configured() { return 0; }
-    binary_installed() { return 0; }
-    run_as_target() { return 1; }
-    acfs_smoke_install_fix_command() { printf repair; }
-    missing_cli=true
-    missing_db=true
-    _smoke_run_as_target() {
-        if [[ "$1" == 'command -v direnv >/dev/null' && "$missing_cli" == true ]]; then
-            return 1
-        fi
-        if [[ "$1" == *"psql -h /var/run/postgresql"* && "$missing_db" == true ]]; then
-            return 1
-        fi
-        return 0
-    }
-    run run_smoke_test
-    assert_failure
-    assert_output --partial 'Required CLI missing: direnv'
-    assert_output --partial 'PostgreSQL: not running'
-    missing_cli=false
-    run run_smoke_test
-    assert_failure
-    missing_db=false
-    run run_smoke_test
-    assert_success
-    assert_output --partial '15/15 critical passed'
-    missing_db=true
-    SKIP_POSTGRES=true
-    run run_smoke_test
-    assert_success
-    assert_output --partial '14/14 critical passed'
 }
 
 @test "state: completed shell setup re-enters component checks for an approved account" {

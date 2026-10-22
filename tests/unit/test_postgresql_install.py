@@ -318,6 +318,206 @@ dpkg-query() {
         self.shell(emitted, errexit=False)
 
 
+class PostgresRecoveryTests(unittest.TestCase):
+    """Run the authored service recovery logic with local command fixtures."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix='acfs-postgres-recovery-'))
+        self.data = self.root / 'data'
+        self.data.mkdir()
+        self.log = self.root / 'calls'
+        self.clusters = self.root / 'clusters'
+        self.clusters.write_text('')
+        source = (ROOT / 'install.sh').read_text()
+        functions = []
+        for name in ('acfs_postgres_run_as_owner', 'acfs_postgres_query',
+                     'acfs_postgres_ready', 'acfs_postgres_start_existing',
+                     'acfs_arch_install_postgres'):
+            start = source.index(f'\n{name}() {{\n') + 1
+            end = source.index('\n}\n', start) + 3
+            functions.append(source[start:end])
+        self.authored = '\n'.join(functions).replace('/var/lib/postgres/data', str(self.data))
+        self.authored = self.authored.replace('/run/systemd/system', str(self.root / 'systemd'))
+
+    def shell(self, command, code=0, **env):
+        fixtures = r'''set -euo pipefail
+SUDO=''
+ACFS_DISTRO_FAMILY="${FAMILY:-arch}"
+acfs_early_system_binary_path() {
+    case "$1" in
+        runuser) printf '%s\n' fixture_owner ;;
+        env) printf '%s\n' fixture_env ;;
+        psql) printf '%s\n' fixture_psql ;;
+        pg_lsclusters) printf '%s\n' fixture_clusters ;;
+        pg_ctlcluster) printf '%s\n' fixture_control ;;
+        pg_createcluster) printf '%s\n' fixture_create ;;
+        pg_ctl) printf '%s\n' fixture_pg_ctl ;;
+        *) return 1 ;;
+    esac
+}
+acfs_early_sudo_binary_path() { printf '%s\n' fixture_owner; }
+fixture_owner() {
+    printf 'owner %s\n' "$*" >> "$TEST_LOG"
+    while [[ "$1" != -- ]]; do shift; done
+    shift
+    "$@"
+}
+fixture_env() {
+    while [[ "$1" == -u ]]; do unset "$2"; shift 2; done
+    while [[ "$1" == *=* ]]; do export "$1"; shift; done
+    "$@"
+}
+fixture_psql() {
+    printf 'query %s\n' "$*" >> "$TEST_LOG"
+    [[ -z "${PGHOST:-}${PGSERVICE:-}${PGSERVICEFILE:-}${PGOPTIONS:-}${PGPASSWORD:-}" ]] || return 91
+    [[ "${PGCONNECT_TIMEOUT:-}" == 5 ]] || return 92
+    local port=''
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == -p ]]; then port="$2"; shift; fi
+        shift
+    done
+    [[ -f "$TEST_ROOT/running.$port" ]] || return 2
+    printf '%s\n' "${QUERY_OUTPUT:-1}"
+    return "${QUERY_EXIT:-0}"
+}
+fixture_clusters() {
+    local version name port status rest
+    while read -r version name port status rest; do
+        [[ -n "$version" ]] || continue
+        if [[ -f "$TEST_ROOT/running.$port" ]]; then status=online; fi
+        printf '%s %s %s %s %s\n' "$version" "$name" "$port" "$status" "$rest"
+    done < "$TEST_ROOT/clusters"
+}
+fixture_control() {
+    printf 'cluster-start %s\n' "$*" >> "$TEST_LOG"
+    [[ "${START_EXIT:-0}" == 0 ]] || return "$START_EXIT"
+    local version name port status rest
+    while read -r version name port status rest; do
+        if [[ "$version" == "$1" && "$name" == "$2" && "${START_MAKES_READY:-1}" == 1 ]]; then
+            touch "$TEST_ROOT/running.$port"
+        fi
+    done < "$TEST_ROOT/clusters"
+}
+fixture_create() {
+    printf 'cluster-create %s\n' "$*" >> "$TEST_LOG"
+    [[ "${CREATE_EXIT:-0}" == 0 ]] || return "$CREATE_EXIT"
+    printf '18 main 5433 online postgres fixture fixture.log\n' >> "$TEST_ROOT/clusters"
+    touch "$TEST_ROOT/running.5433"
+}
+fixture_pg_ctl() {
+    printf 'server-start %s\n' "$*" >> "$TEST_LOG"
+    [[ "${START_EXIT:-0}" == 0 ]] || return "$START_EXIT"
+    [[ "${START_MAKES_READY:-1}" == 1 ]] && touch "$TEST_ROOT/running.5432"
+    return 0
+}
+pacman() { [[ "${SERVER_INSTALLED:-1}" == 1 ]]; }
+acfs_arch_pkg_install() {
+    printf 'package-install %s\n' "$*" >> "$TEST_LOG"
+    [[ "${INSTALL_EXIT:-0}" == 0 ]] || return "$INSTALL_EXIT"
+    SERVER_INSTALLED=1
+}
+initdb() {
+    printf 'initdb %s\n' "$*" >> "$TEST_LOG"
+    [[ "${INITDB_EXIT:-0}" == 0 ]] || return "$INITDB_EXIT"
+    printf '18\n' > "$TEST_ROOT/data/PG_VERSION"
+}
+try_step() { shift; "$@"; }
+try_step_eval() { printf 'prepare-data\n' >> "$TEST_LOG"; return "${PREPARE_EXIT:-0}"; }
+acfs_postgres_bootstrap_role() { printf 'bootstrap-role\n' >> "$TEST_LOG"; }
+acfs_use_generated_category() { [[ "${GENERATED_DB:-false}" == true ]]; }
+acfs_verify_module_commands() { [[ "${PACKAGE_VALID:-1}" == 1 ]]; }
+command_exists() { return 1; }
+log_warn() { :; }
+'''
+        result = subprocess.run(['/bin/bash', '-c', fixtures + '\n' + self.authored + '\n' + command],
+                                env={**os.environ, 'TEST_ROOT': str(self.root),
+                                     'TEST_LOG': str(self.log), **env},
+                                capture_output=True, text=True, timeout=5)
+        if code == 0:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        else:
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+        return result
+
+    def calls(self):
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def initialized(self):
+        (self.data / 'PG_VERSION').write_text('18\n')
+
+    def test_client_alone_never_satisfies_arch_server_readiness(self):
+        (self.root / 'running.5432').touch()
+        self.shell('acfs_postgres_ready', code=1, SERVER_INSTALLED='0')
+        self.assertEqual(self.calls(), [])
+        self.shell('acfs_postgres_ready', code=1)
+        self.assertEqual(self.calls(), [])
+
+    def test_stopped_arch_server_recovers_without_reinstalling_or_reinitializing(self):
+        self.initialized()
+        self.shell('acfs_arch_install_postgres; acfs_postgres_start_existing')
+        calls = self.calls()
+        self.assertEqual(sum(c.startswith('server-start ') for c in calls), 1)
+        self.assertFalse(any(c.startswith(('package-install ', 'initdb ')) for c in calls))
+        self.assertTrue(any('-u postgres -- fixture_pg_ctl' in c for c in calls))
+        self.assertEqual((self.data / 'PG_VERSION').read_text(), '18\n')
+
+    def test_failed_initdb_stops_before_service_start(self):
+        self.shell('acfs_arch_install_postgres', code=1, INITDB_EXIT='1')
+        self.assertTrue(any(c.startswith('initdb ') for c in self.calls()))
+        self.assertFalse(any(c.startswith(('server-start ', 'bootstrap-role')) for c in self.calls()))
+        self.assertFalse((self.data / 'PG_VERSION').exists())
+
+    def test_start_failure_cannot_be_overwritten_by_later_success(self):
+        self.initialized()
+        self.shell('acfs_arch_install_postgres', code=1, START_EXIT='1')
+        self.assertFalse(any(c == 'bootstrap-role' for c in self.calls()))
+
+    def test_successful_start_command_still_requires_a_working_database(self):
+        self.initialized()
+        self.shell('acfs_arch_install_postgres', code=1, START_MAKES_READY='0')
+        self.assertTrue(any(c.startswith('server-start ') for c in self.calls()))
+        self.assertFalse(any(c == 'bootstrap-role' for c in self.calls()))
+
+    def test_pg18_recovery_uses_correct_cluster_and_its_port(self):
+        self.clusters.write_text('17 main 5432 online postgres old old.log\n'
+                                 '18 work 5441 down postgres current current.log\n')
+        (self.root / 'running.5432').touch()
+        self.shell('acfs_postgres_start_existing', FAMILY='ubuntu', GENERATED_DB='true')
+        calls = self.calls()
+        self.assertEqual([c for c in calls if c.startswith('cluster-start ')],
+                         ['cluster-start 18 work start'])
+        self.assertTrue(any('-p 5441 ' in c for c in calls if c.startswith('query ')))
+        self.assertFalse(any('-p 5432 ' in c for c in calls if c.startswith('query ')))
+        self.assertFalse(any(c.startswith(('package-install ', 'cluster-create ')) for c in calls))
+
+    def test_other_major_cannot_hide_missing_pg18_cluster(self):
+        self.clusters.write_text('17 main 5432 online postgres old old.log\n')
+        (self.root / 'running.5432').touch()
+        self.shell('acfs_postgres_ready', code=1, FAMILY='ubuntu', GENERATED_DB='true')
+        self.shell('acfs_postgres_start_existing', code=1, FAMILY='ubuntu',
+                   GENERATED_DB='true', PACKAGE_VALID='0')
+        self.assertFalse(any(c.startswith(('query ', 'cluster-create ')) for c in self.calls()))
+
+    def test_missing_pg18_cluster_is_created_only_after_package_verification(self):
+        self.shell('acfs_postgres_start_existing', FAMILY='ubuntu', GENERATED_DB='true')
+        self.assertIn('cluster-create 18 main --start', self.calls())
+        self.assertTrue(any('-p 5433 ' in c for c in self.calls() if c.startswith('query ')))
+
+    def test_failed_cluster_creation_is_not_a_successful_repair(self):
+        self.shell('acfs_postgres_start_existing', code=1, FAMILY='ubuntu',
+                   GENERATED_DB='true', CREATE_EXIT='1')
+        self.assertEqual(self.calls(), ['cluster-create 18 main --start'])
+
+    def test_query_uses_local_socket_and_removes_remote_connection_settings(self):
+        self.initialized()
+        (self.root / 'running.5432').touch()
+        self.shell('acfs_postgres_ready', PGHOST='remote.example', PGSERVICE='remote',
+                   PGSERVICEFILE='/untrusted/service', PGOPTIONS='untrusted', PGPASSWORD='fixture')
+        query = next(c for c in self.calls() if c.startswith('query '))
+        self.assertIn('-X -h /var/run/postgresql -p 5432 -U postgres -d postgres -Atqc SELECT 1', query)
+        self.shell('acfs_postgres_ready', code=1, QUERY_OUTPUT='0')
+
+
 def live_package():
     """Fresh disposable Ubuntu only: install and query a real PostgreSQL 18 server."""
     if os.environ.get('ACFS_POSTGRES_DISPOSABLE') != '1' or os.geteuid() != 0:

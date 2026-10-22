@@ -198,6 +198,66 @@ describe("Generated manifest_index.sh content", () => {
     });
   }
 
+  test("live verification metadata preserves required checks and execution context", () => {
+    const checks = [
+      "# Preserve a comment and newline\ntest \"a'b\" = \"a'b\"",
+      "cat <<'LITERAL' >/dev/null\n$HOME `echo unsafe` $(echo unsafe) \\\nLITERAL",
+      "false || true # optional until configured",
+    ];
+    const fixture = {
+      ...manifest,
+      modules: [{
+        ...manifest.modules[0]!, id: "base.fixture", dependencies: [],
+        run_as: "current" as const, verify: checks,
+      }],
+    } satisfies Manifest;
+    const generated = generateManifestIndex(fixture, "a".repeat(64));
+    const result = spawnSync("bash", ["-euo", "pipefail", "-s"], {
+      encoding: "utf8",
+      input: generated + '\nprintf "%s\\0" "${ACFS_MODULE_VERIFY_COUNT[base.fixture]}" "${ACFS_MODULE_VERIFY_RUN_AS[base.fixture]}" "${ACFS_MODULE_VERIFY_COMMAND[base.fixture.0]}" "${ACFS_MODULE_VERIFY_COMMAND[base.fixture.1]}"\n',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(["2", "current", checks[0], checks[1], ""].join("\0"));
+  });
+
+  for (const [label, checks, expectedStatus] of [
+    ["failed dependency after successful presence check", ["false\ntrue", "true"], 1],
+    ["healthy required checks and tolerated optional failure", ["true", "false || true"], 0],
+    ["generated helper inside a child shell", ['test -n "$(acfs_generated_resolve_current_user)"'], 0],
+  ] as const) {
+    test(`module skip requires verification: ${label}`, () => {
+      const fixture = {
+        ...manifest,
+        modules: [{
+          ...manifest.modules[0]!, id: "base.fixture", dependencies: [],
+          run_as: "current" as const,
+          installed_check: { run_as: "current" as const, command: "true" },
+          verify: [...checks],
+        }],
+      } satisfies Manifest;
+      const result = spawnSync("bash", ["-euo", "pipefail", "-s", "--",
+        resolve(PROJECT_ROOT, "scripts/lib/install_helpers.sh")], {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH || "/usr/bin:/bin", HOME: process.env.HOME || "/tmp" },
+        input: 'source "$1"\n' + generateManifestIndex(fixture, "a".repeat(64)) +
+          '\nacfs_should_skip_module base.fixture\n',
+      });
+      expect(result.status, result.stderr).toBe(expectedStatus);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+    });
+  }
+
+  test("CLI verification covers the required package bundle", () => {
+    const cli = manifest.modules.find((module) => module.id === "cli.modern")!;
+    const checks = cli.verify.filter((command) => !isOptionalVerifyCommand(command));
+    for (const command of ["rg --version", "tmux -V", "fzf --version", "direnv version", "jq --version",
+      "gh --version", "git-lfs version", "rsync --version", "strace --version",
+      "command -v lsof", "command -v dig", "command -v nc"]) {
+      expect(checks).toContain(command);
+    }
+  });
+
   test("contains ACFS_MODULES_IN_ORDER array", () => {
     expect(manifestIndexContent).toContain("ACFS_MODULES_IN_ORDER=(");
   });

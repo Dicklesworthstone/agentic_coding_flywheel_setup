@@ -682,10 +682,19 @@ The installer provisions a few keys in `~/.claude/settings.json`, always merging
 
 ### Resume Capability
 
-The installer tracks progress in `~/.acfs/state.json`. If interrupted:
-- Re-run the same command—it revisits component checks and repairs incomplete installation phases
-- No prompts or confirmations needed (with `--yes`)
-- Already-installed tools are detected and skipped
+The installer tracks progress in `~/.acfs/state.json`. Re-run the same command
+with `--resume` after fixing a failed dependency, privilege problem, or interrupted
+installation. Completed phases are checked against the selected modules' live
+verification results before they can be skipped. Incomplete phases retry their
+component checks, so working components are kept and missing or broken ones are
+repaired. This also recovers older installations whose completion records were
+written despite a failed step; do not delete the state file to recover them.
+
+Required step failures remain recorded until a successful retry or verified
+recovery resolves them. Optional failures remain visible without blocking an
+otherwise successful installation; an optional module explicitly requested with
+`--only` must succeed. Final success requires the selected essential components
+to pass verification, including for targeted installations.
 
 To force a fresh reinstall of all tools:
 ```bash
@@ -4098,6 +4107,18 @@ Progress is tracked in `~/.acfs/state.json`:
   "last_updated": "2024-12-21T10:45:23Z",
   "mode": "vibe",
   "completed_phases": ["user_setup", "filesystem", "shell_setup"],
+  "partial_phases": ["cli_tools"],
+  "phase_attempts": {"cli_tools": 2},
+  "phase_steps": {
+    "cli_tools": {
+      "Installing required packages": {
+        "status": "running",
+        "required": true,
+        "attempt": 2,
+        "error": null
+      }
+    }
+  },
   "current_phase": "cli_tools",
   "current_step": "Installing ripgrep",
   "failed_phase": null,
@@ -4148,17 +4169,19 @@ def should_run_phase(phase_id):
     if phase_id in state.skipped_phases:
         return SKIP  # User explicitly skipped
 
-    # Historical completion is evidence of an attempt, not installed health.
-    # Re-enter phases; their component checks decide what needs repair.
+    if phase_id in state.completed_phases:
+        if verify_selected_modules(phase_id):
+            return SKIP
 
-    if state.failed_phase == phase_id:
-        if user_wants_retry():
-            return RUN  # Retry failed phase
-        else:
-            return ABORT  # Don't continue past failure
-
-    return RUN  # Normal execution
+    return RUN  # Retry incomplete work with per-component verification
 ```
+
+Starting a phase removes its completion checkpoint and records it as partial.
+Each step records whether it is required and whether it is running, successful,
+or failed. A zero exit status from the enclosing phase cannot override a failed
+required step. Completion requires clean results from the current attempt and
+successful module verification; only then can earlier failures be reconciled.
+An interrupted required step remains pending recovery in the next process.
 
 ### Atomic State Updates
 

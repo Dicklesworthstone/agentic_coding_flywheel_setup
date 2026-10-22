@@ -430,6 +430,8 @@ modules:
       - rg --version
       - tmux -V
       - fzf --version
+      - direnv version
+      - jq --version
       - gh --version
       - git-lfs version
       - rsync --version

@@ -1014,6 +1014,9 @@ EOF
     unset ACFS_MODULE_INSTALLED_CHECK ACFS_MODULE_INSTALLED_CHECK_RUN_AS
     declare -gA ACFS_MODULE_INSTALLED_CHECK=( ["mod1"]="true" )
     declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=( ["mod1"]="current" )
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="true" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" )
     export ACFS_FORCE_REINSTALL=false
 
     run acfs_should_skip_module "mod1"
@@ -1030,6 +1033,170 @@ EOF
     assert_failure  # 1 means do not skip (install)
 }
 
+@test "acfs_should_skip_module: requires live verification even when presence check passes" {
+    declare -gA ACFS_MODULE_INSTALLED_CHECK=( ["mod1"]="true" )
+    declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=( ["mod1"]="current" )
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="false" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" )
+    ACFS_FORCE_REINSTALL=false
+
+    run acfs_should_skip_module mod1
+    assert_failure
+
+    ACFS_MODULE_VERIFY_COMMAND[mod1.0]="true"
+    run acfs_should_skip_module mod1
+    assert_success
+
+    unset ACFS_MODULE_VERIFY_COUNT
+    run acfs_should_skip_module mod1
+    assert_failure
+}
+
+@test "acfs_verify_module: earlier failed command cannot be hidden by a successful command" {
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="2" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]=$'false\ntrue' ["mod1.1"]="true" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" )
+
+    run acfs_verify_module mod1
+    assert_failure
+}
+
+@test "acfs_should_skip_module: authored verification accepts healthy alternate layouts" {
+    declare -gA ACFS_MODULE_INSTALLED_CHECK=( ["mod1"]="false" )
+    declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=( ["mod1"]="current" )
+    export ACFS_TEST_RELOCATED_TOOL="$BATS_TEST_TMPDIR/alternate/tool"
+    mkdir -p "${ACFS_TEST_RELOCATED_TOOL%/*}"
+    printf '#!/bin/sh\nexit 0\n' > "$ACFS_TEST_RELOCATED_TOOL"
+    chmod +x "$ACFS_TEST_RELOCATED_TOOL"
+    acfs_verify_authored_module() { "$ACFS_TEST_RELOCATED_TOOL" --version; }
+    ACFS_FORCE_REINSTALL=false
+
+    run acfs_should_skip_module mod1
+    assert_success
+
+    ACFS_FORCE_REINSTALL=true
+    run acfs_should_skip_module mod1
+    assert_failure
+
+    ACFS_FORCE_REINSTALL=false
+    printf '#!/bin/sh\nexit 1\n' > "$ACFS_TEST_RELOCATED_TOOL"
+    run acfs_should_skip_module mod1
+    assert_failure
+
+    acfs_verify_authored_module() { return 127; }
+    run acfs_should_skip_module mod1
+    assert_failure
+}
+
+@test "acfs_verify_module: dependency repair is observed despite force reinstall" {
+    export ACFS_TEST_DEPENDENCY="$BATS_TEST_TMPDIR/dependency-ready"
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]='test -f "$ACFS_TEST_DEPENDENCY"' )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" )
+    ACFS_FORCE_REINSTALL=true
+
+    run acfs_verify_module mod1
+    assert_failure
+
+    touch "$ACFS_TEST_DEPENDENCY"
+    run acfs_verify_module mod1
+    assert_success
+}
+
+@test "acfs_verify_module: authored readiness can extend manifest checks without recursion" {
+    export ACFS_TEST_DEPENDENCY="$BATS_TEST_TMPDIR/service-ready"
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="true" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" )
+    acfs_verify_authored_module() {
+        [[ "$1" == "mod1" ]] || return 2
+        acfs_verify_module_commands "$1" && test -f "$ACFS_TEST_DEPENDENCY"
+    }
+
+    run acfs_verify_module mod1
+    assert_failure
+    touch "$ACFS_TEST_DEPENDENCY"
+    run acfs_verify_module mod1
+    assert_success
+
+    ACFS_MODULE_VERIFY_COMMAND[mod1.0]="false"
+    run acfs_verify_module mod1
+    assert_failure
+}
+
+@test "acfs_verify_module: unhandled authored check falls back and unexpected status fails closed" {
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="true" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" )
+    acfs_verify_authored_module() { return 2; }
+
+    run acfs_verify_module mod1
+    assert_success
+
+    acfs_verify_authored_module() { return 127; }
+    run acfs_verify_module mod1
+    assert_failure
+}
+
+@test "acfs_verify_module: uses authored contexts and fails when privileged execution fails" {
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="fixture-check" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="root" )
+    export ACFS_TEST_VERIFY_CONTEXT="$BATS_TEST_TMPDIR/verify-context"
+    run_as_root_shell() { printf 'root:%s\n' "$1" >> "$ACFS_TEST_VERIFY_CONTEXT"; return 1; }
+    run_as_target_shell() { printf 'target:%s\n' "$1" >> "$ACFS_TEST_VERIFY_CONTEXT"; }
+
+    run acfs_verify_module mod1
+    assert_failure
+    [[ "$(cat "$ACFS_TEST_VERIFY_CONTEXT")" == 'root:fixture-check' ]]
+
+    ACFS_MODULE_VERIFY_RUN_AS[mod1]="target_user"
+    run acfs_verify_module mod1
+    assert_success
+    [[ "$(tail -n 1 "$ACFS_TEST_VERIFY_CONTEXT")" == 'target:fixture-check' ]]
+
+    ACFS_MODULE_VERIFY_RUN_AS[mod1]="invalid"
+    run acfs_verify_module mod1
+    assert_failure
+}
+
+@test "acfs_verify_phase_modules: validates required and explicitly selected optional modules" {
+    ACFS_EFFECTIVE_PLAN=(mod1 mod2 mod3)
+    declare -gA ACFS_MODULE_PHASE=( ["mod1"]="5" ["mod2"]="5" ["mod3"]="6" )
+    declare -gA ACFS_MODULE_OPTIONAL=( ["mod1"]="0" ["mod2"]="1" ["mod3"]="0" )
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" ["mod2"]="1" ["mod3"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="true" ["mod2.0"]="false" ["mod3.0"]="false" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" ["mod2"]="current" ["mod3"]="current" )
+
+    run acfs_verify_phase_modules 5
+    assert_success
+    run acfs_verify_phase_modules 6
+    assert_failure
+
+    ACFS_PLAN_REASON[mod2]="explicitly requested"
+    run acfs_verify_phase_modules 5
+    assert_failure
+
+    ACFS_MODULE_VERIFY_COMMAND[mod2.0]="true"
+    run acfs_verify_phase_modules 5
+    assert_success
+}
+
+@test "acfs_verify_phase_modules: excludes unsupported distro modules and unselected modules" {
+    ACFS_EFFECTIVE_PLAN=(mod1)
+    declare -gA ACFS_MODULE_PHASE=( ["mod1"]="5" ["mod2"]="5" )
+    declare -gA ACFS_MODULE_OPTIONAL=( ["mod1"]="0" ["mod2"]="0" )
+    declare -gA ACFS_MODULE_FAMILIES=( ["mod1"]="ubuntu" )
+    declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="1" ["mod2"]="1" )
+    declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]="false" ["mod2.0"]="false" )
+    declare -gA ACFS_MODULE_VERIFY_RUN_AS=( ["mod1"]="current" ["mod2"]="current" )
+    ACFS_DISTRO_FAMILY=arch
+
+    run acfs_verify_phase_modules 5
+    assert_success
+}
+
 @test "acfs_module_is_installed: respects run_as target_user" {
     unset ACFS_MODULE_INSTALLED_CHECK ACFS_MODULE_INSTALLED_CHECK_RUN_AS
     declare -gA ACFS_MODULE_INSTALLED_CHECK=( ["mod1"]="true" )
@@ -1044,6 +1211,101 @@ EOF
 
     run acfs_module_is_installed "mod1"
     assert_success
+}
+
+@test "install_tailscale: repairs an existing client's service without reinstalling" {
+    source_lib tailscale
+    export ACFS_TAILSCALE_FIXTURE="$BATS_TEST_TMPDIR/tailscale"
+    mkdir -p "$ACFS_TAILSCALE_FIXTURE"
+    tailscale() { [[ "$1" == version ]] && printf '1.0.0\n'; }
+    _tailscale_has_systemd() { return 0; }
+    _tailscale_get_sudo() { printf '\n'; }
+    acfs_arch_pkg_install() { touch "$ACFS_TAILSCALE_FIXTURE/reinstalled"; return 1; }
+    systemctl() {
+        case "$1" in
+            is-enabled) test -f "$ACFS_TAILSCALE_FIXTURE/enabled" ;;
+            is-active) test -f "$ACFS_TAILSCALE_FIXTURE/active" ;;
+            enable)
+                [[ "$*" == 'enable --now tailscaled' ]] || return 1
+                printf 'enabled\n' >> "$ACFS_TAILSCALE_FIXTURE/service-actions"
+                touch "$ACFS_TAILSCALE_FIXTURE/enabled" "$ACFS_TAILSCALE_FIXTURE/active"
+                ;;
+            *) return 1 ;;
+        esac
+    }
+
+    run install_tailscale
+    assert_success
+    [[ ! -e "$ACFS_TAILSCALE_FIXTURE/reinstalled" ]]
+    [[ -f "$ACFS_TAILSCALE_FIXTURE/active" ]]
+
+    run install_tailscale
+    assert_success
+    [[ "$(wc -l < "$ACFS_TAILSCALE_FIXTURE/service-actions")" == 1 ]]
+}
+
+@test "install_tailscale: denied privilege remains failed until service setup recovers" {
+    source_lib tailscale
+    export ACFS_TAILSCALE_FIXTURE="$BATS_TEST_TMPDIR/tailscale"
+    export ACFS_TAILSCALE_PRIVILEGE_ALLOWED=false
+    mkdir -p "$ACFS_TAILSCALE_FIXTURE"
+    tailscale() { [[ "$1" == version ]] && printf '1.0.0\n'; }
+    _tailscale_has_systemd() { return 0; }
+    _tailscale_get_sudo() { printf 'tailscale_fixture_sudo\n'; }
+    tailscale_fixture_sudo() {
+        [[ "$ACFS_TAILSCALE_PRIVILEGE_ALLOWED" == true ]] || return 1
+        "$@"
+    }
+    systemctl() {
+        case "$1" in
+            is-enabled|is-active) test -f "$ACFS_TAILSCALE_FIXTURE/service-ready" ;;
+            enable) touch "$ACFS_TAILSCALE_FIXTURE/service-ready" ;;
+            *) return 1 ;;
+        esac
+    }
+
+    run install_tailscale
+    assert_failure
+    [[ ! -e "$ACFS_TAILSCALE_FIXTURE/service-ready" ]]
+    export ACFS_TAILSCALE_PRIVILEGE_ALLOWED=true
+    run install_tailscale
+    assert_success
+    [[ -f "$ACFS_TAILSCALE_FIXTURE/service-ready" ]]
+}
+
+@test "install_tailscale: a successful service command must produce a running service" {
+    source_lib tailscale
+    tailscale() { [[ "$1" == version ]] && printf '1.0.0\n'; }
+    _tailscale_has_systemd() { return 0; }
+    _tailscale_get_sudo() { printf '\n'; }
+    systemctl() { [[ "$1" == enable ]]; }
+
+    run install_tailscale
+    assert_failure
+    assert_output --partial 'still not enabled and active'
+}
+
+@test "install_tailscale: verifies the executable and preserves hosts without systemd" {
+    source_lib tailscale
+    export ACFS_TAILSCALE_FIXTURE="$BATS_TEST_TMPDIR/tailscale"
+    mkdir -p "$ACFS_TAILSCALE_FIXTURE"
+    ACFS_DISTRO_FAMILY=arch
+    _tailscale_has_systemd() { return 1; }
+    _tailscale_get_sudo() { printf '\n'; }
+    tailscale() {
+        test -f "$ACFS_TAILSCALE_FIXTURE/client-ready" || return 1
+        [[ "$1" == version ]] && printf '1.0.0\n'
+    }
+    acfs_arch_pkg_install() {
+        [[ "$1" == tailscale ]] || return 1
+        touch "$ACFS_TAILSCALE_FIXTURE/client-ready"
+    }
+    systemctl() { touch "$ACFS_TAILSCALE_FIXTURE/systemd-called"; return 1; }
+
+    run install_tailscale
+    assert_success
+    [[ -f "$ACFS_TAILSCALE_FIXTURE/client-ready" ]]
+    [[ ! -e "$ACFS_TAILSCALE_FIXTURE/systemd-called" ]]
 }
 
 @test "acfs_module_is_installed: target_user checks include ACFS user PATH prefix" {

@@ -103,6 +103,9 @@ jobs:
       - name: Run installer fault-injection contract test
         run: bash tests/unit/test_installer_fault_contract.sh
 
+      - name: Run isolated partial-phase recovery regression
+        run: bash tests/e2e/test_resume_after_failure.sh --isolated
+
       - name: Run release doctor governance tests
         run: bash tests/unit/test_release_doctor.sh
 

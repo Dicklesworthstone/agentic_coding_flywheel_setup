@@ -66,6 +66,95 @@ teardown() {
     assert_output --partial "after_failure="
 }
 
+@test "try_step retains a required failure after later successful commands" {
+    source_lib state
+    export ACFS_HOME="$(create_temp_dir)"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    state_init
+    set_phase cli_tools
+
+    run try_step 'Installing required packages' bash -c 'printf "sudo: a password is required\n" >&2; exit 1'
+    assert_failure
+    try_step 'Writing informational log' true
+
+    run clear_phase
+    assert_failure
+    run state_is_phase_completed cli_tools
+    assert_failure
+    run state_get '.failed_step'
+    assert_output 'Installing required packages'
+}
+
+@test "optional wrapper keeps nested package failures optional" {
+    source_lib state
+    export ACFS_HOME="$(create_temp_dir)"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    state_init
+    set_phase cli_tools
+    nested_installer() { try_step 'Nested privileged command' false; }
+
+    run try_step_optional 'Optional package' nested_installer
+    assert_failure
+    run state_get '.phase_steps.cli_tools["Nested privileged command"].required | tostring'
+    assert_output false
+    run state_get '.phase_steps.cli_tools["Optional package"].status'
+    assert_output failed
+    run clear_phase
+    assert_success
+}
+
+@test "optional nested steps preserve the required failure diagnosis" {
+    source_lib state
+    export ACFS_HOME="$(create_temp_dir)"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    state_init
+    set_phase cli_tools
+    try_step 'Required packages' false || true
+    local required_error="$LAST_ERROR" required_code="$LAST_ERROR_CODE"
+    optional_installer() { try_step 'Nested optional failure' false; }
+    try_step_optional optional optional_installer || true
+    [[ "$LAST_ERROR" == "$required_error" ]]
+    [[ "$LAST_ERROR_CODE" == "$required_code" ]]
+    run state_get '.failed_step'
+    assert_output 'Required packages'
+}
+
+@test "retry wrapper resolves only the successful step result" {
+    source_lib state
+    export ACFS_HOME="$(create_temp_dir)"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    state_init
+    set_phase languages
+
+    try_step 'Separate failure' false || true
+    try_step_retry 1 0 'Install runtime' false || true
+    try_step_retry 1 0 'Install runtime' true
+
+    run state_get '.phase_steps.languages["Install runtime"].status'
+    assert_output success
+    run state_phase_complete languages
+    assert_failure
+    try_step 'Separate failure' true
+    run state_phase_complete languages
+    assert_success
+}
+
+@test "run_phase opens one attempt when installer also calls set_phase" {
+    source_lib state
+    export ACFS_HOME="$(create_temp_dir)"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    state_init
+    fixture_installer() {
+        set_phase cli_tools
+        try_step packages true
+    }
+
+    run run_phase cli_tools 'CLI Tools' fixture_installer
+    assert_success
+    run state_get '.phase_attempts.cli_tools'
+    assert_output 1
+}
+
 @test "try_step_eval missing command string fails without unbound variable" {
     run env -i PATH="/usr/bin:/bin" /usr/bin/bash -c '
         set -euo pipefail
