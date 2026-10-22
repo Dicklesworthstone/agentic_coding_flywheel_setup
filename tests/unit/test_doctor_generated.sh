@@ -513,6 +513,120 @@ EOF
     rm -rf "$temp_root"
 }
 
+test_user_installed_tool_verify_runs_as_target_user() {
+    harness_section "Test: a user-installed tool's verify runs as the target user, not with root's PATH (#461)"
+
+    local doctor_file="$REPO_ROOT/scripts/lib/doctor.sh"
+    local checks_file="$REPO_ROOT/scripts/generated/doctor_checks.sh"
+    local dir=""
+
+    if [[ $EUID -eq 0 ]]; then
+        harness_skip "running as root: the target-user branch would need a real target account"
+        return 0
+    fi
+    for dir in /usr/local/sbin /usr/local/bin /usr/local/go/bin /usr/sbin /usr/bin /sbin /bin /snap/bin; do
+        if [[ -x "$dir/lazygit" ]]; then
+            harness_skip "a system lazygit ($dir/lazygit) would satisfy the root PATH too"
+            return 0
+        fi
+    done
+    if [[ "$(tail -n 1 "$doctor_file")" != 'main "$@"' ]]; then
+        harness_fail "doctor.sh no longer ends in 'main \"\$@\"', so its functions cannot be loaded"
+        return 1
+    fi
+
+    local temp_root=""
+    temp_root="$(mktemp -d)"
+    local fake_home="$temp_root/home"
+    local stub_dir="$temp_root/stub"
+    local sudo_log="$temp_root/sudo.log"
+    mkdir -p "$fake_home/.local/bin" "$stub_dir"
+
+    # The reporter's layout: lazygit only in the target user's ~/.local/bin.
+    printf '#!/usr/bin/env bash\necho "lazygit version=0.65.1"\n' > "$fake_home/.local/bin/lazygit"
+    # Passwordless sudo (vibe mode) that records how it was asked to run.
+    cat > "$stub_dir/sudo" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '$sudo_log'
+[[ "\${1:-}" == "-n" ]] && shift
+[[ "\${1:-}" == "-u" ]] && shift 2
+exec "\$@"
+EOF
+    chmod +x "$fake_home/.local/bin/lazygit" "$stub_dir/sudo"
+
+    local current_user=""
+    current_user="$(id -un)"
+
+    # Dispatch the generated tools.lazygit row (or, with "root", the same
+    # command in root context) through doctor's own runner. $1 = doctor.sh,
+    # $2 = doctor_checks.sh, $3 = forced context or "", $4 = sudo stub,
+    # $5 = home for the target account.
+    local dispatch='
+        source <(sed "\$d" "$1") >/dev/null 2>&1 || true
+        source "$2" >/dev/null 2>&1 || exit 90
+        eval "_acfs_461_orig_system_binary_path() $(declare -f _acfs_doctor_system_binary_path | tail -n +2)"
+        _acfs_doctor_system_binary_path() {
+            case "${1:-}" in
+                sudo) printf "%s\n" "$ACFS_461_SUDO" ;;
+                runuser|su) return 1 ;;
+                *) _acfs_461_orig_system_binary_path "$@" ;;
+            esac
+        }
+        _acfs_doctor_getent_passwd_entry() {
+            [[ "${1:-}" == "$TARGET_USER" ]] || return 2
+            printf "%s:x:4610:4610::%s:/bin/bash\n" "$1" "$ACFS_461_HOME"
+        }
+        ACFS_461_SUDO="$4"
+        ACFS_461_HOME="$5"
+        row_found=false
+        for entry in "${MANIFEST_CHECKS[@]}"; do
+            IFS=$'"'"'\t'"'"' read -r id desc cmd req_flag run_as <<< "$entry"
+            [[ "$id" == "tools.lazygit" ]] || continue
+            row_found=true
+            break
+        done
+        [[ "$row_found" == true ]] || exit 91
+        cmd="$(printf "%b" "$cmd")"
+        [[ -z "$3" ]] || run_as="$3"
+        printf "context=%s\n" "$run_as"
+        _doctor_run_manifest_check "$run_as" "$cmd"
+    '
+
+    local output="" status=0
+    # 1. The target user runs `acfs doctor` itself.
+    output=$(env -i HOME="$fake_home" PATH="/usr/bin:/bin" TARGET_USER="$current_user" TARGET_HOME="$fake_home" \
+        "$ACFS_TEST_BASH_BIN" -c "$dispatch" _ "$doctor_file" "$checks_file" "" "$stub_dir/sudo" "$fake_home" 2>&1) || status=$?
+    if [[ $status -eq 0 ]] && [[ "$output" == *"context=target_user"* ]] && [[ "$output" == *"lazygit version=0.65.1"* ]]; then
+        harness_pass "tools.lazygit passes when the target user's ~/.local/bin provides lazygit"
+    else
+        harness_fail "tools.lazygit passes when the target user's ~/.local/bin provides lazygit" "status=$status output=$output"
+    fi
+
+    # 2. Another account with passwordless sudo runs doctor for the target user.
+    status=0
+    output=$(env -i HOME="$temp_root" PATH="/usr/bin:/bin" TARGET_USER=acfs461target \
+        "$ACFS_TEST_BASH_BIN" -c "$dispatch" _ "$doctor_file" "$checks_file" "" "$stub_dir/sudo" "$fake_home" 2>&1) || status=$?
+    if [[ $status -eq 0 ]] && [[ "$output" == *"lazygit version=0.65.1"* ]] \
+        && grep -q -- '^-n -u acfs461target ' "$sudo_log" 2>/dev/null; then
+        harness_pass "doctor run for another target user verifies lazygit as that user (sudo -u)"
+    else
+        harness_fail "doctor run for another target user verifies lazygit as that user (sudo -u)" "status=$status output=$output sudo=$(cat "$sudo_log" 2>/dev/null)"
+    fi
+
+    # 3. Root context still never sees user directories (#461: the fix must not
+    #    add user-writable paths to root's PATH).
+    status=0
+    output=$(env -i HOME="$fake_home" PATH="/usr/bin:/bin" TARGET_USER="$current_user" TARGET_HOME="$fake_home" \
+        "$ACFS_TEST_BASH_BIN" -c "$dispatch" _ "$doctor_file" "$checks_file" root "$stub_dir/sudo" "$fake_home" 2>&1) || status=$?
+    if [[ $status -ne 0 ]] && [[ "$output" != *"lazygit version"* ]]; then
+        harness_pass "root-context checks still cannot run a binary from the user's ~/.local/bin"
+    else
+        harness_fail "root-context checks still cannot run a binary from the user's ~/.local/bin" "status=$status output=$output"
+    fi
+
+    rm -rf "$temp_root"
+}
+
 test_workspace_checks_are_not_required_health_failures() {
     harness_section "Test: Workspace onboarding checks are not required health failures"
 
@@ -909,6 +1023,7 @@ main() {
     test_root_checks_preserve_target_context
     test_generated_manifest_checks_use_hardened_target_path
     test_generated_run_manifest_check_command_handles_unresolved_target_home_by_context
+    test_user_installed_tool_verify_runs_as_target_user
     test_base_filesystem_2_verify_runs_with_injected_helpers
     test_workspace_checks_are_not_required_health_failures
     test_generated_target_home_fallbacks_are_dynamic

@@ -465,9 +465,9 @@ INSTALL_CLI_MODERN
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: rg --version (root)"
+        log_info "dry-run: verify: rg --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 rg --version
 INSTALL_CLI_MODERN
         then
@@ -476,9 +476,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: tmux -V (root)"
+        log_info "dry-run: verify: tmux -V (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 tmux -V
 INSTALL_CLI_MODERN
         then
@@ -487,9 +487,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: fzf --version (root)"
+        log_info "dry-run: verify: fzf --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 fzf --version
 INSTALL_CLI_MODERN
         then
@@ -498,9 +498,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: direnv version (root)"
+        log_info "dry-run: verify: direnv version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 direnv version
 INSTALL_CLI_MODERN
         then
@@ -509,9 +509,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: jq --version (root)"
+        log_info "dry-run: verify: jq --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 jq --version
 INSTALL_CLI_MODERN
         then
@@ -520,9 +520,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: gh --version (root)"
+        log_info "dry-run: verify: gh --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 gh --version
 INSTALL_CLI_MODERN
         then
@@ -531,9 +531,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: git-lfs version (root)"
+        log_info "dry-run: verify: git-lfs version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 git-lfs version
 INSTALL_CLI_MODERN
         then
@@ -542,9 +542,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: rsync --version (root)"
+        log_info "dry-run: verify: rsync --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 rsync --version
 INSTALL_CLI_MODERN
         then
@@ -553,9 +553,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: strace --version (root)"
+        log_info "dry-run: verify: strace --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 strace --version
 INSTALL_CLI_MODERN
         then
@@ -564,9 +564,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: command -v lsof (root)"
+        log_info "dry-run: verify: command -v lsof (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 command -v lsof
 INSTALL_CLI_MODERN
         then
@@ -575,9 +575,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: command -v dig (root)"
+        log_info "dry-run: verify: command -v dig (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 command -v dig
 INSTALL_CLI_MODERN
         then
@@ -586,9 +586,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: command -v nc (root)"
+        log_info "dry-run: verify: command -v nc (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 command -v nc
 INSTALL_CLI_MODERN
         then
@@ -597,9 +597,9 @@ INSTALL_CLI_MODERN
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify (optional): command -v lsd || command -v eza (root)"
+        log_info "dry-run: verify (optional): command -v lsd || command -v eza (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+        if ! run_as_target_shell <<'INSTALL_CLI_MODERN'
 command -v lsd || command -v eza
 INSTALL_CLI_MODERN
         then

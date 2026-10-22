@@ -202,8 +202,14 @@ export interface Module {
   description: string;
   /** Optional category grouping for generated layout */
   category?: ModuleCategory;
-  /** Execution context for install/verify steps */
+  /** Execution context for install steps, and for verify steps unless verify_run_as is set */
   run_as: RunAs;
+  /**
+   * Execution context for the verify commands (installer post-install verify
+   * and generated doctor checks). Omitted means run_as. Used when root
+   * installs a tool system-wide that the target user runs (#461).
+   */
+  verify_run_as?: RunAs;
   /** Verified upstream installer reference */
   verified_installer?: VerifiedInstaller;
   /** Controls whether install failures are warnings */

@@ -724,9 +724,9 @@ INSTALL_LANG_GO
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: go version (root)"
+        log_info "dry-run: verify: go version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_LANG_GO'
+        if ! run_as_target_shell <<'INSTALL_LANG_GO'
 go version
 INSTALL_LANG_GO
         then

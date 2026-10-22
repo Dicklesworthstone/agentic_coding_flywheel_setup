@@ -288,6 +288,64 @@ describe("ModuleSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  test("verify_run_as is optional and has no default (#461)", () => {
+    const result = ModuleSchema.safeParse({ ...validMinimalModule, run_as: "root" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.verify_run_as).toBeUndefined();
+    }
+  });
+
+  test("verify_run_as may keep or drop run_as privilege (#461)", () => {
+    for (const [runAs, verifyRunAs] of [
+      ["root", "target_user"],
+      ["root", "current"],
+      ["root", "root"],
+      ["current", "target_user"],
+      ["current", "current"],
+      ["target_user", "target_user"],
+    ] as const) {
+      const result = ModuleSchema.safeParse({
+        ...validMinimalModule,
+        run_as: runAs,
+        verify_run_as: verifyRunAs,
+      });
+      expect(result.success, `${runAs} -> ${verifyRunAs}`).toBe(true);
+      if (result.success) {
+        expect(result.data.verify_run_as).toBe(verifyRunAs);
+      }
+    }
+  });
+
+  test("verify_run_as may not verify with more privilege than run_as (#461)", () => {
+    for (const [runAs, verifyRunAs] of [
+      ["target_user", "root"],
+      ["target_user", "current"],
+      ["current", "root"],
+    ] as const) {
+      const result = ModuleSchema.safeParse({
+        ...validMinimalModule,
+        run_as: runAs,
+        verify_run_as: verifyRunAs,
+      });
+      expect(result.success, `${runAs} -> ${verifyRunAs}`).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
+          "verify_run_as",
+        );
+      }
+    }
+  });
+
+  test("rejects invalid verify_run_as value", () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      run_as: "root",
+      verify_run_as: "target",
+    });
+    expect(result.success).toBe(false);
+  });
+
   test("rejects unknown module fields instead of silently dropping dependency typos", () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,

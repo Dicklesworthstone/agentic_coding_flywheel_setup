@@ -408,6 +408,9 @@ modules:
     category: cli
     phase: 5
     run_as: root
+    # apt needs root, but these are the target user's shell tools: verify that
+    # the target user can run them, wherever they come from (#461).
+    verify_run_as: target_user
     optional: false
     enabled_by_default: true
     tags: [recommended, cli-modern]
@@ -446,6 +449,9 @@ modules:
     category: tools
     phase: 5
     run_as: root
+    # A user TUI: a copy in ~/.local/bin satisfies installed_check, so doctor
+    # must not probe it with root's system-only PATH (#461).
+    verify_run_as: target_user
     optional: false
     enabled_by_default: true
     tags: [recommended, cli-modern]
@@ -486,6 +492,8 @@ modules:
     category: tools
     phase: 5
     run_as: root
+    # A user TUI, like tools.lazygit (#461).
+    verify_run_as: target_user
     optional: false
     enabled_by_default: true
     tags: [recommended, cli-modern]
@@ -677,6 +685,9 @@ modules:
     category: lang
     phase: 6
     run_as: root
+    # Every module that depends on lang.go installs as the target user, so Go
+    # has to work for the target user (#461).
+    verify_run_as: target_user
     optional: false
     enabled_by_default: true
     tags: [critical, runtime]
@@ -1379,6 +1390,8 @@ modules:
     category: tools
     phase: 8
     run_as: root
+    # The apt repo setup needs root; the CLI is the target user's (#461).
+    verify_run_as: target_user
     optional: true
     enabled_by_default: false
     tags: [optional, cloud]

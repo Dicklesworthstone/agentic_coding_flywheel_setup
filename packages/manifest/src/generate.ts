@@ -29,7 +29,13 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { parseManifestString, validateManifestData } from "./parser.js";
-import { type Manifest, MODULE_CATEGORIES, type Module, type ModuleCategory } from "./types.js";
+import {
+  type Manifest,
+  MODULE_CATEGORIES,
+  type Module,
+  type ModuleCategory,
+  type RunAs,
+} from "./types.js";
 import {
   resolveModuleCategory,
   sortModulesByInstallOrder,
@@ -843,6 +849,16 @@ function verifiedInstallerTmpdirEnvValue(module: Module): string | null {
 }
 
 /**
+ * Execution context of a module's verify commands: verify_run_as when the
+ * manifest sets it, otherwise run_as (#461). The installer's post-install
+ * verify and the generated doctor checks both use it, so a verify command
+ * always means the same thing.
+ */
+function verifyRunAs(module: Module): RunAs {
+  return module.verify_run_as ?? module.run_as;
+}
+
+/**
  * Map module.run_as to the appropriate shell helper function name
  */
 function getRunAsShellHelper(runAs: string): string {
@@ -1188,14 +1204,15 @@ function wrapInstallHeredoc(
   summary: string,
   commandLines: string[],
   failureReason: string,
+  runAs: RunAs = module.run_as,
 ): string[] {
   const lines: string[] = [];
   const escapedSummary = escapeBash(summary);
-  const shellHelper = getRunAsShellHelper(module.run_as);
+  const shellHelper = getRunAsShellHelper(runAs);
   const delimiter = toHeredocDelimiter(module.id);
 
   lines.push('    if [[ "${DRY_RUN:-false}" = "true" ]]; then');
-  lines.push(`        log_info "dry-run: ${escapedSummary} (${module.run_as})"`);
+  lines.push(`        log_info "dry-run: ${escapedSummary} (${runAs})"`);
   lines.push("    else");
   lines.push(`        if ! ${shellHelper} <<'${delimiter}'`);
   // Commands inside heredoc (no extra indentation - heredoc is literal)
@@ -1218,11 +1235,12 @@ function wrapOptionalVerifyHeredoc(
 ): string[] {
   const lines: string[] = [];
   const escapedSummary = escapeBash(summary);
-  const shellHelper = getRunAsShellHelper(module.run_as);
+  const runAs = verifyRunAs(module);
+  const shellHelper = getRunAsShellHelper(runAs);
   const delimiter = toHeredocDelimiter(module.id);
 
   lines.push('    if [[ "${DRY_RUN:-false}" = "true" ]]; then');
-  lines.push(`        log_info "dry-run: verify (optional): ${escapedSummary} (${module.run_as})"`);
+  lines.push(`        log_info "dry-run: verify (optional): ${escapedSummary} (${runAs})"`);
   lines.push("    else");
   lines.push(`        if ! ${shellHelper} <<'${delimiter}'`);
   for (const cmd of commandLinesWithChildHelperPreludes(commandLines)) {
@@ -1284,8 +1302,10 @@ function joinList(values?: string[]): string {
 
 function selectionDependencies(module: Module): string[] {
   const dependencies = [...(module.dependencies ?? [])];
+  // A module whose install OR verify runs as the target user needs the target
+  // account normalized first, even in a targeted --only install (#461).
   if (
-    module.run_as === "target_user" &&
+    (module.run_as === "target_user" || verifyRunAs(module) === "target_user") &&
     module.id !== "users.ubuntu" &&
     !dependencies.includes("users.ubuntu")
   ) {
@@ -1951,6 +1971,7 @@ function generateVerifyCommands(module: Module): string[] {
           `verify: ${summary}`,
           blockLines,
           `verify failed: ${summary}`,
+          verifyRunAs(module),
         ),
       );
     }
@@ -2440,9 +2461,10 @@ export function generateDoctorChecks(manifest: Manifest): string {
       const description = escapeBash(module.description);
       const encodedCmd = encodeDoctorCommand(cleanCmd);
 
-      // Use tab delimiter (\t) instead of pipe to avoid conflicts with || in commands
+      // Use tab delimiter (\t) instead of pipe to avoid conflicts with || in commands.
+      // RUN_AS is the verify context, the same one the installer verifies in (#461).
       lines.push(
-        `    "${checkId}${suffix}\t${description}\t${escapeBash(encodedCmd)}\t${isOptional ? "optional" : "required"}\t${module.run_as}"`,
+        `    "${checkId}${suffix}\t${description}\t${escapeBash(encodedCmd)}\t${isOptional ? "optional" : "required"}\t${verifyRunAs(module)}"`,
       );
     }
   }

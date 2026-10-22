@@ -26,6 +26,8 @@ import {
   buildAgentRoster,
   findUnexpectedGeneratedPaths,
   generateAgentRosterMarkdown,
+  generateCategoryScript,
+  generateDoctorChecks,
   generateManifestIndex,
   generatedFileModeMatches,
   generateAgentRosterSummaryMarkdown,
@@ -345,8 +347,10 @@ describe("Generated manifest_index.sh content", () => {
   test("dependencies are correctly formatted", () => {
     for (const module of manifest.modules) {
       const dependencies = [...(module.dependencies ?? [])];
+      // Install or verify as the target user needs the account first (#461).
       if (
-        module.run_as === "target_user" &&
+        (module.run_as === "target_user" ||
+          (module.verify_run_as ?? module.run_as) === "target_user") &&
         module.id !== "users.ubuntu" &&
         !dependencies.includes("users.ubuntu")
       ) {
@@ -1011,6 +1015,32 @@ describe("doctor_checks.sh content", () => {
     expect(doctorContent).toMatch(/base\.system\.1[^\n]*\troot"/);
   });
 
+  test("every check runs in its module's verify context (#461)", () => {
+    const contexts = new Map<string, string>();
+    for (const match of doctorContent.matchAll(/^ {4}"([a-z0-9_.]+)\t[^\n]*\t([a-z_]+)"$/gm)) {
+      contexts.set(match[1]!, match[2]!);
+    }
+    for (const module of manifest.modules) {
+      const expected = module.verify_run_as ?? module.run_as;
+      module.verify.forEach((_, index) => {
+        const id = module.verify.length > 1 ? `${module.id}.${index + 1}` : module.id;
+        expect(contexts.get(id), id).toBe(expected);
+      });
+    }
+  });
+
+  test("user-facing tools installed by root verify as the target user (#461)", () => {
+    // A copy in the target user's ~/.local/bin satisfies these modules'
+    // installed_check, so their verify must not use root's system-only PATH.
+    for (const id of ["tools.lazygit", "tools.lazydocker", "lang.go", "tools.vault", "cli.modern.1"]) {
+      expect(doctorContent).toMatch(new RegExp(`^ {4}"${id.replace(/\./g, "\\.")}\\t[^\\n]*\\ttarget_user"$`, "m"));
+    }
+    // System state stays root.
+    for (const id of ["base.system.1", "shell.zsh", "network.tailscale.2", "network.ssh_keepalive.1"]) {
+      expect(doctorContent).toMatch(new RegExp(`^ {4}"${id.replace(/\./g, "\\.")}\\t[^\\n]*\\troot"$`, "m"));
+    }
+  });
+
   test("generated manifest-check helper uses hardened target PATH ordering", () => {
     expect(doctorContent).toContain(
       'local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"',
@@ -1072,6 +1102,103 @@ describe("doctor_checks.sh content", () => {
       'helper_prelude="$(declare -f acfs_generated_system_binary_path acfs_generated_resolve_current_user acfs_generated_getent_passwd_entry acfs_generated_passwd_home_from_entry 2>/dev/null || true)"',
     );
     expect(doctorContent).toContain('cmd="${helper_prelude}"$\'\\n\'"${cmd}"');
+  });
+});
+
+describe("verify_run_as execution context (#461)", () => {
+  let manifest: Manifest;
+
+  beforeAll(() => {
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+    manifest = parseResult.data;
+  });
+
+  function fixtureManifest(verifyRunAs?: Module["verify_run_as"]): Manifest {
+    const base = manifest.modules.find((module) => module.id === "base.system");
+    const users = manifest.modules.find((module) => module.id === "users.ubuntu");
+    if (!base || !users) throw new Error("fixture needs base.system and users.ubuntu");
+    const fixture: Module = {
+      id: "tools.fixture_tui",
+      description: "Fixture TUI installed system-wide",
+      category: "tools",
+      run_as: "root",
+      ...(verifyRunAs === undefined ? {} : { verify_run_as: verifyRunAs }),
+      optional: false,
+      enabled_by_default: true,
+      generated: true,
+      phase: 5,
+      install: ["install -m 0755 /dev/null /usr/local/bin/fixture-tui"],
+      verify: ["fixture-tui --version", "command -v fixture-tui || true"],
+      dependencies: ["base.system"],
+    };
+    return { ...manifest, modules: [base, users, fixture] };
+  }
+
+  function fixtureFunction(categoryScript: string): string {
+    const start = categoryScript.indexOf("\nacfs_generated_install_tools_fixture_tui() {");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = categoryScript.indexOf("\n}\n", start);
+    return categoryScript.slice(start, end);
+  }
+
+  test("doctor rows carry verify_run_as instead of run_as", () => {
+    const rows = generateDoctorChecks(fixtureManifest("target_user"))
+      .split("\n")
+      .filter((line) => line.startsWith('    "tools.fixture_tui'));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toMatch(/\ttarget_user"$/);
+  });
+
+  test("doctor rows fall back to run_as when verify_run_as is absent", () => {
+    const rows = generateDoctorChecks(fixtureManifest())
+      .split("\n")
+      .filter((line) => line.startsWith('    "tools.fixture_tui'));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toMatch(/\troot"$/);
+  });
+
+  test("the installer installs in run_as and verifies in verify_run_as", () => {
+    const body = fixtureFunction(generateCategoryScript(fixtureManifest("target_user"), "tools"));
+    // Heredoc bodies start at column 0; the dry-run log lines quote them indented.
+    const installAt = body.indexOf("\ninstall -m 0755 /dev/null /usr/local/bin/fixture-tui\n");
+    const requiredVerifyAt = body.indexOf("\nfixture-tui --version\n");
+    const optionalVerifyAt = body.indexOf("\ncommand -v fixture-tui\n");
+    expect(installAt).toBeGreaterThan(0);
+    expect(requiredVerifyAt).toBeGreaterThan(installAt);
+    expect(optionalVerifyAt).toBeGreaterThan(requiredVerifyAt);
+    // The helper that opens each heredoc is on the line before its body.
+    const helperBefore = (at: number) => body.slice(body.lastIndexOf("if !", at), at);
+    expect(helperBefore(installAt)).toContain("run_as_root_shell");
+    expect(helperBefore(requiredVerifyAt)).toContain("run_as_target_shell");
+    expect(helperBefore(optionalVerifyAt)).toContain("run_as_target_shell");
+    expect(body).toContain('log_info "dry-run: verify: fixture-tui --version (target_user)"');
+    expect(body).toContain('log_info "dry-run: verify (optional): command -v fixture-tui (target_user)"');
+  });
+
+  test("the installer verifies in run_as when verify_run_as is absent", () => {
+    const body = fixtureFunction(generateCategoryScript(fixtureManifest(), "tools"));
+    expect(body).not.toContain("run_as_target_shell");
+    expect(body).toContain('log_info "dry-run: verify: fixture-tui --version (root)"');
+  });
+
+  test("a target-user verify makes the module depend on users.ubuntu", () => {
+    const deps = (index: string) => {
+      const start = index.indexOf("declare -gA ACFS_MODULE_DEPS=(\n");
+      expect(start).toBeGreaterThanOrEqual(0);
+      return index
+        .slice(start, index.indexOf("\n)\n", start))
+        .split("\n")
+        .find((line) => line.startsWith("  ['tools.fixture_tui']="));
+    };
+    expect(deps(generateManifestIndex(fixtureManifest("target_user"), "a".repeat(64)))).toBe(
+      `  ['tools.fixture_tui']="base.system,users.ubuntu"`,
+    );
+    expect(deps(generateManifestIndex(fixtureManifest(), "a".repeat(64)))).toBe(
+      `  ['tools.fixture_tui']="base.system"`,
+    );
   });
 });
 

@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="70659754863235936db07349b351ee86996dc1d98ff3848917c7c39c3563abf1"
+ACFS_MANIFEST_SHA256="3eff6bb83be7e3a68a5d1f65efe45c83818d9827d277c9adbc0eb340ecd975b8"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -187,15 +187,15 @@ declare -gA ACFS_MODULE_DEPS=(
   ['shell.zsh']="base.system,base.filesystem"
   ['shell.login']="shell.zsh,users.ubuntu"
   ['shell.omz']="shell.login,users.ubuntu"
-  ['cli.modern']="base.system"
-  ['tools.lazygit']="base.system"
-  ['tools.lazydocker']="base.system"
+  ['cli.modern']="base.system,users.ubuntu"
+  ['tools.lazygit']="base.system,users.ubuntu"
+  ['tools.lazydocker']="base.system,users.ubuntu"
   ['network.tailscale']="base.system"
   ['network.ssh_keepalive']="base.system"
   ['lang.bun']="base.system,users.ubuntu"
   ['lang.uv']="base.system,users.ubuntu"
   ['lang.rust']="base.system,users.ubuntu"
-  ['lang.go']="base.system"
+  ['lang.go']="base.system,users.ubuntu"
   ['lang.nvm']="base.system,users.ubuntu"
   ['tools.atuin']="base.system,users.ubuntu"
   ['tools.zoxide']="base.system,users.ubuntu"
@@ -207,7 +207,7 @@ declare -gA ACFS_MODULE_DEPS=(
   ['agents.opencode']="base.system,users.ubuntu"
   ['agents.omp']="base.system,users.ubuntu"
   ['agents.grok']="base.system,users.ubuntu"
-  ['tools.vault']="base.system"
+  ['tools.vault']="base.system,users.ubuntu"
   ['db.postgres18']="base.system"
   ['cloud.wrangler']="lang.bun,users.ubuntu"
   ['cloud.supabase']="base.system,base.filesystem,users.ubuntu"

@@ -359,6 +359,12 @@ export const ModuleSchema = z
 
     // Execution context
     run_as: RunAsSchema.default("target_user"),
+    // Execution context of the verify commands, both the installer's
+    // post-install verify and the generated doctor checks. Omitted means
+    // run_as. Set it when installing needs a different identity than the one
+    // that uses the result: a CLI that root installs system-wide but that the
+    // target user runs, and may equally provide from ~/.local/bin (#461).
+    verify_run_as: RunAsSchema.optional(),
 
     // Verified installer reference
     verified_installer: VerifiedInstallerSchema.optional(),
@@ -446,6 +452,22 @@ export const ModuleSchema = z
     message:
       "Modules with verified_installer must run as target_user through the clean runner boundary.",
   })
+  // Verification may drop privilege (root installs, the target user verifies)
+  // but never gain it: verifying a target-user install as root would execute
+  // user-writable files as root, and "current" is root whenever the installer
+  // runs as root.
+  .refine(
+    (module) =>
+      module.verify_run_as === undefined ||
+      module.verify_run_as === module.run_as ||
+      module.verify_run_as === "target_user" ||
+      (module.verify_run_as === "current" && module.run_as === "root"),
+    {
+      path: ["verify_run_as"],
+      message:
+        "verify_run_as cannot verify with more privilege than run_as: it may repeat run_as or drop to target_user, and only a root module may also verify as current.",
+    },
+  )
   .superRefine((module, context) => {
     const idCategory = module.id.split(".", 1)[0];
     if (

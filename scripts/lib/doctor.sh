@@ -3893,9 +3893,10 @@ _doctor_run_manifest_check() {
                 return $?
             fi
             # No passwordless sudo (safe mode, or a non-admin shell). These
-            # manifest checks are read-only version probes (curl/git/jq/gpg,
-            # lazygit, go, ...), so run them as the current user rather than
-            # reporting every one of them as a false FAIL.
+            # manifest checks are read-only probes of system state (curl/git/
+            # jq/gpg versions, PostgreSQL service status), so run them as the
+            # current user rather than reporting every one of them as a false
+            # FAIL. Tools the target user runs verify as target_user (#461).
             if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
                 "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix:$PATH" "$bash_bin" -e -o pipefail -c "$cmd"
             else

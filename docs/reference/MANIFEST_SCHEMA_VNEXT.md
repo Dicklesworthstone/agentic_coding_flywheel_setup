@@ -42,7 +42,8 @@ modules:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `run_as` | enum | `target_user` | Execution context for install/verify. Options: `target_user`, `root`, `current` |
+| `run_as` | enum | `target_user` | Execution context for install, and for verify unless `verify_run_as` is set. Options: `target_user`, `root`, `current` |
+| `verify_run_as` | enum | `run_as` | Execution context for the `verify` commands, in both the installer's post-install verify and `acfs doctor`. Set `target_user` when root installs a tool system-wide but the target user runs it, so a copy in `~/.local/bin` counts. It may repeat `run_as` or drop to `target_user` (a `root` module may also verify as `current`), but never verify with more privilege than `run_as` |
 | `phase` | int | 1 | Execution phase (1-10). Lower phases run first |
 | `category` | enum | ID prefix | Generated-layout authority. One of `base`, `users`, `filesystem`, `shell`, `cli`, `network`, `lang`, `tools`, `db`, `cloud`, `agents`, `stack`, `acfs`. When omitted, the canonical first ID segment is used. |
 
@@ -181,7 +182,7 @@ Implementations must produce the same effective plan for the same manifest and s
 12. Emit `ACFS_EFFECTIVE_PLAN` by iterating `ACFS_MODULES_IN_ORDER`; this preserves phase order and topological order from the generator.
 13. Emit `ACFS_EFFECTIVE_RUN[module]=1` for every included module and exclusion reasons for everything not included.
 
-The generator derives `users.ubuntu` as a selection dependency for every module whose canonical `run_as` is `target_user`. This invariant comes from execution metadata rather than duplicated manifest lists: a fresh targeted install must normalize the target account before any target-user module executes. `--no-deps` remains the explicit expert escape hatch.
+The generator derives `users.ubuntu` as a selection dependency for every module whose `run_as` or `verify_run_as` is `target_user`. This invariant comes from execution metadata rather than duplicated manifest lists: a fresh targeted install must normalize the target account before any target-user module executes. `--no-deps` remains the explicit expert escape hatch.
 
 ### Required Core Modules
 
@@ -373,7 +374,8 @@ disagree with what the installer actually does.
   description: Modern CLI tools
   category: cli
   phase: 5
-  run_as: root
+  run_as: root              # apt needs root
+  verify_run_as: target_user  # the target user runs these tools
   optional: false
   enabled_by_default: true
   tags: [recommended, cli-modern]

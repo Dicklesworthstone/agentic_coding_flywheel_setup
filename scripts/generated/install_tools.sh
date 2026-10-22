@@ -398,9 +398,9 @@ INSTALL_TOOLS_LAZYGIT
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: lazygit --version (root)"
+        log_info "dry-run: verify: lazygit --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_TOOLS_LAZYGIT'
+        if ! run_as_target_shell <<'INSTALL_TOOLS_LAZYGIT'
 lazygit --version
 INSTALL_TOOLS_LAZYGIT
         then
@@ -454,9 +454,9 @@ INSTALL_TOOLS_LAZYDOCKER
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: lazydocker --version (root)"
+        log_info "dry-run: verify: lazydocker --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_TOOLS_LAZYDOCKER'
+        if ! run_as_target_shell <<'INSTALL_TOOLS_LAZYDOCKER'
 lazydocker --version
 INSTALL_TOOLS_LAZYDOCKER
         then
@@ -887,9 +887,9 @@ INSTALL_TOOLS_VAULT
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: vault --version (root)"
+        log_info "dry-run: verify: vault --version (target_user)"
     else
-        if ! run_as_root_shell <<'INSTALL_TOOLS_VAULT'
+        if ! run_as_target_shell <<'INSTALL_TOOLS_VAULT'
 vault --version
 INSTALL_TOOLS_VAULT
         then

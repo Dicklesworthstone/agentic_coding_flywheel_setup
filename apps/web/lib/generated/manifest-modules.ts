@@ -41,7 +41,7 @@ export interface ManifestProvenanceMetadata {
 
 export const manifestProvenance = {
   acfsVersion: "0.10.0",
-  manifestSha256: "70659754863235936db07349b351ee86996dc1d98ff3848917c7c39c3563abf1",
+  manifestSha256: "3eff6bb83be7e3a68a5d1f65efe45c83818d9827d277c9adbc0eb340ecd975b8",
   checksumsYamlSha256: "4c1a21234cac13d3db6aaef51fdfa091013e481847a1ea93647d4e3cdcf6170a",
 } as const satisfies ManifestProvenanceMetadata;
 
@@ -140,6 +140,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 5,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -155,6 +156,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 5,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -170,6 +172,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 5,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -266,6 +269,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "critical",
@@ -457,6 +461,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 8,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
