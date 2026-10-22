@@ -397,7 +397,7 @@ modules:
       - "Oh My Zsh and plugins installed via verified upstream installers"
       - "acfs.zshrc written from acfs/ assets"
       - "Login shells must be executable paths listed in /etc/shells; changes preserve the original shell and verify the account afterward"
-      - "Externally managed Bash accounts (for example NSS/OS Login users) get a verified bash-to-zsh handoff instead of a local chsh"
+      - "Externally managed accounts are considered configured only when their identity provider reports an approved executable zsh path from /etc/shells; ACFS does not substitute a Bash startup-file handoff"
       - "Pre-configured p10k theme settings prevent wizard on first login"
 
   # ============================================================
