@@ -399,10 +399,15 @@ EOF
     export TARGET_USER="$managed_user"
     export TARGET_HOME="$stale_home"
 
-    user_getent_passwd_entry() {
+    user_login_passwd_entry() {
         [[ "${1:-}" == "$managed_user" ]] || return 1
         printf '%s:x:1000:1000::%s:/bin/bash\n' "$managed_user" "$resolved_home"
     }
+    # These cases isolate home-path handling; the hermetic login-shell suite
+    # exercises the real approval and privilege boundaries.
+    user_select_login_shell() { printf '/bin/bash\n'; }
+    user_shell_is_approved() { [[ "$1" == /bin/bash ]]; }
+    user_run_as_account() { shift; "$@"; }
 
     run set_default_shell /bin/bash
     assert_success
@@ -426,10 +431,13 @@ EOF
 # Historical note only; no active zsh handoff lives here.
 EOF
 
-    user_getent_passwd_entry() {
+    user_login_passwd_entry() {
         [[ "${1:-}" == "$managed_user" ]] || return 1
         printf '%s:x:1000:1000::%s:/bin/bash\n' "$managed_user" "$resolved_home"
     }
+    user_select_login_shell() { printf '/bin/bash\n'; }
+    user_shell_is_approved() { [[ "$1" == /bin/bash ]]; }
+    user_run_as_account() { shift; "$@"; }
 
     run set_default_shell /bin/bash
     assert_success

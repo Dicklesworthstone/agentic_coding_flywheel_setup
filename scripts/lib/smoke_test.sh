@@ -1034,29 +1034,43 @@ _check_user() {
     fi
 }
 
-# Check 2: Shell is zsh
+# Reuse the installer's account validation without leaking user.sh's target
+# discovery or SUDO initialization into callers that source this library.
+_smoke_login_shell_configured() (
+    if ! declare -f user_login_shell_configured >/dev/null 2>&1; then
+        local user_lib_dir="."
+        if [[ "${BASH_SOURCE[0]}" == */* ]]; then
+            user_lib_dir="${BASH_SOURCE[0]%/*}"
+        fi
+        TARGET_USER="$_SMOKE_TARGET_USER"
+        TARGET_HOME="${_SMOKE_TARGET_HOME:-}"
+        unset _ACFS_USER_SH_LOADED
+        # shellcheck source=user.sh
+        source "$user_lib_dir/user.sh" || return 1
+    fi
+    user_login_shell_configured "$_SMOKE_TARGET_USER"
+)
+
+# Check 2: The effective login shell is approved and zsh is configured.
 _check_shell() {
     local shell=""
     local passwd_entry=""
 
+    if _smoke_login_shell_configured; then
+        _smoke_pass "Shell: verified login-shell configuration"
+        return 0
+    fi
+
     passwd_entry="$(_smoke_getent_passwd_entry "$_SMOKE_TARGET_USER" || true)"
     [[ -n "$passwd_entry" ]] && shell="$(_smoke_passwd_shell_from_entry "$passwd_entry" 2>/dev/null || true)"
-    # Check if configured shell is zsh (the actual login shell, not just that zsh exists)
-    if [[ "$shell" == *"zsh"* ]]; then
-        _smoke_pass "Shell: zsh"
-        return 0
-    elif _smoke_is_externally_managed_user "$_SMOKE_TARGET_USER"; then
-        if _smoke_external_shell_handoff_configured "$_SMOKE_TARGET_HOME"; then
-            _smoke_pass "Shell: externally managed login hands off to zsh"
-        else
-            _smoke_warn "Shell: externally managed account reports ${shell:-unknown}" \
-                "Local chsh is not valid here; configure the identity provider shell or add the ACFS bash-to-zsh handoff."
-        fi
-        return 0
+    if _smoke_is_externally_managed_user "$_SMOKE_TARGET_USER"; then
+        _smoke_fail "Shell: externally managed login configuration is not verified (${shell:-unknown})" \
+            "Configure an approved login shell with the identity provider, then rerun the ACFS shell setup to verify the zsh handoff."
     else
-        _smoke_fail "Shell: expected zsh, got $shell" "chsh -s \$(which zsh)"
-        return 1
+        _smoke_fail "Shell: login configuration is not verified (${shell:-unknown})" \
+            "Rerun the ACFS shell setup; it selects an executable zsh path listed exactly in /etc/shells."
     fi
+    return 1
 }
 
 # Check 3: Passwordless sudo works

@@ -7753,92 +7753,6 @@ setup_filesystem() {
 # ============================================================
 # Phase 3: Shell setup (zsh + oh-my-zsh + p10k)
 # ============================================================
-acfs_get_local_passwd_entry() {
-    local user="${1:-}"
-    local passwd_line=""
-    local passwd_user=""
-
-    [[ -n "$user" ]] || return 1
-    [[ -r /etc/passwd ]] || return 1
-
-    while IFS= read -r passwd_line; do
-        IFS=: read -r passwd_user _ <<< "$passwd_line"
-        if [[ "$passwd_user" == "$user" ]]; then
-            echo "$passwd_line"
-            return 0
-        fi
-    done < /etc/passwd
-
-    return 1
-}
-acfs_is_externally_managed_user() {
-    local user="${1:-}"
-    local passwd_entry=""
-    local local_entry=""
-
-    [[ -n "$user" ]] || return 1
-    passwd_entry="$(acfs_early_getent_passwd_entry "$user" 2>/dev/null || true)"
-    [[ -n "$passwd_entry" ]] || return 1
-
-    local_entry="$(acfs_get_local_passwd_entry "$user" || true)"
-    [[ -z "$local_entry" ]]
-}
-
-acfs_external_shell_handoff_configured() {
-    local target_home="${1:-}"
-    local bashrc_path=""
-
-    [[ -n "$target_home" ]] || return 1
-    bashrc_path="$target_home/.bashrc"
-    [[ -f "$bashrc_path" ]] || return 1
-
-    awk '
-        $0 == "# ACFS externally-managed shell handoff" { marker=1; next }
-        marker && $0 ~ /^[[:space:]]*#/ { next }
-        marker && index($0, "command -v zsh") && index($0, "ACFS_ZSH_HANDOFF_ACTIVE") { found=1; exit }
-        marker && $0 !~ /^[[:space:]]*$/ { marker=0 }
-        END { exit(found ? 0 : 1) }
-    ' "$bashrc_path" 2>/dev/null
-}
-
-acfs_append_external_shell_handoff() {
-    local bashrc_path="${1:-}"
-    [[ -n "$bashrc_path" ]] || return 1
-
-    if [[ -f "$bashrc_path" ]] && [[ -s "$bashrc_path" ]]; then
-        local last_char=""
-        last_char=$(tail -c 1 "$bashrc_path" | od -An -t u1 | tr -d ' ' 2>/dev/null || true)
-        if [[ "$last_char" != "10" ]]; then
-            printf '\n' >> "$bashrc_path"
-        fi
-    fi
-
-    cat >> "$bashrc_path" << 'EOF'
-# ACFS externally-managed shell handoff
-if [[ $- == *i* ]] && [[ -t 0 ]] && command -v zsh >/dev/null 2>&1 && [[ -z "${ACFS_ZSH_HANDOFF_ACTIVE:-}" ]]; then
-    export ACFS_ZSH_HANDOFF_ACTIVE=1
-    exec "$(command -v zsh)" -l
-fi
-EOF
-}
-
-acfs_configure_external_shell_handoff() {
-    local target_home="${1:-}"
-    local target_user="${2:-}"
-
-    [[ -n "$target_home" ]] || return 1
-    [[ -n "$target_user" ]] || return 1
-
-    if acfs_external_shell_handoff_configured "$target_home"; then
-        return 0
-    fi
-
-    acfs_append_external_shell_handoff "$target_home/.bashrc" || return 1
-
-    $SUDO chown "$target_user:$target_user" "$target_home/.bashrc" 2>/dev/null || true
-    return 0
-}
-
 profile_path_has_fragment() {
     local file="${1:-}"
     local fragment="${2:-}"
@@ -8058,31 +7972,9 @@ EOF
     fi
     [[ -f "$user_zprofile" ]] && $SUDO chown "$TARGET_USER:$TARGET_USER" "$user_zprofile" 2>/dev/null || true
 
-    # Set zsh as default shell for target user. Some environments expose user
-    # entries via NSS but do not allow local chsh updates, so fall back to an
-    # interactive bash-to-zsh handoff there.
-    local current_shell
-    local current_shell_entry=""
-    local zsh_path
-    local chsh_path=""
-    current_shell_entry="$(acfs_early_getent_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
-    current_shell=""
-    if [[ -n "$current_shell_entry" ]]; then
-        IFS=: read -r _ _ _ _ _ _ current_shell <<< "$current_shell_entry"
-    fi
-    zsh_path="$(acfs_early_system_binary_path zsh 2>/dev/null || true)"
-    chsh_path="$(acfs_early_system_binary_path chsh 2>/dev/null || true)"
-    if [[ -n "$zsh_path" ]] && [[ "$current_shell" != *"zsh"* ]]; then
-        if acfs_is_externally_managed_user "$TARGET_USER"; then
-            log_warn "Shell for $TARGET_USER is managed outside /etc/passwd; installing a bash-to-zsh handoff instead of using chsh"
-            try_step "Configuring bash-to-zsh handoff" acfs_configure_external_shell_handoff "$TARGET_HOME" "$TARGET_USER" || return 1
-        elif [[ -n "$chsh_path" ]]; then
-            log_detail "Setting zsh as default shell for $TARGET_USER"
-            try_step "Setting zsh as default shell" $SUDO "$chsh_path" -s "$zsh_path" "$TARGET_USER" || true
-        else
-            log_warn "Could not locate chsh; leaving the default shell unchanged for $TARGET_USER"
-        fi
-    fi
+    # The generated manifest path calls this same helper. A failed or unverifiable
+    # account change must fail the phase, preserving the original shell for recovery.
+    try_step "Setting zsh as default shell" set_default_shell || return 1
 
     log_success "Shell setup complete"
 }
@@ -11202,26 +11094,25 @@ run_smoke_test() {
         ((critical_failed += 1))
     fi
 
-    # 2) Shell is zsh
+    # 2) Account shell is approved by /etc/shells, or an externally managed
+    # Bash login has the verified handoff. A zsh-like pathname alone is unsafe.
     target_shell_entry="$(acfs_early_getent_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
     if [[ -n "$target_shell_entry" ]]; then
         IFS=: read -r _ _ _ _ _ _ target_shell <<< "$target_shell_entry"
     fi
-    if [[ "$target_shell" == *"zsh"* ]]; then
-        echo "✅ Shell: zsh" >&2
+    if user_login_shell_configured "$TARGET_USER"; then
+        echo "✅ Shell: approved login shell and zsh configuration ($target_shell)" >&2
         ((critical_passed += 1))
-    elif acfs_is_externally_managed_user "$TARGET_USER"; then
-        if acfs_external_shell_handoff_configured "$TARGET_HOME"; then
-            echo "✅ Shell: externally managed login hands off to zsh" >&2
-            ((critical_passed += 1))
-        else
-            echo "⚠ Shell: externally managed account reports ${target_shell:-unknown}" >&2
-            echo "    Note: local chsh is not valid here; configure the identity provider shell or add the ACFS bash-to-zsh handoff." >&2
-            ((warnings += 1))
-        fi
     else
-        echo "✖ Shell: zsh (found: ${target_shell:-unknown})" >&2
-        echo "    Fix: sudo chsh -s \"\$(command -v zsh)\" \"$TARGET_USER\"" >&2
+        echo "✖ Shell: approved zsh configuration could not be verified (found: ${target_shell:-unknown})" >&2
+        local approved_zsh=""
+        if approved_zsh="$(user_select_login_shell 2>/dev/null)"; then
+            echo "    Approved zsh path: $approved_zsh" >&2
+            echo "    Fix: re-run shell setup: $(acfs_smoke_install_fix_command shell.login)" >&2
+        else
+            echo "    No executable zsh path is approved by /etc/shells; repair the host shell configuration first." >&2
+        fi
+        echo "    For externally managed accounts, configure the identity provider's login shell." >&2
         ((critical_failed += 1))
     fi
 

@@ -6,13 +6,14 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="e70573ff2c337c6ceadba911b0ce48993836d34f79a4ad8588c3a3b38dc9f566"
+ACFS_MANIFEST_SHA256="8cc9935378c1062124dd21daadf6fb06b099e4a95a2a357ce1d4c0015e7a2113"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
   "users.ubuntu"
   "base.filesystem"
   "shell.zsh"
+  "shell.login"
   "shell.omz"
   "cli.modern"
   "tools.lazygit"
@@ -106,6 +107,7 @@ declare -gA ACFS_MODULE_PHASE=(
   ['users.ubuntu']="2"
   ['base.filesystem']="3"
   ['shell.zsh']="4"
+  ['shell.login']="4"
   ['shell.omz']="4"
   ['cli.modern']="5"
   ['tools.lazygit']="5"
@@ -183,7 +185,8 @@ declare -gA ACFS_MODULE_DEPS=(
   ['users.ubuntu']=""
   ['base.filesystem']="users.ubuntu"
   ['shell.zsh']="base.system,base.filesystem"
-  ['shell.omz']="shell.zsh,users.ubuntu"
+  ['shell.login']="shell.zsh,users.ubuntu"
+  ['shell.omz']="shell.login,users.ubuntu"
   ['cli.modern']="base.system"
   ['tools.lazygit']="base.system"
   ['tools.lazydocker']="base.system"
@@ -259,6 +262,7 @@ declare -gA ACFS_MODULE_FUNC=(
   ['base.system']="acfs_generated_install_base_system"
   ['base.filesystem']="acfs_generated_install_base_filesystem"
   ['shell.zsh']="acfs_generated_install_shell_zsh"
+  ['shell.login']="acfs_generated_install_shell_login"
   ['shell.omz']="acfs_generated_install_shell_omz"
   ['cli.modern']="acfs_generated_install_cli_modern"
   ['tools.lazygit']="acfs_generated_install_tools_lazygit"
@@ -336,6 +340,7 @@ declare -gA ACFS_MODULE_GENERATED=(
   ['users.ubuntu']="0"
   ['base.filesystem']="1"
   ['shell.zsh']="1"
+  ['shell.login']="1"
   ['shell.omz']="1"
   ['cli.modern']="1"
   ['tools.lazygit']="1"
@@ -413,6 +418,7 @@ declare -gA ACFS_MODULE_CATEGORY=(
   ['users.ubuntu']="users"
   ['base.filesystem']="filesystem"
   ['shell.zsh']="shell"
+  ['shell.login']="shell"
   ['shell.omz']="shell"
   ['cli.modern']="cli"
   ['tools.lazygit']="tools"
@@ -490,6 +496,7 @@ declare -gA ACFS_MODULE_TAGS=(
   ['users.ubuntu']="orchestration,critical"
   ['base.filesystem']="critical"
   ['shell.zsh']="critical,shell-ux"
+  ['shell.login']="critical,shell-ux"
   ['shell.omz']="critical,shell-ux"
   ['cli.modern']="recommended,cli-modern"
   ['tools.lazygit']="recommended,cli-modern"
@@ -567,6 +574,7 @@ declare -gA ACFS_MODULE_DEFAULT=(
   ['users.ubuntu']="1"
   ['base.filesystem']="1"
   ['shell.zsh']="1"
+  ['shell.login']="1"
   ['shell.omz']="1"
   ['cli.modern']="1"
   ['tools.lazygit']="1"
@@ -644,6 +652,7 @@ declare -gA ACFS_MODULE_DESC=(
   ['users.ubuntu']="Ensure target user + passwordless sudo + ssh keys"
   ['base.filesystem']="Create workspace and ACFS directories"
   ['shell.zsh']="Zsh shell package"
+  ['shell.login']="Validated and recoverable login-shell configuration"
   ['shell.omz']="Oh My Zsh + Powerlevel10k + plugins + ACFS config"
   ['cli.modern']="Modern CLI tools referenced by the zshrc intent"
   ['tools.lazygit']="Lazygit (apt or binary fallback)"
@@ -720,7 +729,13 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK=(
   ['base.system']='command -v curl && command -v git && command -v jq'
   ['base.filesystem']='test -d /data/projects && test -d ~/.acfs'
   ['shell.zsh']='command -v zsh'
-  ['shell.omz']='test -d ~/.oh-my-zsh && test -f ~/.acfs/zsh/acfs.zshrc'
+  ['shell.login']='source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh" &&
+  user_login_shell_configured
+'
+  ['shell.omz']='test -d ~/.oh-my-zsh && test -f ~/.acfs/zsh/acfs.zshrc &&
+  source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh" &&
+  user_login_shell_configured
+'
   ['cli.modern']='command -v rg && command -v tmux && command -v fzf'
   ['tools.lazygit']='command -v lazygit'
   ['tools.lazydocker']='command -v lazydocker'
@@ -846,6 +861,7 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=(
   ['base.system']="current"
   ['base.filesystem']="target_user"
   ['shell.zsh']="current"
+  ['shell.login']="current"
   ['shell.omz']="target_user"
   ['cli.modern']="current"
   ['tools.lazygit']="current"
@@ -929,6 +945,7 @@ declare -gA ACFS_MODULE_OPTIONAL=(
   ['users.ubuntu']="0"
   ['base.filesystem']="0"
   ['shell.zsh']="0"
+  ['shell.login']="0"
   ['shell.omz']="0"
   ['cli.modern']="0"
   ['tools.lazygit']="0"

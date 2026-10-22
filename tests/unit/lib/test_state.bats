@@ -513,6 +513,7 @@ EOF
     chmod +x "$TARGET_HOME/.bun/bin/bun" "$TARGET_HOME/.cargo/bin/cargo"
     acfs_early_system_binary_path() { printf /bin/true; }
     acfs_early_getent_passwd_entry() { printf 'tester:x:1000:1000::/home/tester:/bin/zsh'; }
+    user_login_shell_configured() { return 0; }
     binary_installed() { return 0; }
     run_as_target() { return 1; }
     acfs_smoke_install_fix_command() { printf repair; }
@@ -543,6 +544,74 @@ EOF
     run run_smoke_test
     assert_success
     assert_output --partial '14/14 critical passed'
+}
+
+@test "state: completed shell setup re-enters component checks for an approved account" {
+    state_init
+    state_phase_complete "shell_setup"
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    ACFS_EFFECTIVE_PLAN=("shell.zsh" "shell.login" "shell.omz")
+
+    user_login_shell_configured() { printf 'unexpected account probe\n'; }
+
+    run state_should_skip_phase "shell_setup"
+    assert_failure
+    assert_output ""
+}
+
+@test "state: completed shell setup reruns when account verification fails" {
+    state_init
+    state_phase_complete "shell_setup"
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    ACFS_EFFECTIVE_PLAN=("shell.zsh" "shell.login" "shell.omz")
+
+    user_login_shell_configured() { return 1; }
+
+    run state_should_skip_phase "shell_setup"
+    assert_failure
+}
+
+@test "state: unsafe completed shell setup remains skipped for an unrelated subset" {
+    state_init
+    state_phase_complete "shell_setup"
+    ONLY_MODULES=("stack.ntm")
+    ONLY_PHASES=()
+    ACFS_EFFECTIVE_PLAN=("stack.ntm")
+    declare -gA ACFS_MODULE_PHASE=([stack.ntm]=9)
+
+    user_login_shell_configured() { printf 'unexpected account probe\n'; return 1; }
+
+    run state_should_skip_phase "shell_setup"
+    assert_success
+    assert_output ""
+}
+
+@test "state: explicit shell phase skip is preserved on full resume" {
+    state_init
+    state_phase_complete "shell_setup"
+    state_phase_skip "shell_setup"
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    ACFS_EFFECTIVE_PLAN=("shell.zsh" "shell.login" "shell.omz")
+
+    user_login_shell_configured() { printf 'unexpected account probe\n'; return 1; }
+
+    run state_should_skip_phase "shell_setup"
+    assert_success
+    assert_output ""
+}
+
+@test "state: shell resume re-enters without loading the account library" {
+    state_init
+    state_phase_complete "shell_setup"
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    unset -f user_login_shell_configured
+
+    run state_should_skip_phase "shell_setup"
+    assert_failure
 }
 
 @test "state: update atomic" {

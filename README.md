@@ -4859,23 +4859,60 @@ acfs support-bundle --no-redact
 
 ### Shell Not Changing to zsh
 
-**Symptom**: Still seeing bash prompt after install.
+**Symptoms**: Still seeing a Bash prompt, shell setup refuses to complete, or a
+previous installation selected an unlisted shell alias.
 
-**Solutions**:
+**Keep the current session open while repairing the account.** Inspect the
+effective account record instead of `$SHELL`, which can describe an older
+session. Run these checks as the affected user so the executable check uses that
+account's permissions:
 
-1. **Log out and back in** (the change happens at next login)
+```bash
+account="$(id -un)"
+login_shell="$(getent passwd "$account" | cut -d: -f7)"
+printf 'Login shell for %s: %s\n' "$account" "$login_shell"
+[[ "$login_shell" == /* && -f "$login_shell" && -x "$login_shell" ]] &&
+  grep -aFxq -- "$login_shell" /etc/shells
+```
 
-2. **Manually set shell**:
-   ```bash
-   chsh -s $(which zsh)
-   # Then log out and back in
-   ```
+The configured path must be executable by that account and appear **exactly** in
+`/etc/shells`. On Arch/usrmerge, `/usr/sbin/zsh` and `/usr/bin/zsh` can reach the
+same binary while only one spelling is approved. Authentication using
+[`pam_shells`](https://man.archlinux.org/man/pam_shells.8.en) can reject the
+unlisted spelling; see [issue #473](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/473).
 
-3. **Check shell was installed**:
-   ```bash
-   which zsh  # Should show /usr/bin/zsh
-   cat /etc/shells  # zsh should be listed
-   ```
+ACFS's `shell.login` module selects an approved executable path, preserves the
+original login shell, applies the change, and verifies both the local and NSS
+account records. It reports failure if no acceptable shell can be established,
+the approval file is missing or unsafe, privileges are insufficient, or the
+change cannot be verified. It does not add entries to `/etc/shells`. An
+administrator must repair an invalid host approval policy before retrying.
+
+To repair a previous installation using the current verified installer, rerun
+the account-shell module and its dependencies. The explicit target keeps a
+root-run repair attached to the intended account. From an administrator session,
+set `account` to the affected Linux username; when already root, omit `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh |
+  sudo env TARGET_USER="$account" bash -s -- --yes --mode safe --force-reinstall --only shell.login
+```
+
+Before the first local shell change, ACFS creates `.shell.pre-acfs` in the
+account's home with permissions `0600`. Retries preserve that first snapshot.
+This is a recovery record, **not an automatically approved restore target**: it
+may contain the previously invalid `/usr/sbin/zsh` alias. Validate any proposed
+manual restore path against `/etc/shells` and the account's executable access
+before using it. When a change fails after writing, ACFS attempts to restore an
+approved original shell while the account identity remains unchanged, then
+verifies the result and still reports the installation failure.
+
+For externally managed users, ACFS leaves the provider's login shell unchanged.
+An approved Bash login can receive a verified interactive zsh handoff; an
+unapproved or unsupported provider shell requires an identity-provider fix.
+After successful repair, repeat the account checks above and test a new login
+before closing the recovery session. An existing Bash session stays Bash until
+you start a new shell or log in again.
 
 ### Agent Authentication Issues
 

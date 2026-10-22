@@ -12,6 +12,7 @@ on:
       - '.github/workflows/*.yml'
       - '.shellcheckrc'
       - 'tests/**/*.sh'
+      - 'tests/unit/test_login_shell_safety.py'
   pull_request:
     branches: [main]
     paths:
@@ -23,6 +24,7 @@ on:
       - '.github/workflows/*.yml'
       - '.shellcheckrc'
       - 'tests/**/*.sh'
+      - 'tests/unit/test_login_shell_safety.py'
 
 jobs:
   yaml-lint:
@@ -94,6 +96,9 @@ jobs:
 
       - name: Run library globals integration test
         run: bash tests/unit/test_lib_globals.sh
+
+      - name: Run login-shell safety regressions
+        run: sudo python3 -B tests/unit/test_login_shell_safety.py
 
       - name: Run installer fault-injection contract test
         run: bash tests/unit/test_installer_fault_contract.sh

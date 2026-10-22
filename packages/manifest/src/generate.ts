@@ -1125,13 +1125,6 @@ function primaryBinHelperPreludeLines(): string[] {
 
 function commandLinesWithChildHelperPreludes(commandLines: string[]): string[] {
   const preludeLines: string[] = [];
-  if (commandLines.some((line) => line.includes("acfs_configure_login_shell"))) {
-    const userLibrary = readFileSync(join(PROJECT_ROOT, "scripts/lib/user.sh"), "utf8");
-    const start = userLibrary.indexOf("# BEGIN ACFS LOGIN SHELL HELPERS");
-    const end = userLibrary.indexOf("# END ACFS LOGIN SHELL HELPERS");
-    if (start < 0 || end <= start) throw new Error("Login shell helper markers missing");
-    preludeLines.push(...userLibrary.slice(start, end).trimEnd().split("\n"), "");
-  }
   const needsGeneratedHelpers = commandLinesNeedGeneratedHelpers(commandLines);
   const needsPrimaryBinHelpers = commandLinesNeedPrimaryBinHelpers(commandLines);
 

@@ -4032,7 +4032,10 @@ EOF
     run grep -F 'acfs_zshrc_is_managed_loader() {' "$generated"
     assert_success
 
-    run grep -F 'acfs_external_shell_handoff_configured() {' "$generated"
+    run grep -F 'source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh"' "$generated"
+    assert_success
+
+    run grep -F 'set_default_shell' "$generated"
     assert_success
 
     run grep -F "grep -q 'ACFS externally-managed shell handoff' ~/.bashrc" "$generated"
@@ -10920,10 +10923,10 @@ EOF
     run grep -F 'current_user="$(acfs_early_resolve_current_user 2>/dev/null || true)"' "$installer"
     assert_success
 
-    run grep -F 'current_shell_entry="$(acfs_early_getent_passwd_entry "$TARGET_USER" 2>/dev/null || true)"' "$installer"
+    run grep -F 'try_step "Setting zsh as default shell" set_default_shell || return 1' "$installer"
     assert_success
 
-    run grep -F '$SUDO "$chsh_path" -s "$zsh_path" "$TARGET_USER"' "$installer"
+    run grep -F 'user_login_shell_configured "$TARGET_USER"' "$installer"
     assert_success
 
     run grep -F '_ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"' "$installer"
@@ -11179,6 +11182,54 @@ EOF
 
     run _smoke_binary_exists "current-shell-only-tool"
     assert_success
+}
+
+@test "smoke_test.sh: shell check delegates approval to shared account policy" {
+    local smoke="$PROJECT_ROOT/scripts/lib/smoke_test.sh"
+    eval "$(sed -n '/^_smoke_login_shell_configured() (/ ,/^)/p' "$smoke")"
+    eval "$(sed -n '/^_check_shell() {$/,/^}$/p' "$smoke")"
+    _SMOKE_TARGET_USER="policy-target"
+    user_login_shell_configured() { [[ "$1" == policy-target ]]; }
+    _smoke_pass() { printf 'PASS: %s\n' "$1"; }
+    _smoke_fail() { printf 'FAIL: %s\n' "$1"; }
+
+    run _check_shell
+    assert_success
+    assert_output --partial "PASS: Shell: verified login-shell configuration"
+}
+
+@test "smoke_test.sh: unapproved zsh-like path is a critical failure" {
+    local smoke="$PROJECT_ROOT/scripts/lib/smoke_test.sh"
+    eval "$(sed -n '/^_check_shell() {$/,/^}$/p' "$smoke")"
+    _SMOKE_TARGET_USER="policy-target"
+    _smoke_login_shell_configured() { return 1; }
+    _smoke_getent_passwd_entry() { printf 'policy-target:x:1000:1000::/home/policy-target:/usr/sbin/zsh\n'; }
+    _smoke_passwd_shell_from_entry() { printf '/usr/sbin/zsh\n'; }
+    _smoke_is_externally_managed_user() { return 1; }
+    _smoke_pass() { printf 'PASS: %s\n' "$1"; }
+    _smoke_fail() { printf 'FAIL: %s\n' "$1"; }
+
+    run _check_shell
+    assert_failure
+    assert_output --partial "FAIL: Shell: login configuration is not verified (/usr/sbin/zsh)"
+    refute_output --partial "PASS:"
+}
+
+@test "smoke_test.sh: unverified externally managed shell is a critical failure" {
+    local smoke="$PROJECT_ROOT/scripts/lib/smoke_test.sh"
+    eval "$(sed -n '/^_check_shell() {$/,/^}$/p' "$smoke")"
+    _SMOKE_TARGET_USER="policy-target"
+    _smoke_login_shell_configured() { return 1; }
+    _smoke_getent_passwd_entry() { printf 'policy-target:x:1000:1000::/home/policy-target:/bin/fish\n'; }
+    _smoke_passwd_shell_from_entry() { printf '/bin/fish\n'; }
+    _smoke_is_externally_managed_user() { return 0; }
+    _smoke_pass() { printf 'PASS: %s\n' "$1"; }
+    _smoke_fail() { printf 'FAIL: %s\n' "$1"; }
+
+    run _check_shell
+    assert_failure
+    assert_output --partial "FAIL: Shell: externally managed login configuration is not verified"
+    refute_output --partial "PASS:"
 }
 
 @test "cheatsheet.sh: prepend_user_paths prefers ACFS bin and skips missing dirs" {

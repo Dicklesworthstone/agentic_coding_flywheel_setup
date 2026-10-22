@@ -208,6 +208,39 @@ modules:
     verify:
       - zsh --version
 
+  - id: shell.login
+    description: Validated and recoverable login-shell configuration
+    category: shell
+    phase: 4
+    # Preserve the installer's authority for local account changes. In safe
+    # mode a root caller's target user need not have passwordless sudo.
+    run_as: current
+    optional: false
+    enabled_by_default: true
+    tags: [critical, shell-ux]
+    dependencies:
+      - shell.zsh
+      - users.ubuntu
+    installed_check:
+      run_as: current
+      command: |
+        source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh" &&
+          user_login_shell_configured
+    install:
+      - |
+        # The shared helper validates /etc/shells, preserves the original shell,
+        # and verifies the account. Home-file writes run as the target user.
+        source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh"
+        set_default_shell
+    verify:
+      - |
+        source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh"
+        user_login_shell_configured
+    notes:
+      - "Only an executable zsh path listed in /etc/shells can become a login shell"
+      - "The original shell is preserved before a local change and the resulting account state is verified"
+      - "Externally managed Bash accounts receive a verified handoff without a local account change"
+
   - id: shell.omz
     description: Oh My Zsh + Powerlevel10k + plugins + ACFS config
     category: shell
@@ -217,10 +250,13 @@ modules:
     enabled_by_default: true
     tags: [critical, shell-ux]
     dependencies:
-      - shell.zsh
+      - shell.login
     installed_check:
       run_as: target_user
-      command: "test -d ~/.oh-my-zsh && test -f ~/.acfs/zsh/acfs.zshrc"
+      command: |
+        test -d ~/.oh-my-zsh && test -f ~/.acfs/zsh/acfs.zshrc &&
+          source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh" &&
+          user_login_shell_configured
     verified_installer:
       tool: ohmyzsh
       runner: sh
@@ -350,62 +386,18 @@ modules:
           echo '# Added by ACFS - user binary paths' >> ~/.zprofile
           echo "$profile_path_line" >> ~/.zprofile
         fi
-      - |
-        # Set default shell
-        acfs_external_shell_handoff_configured() {
-          local bashrc_path="${1:-}"
-          [[ -n "$bashrc_path" && -f "$bashrc_path" ]] || return 1
-
-          awk '
-              $0 == "# ACFS externally-managed shell handoff" { marker=1; next }
-              marker && $0 ~ /^[[:space:]]*#/ { next }
-              marker && index($0, "command -v zsh") && index($0, "ACFS_ZSH_HANDOFF_ACTIVE") { found=1; exit }
-              marker && $0 !~ /^[[:space:]]*$/ { marker=0 }
-              END { exit(found ? 0 : 1) }
-          ' "$bashrc_path" 2>/dev/null
-        }
-
-        # Read the account database, including on reruns with a stale $SHELL.
-        configure_shell() {
-          current_user="$(acfs_generated_resolve_current_user 2>/dev/null || true)"
-          if [[ -z "$current_user" ]]; then
-            echo "ERROR: Unable to resolve current user; refusing default shell change." >&2
-            return 1
-          fi
-          passwd_entry="$(acfs_generated_getent_passwd_entry "$current_user" 2>/dev/null || true)"
-          local_entry=""
-          [[ -r /etc/passwd ]] || return 1
-          local_entry="$(awk -F: -v user="$current_user" '$1 == user { print $0; exit }' /etc/passwd)" || return 1
-          if [[ -n "$passwd_entry" ]] && [[ -z "$local_entry" ]]; then
-            if ! acfs_external_shell_handoff_configured ~/.bashrc; then
-              if [[ -f ~/.bashrc ]] && [[ -s ~/.bashrc ]]; then
-                last_char="$(tail -c 1 ~/.bashrc | od -An -t u1 | tr -d ' ' 2>/dev/null || true)"
-                if [[ "$last_char" != "10" ]]; then
-                  printf '\n' >> ~/.bashrc
-                fi
-              fi
-              {
-                echo '# ACFS externally-managed shell handoff'
-                echo 'if [[ $- == *i* ]] && [[ -t 0 ]] && command -v zsh >/dev/null 2>&1 && [[ -z "${ACFS_ZSH_HANDOFF_ACTIVE:-}" ]]; then'
-                echo '  export ACFS_ZSH_HANDOFF_ACTIVE=1'
-                echo '  exec "$(command -v zsh)" -l'
-                echo 'fi'
-              } >> ~/.bashrc
-            fi
-            echo "WARN: $current_user is managed outside /etc/passwd; installed a bash-to-zsh handoff instead of using chsh." >&2
-          else
-            acfs_configure_login_shell "$current_user" "$HOME"
-          fi
-        }
-        configure_shell
     verify:
       - test -d ~/.oh-my-zsh
       - test -f ~/.acfs/zsh/acfs.zshrc
       - test -f ~/.p10k.zsh
+      - |
+        source "${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/user.sh"
+        user_login_shell_configured
     notes:
       - "Oh My Zsh and plugins installed via verified upstream installers"
       - "acfs.zshrc written from acfs/ assets"
-      - "Externally managed accounts (for example NSS/OS Login users) get a bash-to-zsh handoff instead of a local chsh"
+      - "Login shells must be executable paths listed in /etc/shells; changes preserve the original shell and verify the account afterward"
+      - "Externally managed Bash accounts (for example NSS/OS Login users) get a verified bash-to-zsh handoff instead of a local chsh"
       - "Pre-configured p10k theme settings prevent wizard on first login"
 
   # ============================================================

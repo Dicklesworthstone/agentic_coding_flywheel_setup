@@ -377,6 +377,7 @@ acfs_generated_install_all() {
     acfs_generated_install_base_filesystem
     log_section "Category: shell"
     acfs_generated_install_shell_zsh
+    acfs_generated_install_shell_login
     acfs_generated_install_shell_omz
     log_section "Category: cli"
     acfs_generated_install_cli_modern
