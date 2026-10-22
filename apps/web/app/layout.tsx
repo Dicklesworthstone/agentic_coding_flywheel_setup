@@ -1,20 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { AnalyticsProvider } from "@/components/analytics-provider";
 import { MotionProvider } from "@/components/motion/motion-provider";
 import { QueryProvider } from "@/components/query-provider";
 import { WizardInstallationProvider } from "@/components/wizard-installation-provider";
 import "./globals.css";
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "./fonts/JetBrainsMono.woff2",
   variable: "--font-jetbrains",
-  subsets: ["latin"],
+  weight: "100 800",
+  style: "normal",
   display: "swap",
 });
 
-const instrumentSans = Instrument_Sans({
+const instrumentSans = localFont({
+  src: "./fonts/InstrumentSans.woff2",
   variable: "--font-instrument",
-  subsets: ["latin"],
+  weight: "400 700",
+  style: "normal",
   display: "swap",
 });
 

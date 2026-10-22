@@ -13,7 +13,19 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Typography uses local variable fonts through `next/font/local`, so production
+builds do not need to contact Google Fonts. Instrument Sans (weights 400–700)
+and JetBrains Mono (100–800) retain the existing CSS variables, normal style,
+preloading and swap behavior.
+
+The two unmodified, full-coverage WOFF2 files total 202,456 bytes. They include
+more glyphs than the Latin subsets previously preloaded from Google, so the
+initial font payload is larger; no character coverage is intentionally dropped.
+Their SIL Open Font License notices are kept beside them in `app/fonts`.
+Upstream sources are pinned to these revisions:
+
+- [Instrument Sans](https://github.com/Instrument/instrument-sans/tree/7fa22308a3d0c94ee2b3cd537a1196b65db34a3e/fonts/webfonts)
+- [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono/tree/19371302b95d218af43299bce79ddbddd0bc364d/fonts/webfonts)
 
 ## Learn More
 

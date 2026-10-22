@@ -430,9 +430,8 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   const rootLayout = load(new URL("../app/layout.tsx", import.meta.url), {
     "react/jsx-runtime": common["react/jsx-runtime"],
     "./globals.css": {},
-    "next/font/google": {
-      JetBrains_Mono: () => ({ variable: "mono" }),
-      Instrument_Sans: () => ({ variable: "sans" }),
+    "next/font/local": {
+      default: ({ variable }) => ({ variable }),
     },
     "@/components/query-provider": { QueryProvider: "query-provider" },
     "@/components/analytics-provider": { AnalyticsProvider: "analytics-provider" },
