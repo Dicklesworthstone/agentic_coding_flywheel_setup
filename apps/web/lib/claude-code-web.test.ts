@@ -85,7 +85,7 @@ describe("cloud agent page data", () => {
   });
 
   test("dedicated cloud share images render nonempty PNGs at each platform size", async () => {
-    for (const [variant, height] of [["opengraph", 630], ["twitter", 600]] as const) {
+    await Promise.all(([["opengraph", 630], ["twitter", 600]] as const).map(async ([variant, height]) => {
       const response = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
       expect(response.status).toBe(200);
       const bytes = Buffer.from(await response.arrayBuffer());
@@ -93,7 +93,7 @@ describe("cloud agent page data", () => {
       expect(bytes.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
       expect(bytes.readUInt32BE(16)).toBe(1200);
       expect(bytes.readUInt32BE(20)).toBe(height);
-    }
+    }));
   });
 
   test("custom-root task instructions connect writable search and memory state", () => {

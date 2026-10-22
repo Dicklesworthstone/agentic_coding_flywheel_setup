@@ -9,6 +9,9 @@ import { createContext, runInContext } from "node:vm";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
+// Reuse only compilation output. Every load still reads the current source,
+// checks diagnostics and evaluates fresh exports in its fixture's VM.
+const compiledSources = new Map();
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const key = "acfs-reviewed-installation-pending-v1";
 const text = (node) =>
@@ -138,15 +141,23 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
   });
   function load(url, dependencies) {
     const source = readFileSync(url, "utf8");
-    const compiled = ts.transpileModule(source, {
-      fileName: url.pathname,
-      reportDiagnostics: true,
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-        jsx: ts.JsxEmit.ReactJSX,
-      },
-    });
+    let cached = compiledSources.get(url.href);
+    if (cached?.source !== source) {
+      cached = {
+        source,
+        compiled: ts.transpileModule(source, {
+          fileName: url.pathname,
+          reportDiagnostics: true,
+          compilerOptions: {
+            module: ts.ModuleKind.CommonJS,
+            target: ts.ScriptTarget.ES2022,
+            jsx: ts.JsxEmit.ReactJSX,
+          },
+        }),
+      };
+      compiledSources.set(url.href, cached);
+    }
+    const compiled = cached.compiled;
     assert.deepEqual(
       (compiled.diagnostics ?? []).filter(
         (entry) => entry.category === ts.DiagnosticCategory.Error,
@@ -353,69 +364,79 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     ...common,
     "@/lib/vpsProviders": { VPS_UBUNTU_IMAGE_OPTIONS: ["26.04", "24.04", "22.04"] },
   });
-  // Since c12e1784 the status page derives its retry context through the real
-  // health hook; load it with the same doubles rather than bypassing it.
-  const health = load(new URL("../lib/hooks/useInstallationHealth.ts", import.meta.url), {
-    react,
-    "@tanstack/react-query": { useQuery, useQueryClient: () => queryClient },
-    "@/components/command-card": {
-      ...common["@/components/command-card"],
-      COMMAND_COMPLETION_CHANGED_EVENT: "acfs:command-completion-changed",
-    },
-    "@/lib/commandBuilder": commands,
-    "@/lib/generated/manifest-modules": catalogue,
-    "@/lib/inputValidation": inputValidation,
-    "@/lib/installerCheckpoint": load(new URL("../lib/installerCheckpoint.ts", import.meta.url), {}),
-    "@/lib/moduleSelection": {
-      resolveModuleSelection: () => ({
-        ok: true,
-        included: [],
-        errors: [],
-        warnings: [],
-        selectedCount: 1,
-      }),
-    },
-    "@/lib/userPreferences": preferences,
-    "@/lib/utils": { safeGetItem: () => null },
-    "@/lib/wizardInstallation": contextModule,
-  });
-  const statusPage = load(new URL("../app/wizard/status-check/page.tsx", import.meta.url), {
-    ...common,
-    "@/lib/hooks/useInstallationHealth": health,
-    "@tanstack/react-query": { useQuery },
-    "next/link": { default: "link" },
-    "next/navigation": { useRouter: () => ({ push() {}, replace() {} }) },
-    "@/components/alert-card": { AlertCard: "alert", OutputPreview: "output-preview" },
-    "@/components/connection-check": { WhereAmICheck: "connection-check" },
-    "@/components/simpler-guide": Object.fromEntries(
-      ["SimplerGuide", "GuideSection", "GuideStep", "GuideExplain", "GuideTip", "GuideCaution"].map(
-        (key) => [key, `guide-${key}`],
+  // Independent consumers are loaded only by their corresponding helper. They
+  // retain fresh exports per fixture, without compiling every route for an SSR
+  // hydration-only check.
+  let statusPage;
+  function getStatusPage() {
+    if (statusPage) return statusPage;
+    // The status page still uses the real health hook with the same doubles.
+    const health = load(new URL("../lib/hooks/useInstallationHealth.ts", import.meta.url), {
+      react,
+      "@tanstack/react-query": { useQuery, useQueryClient: () => queryClient },
+      "@/components/command-card": {
+        ...common["@/components/command-card"],
+        COMMAND_COMPLETION_CHANGED_EVENT: "acfs:command-completion-changed",
+      },
+      "@/lib/commandBuilder": commands,
+      "@/lib/generated/manifest-modules": catalogue,
+      "@/lib/inputValidation": inputValidation,
+      "@/lib/installerCheckpoint": load(new URL("../lib/installerCheckpoint.ts", import.meta.url), {}),
+      "@/lib/moduleSelection": {
+        resolveModuleSelection: () => ({
+          ok: true,
+          included: [],
+          errors: [],
+          warnings: [],
+          selectedCount: 1,
+        }),
+      },
+      "@/lib/userPreferences": preferences,
+      "@/lib/utils": { safeGetItem: () => null },
+      "@/lib/wizardInstallation": contextModule,
+    });
+    statusPage = load(new URL("../app/wizard/status-check/page.tsx", import.meta.url), {
+      ...common,
+      "@/lib/hooks/useInstallationHealth": health,
+      "@tanstack/react-query": { useQuery },
+      "next/link": { default: "link" },
+      "next/navigation": { useRouter: () => ({ push() {}, replace() {} }) },
+      "@/components/alert-card": { AlertCard: "alert", OutputPreview: "output-preview" },
+      "@/components/connection-check": { WhereAmICheck: "connection-check" },
+      "@/components/simpler-guide": Object.fromEntries(
+        ["SimplerGuide", "GuideSection", "GuideStep", "GuideExplain", "GuideTip", "GuideCaution"].map(
+          (key) => [key, `guide-${key}`],
+        ),
       ),
-    ),
-    "@/components/jargon": { Jargon: "jargon" },
-    "@/lib/wizardSteps": {
-      canAccessWizardStep: () => true,
-      getCompletedSteps: () => [],
-      getNextReachableWizardStep: () => ({ slug: "create-vps" }),
-      markStepComplete() {},
-      useWizardForwardNav: () => ({}),
-      validateStep: () => ({ valid: true }),
-    },
-    "@/lib/services": load(new URL("../lib/services.ts", import.meta.url), {}),
-    "@/lib/hooks/useWizardAnalytics": { useWizardAnalytics: () => ({ markComplete() {} }) },
-  });
-  const commandPanel = load(new URL("./command-builder-panel.tsx", import.meta.url), {
-    ...common,
-    "@/components/ui/code-block": { CopyStatus: "copy-status" },
-    "@/lib/hooks/useCopyFeedback": {
-      useCopyFeedback: () => ({ state: "idle", copy: async (value) => copies.push(value) }),
-    },
-    "@/lib/moduleSelection": {
-      resolveModuleSelection: () =>
-        assert.fail("An active panel must not reenter editable defaults"),
-    },
-    "@/lib/generated/manifest-modules": catalogue,
-  });
+      "@/components/jargon": { Jargon: "jargon" },
+      "@/lib/wizardSteps": {
+        canAccessWizardStep: () => true,
+        getCompletedSteps: () => [],
+        getNextReachableWizardStep: () => ({ slug: "create-vps" }),
+        markStepComplete() {},
+        useWizardForwardNav: () => ({}),
+        validateStep: () => ({ valid: true }),
+      },
+      "@/lib/services": load(new URL("../lib/services.ts", import.meta.url), {}),
+      "@/lib/hooks/useWizardAnalytics": { useWizardAnalytics: () => ({ markComplete() {} }) },
+    });
+    return statusPage;
+  }
+  let commandPanel;
+  function getCommandPanel() {
+    return (commandPanel ??= load(new URL("./command-builder-panel.tsx", import.meta.url), {
+      ...common,
+      "@/components/ui/code-block": { CopyStatus: "copy-status" },
+      "@/lib/hooks/useCopyFeedback": {
+        useCopyFeedback: () => ({ state: "idle", copy: async (value) => copies.push(value) }),
+      },
+      "@/lib/moduleSelection": {
+        resolveModuleSelection: () =>
+          assert.fail("An active panel must not reenter editable defaults"),
+      },
+      "@/lib/generated/manifest-modules": catalogue,
+    }));
+  }
   const component = load(new URL("./wizard-installation-provider.tsx", import.meta.url), {
     react,
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
@@ -427,17 +448,20 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     "@/lib/teamProfileImport": core,
     "@/lib/commandBuilder": commands,
   });
-  const rootLayout = load(new URL("../app/layout.tsx", import.meta.url), {
-    "react/jsx-runtime": common["react/jsx-runtime"],
-    "./globals.css": {},
-    "next/font/local": {
-      default: ({ variable }) => ({ variable }),
-    },
-    "@/components/query-provider": { QueryProvider: "query-provider" },
-    "@/components/analytics-provider": { AnalyticsProvider: "analytics-provider" },
-    "@/components/motion/motion-provider": { MotionProvider: "motion-provider" },
-    "@/components/wizard-installation-provider": component,
-  });
+  let rootLayout;
+  function getRootLayout() {
+    return (rootLayout ??= load(new URL("../app/layout.tsx", import.meta.url), {
+      "react/jsx-runtime": common["react/jsx-runtime"],
+      "./globals.css": {},
+      "next/font/local": {
+        default: ({ variable }) => ({ variable }),
+      },
+      "@/components/query-provider": { QueryProvider: "query-provider" },
+      "@/components/analytics-provider": { AnalyticsProvider: "analytics-provider" },
+      "@/components/motion/motion-provider": { MotionProvider: "motion-provider" },
+      "@/components/wizard-installation-provider": component,
+    }));
+  }
   function invoke(name, fn, effects = true) {
     instance = instances.get(name) ?? { slots: [], effects: [] };
     instances.set(name, instance);
@@ -543,9 +567,9 @@ function fixture(sessionEntries = new Map(), initialPath = "/wizard/run-installe
     commandCalls,
     copies,
     panel: () => ui("panel", () => panel.TeamProfileImportPanel()),
-    statusPage: () => ui("status-page", () => statusPage.default()),
-    commands: () => ui("command-panel", () => commandPanel.CommandBuilderPanel()),
-    root: () => rootLayout.default({ children: jsx("route", {}) }),
+    statusPage: () => ui("status-page", () => getStatusPage().default()),
+    commands: () => ui("command-panel", () => getCommandPanel().CommandBuilderPanel()),
+    root: () => getRootLayout().default({ children: jsx("route", {}) }),
     providerType: component.WizardInstallationProvider,
     session: () => contextModule.WizardInstallationContext.value,
     hooks: () =>
