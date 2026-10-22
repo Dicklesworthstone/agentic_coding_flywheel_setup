@@ -303,7 +303,7 @@ Would apply the following fixes:
 Fixes that require confirmation (--prompt):
   [fix.shell.default]
     Action: Change default shell to zsh
-    Command: chsh -s $(which zsh)
+    Command: Use scripts/lib/user.sh set_default_shell, which selects an executable literal path approved by /etc/shells and verifies the resulting account state
 
 Manual fixes (not auto-applied):
   [shell.ohmyzsh]
