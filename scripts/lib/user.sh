@@ -277,12 +277,34 @@ _generate_random_password() {
 # Creates user if missing, adds to required groups
 ensure_user() {
     local target="$TARGET_USER"
+    local initial_shell=""
+    local created_entry=""
+    local local_entry=""
 
     user_require_valid_target_user "$target"
 
     if ! id "$target" &>/dev/null; then
-        log_detail "Creating user: $target"
-        $SUDO useradd -m -s /bin/bash -G sudo "$target"
+        if ! initial_shell="$(user_select_initial_login_shell bash)"; then
+            log_error "No executable bash path is approved by a readable, safe /etc/shells; refusing to create $target"
+            return 1
+        fi
+
+        log_detail "Creating user: $target with approved login shell $initial_shell"
+        if ! $SUDO useradd -m -s "$initial_shell" -G sudo "$target"; then
+            log_error "Failed to create user $target"
+            return 1
+        fi
+
+        created_entry="$(user_login_passwd_entry "$target" 2>/dev/null || true)"
+        local_entry="$(user_local_passwd_entry "$target" 2>/dev/null || true)"
+        if [[ -z "$created_entry" || -z "$local_entry" ]] ||
+           ! user_login_accounts_match "$created_entry" "$local_entry" ||
+           [[ "${created_entry##*:}" != "$initial_shell" ]] ||
+           ! user_shell_is_approved "$initial_shell" ||
+           ! user_shell_executable_by_account "$initial_shell" "$target"; then
+            log_error "Created account $target did not retain the approved login shell $initial_shell; refusing to configure credentials or privileges"
+            return 1
+        fi
 
         # Generate random password (user will use SSH key)
         local passwd
@@ -614,6 +636,36 @@ user_shell_is_approved() {
     "$grep_bin" -aFxq -- "$shell" /etc/shells
 }
 
+# Account creation itself must obey the same literal /etc/shells policy as
+# later chsh operations. This avoids creating a user with an executable
+# usrmerge alias that PAM will reject because the spelling is not approved.
+user_select_initial_login_shell() {
+    local name="${1:-bash}" candidate=""
+
+    case "$name" in
+        bash|zsh) ;;
+        *) return 1 ;;
+    esac
+    user_shells_file_is_safe || return 1
+
+    for candidate in "/usr/bin/$name" "/bin/$name" "/usr/local/bin/$name" "/usr/local/sbin/$name" "/usr/sbin/$name" "/sbin/$name"; do
+        [[ "${candidate##*/}" == "$name" ]] || continue
+        if user_shell_is_approved "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    while IFS= read -r candidate || [[ -n "$candidate" ]]; do
+        [[ "${candidate##*/}" == "$name" ]] || continue
+        if user_shell_is_approved "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < /etc/shells
+    return 1
+}
+
 user_select_login_shell() {
     local preferred="${1:-}" target="${2:-${TARGET_USER:-}}" candidate=""
 
@@ -777,10 +829,10 @@ user_append_external_shell_handoff() {
 
 user_login_shell_configured() {
     local target="${1:-${TARGET_USER:-}}" entry="" local_entry="" local_status=0
-    local target_home="" shell="" bash_bin=""
+    local shell=""
 
     entry="$(user_login_passwd_entry "$target")" || return 1
-    IFS=: read -r _ _ _ _ _ target_home shell <<< "$entry"
+    IFS=: read -r _ _ _ _ _ _ shell <<< "$entry"
     user_shell_is_approved "$shell" || return 1
     user_shell_executable_by_account "$shell" "$target" || return 1
     local_entry="$(user_local_passwd_entry "$target")" || local_status=$?
@@ -788,12 +840,9 @@ user_login_shell_configured() {
         user_login_accounts_match "$entry" "$local_entry" || return 1
         [[ "${shell##*/}" == zsh ]]
     elif [[ "$local_status" -eq 1 ]]; then
-        [[ "${shell##*/}" == zsh ]] && return 0
-        [[ "${shell##*/}" == bash ]] || return 1
-        user_select_login_shell "" "$target" >/dev/null || return 1
-        bash_bin="$(user_system_binary_path bash)" || return 1
-        user_run_as_account "$target" "$bash_bin" -c "$(declare -f user_system_binary_path user_external_shell_handoff_configured)
-            user_external_shell_handoff_configured \"\$1\"" _ "$target_home"
+        # Provider/NSS-managed identities are configured only when the
+        # provider itself reports an approved zsh authentication shell.
+        [[ "${shell##*/}" == zsh ]]
     else
         return 1
     fi
@@ -839,25 +888,8 @@ set_default_shell() {
     fi
 
     if [[ "$local_status" -eq 1 ]]; then
-        # An interactive handoff does not alter the authentication shell. Only
-        # Bash accounts can consume .bashrc; do not claim success for other or
-        # already-rejected provider-managed login shells.
-        if [[ "${original##*/}" != bash ]] || ! user_shell_is_approved "$original"; then
-            log_error "Shell for $target is externally managed and cannot be safely configured locally; ask the identity provider administrator to set an approved shell"
-            return 1
-        fi
-        if ! user_run_as_account "$target" "$bash_bin" -c "$(declare -f user_system_binary_path user_external_shell_handoff_configured user_append_external_shell_handoff)
-            user_append_external_shell_handoff \"\$1\"" _ "$target_home"; then
-            log_error "Could not configure the external-account shell handoff for $target"
-            return 1
-        fi
-        after="$(user_login_passwd_entry "$target")" || return 1
-        if [[ "$after" != "$before" ]] || ! user_login_shell_configured "$target"; then
-            log_error "Could not verify the external-account shell handoff for $target"
-            return 1
-        fi
-        log_warn "Shell for $target is managed outside /etc/passwd; verified a bash-to-zsh handoff without changing its login shell"
-        return 0
+        log_error "Shell for $target is externally managed. ACFS will not treat a .bashrc handoff as a login-shell change; ask the identity provider administrator to set an approved zsh path from /etc/shells"
+        return 1
     fi
 
     chsh_bin="$(user_system_binary_path chsh)" || {
