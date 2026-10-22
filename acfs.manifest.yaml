@@ -365,22 +365,17 @@ modules:
           ' "$bashrc_path" 2>/dev/null
         }
 
-        if [[ "$SHELL" != */zsh ]]; then
-          zsh_path="$(command -v zsh || true)"
-          if [[ -z "$zsh_path" ]]; then
-            echo "WARN: zsh not found; cannot set default shell automatically." >&2
-            exit 0
-          fi
+        # Read the account database, including on reruns with a stale $SHELL.
+        configure_shell() {
           current_user="$(acfs_generated_resolve_current_user 2>/dev/null || true)"
           if [[ -z "$current_user" ]]; then
-            echo "WARN: Unable to resolve current user; skipping default shell change." >&2
-            exit 0
+            echo "ERROR: Unable to resolve current user; refusing default shell change." >&2
+            return 1
           fi
           passwd_entry="$(acfs_generated_getent_passwd_entry "$current_user" 2>/dev/null || true)"
           local_entry=""
-          if [[ -r /etc/passwd ]]; then
-            local_entry="$(awk -F: -v user="$current_user" '$1 == user { print $0; exit }' /etc/passwd 2>/dev/null || true)"
-          fi
+          [[ -r /etc/passwd ]] || return 1
+          local_entry="$(awk -F: -v user="$current_user" '$1 == user { print $0; exit }' /etc/passwd)" || return 1
           if [[ -n "$passwd_entry" ]] && [[ -z "$local_entry" ]]; then
             if ! acfs_external_shell_handoff_configured ~/.bashrc; then
               if [[ -f ~/.bashrc ]] && [[ -s ~/.bashrc ]]; then
@@ -398,18 +393,11 @@ modules:
               } >> ~/.bashrc
             fi
             echo "WARN: $current_user is managed outside /etc/passwd; installed a bash-to-zsh handoff instead of using chsh." >&2
-          elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-            sudo chsh -s "$zsh_path" "$current_user"
           else
-            if [[ -t 0 ]]; then
-              if ! chsh -s "$zsh_path"; then
-                echo "WARN: Could not change default shell automatically. Run: chsh -s $zsh_path" >&2
-              fi
-            else
-              echo "WARN: Skipping shell change (no TTY). Run: chsh -s $zsh_path" >&2
-            fi
+            acfs_configure_login_shell "$current_user" "$HOME"
           fi
-        fi
+        }
+        configure_shell
     verify:
       - test -d ~/.oh-my-zsh
       - test -f ~/.acfs/zsh/acfs.zshrc

@@ -461,6 +461,22 @@ Omarchy (and Arch Linux generally) is supported by the **same one-liner** — no
 
 Everything else — language runtimes, AI agents, and the flywheel tool stack — installs identically to Ubuntu.
 
+When configuring a login shell, both installer paths require an executable zsh
+pathname listed literally in `/etc/shells`. They prefer `/usr/bin/zsh`, then
+`/bin/zsh`, then another approved zsh entry. PATH order and usrmerge aliases
+cannot authorize an unlisted shell. If no approved executable exists, or `chsh`
+fails or leaves a different account shell, the shell phase fails explicitly.
+Noninteractive installation requires root or working passwordless sudo to
+change a local account's shell. Externally managed accounts retain the existing
+bash-to-zsh handoff instead of changing their identity-provider account.
+
+Before changing a local login shell, ACFS saves its original value in
+`~/.shell.pre-oh-my-zsh` without overwriting an earlier recovery value. Keep the
+current session open if verification fails. To recover, inspect that file and
+use `sudo chsh -s /path/to/original/shell username`, then confirm the result with
+`getent passwd username`. A failed post-change check attempts to restore the
+shell observed immediately before that installation and reports recovery failures.
+
 ---
 
 ## Cloud agent environments

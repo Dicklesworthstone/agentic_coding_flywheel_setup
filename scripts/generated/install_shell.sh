@@ -692,9 +692,131 @@ INSTALL_SHELL_OMZ
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: if [[ \"\$SHELL\" != */zsh ]]; then (target_user)"
+        log_info "dry-run: install: configure_shell (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_SHELL_OMZ'
+# BEGIN ACFS LOGIN SHELL HELPERS
+# Also embedded by the manifest generator: keep this block self-contained.
+acfs_login_shell_tool() {
+    local dir
+    for dir in /usr/bin /bin /usr/sbin /sbin; do
+        [[ -x "$dir/$1" ]] || continue
+        printf '%s\n' "$dir/$1"
+        return 0
+    done
+    return 1
+}
+
+acfs_login_shell_approved() {
+    local shell="$1" shells_file="${2:-/etc/shells}" line
+    [[ "$shell" == /* && -f "$shell" && -x "$shell" && -r "$shells_file" ]] || return 1
+    # Match the literal pathname PAM sees; never canonicalize usrmerge aliases.
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" == "$shell" ]] && return 0
+    done < "$shells_file"
+    return 1
+}
+
+acfs_login_shell_select() {
+    local shells_file="${1:-/etc/shells}" candidate
+    for candidate in /usr/bin/zsh /bin/zsh; do
+        if acfs_login_shell_approved "$candidate" "$shells_file"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    [[ -r "$shells_file" ]] || return 1
+    while IFS= read -r candidate || [[ -n "$candidate" ]]; do
+        [[ "$candidate" == /*/zsh ]] || continue
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < "$shells_file"
+    return 1
+}
+
+acfs_login_shell_entry() {
+    local getent_bin
+    getent_bin="$(acfs_login_shell_tool getent)" || return 1
+    "$getent_bin" passwd "$1"
+}
+
+acfs_login_shell_is_root() {
+    [[ "$EUID" -eq 0 ]]
+}
+
+acfs_login_shell_change() {
+    local shell="$1" user="$2" chsh_bin sudo_bin
+    chsh_bin="$(acfs_login_shell_tool chsh)" || return 1
+    if acfs_login_shell_is_root; then
+        "$chsh_bin" -s "$shell" "$user"
+    elif sudo_bin="$(acfs_login_shell_tool sudo)" && "$sudo_bin" -n true 2>/dev/null; then
+        "$sudo_bin" -n "$chsh_bin" -s "$shell" "$user"
+    elif [[ -t 0 && "$(id -un)" == "$user" ]]; then
+        "$chsh_bin" -s "$shell"
+    else
+        echo "ERROR: Cannot change login shell for $user without privilege or an interactive terminal." >&2
+        return 1
+    fi
+}
+
+acfs_configure_login_shell() {
+    local user="$1" home="$2" shells_file="${3:-/etc/shells}" passwd_file="${4:-/etc/passwd}"
+    local entry original selected actual local_entry backup owner chown_bin status=0
+    [[ "$user" =~ ^[a-z_][a-z0-9._-]*$ && "$home" == /* && -d "$home" ]] || return 1
+    entry="$(acfs_login_shell_entry "$user")" || return 1
+    [[ "$entry" == "$user":* && "$entry" != *$'\n'* ]] || return 1
+    original="${entry##*:}"
+    [[ "$original" == /* ]] || return 1
+    [[ -r "$passwd_file" ]] || return 1
+    local_entry="$(awk -F: -v user="$user" '$1 == user {print; exit}' "$passwd_file")" || return 1
+    if [[ -z "$local_entry" ]]; then
+        # Caller handles the existing interactive handoff, never local chsh.
+        return 2
+    fi
+    selected="$(acfs_login_shell_select "$shells_file")" || {
+        echo "ERROR: No executable zsh is listed literally in $shells_file; login shell unchanged for $user." >&2
+        return 1
+    }
+    [[ "$original" != "$selected" ]] || return 0
+    backup="$home/.shell.pre-oh-my-zsh"
+    # Do not overwrite the original recovery value on subsequent installations.
+    if [[ ! -e "$backup" && ! -L "$backup" ]]; then
+        (umask 077; set -o noclobber; printf '%s\n' "$original" > "$backup") || return 1
+        if [[ "$EUID" -eq 0 ]]; then
+            owner="${entry#*:*:}"
+            owner="${owner%%:*}"
+            [[ "$owner" =~ ^[0-9]+$ ]] || return 1
+            chown_bin="$(acfs_login_shell_tool chown)" || return 1
+            "$chown_bin" "$owner" "$backup" || return 1
+        fi
+    fi
+    [[ -f "$backup" && ! -L "$backup" && -s "$backup" ]] || {
+        echo "ERROR: Unsafe or empty shell recovery file: $backup" >&2
+        return 1
+    }
+    echo "Original login shell preserved in $backup; recovery: chsh -s '$original' '$user'" >&2
+    # Recheck immediately before the privileged operation.
+    acfs_login_shell_approved "$selected" "$shells_file" || return 1
+    acfs_login_shell_change "$selected" "$user" || status=$?
+    entry="$(acfs_login_shell_entry "$user")" || entry=""
+    actual="${entry##*:}"
+    if [[ "$status" -eq 0 && "$entry" == "$user":* && "$actual" == "$selected" ]] &&
+        acfs_login_shell_approved "$actual" "$shells_file"; then
+        return 0
+    fi
+    echo "ERROR: Login shell change failed verification for $user (wanted $selected, observed $actual)." >&2
+    if [[ "$actual" != "$original" ]]; then
+        acfs_login_shell_change "$original" "$user" || true
+        entry="$(acfs_login_shell_entry "$user")" || entry=""
+        if [[ "${entry##*:}" != "$original" ]]; then
+            echo "ERROR: Recovery failed; restore $user login shell to $original before logging out." >&2
+        fi
+    fi
+    return 1
+}
+
 # Generated helper functions used by this child shell.
 acfs_generated_system_binary_path() {
     local name="${1:-}"
@@ -839,22 +961,17 @@ acfs_external_shell_handoff_configured() {
   ' "$bashrc_path" 2>/dev/null
 }
 
-if [[ "$SHELL" != */zsh ]]; then
-  zsh_path="$(command -v zsh || true)"
-  if [[ -z "$zsh_path" ]]; then
-    echo "WARN: zsh not found; cannot set default shell automatically." >&2
-    exit 0
-  fi
+# Read the account database, including on reruns with a stale $SHELL.
+configure_shell() {
   current_user="$(acfs_generated_resolve_current_user 2>/dev/null || true)"
   if [[ -z "$current_user" ]]; then
-    echo "WARN: Unable to resolve current user; skipping default shell change." >&2
-    exit 0
+    echo "ERROR: Unable to resolve current user; refusing default shell change." >&2
+    return 1
   fi
   passwd_entry="$(acfs_generated_getent_passwd_entry "$current_user" 2>/dev/null || true)"
   local_entry=""
-  if [[ -r /etc/passwd ]]; then
-    local_entry="$(awk -F: -v user="$current_user" '$1 == user { print $0; exit }' /etc/passwd 2>/dev/null || true)"
-  fi
+  [[ -r /etc/passwd ]] || return 1
+  local_entry="$(awk -F: -v user="$current_user" '$1 == user { print $0; exit }' /etc/passwd)" || return 1
   if [[ -n "$passwd_entry" ]] && [[ -z "$local_entry" ]]; then
     if ! acfs_external_shell_handoff_configured ~/.bashrc; then
       if [[ -f ~/.bashrc ]] && [[ -s ~/.bashrc ]]; then
@@ -872,21 +989,14 @@ if [[ "$SHELL" != */zsh ]]; then
       } >> ~/.bashrc
     fi
     echo "WARN: $current_user is managed outside /etc/passwd; installed a bash-to-zsh handoff instead of using chsh." >&2
-  elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo chsh -s "$zsh_path" "$current_user"
   else
-    if [[ -t 0 ]]; then
-      if ! chsh -s "$zsh_path"; then
-        echo "WARN: Could not change default shell automatically. Run: chsh -s $zsh_path" >&2
-      fi
-    else
-      echo "WARN: Skipping shell change (no TTY). Run: chsh -s $zsh_path" >&2
-    fi
+    acfs_configure_login_shell "$current_user" "$HOME"
   fi
-fi
+}
+configure_shell
 INSTALL_SHELL_OMZ
         then
-            log_error "shell.omz: install command failed: if [[ \"\$SHELL\" != */zsh ]]; then"
+            log_error "shell.omz: install command failed: configure_shell"
             return 1
         fi
     fi
