@@ -85,7 +85,7 @@ for (const profile of manifestSelectionProfiles) {
     const pending = [...groups];
     // Keep every real Bash invocation while bounding concurrency to four
     // selections (at most eight commands). Do not serialize process startup.
-    await Promise.all(Array.from({ length: 4 }, async () => {
+    const workers = Array.from({ length: 4 }, async () => {
       while (true) {
         const selection = pending.shift();
         if (!selection) return;
@@ -102,14 +102,22 @@ for (const profile of manifestSelectionProfiles) {
           exported.install.modulePlan.included,
           original.included.map((entry) => entry.id),
         );
-        const [importedSelection, handoffSelection] = await Promise.all([
+        const [importedResult, handoffResult] = await Promise.allSettled([
           commandSelectionAsync(imported.installerCommand.command!),
           commandSelectionAsync(buildHandoffRunbook(inputs(selection)).install.command),
         ]);
-        assert.deepEqual(ids(importedSelection), exported.install.modulePlan.included);
-        assert.deepEqual(ids(handoffSelection), exported.install.modulePlan.included);
+        if (importedResult.status === "rejected") throw importedResult.reason;
+        if (handoffResult.status === "rejected") throw handoffResult.reason;
+        assert.deepEqual(ids(importedResult.value), exported.install.modulePlan.included);
+        assert.deepEqual(ids(handoffResult.value), exported.install.modulePlan.included);
       }
-    }));
+    });
+    // A failed assertion must fail this test, after sibling commands have
+    // finished rather than leaking their work into the next profile's test.
+    const results = await Promise.allSettled(workers);
+    for (const result of results) {
+      if (result.status === "rejected") throw result.reason;
+    }
     assert.ok(accepted > 0, "The catalogue must exercise accepted as well as refused selections");
   });
 }
