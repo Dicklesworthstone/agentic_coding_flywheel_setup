@@ -258,7 +258,7 @@ const archLayers: ArchLayer[] = [
         shortName: "Zsh",
         description:
           "Z Shell with the Oh My Zsh framework and Powerlevel10k theme. Gives you autocomplete, syntax highlighting, and a gorgeous prompt.",
-        commands: ["chsh -s $(which zsh)", "omz update"],
+        commands: ['getent passwd "$USER" | cut -d: -f7', "omz update"],
         dependencies: ["ubuntu"],
         status: "active",
       },
