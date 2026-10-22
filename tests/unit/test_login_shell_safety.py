@@ -266,6 +266,14 @@ class LoginShellTests(unittest.TestCase):
         self.invoke()
         self.assertEqual(self.current_shell(), str(self.zsh))
 
+    def test_initial_shell_selection_uses_literal_approved_bash_path(self):
+        result = self.invoke('user_select_initial_login_shell bash')
+        self.assertEqual(result.stdout.strip(), str(self.original))
+
+    def test_initial_shell_selection_refuses_when_bash_is_not_approved(self):
+        self.approve(self.zsh)
+        self.invoke('user_select_initial_login_shell bash', code=1)
+
     def test_whitespace_crlf_inline_comments_and_partial_matches_are_not_approval(self):
         for entry in (f" {self.zsh}", f"{self.zsh} ", f"{self.zsh}\r", f"{self.zsh} # zsh",
                       f"#{self.zsh}", f"{self.zsh}.old", f"{self.zsh}/", "zsh"):
@@ -395,16 +403,15 @@ class LoginShellTests(unittest.TestCase):
         self.invoke(code=1, env={"TEST_CHSH": "revoke"})
         self.assertEqual(self.current_shell(), str(self.original))
 
-    def test_external_bash_account_uses_handoff_without_chsh(self):
+    def test_external_bash_account_requires_provider_shell_change(self):
         entry = self.passwd.read_text()
         (self.root / "nss-passwd").write_text(entry)
         self.passwd.write_text("other:x:999:999::/other:/bin/bash\n")
-        self.invoke()
+        result = self.invoke(code=1)
         self.assertEqual(self.calls(), [])
-        self.assertIn("ACFS externally-managed shell handoff", (self.home / ".bashrc").read_text())
-        self.invoke('user_login_shell_configured')
-        self.invoke()
-        self.assertEqual((self.home / ".bashrc").read_text().count("# ACFS externally-managed shell handoff"), 1)
+        self.assertFalse((self.home / ".bashrc").exists())
+        self.assertIn("identity provider", result.stderr.lower())
+        self.invoke('user_login_shell_configured', code=1)
 
     def test_external_nonbash_account_is_not_reported_configured_by_bashrc(self):
         unknown = self.bin / "fish"
@@ -552,16 +559,16 @@ class LoginShellTests(unittest.TestCase):
         self.assertEqual(self.current_shell(), str(self.original))
         self.assertEqual(self.calls(), [["-s", str(self.zsh), "tester"]])
 
-    def test_generated_external_handoff_is_idempotent_and_never_calls_chsh(self):
+    def test_generated_external_account_requires_provider_shell_change(self):
         self.prepare_root_install_for_nonroot_target()
         (self.root / "nss-passwd").write_text(self.passwd.read_text())
         self.passwd.write_text("other:x:999:999::/other:/bin/bash\n")
         body, fixture_lib = self.generated_login_module_body()
-        self.invoke(body + '\nacfs_generated_install_shell_login\n',
-                    env={"TEST_CALLER": "root", "TEST_SUDO": "deny", "ACFS_LIB_DIR": str(fixture_lib)})
+        result = self.invoke(body, code=1,
+                             env={"TEST_CALLER": "root", "TEST_SUDO": "deny", "ACFS_LIB_DIR": str(fixture_lib)})
         self.assertEqual(self.calls(), [])
-        self.assertEqual((self.home / ".bashrc").stat().st_uid, self.uid)
-        self.assertEqual((self.home / ".bashrc").read_text().count("# ACFS externally-managed shell handoff"), 1)
+        self.assertFalse((self.home / ".bashrc").exists())
+        self.assertIn("identity provider", result.stderr.lower())
 
     def make_nonroot_fixture(self):
         if os.geteuid() == 0:
