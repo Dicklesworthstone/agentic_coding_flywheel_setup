@@ -7629,11 +7629,20 @@ normalize_user() {
         # poison resume state even if we recover.
         local useradd_exit=0
         local useradd_output=""
+        local initial_shell=""
+        local created_entry=""
+        local local_created_entry=""
+        local created_shell=""
+
+        if ! initial_shell="$(user_select_initial_login_shell bash)"; then
+            log_error "No executable bash path is approved by a readable, safe /etc/shells; refusing to create '$TARGET_USER'"
+            return 1
+        fi
         
         # Create user with the home directory chosen during bootstrap. Fresh
         # root installs resolve this before the user exists so logs/state land
         # in the same home that useradd records in passwd.
-        useradd_output="$($SUDO useradd -m -d "$TARGET_HOME" -s /bin/bash "$TARGET_USER" 2>&1)" || useradd_exit=$?
+        useradd_output="$($SUDO useradd -m -d "$TARGET_HOME" -s "$initial_shell" "$TARGET_USER" 2>&1)" || useradd_exit=$?
         
         if [[ $useradd_exit -ne 0 ]]; then
             if id "$TARGET_USER" &>/dev/null; then
@@ -7648,6 +7657,18 @@ normalize_user() {
                 return 1
             fi
         else
+            created_entry="$(user_login_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
+            local_created_entry="$(user_local_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
+            created_shell="${created_entry##*:}"
+            if [[ -z "$created_entry" || -z "$local_created_entry" ]] ||
+               ! user_login_accounts_match "$created_entry" "$local_created_entry" ||
+               [[ "$created_shell" != "$initial_shell" ]] ||
+               ! user_shell_is_approved "$created_shell" ||
+               ! user_shell_executable_by_account "$created_shell" "$TARGET_USER"; then
+                log_error "Created account '$TARGET_USER' did not retain the approved login shell '$initial_shell'; refusing to set credentials or privileges"
+                return 1
+            fi
+
             # Set password if user creation succeeded
             if [[ -n "$user_password" ]]; then
                 # Never let ACFS_DEBUG's xtrace echo the password into the
