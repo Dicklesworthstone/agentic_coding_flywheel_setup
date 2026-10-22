@@ -74,6 +74,14 @@ cm context "Building an API"  # Get relevant memories
 cm reflect                     # Update procedural memory
 ```
 
+**Also installed by default: EE (Eidetic Engine).** It is a second, optional
+memory layer: a store per project for lessons you record on purpose (decisions,
+failures, commands, conventions). It does not replace these two steps. Keep
+`cm context` before a task and `cm reflect` after a session. If you use EE, create
+the project's store once (`ee init`), add `ee pack` before the task, and record each
+lesson in one tool, not both. Lesson 39 (`onboard 39`) and `docs/tools/ee.md` in
+the ACFS repository cover it.
+
 ### 6. Beads Viewer - Task Management
 **Command:** `bv`
 
@@ -135,6 +143,8 @@ ntm spawn myproject --cc=2 --cod=1
 
 # 3. Set context
 cm context "Implementing user authentication" --json
+ee pack "Implementing user authentication" \
+  --workspace /data/projects/myproject --format markdown   # if you use ee
 
 # 4. Send initial prompt
 ntm send myproject "Let's implement user authentication.
@@ -148,6 +158,8 @@ ubs .                           # Check for bugs
 
 # 7. Update memory
 cm reflect                      # Distill learnings
+ee remember --workspace /data/projects/myproject --kind decision \
+  "<what you decided and why>"  # if you use ee; record each lesson once
 
 # 8. Close the task
 br close <task-id>

@@ -16,6 +16,12 @@ This directory contains documentation for the tools installed by ACFS (Agentic C
 | [rch.md](rch.md) | `rch` | Remote compilation helper for build offloading |
 | [wezterm_automata.md](wezterm_automata.md) | `wa` | Terminal automation and orchestration |
 
+## Agent Memory
+
+| Document | Tool(s) | Description |
+|----------|---------|-------------|
+| [ee.md](ee.md) | `ee` | Per-project durable memory you record explicitly; how it fits next to `cm` |
+
 ## Research & Knowledge
 
 | Document | Tool(s) | Description |
@@ -41,7 +47,7 @@ acfs doctor --json
 ### Tool Categories
 
 - **Required**: br, ms, bv - Core workflow tools
-- **Optional**: rch, wa, brenner - Enhanced development tools
+- **Optional**: rch, wa, brenner, ee - Enhanced development tools
 - **Utilities**: 9 optional utilities for specialized workflows
 
 ## Related Documentation
