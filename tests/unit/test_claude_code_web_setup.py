@@ -20,6 +20,9 @@ import unittest
 from unittest import mock
 import warnings
 import zipfile
+from email.message import Message
+from email.policy import HTTP
+from urllib.response import addinfourl
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/claude-code-web-setup.sh"
@@ -36,9 +39,77 @@ def parse_json_report(text):
         raise AssertionError(f'Malformed setup/publisher report: {text!r}') from error
 
 
+def validate_header_value(value):
+    if '\r' in value or '\n' in value:
+        raise ValueError('HTTP header values must not contain CR or LF')
+    return value
+
+
 class MirrorPublisher(unittest.TestCase):
     def setUp(self):
         self.stage = Path(tempfile.mkdtemp(prefix="acfs-publisher-test-"))
+        self.redirect_responses = []
+
+    def redirect_response(self, request, responses, calls):
+        # Exercise urllib's real redirect/error processors, replacing only
+        # network transports. No public request or TLS-success claim here.
+        url = request.full_url
+        calls.append(url)
+        self.assertIn(url, responses, "Unexpected network request")
+        self.assertEqual(request.get_header('User-agent'),
+                         'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)')
+        self.assertEqual(request.timeout, 120)
+        code, location, body = responses[url]
+        # HTTP policy rejects embedded line breaks rather than permitting
+        # a fixture to construct an invalid/injected response header.
+        headers = Message(policy=HTTP)
+        if location is not None:
+            headers['Location'] = validate_header_value(location)
+        response = addinfourl(io.BytesIO(body), headers, url, code)
+        response.msg = 'Controlled response'
+        self.redirect_responses.append(response)
+        return response
+
+    def test_fetch_rejects_plaintext_hop_even_when_chain_ends_in_https(self):
+        origin = 'https://release.invalid/start'
+        secure = 'https://release.invalid/next'
+        plain = 'http://mirror.invalid/plaintext'
+        final = 'https://cdn.invalid/archive'
+        for code in (301, 302, 303, 307, 308):
+            with self.subTest(code=code):
+                calls = []
+                responses = {origin: (code, secure, b''), secure: (code, plain, b''),
+                             plain: (code, final, b''), final: (200, None, b'release fixture bytes')}
+                def transport(handler, request, responses=responses, calls=calls):
+                    return self.redirect_response(request, responses, calls)
+
+                with mock.patch.object(publisher.urllib.request, '_opener', None), \
+                        mock.patch.object(publisher.urllib.request.HTTPSHandler, 'https_open', transport), \
+                        mock.patch.object(publisher.urllib.request.HTTPHandler, 'http_open', transport):
+                    with self.assertRaisesRegex(ValueError, 'HTTPS required'):
+                        publisher.fetch(origin)
+                self.assertEqual(calls, [origin, secure], 'Reject the downgrade before sending plaintext')
+                self.assertTrue(all(response.closed for response in self.redirect_responses))
+
+    def test_fetch_preserves_secure_absolute_relative_and_scheme_relative_redirects(self):
+        origin = 'https://release.invalid/start'
+        for code in (301, 302, 303, 307, 308):
+            for location, final in (('https://cdn.invalid/archive', 'https://cdn.invalid/archive'),
+                                    ('/archive', 'https://release.invalid/archive'),
+                                    ('//cdn.invalid/archive', 'https://cdn.invalid/archive')):
+                with self.subTest(code=code, location=location):
+                    calls = []
+                    payload = b'release fixture bytes'
+                    responses = {origin: (code, location, b''), final: (200, None, payload)}
+                    def transport(handler, request, responses=responses, calls=calls):
+                        return self.redirect_response(request, responses, calls)
+
+                    with mock.patch.object(publisher.urllib.request, '_opener', None), \
+                            mock.patch.object(publisher.urllib.request.HTTPSHandler, 'https_open', transport), \
+                            mock.patch.object(publisher.urllib.request.HTTPHandler, 'http_open', transport):
+                        self.assertEqual(publisher.fetch(origin), payload)
+                    self.assertEqual(calls, [origin, final])
+                    self.assertTrue(all(response.closed for response in self.redirect_responses))
 
     def tar(self, names):
         out = io.BytesIO()

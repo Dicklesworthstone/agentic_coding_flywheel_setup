@@ -59,11 +59,22 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+class HTTPSRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Checking only the final URL permits HTTPS -> HTTP -> HTTPS chains.
+        # Reject a downgrade before urllib sends the next request.
+        if urlsplit(newurl).scheme != "https":
+            fp.close()
+            raise ValueError("HTTPS required for redirects")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def fetch(url):
     if not url.startswith("https://"):
         raise ValueError("HTTPS required")
     request = urllib.request.Request(url, headers={"User-Agent": "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)", "Accept": "*/*"})
-    with urllib.request.urlopen(request, timeout=120) as response:
+    opener = urllib.request.build_opener(HTTPSRedirectHandler())
+    with opener.open(request, timeout=120) as response:
         if not response.url.startswith("https://"):
             raise ValueError("Insecure redirect")
         return response.read()
