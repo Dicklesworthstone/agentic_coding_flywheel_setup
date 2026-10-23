@@ -63,6 +63,13 @@ _update_lib_sources() {
     }
 }
 
+@test "doctor runtime always includes the shared login-shell validator" {
+    grep -Fq 'install_asset "scripts/lib/user.sh" "$ACFS_HOME/scripts/lib/user.sh"' "$INSTALL_SH"
+    grep -Fq '"scripts/lib/user.sh:scripts/lib/user.sh"' "$UPDATE_SH"
+    grep -Fq 'source "$user_lib"' "$PROJECT_ROOT/scripts/lib/doctor.sh"
+    grep -Fq 'user_login_shell_configured "$TARGET_USER"' "$PROJECT_ROOT/scripts/lib/doctor.sh"
+}
+
 @test "every scripts/lib runtime library installed by install.sh is synced by update.sh" {
     local missing=""
     local src
