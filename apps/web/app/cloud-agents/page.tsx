@@ -119,44 +119,55 @@ const WIDE_GROUP_COLUMNS: Record<number, string> = { 2: "lg:grid-cols-2", 3: "lg
 type CopyState = "idle" | "copying" | "copied" | "error";
 
 function useBoundedCopy(text: string) {
-  const [state, setState] = useState<CopyState>("idle");
+  // Identity, rather than text equality, keeps A → B → A from reviving A's
+  // old confirmation after its reset timer was cleared on the first change.
+  const source = useMemo(() => ({ text }), [text]);
+  const [feedback, setFeedback] = useState<{ source: typeof source; state: CopyState }>({ source, state: "idle" });
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deadline = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const active = useRef(true);
+  const operation = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    active.current = true;
     return () => {
-      active.current = false;
+      const abandoned = operation.current;
+      operation.current = null;
+      abandoned?.abort();
       if (resetTimer.current) clearTimeout(resetTimer.current);
-      if (deadline.current) clearTimeout(deadline.current);
     };
-  }, []);
+  }, [source]);
 
   const copy = useCallback(async () => {
+    // Keep the button focusable while pending, but admit only one request.
+    if (operation.current) return;
     if (resetTimer.current) clearTimeout(resetTimer.current);
-    setState("copying");
+    const controller = new AbortController();
+    operation.current = controller;
+    setFeedback({ source, state: "copying" });
+    let onAbort: () => void = () => {};
+    const abandoned = new Promise<boolean>((resolve) => {
+      onAbort = () => resolve(false);
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    // Some browsers leave clipboard permission requests pending indefinitely.
+    const deadline = setTimeout(() => controller.abort(), 8000);
     let ok = false;
     try {
-      // Some browsers leave clipboard permission requests pending indefinitely.
       ok = await Promise.race([
-        copyTextToClipboard(text),
-        new Promise<boolean>((resolve) => {
-          deadline.current = setTimeout(() => resolve(false), 8000);
-        }),
+        copyTextToClipboard(source.text, { signal: controller.signal }),
+        abandoned,
       ]);
     } catch {
       // The error state below keeps the text selectable.
     } finally {
-      if (deadline.current) clearTimeout(deadline.current);
-      deadline.current = null;
+      clearTimeout(deadline);
+      controller.signal.removeEventListener("abort", onAbort);
     }
-    if (!active.current) return;
-    setState(ok ? "copied" : "error");
-    if (ok) resetTimer.current = setTimeout(() => setState("idle"), 2000);
-  }, [text]);
+    if (operation.current !== controller) return;
+    operation.current = null;
+    setFeedback({ source, state: ok ? "copied" : "error" });
+    if (ok) resetTimer.current = setTimeout(() => setFeedback({ source, state: "idle" }), 2000);
+  }, [source]);
 
-  return { state, copy };
+  return { state: feedback.source === source ? feedback.state : "idle", copy };
 }
 
 function CodePanel({ text, title, label, copyLabel, className = "" }: {
@@ -177,9 +188,9 @@ function CodePanel({ text, title, label, copyLabel, className = "" }: {
         <button
           type="button"
           onClick={copy}
-          disabled={state === "copying"}
+          aria-disabled={state === "copying"}
           aria-label={copyLabel}
-          className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors disabled:opacity-70 ${focusRing} ${state === "copied" ? "text-[#9ece6a]" : "text-[#c0caf5] hover:bg-white/[0.07]"}`}
+          className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors aria-disabled:opacity-70 ${focusRing} ${state === "copied" ? "text-[#9ece6a]" : "text-[#c0caf5] hover:bg-white/[0.07]"}`}
         >
           {state === "copied" ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
           {state === "copied" ? "Copied" : state === "copying" ? "Copying…" : "Copy"}
@@ -274,7 +285,7 @@ function HandoffCard({ agent }: { agent: CloudAgent }) {
           type="button"
           size="lg"
           onClick={copy}
-          disabled={state === "copying"}
+          aria-disabled={state === "copying"}
           aria-label={`Copy full instructions for ${agent.name}`}
           className="min-h-12 gap-2 bg-primary px-5 text-base font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.75_0.18_195/0.7)] hover:bg-primary/90"
         >

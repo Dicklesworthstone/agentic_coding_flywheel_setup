@@ -400,21 +400,28 @@ export function safeSetJSON(key: string, value: unknown): boolean {
 /**
  * Copy text to the clipboard with a DOM fallback for browsers where the
  * async clipboard API is unavailable or blocked.
+ * An aborted request cannot start a fallback or report success. The browser's
+ * native writeText operation itself cannot be cancelled once it has started.
  */
-export async function copyTextToClipboard(text: string): Promise<boolean> {
+export async function copyTextToClipboard(
+  text: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<boolean> {
+  if (signal?.aborted) return false;
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
-      return true;
+      return !signal?.aborted;
     } catch {
       // Fall through to the DOM-based fallback below.
     }
   }
 
-  if (typeof document === "undefined") {
+  if (signal?.aborted || typeof document === "undefined") {
     return false;
   }
 
+  const previousFocus = document.activeElement;
   const textarea = document.createElement("textarea");
   textarea.value = text;
   textarea.setAttribute("readonly", "");
@@ -433,6 +440,10 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     return false;
   } finally {
     document.body.removeChild(textarea);
+    if (previousFocus?.isConnected && "focus" in previousFocus && typeof previousFocus.focus === "function") {
+      // Restoring focus must not change the result of a completed clipboard copy.
+      try { previousFocus.focus({ preventScroll: true }); } catch { /* The element may no longer be focusable. */ }
+    }
   }
 }
 
