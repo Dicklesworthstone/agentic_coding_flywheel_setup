@@ -3487,6 +3487,7 @@ sync_acfs_deployed() {
         "acfs/tmux/tmux.conf:tmux/tmux.conf"
         "packages/onboard/onboard.sh:onboard/onboard.sh"
         "scripts/lib/doctor.sh:scripts/lib/doctor.sh"
+        "scripts/lib/user.sh:scripts/lib/user.sh"
         "scripts/lib/doctor.sh:bin/acfs"
         "scripts/lib/acfs-services.sh:scripts/lib/acfs-services.sh"
         "scripts/acfs-update:bin/acfs-update"
