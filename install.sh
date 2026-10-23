@@ -7645,27 +7645,25 @@ normalize_user() {
         useradd_output="$($SUDO useradd -m -d "$TARGET_HOME" -s "$initial_shell" "$TARGET_USER" 2>&1)" || useradd_exit=$?
         
         if [[ $useradd_exit -ne 0 ]]; then
-            if id "$TARGET_USER" &>/dev/null; then
-                log_warn "useradd exited ${useradd_exit}, but user '$TARGET_USER' exists; continuing"
-            else
-                log_error "Failed to create user '$TARGET_USER' (useradd exit ${useradd_exit})."
-                if [[ -n "$useradd_output" ]]; then
-                    local first_line=""
-                    first_line="$(printf '%s\n' "$useradd_output" | head -n 1)"
-                    [[ -n "$first_line" ]] && log_detail "useradd: $first_line"
-                fi
-                return 1
+            # A username that appears between the pre-check and useradd is not
+            # proven to be the account ACFS intended to create. Never grant it
+            # sudo/wheel membership or mutate its home on the strength of a
+            # racy id(1) observation; fail closed and let the next run validate
+            # the now-existing account before any privilege changes.
+            log_error "Failed to create user '$TARGET_USER' (useradd exit ${useradd_exit}); refusing to trust a concurrently appeared account."
+            if [[ -n "$useradd_output" ]]; then
+                local first_line=""
+                first_line="$(printf '%s\n' "$useradd_output" | head -n 1)"
+                [[ -n "$first_line" ]] && log_detail "useradd: $first_line"
             fi
+            return 1
         else
             created_entry="$(user_login_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
-            local_created_entry="$(user_local_passwd_entry "$TARGET_USER" 2>/dev/null || true)"
             created_shell="${created_entry##*:}"
-            if [[ -z "$created_entry" || -z "$local_created_entry" ]] ||
-               ! user_login_accounts_match "$created_entry" "$local_created_entry" ||
-               [[ "$created_shell" != "$initial_shell" ]] ||
+            if ! user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" "$initial_shell" ||
                ! user_shell_is_approved "$created_shell" ||
                ! user_shell_executable_by_account "$created_shell" "$TARGET_USER"; then
-                log_error "Created account '$TARGET_USER' did not retain the approved login shell '$initial_shell'; refusing to set credentials or privileges"
+                log_error "Created account '$TARGET_USER' did not retain the intended local identity, home, and approved login shell; refusing to set credentials or privileges"
                 return 1
             fi
 
@@ -7700,6 +7698,13 @@ normalize_user() {
             fi
         fi
     fi
+    # Whether this account pre-existed or was just created, privilege and
+    # ownership changes require a stable local/NSS identity at TARGET_HOME.
+    if ! user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME"; then
+        log_error "Target account '$TARGET_USER' does not match the expected local identity/home '$TARGET_HOME'; refusing privilege and ownership changes"
+        return 1
+    fi
+
     # Ensure the target user has sudo-group membership even on reruns.
     # If user creation succeeded but the first `usermod` attempt failed,
     # reruns should still apply the group change (idempotent).
