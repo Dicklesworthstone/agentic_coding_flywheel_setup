@@ -447,6 +447,23 @@ class LoginShellTests(unittest.TestCase):
         self.assertEqual((self.home / ".bashrc").read_text(), invalid)
         self.assertEqual(self.calls(), [])
 
+    def test_local_account_identity_accepts_matching_nss_and_expected_home(self):
+        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME"')
+
+    def test_local_account_identity_rejects_unexpected_home_before_privilege_changes(self):
+        wrong_home = self.root / "home/wrong"
+        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$1"', code=1, args=[str(wrong_home)])
+
+    def test_local_account_identity_rejects_nss_local_disagreement(self):
+        fields = self.passwd.read_text().strip().split(":")
+        fields[2] = str(int(fields[2]) + 1)
+        (self.root / "nss-passwd").write_text(":".join(fields) + "\n")
+        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME"', code=1)
+
+    def test_created_identity_can_require_exact_initial_shell(self):
+        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" "$1"', args=[str(self.original)])
+        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" "$1"', code=1, args=[str(self.zsh)])
+
     def test_nss_shadowed_local_account_is_rejected(self):
         for field, replacement in ((2, "42000"), (5, str(self.root / "different-home")),
                                    (6, str(self.root / "usr/sbin/zsh"))):
