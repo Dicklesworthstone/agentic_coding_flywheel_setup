@@ -2203,9 +2203,11 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
   lines.push(")");
   lines.push("");
 
+  // The verify context, not the install context: acfs_verify_module_commands
+  // must run these checks as the generated install verification does (#461).
   lines.push("declare -gA ACFS_MODULE_VERIFY_RUN_AS=(");
   for (const module of orderedModules) {
-    lines.push(`  ['${module.id}']="${escapeBash(module.run_as)}"`);
+    lines.push(`  ['${module.id}']="${escapeBash(verifyRunAs(module))}"`);
   }
   lines.push(")");
   lines.push("");

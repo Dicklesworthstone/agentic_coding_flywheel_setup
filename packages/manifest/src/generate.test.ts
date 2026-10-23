@@ -1184,6 +1184,41 @@ describe("verify_run_as execution context (#461)", () => {
     expect(body).toContain('log_info "dry-run: verify: fixture-tui --version (root)"');
   });
 
+  test("the installer's live verification index verifies in verify_run_as", () => {
+    // acfs_verify_module_commands (skip-if-installed, phase completion and
+    // resume, `acfs_verify_module cli.modern`) dispatches on this index, so it
+    // must agree with the generated post-install verify above.
+    const entry = (index: string) => {
+      const start = index.indexOf("declare -gA ACFS_MODULE_VERIFY_RUN_AS=(\n");
+      expect(start).toBeGreaterThanOrEqual(0);
+      return index
+        .slice(start, index.indexOf("\n)\n", start))
+        .split("\n")
+        .find((line) => line.startsWith("  ['tools.fixture_tui']="));
+    };
+    expect(entry(generateManifestIndex(fixtureManifest("target_user"), "a".repeat(64)))).toBe(
+      `  ['tools.fixture_tui']="target_user"`,
+    );
+    expect(entry(generateManifestIndex(fixtureManifest(), "a".repeat(64)))).toBe(
+      `  ['tools.fixture_tui']="root"`,
+    );
+
+    const result = spawnSync("bash", ["-euo", "pipefail", "-s", "--",
+      resolve(PROJECT_ROOT, "scripts/lib/install_helpers.sh")], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH || "/usr/bin:/bin", HOME: process.env.HOME || "/tmp" },
+      input: 'source "$1"\n' + generateManifestIndex(fixtureManifest("target_user"), "a".repeat(64)) +
+        '\ncalls=()\n' +
+        'run_as_target_shell() { calls+=("target_user:$1"); }\n' +
+        'run_as_root_shell() { calls+=("root:$1"); }\n' +
+        'run_as_current_shell() { calls+=("current:$1"); }\n' +
+        'acfs_verify_module_commands tools.fixture_tui\n' +
+        'printf "%s\\n" "${calls[@]}"\n',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe("target_user:fixture-tui --version\n");
+  });
+
   test("a target-user verify makes the module depend on users.ubuntu", () => {
     const deps = (index: string) => {
       const start = index.indexOf("declare -gA ACFS_MODULE_DEPS=(\n");
