@@ -7880,6 +7880,7 @@ setup_filesystem() {
     try_step_optional "Installing logging.sh (early)" install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh" || true
     try_step_optional "Installing gum_ui.sh (early)" install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh" || true
     try_step_optional "Installing doctor.sh (early)" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh" || true
+    try_step_optional "Installing user.sh (early doctor dependency)" install_asset "scripts/lib/user.sh" "$ACFS_HOME/scripts/lib/user.sh" || true
     # Set permissions and ownership so target user can run doctor
     $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh 2>/dev/null || true
     acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts" 2>/dev/null || true
@@ -10989,6 +10990,7 @@ finalize() {
     try_step "Installing autofix.sh" install_asset "scripts/lib/autofix.sh" "$ACFS_HOME/scripts/lib/autofix.sh" || return 1
     try_step "Installing doctor_fix.sh" install_asset "scripts/lib/doctor_fix.sh" "$ACFS_HOME/scripts/lib/doctor_fix.sh" || return 1
     try_step "Installing doctor.sh" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh" || return 1
+    try_step "Installing user.sh" install_asset "scripts/lib/user.sh" "$ACFS_HOME/scripts/lib/user.sh" || return 1
     try_step "Installing acfs-services.sh" install_asset "scripts/lib/acfs-services.sh" "$ACFS_HOME/scripts/lib/acfs-services.sh" || return 1
     try_step "Installing agy_model_guard.sh" install_asset "scripts/lib/agy_model_guard.sh" "$ACFS_HOME/scripts/lib/agy_model_guard.sh" || return 1
     try_step "Installing agy_e2e_harness.sh" install_asset "scripts/lib/agy_e2e_harness.sh" "$ACFS_HOME/scripts/lib/agy_e2e_harness.sh" || return 1
