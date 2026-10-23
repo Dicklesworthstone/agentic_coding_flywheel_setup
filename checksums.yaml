@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-23T21:00:21+00:00
+# checksums.yaml - Auto-generated 2026-10-23T21:16:20+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -8,7 +8,7 @@ installers:
 
   apr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/automated_plan_reviser_pro/main/install.sh"
-    sha256: "eb4626ccca58be2a9278c893618b13655c6f0805b7ee98f6a3127cf5f64a6eba"
+    sha256: "0742f73189dbd7f32d3562a9f075d73e1e9e6d815acf8ffc9b24e9a406ce6de8"
 
   asb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
