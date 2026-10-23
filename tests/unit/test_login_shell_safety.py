@@ -452,7 +452,7 @@ class LoginShellTests(unittest.TestCase):
 
     def test_local_account_identity_rejects_unexpected_home_before_privilege_changes(self):
         wrong_home = self.root / "home/wrong"
-        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$1"', code=1, args=[str(wrong_home)])
+        self.invoke(f'user_verify_local_account_identity "$TARGET_USER" {shlex.quote(str(wrong_home))}', code=1)
 
     def test_local_account_identity_rejects_nss_local_disagreement(self):
         fields = self.passwd.read_text().strip().split(":")
@@ -461,8 +461,8 @@ class LoginShellTests(unittest.TestCase):
         self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME"', code=1)
 
     def test_created_identity_can_require_exact_initial_shell(self):
-        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" "$1"', args=[str(self.original)])
-        self.invoke('user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" "$1"', code=1, args=[str(self.zsh)])
+        self.invoke(f'user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" {shlex.quote(str(self.original))}')
+        self.invoke(f'user_verify_local_account_identity "$TARGET_USER" "$TARGET_HOME" {shlex.quote(str(self.zsh))}', code=1)
 
     def test_nss_shadowed_local_account_is_rejected(self):
         for field, replacement in ((2, "42000"), (5, str(self.root / "different-home")),
