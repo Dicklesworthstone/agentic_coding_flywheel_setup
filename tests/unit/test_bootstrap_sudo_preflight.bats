@@ -22,14 +22,16 @@ setup() {
     cat > "$FAKE_SUDO" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$SUDO_LOG"
-case "$1" in
-    -n) [[ "${FAKE_SUDO_PASSWORDLESS:-0}" == 1 ]] ;;
-    -v) [[ "${FAKE_SUDO_AUTH_OK:-0}" == 1 ]] ;;
+# Like real sudo: a cached timestamp satisfies -n and -v, but -k ignores it.
+case "$*" in
+    "-n -k true") [[ "${FAKE_SUDO_PASSWORDLESS:-0}" == 1 ]] ;;
+    "-n true") [[ "${FAKE_SUDO_PASSWORDLESS:-0}" == 1 || "${FAKE_SUDO_CACHED:-0}" == 1 ]] ;;
+    "-v") [[ "${FAKE_SUDO_AUTH_OK:-0}" == 1 || "${FAKE_SUDO_CACHED:-0}" == 1 ]] ;;
     *) exit 64 ;;
 esac
 EOF
     chmod +x "$FAKE_SUDO"
-    export SUDO_LOG FAKE_SUDO_PASSWORDLESS=0 FAKE_SUDO_AUTH_OK=0
+    export SUDO_LOG FAKE_SUDO_PASSWORDLESS=0 FAKE_SUDO_AUTH_OK=0 FAKE_SUDO_CACHED=0
 
     acfs_early_sudo_binary_path() { printf '%s\n' "$FAKE_SUDO"; }
     HAS_TERMINAL=1
@@ -48,7 +50,7 @@ sudo_calls() {
 
     run acfs_bootstrap_sudo_preflight
     [ "$status" -eq 0 ]
-    [ "$(sudo_calls)" = "-n true" ]
+    [ "$(sudo_calls)" = "-n -k true" ]
 }
 
 @test "password sudo with a terminal authenticates there and keeps the child on it (#475)" {
@@ -57,14 +59,14 @@ sudo_calls() {
     run acfs_bootstrap_sudo_preflight
     [ "$status" -eq 2 ]
     [[ "$output" == *"sudo needs your password"* ]]
-    [ "$(sudo_calls)" = $'-n true\n-v' ]
+    [ "$(sudo_calls)" = $'-n -k true\n-v' ]
 }
 
 @test "failed sudo authentication stops before anything is installed (#475)" {
     run acfs_bootstrap_sudo_preflight
     [ "$status" -eq 1 ]
     [[ "$output" == *"sudo authentication failed; nothing was installed"* ]]
-    [ "$(sudo_calls)" = $'-n true\n-v' ]
+    [ "$(sudo_calls)" = $'-n -k true\n-v' ]
 }
 
 @test "password sudo without a terminal fails fast with the ways out (#475)" {
@@ -75,7 +77,28 @@ sudo_calls() {
     [[ "$output" == *"with no terminal it cannot ask for one"* ]]
     [[ "$output" == *"configure passwordless sudo"* ]]
     # It must not try to prompt where nobody can answer.
-    [ "$(sudo_calls)" = "-n true" ]
+    [ "$(sudo_calls)" = "-n -k true" ]
+}
+
+# A sudo run a moment earlier on this terminal (say, to install curl) leaves a
+# timestamp that plain `sudo -n true` accepts. The setsid child has no terminal
+# and cannot use it, so treating that as passwordless sudo failed exactly as
+# #475 did. Verified against sudo 1.9 and sudo-rs: the timestamp is per terminal.
+@test "a cached sudo timestamp is not mistaken for passwordless sudo (#475)" {
+    FAKE_SUDO_CACHED=1
+
+    run acfs_bootstrap_sudo_preflight
+    [ "$status" -eq 2 ]
+    [ "$(sudo_calls)" = $'-n -k true\n-v' ]
+}
+
+@test "a cached sudo timestamp without a terminal still fails fast (#475)" {
+    FAKE_SUDO_CACHED=1
+    HAS_TERMINAL=0
+
+    run acfs_bootstrap_sudo_preflight
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"with no terminal it cannot ask for one"* ]]
 }
 
 @test "a missing sudo is left for ensure_root to report" {

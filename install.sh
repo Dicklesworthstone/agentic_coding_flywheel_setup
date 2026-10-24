@@ -4338,7 +4338,11 @@ acfs_bootstrap_sudo_preflight() {
     [[ "$EUID" -ne 0 ]] || return 0
     sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
     [[ -n "$sudo_bin" ]] || return 0
-    if "$sudo_bin" -n true >/dev/null 2>&1; then
+    # -k ignores cached credentials. After a recent sudo on this terminal,
+    # plain `sudo -n true` succeeds from the terminal's timestamp, but the
+    # setsid child has no terminal and cannot use that timestamp, so it would
+    # fail exactly as before. Only a policy that needs no password keeps setsid.
+    if "$sudo_bin" -n -k true >/dev/null 2>&1; then
         return 0
     fi
 
