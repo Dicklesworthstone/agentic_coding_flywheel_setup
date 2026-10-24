@@ -13,6 +13,7 @@ import io
 import json
 from pathlib import Path, PurePosixPath
 import re
+import stat
 import subprocess
 import tarfile
 import time
@@ -97,6 +98,8 @@ def archive_files(data, name):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             for item in archive.infolist():
                 if not item.is_dir():
+                    if stat.S_IFMT(item.external_attr >> 16) not in (0, stat.S_IFREG):
+                        raise ValueError(f"Upstream archive member is not a regular file: {item.filename}")
                     add(item.filename, item.file_size, lambda item=item: archive.read(item))
     else:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:

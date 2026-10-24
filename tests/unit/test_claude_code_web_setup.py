@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import stat
 import struct
@@ -173,6 +174,46 @@ class MirrorPublisher(unittest.TestCase):
         info.size = 1024 * 1024 * 1024 + 1
         with self.assertRaisesRegex(ValueError, "beyond 1 GiB"):
             publisher.archive_files(info.tobuf(), "large.tar.gz")
+
+    def zip_release(self, mode, create_system=3):
+        name = publisher.TOOLS['ast-grep'][1]
+        payload = b'regular executable bytes'
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, 'w') as archive:
+            info = zipfile.ZipInfo('ast-grep')
+            info.create_system = create_system
+            info.external_attr = (mode | 0o755) << 16 if create_system == 3 else 0x20
+            archive.writestr(info, payload)
+        data = out.getvalue()
+        work = self.stage / 'ast-grep/v1.2.3'
+        work.mkdir(parents=True, exist_ok=True)
+        (work / name).write_bytes(data)
+        release = {'tag_name': 'v1.2.3', 'assets': [
+            {'name': name, 'digest': 'sha256:' + publisher.digest(data),
+             'browser_download_url': 'https://upstream.invalid/' + name}]}
+        return name, payload, data, release
+
+    def test_zip_special_files_cannot_be_repackaged_as_executables(self):
+        for mode in (stat.S_IFLNK, stat.S_IFIFO, stat.S_IFCHR, stat.S_IFBLK, stat.S_IFSOCK):
+            name, _, data, release = self.zip_release(mode)
+            with self.subTest(mode=mode, path='parser'):
+                with self.assertRaisesRegex(ValueError, 'not a regular file'):
+                    publisher.archive_files(data, name)
+            with self.subTest(mode=mode, path='publisher'):
+                with self.assertRaisesRegex(ValueError, 'not a regular file'):
+                    self.prepare(release, tool='ast-grep')
+                self.assertEqual([path.name for path in (self.stage / 'ast-grep/v1.2.3').iterdir()], [name])
+
+    def test_zip_regular_and_unspecified_file_types_still_package(self):
+        for mode, create_system in ((stat.S_IFREG, 3), (0, 3), (0, 0)):
+            with self.subTest(mode=mode, create_system=create_system):
+                name, payload, data, release = self.zip_release(mode, create_system)
+                self.assertEqual(publisher.archive_files(data, name), {'ast-grep': payload})
+                tool, entry = self.prepare(release, tool='ast-grep')
+                self.assertEqual(tool, 'ast-grep')
+                packed = (self.stage / entry['file']).read_bytes()
+                self.assertEqual(publisher.digest(packed), entry['sha256'])
+                self.assertEqual(publisher.archive_files(packed, entry['file']), {'bin/ast-grep': payload})
 
     def test_valid_release_packages_expected_binary(self):
         tool, entry = self.prepare(self.release())
@@ -1738,6 +1779,34 @@ fi
         output = self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
         self.assertEqual((skill / 'SKILL.md').read_bytes(), original)
         self.assertIn('Existing repository skill retained unchanged', output)
+
+    def test_codex_repository_skill_can_load_relative_profile_from_another_directory(self):
+        self.bundle()
+        setup = self.root / 'setup directory'
+        setup.mkdir()
+        profile = setup / "codex profile ' ` $config"
+        profile.mkdir()
+        guide = profile / 'AGENTS.md'
+        guide.write_text('Keep configured profile instructions.\n')
+        skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
+        self.run_setup(cwd=setup, ACFS_CLOUD_AGENT='codex', CODEX_HOME=profile.name,
+                       ACFS_CLOUD_SKILL_DIR=str(skill))
+        content = (skill / 'SKILL.md').read_text()
+        instruction = re.search(r'Read the generated tool guide at (.+) and setup results at ', content)
+        self.assertIsNotNone(instruction)
+        arguments = shlex.split(instruction.group(1))
+        self.assertEqual(len(arguments), 1, 'Guide reference must be one literal path')
+        self.assertEqual(instruction.group(1), shlex.quote(arguments[0]),
+                         'Guide reference must be quoted as a literal shell word')
+        task = self.root / 'different task directory'
+        task.mkdir()
+        result = subprocess.run(['cat', '--', *arguments], cwd=task,
+                                env=self.env, capture_output=True, timeout=5, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, guide.read_bytes())
+        self.assertIn(b'Keep configured profile instructions.', result.stdout)
+        self.assertIn(b'`br`', result.stdout)
+        self.assertFalse((self.home / '.codex/AGENTS.md').exists())
 
     def test_codex_repository_skill_rejects_symlinked_parents(self):
         self.bundle()

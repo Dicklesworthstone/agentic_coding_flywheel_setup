@@ -67,6 +67,8 @@ elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then
     # or assume they discover another provider's instruction directory.
     ACFS_CLOUD_GUIDE="$ACFS_CLOUD_STATE_DIR/AGENTS.md"
 fi
+# Repository skills are read from later tasks with different working directories.
+[[ "$ACFS_CLOUD_GUIDE" == /* ]] || ACFS_CLOUD_GUIDE="$PWD/$ACFS_CLOUD_GUIDE"
 ACFS_CLOUD_GUIDE_BEGIN="<!-- BEGIN ACFS CLOUD TOOLS (managed by claude-code-web-setup.sh) -->"
 ACFS_CLOUD_GUIDE_END="<!-- END ACFS CLOUD TOOLS -->"
 # Columns: tool | manifest key | primary binary. All bundles are public.
