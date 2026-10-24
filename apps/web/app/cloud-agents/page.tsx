@@ -679,6 +679,21 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
   const hosted = agent.evidence === "Hosted test";
 
   useEffect(() => {
+    const bar = mobileBar.current;
+    const guide = bar?.parentElement;
+    if (!bar || !guide) return;
+    // The storage warning can wrap to several lines. Native step anchors
+    // need the actual sticky height, including changes on viewport resize.
+    const update = () => {
+      guide.style.setProperty("--cloud-step-scroll-margin", `calc(${bar.getBoundingClientRect().height}px + 1rem)`);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     // The active step is the last one whose top has passed a reading line;
     // above the first step that is step 1, so the rail never shows stale state.
     let frame = 0;
@@ -871,7 +886,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
                 key={step.id}
                 id={stepAnchor(agent.id, step.id)}
                 ref={(node) => { stepRefs.current[index] = node; }}
-                className="relative scroll-mt-28 border-t border-border/50 pb-12 pt-10 first:border-t-0 first:pt-0 last:pb-0 sm:border-t-0 sm:pl-16 sm:pt-0 lg:scroll-mt-8"
+                className="relative scroll-mt-[var(--cloud-step-scroll-margin,7rem)] border-t border-border/50 pb-12 pt-10 first:border-t-0 first:pt-0 last:pb-0 sm:border-t-0 sm:pl-16 sm:pt-0 lg:scroll-mt-8"
               >
                 {next && <span aria-hidden="true" className="absolute bottom-0 left-5 top-12 hidden w-px bg-gradient-to-b from-primary/50 via-border to-border/40 sm:block" />}
                 <div className="flex items-start gap-4">

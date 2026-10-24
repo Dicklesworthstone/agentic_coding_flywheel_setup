@@ -492,6 +492,47 @@ test.describe("Cloud walkthrough provider navigation", () => {
 test.describe("Cloud mobile step menu", () => {
   test.use({ viewport: { width: 393, height: 852 } });
 
+  for (const storageAvailable of [true, false]) {
+    test(`step headings stay uncovered as the viewport changes with ${storageAvailable ? "saved" : "unsaved"} progress`, async ({ page }, testInfo) => {
+      const errors = setupErrorMonitoring(page);
+      if (!storageAvailable) {
+        await page.addInitScript(() => {
+          const write = Storage.prototype.setItem;
+          Storage.prototype.setItem = function (name, value) {
+            if (this === localStorage && name === "acfs-cloud-agents-progress-v1") {
+              throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+            }
+            return write.call(this, name, value);
+          };
+        });
+      }
+      await page.goto("/cloud-agents#claude");
+      await waitForPageSettled(page);
+      await page.locator("#claude-step-add-environment").getByRole("button", { name: /^Mark as done:/ }).click();
+      if (!storageAvailable) {
+        await expect(page.getByRole("status").filter({ hasText: "Checklist changes are kept for this visit only." })).toBeVisible();
+      }
+      for (const viewport of [{ width: 393, height: 852 }, { width: 320, height: 568 }, { width: 768, height: 1024 }]) {
+        await page.setViewportSize(viewport);
+        await page.getByRole("button", { name: "Steps", exact: true }).click();
+        await page.locator('#guide-step-menu a[href="#claude-step-cloud-menu"]').click();
+        const heading = page.locator("#claude-step-cloud-menu h3");
+        await expect(heading).toBeFocused();
+        await expect(heading).toBeInViewport();
+        // Viewport intersection alone also passes when sticky UI covers the
+        // text. Hit-test both edges of the actual instruction heading.
+        await expect.poll(() => heading.evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return [rect.top + 1, rect.bottom - 1].every((y) => node.contains(document.elementFromPoint(rect.left + rect.width / 2, y)));
+        })).toBe(true);
+        await expect(page).toHaveURL(/#claude-step-cloud-menu$/);
+        await page.screenshot({ path: testInfo.outputPath(`cloud-step-${storageAvailable ? "saved" : "unsaved"}-${viewport.width}.png`) });
+      }
+      expect(errors.jsErrors).toEqual([]);
+      expect(errors.failedRequests).toEqual([]);
+    });
+  }
+
   test("Escape closes the menu and returns keyboard focus to its Steps button", async ({ page }) => {
     const errors = setupErrorMonitoring(page);
     await page.goto("/cloud-agents#claude");
