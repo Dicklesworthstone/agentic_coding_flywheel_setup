@@ -216,3 +216,52 @@ load_doctor_functions() {
     run acfs_module_supports_family "stack.srps" "arch"
     [ "$status" -eq 0 ]
 }
+
+# ============================================================
+# #477 — core-tool fix hints follow the distro family
+# ============================================================
+
+# Run check_core_tools with every check stubbed out and print one
+# "<check id>|<fix hint>" line per tool it checks.
+core_tool_hints() {
+    load_doctor_functions
+    section() { :; }
+    blank_line() { :; }
+    check_bun_global_bin_dir() { :; }
+    check_cosign_version() { :; }
+    fix_for_module() { printf 'module:%s' "$1"; }
+    check_command() { printf '%s|%s\n' "$1" "$4"; }
+    _ACFS_DOCTOR_IS_ARCH_FAMILY="$1"
+    check_core_tools
+}
+
+@test "core-tool fix hints use pacman package names on Arch (#477)" {
+    local hints=""
+    hints="$(core_tool_hints true)"
+
+    [[ "$hints" == *$'tool.gh|sudo pacman -S --needed github-cli\n'* ]]
+    [[ "$hints" == *$'tool.git_lfs|sudo pacman -S --needed git-lfs\n'* ]]
+    [[ "$hints" == *$'tool.rsync|sudo pacman -S --needed rsync\n'* ]]
+    [[ "$hints" == *$'tool.strace|sudo pacman -S --needed strace\n'* ]]
+    [[ "$hints" == *$'tool.lsof|sudo pacman -S --needed lsof\n'* ]]
+    [[ "$hints" == *$'tool.zstd|sudo pacman -S --needed zstd\n'* ]]
+    [[ "$hints" == *$'tool.dig|sudo pacman -S --needed bind\n'* ]]
+    [[ "$hints" == *$'tool.nc|sudo pacman -S --needed openbsd-netcat\n'* ]]
+
+    # No core-tool hint may tell an Arch user to run apt.
+    run grep -E 'apt(-get)? ' <<<"$hints"
+    [ "$status" -eq 1 ]
+}
+
+@test "core-tool fix hints keep Debian package names on Ubuntu (#477)" {
+    local hints=""
+    hints="$(core_tool_hints false)"
+
+    [[ "$hints" == *$'tool.gh|sudo apt install gh\n'* ]]
+    [[ "$hints" == *$'tool.git_lfs|sudo apt install git-lfs\n'* ]]
+    [[ "$hints" == *$'tool.dig|sudo apt install dnsutils\n'* ]]
+    [[ "$hints" == *$'tool.nc|sudo apt install netcat-openbsd\n'* ]]
+
+    run grep -F 'pacman' <<<"$hints"
+    [ "$status" -eq 1 ]
+}

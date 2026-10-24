@@ -2860,18 +2860,18 @@ check_core_tools() {
     check_command "tool.go" "Go" "go" "$(doctor_pkg_install_hint golang-go go)"
     check_command "tool.tmux" "tmux" "tmux" "$(doctor_pkg_install_hint tmux)"
     check_command "tool.rg" "ripgrep" "rg" "$(doctor_pkg_install_hint ripgrep)"
-    check_command "tool.gh" "GitHub CLI (gh)" "gh" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y gh"
-    check_command "tool.git_lfs" "Git LFS" "git-lfs" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y git-lfs"
-    check_command "tool.rsync" "rsync" "rsync" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y rsync"
-    check_command "tool.strace" "strace" "strace" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y strace"
-    check_command "tool.lsof" "lsof" "lsof" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y lsof"
-    check_command "tool.zstd" "zstd" "zstd" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y zstd"
+    check_command "tool.gh" "GitHub CLI (gh)" "gh" "$(doctor_pkg_install_hint gh github-cli)"
+    check_command "tool.git_lfs" "Git LFS" "git-lfs" "$(doctor_pkg_install_hint git-lfs)"
+    check_command "tool.rsync" "rsync" "rsync" "$(doctor_pkg_install_hint rsync)"
+    check_command "tool.strace" "strace" "strace" "$(doctor_pkg_install_hint strace)"
+    check_command "tool.lsof" "lsof" "lsof" "$(doctor_pkg_install_hint lsof)"
+    check_command "tool.zstd" "zstd" "zstd" "$(doctor_pkg_install_hint zstd)"
     check_cosign_version
     # minisign (#375): the MCP Agent Mail (>= 0.3.31) and CAAM (>= 0.1.18)
     # installers verify release signatures with it and fail closed without it.
     check_command "tool.minisign" "minisign (Agent Mail/CAAM release verification)" "minisign" "$(doctor_pkg_install_hint minisign)"
-    check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y dnsutils"
-    check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y netcat-openbsd"
+    check_command "tool.dig" "dig (dnsutils)" "dig" "$(doctor_pkg_install_hint dnsutils bind)"
+    check_command "tool.nc" "nc (netcat-openbsd)" "nc" "$(doctor_pkg_install_hint netcat-openbsd openbsd-netcat)"
     check_command "tool.sg" "ast-grep" "sg" "cargo install ast-grep --locked"
 
     blank_line
