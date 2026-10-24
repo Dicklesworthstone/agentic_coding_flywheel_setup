@@ -487,3 +487,73 @@ test.describe("Cloud walkthrough provider navigation", () => {
     expect(errors.failedRequests).toEqual([]);
   });
 });
+
+// Exercise the narrow layout with both desktop keyboard and phone contexts.
+test.describe("Cloud mobile step menu", () => {
+  test.use({ viewport: { width: 393, height: 852 } });
+
+  test("Escape closes the menu and returns keyboard focus to its Steps button", async ({ page }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents#claude");
+    await waitForPageSettled(page);
+    const toggle = page.getByRole("button", { name: "Steps", exact: true });
+    await toggle.click();
+    const first = page.locator("#guide-step-menu").getByRole("link").first();
+    await first.focus();
+    await first.press("Escape");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toBeFocused();
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("choosing a step closes the menu and focuses the visible instruction heading", async ({ page }, testInfo) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents#claude");
+    await waitForPageSettled(page);
+    await page.getByRole("button", { name: "Steps", exact: true }).click();
+    const link = page.locator('#guide-step-menu a[href="#claude-step-network"]');
+    await link.focus();
+    await link.press("Enter");
+    const heading = page.locator("#claude-step-network h3");
+    await expect(page.locator("#guide-step-menu")).toHaveCount(0);
+    await expect(heading).toBeInViewport();
+    await expect(heading).toBeFocused();
+    await expect(page).toHaveURL(/#claude-step-network$/);
+    await page.screenshot({ path: testInfo.outputPath("cloud-mobile-step-selection.png") });
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("an outside pointer closes the menu without pulling focus back from its target", async ({ page }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents#claude");
+    await waitForPageSettled(page);
+    await page.getByRole("button", { name: "Steps", exact: true }).click();
+    const heading = page.locator("#guide-heading");
+    await heading.click();
+    await expect(page.locator("#guide-step-menu")).toHaveCount(0);
+    await expect(heading).toBeFocused();
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("opening a step in another tab leaves the current menu and reading position alone", async ({ page, context }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents#claude");
+    await waitForPageSettled(page);
+    await page.getByRole("button", { name: "Steps", exact: true }).click();
+    const link = page.locator('#guide-step-menu a[href="#claude-step-network"]');
+    await link.focus();
+    // Browser-created background tabs have no opener and do not emit popup.
+    const opened = context.waitForEvent("page");
+    await link.click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
+    const other = await opened;
+    await expect(other).toHaveURL(/#claude-step-network$/);
+    await expect(page.locator("#guide-step-menu")).toBeVisible();
+    await expect(link).toBeFocused();
+    await expect(page).toHaveURL(/#claude$/);
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+});

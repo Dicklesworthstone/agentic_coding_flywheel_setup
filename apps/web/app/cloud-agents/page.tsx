@@ -673,6 +673,8 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
   const [stepsOpen, setStepsOpen] = useState(false);
   const stepRefs = useRef<(HTMLLIElement | null)[]>([]);
   const mobileBar = useRef<HTMLDivElement>(null);
+  const mobileToggle = useRef<HTMLButtonElement>(null);
+  const stepFocusFrame = useRef(0);
   const activeIndex = Math.min(active, steps.length - 1);
   const hosted = agent.evidence === "Hosted test";
 
@@ -697,6 +699,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
     window.addEventListener("resize", schedule);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(stepFocusFrame.current);
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
@@ -704,7 +707,13 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
 
   useEffect(() => {
     if (!stepsOpen) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setStepsOpen(false); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setStepsOpen(false);
+      if (mobileBar.current?.contains(document.activeElement)) {
+        mobileToggle.current?.focus({ preventScroll: true });
+      }
+    };
     const onPointer = (event: PointerEvent) => {
       if (mobileBar.current && !mobileBar.current.contains(event.target as Node)) setStepsOpen(false);
     };
@@ -733,7 +742,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
     </label>
   );
 
-  const stepList = (onPick?: () => void) => (
+  const stepList = (mobile = false) => (
     <ol className="space-y-0.5">
       {steps.map((step, index) => {
         const isDone = done.has(step.id);
@@ -742,7 +751,16 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
           <li key={step.id}>
             <a
               href={`#${stepAnchor(agent.id, step.id)}`}
-              onClick={onPick}
+              onClick={(event) => {
+                if (!mobile || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                setStepsOpen(false);
+                cancelAnimationFrame(stepFocusFrame.current);
+                // Keep the native anchor's URL/scroll update, then move focus
+                // out of the disappearing menu to the chosen instruction.
+                stepFocusFrame.current = requestAnimationFrame(() => {
+                  stepRefs.current[index]?.querySelector<HTMLHeadingElement>("h3")?.focus({ preventScroll: true });
+                });
+              }}
               aria-current={isActive ? "step" : undefined}
               className={`flex min-h-11 items-start gap-3 rounded-lg px-2.5 py-2 text-sm leading-snug transition-colors ${focusRing} ${isActive ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
             >
@@ -800,6 +818,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
             <p className="truncate text-sm font-medium text-foreground">{steps[activeIndex].title}</p>
           </div>
           <button
+            ref={mobileToggle}
             type="button"
             aria-expanded={stepsOpen}
             aria-controls="guide-step-menu"
@@ -813,7 +832,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
         {saveNotice && <div className="pb-3">{saveNotice}</div>}
         {stepsOpen && (
           <div id="guide-step-menu" className="absolute inset-x-0 top-full max-h-[70dvh] overflow-y-auto overscroll-contain border-b border-border/60 bg-card px-5 pb-5 pt-3 shadow-2xl shadow-black/70 sm:px-8">
-            <nav aria-label={`${agent.name} setup steps`}>{stepList(() => setStepsOpen(false))}</nav>
+            <nav aria-label={`${agent.name} setup steps`}>{stepList(true)}</nav>
             <div className="mt-4 border-t border-border/60 pt-4">{switcher("guide-agent-mobile")}</div>
           </div>
         )}
@@ -864,7 +883,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
                   </span>
                   <div className="min-w-0 pt-0.5">
                     <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">Step {index + 1} of {steps.length}</p>
-                    <h3 className="mt-1 text-[1.3rem] font-semibold leading-snug tracking-tight text-foreground sm:text-[1.55rem]">{step.title}</h3>
+                    <h3 tabIndex={-1} className={`mt-1 rounded-sm text-[1.3rem] font-semibold leading-snug tracking-tight text-foreground sm:text-[1.55rem] ${focusRing}`}>{step.title}</h3>
                   </div>
                 </div>
                 <div className="mt-5">
