@@ -3528,7 +3528,14 @@ check_stack() {
     else
         _nightly_status="no_systemd"
     fi
-    case "$_nightly_status" in
+    report_nightly_timer_status "$_nightly_status"
+
+    blank_line
+}
+
+# Usage: report_nightly_timer_status <enabled|unit_exists|no_systemd|missing>
+report_nightly_timer_status() {
+    case "${1:-missing}" in
         enabled)
             check "acfs.nightly" "Nightly auto-update timer" "pass" "enabled"
             ;;
@@ -3542,13 +3549,18 @@ check_stack() {
                 "no systemd or no user session (expected for noninteractive root installs)"
             ;;
         *)
-            check "acfs.nightly" "Nightly auto-update timer" "warn" \
-                "not installed (optional)" \
-                "$(fix_for_module "acfs.nightly")"
+            # An install run with --skip acfs.nightly records the opt-out; an
+            # absent timer is then the user's choice, not a defect (#476).
+            if _doctor_module_skipped_at_install "acfs.nightly"; then
+                check "acfs.nightly" "Nightly auto-update timer" "skip" \
+                    "not installed (skipped during installation)"
+            else
+                check "acfs.nightly" "Nightly auto-update timer" "warn" \
+                    "not installed (optional)" \
+                    "$(fix_for_module "acfs.nightly")"
+            fi
             ;;
     esac
-
-    blank_line
 }
 
 # ============================================================
@@ -4050,6 +4062,20 @@ load_skipped_tools() {
             [[ -n "$tool" ]] && SKIPPED_TOOLS_DATA+=("$tool:user choice")
         done
     fi
+}
+
+# True when state.json records <module_id> among the skipped tools.
+# Usage: _doctor_module_skipped_at_install <module_id>
+_doctor_module_skipped_at_install() {
+    local module_id="${1:-}"
+    local entry=""
+
+    [[ -n "$module_id" ]] || return 1
+    load_skipped_tools
+    for entry in "${SKIPPED_TOOLS_DATA[@]}"; do
+        [[ "${entry%%:*}" == "$module_id" ]] && return 0
+    done
+    return 1
 }
 
 # Display a skipped tool with [○] indicator

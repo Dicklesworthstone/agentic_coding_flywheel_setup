@@ -320,6 +320,47 @@ login_shell_validator_fixture() {
         || fail "unexpected: $output"
 }
 
+# ------------------------------------------------------------
+# #476: an absent nightly timer after --skip acfs.nightly is the user's choice
+# ------------------------------------------------------------
+
+nightly_state_fixture() {
+    NIGHTLY_STATE="$BATS_TEST_TMPDIR/state.json"
+    printf '%s\n' "$1" > "$NIGHTLY_STATE"
+    _acfs_doctor_find_project_path() { [[ "$1" == state.json ]] && printf '%s\n' "$NIGHTLY_STATE"; }
+    fix_for_module() { printf 'enable %s' "$1"; }
+}
+
+@test "nightly timer: missing after a recorded --skip is a skip, not a warning (#476)" {
+    command -v jq >/dev/null 2>&1 || skip "jq not installed"
+    load_doctor_functions
+    nightly_state_fixture '{"skipped_tools":["tools.atuin","acfs.nightly"]}'
+
+    run report_nightly_timer_status missing
+    [ "$output" = "acfs.nightly|skip|not installed (skipped during installation)|" ] || fail "unexpected: $output"
+}
+
+@test "nightly timer: missing without a recorded skip still warns (#476)" {
+    command -v jq >/dev/null 2>&1 || skip "jq not installed"
+    load_doctor_functions
+    nightly_state_fixture '{"skipped_tools":["tools.atuin"]}'
+
+    run report_nightly_timer_status missing
+    [ "$output" = "acfs.nightly|warn|not installed (optional)|enable acfs.nightly" ] || fail "unexpected: $output"
+
+    _acfs_doctor_find_project_path() { return 1; }
+    run report_nightly_timer_status missing
+    [ "$output" = "acfs.nightly|warn|not installed (optional)|enable acfs.nightly" ] || fail "no state: $output"
+}
+
+@test "nightly timer: an enabled timer passes even if an earlier run skipped it (#476)" {
+    load_doctor_functions
+    nightly_state_fixture '{"skipped_tools":["acfs.nightly"]}'
+
+    run report_nightly_timer_status enabled
+    [ "$output" = "acfs.nightly|pass|enabled|" ] || fail "unexpected: $output"
+}
+
 @test "login shell: a missing validator still reports that user.sh is not deployed" {
     load_doctor_functions
     _acfs_doctor_find_lib_script() { return 1; }

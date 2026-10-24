@@ -6688,6 +6688,39 @@ systemctl --user is-enabled acfs-nightly-update.timer >/dev/null
     log_detail "ACFS nightly update timer enabled"
 }
 
+# finalize deploys the nightly runtime files unconditionally (acfs-update and
+# doctor use them), but enabling the timer is what the acfs.nightly module
+# does. The timer pulls and applies upstream changes unattended, so a --skip or
+# --only that deselects the module must hold here as well, not only in the
+# generated module dispatch (#476).
+acfs_finalize_nightly_timer() {
+    local reason="not selected"
+    local reasons_decl=""
+
+    if acfs_legacy_module_selected "acfs.nightly"; then
+        try_step "Configuring ACFS nightly update timer" configure_acfs_nightly_timer || return 1
+        return 0
+    fi
+
+    reasons_decl="$(declare -p ACFS_PLAN_EXCLUDE_REASON 2>/dev/null || true)"
+    if [[ "$reasons_decl" == declare\ -A* ]]; then
+        reason="${ACFS_PLAN_EXCLUDE_REASON["acfs.nightly"]:-not selected}"
+    fi
+    log_detail "Skipping ACFS nightly update timer (acfs.nightly: $reason)"
+
+    # Persist an explicit opt-out so doctor reports the absent timer as the
+    # user's choice. A module that is merely outside an --only selection was
+    # not opted out of, so its state is left alone.
+    case "$reason" in
+        "explicitly skipped"|"skipped tag "*|"skipped category "*)
+            if type -t state_tool_skip >/dev/null 2>&1; then
+                state_tool_skip "acfs.nightly" || true
+            fi
+            ;;
+    esac
+    return 0
+}
+
 acfs_install_executable_into_primary_bin() {
     local src_path="$1"
     local command_name="$2"
@@ -11100,7 +11133,7 @@ finalize() {
     try_step "Setting lib scripts permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh "$ACFS_HOME/scripts/nightly-update.sh" || return 1
     try_step "Setting generated scripts permissions" $SUDO find "$ACFS_HOME/scripts/generated" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} + || return 1
     try_step "Setting scripts ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts" || return 1
-    try_step "Configuring ACFS nightly update timer" configure_acfs_nightly_timer || return 1
+    acfs_finalize_nightly_timer || return 1
 
     # Install newproj command scripts (used by acfs newproj CLI and TUI wizard)
     log_detail "Installing newproj scripts"
