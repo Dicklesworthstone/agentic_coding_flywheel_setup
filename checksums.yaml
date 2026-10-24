@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-23T22:01:24+00:00
+# checksums.yaml - Auto-generated 2026-10-24T02:30:20+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -188,7 +188,7 @@ installers:
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
-    sha256: "e742581b86309beca86492d551b2ea8f25c98655221afce4e798764a3bffa85f"
+    sha256: "36aa9c217b341f64379f08a084c3a45c8419565a0292b0780b05c280f01bcd22"
 
   zoxide:
     url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
