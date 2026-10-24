@@ -4318,6 +4318,43 @@ acfs_signal_capable_env() {
     return 1
 }
 
+# True when this process has a controlling terminal that sudo can prompt on.
+# stdin is the curl pipe in the documented flow, so test /dev/tty itself.
+acfs_bootstrap_has_terminal() {
+    ( : </dev/tty ) 2>/dev/null
+}
+
+# --yes suppresses ACFS's own prompts, not sudo's password prompt. The
+# non-prompting handoff runs the verified installer under setsid, which has no
+# controlling terminal, so for a non-root caller whose sudo still needs a
+# password every privileged step failed, one phase after another (#475).
+# Settle sudo here, while this process still owns the terminal.
+# Returns 0 when the setsid handoff can keep working (root, passwordless sudo,
+# or no sudo for ensure_root to report), 2 when sudo authenticated on the
+# terminal and the child must stay on it, and 1 when sudo cannot work.
+acfs_bootstrap_sudo_preflight() {
+    local sudo_bin=""
+
+    [[ "$EUID" -ne 0 ]] || return 0
+    sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+    [[ -n "$sudo_bin" ]] || return 0
+    if "$sudo_bin" -n true >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! acfs_bootstrap_has_terminal; then
+        log_error "sudo needs a password, and with no terminal it cannot ask for one"
+        log_error "Run the installer as root, configure passwordless sudo, or start it from an interactive terminal"
+        return 1
+    fi
+    log_warn "sudo needs your password before ACFS can install anything"
+    if ! "$sudo_bin" -v; then
+        log_error "sudo authentication failed; nothing was installed"
+        return 1
+    fi
+    return 2
+}
+
 acfs_run_verified_bootstrap_installer() {
     local verified_installer="${ACFS_BOOTSTRAP_DIR:-}/install.sh"
     local bash_bin=""
@@ -4352,13 +4389,23 @@ acfs_run_verified_bootstrap_installer() {
     # documented prompt-capable curl flow in the existing session; non-prompting
     # modes use the stronger process-group supervisor below.
     local prompt_capable_handoff=true
-    if [[ "${YES_MODE:-false}" == "true" ]] \
-        || [[ "${DRY_RUN:-false}" == "true" ]] \
+    if [[ "${DRY_RUN:-false}" == "true" ]] \
         || [[ "${PRINT_MODE:-false}" == "true" ]] \
         || [[ "${LIST_MODULES:-false}" == "true" ]] \
         || [[ "${PRINT_PLAN_MODE:-false}" == "true" ]] \
         || [[ "${RESET_STATE_ONLY:-false}" == "true" ]]; then
         prompt_capable_handoff=false
+    elif [[ "${YES_MODE:-false}" == "true" ]]; then
+        prompt_capable_handoff=false
+        # An install that will need sudo stays on the terminal when sudo has
+        # to ask for a password there; see acfs_bootstrap_sudo_preflight.
+        local sudo_preflight_status=0
+        acfs_bootstrap_sudo_preflight || sudo_preflight_status=$?
+        case "$sudo_preflight_status" in
+            0) ;;
+            2) prompt_capable_handoff=true ;;
+            *) return 1 ;;
+        esac
     fi
 
     if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]] \

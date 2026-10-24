@@ -106,11 +106,19 @@ assert_source_before \
     "return \"\$interactive_child_status\"" \
     "ps_bin=\"\$(acfs_early_system_binary_path ps 2>/dev/null || true)\""
 assert_source_contains \
-    "--yes selects the non-prompting supervised path" \
-    "if [[ \"\${YES_MODE:-false}\" == \"true\" ]]"
-assert_source_contains \
     "Read-only dry-run selects the non-prompting supervised path" \
-    "|| [[ \"\${DRY_RUN:-false}\" == \"true\" ]]"
+    "if [[ \"\${DRY_RUN:-false}\" == \"true\" ]]"
+assert_source_before \
+    "Read-only modes are decided before --yes consults sudo" \
+    "|| [[ \"\${RESET_STATE_ONLY:-false}\" == \"true\" ]]; then" \
+    "elif [[ \"\${YES_MODE:-false}\" == \"true\" ]]; then"
+assert_source_before \
+    "--yes settles sudo on the terminal before choosing the handoff (#475)" \
+    "elif [[ \"\${YES_MODE:-false}\" == \"true\" ]]; then" \
+    'acfs_bootstrap_sudo_preflight || sudo_preflight_status=$?'
+assert_source_contains \
+    "--yes keeps the child on the terminal when sudo needs a password there" \
+    '2) prompt_capable_handoff=true ;;'
 assert_source_contains \
     "Non-prompting modes disable the prompt-capable branch" \
     'prompt_capable_handoff=false'
