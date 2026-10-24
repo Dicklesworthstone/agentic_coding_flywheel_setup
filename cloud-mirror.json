@@ -24,17 +24,17 @@
       "bins": [
         "ast-grep"
       ],
-      "file": "ast-grep/0.45.3/d3b78131bc5c15290b9fa3e937abfc11c7f2caf8ae2305c737a0ca83ade42a48/ast-grep-linux-x86_64.tar.gz",
-      "sha256": "d3b78131bc5c15290b9fa3e937abfc11c7f2caf8ae2305c737a0ca83ade42a48",
+      "file": "ast-grep/0.51.0/92c6422686dbdfb9960298a1d461fdbae2bcf99903b7afe9ef640d97a6b325f2/ast-grep-linux-x86_64.tar.gz",
+      "sha256": "92c6422686dbdfb9960298a1d461fdbae2bcf99903b7afe9ef640d97a6b325f2",
       "source": {
         "asset": "app-x86_64-unknown-linux-gnu.zip",
         "repo": "ast-grep/ast-grep",
-        "sha256": "f8ac830881339d1edee6b2652f54798c0f4da5a827f2db38a08ee31117783ce8",
-        "tag": "0.45.3",
-        "url": "https://github.com/ast-grep/ast-grep/releases/download/0.45.3/app-x86_64-unknown-linux-gnu.zip",
+        "sha256": "a7eead5552d3a8daad70f5d50d935da44bd0c138e946b5b0a96b1d38169fa639",
+        "tag": "0.51.0",
+        "url": "https://github.com/ast-grep/ast-grep/releases/download/0.51.0/app-x86_64-unknown-linux-gnu.zip",
         "verification": "sha256"
       },
-      "version": "0.45.3"
+      "version": "0.51.0"
     },
     "br": {
       "bins": [
@@ -120,18 +120,18 @@
       "bins": [
         "jsm"
       ],
-      "file": "jsm/v0.3.25/abeb6e2bd5791aea98682f1202f0496bf4ca549d8cd77269fd339eaea03739a0/jsm-linux-x86_64.tar.gz",
-      "sha256": "abeb6e2bd5791aea98682f1202f0496bf4ca549d8cd77269fd339eaea03739a0",
+      "file": "jsm/v0.3.40/62f16a5a852b1c291e2a226c6c23d90be0363ddea002574382927ae2a55c9355/jsm-linux-x86_64.tar.gz",
+      "sha256": "62f16a5a852b1c291e2a226c6c23d90be0363ddea002574382927ae2a55c9355",
       "source": {
         "asset": "jsm-x86_64-unknown-linux-musl.tar.gz",
         "repo": "Dicklesworthstone/jeffreys-skills.md",
-        "sha256": "81c4ea5e57506f3da778f5c79a6871fd7dcad47a98362a8526c04d2e4d6292b0",
-        "tag": "v0.3.25",
-        "upstream_url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.25/jsm-x86_64-unknown-linux-musl.tar.gz",
-        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/jsm-v0.3.25-linux-x86_64-81c4ea5e57506f3da778f5c79a6871fd7dcad47a98362a8526c04d2e4d6292b0.tar.gz",
+        "sha256": "234cb5d973091cf4b510c0797e20032ff1329deac91504cdf03730ef71b039e0",
+        "tag": "v0.3.40",
+        "upstream_url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.40/jsm-x86_64-unknown-linux-musl.tar.gz",
+        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/jsm-v0.3.40-linux-x86_64-234cb5d973091cf4b510c0797e20032ff1329deac91504cdf03730ef71b039e0.tar.gz",
         "verification": "sha256"
       },
-      "version": "v0.3.25"
+      "version": "v0.3.40"
     },
     "ms": {
       "bins": [
