@@ -517,21 +517,46 @@ function Lightbox({ shot, opener, onClose }: { shot: SetupScreenshot; opener: HT
 
 const PROGRESS_KEY = "acfs-cloud-agents-progress-v1";
 const PROGRESS_EVENT = "acfs:cloud-agents-progress";
-// Mirrors the last write so marking steps still works when storage is unavailable.
-let progressMemory: string | null = null;
+// Own writes stay authoritative for this visit even if readable storage refuses
+// to save them. A relevant cross-tab event invalidates this local snapshot.
+let progressMemory: { raw: string; stored: string | null } | undefined;
+let progressSaveFailed = false;
 
 function subscribeProgress(onChange: () => void) {
-  window.addEventListener("storage", onChange);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== null && event.key !== PROGRESS_KEY) return;
+    try {
+      if (event.storageArea !== window.localStorage) return;
+    } catch {
+      return;
+    }
+    progressMemory = undefined;
+    progressSaveFailed = false;
+    onChange();
+  };
+  window.addEventListener("storage", onStorage);
   window.addEventListener(PROGRESS_EVENT, onChange);
   return () => {
-    window.removeEventListener("storage", onChange);
+    window.removeEventListener("storage", onStorage);
     window.removeEventListener(PROGRESS_EVENT, onChange);
   };
 }
 
 function readProgress(): string | null {
-  return safeGetItem(PROGRESS_KEY) ?? progressMemory;
+  try {
+    const stored = localStorage.getItem(PROGRESS_KEY);
+    if (progressMemory && stored === progressMemory.stored) return progressMemory.raw;
+    // The guide may have been unmounted when another tab changed or cleared
+    // storage. Reconcile on read too, so returning cannot revive stale steps.
+    progressMemory = undefined;
+    progressSaveFailed = false;
+    return stored;
+  } catch {
+    return progressMemory?.raw ?? null;
+  }
 }
+
+const readProgressSaveFailed = () => progressSaveFailed;
 
 function parseProgress(raw: string | null): Record<string, string[]> {
   if (!raw) return {};
@@ -550,12 +575,15 @@ function parseProgress(raw: string | null): Record<string, string[]> {
 
 function useStepProgress(agentId: string, steps: SetupStep[]) {
   const raw = useSyncExternalStore(subscribeProgress, readProgress, () => null);
+  const saveFailed = useSyncExternalStore(subscribeProgress, readProgressSaveFailed, () => false);
   const all = useMemo(() => parseProgress(raw), [raw]);
   const done = useMemo(() => new Set((all[agentId] ?? []).filter((id) => steps.some((step) => step.id === id))), [all, agentId, steps]);
 
   const write = useCallback((next: Record<string, string[]>) => {
-    progressMemory = JSON.stringify(next);
-    safeSetItem(PROGRESS_KEY, progressMemory);
+    const stored = safeGetItem(PROGRESS_KEY);
+    const raw = JSON.stringify(next);
+    progressSaveFailed = !safeSetItem(PROGRESS_KEY, raw);
+    progressMemory = { raw, stored: progressSaveFailed ? stored : raw };
     window.dispatchEvent(new Event(PROGRESS_EVENT));
   }, []);
 
@@ -572,7 +600,7 @@ function useStepProgress(agentId: string, steps: SetupStep[]) {
     write(next);
   }, [agentId, all, write]);
 
-  return { done, toggle, reset };
+  return { done, toggle, reset, saveFailed };
 }
 
 /* ------------------------------------------------------------------ */
@@ -640,7 +668,7 @@ function StepBody({ agent, step, onOpenShot }: { agent: CloudAgent; step: SetupS
 function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose: (id: string) => void; onOpenShot: OpenShot }) {
   const walkthrough = CLOUD_WALKTHROUGHS[agent.id];
   const steps = walkthrough.steps;
-  const { done, toggle, reset } = useStepProgress(agent.id, steps);
+  const { done, toggle, reset, saveFailed } = useStepProgress(agent.id, steps);
   const [active, setActive] = useState(0);
   const [stepsOpen, setStepsOpen] = useState(false);
   const stepRefs = useRef<(HTMLLIElement | null)[]>([]);
@@ -736,6 +764,11 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
       ))}
     </div>
   );
+  const saveNotice = saveFailed ? (
+    <p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2 text-xs leading-relaxed text-foreground/90">
+      Checklist changes are kept for this visit only. Browser storage could not save them; reloading may lose them.
+    </p>
+  ) : null;
 
   return (
     <section id="guide" aria-labelledby="guide-heading" className="relative mx-auto max-w-6xl scroll-mt-4 px-5 pb-20 pt-4 sm:px-8 sm:pb-28">
@@ -777,6 +810,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
           </button>
         </div>
         <div className="pb-2">{progressBar}</div>
+        {saveNotice && <div className="pb-3">{saveNotice}</div>}
         {stepsOpen && (
           <div id="guide-step-menu" className="absolute inset-x-0 top-full max-h-[70dvh] overflow-y-auto overscroll-contain border-b border-border/60 bg-card px-5 pb-5 pt-3 shadow-2xl shadow-black/70 sm:px-8">
             <nav aria-label={`${agent.name} setup steps`}>{stepList(() => setStepsOpen(false))}</nav>
@@ -802,6 +836,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
                   </button>
                 )}
               </div>
+              {saveNotice}
             </div>
             <div className="border-t border-border/60 px-2.5 pt-5">{switcher("guide-agent-desktop")}</div>
           </div>

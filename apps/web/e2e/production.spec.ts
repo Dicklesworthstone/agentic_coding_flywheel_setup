@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 /**
- * Production smoke tests that run against the live site.
+ * Production smoke tests, followed by cloud regressions that also run locally.
  * These are critical for catching deployment issues.
  *
  * Run with: cd apps/web && PLAYWRIGHT_BASE_URL=https://agent-flywheel.com bun run test production
@@ -255,5 +255,180 @@ test.describe("Production Smoke Tests", () => {
 
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);
+  });
+});
+
+// Keep the live-site guard above intact. These exercise the real cloud page on
+// localhost too, with only browser storage refusal controlled by the tests.
+test.describe("Cloud walkthrough progress", () => {
+  const progressKey = "acfs-cloud-agents-progress-v1";
+  const unsavedNotice = "Checklist changes are kept for this visit only. Browser storage could not save them; reloading may lose them.";
+  type StorageProbe = Window & { cloudProgressWritesAllowed: boolean };
+
+  async function seedReadOnlyProgress(page: Page) {
+    await page.addInitScript(({ key }) => {
+      if (localStorage.getItem(key) === null) {
+        localStorage.setItem(key, JSON.stringify({ claude: ["cloud-menu"], codex: ["cloud"] }));
+      }
+      const probe = window as unknown as StorageProbe;
+      probe.cloudProgressWritesAllowed = false;
+      const write = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (name, value) {
+        if (this === localStorage && name === key && !probe.cloudProgressWritesAllowed) {
+          throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+        }
+        return write.call(this, name, value);
+      };
+    }, { key: progressKey });
+  }
+
+  function doneButton(page: Page, anchor: string) {
+    return page.locator(`#${anchor}`).getByRole("button", { name: /^Mark as done:/ });
+  }
+
+  async function chooseProvider(page: Page, name: string) {
+    await page.locator("label").filter({
+      has: page.getByRole("radio", { name, exact: true }),
+    }).click();
+  }
+
+  test("a fresh visit still supports reversible steps when storage reads and writes are blocked", async ({ page }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.addInitScript(({ key }) => {
+      const read = Storage.prototype.getItem;
+      const write = Storage.prototype.setItem;
+      Storage.prototype.getItem = function (name) {
+        if (this === localStorage && name === key) throw new DOMException("Storage access denied", "SecurityError");
+        return read.call(this, name);
+      };
+      Storage.prototype.setItem = function (name, value) {
+        if (this === localStorage && name === key) throw new DOMException("Storage access denied", "SecurityError");
+        return write.call(this, name, value);
+      };
+    }, { key: progressKey });
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    const first = doneButton(page, "claude-step-cloud-menu");
+    await expect(first).toHaveAttribute("aria-pressed", "false");
+    await first.click();
+    await expect(first).toHaveAttribute("aria-pressed", "true");
+    await first.click();
+    await expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("existing readable progress does not discard toggles when writes fail", async ({ page }, testInfo) => {
+    const errors = setupErrorMonitoring(page);
+    await seedReadOnlyProgress(page);
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    const first = doneButton(page, "claude-step-cloud-menu");
+    const second = doneButton(page, "claude-step-add-environment");
+    await expect(first).toHaveAttribute("aria-pressed", "true");
+    await second.click();
+    await expect(second).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: unsavedNotice })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: unsavedNotice })).toBeInViewport();
+    const widths = await page.evaluate(() => ({ content: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }));
+    expect(widths.content).toBe(widths.viewport);
+    await page.screenshot({ path: testInfo.outputPath("cloud-progress-storage-failed.png") });
+    // Failed writes preserve the previous durable record, while clicks remain
+    // reversible within this visit rather than claiming persistence.
+    expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), progressKey)).toEqual({ claude: ["cloud-menu"], codex: ["cloud"] });
+    await second.click();
+    await expect(second).toHaveAttribute("aria-pressed", "false");
+    await first.click();
+    await expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("visit-only provider changes persist together once storage accepts writes again", async ({ page }) => {
+    const errors = setupErrorMonitoring(page);
+    await seedReadOnlyProgress(page);
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    await doneButton(page, "claude-step-add-environment").click();
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "true");
+    await chooseProvider(page, "ChatGPT / Codex Hosted test");
+    await expect(doneButton(page, "codex-step-cloud")).toHaveAttribute("aria-pressed", "true");
+    await doneButton(page, "codex-step-create-environment").click();
+    await expect(doneButton(page, "codex-step-create-environment")).toHaveAttribute("aria-pressed", "true");
+    await chooseProvider(page, "Claude Code Hosted test");
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "true");
+    await page.evaluate(() => { (window as unknown as StorageProbe).cloudProgressWritesAllowed = true; });
+    await doneButton(page, "claude-step-network").click();
+    await expect(doneButton(page, "claude-step-network")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: unsavedNotice })).toHaveCount(0);
+    expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), progressKey)).toEqual({
+      claude: ["cloud-menu", "add-environment", "network"], codex: ["cloud", "create-environment"],
+    });
+    await page.reload();
+    await waitForPageSettled(page);
+    await expect(doneButton(page, "claude-step-cloud-menu")).toHaveAttribute("aria-pressed", "true");
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "true");
+    await expect(doneButton(page, "claude-step-network")).toHaveAttribute("aria-pressed", "true");
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("cross-tab changes and removal clear cached progress without reviving old steps", async ({ page, context }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    const other = await context.newPage();
+    await other.goto("/cloud-agents");
+    await waitForPageSettled(other);
+    await doneButton(page, "claude-step-cloud-menu").click();
+    await expect(doneButton(other, "claude-step-cloud-menu")).toHaveAttribute("aria-pressed", "true");
+    await doneButton(other, "claude-step-add-environment").click();
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "true");
+    // These dispatch genuine storage events to the other browsing context.
+    await other.evaluate((key) => localStorage.removeItem(key), progressKey);
+    await expect(doneButton(page, "claude-step-cloud-menu")).toHaveAttribute("aria-pressed", "false");
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "false");
+    await other.evaluate((key) => localStorage.setItem(key, JSON.stringify({ claude: ["network"] })), progressKey);
+    await expect(doneButton(page, "claude-step-network")).toHaveAttribute("aria-pressed", "true");
+    await other.evaluate(() => localStorage.clear());
+    await expect(doneButton(page, "claude-step-network")).toHaveAttribute("aria-pressed", "false");
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("returning to the guide observes storage changes made while its subscriptions were unmounted", async ({ page, context }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    await doneButton(page, "claude-step-cloud-menu").click();
+    await expect(doneButton(page, "claude-step-cloud-menu")).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("navigation", { name: "Site", exact: true }).getByRole("link", { name: "Agent Flywheel", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    const other = await context.newPage();
+    await other.goto("/cloud-agents");
+    await waitForPageSettled(other);
+    await other.evaluate((key) => localStorage.setItem(key, JSON.stringify({ claude: ["network"] })), progressKey);
+    await page.goBack();
+    await expect(doneButton(page, "claude-step-cloud-menu")).toHaveAttribute("aria-pressed", "false");
+    await expect(doneButton(page, "claude-step-network")).toHaveAttribute("aria-pressed", "true");
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("unrelated cross-tab storage writes retain this visit's unsaved progress", async ({ page, context }) => {
+    const errors = setupErrorMonitoring(page);
+    await seedReadOnlyProgress(page);
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    await doneButton(page, "claude-step-add-environment").click();
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "true");
+    const other = await context.newPage();
+    await other.goto("/cloud-agents");
+    await waitForPageSettled(other);
+    await other.evaluate(() => localStorage.setItem("unrelated-cloud-regression", "updated"));
+    await expect(doneButton(page, "claude-step-add-environment")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: unsavedNotice })).toBeVisible();
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
   });
 });
