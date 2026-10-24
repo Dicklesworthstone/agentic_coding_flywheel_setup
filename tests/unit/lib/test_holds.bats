@@ -185,3 +185,46 @@ EOF
     assert_failure
     [[ "$output" == *"reason"* ]]
 }
+
+@test "CLI: --help anywhere prints usage and never changes holds (#484)" {
+    acfs_holds_add br "0.4.1" "henry" "regression" "2099-01-02"
+    local before
+    before="$(cat "$ACFS_HOLDS_FILE")"
+
+    # `unhold br --help` used to remove br's hold; `hold cass --reason --help`
+    # used to record "--help" as the reason.
+    run bash "$ACFS_LIB_DIR/holds.sh" remove br --help
+    assert_success
+    [[ "$output" == *"USAGE:"* ]]
+
+    run bash "$ACFS_LIB_DIR/holds.sh" add cass --reason --help
+    assert_success
+    [[ "$output" == *"USAGE:"* ]]
+
+    run bash "$ACFS_LIB_DIR/holds.sh" add cass -h --reason "why"
+    assert_success
+
+    run bash "$ACFS_LIB_DIR/holds.sh" list --help
+    assert_success
+    [[ "$output" == *"USAGE:"* ]]
+
+    [[ "$(cat "$ACFS_HOLDS_FILE")" == "$before" ]]
+}
+
+@test "CLI: unhold refuses options and extra tools instead of ignoring them" {
+    acfs_holds_add br "current" "henry" "why br" ""
+    acfs_holds_add ntm "current" "henry" "why ntm" ""
+
+    run bash "$ACFS_LIB_DIR/holds.sh" remove br ntm
+    assert_failure
+    [[ "$output" == *"Only one tool per unhold"* ]]
+
+    run bash "$ACFS_LIB_DIR/holds.sh" remove --all
+    assert_failure
+    [[ "$output" == *"Unknown option: --all"* ]]
+
+    run acfs_holds_lookup br
+    assert_success
+    run acfs_holds_lookup ntm
+    assert_success
+}

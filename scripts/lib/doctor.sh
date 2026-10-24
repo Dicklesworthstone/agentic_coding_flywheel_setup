@@ -1209,7 +1209,9 @@ acfs_session_recent() {
                 shift 2
                 ;;
             *)
-                shift
+                echo "Error: unexpected argument for 'acfs session recent': $1" >&2
+                echo "Usage: acfs session recent [--workspace PATH] [--format json|markdown]" >&2
+                return 1
                 ;;
         esac
     done
@@ -1234,6 +1236,18 @@ acfs_session_main() {
             return 0
             ;;
     esac
+
+    # A help request anywhere wins (#484): `acfs session export FILE --help`
+    # must print usage, not run the export.
+    local arg=""
+    for arg in "${@:2}"; do
+        case "$arg" in
+            -h|--help)
+                print_session_help
+                return 0
+                ;;
+        esac
+    done
 
     if ! check_session_deps; then
         return 1

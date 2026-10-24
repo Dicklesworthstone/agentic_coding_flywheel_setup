@@ -9001,6 +9001,54 @@ EOF
     [[ ! -e "$marker" ]] || fail "endpoint configuration executed shell syntax"
 }
 
+@test "acfs services --help anywhere prints usage and never starts or stops (#484)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    # `stop --help` used to drop the flag and stop every service. The command
+    # handlers are stubbed, so a regression records ACTED instead of touching
+    # real daemons.
+    run "$BASH" -c '
+        source "$1"
+        for fn in cmd_start cmd_stop cmd_status cmd_restart cmd_repair cmd_drift cmd_logs; do
+            eval "$fn() { echo ACTED:$fn; }"
+        done
+        for args in "stop --help" "start --help" "--dry-run stop -h" "restart cass --help" \
+            "repair --help" "drift --robot --help" "logs agent-mail --help" "status -h"; do
+            status=0
+            # shellcheck disable=SC2086
+            main $args || status=$?
+            echo "[$args] status=$status"
+        done
+    ' _ "$services"
+    assert_success
+    refute_output --partial "ACTED:"
+    [[ "$(grep -c '^Usage: acfs services <command> \[options\]$' <<< "$output")" -eq 8 ]]
+    [[ "$(grep -c 'status=0$' <<< "$output")" -eq 8 ]]
+}
+
+@test "acfs services start/stop/status refuse arguments instead of acting on everything" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run "$BASH" -c '
+        source "$1"
+        cmd_start() { echo ACTED:cmd_start; }
+        cmd_stop() { echo ACTED:cmd_stop; }
+        cmd_status() { echo ACTED:cmd_status; }
+        for args in "stop cass" "start agent-mail" "status cm"; do
+            status=0
+            # shellcheck disable=SC2086
+            main $args || status=$?
+            echo "[$args] status=$status"
+        done
+    ' _ "$services"
+    assert_success
+    refute_output --partial "ACTED:"
+    assert_output --partial "'stop' takes no arguments (got: cass)"
+    assert_output --partial "[stop cass] status=1"
+    assert_output --partial "[start agent-mail] status=1"
+    assert_output --partial "[status cm] status=1"
+}
+
 @test "services setup keeps cloud access tokens out of child argv" {
     local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
 

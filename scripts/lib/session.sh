@@ -943,8 +943,12 @@ export_session() {
                 shift 2
                 ;;
             -*)
-                log_warn "Unknown option: $1"
-                shift
+                # An unknown option used to be warned about and skipped while
+                # the export still ran (and could overwrite --output). The
+                # `acfs session` dispatcher answers -h/--help before this.
+                log_error "Unknown option: $1"
+                log_info "Usage: export_session <session_path> [--format json|markdown] [--no-sanitize] [--output FILE]"
+                return 1
                 ;;
             *)
                 session_path="$1"

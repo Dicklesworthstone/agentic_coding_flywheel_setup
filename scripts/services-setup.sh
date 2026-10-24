@@ -1798,6 +1798,18 @@ maybe_run_cli_action() {
     local credential_query=false mutating_action=false
     SERVICES_SETUP_REQUIRED=()
 
+    # A help request anywhere wins (#484). Recording it as just another action
+    # let a later flag replace it: `--help --install-claude-guard` installed
+    # the DCG hook instead of printing help.
+    for arg in "$@"; do
+        case "$arg" in
+            --help|-h)
+                SERVICES_SETUP_ACTION="help"
+                return 0
+                ;;
+        esac
+    done
+
     while [[ $# -gt 0 ]]; do
         arg="$1"
         case "$arg" in

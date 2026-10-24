@@ -1009,6 +1009,46 @@ EOF
     fi
 }
 
+test_services_setup_help_wins_over_action_flags() {
+    # `--help` used to be recorded as just another action, so a later flag
+    # replaced it: `--help --install-claude-guard` installed the DCG hook.
+    setup_mock_env
+
+    local output="" failures=""
+    output=$(HOME="$TEST_HOME" bash -c '
+        set -euo pipefail
+        source "$1"
+        init_target_context() { echo "ACTED:init_target_context"; }
+        configure_dcg() { echo "ACTED:configure_dcg"; }
+        services_setup_credential_status_json() { echo "ACTED:credential_status"; }
+        check_all_status() { echo "ACTED:check_all_status"; }
+        setup_all_unconfigured() { echo "ACTED:setup_all"; }
+        for args in "--help --install-claude-guard" "--install-claude-guard -h" \
+            "--help --credential-status" "--yes --help" "--require --help --credential-status" \
+            "--help --bogus"; do
+            SERVICES_SETUP_ACTION=""
+            SERVICES_SETUP_NONINTERACTIVE="false"
+            # shellcheck disable=SC2086 # split the case into words on purpose
+            maybe_run_cli_action $args
+            run_cli_action
+            echo "[$args] done"
+        done
+    ' _ "$SERVICES_SETUP_SH" 2>&1 || true)
+
+    [[ "$output" != *"ACTED:"* ]] || failures+=" acted"
+    [[ "$(grep -c '^ACFS services-setup$' <<< "$output")" == "6" ]] || failures+=" help-count"
+    [[ "$output" == *"[--help --bogus] done"* ]] || failures+=" incomplete"
+
+    if [[ -z "$failures" ]]; then
+        harness_pass "services-setup --help wins over action flags in any order (#484)"
+    else
+        harness_fail "services-setup --help wins over action flags in any order (#484)" \
+            "failures:$failures output=$output"
+    fi
+
+    cleanup_mock_env
+}
+
 test_stack_is_installed_handles_unknown_tool_under_set_u() {
     local output=""
 
@@ -1909,6 +1949,183 @@ EOF
         harness_pass "notifications CLI rejects unsafe topic and server values"
     else
         harness_fail "notifications CLI rejects unsafe topic and server values" "$output"
+    fi
+
+    cleanup_mock_env
+}
+
+# Shared stub for the notifications CLI tests below: sources the CLI, points
+# its curl resolver at a recording fake (the real resolver only trusts system
+# paths, so PATH alone cannot intercept it), and runs `main` once per case.
+notifications_cli_run_cases() {
+    local target_home="$1"
+    local fake_bin="$2"
+    local capture="$3"
+    shift 3
+
+    (cd "$TEST_HOME" && HOME="$target_home" TARGET_HOME="$target_home" \
+        ACFS_CURL_CAPTURE="$capture" bash -c '
+            source "$1"
+            fake_bin="$2"
+            shift 2
+            notifications_system_binary_path() {
+                if [[ "${1:-}" == "curl" ]]; then
+                    printf "%s/curl\n" "$fake_bin"
+                    return 0
+                fi
+                command -v "${1:-}"
+            }
+            case_args=()
+            for word in "$@" "|"; do
+                if [[ "$word" == "|" ]]; then
+                    status=0
+                    main "${case_args[@]}" || status=$?
+                    printf "[%s] status=%s\n" "${case_args[*]}" "$status"
+                    case_args=()
+                else
+                    case_args+=("$word")
+                fi
+            done
+        ' _ "$NOTIFICATIONS_SH" "$fake_bin" "$@" 2>&1)
+}
+
+notifications_cli_write_fakes() {
+    local target_home="$1"
+    local fake_bin="$2"
+
+    mkdir -p "$target_home/.config/acfs" "$fake_bin"
+    cat > "$target_home/.config/acfs/config.yaml" <<'EOF'
+ntfy_enabled: true
+ntfy_topic: cli-topic
+ntfy_server: https://ntfy.example
+EOF
+
+    cat > "$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$ACFS_CURL_CAPTURE"
+printf '200'
+EOF
+    chmod +x "$fake_bin/curl"
+}
+
+test_notifications_cli_help_never_sends_or_writes() {
+    # #484: `acfs notifications send --help` sent a real notification titled
+    # "--help". A help flag anywhere in a subcommand's arguments must print
+    # usage and exit 0 without contacting the backend or touching the config.
+    setup_mock_env
+
+    local target_home="$TEST_HOME/notifications-target"
+    local fake_bin="$TEST_HOME/fake-bin"
+    local capture="$TEST_HOME/curl-calls"
+    local config_before="" config_after="" output="" failures="" expected=""
+
+    notifications_cli_write_fakes "$target_home" "$fake_bin"
+    config_before="$(cat "$target_home/.config/acfs/config.yaml")"
+
+    output="$(notifications_cli_run_cases "$target_home" "$fake_bin" "$capture" \
+        send --help "|" send -h "|" send "Build done" --help "|" \
+        send "Build done" "All tests passed" high --help "|" \
+        test --help "|" enable --help "|" disable -h "|" status --help "|" topic --help "|" \
+        set-topic --help "|" set-topic other-topic -h "|" set-server --help "|" \
+        set-priority urgent --help)"
+    config_after="$(cat "$target_home/.config/acfs/config.yaml")"
+
+    for expected in \
+        "[send --help] status=0" "[send -h] status=0" "[send Build done --help] status=0" \
+        "[send Build done All tests passed high --help] status=0" "[test --help] status=0" \
+        "[enable --help] status=0" "[disable -h] status=0" "[status --help] status=0" \
+        "[topic --help] status=0" "[set-topic --help] status=0" \
+        "[set-topic other-topic -h] status=0" "[set-server --help] status=0" \
+        "[set-priority urgent --help] status=0" \
+        "Usage: acfs notifications send [--] <title> [body] [priority]" \
+        "Usage: acfs notifications test" "Usage: acfs notifications enable" \
+        "Usage: acfs notifications disable" "Usage: acfs notifications set-topic <topic>" \
+        "Usage: acfs notifications set-server <url>" \
+        "Usage: acfs notifications set-priority <priority>"; do
+        [[ "$output" == *"$expected"* ]] || failures+=" missing<$expected>"
+    done
+    [[ "$output" != *"Sending"* && "$output" != *"Notification sent"* ]] || failures+=" sent"
+    [[ ! -e "$capture" ]] || failures+=" curl-called<$(cat "$capture")>"
+    [[ "$config_after" == "$config_before" ]] || failures+=" config-changed"
+
+    if [[ -z "$failures" ]]; then
+        harness_pass "notifications CLI --help never sends or writes config (#484)"
+    else
+        harness_fail "notifications CLI --help never sends or writes config (#484)" \
+            "failures:$failures output=$output"
+    fi
+
+    cleanup_mock_env
+}
+
+test_notifications_cli_rejects_stray_options_before_sending() {
+    # A malformed send must fail validation before contacting the backend;
+    # `--` still lets a title start with '-'.
+    setup_mock_env
+
+    local target_home="$TEST_HOME/notifications-target"
+    local fake_bin="$TEST_HOME/fake-bin"
+    local capture="$TEST_HOME/curl-calls"
+    local config_before="" config_after="" output="" failures="" expected="" calls=""
+
+    notifications_cli_write_fakes "$target_home" "$fake_bin"
+    config_before="$(cat "$target_home/.config/acfs/config.yaml")"
+
+    output="$(notifications_cli_run_cases "$target_home" "$fake_bin" "$capture" \
+        send --title Build "|" send Build body high extra "|" test now "|" \
+        enable mytopic "|" set-topic a b "|" send --)"
+    config_after="$(cat "$target_home/.config/acfs/config.yaml")"
+
+    for expected in \
+        "[send --title Build] status=1" "Unknown option '--title' for 'acfs notifications send'" \
+        "[send Build body high extra] status=1" "Too many arguments for 'acfs notifications send'" \
+        "[test now] status=1" "[enable mytopic] status=1" "[set-topic a b] status=1" \
+        "[send --] status=1"; do
+        [[ "$output" == *"$expected"* ]] || failures+=" missing<$expected>"
+    done
+    [[ ! -e "$capture" ]] || failures+=" curl-called<$(cat "$capture")>"
+    [[ "$config_after" == "$config_before" ]] || failures+=" config-changed"
+
+    output="$(notifications_cli_run_cases "$target_home" "$fake_bin" "$capture" \
+        send -- --help "-5 tests failed")"
+    calls="$(cat "$capture" 2>/dev/null || true)"
+    [[ "$output" == *"[send -- --help -5 tests failed] status=0"* ]] || failures+=" dashdash-status"
+    [[ "$(printf '%s\n' "$calls" | grep -c .)" == "1" ]] || failures+=" dashdash-calls"
+    [[ "$calls" == *"Title: --help"* && "$calls" == *"-d -5 tests failed"* ]] || failures+=" dashdash-args"
+
+    if [[ -z "$failures" ]]; then
+        harness_pass "notifications CLI rejects stray options and extra args before sending"
+    else
+        harness_fail "notifications CLI rejects stray options and extra args before sending" \
+            "failures:$failures output=$output calls=$calls"
+    fi
+
+    cleanup_mock_env
+}
+
+test_notifications_cli_entrypoint_send_help_shows_usage() {
+    # The executed script (what `acfs notifications` runs) answers the help
+    # query itself. Notifications are disabled here, so the pre-fix code
+    # stopped at "not enabled" instead of showing usage, and nothing can
+    # reach a backend either way.
+    setup_mock_env
+
+    local target_home="$TEST_HOME/notifications-target"
+    local output="" status=0
+
+    mkdir -p "$target_home/.config/acfs"
+    printf 'ntfy_enabled: false\nntfy_topic: cli-topic\nntfy_server: http://127.0.0.1:9\n' \
+        > "$target_home/.config/acfs/config.yaml"
+
+    output=$(cd "$TEST_HOME" && HOME="$target_home" TARGET_HOME="$target_home" \
+        bash "$NOTIFICATIONS_SH" send --help 2>&1) || status=$?
+
+    if [[ $status -eq 0 ]] \
+        && [[ "$output" == "Usage: acfs notifications send [--] <title> [body] [priority]"* ]] \
+        && [[ "$output" != *"not enabled"* ]]; then
+        harness_pass "notifications entrypoint: send --help shows usage"
+    else
+        harness_fail "notifications entrypoint: send --help shows usage" "status=$status output=$output"
     fi
 
     cleanup_mock_env
@@ -5132,6 +5349,56 @@ test_doctor_subcommand_help_flags_exit_zero() {
         harness_pass "acfs/undo/session --help print the right usage and exit 0"
     else
         harness_fail "acfs/undo/session --help print the right usage and exit 0" "failed:$failures"
+    fi
+
+    cleanup_mock_env
+}
+
+test_doctor_session_help_anywhere_never_exports() {
+    # #484 class: `acfs session export FILE -o OUT --help` warned about the
+    # unknown option and still ran the export over OUT, and `acfs session
+    # recent --help` silently dropped the flag and exported. A help flag
+    # anywhere after the session command must only print usage.
+    setup_mock_env
+
+    local fake_bin="$TEST_HOME/fake-bin"
+    local marker="$TEST_HOME/cass-called"
+    local session_file="$TEST_HOME/session.jsonl"
+    local out="$TEST_HOME/exported.json"
+    local output="" failures="" case_args=""
+
+    mkdir -p "$fake_bin"
+    printf '{"type":"session_meta"}\n' > "$session_file"
+    cat > "$fake_bin/cass" <<EOF
+#!/usr/bin/env bash
+printf 'called\n' >> "$marker"
+printf '{"schema_version":1,"session_id":"1","agent":"codex","stats":{"turns":1}}\n'
+EOF
+    chmod +x "$fake_bin/cass"
+
+    for case_args in "export $session_file --output $out --help" "export $session_file -h" \
+        "recent --help" "recent --workspace $TEST_HOME -h" "list --json --help" \
+        "import $session_file --dry-run --help" "show abc --help"; do
+        # shellcheck disable=SC2086 # split the case into words on purpose
+        if ! output="$(HOME="$TEST_HOME" PATH="$fake_bin:$PATH" bash "$DOCTOR_SH" session $case_args 2>&1)"; then
+            failures+=" exit<$case_args>"
+        fi
+        [[ "$output" == "Usage: acfs session"* ]] || failures+=" usage<$case_args>"
+    done
+    [[ ! -e "$out" ]] || failures+=" exported"
+    [[ ! -e "$marker" ]] || failures+=" cass-called"
+
+    # An unknown `recent` option is now an error instead of being dropped.
+    if output="$(HOME="$TEST_HOME" PATH="$fake_bin:$PATH" bash "$DOCTOR_SH" session recent --bogus 2>&1)"; then
+        failures+=" recent-bogus-accepted"
+    fi
+    [[ ! -e "$marker" ]] || failures+=" recent-bogus-exported"
+
+    if [[ -z "$failures" ]]; then
+        harness_pass "acfs session <cmd> ... --help prints usage and never exports (#484)"
+    else
+        harness_fail "acfs session <cmd> ... --help prints usage and never exports (#484)" \
+            "failures:$failures output=$output"
     fi
 
     cleanup_mock_env
@@ -13323,6 +13590,7 @@ main() {
     test_services_setup_repairs_invalid_bun_bin_from_target_user_paths || true
     test_services_setup_init_target_context_repairs_stale_other_user_bun_bin || true
     test_services_setup_cloud_clis_use_find_user_bin || true
+    test_services_setup_help_wins_over_action_flags || true
 
     harness_section "Stack"
     test_stack_is_installed_handles_unknown_tool_under_set_u || true
@@ -13348,6 +13616,9 @@ main() {
     test_notifications_cli_sanitizes_headers_before_curl || true
     test_notifications_cli_reports_config_write_failure_when_sourced || true
     test_notifications_cli_rejects_unsafe_topic_and_server_values || true
+    test_notifications_cli_help_never_sends_or_writes || true
+    test_notifications_cli_rejects_stray_options_before_sending || true
+    test_notifications_cli_entrypoint_send_help_shows_usage || true
 
     harness_section "Autofix"
     test_autofix_uses_target_home_for_state_dir_when_home_is_relative || true
@@ -13562,6 +13833,7 @@ main() {
     test_doctor_entrypoint_dispatches_zsh_only_commands || true
     test_doctor_dispatch_keeps_caller_path || true
     test_doctor_subcommand_help_flags_exit_zero || true
+    test_doctor_session_help_anywhere_never_exports || true
     test_doctor_dispatches_installed_layout_under_root_home || true
     test_doctor_ignores_relative_home_state_trap || true
     test_doctor_uses_system_state_target_home_when_installed_state_is_stale || true

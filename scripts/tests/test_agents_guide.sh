@@ -154,6 +154,35 @@ test_dry_run() {
     [[ ! -e "$sandbox/home/.acfs/docs/flywheel-agent-guide.md" ]]
 }
 
+# Test 10: --help anywhere prints usage and writes nothing (#484). `--output
+# --help` and `deploy --to --help` used to take "--help" as the path.
+test_help_anywhere_writes_nothing() {
+    local sandbox out args
+    sandbox="$(make_sandbox)" || return 1
+
+    for args in "--output --help" "deploy --to --help" "deploy --project $sandbox/proj -h" \
+        "path --help" "--dry-run --help"; do
+        # shellcheck disable=SC2086 # split the case into words on purpose
+        out="$(cd "$sandbox/proj" && run_generator "$sandbox" $args 2>&1)" || return 1
+        [[ "$out" == *"Usage:"*"flywheel-update-agents-md deploy"* ]] || return 1
+    done
+    [[ ! -e "$sandbox/home/.acfs/docs/flywheel-agent-guide.md" ]] || return 1
+    [[ -z "$(ls -A "$sandbox/proj")" ]]
+}
+
+# Test 11: an option value that looks like a flag is a usage error
+test_flag_like_option_values_rejected() {
+    local sandbox
+    sandbox="$(make_sandbox)" || return 1
+
+    (cd "$sandbox/proj" && run_generator "$sandbox" --output --dry-run > /dev/null 2>&1)
+    [[ $? -eq 2 ]] || return 1
+    (cd "$sandbox/proj" && run_generator "$sandbox" deploy --to --workspace > /dev/null 2>&1)
+    [[ $? -eq 2 ]] || return 1
+    [[ ! -e "$sandbox/home/.acfs/docs/flywheel-agent-guide.md" ]] || return 1
+    [[ -z "$(ls -A "$sandbox/proj")" ]]
+}
+
 # ============================================================
 # Run tests
 # ============================================================
@@ -167,6 +196,8 @@ run_test "deploy refuses overwrite + writes candidate" test_deploy_refuses_overw
 run_test "redeploy of identical content is idempotent" test_deploy_idempotent
 run_test "deploy without target is a usage error" test_deploy_requires_target
 run_test "dry-run writes nothing" test_dry_run
+run_test "--help anywhere writes nothing" test_help_anywhere_writes_nothing
+run_test "flag-like option values are usage errors" test_flag_like_option_values_rejected
 
 echo ""
 echo "Passed: $TESTS_PASSED, Failed: $TESTS_FAILED, Skipped: $TESTS_SKIPPED"

@@ -541,8 +541,7 @@ cmd_set_server() {
     local new_server="${1:-}"
 
     if [[ -z "$new_server" ]]; then
-        echo "Usage: acfs notifications set-server <url>"
-        echo "Example: acfs notifications set-server https://ntfy.example.com"
+        notifications_subcommand_usage set-server
         return 1
     fi
 
@@ -568,8 +567,7 @@ cmd_set_priority() {
     local new_priority="${1:-}"
 
     if [[ -z "$new_priority" ]]; then
-        echo "Usage: acfs notifications set-priority <priority>"
-        echo "Options: min, low, default, high, urgent (or 1-5)"
+        notifications_subcommand_usage set-priority
         return 1
     fi
 
@@ -587,8 +585,7 @@ cmd_set_topic() {
     local new_topic="${1:-}"
 
     if [[ -z "$new_topic" ]]; then
-        echo "Usage: acfs notifications set-topic <topic>"
-        echo "Example: acfs notifications set-topic acfs-myserver-secret123"
+        notifications_subcommand_usage set-topic
         return 1
     fi
 
@@ -613,13 +610,7 @@ cmd_send() {
     local curl_bin=""
 
     if [[ -z "$title" ]]; then
-        echo "Usage: acfs notifications send <title> [body] [priority]"
-        echo ""
-        echo "Send an ad-hoc notification via ntfy.sh."
-        echo ""
-        echo "Examples:"
-        echo "  acfs notifications send 'Build done' 'All tests passed'"
-        echo "  acfs notifications send 'Deploy failed' 'See logs' high"
+        notifications_subcommand_usage send
         return 1
     fi
 
@@ -715,6 +706,8 @@ show_help() {
     echo "  test                Send a test notification"
     echo "  send TITLE [BODY] [PRIORITY]   Send a custom notification"
     echo ""
+    echo "Run 'acfs notifications <command> --help' for command usage."
+    echo ""
     echo "Config: ${ACFS_CONFIG_FILE:-<unresolved>}"
     echo ""
     echo "How it works:"
@@ -741,6 +734,119 @@ show_help() {
     echo "  ACFS_NTFY_DEBOUNCE_SECONDS=<seconds>  (default: 30)"
 }
 
+# Usage for one subcommand. Returns 1 for an unknown subcommand.
+notifications_subcommand_usage() {
+    case "${1:-}" in
+        enable)
+            echo "Usage: acfs notifications enable"
+            echo ""
+            echo "Turn on push notifications. The first run generates a random topic;"
+            echo "the subscribe URL is printed afterwards."
+            ;;
+        disable)
+            echo "Usage: acfs notifications disable"
+            echo ""
+            echo "Turn off push notifications. The topic and server are kept."
+            ;;
+        test)
+            echo "Usage: acfs notifications test"
+            echo ""
+            echo "Send a test notification to the configured topic."
+            ;;
+        status)
+            echo "Usage: acfs notifications status"
+            echo ""
+            echo "Show the current notification config."
+            ;;
+        topic)
+            echo "Usage: acfs notifications topic"
+            echo ""
+            echo "Print the subscribe URL."
+            ;;
+        set-server)
+            echo "Usage: acfs notifications set-server <url>"
+            echo "Example: acfs notifications set-server https://ntfy.example.com"
+            ;;
+        set-topic)
+            echo "Usage: acfs notifications set-topic <topic>"
+            echo "Example: acfs notifications set-topic acfs-myserver-secret123"
+            ;;
+        set-priority)
+            echo "Usage: acfs notifications set-priority <priority>"
+            echo "Options: min, low, default, high, urgent (or 1-5)"
+            ;;
+        send)
+            echo "Usage: acfs notifications send [--] <title> [body] [priority]"
+            echo ""
+            echo "Send an ad-hoc notification via ntfy.sh."
+            echo "Put '--' before the title if the title or body starts with '-'."
+            echo ""
+            echo "Examples:"
+            echo "  acfs notifications send 'Build done' 'All tests passed'"
+            echo "  acfs notifications send 'Deploy failed' 'See logs' high"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Positional arguments of the subcommand being dispatched, set by
+# notifications_parse_subcommand_args.
+_NOTIF_ARGS=()
+
+# Parse a subcommand's arguments before the subcommand can act (#484).
+# Usage: notifications_parse_subcommand_args <subcommand> <max_positionals> [args...]
+#
+# -h/--help anywhere before a `--` prints the subcommand's usage and returns 2,
+# so a help query never sends, enables, or writes anything. Any other argument
+# starting with '-' before `--`, and any positional beyond <max_positionals>,
+# is a usage error (returns 1) instead of being sent or saved as data.
+# Everything after `--` is positional. Returns 0 with _NOTIF_ARGS filled on
+# success.
+notifications_parse_subcommand_args() {
+    local subcmd="$1"
+    local max_positionals="$2"
+    shift 2
+
+    local arg=""
+    for arg in "$@"; do
+        [[ "$arg" == "--" ]] && break
+        if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+            notifications_subcommand_usage "$subcmd"
+            return 2
+        fi
+    done
+
+    _NOTIF_ARGS=()
+    local options_done=false
+    for arg in "$@"; do
+        if [[ "$options_done" != true ]]; then
+            if [[ "$arg" == "--" ]]; then
+                options_done=true
+                continue
+            fi
+            if [[ "$arg" == -?* ]]; then
+                echo "Error: Unknown option '$(notifications_header_value "$arg" "")' for 'acfs notifications ${subcmd}'." >&2
+                if [[ "$max_positionals" -gt 0 ]]; then
+                    echo "Put '--' before a value that starts with '-'." >&2
+                fi
+                notifications_subcommand_usage "$subcmd" >&2
+                return 1
+            fi
+        fi
+        _NOTIF_ARGS+=("$arg")
+    done
+
+    if [[ ${#_NOTIF_ARGS[@]} -gt "$max_positionals" ]]; then
+        echo "Error: Too many arguments for 'acfs notifications ${subcmd}'." >&2
+        notifications_subcommand_usage "$subcmd" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 # ============================================================
 # Dispatcher
 # ============================================================
@@ -749,36 +855,21 @@ main() {
     local subcmd="${1:-help}"
     shift 1 2>/dev/null || true
 
+    local handler=""
+    local max_positionals=0
     case "$subcmd" in
-        enable)
-            cmd_enable "$@"
-            ;;
-        disable)
-            cmd_disable "$@"
-            ;;
-        test)
-            cmd_test "$@"
-            ;;
-        status)
-            cmd_status "$@"
-            ;;
-        topic)
-            cmd_topic "$@"
-            ;;
-        set-server)
-            cmd_set_server "$@"
-            ;;
-        set-priority)
-            cmd_set_priority "$@"
-            ;;
-        set-topic)
-            cmd_set_topic "$@"
-            ;;
-        send)
-            cmd_send "$@"
-            ;;
+        enable)       handler=cmd_enable ;;
+        disable)      handler=cmd_disable ;;
+        test)         handler=cmd_test ;;
+        status)       handler=cmd_status ;;
+        topic)        handler=cmd_topic ;;
+        set-server)   handler=cmd_set_server; max_positionals=1 ;;
+        set-priority) handler=cmd_set_priority; max_positionals=1 ;;
+        set-topic)    handler=cmd_set_topic; max_positionals=1 ;;
+        send)         handler=cmd_send; max_positionals=3 ;;
         help|-h|--help)
             show_help
+            return 0
             ;;
         *)
             echo "Unknown command: $subcmd"
@@ -786,6 +877,19 @@ main() {
             return 1
             ;;
     esac
+
+    # The handlers act on their positional arguments directly, so every
+    # argument is vetted here first: `send --help` must show usage, not send a
+    # notification titled "--help".
+    local parse_status=0
+    notifications_parse_subcommand_args "$subcmd" "$max_positionals" "$@" || parse_status=$?
+    case "$parse_status" in
+        0) ;;
+        2) return 0 ;;
+        *) return 1 ;;
+    esac
+
+    "$handler" "${_NOTIF_ARGS[@]+"${_NOTIF_ARGS[@]}"}"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

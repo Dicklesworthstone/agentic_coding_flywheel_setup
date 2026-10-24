@@ -361,6 +361,19 @@ _acfs_holds_cli() {
     local action="${1:-list}"
     shift || true
 
+    # A help request anywhere wins (#484). Checking only the first argument
+    # let `acfs unhold br --help` remove br's hold and `acfs hold br --reason
+    # --help` record "--help" as the reason.
+    local arg=""
+    for arg in "$@"; do
+        case "$arg" in
+            --help|-h)
+                _acfs_holds_cli_usage
+                return 0
+                ;;
+        esac
+    done
+
     case "$action" in
         add|hold)
             local tool="" held_version="current" owner="" reason="" expiry=""
@@ -374,7 +387,6 @@ _acfs_holds_cli() {
                     --reason=*) reason="${1#*=}" ;;
                     --expiry) shift; expiry="${1:-}" ;;
                     --expiry=*) expiry="${1#*=}" ;;
-                    --help|-h) _acfs_holds_cli_usage; return 0 ;;
                     -*)
                         echo "Unknown option: $1" >&2
                         _acfs_holds_cli_usage >&2
@@ -401,9 +413,18 @@ _acfs_holds_cli() {
             ;;
         remove|unhold|rm|delete)
             local tool="${1:-}"
-            if [[ "$tool" == "--help" || "$tool" == "-h" || -z "$tool" ]]; then
+            if [[ -z "$tool" ]]; then
                 echo "Usage: acfs unhold <tool>" >&2
-                [[ -n "$tool" ]] && return 0
+                return 1
+            fi
+            if [[ "$tool" == -* ]]; then
+                echo "Unknown option: $tool" >&2
+                echo "Usage: acfs unhold <tool>" >&2
+                return 1
+            fi
+            if [[ $# -gt 1 ]]; then
+                echo "Only one tool per unhold (got: $*)" >&2
+                echo "Usage: acfs unhold <tool>" >&2
                 return 1
             fi
             acfs_holds_remove "$tool" || return 1

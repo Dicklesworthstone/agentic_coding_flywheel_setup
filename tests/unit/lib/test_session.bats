@@ -332,6 +332,35 @@ EOF
     assert_output --partial "Failed to write exported session"
 }
 
+@test "export_session: rejects an unknown option before exporting (#484)" {
+    local file
+    file=$(create_temp_file "dummy session")
+    local work
+    work="$(create_temp_dir)"
+    local output_file="$work/export.json"
+
+    # An unknown option used to be warned about and skipped while the export
+    # still ran and wrote --output.
+    init_stub_dir
+    cat > "$STUB_DIR/cass" <<EOF
+#!/bin/bash
+printf 'called\n' >> "$work/cass-called"
+echo '{"schema_version": 1, "session_id": "1", "agent": "claude-code", "stats": {"turns":1}}'
+EOF
+    chmod +x "$STUB_DIR/cass"
+
+    run export_session "$file" --output "$output_file" --help
+    assert_failure
+    assert_output --partial "Unknown option: --help"
+
+    run export_session "$file" --fromat markdown --output "$output_file"
+    assert_failure
+    assert_output --partial "Unknown option: --fromat"
+
+    [[ ! -e "$output_file" ]]
+    [[ ! -e "$work/cass-called" ]]
+}
+
 @test "export_session: cleanup does not leak into the caller scope" {
     local file
     file=$(create_temp_file "dummy session")

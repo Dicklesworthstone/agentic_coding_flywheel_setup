@@ -1516,6 +1516,31 @@ main() {
         args=("${args[@]:1}")
     fi
 
+    # A help request anywhere wins over the command (#484): `acfs services
+    # stop --help` must print usage, not shut the services down.
+    local arg=""
+    for arg in "${args[@]+"${args[@]}"}"; do
+        case "$arg" in
+            -h|--help)
+                usage
+                return 0
+                ;;
+        esac
+    done
+
+    # start/stop/status act on every service and take no arguments; refuse
+    # extras rather than silently acting on all services (`stop cass` used to
+    # stop everything).
+    case "$cmd" in
+        start|stop|status)
+            if ((${#args[@]})); then
+                _err "'$cmd' takes no arguments (got: ${args[*]})"
+                _info "Run 'acfs services --help' for usage."
+                return 1
+            fi
+            ;;
+    esac
+
     case "$cmd" in
         start)   cmd_start ;;
         stop)    cmd_stop ;;

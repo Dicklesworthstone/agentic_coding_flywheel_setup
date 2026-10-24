@@ -145,7 +145,7 @@ parse_deploy_target() {
             DEPLOY_SCOPE="read by agents working inside ${2%/} (project scope)"
             return 3 ;;  # consumed two args
         --to)
-            if [[ -z "${2:-}" ]]; then
+            if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
                 echo "ERROR: --to requires a destination path" >&2
                 return 2
             fi
@@ -158,6 +158,15 @@ parse_deploy_target() {
             return 2 ;;
     esac
 }
+
+# A help request anywhere wins (#484): `deploy --to --help` and
+# `--output --help` must print usage, not take "--help" as a path.
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help) usage; exit 0 ;;
+    esac
+done
+unset arg
 
 case "${1:-}" in
     path)
@@ -186,7 +195,12 @@ if [[ "$MODE" == "generate" ]]; then
     while [[ $# -gt 0 ]]; do
         case "$1" in
             generate)  shift ;;
-            --output)  OUTPUT="$2"; shift 2 ;;
+            --output)
+                if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
+                    echo "ERROR: --output requires a file path" >&2
+                    exit 2
+                fi
+                OUTPUT="$2"; shift 2 ;;
             --dry-run) DRY_RUN=true; shift ;;
             -h|--help) usage; exit 0 ;;
             *) echo "Unknown option: $1" >&2; exit 2 ;;
