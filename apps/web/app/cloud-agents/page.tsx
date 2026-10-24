@@ -778,7 +778,7 @@ function GuideSection({ agent, choose, onOpenShot }: { agent: CloudAgent; choose
             <span className="inline-flex items-center gap-2"><BookOpen className="size-4" aria-hidden="true" />{steps.some((step) => step.screenshot) ? "Illustrated guide" : "Step-by-step guide"}</span>
             <EvidenceBadge evidence={agent.evidence} className="font-sans normal-case tracking-normal" />
           </p>
-          <h2 id="guide-heading" className={sectionTitle}>Set up {agent.name}</h2>
+          <h2 id="guide-heading" tabIndex={-1} className={`${sectionTitle} ${focusRing}`}>Set up {agent.name}</h2>
           <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-[17px]">{walkthrough.introduction}</p>
           <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground/90">{walkthrough.visualEvidence} Checked {RESEARCH_DATE_LABEL}.</p>
         </div>
@@ -1082,6 +1082,7 @@ const NETWORK_LEVELS = [
 
 export default function CloudAgentsPage() {
   const [agentId, setAgentId] = useState("claude");
+  const pendingGuideChoice = useRef<string | null>(null);
   const [lightbox, setLightbox] = useState<{ shot: SetupScreenshot; opener: HTMLElement } | null>(null);
   const openShot = useCallback<OpenShot>((shot, opener) => setLightbox({ shot, opener }), []);
   const agent = CLOUD_AGENTS.find((item) => item.id === agentId) ?? CLOUD_AGENTS[0];
@@ -1094,6 +1095,7 @@ export default function CloudAgentsPage() {
       const fragment = window.location.hash.slice(1);
       const id = fragment.split("-step-")[0].replace("codex-cloud", "codex");
       if (!CLOUD_AGENTS.some((item) => item.id === id)) return;
+      pendingGuideChoice.current = null;
       setAgentId(id);
       // A bare provider link (README's #claude, legacy #codex-cloud) lands on its guide.
       if (!fragment.includes("-step-")) requestAnimationFrame(() => document.getElementById("guide")?.scrollIntoView({ block: "start" }));
@@ -1104,12 +1106,21 @@ export default function CloudAgentsPage() {
   }, []);
 
   useEffect(() => {
+    if (pendingGuideChoice.current === agentId) {
+      pendingGuideChoice.current = null;
+      // The guide's select was replaced with its provider's walkthrough. Give
+      // keyboard users a real destination and start the new instructions here.
+      document.getElementById("guide-heading")?.focus({ preventScroll: true });
+      document.getElementById("guide")?.scrollIntoView({ block: "start" });
+      return;
+    }
     const fragment = window.location.hash.slice(1);
     // A direct step link may arrive before that provider's walkthrough mounts.
     if (fragment.startsWith(`${agentId}-step-`)) document.getElementById(fragment)?.scrollIntoView({ block: "start" });
   }, [agentId]);
 
-  const choose = useCallback((id: string) => {
+  const choose = useCallback((id: string, fromGuide = false) => {
+    pendingGuideChoice.current = fromGuide ? id : null;
     setAgentId(id);
     window.history.replaceState(null, "", `#${id}`);
   }, []);
@@ -1199,7 +1210,7 @@ export default function CloudAgentsPage() {
           </div>
         </section>
 
-        <GuideSection key={agent.id} agent={agent} choose={choose} onOpenShot={openShot} />
+        <GuideSection key={agent.id} agent={agent} choose={(id) => choose(id, true)} onOpenShot={openShot} />
 
         {/* ========================= HOW IT WORKS ========================= */}
         <section aria-labelledby="how-heading" className="border-y border-border/40 bg-card/20">

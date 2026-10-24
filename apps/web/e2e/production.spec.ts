@@ -432,3 +432,58 @@ test.describe("Cloud walkthrough progress", () => {
     expect(errors.failedRequests).toEqual([]);
   });
 });
+
+test.describe("Cloud walkthrough provider navigation", () => {
+  test("switching from a later guide step brings the new instructions into view and transfers focus", async ({ page }, testInfo) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents#claude");
+    await waitForPageSettled(page);
+    await page.locator("#guide li[id]").last().scrollIntoViewIfNeeded();
+    await expect(page.locator("#guide-heading")).not.toBeInViewport();
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error("The provider-navigation test requires an emulated viewport");
+    const mobile = viewport.width < 1024;
+    if (mobile) await page.getByRole("button", { name: "Steps", exact: true }).click();
+    const switcher = page.locator(mobile ? "#guide-agent-mobile" : "#guide-agent-desktop");
+    await switcher.focus();
+    await switcher.selectOption("generic");
+    const heading = page.getByRole("heading", { name: "Set up Other Linux agent", exact: true });
+    await expect(heading).toBeVisible();
+    await expect.poll(() => heading.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return { focused: document.activeElement === node, inViewport: rect.top >= 0 && rect.bottom <= window.innerHeight };
+    })).toEqual({ focused: true, inViewport: true });
+    await expect(page).toHaveURL(/#generic$/);
+    await expect(page.locator("#guide-step-menu")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("cloud-provider-switch.png") });
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("top provider choices retain keyboard focus and leave the picker in view", async ({ page }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents");
+    await waitForPageSettled(page);
+    const codex = page.getByRole("radio", { name: "ChatGPT / Codex Hosted test", exact: true });
+    await codex.focus();
+    await codex.press("Space");
+    await expect(codex).toBeChecked();
+    await expect(codex).toBeFocused();
+    await expect(page.locator("#choose-agent")).toBeInViewport();
+    await expect(page).toHaveURL(/#codex$/);
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+
+  test("a direct provider step link still opens the requested instructions without stealing focus", async ({ page }) => {
+    const errors = setupErrorMonitoring(page);
+    await page.goto("/cloud-agents#codex-step-create-environment");
+    await waitForPageSettled(page);
+    await expect(page.getByRole("heading", { name: "Set up ChatGPT / Codex", exact: true })).toBeVisible();
+    await expect(page.locator("#codex-step-create-environment")).toBeInViewport();
+    await expect(page.locator("#guide-heading")).not.toBeFocused();
+    await expect(page).toHaveURL(/#codex-step-create-environment$/);
+    expect(errors.jsErrors).toEqual([]);
+    expect(errors.failedRequests).toEqual([]);
+  });
+});
