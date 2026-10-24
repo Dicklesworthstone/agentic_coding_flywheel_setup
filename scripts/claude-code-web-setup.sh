@@ -438,7 +438,7 @@ cloud_tool_guide_line() {
 }
 
 cloud_write_guide() {
-    local tool status detail block
+    local tool status detail block rerun_config="" profile_name="" profile_path=""
     # Remaining-tool discovery includes final alias probes; cap the whole
     # phase so slow existing binaries cannot exceed the snapshot window.
     local probe_deadline=$(( SECONDS + 60 ))
@@ -501,9 +501,24 @@ cloud_write_guide() {
     fi
     block+=$'\n'"Setup log: \`$ACFS_CLOUD_STATE_DIR/setup.log\` (per-tool logs in \`$ACFS_CLOUD_STATE_DIR/logs/\`)."
     block+=$'\n\nRe-run:\n\n```bash\n'
+    # Setup-field overrides need not survive into a later task shell. Keep
+    # the configured provider profile so repairs update the same instructions.
+    if [[ "$ACFS_CLOUD_AGENT" == claude && -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
+        profile_name="CLAUDE_CONFIG_DIR"
+        profile_path="$CLAUDE_CONFIG_DIR"
+    elif [[ "$ACFS_CLOUD_AGENT" == codex && -n "${CODEX_HOME:-}" ]]; then
+        profile_name="CODEX_HOME"
+        profile_path="$CODEX_HOME"
+    fi
+    if [[ -n "$profile_name" ]]; then
+        # Relative configuration paths refer to this setup directory, even
+        # when the copied rerun is executed from another task's directory.
+        [[ "$profile_path" == /* ]] || profile_path="$PWD/$profile_path"
+        rerun_config="$profile_name=$(printf '%q' "$profile_path") "
+    fi
     # Buffer the complete successful bootstrap before executing any bytes.
     # The subshell contains the temporary variable and preserves curl failure.
-    block+="( acfs_cloud_setup=\"\$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' -H 'Accept-Encoding: identity' $(printf '%q' "$ACFS_CLOUD_SCRIPT_URL"))\" && printf '%s\\n' \"\$acfs_cloud_setup\" | ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_TOOLS=$(printf '%q' "$ACFS_CLOUD_TOOLS") ACFS_CLOUD_TIMEOUT=$ACFS_CLOUD_TIMEOUT ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash )"$'\n```\n'
+    block+="( acfs_cloud_setup=\"\$(curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 -A 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' -H 'Accept-Encoding: identity' $(printf '%q' "$ACFS_CLOUD_SCRIPT_URL"))\" && printf '%s\\n' \"\$acfs_cloud_setup\" | ${rerun_config}ACFS_REF=$(printf '%q' "$ACFS_REF") ACFS_CLOUD_SKILL_DIR=$(printf '%q' "$ACFS_CLOUD_SKILL_DIR") ACFS_CLOUD_ROOT=$(printf '%q' "$ACFS_CLOUD_ROOT") ACFS_CLOUD_TOOLS=$(printf '%q' "$ACFS_CLOUD_TOOLS") ACFS_CLOUD_TIMEOUT=$ACFS_CLOUD_TIMEOUT ACFS_CLOUD_AGENT=$ACFS_CLOUD_AGENT bash )"$'\n```\n'
     if [[ "$ACFS_CLOUD_AGENT" == codex ]]; then
         block+=$'\nAgent Mail is installed as a CLI. Hosted Codex MCP registration is not configured by this script.\n'
     elif [[ "$ACFS_CLOUD_AGENT" == generic ]]; then

@@ -736,6 +736,37 @@ else:
         result, _ = self.run_generated_rerun(guide, bootstrap_exit=22, bootstrap_body=b'')
         self.assertNotEqual(result.returncode, 0, 'Failed bootstrap download was reported as success')
 
+    def check_generated_rerun_profile(self, agent, variable, relative=False):
+        self.bundle()
+        setup = self.root / 'setup phase'
+        setup.mkdir()
+        directory = setup / (agent + ' profile ` config')
+        directory.mkdir()
+        guide = directory / ('CLAUDE.md' if agent == 'claude' else 'AGENTS.md')
+        guide.write_text('Keep these profile instructions.\n')
+        configured = directory.name if relative else str(directory)
+        self.run_setup(cwd=setup, ACFS_CLOUD_AGENT=agent, **{variable: configured})
+        original = guide.read_bytes()
+        result, _ = self.run_generated_rerun(original.decode())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Guide for ' + agent + ': ' + str(guide), result.stderr)
+        self.assertEqual(guide.read_bytes(), original)
+        self.assertFalse((self.home / '.claude/CLAUDE.md').exists())
+        self.assertFalse((self.home / '.codex/AGENTS.md').exists())
+        self.assertFalse((self.root / 'config').exists())
+
+    def test_generated_rerun_preserves_configured_claude_instruction_directory(self):
+        self.check_generated_rerun_profile('claude', 'CLAUDE_CONFIG_DIR')
+
+    def test_generated_rerun_preserves_configured_codex_home(self):
+        self.check_generated_rerun_profile('codex', 'CODEX_HOME')
+
+    def test_generated_rerun_preserves_relative_claude_profile_from_another_directory(self):
+        self.check_generated_rerun_profile('claude', 'CLAUDE_CONFIG_DIR', relative=True)
+
+    def test_generated_rerun_preserves_relative_codex_profile_from_another_directory(self):
+        self.check_generated_rerun_profile('codex', 'CODEX_HOME', relative=True)
+
     def test_generated_rerun_never_executes_partial_bootstrap(self):
         self.bundle()
         self.run_setup(ACFS_CLOUD_AGENT='generic')
