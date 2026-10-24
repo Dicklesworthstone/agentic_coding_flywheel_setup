@@ -266,3 +266,66 @@ EOF
     run check_network_apt_mirror "$BATS_TEST_TMPDIR/no-apt-here"
     [[ "$output" == "deep.network.apt_mirror|skip|"* ]] || fail "unexpected: $output"
 }
+
+# ------------------------------------------------------------
+# #482: shell.login_shell blamed the account when user.sh did not load
+# ------------------------------------------------------------
+
+# Point doctor at a fixture validator instead of the deployed runtime.
+login_shell_validator_fixture() {
+    LOGIN_SHELL_VALIDATOR="$BATS_TEST_TMPDIR/user.sh"
+    printf '%s\n' "$1" > "$LOGIN_SHELL_VALIDATOR"
+    _acfs_doctor_find_lib_script() { [[ "$1" == user.sh ]] && printf '%s\n' "$LOGIN_SHELL_VALIDATOR"; }
+    export TARGET_USER="ubuntu"
+}
+
+@test "login shell: the shipped user.sh parses and defines the functions its callers use (#482)" {
+    run bash -n "$PROJECT_ROOT/scripts/lib/user.sh"
+    [ "$status" -eq 0 ] || fail "user.sh does not parse: $output"
+    run bash -c 'source "$1" >/dev/null 2>&1 || exit 2
+        declare -F user_login_shell_configured user_verify_local_account_identity set_default_shell >/dev/null' \
+        _ "$PROJECT_ROOT/scripts/lib/user.sh"
+    [ "$status" -eq 0 ] || fail "user.sh did not load its login-shell functions (status $status)"
+}
+
+@test "login shell: a validator with a syntax error is a deployment failure, not an account verdict (#482)" {
+    load_doctor_functions
+    login_shell_validator_fixture 'user_login_shell_configured() { [[ "$1" == x && "$1" != *
+}'
+
+    run check_login_shell_policy
+    [ "$status" -eq 0 ]
+    [[ "$output" == "shell.login_shell|fail|the deployed login-shell validator ($LOGIN_SHELL_VALIDATOR) failed to load, so the account was not checked|Run acfs-update"* ]] \
+        || fail "unexpected: $output"
+}
+
+@test "login shell: a validator without the verifier is a deployment failure (#482)" {
+    load_doctor_functions
+    login_shell_validator_fixture 'user_other_helper() { :; }'
+
+    run check_login_shell_policy
+    [[ "$output" == "shell.login_shell|fail|the deployed login-shell validator ("*") failed to load, so the account was not checked|"* ]] \
+        || fail "unexpected: $output"
+}
+
+@test "login shell: the verifier's verdict decides pass and fail for a loadable validator (#482)" {
+    load_doctor_functions
+    login_shell_validator_fixture 'user_login_shell_configured() { [[ "$1" == ubuntu ]]; }'
+    run check_login_shell_policy
+    [ "$output" = "shell.login_shell|pass|approved zsh path verified for ubuntu|" ] || fail "unexpected: $output"
+
+    login_shell_validator_fixture 'user_login_shell_configured() { return 1; }'
+    run check_login_shell_policy
+    [[ "$output" == "shell.login_shell|fail|the effective login shell for ubuntu is not an approved, executable zsh path from /etc/shells|Re-run ACFS shell setup"* ]] \
+        || fail "unexpected: $output"
+}
+
+@test "login shell: a missing validator still reports that user.sh is not deployed" {
+    load_doctor_functions
+    _acfs_doctor_find_lib_script() { return 1; }
+    export TARGET_USER="ubuntu"
+
+    run check_login_shell_policy
+    [ "$output" = "shell.login_shell|fail|user.sh validator is not deployed|Run acfs-update to redeploy the ACFS runtime, then run acfs doctor again" ] \
+        || fail "unexpected: $output"
+}

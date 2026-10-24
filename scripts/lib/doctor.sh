@@ -2383,6 +2383,48 @@ check_workspace() {
     blank_line
 }
 
+# The login-shell verdict comes from the installer's own validator in user.sh.
+# A validator that is missing, does not parse, or lacks the verifier is a
+# runtime deployment problem, not an account problem; reporting it as an
+# unapproved shell blamed accounts that were configured correctly (#482).
+check_login_shell_policy() {
+    local user_lib=""
+    local verdict=0
+
+    user_lib="$(_acfs_doctor_find_lib_script "user.sh" 2>/dev/null || true)"
+    if [[ -z "$user_lib" || ! -f "$user_lib" ]]; then
+        check "shell.login_shell" "Login shell policy" "fail" "user.sh validator is not deployed" \
+            "Run acfs-update to redeploy the ACFS runtime, then run acfs doctor again"
+        return 0
+    fi
+
+    (
+        # Keep user.sh state changes contained; doctor only needs its read-only
+        # account-policy verifier here.
+        # shellcheck source=/dev/null
+        source "$user_lib" >/dev/null 2>&1 \
+            && declare -F user_login_shell_configured >/dev/null \
+            || exit 3
+        user_login_shell_configured "$TARGET_USER" || exit 1
+    ) || verdict=$?
+
+    case "$verdict" in
+        0)
+            check "shell.login_shell" "Login shell policy" "pass" "approved zsh path verified for $TARGET_USER"
+            ;;
+        3)
+            check "shell.login_shell" "Login shell policy" "fail" \
+                "the deployed login-shell validator ($user_lib) failed to load, so the account was not checked" \
+                "Run acfs-update to redeploy the ACFS runtime, then run acfs doctor again"
+            ;;
+        *)
+            check "shell.login_shell" "Login shell policy" "fail" \
+                "the effective login shell for $TARGET_USER is not an approved, executable zsh path from /etc/shells" \
+                "Re-run ACFS shell setup after repairing /etc/shells; for externally managed users, configure the identity provider login shell"
+            ;;
+    esac
+}
+
 # Check shell
 check_shell() {
     section "Shell"
@@ -2404,24 +2446,7 @@ check_shell() {
 
     check_command "shell.zsh" "zsh" "zsh" "$(doctor_pkg_install_hint zsh)"
 
-    local user_lib=""
-    user_lib="$(_acfs_doctor_find_lib_script "user.sh" 2>/dev/null || true)"
-    if [[ -z "$user_lib" || ! -f "$user_lib" ]]; then
-        check "shell.login_shell" "Login shell policy" "fail" "user.sh validator is not deployed" \
-            "Run acfs-update to redeploy the ACFS runtime, then run acfs doctor again"
-    elif (
-        # Keep user.sh state changes contained; doctor only needs its read-only
-        # account-policy verifier here.
-        # shellcheck source=/dev/null
-        source "$user_lib" >/dev/null 2>&1
-        user_login_shell_configured "$TARGET_USER"
-    ); then
-        check "shell.login_shell" "Login shell policy" "pass" "approved zsh path verified for $TARGET_USER"
-    else
-        check "shell.login_shell" "Login shell policy" "fail" \
-            "the effective login shell for $TARGET_USER is not an approved, executable zsh path from /etc/shells" \
-            "Re-run ACFS shell setup after repairing /etc/shells; for externally managed users, configure the identity provider login shell"
-    fi
+    check_login_shell_policy
 
     if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
         check "shell.ohmyzsh" "Oh My Zsh" "skip" "not used on Arch-family; existing prompt preserved"
