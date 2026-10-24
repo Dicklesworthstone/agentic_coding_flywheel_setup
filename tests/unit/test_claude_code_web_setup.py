@@ -536,11 +536,15 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
             if candidate:
                 version = subprocess.run([candidate, '--version'], capture_output=True,
                                          text=True, timeout=5)
-                if version.returncode == 0 and 'GNU coreutils' in version.stdout:
+                # Ubuntu 26.04 ships uutils, which implements these same
+                # timeout/kill-after flags. The real deadline tests below
+                # qualify behavior; the vendor name is not the contract.
+                if version.returncode == 0 and any(implementation in version.stdout
+                                                   for implementation in ('GNU coreutils', 'uutils coreutils')):
                     timeout = candidate
                     break
         if not timeout:
-            self.fail("GNU timeout is required to test the actual process deadline")
+            self.fail("GNU-compatible timeout is required to test the actual process deadline")
         (self.bin / "timeout").symlink_to(timeout)
         for name in ("cargo", "go", "git", "npm", "bun"):
             self.command(name, f'#!/bin/sh\necho {name} >> "{self.root}/forbidden"\nexit 99\n')
