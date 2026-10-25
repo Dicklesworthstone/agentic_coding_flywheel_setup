@@ -8984,6 +8984,42 @@ update_ensure_writable_tmpdir() {
     return 0
 }
 
+# #483: on hosts whose load never drops below nproc, #448 advises running
+# `acfs update --yes` (which has no load gate) instead of the nightly wrapper,
+# and some run it straight from the nightly unit. Record such a run in the
+# wrapper's execution record so doctor and status see it. Only a completed,
+# full (default category selection), non-interactive, non-dry run counts;
+# self-update may be on or off, as in the nightly. The reader/writer lives in
+# nightly_update.sh, sourced only from a copy carrying the health API marker
+# because older wrappers ran the whole update when sourced. Best effort: this
+# never changes the update's exit status.
+update_record_nightly_outcome() {
+    local rc="${1:-}" helper="$SCRIPT_DIR/nightly_update.sh"
+    local state_file="${HOME:-}/.acfs/nightly-update.state" first_line="" marker=""
+    local record_rc=0
+
+    [[ "$YES_MODE" == "true" ]] || return 0
+    update_is_read_only_mode && return 0
+    [[ "$UPDATE_APT" == "true" && "$UPDATE_AGENTS" == "true" && "$UPDATE_CLOUD" == "true" &&
+       "$UPDATE_RUNTIME" == "true" && "$UPDATE_STACK" == "true" && "$UPDATE_SHELL" == "true" ]] || return 0
+    [[ -f "$state_file" && ! -L "$state_file" ]] || return 0
+    [[ -f "$helper" && -r "$helper" && ! -L "$helper" ]] || return 0
+    { IFS= read -r first_line; IFS= read -r marker; } < "$helper" || return 0
+    [[ "$first_line" == '#!'* && "$marker" == '# ACFS_NIGHTLY_HEALTH_API=1' ]] || return 0
+    (
+        # shellcheck source=scripts/lib/nightly_update.sh
+        source "$helper" </dev/null >/dev/null 2>&1 || exit 1
+        declare -F acfs_nightly_record_direct_update >/dev/null || exit 1
+        acfs_nightly_record_direct_update "$state_file" "$rc"
+    ) || record_rc=$?
+    case "$record_rc" in
+        0) log_to_file "Recorded this update (exit $rc) in the nightly execution record" ;;
+        2) log_to_file "The nightly wrapper is running and records this update's outcome" ;;
+        *) log_to_file "Did not record this update in the nightly execution record" ;;
+    esac
+    return 0
+}
+
 main() {
     # Ensure PATH includes user tool directories
     ensure_path
@@ -9210,13 +9246,15 @@ main() {
     #   0 = everything succeeded (held tools count as deliberate skips)
     #   1 = total failure: errors occurred and nothing was updated
     #   2 = partial failure: some tools updated, some failed
+    local update_rc=0
     if [[ $FAIL_COUNT -gt 0 ]]; then
+        update_rc=1
         if [[ $SUCCESS_COUNT -gt 0 ]]; then
-            exit 2
+            update_rc=2
         fi
-        exit 1
     fi
-    exit 0
+    update_record_nightly_outcome "$update_rc"
+    exit "$update_rc"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

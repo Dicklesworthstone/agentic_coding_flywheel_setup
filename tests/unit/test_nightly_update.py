@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Offline regressions for the real nightly wrapper (issue #448).
+"""Offline regressions for the real nightly wrapper (issue #448) and for direct
+`acfs update --yes` runs recording into the same health record (issue #483).
 
 Run: python3 -m unittest discover -s tests/unit -p test_nightly_update.py -v
-No updater, cleanup, real sleeps, network, or systemd changes are performed.
+No updater, cleanup, real sleeps, network, or systemd changes are performed;
+update.sh's main() runs with every update step stubbed out.
 """
 import datetime
+import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -219,6 +223,170 @@ exit "${FIXTURE_UPDATE_RC:-0}"
         self.assertEqual(result.stdout.strip(), "acfs_nightly_state_read")
         self.assertFalse(self.state.exists())
         self.assert_no_update()
+
+
+UPDATE = ROOT / "scripts/lib/update.sh"
+# Every step main() runs is a no-op except update_apt, which sets the counters
+# that decide main's exit status. Logging and the exit-status logic are real.
+UPDATE_MAIN_STUBS = r'''
+for fn in ensure_path update_ensure_writable_tmpdir update_acfs_self \
+    update_procwatch_start update_procwatch_stop update_ensure_jq_available \
+    cleanup_legacy_git_safety_guard cleanup_legacy_br_alias cleanup_legacy_bv_alias \
+    cleanup_unmanaged_atuin_init update_bun update_agents update_cloud update_rust \
+    update_cargo_tools update_uv update_go update_shell update_stack \
+    update_root_agents_md update_report_service_binary_drift print_summary; do
+    eval "$fn() { :; }"
+done
+update_apt() { SUCCESS_COUNT="$FIXTURE_SUCCESSES"; FAIL_COUNT="$FIXTURE_FAILURES"; }
+'''
+
+
+class DirectUpdateRecordTests(unittest.TestCase):
+    """A direct `acfs update --yes` refreshes the nightly record (issue #483)."""
+
+    NOW = START + 10 * 86400
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="acfs-nightly-direct-")
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        self.acfs = self.home / ".acfs"
+        self.acfs.mkdir()
+        self.state = self.acfs / "nightly-update.state"
+        self.env = {"PATH": os.environ["PATH"], "HOME": str(self.home), "LC_ALL": "C",
+                    "TZ": "UTC", "NO_COLOR": "1"}
+
+    def write(self, *fields):
+        self.state.write_text("\t".join(map(str, ("1",) + fields)) + "\n")
+        return self.state.read_bytes()
+
+    def write_interrupted(self):
+        # Shaped like the record in the report: an interrupted wrapper run with
+        # one skipped night, after which every night ran update --yes directly.
+        return self.write("interrupted", "interrupted", START, START - 86400,
+                          START - 3600, "2026-10-08", 1, 1, 0)
+
+    def read_state(self):
+        values = self.state.read_text().rstrip("\n").split("\t")
+        self.assertEqual(len(values), len(FIELDS))
+        return dict(zip(FIELDS, values))
+
+    RECORD = 'source "$1"; acfs_nightly_record_direct_update "$2" "$3" "$4"'
+    # The wrapper holds nightly-update.lock for its whole retry window.
+    RECORD_UNDER_WRAPPER_LOCK = ('exec 9>>"$(dirname "$2")/nightly-update.lock"; flock -n 9; '
+                                 'source "$1"; acfs_nightly_record_direct_update "$2" "$3" "$4"')
+
+    def record(self, rc, script=RECORD):
+        return subprocess.run(
+            ["bash", "-c", script, "test", str(WRAPPER), str(self.state), str(rc), str(self.NOW)],
+            env=self.env, capture_output=True, text=True, timeout=10)
+
+    def health(self, now=None):
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; acfs_nightly_health_report "$2" "$3"',
+             "test", str(WRAPPER), str(self.state), str(now or self.NOW + 60)],
+            env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        level, _, encoded = result.stdout.rstrip("\n").split("\t")
+        return level, json.loads(encoded)["code"]
+
+    def run_update_main(self, *args, successes=5, failures=0):
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; eval "$STUBS"; shift; main "$@"',
+             "test", str(UPDATE), *args],
+            env={**self.env, "STUBS": UPDATE_MAIN_STUBS,
+                 "FIXTURE_SUCCESSES": str(successes), "FIXTURE_FAILURES": str(failures)},
+            capture_output=True, text=True, timeout=30)
+        return result
+
+    def test_successful_direct_update_clears_the_stale_warning(self):
+        self.write_interrupted()
+        self.assertEqual(self.health(), ("warn", "interrupted"))
+        result = self.record(0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = self.read_state()
+        self.assertEqual(state["outcome"], "success")
+        self.assertEqual(state["reason"], "none")
+        self.assertEqual(state["last_attempt"], str(self.NOW))
+        self.assertEqual(state["last_success"], str(self.NOW))
+        self.assertEqual((state["skipped_nights"], state["first_skip"], state["skip_date"]),
+                         ("0", "0", "-"))
+        self.assertEqual(self.health(), ("pass", "success"))
+        self.assertEqual(self.state.stat().st_mode & 0o777, 0o600)
+
+    def test_failed_direct_update_is_recorded_without_claiming_recovery(self):
+        self.write("skipped", "load", START, START - 86400, START - 3600, "2026-10-09", 2, 3, 0)
+        for rc in (2, 1):
+            with self.subTest(rc=rc):
+                result = self.record(rc)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                state = self.read_state()
+                self.assertEqual((state["outcome"], state["reason"]), ("failed", "update"))
+                self.assertEqual(state["last_attempt"], str(self.NOW))
+                self.assertEqual(state["last_success"], str(START - 86400))
+                self.assertEqual(state["skipped_nights"], "2")
+                self.assertEqual(self.health(), ("warn", "failed"))
+
+    def test_only_an_existing_valid_record_is_refreshed(self):
+        result = self.record(0)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(self.state.exists())
+        self.state.write_text("not a record\n")
+        result = self.record(0)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.state.read_text(), "not a record\n")
+        self.write_interrupted()
+        result = self.record(0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_a_running_wrapper_keeps_ownership_of_the_record(self):
+        original = self.write_interrupted()
+        result = self.record(0, script=self.RECORD_UNDER_WRAPPER_LOCK)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(self.state.read_bytes(), original)
+        result = self.record(0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_update_main_records_a_full_noninteractive_run(self):
+        self.write_interrupted()
+        result = self.run_update_main("--yes", "--quiet")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        success = self.read_state()
+        self.assertEqual(success["outcome"], "success")
+        logs = "".join(log.read_text() for log in (self.acfs / "logs/updates").glob("*.log"))
+        self.assertIn("Recorded this update (exit 0) in the nightly execution record", logs)
+        # main records with the real clock.
+        self.assertEqual(self.health(now=int(time.time()) + 60), ("pass", "success"))
+
+        result = self.run_update_main("--yes", "--quiet", "--no-self-update",
+                                      successes=3, failures=1)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        state = self.read_state()
+        self.assertEqual((state["outcome"], state["reason"]), ("failed", "update"))
+        self.assertEqual(state["last_success"], success["last_success"])
+
+    def test_update_main_records_only_full_noninteractive_runs(self):
+        original = self.write_interrupted()
+        for args in (("--quiet",), ("--yes", "--quiet", "--agents-only"),
+                     ("--yes", "--quiet", "--no-apt"), ("--yes", "--quiet", "--dry-run")):
+            with self.subTest(args=args):
+                result = self.run_update_main(*args)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.state.read_bytes(), original)
+        result = self.run_update_main("--yes", "--quiet")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_update_main_never_creates_a_record(self):
+        result = self.run_update_main("--yes", "--quiet")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.state.exists())
+        self.write_interrupted()
+        result = self.run_update_main("--yes", "--quiet")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.read_state()["outcome"], "success")
 
 
 if __name__ == "__main__":

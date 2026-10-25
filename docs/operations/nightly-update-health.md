@@ -92,6 +92,28 @@ force an update on an overloaded host. The ordinary default remains two more
 resource checks at 30-minute intervals. Do not edit execution state to make
 status appear healthy.
 
+## Direct `acfs update --yes` runs
+
+On a host whose load never drops below nproc, the wrapper defers every night,
+and `acfs update --yes` (no load gate) is the way to update. Some hosts run it
+from a drop-in on `acfs-nightly-update.service` instead of the wrapper. A
+completed `acfs update --yes` run records its outcome in the same execution
+record, so doctor and status reflect it:
+
+- exit 0 is a full success: it sets the last success and clears the skipped
+  nights, exactly like a successful wrapper run;
+- exit 1 or 2 records `failed` and keeps the previous success and skip count.
+
+Only a run with the default (full) category selection counts; self-update may
+be on or off. `--dry-run`, `--*-only`, `--no-*`, and runs without `--yes`
+leave the record alone. While the wrapper holds its lock (during its retry
+window and its own update), the wrapper records the outcome instead. A direct
+run refreshes an existing, valid record owned by the same user; it never
+creates one, so a host that has never run the wrapper keeps `not_recorded`.
+To start tracking on such a host, run the wrapper once (the command above).
+An update that aborts before its summary records nothing, so the previous
+outcome stays (a previous success becomes `stale_success` after three days).
+
 ## Regression tests
 
 ```bash

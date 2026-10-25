@@ -153,6 +153,67 @@ acfs_nightly_health_report() (
         "$level" "$message" "$level" "$code" "$data"
 )
 
+# Atomically replace the record with the ACFS_NIGHTLY_* fields. Writers hold
+# nightly-update.lock; the reader above validates whatever they produce.
+acfs_nightly_state_write() {
+    local file="$1" tmp=""
+    tmp="$(mktemp "${file}.XXXXXX")" || return 1
+    printf '1\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$ACFS_NIGHTLY_OUTCOME" "$ACFS_NIGHTLY_REASON" \
+        "$ACFS_NIGHTLY_LAST_ATTEMPT" "$ACFS_NIGHTLY_LAST_SUCCESS" \
+        "$ACFS_NIGHTLY_FIRST_SKIP" "$ACFS_NIGHTLY_SKIP_DATE" \
+        "$ACFS_NIGHTLY_SKIPPED_NIGHTS" "$ACFS_NIGHTLY_ATTEMPT" \
+        "$ACFS_NIGHTLY_NEXT_RETRY" > "$tmp" &&
+        mv -fT -- "$tmp" "$file"
+}
+
+# Record a completed `acfs update --yes` that ran outside this wrapper (#483).
+# Hosts whose load never drops below nproc follow #448's advice and run the
+# updater straight from the nightly unit; without this the record keeps its
+# last wrapper outcome and doctor/status warn forever. update.sh calls this
+# after a full, non-interactive run with that run's exit status.
+#
+# Refreshes only an existing, valid record owned by the caller: a host that
+# never ran the wrapper keeps "not recorded" (and so never gains a stale-success
+# warning), and an invalid record stays untouched for inspection. When the
+# wrapper holds the lock, it is the caller and records its own outcome.
+# Success resets the skip history like a wrapper success; a failure keeps the
+# last success and the skip history, like a wrapper failure.
+# Returns 0 when recorded, 2 when the running wrapper owns the record, and 1
+# when nothing was recorded.
+acfs_nightly_record_direct_update() (
+    local file="${1:-}" rc="${2:-}" now="${3:-}" lock="" lock_fd=""
+
+    [[ "$rc" =~ ^[0-9]{1,3}$ ]] || return 1
+    [[ -f "$file" && ! -L "$file" && -O "$file" ]] || return 1
+    lock="${file%/*}/nightly-update.lock"
+    [[ ! -L "$lock" ]] || return 1
+    command -v flock >/dev/null 2>&1 || return 1
+    exec {lock_fd}>>"$lock" || return 1
+    flock -n "$lock_fd" || return 2
+    acfs_nightly_state_read "$file" || return 1
+    if [[ -z "$now" ]]; then
+        now=$(date +%s 2>/dev/null) || return 1
+    fi
+    [[ "$now" =~ ^[1-9][0-9]{0,9}$ ]] || return 1
+
+    ACFS_NIGHTLY_LAST_ATTEMPT="$now"
+    ACFS_NIGHTLY_ATTEMPT=1
+    ACFS_NIGHTLY_NEXT_RETRY=0
+    if [[ "$rc" == 0 ]]; then
+        ACFS_NIGHTLY_OUTCOME=success
+        ACFS_NIGHTLY_REASON=none
+        ACFS_NIGHTLY_LAST_SUCCESS="$now"
+        ACFS_NIGHTLY_FIRST_SKIP=0
+        ACFS_NIGHTLY_SKIP_DATE=-
+        ACFS_NIGHTLY_SKIPPED_NIGHTS=0
+    else
+        ACFS_NIGHTLY_OUTCOME=failed
+        ACFS_NIGHTLY_REASON=update
+    fi
+    acfs_nightly_state_write "$file"
+)
+
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
     return 0
 fi
@@ -601,15 +662,7 @@ NIGHTLY_DATE="$(date +%F)"
 NIGHTLY_FINALIZED=false
 
 nightly_write_state() {
-    local tmp=""
-    tmp="$(mktemp "${NIGHTLY_STATE_FILE}.XXXXXX")" || return 1
-    if ! printf '1\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$ACFS_NIGHTLY_OUTCOME" "$ACFS_NIGHTLY_REASON" \
-        "$ACFS_NIGHTLY_LAST_ATTEMPT" "$ACFS_NIGHTLY_LAST_SUCCESS" \
-        "$ACFS_NIGHTLY_FIRST_SKIP" "$ACFS_NIGHTLY_SKIP_DATE" \
-        "$ACFS_NIGHTLY_SKIPPED_NIGHTS" "$ACFS_NIGHTLY_ATTEMPT" \
-        "$ACFS_NIGHTLY_NEXT_RETRY" > "$tmp" ||
-        ! mv -fT -- "$tmp" "$NIGHTLY_STATE_FILE"; then
+    if ! acfs_nightly_state_write "$NIGHTLY_STATE_FILE"; then
         log "ERROR: cannot persist nightly health state; refusing to continue"
         return 1
     fi
