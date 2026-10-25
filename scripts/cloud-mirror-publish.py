@@ -11,11 +11,13 @@ import hashlib
 import hmac
 import io
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
 import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -58,6 +60,24 @@ def gh_release(endpoint):
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def stage_file(path, data):
+    """Retain partial writes privately; never replace an existing cache entry."""
+    if path.exists():
+        if path.read_bytes() != data:
+            raise ValueError(f"Existing staged file differs: {path}")
+        return
+    descriptor, candidate = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=path.parent)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(data)
+        output.flush()
+        os.fsync(output.fileno())
+    try:
+        os.link(candidate, path)
+    except FileExistsError:
+        if path.read_bytes() != data:
+            raise ValueError(f"Existing staged file differs: {path}")
 
 
 class HTTPSRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -182,8 +202,7 @@ def prepare(tool, stage):
         expected = meta.get("digest", "")
         if not hmac.compare_digest(expected, "sha256:" + digest(data)):
             raise ValueError(f"{tool}: GitHub asset digest mismatch/missing for {filename}")
-        if not dest.exists():
-            dest.write_bytes(data)
+        stage_file(dest, data)
         return data
 
     data = asset(name)
@@ -251,8 +270,7 @@ def prepare(tool, stage):
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() and target.read_bytes() != packed:
         raise ValueError("Existing content-addressed bundle differs")
-    if not target.exists():
-        target.write_bytes(packed)
+    stage_file(target, packed)
     print(f"{tool}: {version}, {len(packed):,} bytes, verified", flush=True)
     return tool, {"version": version, "file": relative, "sha256": sha, "bins": bins,
                   "source": {"repo": repo, "tag": version, "asset": name, "url": assets[name]["browser_download_url"], "sha256": digest(data),
@@ -302,9 +320,7 @@ def publish_public_asset(tool, version, sha, data, stage):
     if asset.exists():
         if not hmac.compare_digest(digest(asset.read_bytes()), sha):
             raise ValueError(f"{tool}: fallback local asset collision")
-    else:
-        with asset.open("xb") as output:
-            output.write(data)
+    stage_file(asset, data)
     endpoint = f"repos/{FALLBACK_REPO}/releases/tags/{FALLBACK_TAG}"
     try:
         release = gh_release(endpoint)

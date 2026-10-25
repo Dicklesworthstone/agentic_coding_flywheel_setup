@@ -21,6 +21,7 @@ import unittest
 from unittest import mock
 import warnings
 import zipfile
+from contextlib import contextmanager
 from email.message import Message
 from email.policy import HTTP
 from urllib.response import addinfourl
@@ -221,6 +222,104 @@ class MirrorPublisher(unittest.TestCase):
         packed = (self.stage / entry["file"]).read_bytes()
         self.assertEqual(publisher.digest(packed), entry["sha256"])
         self.assertEqual(publisher.archive_files(packed, entry["file"]), {"bin/bv": b"bin"})
+
+    def check_interrupted_staging(self, upstream):
+        name = publisher.TOOLS['bv'][1].format(v='1.2.3')
+        raw = self.tar(['bv'])
+        packed = publisher.bundle({'bin/bv': b'bin'})
+        payloads = {name: raw, name + '.sha256': (publisher.digest(raw) + '  ' + name + '\n').encode()}
+        release = {'tag_name': 'v1.2.3', 'assets': [
+            {'name': filename, 'digest': 'sha256:' + publisher.digest(data),
+             'browser_download_url': 'https://upstream.invalid/' + filename}
+            for filename, data in payloads.items()]}
+        target = self.stage / 'bv/v1.2.3' / (name if upstream else publisher.digest(packed) + '/bv-linux-x86_64.tar.gz')
+        expected = raw if upstream else packed
+        original_open, original_fdopen = Path.open, os.fdopen
+
+        def selected(path):
+            return path.parent == target.parent and (path.name == target.name or path.name.startswith('.' + target.name + '.'))
+
+        class InterruptedWriter:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __getattr__(self, name):
+                return getattr(self.stream, name)
+
+            def write(self, data):
+                self.stream.write(data[:2])
+                self.stream.flush()
+                raise OSError('injected staging write failure')
+
+        @contextmanager
+        def interrupted_open(path, mode='r', *args, **kwargs):
+            with original_open(path, mode, *args, **kwargs) as stream:
+                yield InterruptedWriter(stream) if selected(path) and ('w' in mode or 'x' in mode) else stream
+
+        @contextmanager
+        def interrupted_fdopen(fd, mode='r', *args, **kwargs):
+            with original_fdopen(fd, mode, *args, **kwargs) as stream:
+                opened = os.fstat(stream.fileno())
+                matching = any(selected(path) and (path.stat().st_dev, path.stat().st_ino) == (opened.st_dev, opened.st_ino)
+                               for path in target.parent.iterdir()) if target.parent.exists() else False
+                yield InterruptedWriter(stream) if matching and 'w' in mode else stream
+
+        with mock.patch.object(publisher, 'run', return_value=json.dumps(release)), \
+                mock.patch.object(publisher, 'fetch', side_effect=lambda url: payloads[url.rsplit('/', 1)[1]]):
+            with mock.patch.object(Path, 'open', new=interrupted_open), \
+                    mock.patch.object(os, 'fdopen', new=interrupted_fdopen), \
+                    self.assertRaisesRegex(OSError, 'injected staging write failure'):
+                publisher.prepare('bv', self.stage)
+            self.assertFalse(target.exists(), 'Incomplete cache entry was published')
+            candidates = list(target.parent.glob('.' + target.name + '.*.tmp'))
+            self.assertEqual(len(candidates), 1, 'Failed private candidate was not retained')
+            self.assertEqual(candidates[0].read_bytes(), expected[:2])
+            self.assertEqual(candidates[0].stat().st_mode & 0o777, 0o600)
+            tool, entry = publisher.prepare('bv', self.stage)
+        self.assertEqual(tool, 'bv')
+        self.assertEqual(target.read_bytes(), expected)
+        self.assertEqual((self.stage / entry['file']).read_bytes(), packed)
+        self.assertEqual(publisher.archive_files(packed, entry['file']), {'bin/bv': b'bin'})
+        self.assertEqual(candidates[0].read_bytes(), expected[:2])
+
+    def test_interrupted_verified_asset_staging_can_retry(self):
+        self.check_interrupted_staging(upstream=True)
+
+    def test_interrupted_normalized_bundle_staging_can_retry(self):
+        self.check_interrupted_staging(upstream=False)
+
+    def test_staging_preserves_existing_and_concurrent_files(self):
+        payload = b'verified staged bytes'
+        original_link = os.link
+        for concurrent in (False, True):
+            for matching in (False, True):
+                with self.subTest(concurrent=concurrent, matching=matching):
+                    target = self.stage / f'cache-{concurrent}-{matching}.tar.gz'
+                    existing = payload if matching else b'unrelated existing bytes'
+                    if not concurrent:
+                        target.write_bytes(existing)
+
+                    def publish_concurrent(src, dst):
+                        with Path(dst).open('xb') as output:
+                            output.write(existing)
+                        return original_link(src, dst)
+
+                    with mock.patch.object(os, 'link', side_effect=publish_concurrent) as link:
+                        if matching:
+                            publisher.stage_file(target, payload)
+                        else:
+                            with self.assertRaisesRegex(ValueError, 'Existing staged file differs'):
+                                publisher.stage_file(target, payload)
+                    self.assertEqual(target.read_bytes(), existing)
+                    candidates = list(self.stage.glob('.' + target.name + '.*.tmp'))
+                    if concurrent:
+                        link.assert_called_once()
+                        self.assertEqual(len(candidates), 1)
+                        self.assertEqual(candidates[0].read_bytes(), payload)
+                        self.assertEqual(candidates[0].stat().st_mode & 0o777, 0o600)
+                    else:
+                        link.assert_not_called()
+                        self.assertEqual(candidates, [])
 
     def test_latest_release_metadata_rejects_non_objects_and_malformed_json(self):
         for response in ("", "<html>upstream failed</html>", "[]", "null", "42"):
@@ -435,6 +534,28 @@ class MirrorPublisher(unittest.TestCase):
             publisher.publish_jsm_fallback(entry, self.stage)
         self.assertEqual(entry["source"]["url"], "https://vendor.invalid/jsm.tar.gz")
         self.assertNotIn("upstream_url", entry["source"])
+
+    def test_public_fallback_sync_failure_leaves_no_asset_and_can_retry(self):
+        data, entry, release = self.jsm_fallback()
+        asset = self.stage / 'public-assets' / release['assets'][0]['name']
+        with mock.patch.object(publisher, 'run', return_value=json.dumps(release)) as run, \
+                mock.patch.object(publisher, 'fetch', return_value=data) as fetch:
+            with mock.patch.object(os, 'fsync', side_effect=OSError('injected staging sync failure')), \
+                    self.assertRaisesRegex(OSError, 'injected staging sync failure'):
+                publisher.publish_jsm_fallback(entry, self.stage)
+            run.assert_not_called()
+            fetch.assert_not_called()
+            self.assertFalse(asset.exists(), 'Unsynced public asset was published')
+            candidates = list(asset.parent.glob('.' + asset.name + '.*.tmp'))
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].read_bytes(), data)
+            self.assertEqual(candidates[0].stat().st_mode & 0o777, 0o600)
+            publisher.publish_jsm_fallback(entry, self.stage)
+        self.assertEqual(asset.read_bytes(), data)
+        self.assertEqual(entry['source']['url'],
+                         f"https://github.com/{publisher.FALLBACK_REPO}/releases/download/{publisher.FALLBACK_TAG}/" + asset.name)
+        self.assertEqual(entry['source']['upstream_url'], 'https://vendor.invalid/jsm.tar.gz')
+        self.assertEqual(candidates[0].read_bytes(), data)
 
     def test_public_fallback_malformed_error_retains_original_command(self):
         _, entry, _ = self.jsm_fallback()
