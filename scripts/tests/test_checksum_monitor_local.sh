@@ -188,8 +188,9 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     _announce_recovery 1008 || fail "_announce_recovery with an open issue failed"
     [[ "$(grep -c '^gh issue comment 355 ' "$GH_CALLS")" == "1" ]] \
         || fail "expected exactly one recovery comment on the open issue"
-    grep -q 'recovered on test-host after 1008 consecutive fail-closed runs' "$GH_CALLS" \
-        || fail "recovery comment text missing host/streak"
+    grep -q 'recovered after 1008 consecutive fail-closed runs' "$GH_CALLS" \
+        || fail "recovery comment text missing streak"
+    ! grep -q 'test-host' "$GH_CALLS" || fail "public recovery comment names the host"
 
     # The fail-closed alert path posts through the same runner: an alert that
     # is not due must not call gh at all; a due alert posts once and records.
@@ -233,6 +234,9 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
 
     _alert_fail_closed_streak 3 "push-only reason"
     first_gh_count=$(gh_count)
+    grep -q 'test-host' "$CURL_CALLS" || fail "private push does not name the host"
+    grep -q 'push-only reason' "$GH_CALLS" || fail "GitHub alert body missing the reason"
+    ! grep -q 'test-host' "$GH_CALLS" || fail "public GitHub alert names the host"
     fake_time=$((fake_time + 60))
     _alert_fail_closed_streak 4 "push-only reason"
     [[ "$(call_count)" == 1 ]] || fail "successful push repeated while GitHub failed"

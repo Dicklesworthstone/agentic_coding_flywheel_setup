@@ -701,11 +701,14 @@ _alert_fail_closed_streak() {
         push_due=true
     fi
     [[ "$github_due" == true || "$push_due" == true ]] || return 0
-    local alert_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
+    # The GitHub issue is public, so it never names the host; the private
+    # push does, so the operator knows which monitor to look at.
+    local alert_msg="ACFS checksum monitor has failed closed $streak times in a row. Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged.)"
+    local push_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
     # Optional push notification
     if [[ "$push_due" == true ]]; then
         if curl -fsS -m 10 -A "acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)" \
-            -d "$alert_msg" "https://ntfy.sh/${ACFS_NTFY_TOPIC}" \
+            -d "$push_msg" "https://ntfy.sh/${ACFS_NTFY_TOPIC}" \
             >>"$LOG_FILE" 2>&1; then
             _fail_alert_record "$reason" "" "$FAIL_PUSH_ALERT_FILE"
         fi
@@ -758,7 +761,7 @@ _announce_recovery() {
     (( previous_streak >= FAIL_ALERT_MIN_STREAK )) || return 0
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     local existing=""
-    local msg="ACFS checksum monitor recovered on $(hostname 2>/dev/null || echo unknown-host) after $previous_streak consecutive fail-closed runs; drift monitoring and publication are live again."
+    local msg="ACFS checksum monitor recovered after $previous_streak consecutive fail-closed runs; drift monitoring and publication are live again."
     existing="$(run_failure_bounded gh issue list --repo "$repo_slug" --state open \
         --label monitoring \
         --search "Checksum monitor failing closed" \
@@ -1038,7 +1041,8 @@ read_remote_heads || fail_closed "could not re-read remote refs before commit"
 committed=false
 PUBLISH_HEAD="$BASE_HEAD"
 if [[ "$publication_required" == "true" ]]; then
-    git -c "user.name=acfs-checksum-monitor ($(hostname -s))" \
+    # The author name is public history: no host name in it.
+    git -c "user.name=acfs-checksum-monitor" \
         -c user.email=jeff141421@gmail.com \
         -c core.hooksPath=/dev/null \
         -c commit.gpgsign=false \
