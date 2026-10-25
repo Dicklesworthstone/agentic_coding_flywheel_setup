@@ -767,11 +767,9 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
             (checkout / name).write_text('Existing project file.\n')
         for selection in ('b?', '[bu]*', '*'):
             with self.subTest(selection=selection):
-                before = (self.root / 'requests').read_text().splitlines() if (self.root / 'requests').exists() else []
                 output = self.run_setup(selection, cwd=checkout, ACFS_CLOUD_AGENT='generic')
                 self.assertIn("Unknown tool '" + selection + "'", output)
-                requests = (self.root / 'requests').read_text().splitlines()[len(before):]
-                self.assertEqual(requests, [MANIFEST_URL])
+                self.assertFalse((self.root / 'requests').exists(), 'Unknown-only selections need no downloads')
                 self.assertEqual(list((self.home / '.local/bin').iterdir()), [])
                 self.assertNotIn('Including ast-grep', output)
         output = self.run_setup('br\t*\n br', cwd=checkout, ACFS_CLOUD_AGENT='generic')
