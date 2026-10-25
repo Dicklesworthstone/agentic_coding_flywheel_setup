@@ -93,7 +93,7 @@ export const CLOUD_AGENTS: CloudAgent[] = [
   {
     id: "amp", name: "Amp Orbs", initials: "AO", evidence: "Documented workflow",
     summary: "Use the project snapshot's setup phase to prepare tools before an orb starts.",
-    caveat: "Amp documents Debian 12 orbs. These bundles were tested on Ubuntu 24.04; Debian library compatibility and hosted persistence have not been accepted. Unavailable binaries are reported without source builds.",
+    caveat: "All eleven current executables passed offline version checks in a clean Debian 12 x86_64 container on 25 October 2026. Amp-hosted installation, guide loading and snapshot persistence remain unverified. Unavailable binaries are reported without source builds.",
     docs: "https://ampcode.com/docs/orbs/customizing", script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },
   {
@@ -117,7 +117,7 @@ export const CLOUD_AGENTS: CloudAgent[] = [
   {
     id: "generic", name: "Other Linux agent", initials: "SH", evidence: "Linux template",
     summary: "A provider-neutral guide for a cloud machine where you can run shell commands.",
-    caveat: "Ubuntu 24.04 is the tested OS. Other images and CPUs need version checks. With ACFS_CLOUD_ROOT, substitute that root for $HOME in the task instructions. No agent configuration or MCP registration is changed.",
+    caveat: "Ubuntu 24.04 has full install checks; all eleven current executables also passed offline version checks on Debian 12 x86_64. Other images and CPUs still need checks. With ACFS_CLOUD_ROOT, substitute that root for $HOME in the task instructions. No agent configuration or MCP registration is changed.",
     docs: CLAUDE_CODE_WEB_SCRIPT_SOURCE_URL, script: GENERIC_CLOUD_SETUP_SCRIPT, instructions: GENERIC_CLOUD_TASK_INSTRUCTIONS,
   },
 ];

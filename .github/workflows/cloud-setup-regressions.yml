@@ -87,6 +87,19 @@ jobs:
           assert not (root / 'scan-network-attempts.log').exists(), 'Scan attempted a dependency download'
           print('Public UBS safe/unsafe scans passed without curl/wget downloads')
           PY
+      - name: Verify public executables on Debian 12 without network access
+        shell: bash
+        run: |
+          # Check the same verified binaries against Amp's documented base OS.
+          # This checks executable startup, not Amp-hosted setup or persistence.
+          docker run --name acfs-cloud-debian-compat --network none --read-only \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$RUNNER_TEMP/acfs-cloud-smoke/.local,dst=/opt/acfs,readonly" \
+            debian:12@sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858 \
+            bash -c 'set -euo pipefail
+              for tool in br bv am mcp-agent-mail ubs cass cm ms ast-grep jsm jfp; do
+                timeout --kill-after=1 5 "/opt/acfs/bin/$tool" --version </dev/null
+              done'
       - name: Retain public smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4
