@@ -1780,6 +1780,122 @@ fi
         self.assertEqual((skill / 'SKILL.md').read_bytes(), original)
         self.assertIn('Existing repository skill retained unchanged', output)
 
+    def test_interrupted_codex_skill_write_leaves_no_partial_skill_and_can_retry(self):
+        self.bundle()
+        skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
+        fault_bin = self.root / 'skill-write-fault-bin'
+        fault_bin.mkdir()
+        # Fail an actual write after flushing partial bytes, for either a live
+        # skill or its sibling candidate. The fault does not inspect source.
+        (fault_bin / 'sitecustomize.py').write_text(f'''
+import os, pathlib
+skill = pathlib.Path({str(skill)!r})
+original_open = pathlib.Path.open
+original_fdopen = os.fdopen
+class InterruptedWriter:
+    def __init__(self, stream):
+        self.stream = stream
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        self.stream.close()
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+    def write(self, content):
+        self.stream.write(content[:20])
+        self.stream.flush()
+        raise OSError('injected interrupted skill write')
+def interrupted_open(path, mode='r', *args, **kwargs):
+    stream = original_open(path, mode, *args, **kwargs)
+    return InterruptedWriter(stream) if path.parent == skill and 'x' in mode else stream
+def interrupted_fdopen(fd, mode='r', *args, **kwargs):
+    path = pathlib.Path(os.readlink('/proc/self/fd/' + str(fd)))
+    stream = original_fdopen(fd, mode, *args, **kwargs)
+    return InterruptedWriter(stream) if path.parent == skill and 'w' in mode else stream
+pathlib.Path.open = interrupted_open
+os.fdopen = interrupted_fdopen
+''')
+        self.env['PYTHONPATH'] = str(fault_bin)
+        options = dict(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
+        output = self.run_setup(**options)
+        self.assertIn('injected interrupted skill write', output)
+        self.assertIn('Could not create the Codex repository skill', output)
+        self.assertFalse((skill / 'SKILL.md').exists(), 'Partial skill published')
+        candidates = list(skill.glob('.SKILL.md.acfs-*.tmp'))
+        self.assertEqual(len(candidates), 1, 'Interrupted candidate was not retained')
+        self.assertEqual(candidates[0].read_bytes(), b'---\nname: acfs-cloud')
+        self.assertEqual(candidates[0].stat().st_mode & 0o777, 0o600)
+        guide = self.home / '.codex/AGENTS.md'
+        self.assertIn('`br`', guide.read_text())
+        self.env.pop('PYTHONPATH')
+        output = self.run_setup(**options)
+        self.assertIn('Repository skill for Codex:', output)
+        content = (skill / 'SKILL.md').read_text()
+        self.assertIn('name: acfs-cloud-tools\n', content)
+        self.assertIn(str(guide), content)
+        self.assertIn('export PATH=', content)
+        self.assertEqual(candidates[0].read_bytes(), b'---\nname: acfs-cloud')
+
+    def test_codex_skill_publication_preserves_a_concurrent_skill(self):
+        self.bundle()
+        skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
+        fault_bin = self.root / 'skill-publish-race-bin'
+        fault_bin.mkdir()
+        original = b'Concurrent custom skill.\n'
+        (fault_bin / 'sitecustomize.py').write_text(f'''
+import os, pathlib
+original_link = os.link
+original_open = pathlib.Path.open
+def publish_custom(path):
+    if pathlib.Path(path) == pathlib.Path({str(skill / 'SKILL.md')!r}):
+        with open(path, 'xb') as output:
+            output.write({original!r})
+def concurrent_open(path, mode='r', *args, **kwargs):
+    if 'x' in mode:
+        publish_custom(path)
+    return original_open(path, mode, *args, **kwargs)
+def concurrent_link(src, dst, *args, **kwargs):
+    publish_custom(dst)
+    return original_link(src, dst, *args, **kwargs)
+pathlib.Path.open = concurrent_open
+os.link = concurrent_link
+''')
+        self.env['PYTHONPATH'] = str(fault_bin)
+        output = self.run_setup(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
+        self.assertEqual((skill / 'SKILL.md').read_bytes(), original)
+        self.assertIn('Existing repository skill retained unchanged', output)
+        candidates = list(skill.glob('.SKILL.md.acfs-*.tmp'))
+        self.assertEqual(len(candidates), 1)
+        self.assertIn(b'name: acfs-cloud-tools\n', candidates[0].read_bytes())
+        self.assertNotIn('Repository skill for Codex:', output)
+
+    def test_matching_codex_skill_needs_no_directory_writes_on_rerun(self):
+        self.bundle()
+        skill = self.root / 'repository/.agents/skills/acfs-cloud-tools'
+        options = dict(ACFS_CLOUD_AGENT='codex', ACFS_CLOUD_SKILL_DIR=str(skill))
+        self.run_setup(**options)
+        original = (skill / 'SKILL.md').read_bytes()
+        before = sorted(path.name for path in skill.iterdir())
+        fault_bin = self.root / 'skill-readonly-bin'
+        fault_bin.mkdir()
+        # Model a directory that became read-only after snapshot creation;
+        # intercept creation so this control also works in root-run CI.
+        (fault_bin / 'sitecustomize.py').write_text(f'''
+import os, pathlib
+original_open = os.open
+def readonly_open(path, flags, *args, **kwargs):
+    if pathlib.Path(path).parent == pathlib.Path({str(skill)!r}) and flags & os.O_CREAT:
+        raise PermissionError('injected read-only skill directory')
+    return original_open(path, flags, *args, **kwargs)
+os.open = readonly_open
+''')
+        self.env['PYTHONPATH'] = str(fault_bin)
+        output = self.run_setup(**options)
+        self.assertIn('Repository skill for Codex:', output)
+        self.assertNotIn('Could not create the Codex repository skill', output)
+        self.assertEqual((skill / 'SKILL.md').read_bytes(), original)
+        self.assertEqual(sorted(path.name for path in skill.iterdir()), before)
+
     def test_codex_repository_skill_can_load_relative_profile_from_another_directory(self):
         self.bundle()
         setup = self.root / 'setup directory'

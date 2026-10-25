@@ -605,9 +605,9 @@ cloud_write_codex_skill() {
     # catalog. Write the documented repository skill format; hosted catalog
     # loading is not guaranteed, so the guide remains usable by explicit path.
     # Never replace an existing skill, even one with the same name.
-    if ! python3 - "$ACFS_CLOUD_SKILL_DIR" "$ACFS_CLOUD_GUIDE" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_STATE_DIR" <<'PY'
-import pathlib, shlex, sys
-directory, guide, bins, state = sys.argv[1:]
+    if ! python3 - "$ACFS_CLOUD_SKILL_DIR" "$ACFS_CLOUD_GUIDE" "$ACFS_CLOUD_BIN_DIR" "$ACFS_CLOUD_STATE_DIR" "$ACFS_CLOUD_WORK" <<'PY'
+import os, pathlib, shlex, sys
+directory, guide, bins, state, work = sys.argv[1:]
 if not pathlib.Path(guide).is_file():
     raise ValueError('Tool guide is missing; repository skill was not created')
 content = '''---
@@ -640,12 +640,25 @@ def reject_links():
 reject_links()
 path.parent.mkdir(parents=True, exist_ok=True)
 reject_links()
-try:
-    with path.open('x', encoding='utf-8') as output:
-        output.write(content)
-except FileExistsError:
+def check_existing():
     if path.is_symlink() or not path.is_file() or path.read_text() != content:
         raise ValueError('Existing repository skill retained unchanged: ' + str(path))
+if path.exists():
+    # Reuse a matching snapshot without needing directory write permission.
+    check_existing()
+else:
+    # Publish a complete skill exclusively, just like a newly created guide.
+    # An interrupted write leaves a private candidate, so setup can retry.
+    candidate = path.with_name('.' + path.name + '.acfs-' + pathlib.Path(work).name + '.tmp')
+    with os.fdopen(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w', encoding='utf-8') as output:
+        output.write(content)
+        output.flush()
+        os.fsync(output.fileno())
+    reject_links()
+    try:
+        os.link(candidate, path)
+    except FileExistsError:
+        check_existing()
 print('Repository skill for Codex: ' + str(path))
 PY
     then
