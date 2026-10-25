@@ -95,13 +95,6 @@ cloud_tool_field() {
     printf '%s\n' "$ACFS_CLOUD_TOOL_TABLE" | awk -F'|' -v tool="$1" -v field="$2" '$1 == tool { print $field; exit }'
 }
 
-cloud_download() {
-    # $1 = url, $2 = destination file
-    curl -q -fsSL -A 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)' -H 'Accept-Encoding: identity' \
-        --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 20 \
-        -o "$2" "$1"
-}
-
 cloud_record() {
     # $1 = tool, $2 = ok|fail, $3 = detail
     printf '%s|%s\n' "$2" "$3" > "$ACFS_CLOUD_WORK/status/$1"
@@ -168,11 +161,40 @@ cloud_install_tool_job() {
         return 0
     fi
     python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >"$log" 2>&1 <<'PY'
-import hashlib, io, json, os, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
+import fcntl, hashlib, io, json, os, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
 try:
-    manifest = json.loads((work / 'cloud-mirror.json').read_text())
+    def download(url, target, max_time=60):
+        if not url.startswith('https://'):
+            raise ValueError('HTTPS required')
+        result = subprocess.run(['curl', '-q', '-fsSL', '-A', 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)',
+                                 '-H', 'Accept-Encoding: identity', '--proto', '=https', '--proto-redir', '=https',
+                                 '--connect-timeout', '5', '--max-time', str(max_time), '-w', '%{http_connect}',
+                                 '-o', str(target), url], stdout=subprocess.PIPE, text=True, check=False)
+        if result.returncode and result.stdout.strip() in ('403', '407'):
+            host = url.split('/')[2]
+            diagnostic = host + ' is blocked by this environment\'s network access level (set Full or allow it in Custom)'
+            blocked_hosts.append(diagnostic)
+            print(diagnostic, flush=True)
+        return result.returncode == 0
+    # Existing tools return before this phase, so a warm rerun needs no
+    # network. Missing tools share one fetch inside their whole-job budget.
+    # Hold the lock only for the manifest; bundle downloads remain parallel.
+    manifest_path, failed = work / 'cloud-mirror.json', work / 'manifest-download-error'
+    with (work / 'manifest.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if failed.exists():
+            raise ValueError(failed.read_text())
+        if not manifest_path.exists():
+            candidate = work / ('cloud-mirror.' + tool + '.partial')
+            if not download(os.environ['ACFS_RAW'] + '/cloud-mirror.json', candidate, max_time=20):
+                message = 'Could not fetch cloud-mirror.json; new installs require Full network access or a Custom allowlist'
+                failed.write_text(message)
+                raise ValueError(message)
+            # A failed/interrupted transfer never becomes the shared manifest.
+            os.link(candidate, manifest_path)
+    manifest = json.loads(manifest_path.read_text())
     if manifest['schema'] != 1 or manifest['platform'] != 'linux-x86_64':
         raise ValueError('unsupported mirror schema/platform')
     entry = manifest['tools'][tool]
@@ -187,19 +209,6 @@ try:
     if entry['bins'] != expected_bins:
         raise ValueError('unexpected bundle binaries')
     archive = work / (tool + '.tar.gz')
-    def download(url, target):
-        if not url.startswith('https://'):
-            raise ValueError('HTTPS required')
-        result = subprocess.run(['curl', '-q', '-fsSL', '-A', 'acfs (+https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup)',
-                                 '-H', 'Accept-Encoding: identity', '--proto', '=https', '--proto-redir', '=https',
-                                 '--connect-timeout', '5', '--max-time', '60', '-w', '%{http_connect}',
-                                 '-o', str(target), url], stdout=subprocess.PIPE, text=True, check=False)
-        if result.returncode and result.stdout.strip() in ('403', '407'):
-            host = url.split('/')[2]
-            diagnostic = host + ' is blocked by this environment\'s network access level (set Full or allow it in Custom)'
-            blocked_hosts.append(diagnostic)
-            print(diagnostic, flush=True)
-        return result.returncode == 0
     fallback = False
     expected_sha = entry['sha256']
     if not download(base.rstrip('/') + '/' + relative, archive):
@@ -710,17 +719,11 @@ cloud_main() {
         return 0
     fi
     export PATH="$ACFS_CLOUD_BIN_DIR:$PATH"
-    export ACFS_CLOUD_WORK ACFS_CLOUD_ROOT ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
+    export ACFS_RAW ACFS_CLOUD_WORK ACFS_CLOUD_ROOT ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
     export -f cloud_install_tool_job cloud_version cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
 
     cloud_step "ACFS cloud setup: $ACFS_CLOUD_TOOLS"
     cloud_detail "ACFS ref: $ACFS_REF, whole tool job timeout: ${ACFS_CLOUD_TIMEOUT}s"
-
-    if ! cloud_download "$ACFS_RAW/cloud-mirror.json" "$ACFS_CLOUD_WORK/cloud-mirror.json"; then
-        cloud_warn "Could not fetch cloud-mirror.json; new installs require Full network access or a Custom allowlist"
-        # Discard partial content without ever interpreting it as a manifest.
-        printf '{}' > "$ACFS_CLOUD_WORK/cloud-mirror.json"
-    fi
 
     for tool in "${tools[@]}"; do
         bin="$(cloud_tool_field "$tool" 3)"

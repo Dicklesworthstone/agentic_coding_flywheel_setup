@@ -1207,6 +1207,76 @@ else:
         self.assertIn("no source build attempted", output)
         self.assertFalse((self.home / ".local/bin/bv").exists())
 
+    def test_all_existing_tools_need_no_manifest_or_bundle_requests(self):
+        binaries = ['br', 'bv', 'am', 'mcp-agent-mail', 'ubs', 'cass', 'cm',
+                    'ms', 'ast-grep', 'jsm', 'jfp']
+        for binary in binaries:
+            self.command(binary, '#!/bin/sh\necho ' + binary + '-existing\n')
+        output = self.run_setup(' '.join(b for b in binaries if b != 'mcp-agent-mail'),
+                                ACFS_CLOUD_AGENT='generic')
+        self.assertFalse((self.root / 'requests').exists(), 'Reusing working tools must not fetch metadata')
+        self.assertEqual(output.count('(already installed)'), 10)
+        for binary in binaries:
+            with self.subTest(binary=binary):
+                self.assertEqual(self.probe_from_guide(binary).returncode, 0)
+
+    def test_parallel_installs_share_one_manifest_and_warm_rerun_is_offline(self):
+        for tool in ('br', 'bv', 'am'):
+            self.bundle(tool)
+        first = self.run_setup('br bv am', ACFS_CLOUD_AGENT='generic')
+        requests = (self.root / 'requests').read_text().splitlines()
+        self.assertEqual(requests.count(MANIFEST_URL), 1)
+        self.assertCountEqual(requests, [MANIFEST_URL, *self.urls.keys() - {MANIFEST_URL}])
+        self.assertEqual(first.count('(verified prebuilt)'), 3)
+        second = self.run_setup('br bv am', ACFS_CLOUD_AGENT='generic')
+        self.assertEqual((self.root / 'requests').read_text().splitlines(), requests)
+        self.assertEqual(second.count('(already installed)'), 3)
+        for binary in ('br', 'bv', 'am', 'mcp-agent-mail'):
+            with self.subTest(binary=binary):
+                self.assertEqual(self.probe_from_guide(binary).returncode, 0)
+
+    def test_nonworking_existing_tool_still_fetches_manifest_and_repairs(self):
+        self.command('br', '#!/bin/sh\nexit 1\n')
+        self.bundle()
+        output = self.run_setup()
+        self.assertIn('br 1.2.3 (verified prebuilt)', output)
+        self.assertEqual((self.root / 'requests').read_text().splitlines().count(MANIFEST_URL), 1)
+        self.assertEqual((self.home / '.local/bin/br').read_bytes(), b"#!/bin/sh\necho 'br 1.2.3'\n")
+
+    def test_partial_manifest_failure_is_shared_and_never_used_for_installation(self):
+        for tool in ('br', 'bv', 'am'):
+            self.bundle(tool)
+        # A failed transfer may still leave a complete-looking JSON document.
+        # Exercise the actual curl exit path, not a parser-only substitute.
+        self.command('curl', f'''#!{shutil.which('python3')}
+import pathlib, sys
+args=sys.argv[1:]
+with pathlib.Path({str(self.root / 'requests')!r}).open('a') as output:
+    output.write(args[-1] + '\\n')
+pathlib.Path(args[args.index('-o')+1]).write_text({json.dumps(self.manifest)!r})
+sys.exit(22)
+''')
+        output = self.run_setup('br bv am', ACFS_CLOUD_AGENT='generic')
+        self.assertEqual((self.root / 'requests').read_text().splitlines(), [MANIFEST_URL])
+        self.assertEqual(output.count('Could not fetch cloud-mirror.json'), 3)
+        for binary in ('br', 'bv', 'am', 'mcp-agent-mail'):
+            self.assertFalse((self.home / '.local/bin' / binary).exists())
+        self.assertNotIn('(verified prebuilt)', output)
+
+    def test_manifest_download_and_lock_waits_obey_whole_job_deadline(self):
+        self.command('curl', f'''#!{shutil.which('python3')}
+import pathlib, sys, time
+with pathlib.Path({str(self.root / 'requests')!r}).open('a') as output:
+    output.write(sys.argv[-1] + '\\n')
+time.sleep(60)
+''')
+        started = time.monotonic()
+        output = self.run_setup('br bv am', ACFS_CLOUD_TIMEOUT='1', ACFS_CLOUD_AGENT='generic')
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(output.count('timed out'), 3)
+        self.assertEqual((self.root / 'requests').read_text().splitlines(), [MANIFEST_URL])
+        self.assertNotIn('(verified prebuilt)', output)
+
     def probe_from_guide(self, binary, task_env=None):
         guide = (self.home / '.acfs/cloud/AGENTS.md').read_text()
         match = re.search(r'In each task shell, run:?\s*(?:```bash\n([^\n]+)\n```|`([^`]+)`)', guide)
@@ -1232,7 +1302,7 @@ else:
                 probe = self.probe_from_guide(binary)
                 self.assertEqual(probe.returncode, 0, probe.stderr)
                 self.assertEqual(probe.stdout.strip(), binary + '-existing')
-        self.assertEqual((self.root / 'requests').read_text().splitlines(), [MANIFEST_URL])
+        self.assertFalse((self.root / 'requests').exists(), 'Working reused tools need no manifest download')
 
     def test_existing_caller_path_takes_priority_over_private_fallback(self):
         self.command('br', '#!/bin/sh\necho br-caller\n')
