@@ -33,6 +33,34 @@ else
     exit "$?"
 fi
 '''
+PHASE_SETUP = r'''
+UPDATE_SELF=true
+UPDATE_SHELL=true
+ACFS_SELF_UPDATE_DONE=false
+BOOTSTRAP_SELF_UPDATE=false
+QUIET=true
+is_expected_acfs_origin_url() { return 0; }
+update_runtime_shell_home() { printf '%s\n' "$TEST_ROOT"; }
+# Keep the real deployment functions; isolate unrelated tool and profile work.
+update_omz() { :; }
+update_p10k() { :; }
+update_zsh_plugins() { :; }
+update_atuin() { :; }
+update_zoxide() { :; }
+sync_acfs_profile_paths() { :; }
+sync_acfs_zprofile_paths() { :; }
+sync_acfs_zsh_loader() { :; }
+cleanup_unmanaged_atuin_init() { :; }
+sync_acfs_global_command_links() { :; }
+# Redirect only the global wrapper's destination, retaining its real source
+# selection and publication behavior without touching /usr/local/bin.
+_test_wrapper_definition="$(declare -f sync_acfs_global_wrapper)"
+eval "${_test_wrapper_definition/sync_acfs_global_wrapper/_test_sync_global_wrapper}"
+unset _test_wrapper_definition
+sync_acfs_global_wrapper() {
+    _test_sync_global_wrapper "${1:-}" "$TEST_ROOT/global-acfs"
+}
+'''
 
 
 class AtomicDeploymentTests(unittest.TestCase):
@@ -76,6 +104,26 @@ class AtomicDeploymentTests(unittest.TestCase):
                       "commit", "--quiet", "-m", "fixture")):
             subprocess.run(["git", "-C", str(self.repo), *args], env=self.env, check=True,
                            capture_output=True, timeout=5)
+
+    def git(self, repo, *args):
+        result = subprocess.run(["git", "-C", str(repo), *args], env=self.env, check=True,
+                                capture_output=True, timeout=5)
+        return result.stdout.decode().strip()
+
+    def commit_tree(self, repo, message):
+        self.git(repo, "add", ".")
+        self.git(repo, "-c", "user.name=ACFS Test", "-c",
+                 "user.email=acfs-test@example.invalid", "commit", "--quiet", "-m", message)
+
+    def phase_tree(self, name):
+        root = self.base / name
+        source = root / "source"
+        runtime = root / ".acfs"
+        source.mkdir(parents=True)
+        runtime.mkdir()
+        env = {"HOME": str(root), "TARGET_HOME": str(root), "TEST_ROOT": str(root),
+               "TEST_SOURCE": str(source), "TEST_DEPLOYED": str(runtime)}
+        return root, source, runtime, env
 
     def start(self, command, **env):
         process = subprocess.Popen(command, env=self.env | env, stdin=subprocess.PIPE,
@@ -140,6 +188,145 @@ class AtomicDeploymentTests(unittest.TestCase):
         self.assertNotEqual(deployed.stat().st_ino, original_inode)
         self.assertEqual(deployed.read_text(), new)
         self.assert_runtime_files("scripts/lib/nightly_update.sh", "scripts/nightly-update.sh")
+
+    def test_self_update_and_shell_preserve_running_runtime_readers(self):
+        old = ("#!/bin/bash\nset -euo pipefail\nprintf 'old-ready\\n'\n"
+               "IFS= read -r release\n" + "# unread script body\n" * 16384
+               + "printf 'old-finished\\n'\n")
+        new = "#!/bin/bash\nprintf 'new-version\\n'\n"
+        cases = (("security", "scripts/lib/security.sh", "scripts/lib/security.sh", "update_acfs_self"),
+                 ("zsh", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc", "update_shell"))
+        for name, source_rel, deployed_rel, phase in cases:
+            with self.subTest(phase=phase):
+                _, source, runtime, env = self.phase_tree(name)
+                self.write(source, source_rel, new, 0o755)
+                self.git(source, "init", "--quiet", "--initial-branch=main")
+                self.commit_tree(source, "current source")
+                self.git(source, "remote", "add", "origin", str(source))
+                deployed = self.write(runtime, deployed_rel, old, 0o755)
+                original_inode = deployed.stat().st_ino
+                running = self.start(["/bin/bash", str(deployed)], **env)
+                self.assertEqual(self.line(running), "old-ready")
+                process = self.start(["/bin/bash", "-c", COMMON + PHASE_SETUP + phase], **env)
+                stdout, stderr = process.communicate(timeout=15)
+                self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+                self.assertIsNone(running.poll(), "reader must remain paused during deployment")
+                subsequent = subprocess.run(["/bin/bash", str(deployed)], env=self.env | env,
+                                            capture_output=True, text=True, timeout=5)
+                self.assertEqual(subsequent.returncode, 0, subsequent.stderr)
+                self.assertEqual(subsequent.stdout, "new-version\n")
+                stdout, stderr = running.communicate(input=b"resume\n", timeout=5)
+                self.assertEqual(running.returncode, 0, stderr.decode())
+                self.assertEqual(stdout.decode(), "old-finished\n",
+                                 f"{phase} truncated the running {name} inode")
+                self.assertNotEqual(deployed.stat().st_ino, original_inode)
+                self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
+                self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_phase_failure_and_dry_run_preserve_existing_runtime(self):
+        cases = (("security", "scripts/lib/security.sh", "scripts/lib/security.sh", "update_acfs_self"),
+                 ("zsh", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc", "update_shell"))
+        for name, source_rel, deployed_rel, phase in cases:
+            for dry_run in (False, True):
+                with self.subTest(phase=phase, dry_run=dry_run):
+                    root, source, runtime, env = self.phase_tree(f"{name}-{dry_run}")
+                    self.write(source, source_rel, "new complete script\n", 0o755)
+                    self.git(source, "init", "--quiet", "--initial-branch=main")
+                    self.commit_tree(source, "current source")
+                    self.git(source, "remote", "add", "origin", str(source))
+                    deployed = self.write(runtime, deployed_rel, "old complete script\n", 0o755)
+                    original = deployed.stat()
+                    setup = '' if dry_run else 'cp() { printf "partial" > "${@: -1}"; return 73; }\n'
+                    body = COMMON + PHASE_SETUP + setup + f"if {phase}; then exit 0; else exit \"$?\"; fi\n"
+                    process = self.start(["/bin/bash", "-c", body], **env,
+                                         TEST_DRY_RUN=str(dry_run).lower())
+                    stdout, stderr = process.communicate(timeout=15)
+                    if dry_run:
+                        self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+                    else:
+                        self.assertNotEqual(process.returncode, 0, (stdout + stderr).decode())
+                    self.assertEqual(deployed.read_text(), "old complete script\n")
+                    after = deployed.stat()
+                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                     (original.st_ino, original.st_mode, original.st_mtime_ns))
+                    self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
+                    self.assertEqual(list(self.stage.iterdir()), [])
+                    log = root / "update.log"
+                    if not dry_run:
+                        self.assertNotIn("Synced ", log.read_text() if log.exists() else "")
+
+    def test_fetched_runtime_remains_pinned_through_shell_update(self):
+        files = (("stack", "scripts/lib/stack.sh", "scripts/lib/stack.sh"),
+                 ("security", "scripts/lib/security.sh", "scripts/lib/security.sh"),
+                 ("zsh", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc"),
+                 ("global", "scripts/acfs-global", None))
+        for scenario in ("dirty", "wrong-branch", "divergent"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(
+                    prefix=f"{scenario}-", dir=self.base) as phase_root:
+                root, source, runtime, env = self.phase_tree(phase_root)
+                for name, relative, _ in files:
+                    self.write(source, relative, f"#!/bin/bash\nprintf 'base-{name}\\n'\n", 0o755)
+                self.write(source, "VERSION", "fixture\n")
+                self.git(source, "init", "--quiet", "--initial-branch=main")
+                self.commit_tree(source, "base")
+                remote = root / "remote"
+                self.git(root, "clone", "--quiet", str(source), str(remote))
+                for name, relative, _ in files:
+                    self.write(remote, relative, f"#!/bin/bash\nprintf 'fresh-{name}\\n'\n", 0o755)
+                self.commit_tree(remote, "fresh runtime")
+                self.git(remote, "checkout", "--quiet", "-b", "future")
+                for name, relative, _ in files:
+                    self.write(remote, relative, f"#!/bin/bash\nprintf 'future-{name}\\n'\n", 0o755)
+                self.commit_tree(remote, "later runtime")
+                future = self.git(remote, "rev-parse", "HEAD")
+                self.git(remote, "checkout", "--quiet", "main")
+                self.git(source, "remote", "add", "origin", str(remote))
+                if scenario == "dirty":
+                    self.write(source, "VERSION", "local-dirty-version\n")
+                elif scenario == "wrong-branch":
+                    self.git(source, "branch", "-m", "local-work")
+                else:
+                    self.write(source, "local.txt", "local committed work\n")
+                    self.commit_tree(source, "local divergence")
+                before = {str(p.relative_to(source)): (p.read_bytes(), p.stat().st_mode)
+                          for p in source.rglob("*") if p.is_file() and ".git" not in p.parts}
+                before_head = self.git(source, "rev-parse", "HEAD")
+                before_status = self.git(source, "status", "--porcelain")
+                body = r'''
+report_runtime() {
+    for pair in stack:scripts/lib/stack.sh security:scripts/lib/security.sh zsh:zsh/acfs.zshrc; do
+        printf '%s-%s=%s\n' "$1" "${pair%%:*}" "$(bash "$TEST_DEPLOYED/${pair#*:}")"
+    done
+    printf '%s-global=%s\n' "$1" "$(bash "$TEST_ROOT/global-acfs")"
+}
+update_acfs_self
+report_runtime after-self
+update_shell
+report_runtime after-shell
+# Another fetch may move the symbolic tracking ref while this invocation runs.
+# Its runtime source must remain the exact revision selected by self-update.
+git -C "$TEST_SOURCE" fetch --quiet origin future
+git -C "$TEST_SOURCE" update-ref refs/remotes/origin/main "$TEST_FUTURE_REF"
+update_shell
+report_runtime after-ref-moved
+'''
+                process = self.start(["/bin/bash", "-c", COMMON + PHASE_SETUP + body],
+                                     **env, TEST_FUTURE_REF=future)
+                stdout, stderr = process.communicate(timeout=25)
+                output = (stdout + stderr).decode()
+                log = root / "update.log"
+                self.assertEqual(process.returncode, 0,
+                                 output + (log.read_text() if log.exists() else ""))
+                for phase in ("after-self", "after-shell", "after-ref-moved"):
+                    for name, _, _ in files:
+                        self.assertIn(f"{phase}-{name}=fresh-{name}\n", output)
+                after = {str(p.relative_to(source)): (p.read_bytes(), p.stat().st_mode)
+                         for p in source.rglob("*") if p.is_file() and ".git" not in p.parts}
+                self.assertEqual(after, before)
+                self.assertEqual(self.git(source, "rev-parse", "HEAD"), before_head)
+                self.assertEqual(self.git(source, "status", "--porcelain"), before_status)
+                self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
+                self.assertEqual(list(self.stage.iterdir()), [])
 
     def test_modes_are_ready_at_publication_and_unchanged_files_are_idempotent(self):
         self.write(self.repo, "scripts/lib/stack.sh", "new script\n", 0o644)

@@ -32,6 +32,11 @@ def deployed_cli(home):
     package manager, repository fetch, or system service is invoked.
     """
     updater = (ROOT / "scripts/lib/update.sh").read_text()
+    publisher_start = "update_atomic_deploy_file() ("
+    publisher_end = "\n# Re-deploy acfs.zshrc"
+    if updater.count(publisher_start) != 1 or updater.count(publisher_end) != 1:
+        raise AssertionError("Review the atomic deployment function boundary")
+    publisher = publisher_start + updater.split(publisher_start, 1)[1].split(publisher_end, 1)[0]
     start, end = "sync_acfs_deployed() {", "\nsync_acfs_global_wrapper() {"
     if updater.count(start) != 1 or updater.count(end) != 1:
         raise AssertionError("Review the deployed-runtime function boundary")
@@ -48,7 +53,7 @@ def deployed_cli(home):
     env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "ACFS_REPO_ROOT": str(checkout)}
     subprocess.run(["/bin/bash", "-eu", "-c",
                     'update_runtime_acfs_home() { printf "%s\\n" "$HOME/.acfs"; }\n'
-                    'log_to_file() { :; }\n' + function + '\nsync_acfs_deployed\n'],
+                    'log_to_file() { :; }\n' + publisher + '\n' + function + '\nsync_acfs_deployed\n'],
                    env=env, check=True, capture_output=True, timeout=30)
     return home / ".acfs/bin/acfs"
 
