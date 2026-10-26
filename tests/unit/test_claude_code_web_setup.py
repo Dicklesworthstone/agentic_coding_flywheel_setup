@@ -1762,6 +1762,89 @@ sys.exit(0 if sys.argv[2] == 'add' else 1)
         self.assertEqual(config.read_bytes(), original)
         self.assertNotIn('add', calls.read_text())
 
+    def test_guide_keeps_setup_mailbox_when_later_task_has_no_overrides(self):
+        binary = b'#!/bin/sh\nif [ "$1" = --version ]; then echo "am 1.2.3"; else printf "%s" "$STORAGE_ROOT"; fi\n'
+        self.bundle('am', content=binary)
+        self.command('claude', '#!/bin/sh\n[ "$2" = add ]\n')
+        task = self.root / 'later task'
+        task.mkdir()
+        cases = (
+            ('explicit', {'STORAGE_ROOT': str(self.root / "archive ' `literal` $root")},
+             self.root / "archive ' `literal` $root"),
+            ('relative', {'STORAGE_ROOT': 'relative archive'}, self.root / 'relative archive'),
+            ('xdg', {'XDG_DATA_HOME': str(self.root / 'setup XDG')},
+             self.root / 'setup XDG/mcp-agent-mail/git_mailbox_repo'),
+            ('relative-xdg', {'XDG_DATA_HOME': 'relative XDG'},
+             self.root / 'relative XDG/mcp-agent-mail/git_mailbox_repo'),
+        )
+        for label, options, expected in cases:
+            with self.subTest(case=label):
+                custom = self.root / ('tools-' + label)
+                self.run_setup('am', cwd=self.root, ACFS_CLOUD_ROOT=str(custom), **options)
+                guide = (self.home / '.claude/CLAUDE.md').read_text()
+                blocks = re.findall(r'```bash\n(.*?)\n```', guide, re.S)
+                path = next(block for block in blocks if block.startswith('export PATH='))
+                example = next(block for block in blocks if block.startswith('STORAGE_ROOT='))
+                script = self.root / ('mailbox-help-' + label + '.sh')
+                with script.open('x') as output:
+                    output.write(path + '\n' + example + '\n')
+                result = subprocess.run(['bash', str(script)], cwd=task,
+                                        env=self.env, text=True, capture_output=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, str(expected))
+                # The session recipe must use the same default as the help
+                # example, even when its setup environment is no longer set.
+                session = next(block for block in blocks if 'am_session=' in block)
+                self.assertIn(example.split(' am --help')[0] + ' am macros start-session', session)
+
+    def test_rerun_keeps_setup_mailbox_and_current_task_override(self):
+        self.bundle('am')
+        custom = self.root / 'custom root'
+        expected = self.root / "selected mailbox ' `literal` $root"
+        self.run_setup('am', cwd=self.root, ACFS_CLOUD_ROOT=str(custom),
+                       STORAGE_ROOT=str(expected), ACFS_CLOUD_AGENT='generic')
+        guide = (custom / '.acfs/cloud/AGENTS.md').read_text()
+        body = b'#!/bin/sh\nprintf "%s\\0%s\\0%s" "$STORAGE_ROOT" "${DATABASE_URL-}" "${XDG_DATA_HOME-}"\n'
+        result, _ = self.run_generated_rerun(guide, bootstrap_body=body)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, str(expected) + '\0\0')
+        current = str(self.root / 'task-selected archive')
+        self.env['STORAGE_ROOT'] = current
+        self.env['DATABASE_URL'] = 'private-current-database'
+        self.env['XDG_DATA_HOME'] = str(self.root / 'task XDG')
+        result, _ = self.run_generated_rerun(guide, bootstrap_body=body)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '\0'.join((current, 'private-current-database', self.env['XDG_DATA_HOME'])))
+
+    def test_actual_rerun_reuses_mailbox_without_setup_xdg_or_database(self):
+        binary = b'#!/bin/sh\nif [ "$1" = --version ]; then echo "am 1.2.3"; else printf "%s" "$STORAGE_ROOT"; fi\n'
+        self.bundle('am', content=binary)
+        custom = self.root / 'rerun tools'
+        secret = 'postgresql://setup-only-secret/never-persist'
+        self.run_setup('am', cwd=self.root, ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(custom),
+                       XDG_DATA_HOME='relative setup data', DATABASE_URL=secret)
+        guide = custom / '.acfs/cloud/AGENTS.md'
+        original = guide.read_text()
+        self.assertNotIn(secret, original)
+        result, _ = self.run_generated_rerun(original)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('am 1.2.3 (already installed)', result.stderr)
+        content = guide.read_text()
+        self.assertEqual(content, original)
+        self.assertNotIn(secret, content)
+        blocks = re.findall(r'```bash\n(.*?)\n```', content, re.S)
+        path = next(block for block in blocks if block.startswith('export PATH='))
+        example = next(block for block in blocks if block.startswith('STORAGE_ROOT='))
+        later = self.root / 'different task directory'
+        later.mkdir()
+        script = self.root / 'rerun-mailbox-help.sh'
+        with script.open('x') as output:
+            output.write(path + '\n' + example + '\n')
+        probe = subprocess.run(['bash', str(script)], cwd=later,
+                               env=self.env, text=True, capture_output=True, timeout=5)
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        self.assertEqual(probe.stdout, str(self.root / 'relative setup data/mcp-agent-mail/git_mailbox_repo'))
+
     def test_new_mcp_registration_preserves_symlinked_or_colliding_storage(self):
         self.bundle('am')
         calls = self.root / 'mcp-calls'
