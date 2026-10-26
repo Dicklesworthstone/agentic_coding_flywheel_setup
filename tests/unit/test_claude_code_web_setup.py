@@ -757,6 +757,15 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         self.assertTrue((self.home / ".local/bin/br").is_file())
         self.assertNotIn("github.com/", (self.root / "requests").read_text())
 
+    def test_fixed_tool_metadata_needs_no_external_text_processor(self):
+        invoked = self.root / 'awk-invoked'
+        self.command('awk', f'#!/bin/sh\necho awk >> "{invoked}"\nexit 99\n')
+        self.bundle()
+        output = self.run_setup()
+        self.assertFalse(invoked.exists(), 'Fixed tool metadata invoked an external text processor')
+        self.assertIn('br 1.2.3 (verified prebuilt)', output)
+        self.assertIn('`br` (beads_rust)', (self.home / '.claude/CLAUDE.md').read_text())
+
     def test_tool_selection_never_expands_checkout_filenames(self):
         self.bundle('br')
         self.bundle('ubs')
@@ -1197,6 +1206,51 @@ else:
         output = self.run_setup(ACFS_CLOUD_TIMEOUT='1')
         self.assertLess(time.monotonic() - start, 5)
         self.assertIn('timed out', output)
+
+    def test_timed_out_probe_leaves_no_orphan_process_group(self):
+        pidfile = self.root / 'probe.pid'
+        self.command('br', f'#!/bin/sh\ntrap "" TERM\nprintf "%s" "$$" > "{pidfile}"\nsleep 9\necho br-late\n')
+        start = time.monotonic()
+        output = self.run_setup(ACFS_CLOUD_TIMEOUT='1')
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertIn('timed out', output)
+        pid = int(pidfile.read_text())
+        self.assertFalse(Path('/proc', str(pid)).exists(), 'Timed-out version probe was orphaned')
+
+    def test_successful_probe_reaps_children_that_started_a_new_session(self):
+        pidfile = self.root / 'detached-probes'
+        self.command('br', f'''#!{shutil.which('python3')}
+import subprocess
+child = subprocess.Popen(['sleep', '9'], start_new_session=True)
+with open({str(pidfile)!r}, 'a') as output:
+    output.write(str(child.pid) + '\\n')
+print('br-session-child')
+''')
+        output = self.run_setup()
+        self.assertIn('br-session-child (already installed)', output)
+        pids = [int(line) for line in pidfile.read_text().splitlines()]
+        self.assertTrue(pids, 'Version probe must actually start the child')
+        for pid in pids:
+            self.assertFalse(Path('/proc', str(pid)).exists(), 'Successful probe left a detached child running')
+
+    def test_bounded_dispatch_rejects_unselected_executables(self):
+        source = SCRIPT.read_text().split('cloud_run_bounded() {', 1)[1]
+        supervisor = source.split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+        outside = self.root / 'outside-path'
+        outside.mkdir()
+        invoked = self.root / 'unselected-invoked'
+        binary = outside / 'br'
+        binary.write_text(f'#!/bin/sh\necho invoked > "{invoked}"\n')
+        binary.chmod(0o755)
+        for mode, value in [('version', str(binary)), ('job', 'unselected')]:
+            with self.subTest(mode=mode):
+                result = subprocess.run([shutil.which('python3'), '-c', supervisor, '1', '1', mode, value],
+                                        env={**os.environ, 'PATH': str(self.bin) + ':/usr/bin:/bin',
+                                             'ACFS_CLOUD_TOOL_TABLE': 'unselected|unselected|br'},
+                                        capture_output=True, text=True, timeout=5, check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Unsupported bounded operation', result.stderr)
+                self.assertFalse(invoked.exists(), 'Unselected executable must never run')
 
     def test_blocked_network_keeps_existing_tools_and_reports_missing(self):
         self.command("br", "#!/bin/sh\necho br-existing\n")

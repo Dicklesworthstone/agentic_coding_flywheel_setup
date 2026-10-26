@@ -92,7 +92,19 @@ cloud_warn() { printf '\033[33m    %s\033[0m\n' "$*" >&2; }
 
 cloud_tool_field() {
     # $1 = tool, $2 = field number (1-based) in ACFS_CLOUD_TOOL_TABLE
-    printf '%s\n' "$ACFS_CLOUD_TOOL_TABLE" | awk -F'|' -v tool="$1" -v field="$2" '$1 == tool { print $field; exit }'
+    # Keep the fixed metadata lookup inside Bash. Guide discovery calls it for
+    # every tool, including missing ones; a pipeline needlessly forks each time.
+    local tool key binary
+    while IFS='|' read -r tool key binary; do
+        [[ "$tool" == "$1" ]] || continue
+        case "$2" in
+            1) printf '%s\n' "$tool" ;;
+            2) printf '%s\n' "$key" ;;
+            3) printf '%s\n' "$binary" ;;
+        esac
+        return 0
+    done <<< "$ACFS_CLOUD_TOOL_TABLE"
+    return 0
 }
 
 cloud_record() {
@@ -104,6 +116,85 @@ cloud_find_binary() {
     # Honor the caller's chosen tools before looking in private install paths.
     PATH="$ACFS_CLOUD_BIN_DIR:$PATH:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/go/bin" \
         command -v "$1" 2>/dev/null
+}
+
+cloud_run_bounded() {
+    # Nested GNU timeout instances create separate process groups. Killing the
+    # outer group can therefore leave a version probe orphaned. A Linux child
+    # subreaper keeps every orphan owned by this invocation, including children
+    # that started another process group/session. Never signal unrelated PIDs.
+    # Match cloud_find_binary's discovery order, including private fallbacks.
+    PATH="$ACFS_CLOUD_BIN_DIR:$PATH:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/go/bin" \
+        python3 - "$@" <<'PY'
+import ctypes, os, pathlib, shutil, signal, subprocess, sys, time
+_, duration, grace, mode, value = sys.argv
+duration, grace = float(duration), float(grace)
+if not (0 < duration <= 180 and 0 < grace <= 2):
+    raise ValueError('Invalid process deadline')
+# Build the permitted commands independently of the supplied selector. Version
+# probes may execute only the same fixed tool names resolved on the active PATH,
+# never an arbitrary path with a matching basename or an environment-table row.
+tools = ('br', 'bv', 'am', 'ubs', 'cass', 'cm', 'ms', 'ast-grep', 'jsm', 'jfp')
+operations = [('job', tool, ['bash', '-c', 'set -uo pipefail; cloud_install_tool_job "$1"', '_', tool])
+              for tool in tools]
+for name in (*tools, 'mcp-agent-mail'):
+    binary = shutil.which(name)
+    if binary is not None:
+        operations.append(('version', binary, [binary, '--version']))
+for operation, selector, argv in operations:
+    if (mode, value) == (operation, selector):
+        command = argv
+        break
+else:
+    raise ValueError('Unsupported bounded operation')
+children_path = pathlib.Path('/proc/self/task') / str(os.getpid()) / 'children'
+# Check supervision support before launching anything.
+children_path.read_text()
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+    raise OSError(ctypes.get_errno(), 'Could not enable child-process supervision')
+process = subprocess.Popen(command, start_new_session=True)
+timed_out = False
+def children():
+    return [int(pid) for pid in children_path.read_text().split()]
+def send(pids, sig):
+    # Only this single-threaded parent reaps these direct children. Their PIDs
+    # cannot be reused between enumeration and signalling while unreaped.
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            pass
+def reap(pids, flags):
+    for pid in pids:
+        try:
+            waited, status = os.waitpid(pid, flags)
+        except ChildProcessError:
+            continue
+        if waited == process.pid:
+            process.returncode = os.waitstatus_to_exitcode(status)
+try:
+    try:
+        code = process.wait(timeout=duration)
+    except subprocess.TimeoutExpired:
+        timed_out, code = True, 124
+finally:
+    # A successful parent may also have left background children. Preserve the
+    # original TERM grace, then kill/reap survivors and any newly adopted child.
+    deadline, signalled = time.monotonic() + grace, set()
+    while pids := children():
+        send([pid for pid in pids if pid not in signalled], signal.SIGTERM)
+        signalled.update(pids)
+        reap(pids, os.WNOHANG)
+        if time.monotonic() >= deadline:
+            break
+        if children():
+            time.sleep(0.01)
+    while pids := children():
+        send(pids, signal.SIGKILL)
+        reap(pids, 0)
+sys.exit(124 if timed_out else (code if code >= 0 else 128 - code))
+PY
 }
 
 # Exported job functions are invoked in the timeout-controlled child Bash.
@@ -143,7 +234,7 @@ cloud_version() {
         (( duration > 5 )) && duration=5
     fi
     path="$(cloud_find_binary "$bin")" || return 1
-    out="$(timeout --kill-after=1 "$duration" "$path" --version </dev/null 2>&1)" || return 1
+    out="$(cloud_run_bounded "$duration" 1 version "$path" </dev/null 2>&1)" || return 1
     [[ -n "$out" ]] || return 1
     printf '%s\n' "${out%%$'\n'*}"
 }
@@ -354,11 +445,11 @@ PY
 }
 
 cloud_install_tool() {
-    # Bound the entire job, including existing/final binary probes, not only
-    # downloads. GNU timeout also signals the job's subprocess group.
+    # Bound the entire job, including existing/final binary probes and any
+    # descendant process groups they create, not only downloads.
     local tool="$1" rc log="$ACFS_CLOUD_STATE_DIR/logs/$1.log"
     : > "$log"
-    timeout --kill-after=2 "$ACFS_CLOUD_TIMEOUT" bash -c 'set -uo pipefail; cloud_install_tool_job "$1"' _ "$tool"
+    cloud_run_bounded "$ACFS_CLOUD_TIMEOUT" 2 job "$tool"
     rc=$?
     if [[ $rc -eq 124 || $rc -eq 137 ]]; then
         cloud_record "$tool" fail "download/install timed out after ${ACFS_CLOUD_TIMEOUT}s (see $log)"
@@ -528,7 +619,7 @@ GUIDE
 }
 
 cloud_write_guide() {
-    local tool status detail block rerun_config="" profile_name="" profile_path="" mail_data
+    local tool tool_bin status detail block rerun_config="" profile_name="" profile_path="" mail_data
     # Remaining-tool discovery includes final alias probes; cap the whole
     # phase so slow existing binaries cannot exceed the snapshot window.
     local probe_deadline=$(( SECONDS + 60 ))
@@ -538,8 +629,9 @@ cloud_write_guide() {
     for tool in $ACFS_CLOUD_DEFAULT_TOOLS; do
         if [[ -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
             IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/$tool"
-        elif cloud_version "$(cloud_tool_field "$tool" 3)" "$probe_deadline" >/dev/null && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail "$probe_deadline" >/dev/null; }; then
-            if cloud_link_onto_path "$(cloud_tool_field "$tool" 3)" "$probe_deadline" && { [[ "$tool" != am ]] || cloud_link_onto_path mcp-agent-mail "$probe_deadline"; }; then
+        elif tool_bin="$(cloud_tool_field "$tool" 3)" && cloud_find_binary "$tool_bin" >/dev/null &&
+            cloud_version "$tool_bin" "$probe_deadline" >/dev/null && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail "$probe_deadline" >/dev/null; }; then
+            if cloud_link_onto_path "$tool_bin" "$probe_deadline" && { [[ "$tool" != am ]] || cloud_link_onto_path mcp-agent-mail "$probe_deadline"; }; then
                 status="ok"
             else
                 status="fail"
@@ -813,7 +905,7 @@ cloud_main() {
     fi
     export PATH="$ACFS_CLOUD_BIN_DIR:$PATH"
     export ACFS_RAW ACFS_CLOUD_WORK ACFS_CLOUD_ROOT ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
-    export -f cloud_install_tool_job cloud_version cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
+    export -f cloud_install_tool_job cloud_version cloud_run_bounded cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
 
     cloud_step "ACFS cloud setup: $ACFS_CLOUD_TOOLS"
     cloud_detail "ACFS ref: $ACFS_REF, whole tool job timeout: ${ACFS_CLOUD_TIMEOUT}s"
