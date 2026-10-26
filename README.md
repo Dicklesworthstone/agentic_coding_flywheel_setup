@@ -1118,6 +1118,26 @@ acfs newproj myapp /custom/path
 acfs newproj myapp --no-br
 ```
 
+Reviewed bootstrap (plan first, then apply; needs Python 3 and runs no agents):
+```bash
+acfs newproj --guided                                    # choose, review, save and create in the terminal
+acfs newproj --plan myapp --preset first-project --stack python | tee myapp-plan.json
+acfs newproj --plan myapp /custom/path --with git,readme,gitignore,agents
+acfs newproj --apply myapp-plan.json --yes               # create exactly what the plan lists
+acfs newproj --apply myapp-plan.json --yes --resume      # continue an interrupted apply
+```
+
+- `--plan`, `--apply` or `--guided` must come first; otherwise the arguments are read as CLI mode.
+- `--plan` prints the plan as JSON and creates nothing. Features are always explicit: `--preset first-project`
+  (git, readme, gitignore, agents, starter, ci, prompt) or `--with` a comma-separated list of those plus
+  `beads` and `agent-mail`. `--stack` is `python` (the default) or `typescript`; `--beads` adds local Beads
+  initialization. The directory defaults to `$ACFS_PROJECTS_DIR/<name>` (`/data/projects/<name>`).
+- `--agent-mail URL` also registers the project with that Agent Mail service and configures project-local
+  Claude MCP; `--agent-mail-token-env NAME` reads the token from that variable without storing it, and
+  `--agent-mail-clients claude,codex,gemini` chooses which clients to configure.
+- `--apply` regenerates the plan and refuses one that was edited or that this ACFS version would generate
+  differently. It never overwrites existing files.
+
 Notes:
 - The TUI uses gum when available (arrow keys, Space to toggle, Enter to confirm). Without gum, it falls back to numbered prompts.
 - Minimum terminal size: 60x15.
