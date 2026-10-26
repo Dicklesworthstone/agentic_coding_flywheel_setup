@@ -1880,6 +1880,65 @@ fi
         self.assertFalse((self.root / 'jsm-injected').exists())
         self.assertEqual(list(self.home.iterdir()), [])
 
+    def test_task_shell_guide_keeps_jsm_pinned_without_editing_configuration(self):
+        binary = b'''#!/bin/sh
+if [ "$1" = --version ]; then
+    echo 'jsm 1.2.3'
+else
+    printf '%s' "${JSM_DISABLE_SELF_UPDATE-}"
+fi
+'''
+        self.bundle('jsm', content=binary)
+        for agent in ('claude', 'codex', 'generic'):
+            for custom in (False, True):
+                with self.subTest(agent=agent, custom=custom):
+                    root = self.root / (agent + '-pinned-tools') if custom else self.home
+                    skill = self.root / f'{agent}-skill-{custom}'
+                    config = root / '.config/jsm/config.toml'
+                    config.parent.mkdir(parents=True, exist_ok=True)
+                    original = b'[notifications]\nauto_self_update = true\n'
+                    config.write_bytes(original)
+                    self.run_setup('jsm', ACFS_CLOUD_AGENT=agent, ACFS_CLOUD_ROOT=str(root),
+                                   ACFS_CLOUD_SKILL_DIR=str(skill))
+                    guide = root / ('.claude/CLAUDE.md' if agent == 'claude' else '.codex/AGENTS.md' if agent == 'codex' else '.acfs/cloud/AGENTS.md')
+                    if agent == 'claude':
+                        guide = self.home / '.claude/CLAUDE.md'
+                    texts = [guide.read_text()]
+                    if agent == 'codex':
+                        texts.append((skill / 'SKILL.md').read_text())
+                    for index, text in enumerate(texts):
+                        blocks = re.findall(r'```bash\n(.*?)\n```', text, re.S)
+                        commands = [block for block in blocks if block.startswith('export PATH=')]
+                        self.assertEqual(len(commands), 1)
+                        script = self.root / f'jsm-pinned-{agent}-{custom}-{index}.sh'
+                        with script.open('x') as output:
+                            output.write(commands[0] + '\njsm config show\n')
+                        result = subprocess.run(['bash', str(script)], cwd=self.root,
+                                                env={**self.env, 'JSM_DISABLE_SELF_UPDATE': '0'},
+                                                capture_output=True, text=True, timeout=5, check=False)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.stdout, '1', 'Task guidance must disable automatic binary replacement')
+                    self.assertEqual(config.read_bytes(), original, 'Cloud guidance must not rewrite user preferences')
+                    self.assertEqual((root / '.local/bin/jsm').read_bytes(), binary)
+
+    def test_jsm_command_example_keeps_pin_with_no_parent_environment_changes(self):
+        self.bundle('jsm', content=b'#!/bin/sh\nif [ "$1" = --version ]; then echo "jsm 1.2.3"; else printf "%s" "${JSM_DISABLE_SELF_UPDATE-}"; fi\n')
+        writable = self.root / "pinned JSM ' tools ` path"
+        self.run_setup('jsm', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable))
+        guide = (writable / '.acfs/cloud/AGENTS.md').read_text()
+        blocks = re.findall(r'```bash\n(.*?)\n```', guide, re.S)
+        path = next(block for block in blocks if block.startswith('export PATH='))
+        command = next(block for block in blocks if ' jsm --help' in block)
+        script = self.root / 'jsm-command-pin.sh'
+        with script.open('x') as output:
+            output.write(path + '\nexport JSM_DISABLE_SELF_UPDATE=0\n')
+            output.write(command.replace(' jsm --help', ' jsm config show') + '\n')
+            output.write('printf "\\n%s" "$JSM_DISABLE_SELF_UPDATE"\n')
+        result = subprocess.run(['bash', str(script)], cwd=self.root, env=self.env,
+                                capture_output=True, text=True, timeout=5, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '1\n0')
+
     def test_custom_root_guide_selects_writable_search_and_memory_state(self):
         self.bundle()
         self.home.chmod(0o555)
