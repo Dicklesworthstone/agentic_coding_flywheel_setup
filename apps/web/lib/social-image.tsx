@@ -242,8 +242,8 @@ function CloudToolBadge({ label, top, left, color }: { label: string; top: numbe
   return <div style={{ display: "flex", position: "absolute", top, left, width: 100, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, background: "#0b1923", border: `1px solid ${color}`, color, fontSize: 28, fontWeight: 700, fontFamily: "monospace" }}>{label}</div>;
 }
 
-/** Route-specific art: a cloud surrounded by the tools in its flywheel. */
-function createCloudAgentSocialImage(variant: SocialImageVariant): ImageResponse {
+/** Editable source for `bun run generate:cloud-social-images`, rendered offline. */
+export function renderCloudAgentSocialImage(variant: SocialImageVariant): ImageResponse {
   const height = variant === "twitter" ? 600 : 630;
   return new ImageResponse(
     <div style={{ display: "flex", position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "linear-gradient(135deg, #071018 0%, #0b1723 52%, #101329 100%)", color: "#f4f8ff", fontFamily: "sans-serif" }}>
@@ -297,10 +297,35 @@ function createCloudAgentSocialImage(variant: SocialImageVariant): ImageResponse
   );
 }
 
+function createCloudAgentSocialImage(variant: SocialImageVariant): Response {
+  // This illustration is fixed, so serve the real rendered PNG instead of
+  // repeating font layout, WASM initialization and SVG rasterization on each
+  // cold request. Lazy loading keeps the art out of other routes' hot paths.
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        const { default: images } = await import("./cloud-social-images.json");
+        controller.enqueue(Uint8Array.from(atob(images[variant]), (character) => character.charCodeAt(0)));
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "content-type": "image/png",
+      "cache-control": process.env.NODE_ENV === "development"
+        ? "no-cache, no-store"
+        : "public, max-age=0, must-revalidate",
+    },
+  });
+}
+
 export function createSocialImage(
   data: SocialImageData,
   variant: SocialImageVariant,
-): ImageResponse {
+): Response {
   if (data.path === "/cloud-agents") return createCloudAgentSocialImage(variant);
   const width = 1200;
   const height = variant === "twitter" ? 600 : 630;

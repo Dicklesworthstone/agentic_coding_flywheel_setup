@@ -128,6 +128,24 @@ describe("cloud agent page data", () => {
     }));
   });
 
+  test("cloud image requests have independent bodies and preserve the image cache contract", async () => {
+    for (const variant of ["opengraph", "twitter"] as const) {
+      const first = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      const second = createSocialImage(getStaticRouteSocialData("/cloud-agents"), variant);
+      const cacheControl = process.env.NODE_ENV === "development"
+        ? "no-cache, no-store"
+        : "public, max-age=0, must-revalidate";
+      expect(first.headers.get("content-type")).toBe("image/png");
+      expect(first.headers.get("cache-control")).toBe(cacheControl);
+      expect(second.headers.get("cache-control")).toBe(cacheControl);
+      first.headers.set("cache-control", "private");
+      expect(second.headers.get("cache-control")).toBe(cacheControl);
+      const [firstBytes, secondBytes] = await Promise.all([first.arrayBuffer(), second.arrayBuffer()]);
+      expect(firstBytes.byteLength).toBeGreaterThan(4096);
+      expect(Buffer.from(secondBytes)).toEqual(Buffer.from(firstBytes));
+    }
+  });
+
   test("custom-root task instructions connect writable search and memory state", () => {
     for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS]) {
       expect(text).toContain("CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell");
