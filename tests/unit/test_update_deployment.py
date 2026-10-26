@@ -61,6 +61,7 @@ sync_acfs_global_wrapper() {
     _test_sync_global_wrapper "${1:-}" "$TEST_ROOT/global-acfs"
 }
 '''
+GLOBAL_SYNC = 'sync_acfs_global_wrapper "${TEST_SOURCE_REF:-}" "$TEST_ROOT/global-acfs"'
 
 
 class AtomicDeploymentTests(unittest.TestCase):
@@ -356,6 +357,284 @@ mv() {
         self.assertEqual([(p.stat().st_ino, p.stat().st_mtime_ns) for p in (script, config)], before)
         self.assertEqual(self.log.read_text(), previous_log)
         self.assert_runtime_files("scripts/lib/stack.sh", "tmux/tmux.conf")
+
+    def test_global_wrapper_failed_real_copy_preserves_working_command(self):
+        # A real file-size limit makes coreutils fail after writing part of the
+        # source. No mocked publisher is needed to reproduce a broken wrapper.
+        self.write(self.repo, "scripts/acfs-global", "#!/bin/bash\n# " + "x" * 4096 + "\n")
+        deployed = self.write(self.base, "global-acfs", "#!/bin/bash\nexit 0\n", 0o755)
+        before = deployed.stat()
+        setup = r'''
+update_system_binary_path() {
+    [[ "$1" != sudo ]] || return 1
+    command -v "$1"
+}
+ulimit -f 1
+'''
+        process = self.start(["/bin/bash", "-c", COMMON + setup + GLOBAL_SYNC])
+        stdout, stderr = process.communicate(timeout=15)
+        self.assertEqual(deployed.read_text(), "#!/bin/bash\nexit 0\n",
+                         "failed installation replaced the working command with a partial file")
+        self.assertNotEqual(process.returncode, 0, (stdout + stderr).decode())
+        after = deployed.stat()
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        self.assertEqual(list(self.base.rglob(".acfs-deploy.*")), [])
+        self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_global_wrapper_readers_see_complete_versions_during_staging(self):
+        old = ("#!/bin/bash\nset -euo pipefail\nprintf 'old-ready\\n'\n"
+               "IFS= read -r release\n" + "# unread script body\n" * 16384
+               + "printf 'old-finished\\n'\n")
+        new = "#!/bin/bash\nprintf 'new-version\\n'\n"
+        setup = r'''
+pause_copy() {
+    printf '#!/bin/bash\n' > "${@: -1}"
+    printf 'copy-ready\n'
+    IFS= read -r release
+}
+cp() { pause_copy "$@"; command cp "$@"; }
+install() {
+    # GNU install removes the previous destination before writing its copy.
+    command install -m 0755 /dev/null "${@: -1}" || return $?
+    pause_copy "$@"
+    command install "$@"
+}
+mv() {
+    local staged="${@: -2:1}" destination="${@: -1}"
+    [[ "${staged%/*}" == "${destination%/*}" ]] || return 91
+    [[ "$(stat -c '%a' "$staged")" == 755 ]] || return 92
+    command mv "$@"
+}
+'''
+        for source_ref in ("", "HEAD"):
+            with self.subTest(source_ref=source_ref):
+                root, source, _, env = self.phase_tree(source_ref or "checkout")
+                source_file = self.write(source, "scripts/acfs-global", new, 0o644)
+                if source_ref:
+                    self.git(source, "init", "--quiet", "--initial-branch=main")
+                    self.commit_tree(source, "selected wrapper")
+                    source_file.write_text("dirty checkout must not deploy\n")
+                deployed = self.write(root, "global-acfs", old, 0o755)
+                before_inode = deployed.stat().st_ino
+                reader = self.start(["/bin/bash", str(deployed)], **env)
+                self.assertEqual(self.line(reader), "old-ready")
+                publisher = self.start(["/bin/bash", "-c", COMMON + setup + GLOBAL_SYNC],
+                                       **env, TEST_SOURCE_REF=source_ref)
+                self.assertEqual(self.line(publisher), "copy-ready")
+                self.assertEqual(deployed.read_text(), old,
+                                 "new invocations can observe an incomplete wrapper")
+                self.assertEqual(deployed.stat().st_ino, before_inode)
+                during = subprocess.run(["/bin/bash", str(deployed)], env=self.env | env,
+                                        input="resume\n", text=True, capture_output=True, timeout=5)
+                self.assertEqual(during.returncode, 0, during.stderr)
+                self.assertEqual(during.stdout, "old-ready\nold-finished\n")
+                stdout, stderr = publisher.communicate(input=b"publish\n", timeout=15)
+                self.assertEqual(publisher.returncode, 0, (stdout + stderr).decode())
+                subsequent = subprocess.run(["/bin/bash", str(deployed)], env=self.env | env,
+                                            text=True, capture_output=True, timeout=5)
+                self.assertEqual(subsequent.returncode, 0, subsequent.stderr)
+                self.assertEqual(subsequent.stdout, "new-version\n")
+                stdout, stderr = reader.communicate(input=b"resume\n", timeout=5)
+                self.assertEqual(reader.returncode, 0, stderr.decode())
+                self.assertEqual(stdout.decode(), "old-finished\n")
+                self.assertNotEqual(deployed.stat().st_ino, before_inode)
+                self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
+                self.assertEqual(list(root.rglob(".acfs-deploy.*")), [])
+                self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_global_wrapper_staging_failures_preserve_metadata_and_cleanup(self):
+        self.write(self.repo, "scripts/acfs-global", "new complete wrapper\n")
+        self.commit_source()
+        failures = {
+            "temporary": "mktemp() { return 72; }\n",
+            "partial copy": 'cp() { printf "partial" > "${@: -1}"; return 73; }\n',
+            "permissions": "chmod() { return 74; }\n",
+            "replacement": "mv() { return 75; }\n",
+        }
+        for source_ref in ("", "HEAD"):
+            for operation, setup in failures.items():
+                with self.subTest(source_ref=source_ref, operation=operation):
+                    deployed = self.write(self.base, "global-acfs", "old complete wrapper\n", 0o750)
+                    before = deployed.stat()
+                    self.invoke(GLOBAL_SYNC, setup, success=False, TEST_SOURCE_REF=source_ref)
+                    self.assertEqual(deployed.read_text(), "old complete wrapper\n")
+                    after = deployed.stat()
+                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                    self.assertNotIn("Synced ", self.log.read_text() if self.log.exists() else "")
+                    self.assertEqual(list(self.base.rglob(".acfs-deploy.*")), [])
+                    self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_global_wrapper_dry_run_idempotence_and_mode_repair(self):
+        self.write(self.repo, "scripts/acfs-global", "new wrapper\n")
+        deployed = self.write(self.base, "global-acfs", "old wrapper\n", 0o750)
+        before = deployed.stat()
+        self.invoke(GLOBAL_SYNC, TEST_DRY_RUN="true")
+        self.assertEqual(deployed.read_text(), "old wrapper\n")
+        after = deployed.stat()
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        self.invoke(GLOBAL_SYNC)
+        self.assertEqual(deployed.read_text(), "new wrapper\n")
+        self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
+        before = deployed.stat()
+        self.invoke(GLOBAL_SYNC, "cp() { return 73; }\nmv() { return 75; }\n")
+        after = deployed.stat()
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        deployed.chmod(0o644)
+        self.invoke(GLOBAL_SYNC)
+        self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(list(self.base.rglob(".acfs-deploy.*")), [])
+
+    def test_global_wrapper_ref_errors_are_not_optional_missing_assets(self):
+        self.write(self.repo, "scripts/acfs-global", "committed wrapper\n")
+        self.commit_source()
+        deployed = self.write(self.base, "global-acfs", "old wrapper\n", 0o755)
+        before = deployed.stat()
+        for operation in ("ls-tree", "show"):
+            with self.subTest(operation=operation):
+                setup = r'''
+git() {
+    if [[ "$3" == "$TEST_GIT_FAILURE" ]]; then printf 'partial\n'; return 73; fi
+    command git "$@"
+}
+'''
+                self.invoke(GLOBAL_SYNC, setup, success=False,
+                            TEST_SOURCE_REF="HEAD", TEST_GIT_FAILURE=operation)
+                self.assertEqual(deployed.read_text(), "old wrapper\n")
+                after = deployed.stat()
+                self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                 (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertEqual(list(self.stage.iterdir()), [])
+        self.invoke(GLOBAL_SYNC, success=False, TEST_SOURCE_REF="missing-ref")
+        self.git(self.repo, "mv", "scripts/acfs-global", "scripts/optional-wrapper")
+        self.commit_tree(self.repo, "older source without wrapper")
+        self.invoke(GLOBAL_SYNC, TEST_SOURCE_REF="HEAD")
+        self.invoke(GLOBAL_SYNC)
+        self.assertEqual(deployed.read_text(), "old wrapper\n")
+        after = deployed.stat()
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        self.assertEqual(list(self.stage.iterdir()), [])
+
+        # A committed symlink is an existing Git asset, but its blob contains
+        # a link target rather than a deployable shell wrapper.
+        (self.repo / "scripts/acfs-global").symlink_to("optional-wrapper")
+        self.commit_tree(self.repo, "unsupported symlink wrapper")
+        self.invoke(GLOBAL_SYNC, success=False, TEST_SOURCE_REF="HEAD")
+        self.assertEqual(deployed.read_text(), "old wrapper\n")
+        after = deployed.stat()
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_global_wrapper_privileged_staging_and_cleanup_use_same_prefix(self):
+        # /proc/sys is not writable even under root. The explicit command-prefix
+        # double redirects every operation into the fixture before executing it;
+        # no operation writes /proc, invokes sudo, or changes process credentials.
+        prefix_script = r'''#!/bin/bash
+set -euo pipefail
+operation="$1"
+shift
+printf '%s\n' "$operation" >> "$TEST_ROOT/prefix-calls"
+[[ "$operation" != true ]] || exit 0
+case "$operation" in mkdir|mktemp|cp|chmod|mv|rm) ;; *) exit 91 ;; esac
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        /proc/sys/acfs-wrapper-regression*)
+            arg="$TEST_ROOT/protected${arg#/proc/sys/acfs-wrapper-regression}"
+            ;;
+    esac
+    args+=("$arg")
+done
+if [[ "$operation" == "$TEST_PREFIX_FAILURE" ]]; then
+    if [[ "$operation" == cp ]]; then printf 'partial' > "${args[${#args[@]}-1]}"; fi
+    exit 73
+fi
+exec "/usr/bin/$operation" "${args[@]}"
+'''
+        setup = r'''
+install() { return 77; }
+update_system_binary_path() {
+    [[ "$1" != sudo ]] || return 1
+    command -v "$1"
+}
+update_sudo_prefix() {
+    [[ "$TEST_PREFIX_FAILURE" != deny ]] || return 1
+    local -n result="$1"
+    result=(/bin/bash "$TEST_ROOT/privileged-command")
+}
+'''
+        invocation = 'sync_acfs_global_wrapper "" /proc/sys/acfs-wrapper-regression/global-acfs'
+        for failure in ("deny", "cp", "chmod", "mv", "none"):
+            with self.subTest(failure=failure):
+                root, source, _, env = self.phase_tree(f"prefix-{failure}")
+                self.write(source, "scripts/acfs-global", "new complete wrapper\n")
+                self.write(root, "privileged-command", prefix_script)
+                deployed = self.write(root, "protected/global-acfs", "old complete wrapper\n", 0o750)
+                before = deployed.stat()
+                self.invoke(invocation, setup, success=failure in ("deny", "none"),
+                            **env, TEST_PREFIX_FAILURE=failure)
+                calls = root / "prefix-calls"
+                if failure == "deny":
+                    self.assertFalse(calls.exists(), "unavailable privilege must remain an explicit skip")
+                else:
+                    self.assertTrue(calls.exists(), "protected publication never used its admitted prefix")
+                    operations = calls.read_text().splitlines()
+                    self.assertEqual(operations[:4], ["true", "mkdir", "mktemp", "cp"])
+                    self.assertIn("rm" if failure != "none" else "mv", operations)
+                if failure == "none":
+                    self.assertEqual(deployed.read_text(), "new complete wrapper\n")
+                    self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
+                    self.assertNotEqual(deployed.stat().st_ino, before.st_ino)
+                else:
+                    self.assertEqual(deployed.read_text(), "old complete wrapper\n")
+                    after = deployed.stat()
+                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                    log = root / "update.log"
+                    self.assertNotIn("Synced ", log.read_text() if log.exists() else "")
+                self.assertEqual(list(root.rglob(".acfs-deploy.*")), [])
+                self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_self_update_retries_failed_global_wrapper_after_fast_forward(self):
+        self.write(self.repo, "VERSION", "base\n")
+        self.write(self.repo, "scripts/acfs-global", "old wrapper\n")
+        self.commit_source()
+        checkout = self.base / "checkout"
+        self.git(self.base, "clone", "--quiet", str(self.repo), str(checkout))
+        self.write(self.repo, "VERSION", "fresh\n")
+        self.write(self.repo, "scripts/acfs-global", "new wrapper\n")
+        self.commit_source()
+        deployed = self.write(self.base, "global-acfs", "old wrapper\n", 0o755)
+        before = deployed.stat()
+        setup = PHASE_SETUP + r'''
+SCRIPT_DIR="$TEST_ROOT/no-updater"
+cp() {
+    if [[ "$1" == -- ]]; then shift; fi
+    if [[ "$1" == "$ACFS_REPO_ROOT/scripts/acfs-global" ]]; then
+        printf 'partial' > "${@: -1}"
+        return 73
+    fi
+    command cp "$@"
+}
+'''
+        self.invoke("update_acfs_self", setup, success=False, TEST_SOURCE=str(checkout))
+        self.assertEqual(self.git(checkout, "rev-parse", "HEAD"), self.git(self.repo, "rev-parse", "HEAD"))
+        self.assertEqual(deployed.read_text(), "old wrapper\n")
+        after = deployed.stat()
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        # The checkout is now current. The next invocation must repair the
+        # wrapper even without requesting the shell-update phase.
+        self.invoke("update_acfs_self", PHASE_SETUP, TEST_SOURCE=str(checkout))
+        self.assertEqual(deployed.read_text(), "new wrapper\n")
+        self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(list(self.base.rglob(".acfs-deploy.*")), [])
+        self.assertEqual(list(self.stage.iterdir()), [])
 
     def test_identical_script_with_missing_execute_bit_is_repaired(self):
         content = "#!/bin/bash\nprintf 'repaired\\n'\n"

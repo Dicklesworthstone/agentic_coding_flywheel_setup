@@ -3144,6 +3144,8 @@ cleanup_unmanaged_atuin_init() {
 # have open. Callers own source selection, idempotency, and success reporting.
 # An explicit mode/reference implements the runtime manifest's permissions;
 # otherwise preserve cp's existing-target mode or source mode masked by umask.
+# Optional arguments after the source label are a command prefix (e.g. sudo)
+# used for the whole publication, including cleanup of privileged staging files.
 update_atomic_deploy_file() (
     local source_file="$1"
     local deployed_file="$2"
@@ -3152,41 +3154,42 @@ update_atomic_deploy_file() (
     local source_label="${5:-$source_file}"
     local deployed_dir="${deployed_file%/*}"
     local deployed_tmp=""
+    local -a deploy_prefix=("${@:6}")
 
-    trap 'if [[ -n "$deployed_tmp" ]]; then rm -f -- "$deployed_tmp"; fi' EXIT
+    trap 'if [[ -n "$deployed_tmp" ]]; then "${deploy_prefix[@]}" rm -f -- "$deployed_tmp"; fi' EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
-    if ! mkdir -p -- "$deployed_dir"; then
+    if ! "${deploy_prefix[@]}" mkdir -p -- "$deployed_dir"; then
         log_to_file "Failed to create deployment directory for $deployed_file"
         exit 1
     fi
-    if ! deployed_tmp="$(mktemp "$deployed_dir/.acfs-deploy.XXXXXX")"; then
+    if ! deployed_tmp="$("${deploy_prefix[@]}" mktemp "$deployed_dir/.acfs-deploy.XXXXXX")"; then
         log_to_file "Failed to create deployment staging file for $deployed_file"
         exit 1
     fi
-    if ! cp -- "$source_file" "$deployed_tmp"; then
+    if ! "${deploy_prefix[@]}" cp -- "$source_file" "$deployed_tmp"; then
         log_to_file "Failed to stage $source_label -> $deployed_file"
         exit 1
     fi
 
     local mode_status=0
     if [[ -n "$target_mode" ]]; then
-        chmod "$target_mode" "$deployed_tmp" || mode_status=$?
+        "${deploy_prefix[@]}" chmod "$target_mode" "$deployed_tmp" || mode_status=$?
     elif [[ -n "$mode_reference" ]]; then
-        chmod --reference="$mode_reference" "$deployed_tmp" || mode_status=$?
+        "${deploy_prefix[@]}" chmod --reference="$mode_reference" "$deployed_tmp" || mode_status=$?
     elif [[ -f "$deployed_file" ]]; then
-        chmod --reference="$deployed_file" "$deployed_tmp" || mode_status=$?
+        "${deploy_prefix[@]}" chmod --reference="$deployed_file" "$deployed_tmp" || mode_status=$?
     else
         local source_mode="" creation_mask=""
-        if ! source_mode="$(stat -Lc '%a' -- "$source_file")" || [[ ! "$source_mode" =~ ^[0-7]{1,4}$ ]]; then
+        if ! source_mode="$("${deploy_prefix[@]}" stat -Lc '%a' -- "$source_file")" || [[ ! "$source_mode" =~ ^[0-7]{1,4}$ ]]; then
             log_to_file "Failed to determine deployment permissions for $source_label"
             exit 1
         fi
         creation_mask="$(umask)"
         printf -v target_mode '%o' "$((8#$source_mode & ~8#$creation_mask))"
-        chmod "$target_mode" "$deployed_tmp" || mode_status=$?
+        "${deploy_prefix[@]}" chmod "$target_mode" "$deployed_tmp" || mode_status=$?
     fi
     if [[ "$mode_status" -ne 0 ]]; then
         log_to_file "Failed to set deployment permissions for $deployed_file"
@@ -3194,7 +3197,7 @@ update_atomic_deploy_file() (
     fi
     # -T rejects directory targets instead of moving the staging file inside.
     # Both paths share a directory, so publication is a single rename.
-    if ! mv -fT -- "$deployed_tmp" "$deployed_file"; then
+    if ! "${deploy_prefix[@]}" mv -fT -- "$deployed_tmp" "$deployed_file"; then
         log_to_file "Failed to replace $deployed_file from $source_label"
         exit 1
     fi
@@ -3828,69 +3831,72 @@ update_normalize_runtime_modes() {
     fi
 }
 
-sync_acfs_global_wrapper() {
+sync_acfs_global_wrapper() (
     local source_ref="${1:-}"
     local deployed_file="${2:-/usr/local/bin/acfs}"
     local repo_rel="scripts/acfs-global"
     local source_file="$ACFS_REPO_ROOT/$repo_rel"
     local source_tmp=""
     local source_label="$repo_rel"
-    local install_cmd=()
+    local source_mode=""
+    local deployed_dir="${deployed_file%/*}"
+    local -a deploy_prefix=()
+
+    trap 'if [[ -n "$source_tmp" ]]; then rm -f -- "$source_tmp"; fi' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 
     if [[ -n "$source_ref" ]]; then
-        source_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-global-sync.XXXXXX" 2>/dev/null)" || return 0
+        source_label="${source_ref}:$repo_rel"
+        if ! source_mode="$(git -C "$ACFS_REPO_ROOT" ls-tree "$source_ref" -- "$repo_rel" 2>/dev/null | awk 'NR == 1 { print $1 }')"; then
+            log_to_file "Failed to read source mode for $source_label"
+            exit 1
+        fi
+        case "$source_mode" in
+            "") exit 0 ;; # Older refs can omit this optional entry point.
+            100644|100755) ;;
+            *)
+                log_to_file "Refusing global wrapper from $source_label (git mode: $source_mode)"
+                exit 1
+                ;;
+        esac
+        if ! source_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-global-sync.XXXXXX" 2>/dev/null)"; then
+            log_to_file "Failed to create source staging file for $source_label"
+            exit 1
+        fi
         if ! git -C "$ACFS_REPO_ROOT" show "${source_ref}:$repo_rel" > "$source_tmp" 2>/dev/null; then
-            rm -f "$source_tmp" 2>/dev/null || true
-            return 0
+            log_to_file "Failed to extract $source_label"
+            exit 1
         fi
         source_file="$source_tmp"
-        source_label="${source_ref}:$repo_rel"
     else
-        [[ -f "$source_file" ]] || return 0
+        [[ -f "$source_file" ]] || exit 0
     fi
 
-    install_cmd=(install -m 0755 "$source_file" "$deployed_file")
-
     if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file" && [[ -x "$deployed_file" ]]; then
-        if [[ -n "$source_tmp" ]]; then
-            rm -f "$source_tmp" 2>/dev/null || true
-        fi
-        return 0
+        exit 0
     fi
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log_to_file "Would sync $source_label -> $deployed_file"
-        if [[ -n "$source_tmp" ]]; then
-            rm -f "$source_tmp" 2>/dev/null || true
-        fi
-        return 0
+        exit 0
     fi
 
-    if "${install_cmd[@]}" 2>/dev/null; then
-        log_to_file "Synced $source_label -> $deployed_file"
-        if [[ -n "$source_tmp" ]]; then
-            rm -f "$source_tmp" 2>/dev/null || true
+    # Atomic replacement needs a writable directory, even when the old file
+    # itself is writable. Choose privileges before staging: a failed copy or
+    # rename is an update failure, not a reason to retry arbitrary I/O as root.
+    if [[ ! -w "$deployed_dir" ]]; then
+        if ! update_sudo_prefix deploy_prefix || ! "${deploy_prefix[@]}" true >/dev/null 2>&1; then
+            log_to_file "Skipped syncing $source_label -> $deployed_file (needs root)"
+            exit 0
         fi
-        return 0
     fi
 
-    local sudo_bin=""
-    sudo_bin="$(update_system_binary_path sudo 2>/dev/null || true)"
-    if [[ -n "$sudo_bin" ]] && "$sudo_bin" -n true >/dev/null 2>&1; then
-        "$sudo_bin" -n "${install_cmd[@]}"
-        log_to_file "Synced $source_label -> $deployed_file"
-        if [[ -n "$source_tmp" ]]; then
-            rm -f "$source_tmp" 2>/dev/null || true
-        fi
-        return 0
-    fi
-
-    log_to_file "Skipped syncing $source_label -> $deployed_file (needs root)"
-    if [[ -n "$source_tmp" ]]; then
-        rm -f "$source_tmp" 2>/dev/null || true
-    fi
-    return 0
-}
+    update_atomic_deploy_file "$source_file" "$deployed_file" 755 "" "$source_label" \
+        "${deploy_prefix[@]}" || exit $?
+    log_to_file "Synced $source_label -> $deployed_file"
+)
 
 sync_acfs_global_command_links() {
     local acfs_home=""
@@ -5920,6 +5926,8 @@ update_acfs_self() {
             done_origin_url=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null || true)
             if is_expected_acfs_origin_url "$done_origin_url"; then
                 sync_acfs_deployed || return $?
+                sync_acfs_global_wrapper || return $?
+                sync_acfs_global_command_links
             fi
         fi
         return 0
@@ -6106,6 +6114,8 @@ update_acfs_self() {
         log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
         update_refresh_installed_security || return $?
         sync_acfs_deployed || return $?
+        sync_acfs_global_wrapper || return $?
+        sync_acfs_global_command_links
         return 0
     fi
 
@@ -6175,7 +6185,7 @@ update_acfs_self() {
     # copy the new version there first, the hash comparison won't trigger
     # the re-exec and future runs will use the old code.
     sync_acfs_deployed || return $?
-    sync_acfs_global_wrapper
+    sync_acfs_global_wrapper || return $?
     sync_acfs_global_command_links
 
     # Check if update.sh itself changed - if so, re-exec
