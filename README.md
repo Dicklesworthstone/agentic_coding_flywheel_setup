@@ -458,6 +458,7 @@ Omarchy (and Arch Linux generally) is supported by the **same one-liner** — no
 - **pacman instead of apt**: system packages and CLI tools install via `pacman`.
 - **Your existing starship config is preserved**: if you already have a customized `starship.toml`, ACFS leaves it alone rather than overwriting it.
 - **No oh-my-zsh / powerlevel10k on Arch**: Arch users typically have an opinionated shell setup already, so the installer skips the oh-my-zsh + powerlevel10k phase instead of clobbering your prompt.
+- **apt-only modules stop early under `--only` / `--skip`**: a filtered run executes the manifest modules directly rather than the pacman-aware default path. The modules that can only install with apt (`base.system`, `shell.zsh`, `cli.modern`, `lang.go`, `network.tailscale`, `tools.vault`, `db.postgres18`) stop before changing anything and print the `pacman` command to run instead.
 
 Everything else — language runtimes, AI agents, and the flywheel tool stack — installs identically to Ubuntu.
 

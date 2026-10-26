@@ -3082,6 +3082,13 @@ acfs_generated_install_stack_srps() {
         log_info "Skipping stack.srps (not selected)"
         return 0
     fi
+    case "${ACFS_DISTRO_FAMILY:-ubuntu}" in
+        ubuntu) ;;
+        *)
+            log_info "Skipping stack.srps (not supported on the ${ACFS_DISTRO_FAMILY:-ubuntu} distro family; supported: ubuntu)"
+            return 0
+            ;;
+    esac
     log_step "Installing stack.srps"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then

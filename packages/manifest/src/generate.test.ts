@@ -2467,3 +2467,113 @@ describe("stack.cass per-run installer TMPDIR cleanup", () => {
     expect(existsSync(resolve(run.made, "build-artifact"))).toBe(true);
   });
 });
+
+describe("apt-only modules on non-apt distro families (#477)", () => {
+  let manifest: Manifest;
+
+  // Modules whose install calls apt-get but falls back to a non-apt path when
+  // apt is unavailable, so they need no gate. Each entry must say why.
+  const APT_WITH_NON_APT_FALLBACK = new Map([
+    ["tools.lazygit", "falls back to the pinned upstream release binary"],
+  ]);
+  const APT_GATE_COMMAND =
+    'command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]';
+  const APT_GATED_MODULES = [
+    "base.system",
+    "cli.modern",
+    "db.postgres18",
+    "lang.go",
+    "network.tailscale",
+    "shell.zsh",
+    "tools.vault",
+  ];
+
+  beforeAll(() => {
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+    manifest = parseResult.data;
+  });
+
+  function usesApt(module: Module): boolean {
+    return /\bapt-get\b|\/etc\/apt\//.test(module.install.join("\n"));
+  }
+
+  function generatedFunction(categoryScript: string, moduleId: string): string {
+    const start = categoryScript.indexOf(`\n${toGeneratedFunctionName(moduleId)}() {\n`);
+    expect(start, moduleId).toBeGreaterThanOrEqual(0);
+    return categoryScript.slice(start, categoryScript.indexOf("\n}\n", start));
+  }
+
+  test("every module that installs with apt refuses non-apt systems up front", () => {
+    const gated: string[] = [];
+    for (const module of manifest.modules) {
+      if (module.generated === false || !usesApt(module)) continue;
+      if (APT_WITH_NON_APT_FALLBACK.has(module.id)) continue;
+      // families excluding arch would also keep it off Arch, but these modules'
+      // tools are needed there; only their install path is apt-specific.
+      expect(module.pre_install_check?.command, module.id).toBe(APT_GATE_COMMAND);
+      // The refusal names the manual route instead of a dead end.
+      expect(module.pre_install_check?.skip_message, module.id).toMatch(
+        /Install .+ with your package manager instead \(Arch: sudo pacman -S --needed [^)]+\), then re-run$/,
+      );
+      gated.push(module.id);
+    }
+    expect(gated.sort()).toEqual(APT_GATED_MODULES);
+    for (const id of APT_WITH_NON_APT_FALLBACK.keys()) {
+      const module = manifest.modules.find((candidate) => candidate.id === id);
+      expect(module && usesApt(module), `${id} no longer uses apt; drop it from the allowlist`).toBe(
+        true,
+      );
+    }
+  });
+
+  test("the generated gate runs before the first install command", () => {
+    const checked: string[] = [];
+    for (const module of manifest.modules) {
+      if (module.pre_install_check?.command !== APT_GATE_COMMAND) continue;
+      checked.push(module.id);
+      const category = resolveModuleCategory(module);
+      const body = generatedFunction(
+        readFileSync(resolve(GENERATED_DIR, `install_${category}.sh`), "utf-8"),
+        module.id,
+      );
+      const delimiter = `INSTALL_${module.id.replace(/\./g, "_").toUpperCase()}`;
+      const gateAt = body.indexOf(`<<'${delimiter}_PRE_INSTALL_CHECK'\n${APT_GATE_COMMAND}\n`);
+      const installAt = body.indexOf(`<<'${delimiter}'\n`);
+      expect(gateAt, module.id).toBeGreaterThan(0);
+      expect(installAt, module.id).toBeGreaterThan(gateAt);
+      // Everything before the gate block is selection bookkeeping, never apt
+      // or /etc/apt (network.tailscale wrote its apt source before failing).
+      const gateBlockAt = body.lastIndexOf('    if [[ "${DRY_RUN:-false}" = "true" ]]; then\n', gateAt);
+      expect(gateBlockAt, module.id).toBeGreaterThan(0);
+      expect(body.slice(0, gateBlockAt), module.id).not.toMatch(/apt-get|\/etc\/apt/);
+    }
+    expect(checked.sort()).toEqual(APT_GATED_MODULES);
+  });
+
+  test("a module declared for other distro families skips before installing", () => {
+    const srps = manifest.modules.find((module) => module.id === "stack.srps");
+    if (!srps) throw new Error("stack.srps not found");
+    expect(srps.families).toEqual(["ubuntu"]);
+
+    for (const script of [
+      generateCategoryScript(manifest, "stack"),
+      readFileSync(resolve(GENERATED_DIR, "install_stack.sh"), "utf-8"),
+    ]) {
+      const body = generatedFunction(script, "stack.srps");
+      const guardAt = body.indexOf('    case "${ACFS_DISTRO_FAMILY:-ubuntu}" in\n        ubuntu) ;;\n');
+      expect(guardAt).toBeGreaterThan(body.indexOf("should_run_module"));
+      expect(body.indexOf('log_step "Installing stack.srps"')).toBeGreaterThan(guardAt);
+      expect(body.indexOf("verified_installer")).toBeGreaterThan(guardAt);
+      expect(body).toContain(
+        'log_info "Skipping stack.srps (not supported on the ${ACFS_DISTRO_FAMILY:-ubuntu} distro family; supported: ubuntu)"',
+      );
+    }
+
+    // A module with no families declaration applies everywhere: no guard.
+    const cass = generatedFunction(generateCategoryScript(manifest, "stack"), "stack.cass");
+    expect(cass).not.toContain("ACFS_DISTRO_FAMILY");
+  });
+});

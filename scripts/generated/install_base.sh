@@ -364,6 +364,17 @@ acfs_generated_install_base_system() {
     log_step "Installing base.system"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v apt-get >/dev/null 2>&1 && [[ \"\${ACFS_DISTRO_FAMILY:-ubuntu}\" != arch ]] (current)"
+    else
+        if ! run_as_current_shell <<'INSTALL_BASE_SYSTEM_PRE_INSTALL_CHECK'
+command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
+INSTALL_BASE_SYSTEM_PRE_INSTALL_CHECK
+        then
+            log_error "base.system: installs with apt-get on Debian/Ubuntu only. Install the base packages with your package manager instead (Arch: sudo pacman -S --needed curl git ca-certificates unzip tar xz jq base-devel gnupg), then re-run"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 update -y (root)"
     else
         if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'

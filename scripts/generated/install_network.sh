@@ -364,6 +364,17 @@ acfs_generated_install_network_tailscale() {
     log_step "Installing network.tailscale"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v apt-get >/dev/null 2>&1 && [[ \"\${ACFS_DISTRO_FAMILY:-ubuntu}\" != arch ]] (current)"
+    else
+        if ! run_as_current_shell <<'INSTALL_NETWORK_TAILSCALE_PRE_INSTALL_CHECK'
+command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
+INSTALL_NETWORK_TAILSCALE_PRE_INSTALL_CHECK
+        then
+            log_error "network.tailscale: installs from the Tailscale Ubuntu apt repository on Debian/Ubuntu only. Install Tailscale with your package manager instead (Arch: sudo pacman -S --needed tailscale && sudo systemctl enable --now tailscaled), then re-run"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: case \"\$DISTRO_CODENAME\" in (root)"
     else
         if ! run_as_root_shell <<'INSTALL_NETWORK_TAILSCALE'

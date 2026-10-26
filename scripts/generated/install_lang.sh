@@ -711,6 +711,17 @@ acfs_generated_install_lang_go() {
     log_step "Installing lang.go"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v apt-get >/dev/null 2>&1 && [[ \"\${ACFS_DISTRO_FAMILY:-ubuntu}\" != arch ]] (current)"
+    else
+        if ! run_as_current_shell <<'INSTALL_LANG_GO_PRE_INSTALL_CHECK'
+command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
+INSTALL_LANG_GO_PRE_INSTALL_CHECK
+        then
+            log_error "lang.go: installs with apt-get on Debian/Ubuntu only. Install Go with your package manager instead (Arch: sudo pacman -S --needed go), then re-run"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y golang-go (root)"
     else
         if ! run_as_root_shell <<'INSTALL_LANG_GO'

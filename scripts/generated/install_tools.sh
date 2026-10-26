@@ -836,6 +836,30 @@ acfs_generated_install_tools_vault() {
     log_step "Installing tools.vault"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v apt-get >/dev/null 2>&1 && [[ \"\${ACFS_DISTRO_FAMILY:-ubuntu}\" != arch ]] (current)"
+    else
+        if ! run_as_current_shell <<'INSTALL_TOOLS_VAULT_PRE_INSTALL_CHECK'
+command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
+INSTALL_TOOLS_VAULT_PRE_INSTALL_CHECK
+        then
+            log_warn "tools.vault: installs from the HashiCorp apt repository on Debian/Ubuntu only. Install Vault with your package manager instead (Arch: sudo pacman -S --needed vault), then re-run"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "tools.vault"; then
+              log_error "tools.vault: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "tools.vault" "installs from the HashiCorp apt repository on Debian/Ubuntu only. Install Vault with your package manager instead (Arch: sudo pacman -S --needed vault), then re-run"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "tools.vault"
+            fi
+            return 0
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then (root)"
     else
         if ! run_as_root_shell <<'INSTALL_TOOLS_VAULT'

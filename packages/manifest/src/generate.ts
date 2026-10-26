@@ -1289,6 +1289,32 @@ function generatePreInstallCheck(module: Module): string[] {
   return lines;
 }
 
+/**
+ * Skip a module declared for other distro families (#385, #477).
+ *
+ * install.sh's legacy paths and doctor already honor `families`, but a
+ * selection-filtered run (--only/--skip) dispatches every category to these
+ * generated functions, so the declaration must hold here too. An unset
+ * ACFS_DISTRO_FAMILY means ubuntu, as in acfs_module_supports_family.
+ */
+function generateFamilyGuard(module: Module): string[] {
+  const families = module.families;
+  if (!families || families.length === 0) {
+    return [];
+  }
+
+  const supported = families.join(" ");
+  return [
+    '    case "${ACFS_DISTRO_FAMILY:-ubuntu}" in',
+    `        ${families.join("|")}) ;;`,
+    "        *)",
+    `            log_info "Skipping ${module.id} (not supported on the \${ACFS_DISTRO_FAMILY:-ubuntu} distro family; supported: ${supported})"`,
+    "            return 0",
+    "            ;;",
+    "    esac",
+  ];
+}
+
 function getModulePhase(module: Module): number {
   return module.phase ?? 1;
 }
@@ -2402,6 +2428,7 @@ export function generateCategoryScript(manifest: Manifest, category: ModuleCateg
     lines.push(`        log_info "Skipping ${module.id} (not selected)"`);
     lines.push("        return 0");
     lines.push("    fi");
+    lines.push(...generateFamilyGuard(module));
     lines.push(`    log_step "Installing ${module.id}"`);
     lines.push("");
 

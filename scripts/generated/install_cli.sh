@@ -364,6 +364,17 @@ acfs_generated_install_cli_modern() {
     log_step "Installing cli.modern"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v apt-get >/dev/null 2>&1 && [[ \"\${ACFS_DISTRO_FAMILY:-ubuntu}\" != arch ]] (current)"
+    else
+        if ! run_as_current_shell <<'INSTALL_CLI_MODERN_PRE_INSTALL_CHECK'
+command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
+INSTALL_CLI_MODERN_PRE_INSTALL_CHECK
+        then
+            log_error "cli.modern: installs with apt-get on Debian/Ubuntu only. Install the CLI tools with your package manager instead (Arch: sudo pacman -S --needed ripgrep tmux fzf direnv jq github-cli git-lfs lsof bind openbsd-netcat strace rsync), then re-run"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'

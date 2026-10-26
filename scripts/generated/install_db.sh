@@ -364,6 +364,30 @@ acfs_generated_install_db_postgres18() {
     log_step "Installing db.postgres18"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v apt-get >/dev/null 2>&1 && [[ \"\${ACFS_DISTRO_FAMILY:-ubuntu}\" != arch ]] (current)"
+    else
+        if ! run_as_current_shell <<'INSTALL_DB_POSTGRES18_PRE_INSTALL_CHECK'
+command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
+INSTALL_DB_POSTGRES18_PRE_INSTALL_CHECK
+        then
+            log_warn "db.postgres18: installs PostgreSQL 18 with apt on Ubuntu only. Install PostgreSQL with your package manager instead (Arch: sudo pacman -S --needed postgresql), then re-run"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "db.postgres18"; then
+              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "db.postgres18" "installs PostgreSQL 18 with apt on Ubuntu only. Install PostgreSQL with your package manager instead (Arch: sudo pacman -S --needed postgresql), then re-run"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "db.postgres18"
+            fi
+            return 0
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: unset ID VERSION_ID VERSION_CODENAME (root)"
     else
         if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
