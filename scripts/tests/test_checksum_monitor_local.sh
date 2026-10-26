@@ -123,6 +123,16 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     grep -q 'bun_unsafe_reason="$(bun_binary_unsafe_reason "$BUN_BIN")"' "$MONITOR" \
         || fail "the monitor no longer gates on bun_binary_unsafe_reason"
 
+    # ---- public GitHub text --------------------------------------------
+    [[ "$(HOME=/home/mon public_text 'clone not found at /home/mon/acfs-monitor; see /home/mon/.local/state/x')" \
+        == 'clone not found at ~/acfs-monitor; see ~/.local/state/x' ]] || fail "public_text kept the home path"
+    [[ "$(HOME=/home/mon public_text '/home/mon2/x /home/monitor')" == '/home/mon2/x /home/monitor' ]] \
+        || fail "public_text rewrote a path outside the home directory"
+    [[ "$(HOME=/ public_text '/usr/bin/x')" == '/usr/bin/x' ]] || fail "public_text rewrote paths for HOME=/"
+    # Commit authors and issue text are public: the only $(hostname) use is the private push.
+    [[ "$(grep -c '$(hostname' "$MONITOR")" == 1 ]] && grep -q 'local push_msg=.*$(hostname' "$MONITOR" \
+        || fail "the monitor names its host outside the private push"
+
     # ---- alert dedupe ----------------------------------------------------
     due() {
         _fail_alert_due "$@" || fail "expected alert to be due for: $*"
@@ -232,9 +242,12 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     call_count() { grep -c '^-' "$CURL_CALLS" || true; }
     gh_count() { grep -c '^gh issue' "$GH_CALLS" || true; }
 
-    _alert_fail_closed_streak 3 "push-only reason"
+    HOME="$STATE_TMP" _alert_fail_closed_streak 3 "push-only reason"
     first_gh_count=$(gh_count)
     grep -q 'test-host' "$CURL_CALLS" || fail "private push does not name the host"
+    grep -qF "See $LOG_DIR." "$CURL_CALLS" || fail "private push does not give the log directory"
+    grep -qF 'See ~/state/logs on the monitor host.' "$GH_CALLS" || fail "GitHub alert lost the log directory"
+    ! grep -qF "$STATE_TMP" "$GH_CALLS" || fail "public GitHub alert names the home directory"
     grep -q 'push-only reason' "$GH_CALLS" || fail "GitHub alert body missing the reason"
     ! grep -q 'test-host' "$GH_CALLS" || fail "public GitHub alert names the host"
     fake_time=$((fake_time + 60))
@@ -344,8 +357,12 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     VERIFICATION_REPORT_SHA256="$(hx 9)"
     RUN_TS=unit
     : > "$GH_CALLS"; OPEN_ISSUE=""
-    record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
+    HOME="$STATE_TMP" record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
     grep -q -- '--state all' "$GH_CALLS" || fail "authorization lookup ignores closed issues"
+    review_body="$(grep -o -- '--body-file [^ ]*' "$GH_CALLS" | tail -n 1 | cut -d' ' -f2)"
+    grep -qF 'place exactly this line in `~/state/authorized-checksum-change`' "$review_body" \
+        || fail "authorization issue does not say where the authorization file goes"
+    ! grep -qF "$STATE_TMP" "$review_body" || fail "public authorization issue names the home directory"
     [[ "$(grep -c ' gh issue create ' "$GH_CALLS")" == 1 ]] || fail "first pending request did not open one issue"
     : > "$GH_CALLS"; OPEN_ISSUE=446
     record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
@@ -513,6 +530,9 @@ RETAIN
                     else
                         [[ "$remote_main" != "$integration_base" && "${published_hashes[br]}" == "$br_actual" ]] \
                             || fail "$integration_case did not publish the trusted observation"
+                        [[ "$(git --git-dir="$case_root/remote.git" log -1 --format='%an|%cn' "$remote_main")" \
+                            == 'acfs-checksum-monitor|acfs-checksum-monitor' ]] \
+                            || fail "$integration_case published under a name other than acfs-checksum-monitor"
                     fi
                     if [[ "$integration_case" == approved ]]; then
                         [[ "${published_hashes[omp]}" == "$omp_actual" \

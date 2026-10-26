@@ -18,7 +18,7 @@
 # pushed to both refs in one atomic transaction and re-read from the remote
 # before health is recorded.
 #
-# Deployment (maintainer host, e.g. ts1):
+# Deployment (maintainer host):
 #   git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup ~/acfs-monitor
 #   cp ~/acfs-monitor/scripts/templates/acfs-checksum-monitor.{service,timer} \
 #      ~/.config/systemd/user/
@@ -409,7 +409,7 @@ record_external_review() {
         printf '### First-observation evidence\n\n'
         printf '%s\n' "$external_evidence"
         printf '\n### Human authorization\n\n'
-        printf 'After reviewing the upstream bytes, place exactly this line in `%s` as an owner-only, non-symlink file:\n\n' "$AUTHORIZATION_FILE"
+        printf 'After reviewing the upstream bytes, place exactly this line in `%s` as an owner-only, non-symlink file:\n\n' "$(public_text "$AUTHORIZATION_FILE")"
         printf '```text\nauthorize:%s\n```\n' "$digest"
     } > "$body_file" || return 1
 
@@ -635,9 +635,9 @@ bun_binary_unsafe_reason() {
             bunx_inode="$(stat -c '%i' -- "$dir/bunx" 2>/dev/null || true)"
         fi
         if [[ -z "$inode" || "$inode" != "$bunx_inode" ]]; then
-            # Say where to look and how to recover; on ts1 the stray link was
-            # perf's root-owned build-id cache, and the bare reason sat in
-            # 351 consecutive fail-closed runs.
+            # Say where to look and how to recover; on the maintainer host the
+            # stray link was perf's root-owned build-id cache, and the bare
+            # reason sat in 351 consecutive fail-closed runs.
             inode="$(stat -c '%i' -- "$bin" 2>/dev/null || true)"
             printf 'pinned Bun binary has a second hard link that is not the sibling bunx: %s (inode %s; locate it with: sudo find / -xdev -inum %s; perf build-id caches under /root/.debug are a common source; once it is explained, break the link with a byte-identical copy: cp -p %s %s.new && mv %s.new %s)\n' \
                 "$bin" "${inode:-unknown}" "${inode:-INODE}" "$bin" "$bin" "$bin" "$bin"
@@ -691,6 +691,16 @@ _fail_alert_record() {
     printf '%s\t%s\n' "$now" "$reason" > "$record_file" 2>/dev/null || true
 }
 
+# public_text TEXT: TEXT with the monitor user's home directory written as ~.
+# Anything posted to GitHub goes through it: issues are public, and the
+# home path names the account (fail-closed reasons often carry paths).
+public_text() {
+    # shellcheck disable=SC2088  # a literal ~ is the point
+    local text="$1" home_prefix="${HOME:-}/" tilde_prefix='~/'
+    [[ "$home_prefix" == / || "$home_prefix" == // ]] || text="${text//"$home_prefix"/$tilde_prefix}"
+    printf '%s' "$text"
+}
+
 _alert_fail_closed_streak() {
     local streak="$1" reason="$2"
     local github_due=false push_due=false
@@ -701,9 +711,10 @@ _alert_fail_closed_streak() {
         push_due=true
     fi
     [[ "$github_due" == true || "$push_due" == true ]] || return 0
-    # The GitHub issue is public, so it never names the host; the private
-    # push does, so the operator knows which monitor to look at.
-    local alert_msg="ACFS checksum monitor has failed closed $streak times in a row. Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged.)"
+    # The GitHub issue is public, so it names neither the host nor the home
+    # directory; the private push does, so the operator knows where to look.
+    local alert_msg=""
+    alert_msg="$(public_text "ACFS checksum monitor has failed closed $streak times in a row. Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR on the monitor host. (Repeated at most once per 24h while the reason is unchanged.)")"
     local push_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR. (Repeated at most once per 24h while the reason is unchanged.)"
     # Optional push notification
     if [[ "$push_due" == true ]]; then
