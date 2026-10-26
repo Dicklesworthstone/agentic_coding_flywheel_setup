@@ -184,6 +184,16 @@ describe("cloud agent page data", () => {
     }
   });
 
+  test("all provider briefs and task instructions keep JSM on the verified cloud pin", () => {
+    const instruction = "Keep JSM_DISABLE_SELF_UPDATE=1 in each task shell so ordinary JSM commands retain the manifest-pinned executable; use verified cloud setup for tool refreshes.";
+    for (const text of [CODEX_CLOUD_START_SKILL, GENERIC_CLOUD_TASK_INSTRUCTIONS, script, readme]) {
+      expect(text).toContain(instruction);
+    }
+    for (const agent of CLOUD_AGENTS) expect(getCloudAgentSetupInstructions(agent.id)).toContain(instruction);
+    expect(script).toContain('JSM_DISABLE_SELF_UPDATE=1 jsm --help');
+    expect(readme).toContain('even an ordinary command such as `jsm config show`');
+  });
+
   test("walkthroughs cover every provider with stable, unique step anchors", () => {
     expect(Object.keys(CLOUD_WALKTHROUGHS).sort()).toEqual(CLOUD_AGENTS.map((agent) => agent.id).sort());
     for (const walkthrough of Object.values(CLOUD_WALKTHROUGHS)) {

@@ -529,7 +529,8 @@ cloud_write_guide() {
     # Fences preserve literal backticks in valid paths/refs; an inline code
     # span would end early even when the shell metacharacter is escaped.
     block+=$'In each task shell, run:\n\n```bash\n'
-    block+="export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH"$'\n```\n\n'
+    block+="export PATH=$(printf '%q' "$ACFS_CLOUD_BIN_DIR"):\$PATH JSM_DISABLE_SELF_UPDATE=1"$'\n```\n\n'
+    block+=$'JSM_DISABLE_SELF_UPDATE=1 keeps ordinary JSM commands from replacing the manifest-pinned executable. This changes only the task shell, not your saved JSM preferences. Use the verified cloud setup to refresh pinned tools; do not run jsm update or enable automatic self-updates in this environment.\n\n'
     if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
         block+=$'For CASS search data and CASS Memory in this writable data root, run in each task shell:\n\n```bash\n'
         block+=$'if [[ -z "${XDG_DATA_HOME:-}" ]]; then\n'
@@ -541,7 +542,7 @@ cloud_write_guide() {
         block+="export JFP_HOME=\${JFP_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT")}"$'\n```\n\n'
         block+=$'This preserves an existing JFP_HOME. If XDG_CONFIG_HOME is set, JFP uses it instead; that directory must also be writable.\n\n'
         block+=$'For JSM state with a read-only HOME and no configured profile, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
-        block+="XDG_CONFIG_HOME=\${XDG_CONFIG_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.config")} XDG_DATA_HOME=\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")} XDG_CACHE_HOME=\${XDG_CACHE_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.cache")} jsm --help"$'\n```\n\n'
+        block+="XDG_CONFIG_HOME=\${XDG_CONFIG_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.config")} XDG_DATA_HOME=\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")} XDG_CACHE_HOME=\${XDG_CACHE_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.cache")} JSM_DISABLE_SELF_UPDATE=1 jsm --help"$'\n```\n\n'
         block+=$'Reuse existing JSM configuration. These command-scoped defaults preserve explicit XDG paths and leave HOME and the parent shell unchanged. JSM_PROFILE_ROOT, when set, takes precedence and must be writable. Configuration and cache paths do not redirect skill installation targets: inspect jsm config show and select writable skill directories supported by your provider before installing. Skill discovery and premium access still require their own checks.\n\n'
         block+=$'For Agent Mail with a read-only HOME and no configured archive, prefix each CLI command as shown (replace --help with your subcommand):\n\n```bash\n'
         block+="STORAGE_ROOT=\${STORAGE_ROOT:-\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")}/mcp-agent-mail/git_mailbox_repo} am --help"$'\n```\n\n'
@@ -676,7 +677,7 @@ Read the generated tool guide at {guide} and setup results at {log}.
 In every task shell, run:
 
 ```bash
-export PATH={bins}:"$PATH"
+export PATH={bins}:"$PATH" JSM_DISABLE_SELF_UPDATE=1
 ```
 
 Check `br --version`, `bv --version`, `ubs --version` and `jsm --version`.
@@ -684,6 +685,7 @@ Follow the guide's robot/JSON commands and use the repository's existing Beads t
 For a custom data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
 Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.
+Keep JSM_DISABLE_SELF_UPDATE=1 in each task shell so ordinary JSM commands retain the manifest-pinned executable; use verified cloud setup for tool refreshes.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Do not run the full VPS installer or build tools from source.
 Agent Mail is available as a CLI; this skill does not configure hosted MCP.

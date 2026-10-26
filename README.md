@@ -564,6 +564,7 @@ In each task shell, run acfs_cloud_root="$(git rev-parse --show-toplevel)/.acfs-
 Follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell so search data, memory and prompt caches use the writable workspace; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
 Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.
+Keep JSM_DISABLE_SELF_UPDATE=1 in each task shell so ordinary JSM commands retain the manifest-pinned executable; use verified cloud setup for tool refreshes.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Check br --version, bv --version, ubs --version and jsm --version before starting work.
 Use br ready --json and bv --robot-triage; never open their interactive TUIs.
@@ -596,6 +597,7 @@ In each task shell, run export PATH="$HOME/.local/bin:$PATH".
 If using a custom writable data root, follow the guide's CASS_DATA_DIR, CASS_MEMORY_HOME and JFP_HOME exports in each task shell; preserve existing overrides and keep any XDG_DATA_HOME/XDG_CONFIG_HOME writable.
 Before using Agent Mail with a read-only HOME, follow the guide's command-scoped STORAGE_ROOT recipe; reuse existing configuration and preserve DATABASE_URL.
 Before using JSM with a read-only HOME, follow the guide's command-scoped XDG recipe; reuse existing configuration and check skill installation targets separately.
+Keep JSM_DISABLE_SELF_UPDATE=1 in each task shell so ordinary JSM commands retain the manifest-pinned executable; use verified cloud setup for tool refreshes.
 Before using MS, follow the guide's local initialization and indexing steps in a writable project; reuse existing .ms/MS_ROOT/MS_CONFIG state.
 Check br --version, bv --version, ubs --version and jsm --version; report missing tools from the setup log.
 Use the existing repository tracker with br ready --json and bv --robot-triage. Never open their interactive TUIs.
@@ -605,6 +607,8 @@ Agent Mail is available as a CLI. This setup does not configure this agent's MCP
 Requirements: Linux x86_64 with compatible runtime libraries, Bash, Python 3, curl, tar and GNU timeout, plus a writable data root. Ubuntu 24.04 has full install checks. On 25 October 2026, all eleven current executables also passed offline version checks in a clean Debian 12 x86_64 container with glibc 2.36; this is executable startup evidence, not a Debian installation or hosted-provider test. If you set `ACFS_CLOUD_ROOT`, use that root instead of `$HOME` in these instructions. Inspect the setup log and each version command to confirm the installed tools work.
 
 For a custom data root, follow the generated guide's `CASS_DATA_DIR` and `CASS_MEMORY_HOME` exports so search data and memory also use the writable workspace, and its `JFP_HOME` export for prompt caching. These preserve existing overrides and an explicit `XDG_DATA_HOME`; configured state directories must be writable. JFP also honors `XDG_CONFIG_HOME`, which takes precedence and must be writable. Provider HOME and configuration are preserved.
+
+**Keep JSM pinned:** the generated task-shell command exports `JSM_DISABLE_SELF_UPDATE=1`, and its JSM command examples apply the same opt-out. Otherwise even an ordinary command such as `jsm config show` can automatically replace the verified binary with a newer vendor release. Saved JSM preferences stay unchanged. Refresh through the verified cloud setup rather than `jsm update`; existing repository skills are preserved, so use the updated generated guide if a saved skill predates this setting.
 
 **Agent Mail without MCP:** the generated guide includes a CLI session recipe using `am macros start-session`, captures the returned agent name, and reads messages with `am robot inbox --include-bodies --json`. It also shows how to reserve a specific edit path and release only that reservation. Custom-root recipes apply the same command-scoped storage defaults while preserving `DATABASE_URL`. These operations need no background service; agents must share the same mailbox to coordinate across tasks. Separate provider VMs do not share local mail automatically.
 
