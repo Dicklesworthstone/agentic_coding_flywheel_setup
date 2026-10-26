@@ -6,9 +6,11 @@ on:
     paths:
       - 'scripts/lib/update.sh'
       - 'scripts/lib/security.sh'
+      - 'scripts/lib/nightly_update.sh'
       - 'tests/unit/test_update_lock.py'
       - 'tests/unit/test_update_pin_failures.py'
       - 'tests/unit/test_update_deployment.py'
+      - 'tests/unit/test_nightly_update.py'
       - '.github/workflows/updater-lock-regressions.yml'
   workflow_dispatch:
 
@@ -54,3 +56,5 @@ jobs:
         run: python3 -B tests/unit/test_update_pin_failures.py
       - name: Exercise atomic deployment while scripts are running
         run: python3 -B tests/unit/test_update_deployment.py
+      - name: Exercise updater exits, restarts, and nightly outcome reporting
+        run: python3 -B tests/unit/test_nightly_update.py

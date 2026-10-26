@@ -5903,6 +5903,28 @@ _acfs_self_update_preview() {
     printf '%s; nothing fetched or pulled\n' "$preview"
 }
 
+# Activate a successfully deployed updater even when Git was already current.
+# In that case another pull or a previous partial update may have advanced the
+# checkout without replacing the installed updater. Keep the original process
+# (and its update lock) through exec, forwarding every argument unchanged.
+_acfs_reexec_updated_script() {
+    local update_script="$1" old_hash="$2" new_hash=""
+    shift 2
+
+    if [[ -f "$update_script" ]]; then
+        new_hash=$(update_sha256_file "$update_script" 2>/dev/null) || true
+    fi
+    if [[ -n "$old_hash" && -n "$new_hash" && "$old_hash" != "$new_hash" ]]; then
+        log_to_file "update.sh changed, re-executing with new version..."
+        echo ""
+        echo -e "${CYAN}update.sh was updated, restarting with new version...${NC}"
+        echo ""
+        export ACFS_SELF_UPDATE_DONE=true
+        exec "$update_script" "$@" || return $?
+    fi
+    return 0
+}
+
 # ------------------------------------------------------------
 # Self-Update: Update ACFS itself before anything else
 # ------------------------------------------------------------
@@ -6116,6 +6138,7 @@ update_acfs_self() {
         sync_acfs_deployed || return $?
         sync_acfs_global_wrapper || return $?
         sync_acfs_global_command_links
+        _acfs_reexec_updated_script "$update_script" "$old_hash" "$@" || return $?
         return 0
     fi
 
@@ -6188,25 +6211,7 @@ update_acfs_self() {
     sync_acfs_global_wrapper || return $?
     sync_acfs_global_command_links
 
-    # Check if update.sh itself changed - if so, re-exec
-    local new_hash=""
-    if [[ -f "$update_script" ]]; then
-        new_hash=$(update_sha256_file "$update_script" 2>/dev/null) || true
-    fi
-
-    if [[ -n "$old_hash" ]] && [[ -n "$new_hash" ]] && [[ "$old_hash" != "$new_hash" ]]; then
-        log_to_file "update.sh changed, re-executing with new version..."
-        echo ""
-        echo -e "${CYAN}update.sh was updated, restarting with new version...${NC}"
-        echo ""
-
-        # Re-exec with same args, but mark self-update as done
-        export ACFS_SELF_UPDATE_DONE=true
-        exec "$update_script" "$@"
-        # exec replaces this process, so we never reach here
-    fi
-
-    return 0
+    _acfs_reexec_updated_script "$update_script" "$old_hash" "$@"
 }
 
 # Prevent needrestart from hanging apt on Ubuntu 22.04+. The apt hook
@@ -9094,8 +9099,9 @@ update_ensure_writable_tmpdir() {
 # #483: on hosts whose load never drops below nproc, #448 advises running
 # `acfs update --yes` (which has no load gate) instead of the nightly wrapper,
 # and some run it straight from the nightly unit. Record such a run in the
-# wrapper's execution record so doctor and status see it. Only a completed,
-# full (default category selection), non-interactive, non-dry run counts;
+# wrapper's execution record so doctor and status see it. Only a full (default
+# category selection), non-interactive, non-dry run counts, including failures
+# that abort before the normal summary;
 # self-update may be on or off, as in the nightly. The reader/writer lives in
 # nightly_update.sh, sourced only from a copy carrying the health API marker
 # because older wrappers ran the whole update when sourced. Best effort: this
@@ -9125,6 +9131,17 @@ update_record_nightly_outcome() {
         *) log_to_file "Did not record this update in the nightly execution record" ;;
     esac
     return 0
+}
+
+update_finalize() {
+    local update_rc="$1"
+
+    # Capture the updater's status before cleanup. Neither a failed watchdog
+    # stop nor unavailable health storage may change the command's result.
+    trap - EXIT HUP INT TERM
+    update_procwatch_stop || true
+    update_record_nightly_outcome "$update_rc" || true
+    exit "$update_rc"
 }
 
 main() {
@@ -9281,6 +9298,13 @@ main() {
         fi
     fi
 
+    # Own finalization before self-update or any installer can fail. Successful
+    # exec does not run EXIT; the replacement updater installs its own handler.
+    trap 'update_finalize "$?"' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
     # Every download below goes through TMPDIR, self-update included.
     update_ensure_writable_tmpdir
 
@@ -9295,7 +9319,6 @@ main() {
 
     # Process-storm watchdog (#348): capture the evidence a fork-exhaustion
     # event destroys. Read-only; writes only when a threshold trips.
-    trap 'update_procwatch_stop' EXIT
     update_procwatch_start
 
     # Header
@@ -9342,8 +9365,6 @@ main() {
     # Report managed services still running a replaced binary (#381)
     update_report_service_binary_drift
 
-    update_procwatch_stop
-
     # Summary
     print_summary
 
@@ -9360,7 +9381,6 @@ main() {
             update_rc=2
         fi
     fi
-    update_record_nightly_outcome "$update_rc"
     exit "$update_rc"
 }
 

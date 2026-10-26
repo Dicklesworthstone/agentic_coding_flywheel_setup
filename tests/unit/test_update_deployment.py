@@ -62,6 +62,17 @@ sync_acfs_global_wrapper() {
 }
 '''
 GLOBAL_SYNC = 'sync_acfs_global_wrapper "${TEST_SOURCE_REF:-}" "$TEST_ROOT/global-acfs"'
+ACTIVATION_SETUP = r'''
+UPDATE_SELF=true
+BOOTSTRAP_SELF_UPDATE=false
+SCRIPT_DIR="$TEST_DEPLOYED/scripts/lib"
+is_expected_acfs_origin_url() { [[ "$1" == "$TEST_ORIGIN" ]]; }
+log_section() { :; }
+log_item() { :; }
+# All deployment and re-execution code is real; only system-wide link updates
+# are excluded from this disposable installation.
+sync_acfs_global_command_links() { :; }
+'''
 
 
 class AtomicDeploymentTests(unittest.TestCase):
@@ -870,6 +881,146 @@ if update_shell; then exit 0; else exit "$?"; fi
                 stdout, stderr = process.communicate(timeout=15)
                 self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
                 self.assertNotIn(b"unexpected", stdout + stderr)
+
+    def assert_self_update_activates_replacement(self, fast_forward):
+        # The replacement sources the actual updater and exercises its real
+        # completed-update guard. Its receipt proves exec retained argv, PID,
+        # the open lock descriptor, and exclusion of a separate lock owner.
+        replacement = "#!/bin/bash\n" + COMMON + ACTIVATION_SETUP + r'''
+_acfs_update_acquire_lock "$TEST_ROOT"
+[[ "$TEST_ROOT/." -ef /proc/self/fd/9 ]] || exit 81
+lock_status=0
+/usr/bin/flock -n -E 75 "$TEST_ROOT" true || lock_status=$?
+[[ "$lock_status" == 75 ]] || exit 82
+update_acfs_self "$@"
+printf '%s\0' "$BASHPID" "$ACFS_SELF_UPDATE_DONE" \
+    "$_ACFS_UPDATE_LOCK_PID" "$lock_status" "$@" > "$TEST_ROOT/activation-receipt"
+printf 'replacement-activated\n'
+'''
+        old = "#!/bin/bash\nprintf 'old-updater-file\\n'\n"
+        self.write(self.repo, "scripts/lib/update.sh", old if fast_forward else replacement, 0o755)
+        self.commit_source()
+        checkout = self.base / "checkout"
+        self.git(self.base, "clone", "--quiet", str(self.repo), str(checkout))
+        if fast_forward:
+            self.write(self.repo, "scripts/lib/update.sh", replacement, 0o755)
+            self.commit_source()
+        deployed = self.write(self.acfs, "scripts/lib/update.sh", old, 0o755)
+        original_inode = deployed.stat().st_ino
+        arguments = ["--only", "self", "argument with spaces", "", "line\nbreak", "--literal=$(unused)"]
+        body = COMMON + ACTIVATION_SETUP + r'''
+ACFS_SELF_UPDATE_DONE=false
+_acfs_update_acquire_lock "$TEST_ROOT"
+update_acfs_self "$@"
+printf 'old-updater-continued\n'
+'''
+        process = self.start(["/bin/bash", "--noprofile", "--norc", "-c", body,
+                              "acfs-activation-fixture", *arguments],
+                             TEST_SOURCE=str(checkout), TEST_ORIGIN=str(self.repo))
+        stdout, stderr = process.communicate(timeout=20)
+        output = (stdout + stderr).decode()
+        self.assertEqual(process.returncode, 0, output)
+        self.assertIn("replacement-activated\n", output)
+        self.assertNotIn("old-updater-continued", output)
+        receipt = (self.base / "activation-receipt").read_bytes().split(b"\0")
+        expected = [str(process.pid), "true", str(process.pid), "75", *arguments]
+        self.assertEqual(receipt, [value.encode() for value in expected] + [b""])
+        self.assertEqual(deployed.read_text(), replacement)
+        self.assertNotEqual(deployed.stat().st_ino, original_inode)
+        self.assertEqual(deployed.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(self.git(checkout, "rev-parse", "HEAD"),
+                         self.git(self.repo, "rev-parse", "HEAD"))
+        self.assertEqual(self.git(checkout, "status", "--porcelain"), "")
+        self.assert_runtime_files("scripts/lib/update.sh")
+
+    def test_current_checkout_activates_replacement_with_same_pid_lock_and_arguments(self):
+        self.assert_self_update_activates_replacement(fast_forward=False)
+
+    def test_fast_forward_activates_replacement_with_same_pid_lock_and_arguments(self):
+        self.assert_self_update_activates_replacement(fast_forward=True)
+
+    def test_self_update_does_not_reexecute_unchanged_dry_run_or_completed_sync(self):
+        replacement = "#!/bin/bash\nprintf 'unexpected-activation\\n'\nexit 83\n"
+        old = "#!/bin/bash\nprintf 'old-updater-file\\n'\n"
+        for state in ("unchanged", "dry-run", "completed"):
+            with self.subTest(state=state):
+                root, source, runtime, env = self.phase_tree(state)
+                self.write(source, "scripts/lib/update.sh", replacement, 0o755)
+                self.git(source, "init", "--quiet", "--initial-branch=main")
+                self.commit_tree(source, "fixture")
+                self.git(source, "remote", "add", "origin", str(source))
+                deployed = self.write(runtime, "scripts/lib/update.sh",
+                                      replacement if state == "unchanged" else old, 0o755)
+                before = deployed.stat()
+                body = ACTIVATION_SETUP + r'''
+ACFS_SELF_UPDATE_DONE="$TEST_ALREADY_DONE"
+update_acfs_self
+printf 'updater-continued\n'
+'''
+                output = self.shell(body, **env, TEST_ORIGIN=str(source),
+                                    TEST_DRY_RUN="true" if state == "dry-run" else "false",
+                                    TEST_ALREADY_DONE="true" if state == "completed" else "false")
+                self.assertIn("updater-continued\n", output)
+                self.assertNotIn("unexpected-activation", output)
+                self.assertEqual(deployed.read_text(), old if state == "dry-run" else replacement)
+                if state != "completed":
+                    after = deployed.stat()
+                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertFalse((root / "activation-receipt").exists())
+                self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
+                self.assertEqual(self.git(source, "status", "--porcelain"), "")
+
+    def test_self_update_does_not_activate_after_copy_or_wrapper_failure(self):
+        replacement = "#!/bin/bash\nprintf 'unexpected-activation\\n'\nexit 83\n"
+        old = "#!/bin/bash\nprintf 'old-updater-file\\n'\n"
+        for step in ("copy", "wrapper"):
+            with self.subTest(step=step):
+                root, source, runtime, env = self.phase_tree(step)
+                self.write(source, "scripts/lib/update.sh", replacement, 0o755)
+                self.git(source, "init", "--quiet", "--initial-branch=main")
+                self.commit_tree(source, "fixture")
+                self.git(source, "remote", "add", "origin", str(source))
+                deployed = self.write(runtime, "scripts/lib/update.sh", old, 0o755)
+                before = deployed.stat()
+                setup = ('cp() { printf "partial" > "${@: -1}"; return 73; }\n' if step == "copy"
+                         else 'sync_acfs_global_wrapper() { return 73; }\n')
+                body = COMMON + ACTIVATION_SETUP + setup + r'''
+ACFS_SELF_UPDATE_DONE=false
+if update_acfs_self; then printf 'unexpected-continuation\n'; else exit "$?"; fi
+'''
+                process = self.start(["/bin/bash", "-c", body], **env, TEST_ORIGIN=str(source))
+                stdout, stderr = process.communicate(timeout=15)
+                output = (stdout + stderr).decode()
+                self.assertEqual(process.returncode, 1 if step == "copy" else 73, output)
+                self.assertNotIn("unexpected-", output)
+                self.assertEqual(deployed.read_text(), old if step == "copy" else replacement)
+                if step == "copy":
+                    after = deployed.stat()
+                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertFalse((root / "activation-receipt").exists())
+                self.assertEqual(list(runtime.rglob(".acfs-deploy.*")), [])
+                self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_self_update_reports_failed_exec_when_execfail_is_enabled(self):
+        replacement = f"#!{self.base}/missing-interpreter\n"
+        self.write(self.repo, "scripts/lib/update.sh", replacement, 0o755)
+        self.commit_source()
+        self.git(self.repo, "remote", "add", "origin", str(self.repo))
+        deployed = self.write(self.acfs, "scripts/lib/update.sh", "#!/bin/bash\nexit 0\n", 0o755)
+        body = COMMON + ACTIVATION_SETUP + r'''
+ACFS_SELF_UPDATE_DONE=false
+shopt -s execfail
+if update_acfs_self; then printf 'unexpected-continuation\n'; else exit "$?"; fi
+'''
+        process = self.start(["/bin/bash", "-c", body], TEST_ORIGIN=str(self.repo))
+        stdout, stderr = process.communicate(timeout=15)
+        output = (stdout + stderr).decode()
+        self.assertNotEqual(process.returncode, 0, output)
+        self.assertNotIn("unexpected-continuation", output)
+        self.assertEqual(deployed.read_text(), replacement)
+        self.assert_runtime_files("scripts/lib/update.sh")
 
     def test_self_update_stops_when_early_security_refresh_fails(self):
         self.write(self.repo, "VERSION", "fixture one\n")

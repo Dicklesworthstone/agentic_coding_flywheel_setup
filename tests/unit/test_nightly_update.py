@@ -3,13 +3,16 @@
 `acfs update --yes` runs recording into the same health record (issue #483).
 
 Run: python3 -m unittest discover -s tests/unit -p test_nightly_update.py -v
-No updater, cleanup, real sleeps, network, or systemd changes are performed;
-update.sh's main() runs with every update step stubbed out.
+The real updater entrypoint uses stubbed components and disposable runtime
+files. No package operations, host cleanup, real sleeps, network, or systemd
+changes are performed.
 """
 import datetime
 import json
 import os
 from pathlib import Path
+import select
+import signal
 import subprocess
 import tempfile
 import time
@@ -240,6 +243,18 @@ done
 update_apt() { SUCCESS_COUNT="$FIXTURE_SUCCESSES"; FAIL_COUNT="$FIXTURE_FAILURES"; }
 '''
 
+# Observe finalization while retaining the real health recorder and writer.
+UPDATE_FINALIZATION_AUDIT = r'''
+_fixture_record_definition="$(declare -f update_record_nightly_outcome)"
+eval "${_fixture_record_definition/update_record_nightly_outcome/_fixture_record_nightly_outcome}"
+unset _fixture_record_definition
+update_record_nightly_outcome() {
+    printf '%s\n' "$1" >> "$HOME/recorded-outcomes"
+    _fixture_record_nightly_outcome "$@"
+}
+update_procwatch_stop() { printf 'stopped\n' >> "$HOME/watchdog-stops"; }
+'''
+
 
 class DirectUpdateRecordTests(unittest.TestCase):
     """A direct `acfs update --yes` refreshes the nightly record (issue #483)."""
@@ -290,14 +305,24 @@ class DirectUpdateRecordTests(unittest.TestCase):
         level, _, encoded = result.stdout.rstrip("\n").split("\t")
         return level, json.loads(encoded)["code"]
 
-    def run_update_main(self, *args, successes=5, failures=0):
+    def run_update_main(self, *args, successes=5, failures=0, overrides="", extra_env=None):
         result = subprocess.run(
             ["bash", "-c", 'source "$1"; eval "$STUBS"; shift; main "$@"',
              "test", str(UPDATE), *args],
-            env={**self.env, "STUBS": UPDATE_MAIN_STUBS,
-                 "FIXTURE_SUCCESSES": str(successes), "FIXTURE_FAILURES": str(failures)},
+            env={**self.env, "STUBS": UPDATE_MAIN_STUBS + overrides,
+                 "FIXTURE_SUCCESSES": str(successes), "FIXTURE_FAILURES": str(failures),
+                 **(extra_env or {})},
             capture_output=True, text=True, timeout=30)
         return result
+
+    def assert_failure_recorded(self, previous):
+        state = self.read_state()
+        self.assertEqual((state["outcome"], state["reason"]), ("failed", "update"))
+        for field in ("last_success", "first_skip", "skip_date", "skipped_nights"):
+            self.assertEqual(state[field], previous[field], field)
+        self.assertNotEqual(state["last_attempt"], previous["last_attempt"])
+        self.assertEqual((state["attempt"], state["next_retry"]), ("1", "0"))
+        self.assertEqual(self.health(now=int(time.time()) + 60), ("warn", "failed"))
 
     def test_successful_direct_update_clears_the_stale_warning(self):
         self.write_interrupted()
@@ -387,6 +412,193 @@ class DirectUpdateRecordTests(unittest.TestCase):
         result = self.run_update_main("--yes", "--quiet")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.read_state()["outcome"], "success")
+
+    def test_update_main_records_early_failures_and_stops_watchdog(self):
+        cases = (("update_ensure_writable_tmpdir", 41), ("update_acfs_self", 42),
+                 ("init_logging", 43), ("update_shell", 44))
+        expected = []
+        for step, rc in cases:
+            with self.subTest(step=step):
+                now = int(time.time())
+                self.write("success", "none", now - 65, now - 60, 0, "-", 0, 1, 0)
+                previous = self.read_state()
+                result = self.run_update_main(
+                    "--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT +
+                    f"\n{step}() {{ return {rc}; }}\n")
+                self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
+                self.assert_failure_recorded(previous)
+                expected.append(str(rc))
+                self.assertEqual((self.home / "recorded-outcomes").read_text().splitlines(), expected)
+                self.assertEqual((self.home / "watchdog-stops").read_text().splitlines(),
+                                 ["stopped"] * len(expected))
+
+    def test_update_main_abort_on_failure_records_failed_attempt(self):
+        self.write_interrupted()
+        previous = self.read_state()
+        result = self.run_update_main(
+            "--yes", "--quiet", "--abort-on-failure",
+            overrides=UPDATE_FINALIZATION_AUDIT + r'''
+update_apt() { update_finish_cmd_fail "fixture component" "controlled failure"; }
+''')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("Aborting due to failure", result.stdout)
+        self.assert_failure_recorded(previous)
+        self.assertEqual((self.home / "recorded-outcomes").read_text(), "1\n")
+        self.assertEqual((self.home / "watchdog-stops").read_text(), "stopped\n")
+
+    def test_update_main_records_failed_runtime_publication(self):
+        self.write_interrupted()
+        previous = self.read_state()
+        source = self.home / "new-wrapper"
+        target = self.home / "old-wrapper"
+        source.write_text("#!/bin/bash\nprintf 'new wrapper\\n'\n")
+        target.write_text("#!/bin/bash\nprintf 'old wrapper\\n'\n")
+        target.chmod(0o755)
+        original = (target.read_bytes(), target.stat().st_ino, target.stat().st_mode)
+        result = self.run_update_main("--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT + r'''
+cp() { printf 'partial copy\n' > "${@: -1}"; return 73; }
+update_shell() { update_atomic_deploy_file "$HOME/new-wrapper" "$HOME/old-wrapper" 755; }
+''')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual((target.read_bytes(), target.stat().st_ino, target.stat().st_mode), original)
+        self.assertEqual(list(self.home.glob(".acfs-deploy.*")), [])
+        self.assert_failure_recorded(previous)
+        self.assertEqual((self.home / "recorded-outcomes").read_text(), "1\n")
+
+    def test_update_main_finalizes_once_for_complete_outcomes(self):
+        for index, (successes, failures, rc) in enumerate(((5, 0, 0), (3, 1, 2), (0, 1, 1)), 1):
+            with self.subTest(rc=rc):
+                self.write_interrupted()
+                previous = self.read_state()
+                result = self.run_update_main(
+                    "--yes", "--quiet", successes=successes, failures=failures,
+                    overrides=UPDATE_FINALIZATION_AUDIT)
+                self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
+                if rc:
+                    self.assert_failure_recorded(previous)
+                else:
+                    self.assertEqual(self.read_state()["outcome"], "success")
+                    self.assertEqual(self.health(now=int(time.time()) + 60), ("pass", "success"))
+                self.assertEqual((self.home / "recorded-outcomes").read_text().splitlines(),
+                                 ["0", "2", "1"][:index])
+                self.assertEqual((self.home / "watchdog-stops").read_text().splitlines(),
+                                 ["stopped"] * index)
+
+    def test_update_main_finalization_failures_preserve_original_status(self):
+        self.write_interrupted()
+        previous = self.read_state()
+        result = self.run_update_main("--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT + r'''
+update_acfs_self() { return 42; }
+update_procwatch_stop() { printf 'stopped\n' >> "$HOME/watchdog-stops"; return 71; }
+''')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assert_failure_recorded(previous)
+        self.assertEqual((self.home / "recorded-outcomes").read_text(), "42\n")
+
+        original = self.write_interrupted()
+        result = self.run_update_main("--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT + r'''
+update_acfs_self() { return 43; }
+update_record_nightly_outcome() {
+    printf '%s\n' "$1" >> "$HOME/recorded-outcomes"
+    return 72
+}
+''')
+        self.assertEqual(result.returncode, 43, result.stdout + result.stderr)
+        self.assertEqual(self.state.read_bytes(), original)
+        self.assertEqual((self.home / "recorded-outcomes").read_text(), "42\n43\n")
+        self.assertEqual((self.home / "watchdog-stops").read_text().splitlines(),
+                         ["stopped", "stopped"])
+
+    def test_update_main_early_failures_respect_record_filters(self):
+        original = self.write_interrupted()
+        for args in (("--quiet",), ("--yes", "--quiet", "--dry-run"),
+                     ("--yes", "--quiet", "--shell-only"), ("--yes", "--quiet", "--no-apt")):
+            with self.subTest(args=args):
+                result = self.run_update_main(*args, overrides=UPDATE_FINALIZATION_AUDIT +
+                                              "\nupdate_acfs_self() { return 42; }\n")
+                self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+                self.assertEqual(self.state.read_bytes(), original)
+
+    def test_update_main_does_not_record_help_or_argument_errors(self):
+        original = self.write_interrupted()
+        for args, rc in ((("--yes", "--help"), 0), (("--yes", "--invalid-fixture-option"), 1)):
+            with self.subTest(args=args):
+                result = self.run_update_main(*args, overrides=UPDATE_FINALIZATION_AUDIT)
+                self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
+                self.assertEqual(self.state.read_bytes(), original)
+                self.assertFalse((self.home / "recorded-outcomes").exists())
+                self.assertFalse((self.home / "watchdog-stops").exists())
+
+    def test_update_main_early_failure_defers_to_running_wrapper(self):
+        original = self.write_interrupted()
+        result = self.run_update_main("--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT + r'''
+exec 8>>"$HOME/.acfs/nightly-update.lock"
+flock -n 8
+update_acfs_self() { return 42; }
+''')
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertEqual(self.state.read_bytes(), original)
+        self.assertEqual((self.home / "recorded-outcomes").read_text(), "42\n")
+        self.assertEqual((self.home / "watchdog-stops").read_text(), "stopped\n")
+
+    def test_update_main_reexec_records_only_replacement_run(self):
+        original = self.write_interrupted().decode().rstrip("\n")
+        result = self.run_update_main(
+            "--yes", "--quiet", overrides=UPDATE_FINALIZATION_AUDIT + r'''
+update_acfs_self() {
+    if [[ "${FIXTURE_REEXEC:-false}" != true ]]; then
+        export FIXTURE_REEXEC=true
+        exec bash -c 'source "$1"; eval "$STUBS"; shift; main "$@"' \
+            test "$FIXTURE_UPDATE_SOURCE" "$@"
+    fi
+    [[ "$(< "$HOME/.acfs/nightly-update.state")" == "$FIXTURE_INITIAL_STATE" ]]
+}
+''', extra_env={"FIXTURE_UPDATE_SOURCE": str(UPDATE), "FIXTURE_INITIAL_STATE": original})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.read_state()["outcome"], "success")
+        self.assertEqual((self.home / "recorded-outcomes").read_text(), "0\n")
+        self.assertEqual((self.home / "watchdog-stops").read_text(), "stopped\n")
+
+    def test_update_main_signals_record_failure_and_preserve_status(self):
+        expected = []
+        for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig):
+                self.write_interrupted()
+                previous = self.read_state()
+                stubs = UPDATE_MAIN_STUBS + UPDATE_FINALIZATION_AUDIT + r'''
+update_shell() { printf 'fixture-ready\n'; IFS= read -r _fixture_release; }
+'''
+                with subprocess.Popen(
+                    ["bash", "-c", 'source "$1"; eval "$STUBS"; shift; main "$@"',
+                     "test", str(UPDATE), "--yes", "--quiet"],
+                    env={**self.env, "STUBS": stubs, "FIXTURE_SUCCESSES": "5", "FIXTURE_FAILURES": "0"},
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    start_new_session=True,
+                ) as process:
+                    try:
+                        output = b""
+                        deadline = time.monotonic() + 10
+                        while b"fixture-ready\n" not in output:
+                            remaining = deadline - time.monotonic()
+                            self.assertGreater(remaining, 0, output)
+                            ready, _, _ = select.select([process.stdout], [], [], remaining)
+                            self.assertTrue(ready, output)
+                            chunk = os.read(process.stdout.fileno(), 4096)
+                            self.assertTrue(chunk, output)
+                            output += chunk
+                        os.kill(process.pid, sig)
+                        process.wait(timeout=10)
+                        stdout, stderr = process.communicate(timeout=10)
+                        self.assertEqual(process.returncode, 128 + sig, output + stdout + stderr)
+                    finally:
+                        if process.poll() is None:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            process.communicate(timeout=10)
+                self.assert_failure_recorded(previous)
+                expected.append(str(128 + sig))
+                self.assertEqual((self.home / "recorded-outcomes").read_text().splitlines(), expected)
+                self.assertEqual((self.home / "watchdog-stops").read_text().splitlines(),
+                                 ["stopped"] * len(expected))
 
 
 if __name__ == "__main__":
