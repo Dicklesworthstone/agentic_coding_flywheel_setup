@@ -370,7 +370,8 @@ cloud_install_tool() {
 cloud_register_agent_mail() {
     # Register Agent Mail with Claude Code as a stdio MCP server so each
     # session spawns it on demand; nothing has to survive the VM snapshot.
-    local server claude_bin legacy config="$HOME/.claude.json"
+    local server claude_bin legacy storage_root config="$HOME/.claude.json"
+    local -a storage_args=()
     server="$(cloud_find_binary am)" || return 1
     claude_bin="$(command -v claude 2>/dev/null)" || return 1
     legacy="$(cloud_find_binary mcp-agent-mail)" || return 1
@@ -426,8 +427,26 @@ PY
         ACFS_CLOUD_MCP_DETAIL="Existing Agent Mail MCP registration retained; see logs/mcp.log"
         return 0
     fi
+    if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+        # A later task's MCP child does not inherit setup-field overrides.
+        # Persist the same writable archive used by the CLI guide, while
+        # leaving existing registrations and database credentials alone.
+        storage_root="${STORAGE_ROOT:-${XDG_DATA_HOME:-$ACFS_CLOUD_ROOT/.local/share}/mcp-agent-mail/git_mailbox_repo}"
+        [[ "$storage_root" == /* ]] || storage_root="$PWD/$storage_root"
+        # AM's startup database probe needs its parent directories to exist.
+        # Prepare only the archive directory, without touching existing data
+        # or following links into a different installation.
+        python3 - "$storage_root" >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1 <<'PY' || return 1
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if any(parent.is_symlink() for parent in [path, *path.parents]):
+    raise ValueError('Symlink in Agent Mail storage path; existing files preserved')
+path.mkdir(mode=0o700, parents=True, exist_ok=True)
+PY
+        storage_args=(--env "STORAGE_ROOT=$storage_root")
+    fi
     ACFS_CLOUD_MCP_DETAIL="Registered Agent Mail as the stdio MCP server 'mcp-agent-mail'"
-    timeout --kill-after=1 10 "$claude_bin" mcp add --scope user mcp-agent-mail -- "$server" serve-stdio </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1
+    timeout --kill-after=1 10 "$claude_bin" mcp add --scope user mcp-agent-mail "${storage_args[@]}" -- "$server" serve-stdio </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1
 }
 
 cloud_tool_guide_line() {

@@ -1708,6 +1708,82 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertNotIn('remove', calls)
         self.assertIn('Registered Agent Mail', output)
 
+    def test_new_custom_root_mcp_registration_retains_writable_storage(self):
+        self.bundle('am')
+        calls = self.root / 'mcp-arguments.jsonl'
+        self.command('claude', f'''#!{shutil.which('python3')}
+import json, pathlib, sys
+with pathlib.Path({str(calls)!r}).open('a') as output:
+    output.write(json.dumps(sys.argv[1:]) + '\\n')
+sys.exit(0 if sys.argv[2] == 'add' else 1)
+''')
+        custom = self.root / 'workspace tools `literal` $root'
+        configured = str(self.root / 'configured mail `literal` $archive')
+        xdg = str(self.root / 'configured XDG data')
+        secret = 'postgresql://private-credential.invalid/never-copy'
+        cases = (
+            ('custom', {'ACFS_CLOUD_ROOT': str(custom)},
+             str(custom / '.local/share/mcp-agent-mail/git_mailbox_repo')),
+            ('configured', {'ACFS_CLOUD_ROOT': str(custom), 'STORAGE_ROOT': configured,
+                            'XDG_DATA_HOME': xdg}, configured),
+            ('xdg', {'ACFS_CLOUD_ROOT': str(custom), 'XDG_DATA_HOME': xdg},
+             str(Path(xdg) / 'mcp-agent-mail/git_mailbox_repo')),
+            ('relative', {'ACFS_CLOUD_ROOT': str(custom), 'STORAGE_ROOT': 'mailbox relative'},
+             str(self.root / 'mailbox relative')),
+            ('default', {}, None),
+        )
+        for label, options, expected in cases:
+            with self.subTest(case=label):
+                self.run_setup('am', cwd=self.root, DATABASE_URL=secret, **options)
+                args = [parse_json_report(line) for line in calls.read_text().splitlines()][-1]
+                self.assertEqual(args[:4], ['mcp', 'add', '--scope', 'user'])
+                self.assertEqual(args[-1], 'serve-stdio')
+                if expected is None:
+                    self.assertNotIn('--env', args)
+                else:
+                    self.assertIn('--env', args)
+                    self.assertEqual(args[args.index('--env') + 1], 'STORAGE_ROOT=' + expected)
+                    self.assertTrue(Path(expected).is_dir())
+                self.assertNotIn(secret, json.dumps(args))
+                root = Path(options.get('ACFS_CLOUD_ROOT', str(self.home)))
+                self.assertNotIn(secret, (root / '.acfs/cloud/logs/mcp.log').read_text())
+
+    def test_custom_root_mcp_keeps_existing_registration_and_environment(self):
+        self.bundle('am')
+        calls = self.root / 'mcp-calls'
+        self.command('claude', f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{calls}"\n[ "$2" = get ]\n')
+        config = self.home / '.claude.json'
+        original = json.dumps({'mcpServers': {'mcp-agent-mail': {
+            'type': 'stdio', 'command': '/custom/agent-mail', 'args': ['--custom'],
+            'env': {'STORAGE_ROOT': '/custom/archive', 'DATABASE_URL': 'private-existing-value'}}}}).encode()
+        config.write_bytes(original)
+        self.run_setup('am', ACFS_CLOUD_ROOT=str(self.root / 'private-tools'),
+                       STORAGE_ROOT=str(self.root / 'other-archive'))
+        self.assertEqual(config.read_bytes(), original)
+        self.assertNotIn('add', calls.read_text())
+
+    def test_new_mcp_registration_preserves_symlinked_or_colliding_storage(self):
+        self.bundle('am')
+        calls = self.root / 'mcp-calls'
+        self.command('claude', f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{calls}"\n[ "$2" = add ]\n')
+        original = self.root / 'original-storage'
+        original.mkdir()
+        sentinel = original / 'keep.txt'
+        sentinel.write_bytes(b'Existing archive content.\n')
+        linked = self.root / 'linked-storage'
+        linked.symlink_to(original, target_is_directory=True)
+        collision = self.root / 'colliding-storage'
+        collision.write_bytes(b'Existing storage-path file.\n')
+        for storage in (linked, linked / 'new-child', collision):
+            with self.subTest(storage=storage):
+                output = self.run_setup('am', ACFS_CLOUD_ROOT=str(self.root / 'private-tools'),
+                                        STORAGE_ROOT=str(storage))
+                self.assertIn('Could not register Agent Mail', output)
+                self.assertNotIn('add', calls.read_text())
+                self.assertEqual(list(original.iterdir()), [sentinel])
+                self.assertEqual(sentinel.read_bytes(), b'Existing archive content.\n')
+                self.assertEqual(collision.read_bytes(), b'Existing storage-path file.\n')
+
     def test_migrates_only_old_acfs_registration_and_retains_backup(self):
         self.bundle('am')
         self.command('claude', '#!/bin/sh\n[ "$2" = get ]\n')
