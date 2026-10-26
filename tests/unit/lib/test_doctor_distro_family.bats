@@ -265,3 +265,50 @@ core_tool_hints() {
     run grep -F 'pacman' <<<"$hints"
     [ "$status" -eq 1 ]
 }
+
+# The SSH server and Tailscale hints printed apt commands (or a reinstall that
+# the apt-only network.tailscale module now refuses) on Arch.
+network_hints() {
+    load_doctor_functions
+    fix_for_module() { printf 'module:%s' "$1"; }
+    _ACFS_DOCTOR_IS_ARCH_FAMILY="$1"
+    printf 'install|%s\n' "$(doctor_ssh_server_install_hint)"
+    printf 'start|%s\n' "$(doctor_ssh_server_start_hint)"
+    printf 'tailscale|%s\n' "$(doctor_tailscale_install_hint)"
+}
+
+@test "SSH server and Tailscale hints use pacman and Arch unit names on Arch (#477)" {
+    local hints=""
+    hints="$(network_hints true)"
+
+    [[ "$hints" == *$'install|sudo pacman -S --needed openssh && sudo systemctl enable --now sshd\n'* ]]
+    [[ "$hints" == *$'start|sudo systemctl enable --now sshd\n'* ]]
+    [[ "$hints" == *'tailscale|sudo pacman -S --needed tailscale && sudo systemctl enable --now tailscaled'* ]]
+
+    run grep -E 'apt(-get)? |module:' <<<"$hints"
+    [ "$status" -eq 1 ]
+}
+
+@test "SSH server and Tailscale hints keep the Debian commands on Ubuntu (#477)" {
+    local hints=""
+    hints="$(network_hints false)"
+
+    [[ "$hints" == *$'install|sudo apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server && sudo systemctl enable --now ssh\n'* ]]
+    [[ "$hints" == *$'start|sudo systemctl enable --now ssh\n'* ]]
+    [[ "$hints" == *'tailscale|module:network.tailscale'* ]]
+
+    run grep -F 'pacman' <<<"$hints"
+    [ "$status" -eq 1 ]
+}
+
+@test "check_cloud prints its SSH server and Tailscale hints through the distro-aware helpers (#477)" {
+    local body=""
+    body="$(sed -n '/^check_cloud() {$/,/^}$/p' "$DOCTOR_SH")"
+    [[ -n "$body" ]] || fail "check_cloud not found"
+
+    [[ "$body" == *'"Install: $(doctor_tailscale_install_hint)"'* ]]
+    [[ "$body" == *'"$(doctor_ssh_server_start_hint)"'* ]]
+    [[ "$body" == *'"$(doctor_ssh_server_install_hint)"'* ]]
+    run grep -E 'apt-get|enable --now ssh"' <<<"$body"
+    [ "$status" -eq 1 ]
+}

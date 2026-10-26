@@ -1449,6 +1449,35 @@ doctor_pkg_install_hint() {
     fi
 }
 
+# SSH server hints (#477). Arch packages the server as `openssh` and names the
+# unit sshd.service; Debian/Ubuntu use openssh-server and ssh.service.
+doctor_ssh_server_install_hint() {
+    if _acfs_doctor_is_arch_family; then
+        printf 'sudo pacman -S --needed openssh && sudo systemctl enable --now sshd'
+    else
+        printf 'sudo apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server && sudo systemctl enable --now ssh'
+    fi
+}
+
+doctor_ssh_server_start_hint() {
+    if _acfs_doctor_is_arch_family; then
+        printf 'sudo systemctl enable --now sshd'
+    else
+        printf 'sudo systemctl enable --now ssh'
+    fi
+}
+
+# Tailscale install hint (#477). The network.tailscale module installs from
+# Tailscale's Ubuntu apt repository and refuses non-apt systems, so a reinstall
+# command would only print that refusal on Arch; give the pacman route there.
+doctor_tailscale_install_hint() {
+    if _acfs_doctor_is_arch_family; then
+        printf 'sudo pacman -S --needed tailscale && sudo systemctl enable --now tailscaled'
+    else
+        fix_for_module network.tailscale
+    fi
+}
+
 # Cache entries are scoped by the runtime home so that e.g. root running
 # doctor for different TARGET_USERs (or for itself and a target user) never
 # reads another user's cached verdicts (gh_auth etc.).
@@ -3132,7 +3161,7 @@ check_cloud() {
         if [[ "$doctor_ci" == "true" ]]; then
             check "network.tailscale" "Tailscale (not installed)" "pass" "ok in CI"
         else
-            check "network.tailscale" "Tailscale" "warn" "not installed (optional)" "Install: $(fix_for_module network.tailscale)"
+            check "network.tailscale" "Tailscale" "warn" "not installed (optional)" "Install: $(doctor_tailscale_install_hint)"
         fi
     fi
 
@@ -3148,7 +3177,7 @@ check_cloud() {
                 check "network.ssh_server" "SSH server" "pass" "installed and running"
             else
                 check "network.ssh_server" "SSH server" "warn" "installed but not running" \
-                    "sudo systemctl enable --now ssh"
+                    "$(doctor_ssh_server_start_hint)"
             fi
         else
             check "network.ssh_server" "SSH server" "pass" "installed (no systemd)"
@@ -3158,7 +3187,7 @@ check_cloud() {
             check "network.ssh_server" "SSH server (not installed)" "pass" "ok in CI"
         else
             check "network.ssh_server" "SSH server" "warn" "not installed" \
-                "sudo apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server && sudo systemctl enable --now ssh"
+                "$(doctor_ssh_server_install_hint)"
         fi
     fi
 
