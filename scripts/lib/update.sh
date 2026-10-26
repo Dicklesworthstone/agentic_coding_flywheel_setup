@@ -3136,6 +3136,67 @@ cleanup_unmanaged_atuin_init() {
     fi
 }
 
+# Publish a complete runtime file without changing the inode existing readers
+# have open. Callers own source selection, idempotency, and success reporting.
+# An explicit mode/reference implements the runtime manifest's permissions;
+# otherwise preserve cp's existing-target mode or source mode masked by umask.
+update_atomic_deploy_file() (
+    local source_file="$1"
+    local deployed_file="$2"
+    local target_mode="${3:-}"
+    local mode_reference="${4:-}"
+    local source_label="${5:-$source_file}"
+    local deployed_dir="${deployed_file%/*}"
+    local deployed_tmp=""
+
+    trap 'if [[ -n "$deployed_tmp" ]]; then rm -f -- "$deployed_tmp"; fi' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    if ! mkdir -p -- "$deployed_dir"; then
+        log_to_file "Failed to create deployment directory for $deployed_file"
+        exit 1
+    fi
+    if ! deployed_tmp="$(mktemp "$deployed_dir/.acfs-deploy.XXXXXX")"; then
+        log_to_file "Failed to create deployment staging file for $deployed_file"
+        exit 1
+    fi
+    if ! cp -- "$source_file" "$deployed_tmp"; then
+        log_to_file "Failed to stage $source_label -> $deployed_file"
+        exit 1
+    fi
+
+    local mode_status=0
+    if [[ -n "$target_mode" ]]; then
+        chmod "$target_mode" "$deployed_tmp" || mode_status=$?
+    elif [[ -n "$mode_reference" ]]; then
+        chmod --reference="$mode_reference" "$deployed_tmp" || mode_status=$?
+    elif [[ -f "$deployed_file" ]]; then
+        chmod --reference="$deployed_file" "$deployed_tmp" || mode_status=$?
+    else
+        local source_mode="" creation_mask=""
+        if ! source_mode="$(stat -Lc '%a' -- "$source_file")" || [[ ! "$source_mode" =~ ^[0-7]{1,4}$ ]]; then
+            log_to_file "Failed to determine deployment permissions for $source_label"
+            exit 1
+        fi
+        creation_mask="$(umask)"
+        printf -v target_mode '%o' "$((8#$source_mode & ~8#$creation_mask))"
+        chmod "$target_mode" "$deployed_tmp" || mode_status=$?
+    fi
+    if [[ "$mode_status" -ne 0 ]]; then
+        log_to_file "Failed to set deployment permissions for $deployed_file"
+        exit 1
+    fi
+    # -T rejects directory targets instead of moving the staging file inside.
+    # Both paths share a directory, so publication is a single rename.
+    if ! mv -fT -- "$deployed_tmp" "$deployed_file"; then
+        log_to_file "Failed to replace $deployed_file from $source_label"
+        exit 1
+    fi
+    deployed_tmp=""
+)
+
 # Re-deploy acfs.zshrc from repo to ~/.acfs/ if repo copy is newer
 sync_acfs_zshrc() {
     local repo_zshrc="$ACFS_REPO_ROOT/acfs/zsh/acfs.zshrc"
@@ -3159,8 +3220,7 @@ sync_acfs_zshrc() {
     local had_deployed=false
     [[ -f "$deployed_zshrc" ]] && had_deployed=true
 
-    mkdir -p "$(dirname "$deployed_zshrc")"
-    cp "$repo_zshrc" "$deployed_zshrc"
+    update_atomic_deploy_file "$repo_zshrc" "$deployed_zshrc" || return $?
     if [[ "$had_deployed" == "true" ]]; then
         # acfs.zshrc is a managed file: any hand edits to the deployed copy are
         # replaced on sync. Say so instead of reporting a routine sync (#359).
@@ -3420,13 +3480,11 @@ sync_acfs_deployed() {
             local deployed_file="$acfs_home/$deployed_rel"
             local source_file=""
             local source_tmp=""
-            local deployed_tmp=""
             local source_label="$repo_rel"
             local source_mode=""
             local target_mode_override=""
 
-            trap 'if [[ -n "$source_tmp" ]]; then rm -f -- "$source_tmp"; fi
-                  if [[ -n "$deployed_tmp" ]]; then rm -f -- "$deployed_tmp"; fi' EXIT
+            trap 'if [[ -n "$source_tmp" ]]; then rm -f -- "$source_tmp"; fi' EXIT
             trap 'exit 129' HUP
             trap 'exit 130' INT
             trap 'exit 143' TERM
@@ -3476,49 +3534,19 @@ sync_acfs_deployed() {
                 exit 0
             fi
 
-            local deployed_dir="${deployed_file%/*}"
-            if ! mkdir -p -- "$deployed_dir"; then
-                log_to_file "Failed to create deployment directory for $deployed_file"
-                exit 1
-            fi
-            # Never truncate a deployed inode: Bash may still be reading it (in
-            # particular nightly-update.sh, update.sh itself, or bin/acfs). Stage
-            # beside the destination so the final rename stays on one filesystem.
-            if ! deployed_tmp="$(mktemp "$deployed_dir/.acfs-deploy.XXXXXX")"; then
-                log_to_file "Failed to create deployment staging file for $deployed_file"
-                exit 1
-            fi
-            if ! cp -- "$source_file" "$deployed_tmp"; then
-                log_to_file "Failed to stage $source_label -> $deployed_file"
-                exit 1
-            fi
-
-            local mode_status=0
-            if [[ -n "$target_mode_override" ]]; then
-                chmod "$target_mode_override" "$deployed_tmp" || mode_status=$?
-            elif [[ -n "$source_ref" ]]; then
+            local mode_reference="$source_file"
+            if [[ -z "$target_mode_override" && -n "$source_ref" ]]; then
                 case "$source_mode" in
-                    100755) chmod 755 "$deployed_tmp" || mode_status=$? ;;
-                    100644) chmod 644 "$deployed_tmp" || mode_status=$? ;;
+                    100755) target_mode_override=755 ;;
+                    100644) target_mode_override=644 ;;
                     *)
                         log_to_file "Failed to determine deployment permissions for $source_label (git mode: ${source_mode:-missing})"
                         exit 1
                         ;;
                 esac
-            else
-                chmod --reference="$source_file" "$deployed_tmp" || mode_status=$?
             fi
-            if [[ "$mode_status" -ne 0 ]]; then
-                log_to_file "Failed to set deployment permissions for $deployed_file"
-                exit 1
-            fi
-            # -T rejects a directory target instead of moving the staging file
-            # inside it and falsely reporting a successful deployment.
-            if ! mv -fT -- "$deployed_tmp" "$deployed_file"; then
-                log_to_file "Failed to replace $deployed_file from $source_label"
-                exit 1
-            fi
-            deployed_tmp=""
+            update_atomic_deploy_file "$source_file" "$deployed_file" \
+                "$target_mode_override" "$mode_reference" "$source_label" || exit $?
             log_to_file "Synced $source_label -> $deployed_file"
         ) || sync_status=$?
 
@@ -5790,7 +5818,11 @@ update_refresh_installed_security() {
     repo_sec_hash=$(update_sha256_file "$repo_security" 2>/dev/null) || true
     installed_sec_hash=$(update_sha256_file "$installed_security" 2>/dev/null) || true
     if [[ -n "$repo_sec_hash" ]] && [[ "$repo_sec_hash" != "$installed_sec_hash" ]]; then
-        cp "$repo_security" "$installed_security"
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_to_file "Would refresh installed security.sh from $repo_security (was stale)"
+            return 0
+        fi
+        update_atomic_deploy_file "$repo_security" "$installed_security" || return $?
         log_to_file "Refreshed installed security.sh from $repo_security (was stale)"
     fi
 }
@@ -6058,7 +6090,7 @@ update_acfs_self() {
 
     if [[ "$local_head" == "$remote_head" ]]; then
         log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
-        update_refresh_installed_security
+        update_refresh_installed_security || return $?
         sync_acfs_deployed || return $?
         return 0
     fi
@@ -6121,7 +6153,7 @@ update_acfs_self() {
     log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "updated ($commit_count commits)"
     log_to_file "ACFS updated from $local_head to $remote_head"
 
-    update_refresh_installed_security
+    update_refresh_installed_security || return $?
 
     # Sync critical scripts from repo to ~/.acfs/ so the deployed copies
     # stay fresh.  This MUST happen before the re-exec check below, because
@@ -8215,7 +8247,7 @@ update_shell() {
     sync_acfs_profile_paths
     sync_acfs_zprofile_paths
     sync_acfs_zsh_loader
-    sync_acfs_zshrc
+    sync_acfs_zshrc || return $?
     # Re-run after the sync so the first run that deploys an atuin-owning
     # acfs.zshrc also retires the unmanaged ~/.zshrc init line (#359).
     cleanup_unmanaged_atuin_init

@@ -2,8 +2,9 @@
 """Offline integration regressions for atomic runtime deployment (issue #488).
 
 Run: python3 -B -m unittest discover -s tests/unit -p test_update_deployment.py -v
-The real sync_acfs_deployed() runs against disposable source/runtime trees. No
-updater main(), package manager, network request, or service is invoked.
+The real runtime, early security, and managed-shell deployment paths run against
+disposable source/runtime trees. No updater main(), package manager, network
+request, or service is invoked.
 """
 import contextlib
 import os
@@ -21,6 +22,7 @@ ACFS_REPO_ROOT="$TEST_SOURCE"
 UPDATE_LOG_FILE="$TEST_ROOT/update.log"
 DRY_RUN="${TEST_DRY_RUN:-false}"
 update_runtime_acfs_home() { printf '%s\n' "$TEST_DEPLOYED"; }
+update_runtime_shell_home() { printf '%s\n' "$TEST_ROOT"; }
 '''
 SYNC = r'''
 # Calling through a conditional must not hide copy/chmod/rename errors merely
@@ -39,7 +41,7 @@ class AtomicDeploymentTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.base = Path(self.tmp.name)
         self.repo = self.base / "source"
-        self.acfs = self.base / "runtime"
+        self.acfs = self.base / ".acfs"
         self.stage = self.base / "temporary"
         for path in (self.repo, self.acfs, self.stage):
             path.mkdir()
@@ -87,9 +89,9 @@ class AtomicDeploymentTests(unittest.TestCase):
         self.assertTrue(ready, "fixture did not reach its synchronization point")
         return process.stdout.readline().decode().strip()
 
-    def sync(self, setup="", *, success=True, **env):
+    def shell(self, body, *, success=True, **env):
         process = self.start(["/bin/bash", "--noprofile", "--norc", "-c",
-                              COMMON + setup + SYNC], **env)
+                              COMMON + body], **env)
         stdout, stderr = process.communicate(timeout=15)
         output = (stdout + stderr).decode()
         if success:
@@ -97,6 +99,13 @@ class AtomicDeploymentTests(unittest.TestCase):
         else:
             self.assertNotEqual(process.returncode, 0, output)
         return output
+
+    def sync(self, setup="", *, success=True, **env):
+        return self.shell(setup + SYNC, success=success, **env)
+
+    def invoke(self, function, setup="", *, success=True, **env):
+        return self.shell(setup + f'\nif {function}; then exit 0; else exit "$?"; fi\n',
+                          success=success, **env)
 
     def assert_runtime_files(self, *expected):
         self.assertEqual(sorted(str(p.relative_to(self.acfs)) for p in self.acfs.rglob("*")
@@ -248,6 +257,182 @@ mv() {
         self.write(self.repo, "scripts/lib/stack.sh", "new complete script\n")
         self.sync('cp() { printf "partial" > "${@: -1}"; return 73; }\n', success=False)
         self.assert_runtime_files()
+
+    def test_early_deployers_preserve_running_script_inodes(self):
+        old = ("#!/bin/bash\nset -euo pipefail\nprintf 'old-ready\\n'\n"
+               "IFS= read -r release\n" + "# unread script body\n" * 16384
+               + "printf 'old-finished\\n'\n")
+        new = "#!/bin/bash\nprintf 'new-version\\n'\n"
+        cases = (
+            ("update_refresh_installed_security", "scripts/lib/security.sh", "scripts/lib/security.sh"),
+            ("sync_acfs_zshrc", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc"),
+        )
+        deployed_paths = []
+        for helper, source_relative, deployed_relative in cases:
+            with self.subTest(helper=helper):
+                self.write(self.repo, source_relative, new)
+                deployed = self.write(self.acfs, deployed_relative, old, 0o755)
+                deployed_paths.append(deployed_relative)
+                original_inode = deployed.stat().st_ino
+                running = self.start([str(deployed)])
+                self.assertEqual(self.line(running), "old-ready")
+                self.invoke(helper)
+                self.assertIsNone(running.poll(), "original script must still be paused")
+                subsequent = subprocess.run([str(deployed)], env=self.env, capture_output=True,
+                                            text=True, timeout=5)
+                self.assertEqual(subsequent.returncode, 0, subsequent.stderr)
+                self.assertEqual(subsequent.stdout, "new-version\n")
+                stdout, stderr = running.communicate(input=b"resume\n", timeout=5)
+                self.assertEqual(running.returncode, 0, stderr.decode())
+                self.assertEqual(stdout.decode(), "old-finished\n",
+                                 f"{helper} truncated the inode Bash was still reading")
+                self.assertNotEqual(deployed.stat().st_ino, original_inode)
+                self.assertEqual(deployed.read_text(), new)
+                self.assert_runtime_files(*deployed_paths)
+
+    def test_early_deployers_preserve_existing_modes_and_skip_identical_content(self):
+        cases = (
+            ("update_refresh_installed_security", "scripts/lib/security.sh", "scripts/lib/security.sh"),
+            ("sync_acfs_zshrc", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc"),
+        )
+        for helper, source_relative, deployed_relative in cases:
+            with self.subTest(helper=helper):
+                self.write(self.repo, source_relative, "new content\n", 0o644)
+                deployed = self.write(self.acfs, deployed_relative, "old content\n", 0o750)
+                self.invoke(helper, "umask 0077\n")
+                self.assertEqual(deployed.read_text(), "new content\n")
+                self.assertEqual(deployed.stat().st_mode & 0o777, 0o750)
+                before = deployed.stat()
+                previous_log = self.log.read_text()
+                self.invoke(helper, "mv() { return 91; }\n")
+                after = deployed.stat()
+                self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                 (before.st_ino, before.st_mode, before.st_mtime_ns))
+                self.assertEqual(self.log.read_text(), previous_log)
+        self.assert_runtime_files("scripts/lib/security.sh", "zsh/acfs.zshrc")
+
+    def test_new_zshrc_uses_source_permissions_filtered_by_umask(self):
+        self.write(self.repo, "acfs/zsh/acfs.zshrc", "new shell configuration\n", 0o777)
+        self.invoke("sync_acfs_zshrc", "umask 0027\n")
+        deployed = self.acfs / "zsh/acfs.zshrc"
+        self.assertEqual(deployed.read_text(), "new shell configuration\n")
+        self.assertEqual(deployed.stat().st_mode & 0o777, 0o750)
+        self.assert_runtime_files("zsh/acfs.zshrc")
+
+    def test_early_deployers_dry_run_does_not_publish(self):
+        cases = (
+            ("update_refresh_installed_security", "scripts/lib/security.sh", "scripts/lib/security.sh"),
+            ("sync_acfs_zshrc", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc"),
+        )
+        for helper, source_relative, deployed_relative in cases:
+            with self.subTest(helper=helper):
+                self.write(self.repo, source_relative, "new content\n")
+                deployed = self.write(self.acfs, deployed_relative, "old content\n", 0o750)
+                before = deployed.stat()
+                output = self.invoke(helper, TEST_DRY_RUN="true")
+                self.assertEqual(deployed.read_text(), "old content\n")
+                after = deployed.stat()
+                self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                 (before.st_ino, before.st_mode, before.st_mtime_ns))
+                log = self.log.read_text() if self.log.exists() else ""
+                self.assertRegex(output + log, r"(?i)(dry-run|would)")
+        self.assert_runtime_files("scripts/lib/security.sh", "zsh/acfs.zshrc")
+
+    def test_early_deployers_fail_before_publication_and_do_not_log_success(self):
+        cases = (
+            ("update_refresh_installed_security", "scripts/lib/security.sh", "scripts/lib/security.sh"),
+            ("sync_acfs_zshrc", "acfs/zsh/acfs.zshrc", "zsh/acfs.zshrc"),
+        )
+        failures = {
+            "temporary": "mktemp() { return 72; }\n",
+            "partial copy": 'cp() { printf "partial" > "${@: -1}"; return 73; }\n',
+            "permissions": "chmod() { return 74; }\n",
+            "replacement": "mv() { return 75; }\n",
+        }
+        deployed_paths = []
+        for helper, source_relative, deployed_relative in cases:
+            self.write(self.repo, source_relative, "new complete script\n")
+            deployed_paths.append(deployed_relative)
+            for step, setup in failures.items():
+                with self.subTest(helper=helper, step=step):
+                    deployed = self.write(self.acfs, deployed_relative, "old complete script\n", 0o750)
+                    before = deployed.stat()
+                    output = self.invoke(helper, setup, success=False)
+                    self.assertEqual(deployed.read_text(), "old complete script\n")
+                    after = deployed.stat()
+                    self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                                     (before.st_ino, before.st_mode, before.st_mtime_ns))
+                    log = self.log.read_text() if self.log.exists() else ""
+                    self.assertNotIn("Refreshed installed security.sh", output + log)
+                    self.assertNotIn("Deployed ", output + log)
+                    self.assert_runtime_files(*deployed_paths)
+
+    def test_early_security_refresh_preserves_missing_and_same_file_skips(self):
+        self.write(self.repo, "scripts/lib/security.sh", "source security\n")
+        self.invoke("update_refresh_installed_security", "cp() { return 91; }\n")
+        self.assert_runtime_files()
+        deployed = self.write(self.acfs, "scripts/lib/security.sh", "shared source\n", 0o750)
+        before = deployed.stat()
+        self.invoke("update_refresh_installed_security", 'ACFS_REPO_ROOT="$TEST_DEPLOYED"\n')
+        after = deployed.stat()
+        self.assertEqual(deployed.read_text(), "shared source\n")
+        self.assertEqual((after.st_ino, after.st_mode, after.st_mtime_ns),
+                         (before.st_ino, before.st_mode, before.st_mtime_ns))
+        self.assert_runtime_files("scripts/lib/security.sh")
+
+    def test_shell_update_stops_after_managed_zshrc_failure(self):
+        body = r'''
+UPDATE_SHELL=true
+update_omz() { :; }
+update_p10k() { :; }
+update_zsh_plugins() { :; }
+update_atuin() { :; }
+update_zoxide() { :; }
+sync_acfs_profile_paths() { :; }
+sync_acfs_zprofile_paths() { :; }
+sync_acfs_zsh_loader() { :; }
+sync_acfs_zshrc() { return "$TEST_FAILURE"; }
+cleanup_unmanaged_atuin_init() { printf 'unexpected cleanup\n'; }
+sync_acfs_deployed() { printf 'unexpected deployment\n'; }
+sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
+sync_acfs_global_command_links() { printf 'unexpected links\n'; }
+if update_shell; then exit 0; else exit "$?"; fi
+'''
+        for failure in (73, 143):
+            with self.subTest(status=failure):
+                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_FAILURE=str(failure))
+                stdout, stderr = process.communicate(timeout=15)
+                self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
+                self.assertNotIn(b"unexpected", stdout + stderr)
+
+    def test_self_update_stops_when_early_security_refresh_fails(self):
+        self.write(self.repo, "VERSION", "fixture one\n")
+        self.commit_source()
+        checkout = self.base / "checkout"
+        subprocess.run(["git", "clone", "--quiet", str(self.repo), str(checkout)], env=self.env,
+                       check=True, capture_output=True, timeout=5)
+        body = r'''
+UPDATE_SELF=true
+BOOTSTRAP_SELF_UPDATE=false
+ACFS_SELF_UPDATE_DONE=false
+SCRIPT_DIR="$TEST_ROOT/no-updater"
+is_expected_acfs_origin_url() { return 0; }
+update_refresh_installed_security() { printf 'refresh attempted\n'; return 73; }
+sync_acfs_deployed() { printf 'unexpected deployment\n'; }
+sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
+sync_acfs_global_command_links() { printf 'unexpected links\n'; }
+if update_acfs_self; then exit 0; else exit "$?"; fi
+'''
+        for state in ("current", "fast-forward"):
+            with self.subTest(checkout=state):
+                if state == "fast-forward":
+                    self.write(self.repo, "VERSION", "fixture two\n")
+                    self.commit_source()
+                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_SOURCE=str(checkout))
+                stdout, stderr = process.communicate(timeout=15)
+                self.assertEqual(process.returncode, 73, (stdout + stderr).decode())
+                self.assertIn(b"refresh attempted", stdout)
+                self.assertNotIn(b"unexpected", stdout + stderr)
 
     def test_source_ref_extraction_failure_is_not_an_optional_skip(self):
         self.write(self.repo, "scripts/lib/stack.sh", "committed script\n", 0o755)
