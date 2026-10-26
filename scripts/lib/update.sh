@@ -3437,16 +3437,23 @@ sync_acfs_deployed() {
             fi
 
             if [[ -n "$source_ref" ]]; then
+                source_label="${source_ref}:${repo_rel}"
+                if ! source_mode="$(_acfs_deployed_source_mode "$repo_rel")"; then
+                    log_to_file "Failed to read source mode for $source_label"
+                    exit 1
+                fi
+                # Older refs can omit optional assets. Only a successful
+                # lookup with no entry is a skip; errors must fail the sync.
+                [[ -n "$source_mode" ]] || exit 10
                 if ! source_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-deploy-sync.XXXXXX" 2>/dev/null)"; then
                     log_to_file "Failed to create source staging file for ${source_ref}:${repo_rel}"
                     exit 1
                 fi
                 if ! git -C "$ACFS_REPO_ROOT" show "${source_ref}:${repo_rel}" > "$source_tmp" 2>/dev/null; then
-                    exit 10
+                    log_to_file "Failed to extract $source_label"
+                    exit 1
                 fi
                 source_file="$source_tmp"
-                source_label="${source_ref}:${repo_rel}"
-                source_mode="$(_acfs_deployed_source_mode "$repo_rel")"
             else
                 source_file="$ACFS_REPO_ROOT/$repo_rel"
                 [[ -f "$source_file" ]] || exit 10
@@ -5800,7 +5807,7 @@ _acfs_refresh_security_from_fetched_remote() {
     # Deploy directly from the fetched immutable ref. Do not copy into the
     # checkout: this path exists precisely because that checkout is dirty or
     # on the wrong branch, and its tracked bytes belong to the operator.
-    sync_acfs_deployed "origin/main"
+    sync_acfs_deployed "origin/main" || return $?
     sync_acfs_global_wrapper "origin/main"
     sync_acfs_global_command_links
     log_item "ok" "ACFS runtime" "refreshed from origin/main without modifying the checkout"
@@ -5866,7 +5873,7 @@ update_acfs_self() {
             local done_origin_url=""
             done_origin_url=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null || true)
             if is_expected_acfs_origin_url "$done_origin_url"; then
-                sync_acfs_deployed
+                sync_acfs_deployed || return $?
             fi
         fi
         return 0
@@ -5999,7 +6006,7 @@ update_acfs_self() {
         fi
         # Still fetch and refresh security files so checksums stay fresh
         if git -C "$ACFS_REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
-            _acfs_refresh_security_from_fetched_remote
+            _acfs_refresh_security_from_fetched_remote || return $?
         fi
         return 0
     fi
@@ -6052,7 +6059,7 @@ update_acfs_self() {
     if [[ "$local_head" == "$remote_head" ]]; then
         log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
         update_refresh_installed_security
-        sync_acfs_deployed
+        sync_acfs_deployed || return $?
         return 0
     fi
 
@@ -6087,7 +6094,7 @@ update_acfs_self() {
         log_item "warn" "ACFS self-update" \
             "fix: cd $ACFS_REPO_ROOT && git stash push -m acfs-local && git pull --ff-only origin main"
         log_to_file "Self-update skipped: ${_behind_count} commits behind; tracked modifications: ${_dirty_files:-unknown}"
-        _acfs_refresh_security_from_fetched_remote
+        _acfs_refresh_security_from_fetched_remote || return $?
         return 0
     fi
 
@@ -6096,7 +6103,7 @@ update_acfs_self() {
     if ! git -C "$ACFS_REPO_ROOT" pull --ff-only origin main 2>/dev/null; then
         log_item "warn" "ACFS self-update" "ff-only pull failed (branch divergence?); refreshing fetched runtime files"
         log_to_file "Self-update skipped: git pull --ff-only failed — refreshing fetched runtime files"
-        _acfs_refresh_security_from_fetched_remote
+        _acfs_refresh_security_from_fetched_remote || return $?
         return 0
     fi
 
@@ -6121,7 +6128,7 @@ update_acfs_self() {
     # $update_script points to ~/.acfs/scripts/lib/update.sh — if we don't
     # copy the new version there first, the hash comparison won't trigger
     # the re-exec and future runs will use the old code.
-    sync_acfs_deployed
+    sync_acfs_deployed || return $?
     sync_acfs_global_wrapper
     sync_acfs_global_command_links
 
@@ -8212,7 +8219,7 @@ update_shell() {
     # Re-run after the sync so the first run that deploys an atuin-owning
     # acfs.zshrc also retires the unmanaged ~/.zshrc init line (#359).
     cleanup_unmanaged_atuin_init
-    sync_acfs_deployed
+    sync_acfs_deployed || return $?
     sync_acfs_global_wrapper
     sync_acfs_global_command_links
 }

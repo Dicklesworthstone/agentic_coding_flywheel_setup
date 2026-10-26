@@ -249,6 +249,81 @@ mv() {
         self.sync('cp() { printf "partial" > "${@: -1}"; return 73; }\n', success=False)
         self.assert_runtime_files()
 
+    def test_source_ref_extraction_failure_is_not_an_optional_skip(self):
+        self.write(self.repo, "scripts/lib/stack.sh", "committed script\n", 0o755)
+        self.commit_source()
+        deployed = self.write(self.acfs, "scripts/lib/stack.sh", "old script\n", 0o755)
+        original = deployed.stat()
+        self.sync(r'''
+git() {
+    if [[ "$3" == show && "$4" == HEAD:scripts/lib/stack.sh ]]; then
+        printf 'partial source\n'
+        return 73
+    fi
+    command git "$@"
+}
+''', success=False, TEST_SOURCE_REF="HEAD")
+        self.assertEqual(deployed.read_text(), "old script\n")
+        self.assertEqual(deployed.stat().st_ino, original.st_ino)
+        self.assertEqual(deployed.stat().st_mode, original.st_mode)
+        self.assertNotIn("Synced ", self.log.read_text() if self.log.exists() else "")
+        self.assert_runtime_files("scripts/lib/stack.sh")
+
+    def test_executable_override_does_not_hide_source_mode_failure(self):
+        self.write(self.repo, "scripts/lib/stack.sh", "committed script\n", 0o755)
+        self.commit_source()
+        deployed = self.write(self.acfs, "scripts/lib/stack.sh", "old script\n", 0o755)
+        original_inode = deployed.stat().st_ino
+        self.sync(r'''
+git() {
+    if [[ "$3" == ls-tree && "${@: -1}" == scripts/lib/stack.sh ]]; then return 77; fi
+    command git "$@"
+}
+''', success=False, TEST_SOURCE_REF="HEAD")
+        self.assertEqual(deployed.read_text(), "old script\n")
+        self.assertEqual(deployed.stat().st_ino, original_inode)
+        self.assertNotIn("Synced ", self.log.read_text() if self.log.exists() else "")
+        self.assert_runtime_files("scripts/lib/stack.sh")
+
+    def test_fetched_refresh_propagates_failure_without_later_actions(self):
+        body = r'''
+sync_acfs_deployed() { return "$TEST_FAILURE"; }
+sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
+sync_acfs_global_command_links() { printf 'unexpected links\n'; }
+log_item() { if [[ "$1" == ok ]]; then printf 'unexpected success log\n'; fi; }
+if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
+'''
+        for failure in (73, 143):
+            with self.subTest(status=failure):
+                process = self.start(["/bin/bash", "-c", COMMON + body], TEST_FAILURE=str(failure))
+                stdout, stderr = process.communicate(timeout=15)
+                self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
+                self.assertEqual(stdout, b"")
+                self.assertNotIn("Refreshed deployed ACFS runtime",
+                                 self.log.read_text() if self.log.exists() else "")
+
+    def test_self_update_propagates_failure_in_completed_and_current_checkouts(self):
+        self.write(self.repo, "VERSION", "fixture\n")
+        self.commit_source()
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(self.repo)],
+                       env=self.env, check=True, capture_output=True, timeout=5)
+        body = r'''
+UPDATE_SELF=true
+BOOTSTRAP_SELF_UPDATE=false
+ACFS_SELF_UPDATE_DONE="$TEST_ALREADY_DONE"
+is_expected_acfs_origin_url() { return 0; }
+update_refresh_installed_security() { :; }
+sync_acfs_deployed() { return "$TEST_FAILURE"; }
+if update_acfs_self; then exit 0; else exit "$?"; fi
+'''
+        for already_done in ("true", "false"):
+            for failure in (73, 143):
+                with self.subTest(already_done=already_done, status=failure):
+                    process = self.start(["/bin/bash", "-c", COMMON + body],
+                                         TEST_ALREADY_DONE=already_done, TEST_FAILURE=str(failure))
+                    stdout, stderr = process.communicate(timeout=15)
+                    self.assertEqual(process.returncode, failure, (stdout + stderr).decode())
+
     def test_source_ref_mode_lookup_failure_does_not_publish_private_staging_mode(self):
         self.write(self.repo, "acfs/tmux/tmux.conf", "new config\n")
         deployed = self.write(self.acfs, "tmux/tmux.conf", "old config\n", 0o644)
