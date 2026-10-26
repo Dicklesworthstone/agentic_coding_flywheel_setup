@@ -471,6 +471,10 @@ git() {
         self.assert_runtime_files("scripts/lib/stack.sh")
 
     def test_fetched_refresh_propagates_failure_without_later_actions(self):
+        self.write(self.repo, "VERSION", "fixture\n")
+        self.commit_source()
+        subprocess.run(["git", "-C", str(self.repo), "update-ref", "refs/remotes/origin/main", "HEAD"],
+                       env=self.env, check=True, capture_output=True, timeout=5)
         body = r'''
 sync_acfs_deployed() { return "$TEST_FAILURE"; }
 sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
@@ -486,6 +490,118 @@ if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
                 self.assertEqual(stdout, b"")
                 self.assertNotIn("Refreshed deployed ACFS runtime",
                                  self.log.read_text() if self.log.exists() else "")
+
+    def test_fetched_refresh_cannot_continue_without_resolving_a_commit(self):
+        self.write(self.repo, "VERSION", "fixture\n")
+        self.commit_source()
+        body = r'''
+sync_acfs_deployed() { printf 'unexpected deployment\n'; }
+sync_acfs_global_wrapper() { printf 'unexpected wrapper\n'; }
+sync_acfs_global_command_links() { printf 'unexpected links\n'; }
+log_item() { if [[ "$1" == ok ]]; then printf 'unexpected success log\n'; fi; }
+if _acfs_refresh_security_from_fetched_remote; then exit 0; else exit "$?"; fi
+'''
+        output = self.shell(body, success=False)
+        self.assertNotIn("unexpected", output)
+
+    def test_runtime_source_selection_does_not_trust_inherited_environment(self):
+        output = self.shell('printf "selected:%s\\n" "${_ACFS_RUNTIME_SOURCE_REF:-}"',
+                            _ACFS_RUNTIME_SOURCE_REF="untrusted-inherited-ref")
+        self.assertEqual(output, "selected:\n")
+
+    def assert_dirty_fallback_stays_pinned_through_shell_update(self, checkout_is_runtime):
+        source_paths = (
+            "VERSION", "scripts/lib/doctor.sh", "scripts/lib/security.sh", "scripts/lib/stack.sh",
+            "scripts/acfs-global", "checksums.yaml", "acfs/zsh/acfs.zshrc",
+            "acfs/onboard/lessons/00_welcome.md",
+        )
+
+        def publish(version):
+            for relative in source_paths:
+                self.write(self.repo, relative, f"{version}: {relative}\n")
+            self.commit_source()
+            return subprocess.check_output(["git", "-C", str(self.repo), "rev-parse", "HEAD"],
+                                           env=self.env, text=True, timeout=5).strip()
+
+        publish("base")
+        checkout = self.acfs if checkout_is_runtime else self.base / "checkout"
+        subprocess.run(["git", "clone", "--quiet", str(self.repo), str(checkout)], env=self.env,
+                       check=True, capture_output=True, timeout=5)
+        original_head = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"],
+                                                env=self.env, text=True, timeout=5).strip()
+        for relative in ("scripts/lib/stack.sh", "scripts/lib/security.sh", "acfs/zsh/acfs.zshrc"):
+            self.write(checkout, relative, f"operator edits: {relative}\n")
+        original_files = {relative: (checkout / relative).read_bytes() for relative in source_paths}
+        original_diff = subprocess.check_output(["git", "-C", str(checkout), "diff", "--binary"],
+                                                env=self.env, timeout=5)
+        selected_commit = publish("selected")
+        deployed_sources = {
+            "bin/acfs": "scripts/lib/doctor.sh",
+            "zsh/acfs.zshrc": "acfs/zsh/acfs.zshrc",
+            "onboard/lessons/00_welcome.md": "acfs/onboard/lessons/00_welcome.md",
+        }
+        if not checkout_is_runtime:
+            deployed_sources.update({relative: relative for relative in
+                                     ("scripts/lib/security.sh", "scripts/lib/stack.sh", "checksums.yaml")})
+
+        body = r'''
+UPDATE_SELF=true
+UPDATE_SHELL=true
+BOOTSTRAP_SELF_UPDATE=false
+ACFS_SELF_UPDATE_DONE=false
+SCRIPT_DIR="$TEST_ROOT/no-updater"
+is_expected_acfs_origin_url() { return 0; }
+log_section() { :; }
+log_item() { :; }
+update_omz() { :; }
+update_p10k() { :; }
+update_zsh_plugins() { :; }
+update_atuin() { :; }
+update_zoxide() { :; }
+sync_acfs_profile_paths() { :; }
+sync_acfs_zprofile_paths() { :; }
+sync_acfs_zsh_loader() { :; }
+cleanup_unmanaged_atuin_init() { :; }
+sync_acfs_global_wrapper() { printf '%s\n' "${1:-}" >> "$TEST_ROOT/global-wrapper-refs"; }
+sync_acfs_global_command_links() { :; }
+update_acfs_self
+printf 'fallback-complete\n'
+IFS= read -r release
+# A second fetch can move origin/main between updater phases. The already
+# selected runtime must stay on the original immutable commit nonetheless.
+git -C "$ACFS_REPO_ROOT" fetch origin main --quiet
+update_shell
+'''
+        process = self.start(["/bin/bash", "-c", COMMON + body], TEST_SOURCE=str(checkout))
+        self.assertEqual(self.line(process), "fallback-complete")
+        for target, source in deployed_sources.items():
+            self.assertEqual((self.acfs / target).read_text(), f"selected: {source}\n")
+
+        later_commit = publish("later")
+        self.assertNotEqual(selected_commit, later_commit)
+        stdout, stderr = process.communicate(input=b"continue\n", timeout=20)
+        self.assertEqual(process.returncode, 0, (stdout + stderr).decode())
+        for target, source in deployed_sources.items():
+            self.assertEqual((self.acfs / target).read_text(), f"selected: {source}\n",
+                             f"shell update replaced selected runtime asset {target}")
+        self.assertEqual((self.base / "global-wrapper-refs").read_text().splitlines(),
+                         [selected_commit, selected_commit])
+        self.assertEqual(subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "origin/main"],
+                                                 env=self.env, text=True, timeout=5).strip(), later_commit)
+        self.assertEqual(subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"],
+                                                 env=self.env, text=True, timeout=5).strip(), original_head)
+        self.assertEqual({relative: (checkout / relative).read_bytes() for relative in source_paths},
+                         original_files)
+        self.assertEqual(subprocess.check_output(["git", "-C", str(checkout), "diff", "--binary"],
+                                                 env=self.env, timeout=5), original_diff)
+        self.assertEqual(list(self.stage.iterdir()), [])
+        self.assertEqual(list(self.acfs.rglob(".acfs-deploy.*")), [])
+
+    def test_dirty_fallback_stays_pinned_through_shell_update(self):
+        self.assert_dirty_fallback_stays_pinned_through_shell_update(checkout_is_runtime=False)
+
+    def test_dirty_checkout_runtime_preserves_remapped_assets_and_tracked_edits(self):
+        self.assert_dirty_fallback_stays_pinned_through_shell_update(checkout_is_runtime=True)
 
     def test_self_update_propagates_failure_in_completed_and_current_checkouts(self):
         self.write(self.repo, "VERSION", "fixture\n")

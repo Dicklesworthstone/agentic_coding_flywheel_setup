@@ -337,6 +337,10 @@ ACFS_REPO_ROOT="$(_acfs_discover_repo_root)"
 # Track if self-update already ran (prevents re-exec loops)
 ACFS_SELF_UPDATE_DONE="${ACFS_SELF_UPDATE_DONE:-false}"
 
+# A fetched-runtime fallback selects one immutable revision for this run.
+# Do not inherit a previous invocation's selection from the environment.
+_ACFS_RUNTIME_SOURCE_REF=""
+
 if [[ -f "$ACFS_REPO_ROOT/VERSION" ]]; then
     ACFS_VERSION="$(cat "$ACFS_REPO_ROOT/VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
 fi
@@ -5836,11 +5840,21 @@ update_refresh_installed_security() {
 # Requires: git fetch origin main has already succeeded.
 # ------------------------------------------------------------
 _acfs_refresh_security_from_fetched_remote() {
-    # Deploy directly from the fetched immutable ref. Do not copy into the
+    local source_ref=""
+    if ! source_ref="$(git -C "$ACFS_REPO_ROOT" rev-parse --verify 'origin/main^{commit}' 2>/dev/null)" || [[ -z "$source_ref" ]]; then
+        log_item "fail" "ACFS runtime" "unable to resolve fetched origin/main"
+        log_to_file "Unable to resolve fetched origin/main for runtime deployment"
+        return 1
+    fi
+
+    # Deploy directly from the fetched immutable commit. Do not copy into the
     # checkout: this path exists precisely because that checkout is dirty or
     # on the wrong branch, and its tracked bytes belong to the operator.
-    sync_acfs_deployed "origin/main" || return $?
-    sync_acfs_global_wrapper "origin/main"
+    sync_acfs_deployed "$source_ref" || return $?
+    sync_acfs_global_wrapper "$source_ref" || return $?
+    # update_shell runs later in this same process. Keep it on this revision
+    # even if origin/main moves, rather than redeploying the stale checkout.
+    _ACFS_RUNTIME_SOURCE_REF="$source_ref"
     sync_acfs_global_command_links
     log_item "ok" "ACFS runtime" "refreshed from origin/main without modifying the checkout"
     log_to_file "Refreshed deployed ACFS runtime from origin/main without modifying the checkout"
@@ -8243,16 +8257,20 @@ update_shell() {
     update_atuin
     update_zoxide
 
-    # Keep deployed files in sync with repo (acfs.zshrc, update.sh, etc.)
+    # Keep the runtime source selected during self-update. A fetched-runtime
+    # fallback must not be undone by a later sync from the dirty checkout.
+    local source_ref="${_ACFS_RUNTIME_SOURCE_REF:-}"
     sync_acfs_profile_paths
     sync_acfs_zprofile_paths
     sync_acfs_zsh_loader
-    sync_acfs_zshrc || return $?
+    if [[ -z "$source_ref" ]]; then
+        sync_acfs_zshrc || return $?
+    fi
+    sync_acfs_deployed "$source_ref" || return $?
     # Re-run after the sync so the first run that deploys an atuin-owning
     # acfs.zshrc also retires the unmanaged ~/.zshrc init line (#359).
     cleanup_unmanaged_atuin_init
-    sync_acfs_deployed || return $?
-    sync_acfs_global_wrapper
+    sync_acfs_global_wrapper "$source_ref" || return $?
     sync_acfs_global_command_links
 }
 

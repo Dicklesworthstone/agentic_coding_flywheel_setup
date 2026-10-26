@@ -9845,6 +9845,7 @@ EOF
     local deployed_home
     local log_file
     local local_head
+    local selected_head
     local global_wrapper_args
 
     temp_root="$(create_temp_dir)"
@@ -9878,6 +9879,7 @@ EOF
     git -C "$seed_repo" add scripts/acfs-global scripts/lib/doctor.sh scripts/lib/stack.sh scripts/generated/install_stack.sh
     git -C "$seed_repo" commit -m "remote runtime update" >/dev/null
     git -C "$seed_repo" push origin main >/dev/null 2>&1
+    selected_head="$(git -C "$seed_repo" rev-parse HEAD)"
 
     printf "local-dirty-update\n" > "$work_repo/scripts/lib/update.sh"
     printf "#!/usr/bin/env bash\nprintf 'stale-acfs-doctor\\n'\n" > "$deployed_home/bin/acfs"
@@ -9918,23 +9920,23 @@ EOF
     [[ "$(cat "$work_repo/scripts/lib/update.sh")" == "local-dirty-update" ]]
     run cat "$global_wrapper_args"
     assert_success
-    assert_output "origin/main"
+    assert_output "$selected_head"
 
     run "$deployed_home/bin/acfs"
     assert_success
     assert_output "remote-acfs-doctor"
     [[ -x "$deployed_home/bin/acfs" ]]
-    run grep -F "Synced origin/main:scripts/lib/doctor.sh -> $deployed_home/bin/acfs" "$log_file"
+    run grep -F "Synced $selected_head:scripts/lib/doctor.sh -> $deployed_home/bin/acfs" "$log_file"
     assert_success
     run cat "$deployed_home/scripts/lib/stack.sh"
     assert_success
     assert_output "remote-stack-lib"
-    run grep -F "Synced origin/main:scripts/lib/stack.sh -> $deployed_home/scripts/lib/stack.sh" "$log_file"
+    run grep -F "Synced $selected_head:scripts/lib/stack.sh -> $deployed_home/scripts/lib/stack.sh" "$log_file"
     assert_success
     run cat "$deployed_home/scripts/generated/install_stack.sh"
     assert_success
     assert_output "remote-generated"
-    run grep -F "Synced origin/main:scripts/generated/install_stack.sh -> $deployed_home/scripts/generated/install_stack.sh" "$log_file"
+    run grep -F "Synced $selected_head:scripts/generated/install_stack.sh -> $deployed_home/scripts/generated/install_stack.sh" "$log_file"
     assert_success
 }
 
