@@ -187,6 +187,13 @@ try:
         if failed.exists():
             raise ValueError(failed.read_text())
         if not manifest_path.exists():
+            attempted = work / 'manifest-download-started'
+            if attempted.exists():
+                # A killed lock holder cannot publish its failure. Do not
+                # let a waiter repeat the request in its remaining budget.
+                raise ValueError('cloud-mirror.json download was interrupted; rerun setup to retry')
+            with attempted.open('x'):
+                pass
             candidate = work / ('cloud-mirror.' + tool + '.partial')
             if not download(os.environ['ACFS_RAW'] + '/cloud-mirror.json', candidate, max_time=20):
                 message = 'Could not fetch cloud-mirror.json; new installs require Full network access or a Custom allowlist'
@@ -427,7 +434,46 @@ cloud_tool_guide_line() {
     case "$1" in
         br) printf '%s\n' '- `br` (beads_rust): issue tracker in `.beads/`. `br ready --json`, `br show <id>`, `br update <id> --status in_progress`, `br close <id> --reason "..."`, then `br sync --flush-only` and commit `.beads/`.' ;;
         bv) printf '%s\n' '- `bv` (beads_viewer): graph-aware triage over beads. Use ONLY `--robot-*` flags (bare `bv` opens a blocking TUI): `bv --robot-triage`, `bv --robot-next`, `bv --robot-plan`.' ;;
-        am) printf '%s\n' "- \`am\` / \`mcp-agent-mail\` (Agent Mail): agent messaging and file reservations. MCP registration status is in \`$ACFS_CLOUD_STATE_DIR/setup.log\`; use \`am --help\` for CLI access." ;;
+        am)
+            printf '%s\n' "- \`am\` / \`mcp-agent-mail\` (Agent Mail): agent messaging and file reservations. MCP registration status is in \`$ACFS_CLOUD_STATE_DIR/setup.log\`. Use MCP when connected; otherwise use the CLI workflow below."
+            local am_command=am
+            if [[ "$ACFS_CLOUD_ROOT" != "$HOME" ]]; then
+                am_command="STORAGE_ROOT=\${STORAGE_ROOT:-\${XDG_DATA_HOME:-$(printf '%q' "$ACFS_CLOUD_ROOT/.local/share")}/mcp-agent-mail/git_mailbox_repo} am"
+            fi
+            cat <<'GUIDE'
+
+  From the repository root, start one session for this task. Replace the program and model placeholders with your actual agent identifiers. Keep the returned identity for subsequent commands; the captured session JSON can contain a private registration token.
+
+  ```bash
+  am_project="$(pwd -P)"
+GUIDE
+            printf '  am_session="$(%s macros start-session --project "$am_project" --program "<your-agent>" --model "<your-model>" --json)" &&\n' "$am_command"
+            cat <<'GUIDE'
+  am_agent="$(printf '%s\n' "$am_session" | python3 -c 'import json, sys; print(json.load(sys.stdin)["agent"]["name"])')" &&
+GUIDE
+            printf '  %s robot inbox --project "$am_project" --agent "$am_agent" --include-bodies --json\n' "$am_command"
+            cat <<'GUIDE'
+  ```
+
+  Before editing, reserve only the paths you need; replace the example path and task ID. Read both `granted` and `conflicts` before proceeding. Reservations coordinate agents sharing this mailbox; separate cloud VMs do not share it automatically.
+
+  ```bash
+GUIDE
+            printf '  %s file_reservations reserve "$am_project" "$am_agent" "path/to/file" --reason "<task-id>"\n' "$am_command"
+            cat <<'GUIDE'
+  ```
+
+  After finishing the edit, release only your reservation for that path:
+
+  ```bash
+GUIDE
+            printf '  %s file_reservations release "$am_project" "$am_agent" --paths "path/to/file"\n' "$am_command"
+            cat <<'GUIDE'
+  ```
+
+  Use `am mail send --help` for message arguments and `am robot inbox --help` for inbox filters. Reuse existing mailbox configuration and preserve DATABASE_URL. No service launch or restart is needed for these CLI operations.
+GUIDE
+            ;;
         ast-grep) printf '%s\n' '- `ast-grep`: structural code search used by UBS. Use this name because Linux may have an unrelated `sg` command.' ;;
         ubs)
             printf '%s\n' '- `ubs` (Ultimate Bug Scanner): scan changed files before every commit. Default exit 0 can include warnings; read the report. Add `--ci --fail-on-warning` when warnings must fail the check.'

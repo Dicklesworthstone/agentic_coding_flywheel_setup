@@ -1261,6 +1261,28 @@ sys.exit(22)
             self.assertFalse((self.home / '.local/bin' / binary).exists())
         self.assertNotIn('(verified prebuilt)', output)
 
+    def test_killed_manifest_fetch_is_not_repeated_by_a_waiter(self):
+        self.bundle('br')
+        self.bundle('bv')
+        # Kill only this controlled curl's parent installer Python process.
+        # The kernel releases its flock without giving it a chance to write
+        # a failure status. Another selected tool then acquires that lock.
+        self.command('curl', f'''#!{shutil.which('python3')}
+import json, os, pathlib, signal, sys
+root = pathlib.Path({str(self.root)!r})
+args = sys.argv[1:]
+with (root / 'requests').open('a') as output:
+    output.write(args[-1] + '\\n')
+mapping = json.loads((root / 'urls.json').read_text())
+pathlib.Path(args[args.index('-o') + 1]).write_bytes(pathlib.Path(mapping[args[-1]]).read_bytes())
+os.kill(os.getppid(), signal.SIGKILL)
+''')
+        output = self.run_setup('br bv', ACFS_CLOUD_AGENT='generic')
+        self.assertEqual((self.root / 'requests').read_text().splitlines(), [MANIFEST_URL])
+        self.assertIn('download was interrupted; rerun setup to retry', output)
+        for binary in ('br', 'bv'):
+            self.assertFalse((self.home / '.local/bin' / binary).exists())
+
     def test_manifest_download_and_lock_waits_obey_whole_job_deadline(self):
         self.command('curl', f'''#!{shutil.which('python3')}
 import pathlib, sys, time
@@ -1931,6 +1953,67 @@ fi
                     storage.encode(), database.encode(), xdg.encode(), str(self.home).encode(), b''])
         self.assertFalse((self.root / 'mail-injected').exists())
         self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_agent_mail_cli_guide_executes_with_scoped_storage_and_returned_identity(self):
+        # Record the generated shell's arguments and environment. Actual public
+        # CLI messaging/reservation checks are separate from this quoting test.
+        binary = b'''#!/usr/bin/env python3
+import json, os, sys
+if sys.argv[1:] == ['--version']:
+    print('am 1.2.3')
+    sys.exit(0)
+with open(os.environ['CLI_RECORD'], 'a') as output:
+    output.write(json.dumps([sys.argv[1:], *[os.environ.get(key, '') for key in
+        ('STORAGE_ROOT', 'DATABASE_URL', 'XDG_DATA_HOME', 'HOME')]]) + '\\n')
+if sys.argv[1:3] == ['macros', 'start-session']:
+    if os.environ.get('CLI_FAIL'):
+        sys.exit(23)
+    print(json.dumps({'agent': {'name': 'AmberLake'}}))
+'''
+        self.bundle('am', content=binary)
+        writable = self.root / "CLI tools ' quoted ` ticks $ dollars$(touch cli-injected)"
+        self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_ROOT=str(writable))
+        guide = (writable / '.acfs/cloud/AGENTS.md').read_text()
+        blocks = re.findall(r'^  ```bash\n(.*?)^  ```$', guide, re.S | re.M)
+        commands = [block for block in blocks if block.lstrip().startswith('am_project=')
+                    or ' file_reservations ' in block]
+        self.assertEqual(len(commands), 3)
+        path = re.search(r'```bash\n(export PATH=[^\n]+)\n```', guide).group(1)
+        script = self.root / 'mail-cli-guide.sh'
+        with script.open('x') as output:
+            output.write(path + '\n' + '\n'.join(commands))
+            output.write('\nprintf "\\0%s\\0%s\\0%s\\0" "${STORAGE_ROOT-}" "${DATABASE_URL-}" "${XDG_DATA_HOME-}"')
+        for index, (storage, xdg, database) in enumerate([
+                ('', '', ''), (str(self.root / 'existing mailbox'), '', 'sqlite:///existing.db'),
+                ('', str(self.root / 'XDG data'), 'sqlite:///existing.db')]):
+            with self.subTest(storage=storage, xdg=xdg, database=database):
+                record = self.root / f'cli-record-{index}.jsonl'
+                result = subprocess.run(['bash', str(script)], cwd=self.root,
+                                        env={**self.env, 'STORAGE_ROOT': storage, 'XDG_DATA_HOME': xdg,
+                                             'DATABASE_URL': database, 'CLI_RECORD': str(record)},
+                                        capture_output=True, text=True, timeout=5, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                calls = [parse_json_report(line) for line in record.read_text().splitlines()]
+                expected_storage = storage or str(Path(xdg or str(writable / '.local/share')) / 'mcp-agent-mail/git_mailbox_repo')
+                self.assertEqual([call[1:] for call in calls],
+                                 [[expected_storage, database, xdg, str(self.home)]] * 4)
+                self.assertEqual([call[0] for call in calls], [
+                    ['macros', 'start-session', '--project', str(self.root), '--program', '<your-agent>', '--model', '<your-model>', '--json'],
+                    ['robot', 'inbox', '--project', str(self.root), '--agent', 'AmberLake', '--include-bodies', '--json'],
+                    ['file_reservations', 'reserve', str(self.root), 'AmberLake', 'path/to/file', '--reason', '<task-id>'],
+                    ['file_reservations', 'release', str(self.root), 'AmberLake', '--paths', 'path/to/file']])
+                self.assertEqual(result.stdout, '\0' + '\0'.join((storage, database, xdg)) + '\0')
+        failure_record = self.root / 'cli-failed-record.jsonl'
+        failure_script = self.root / 'mail-cli-failed-guide.sh'
+        with failure_script.open('x') as output:
+            output.write(path + '\n' + commands[0])
+        failed = subprocess.run(['bash', str(failure_script)], cwd=self.root,
+                                env={**self.env, 'CLI_FAIL': '1', 'CLI_RECORD': str(failure_record)},
+                                capture_output=True, text=True, timeout=5, check=False)
+        self.assertEqual(failed.returncode, 23, failed.stderr)
+        self.assertEqual(len(failure_record.read_text().splitlines()), 1,
+                         'A failed bootstrap must not query an empty or stale agent identity')
+        self.assertFalse((self.root / 'cli-injected').exists())
 
     def test_codex_repository_skill_loads_writable_guide_and_is_idempotent(self):
         self.bundle()
