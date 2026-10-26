@@ -467,6 +467,8 @@ Everything else â€” language runtimes, AI agents, and the flywheel tool stack â€
 
 The public [cloud agent setup guide](https://agent-flywheel.com/cloud-agents) selects the right recipe for your provider. Claude Code and ChatGPT / Codex have hosted test evidence; Amp Orbs, Devin and Grok Bot have documentation-based recipes awaiting hosted acceptance. Meta Muse needs shell/runtime and persistence checks before an installation recipe can be accepted. The installer retains its original filename and supports `claude`, `codex` and provider-neutral `generic` modes.
 
+Prefer to hand the setup to a browser agent? Use **Copy full instructions** near the top of the guide, or share its [complete ChatGPT / Codex Markdown brief](https://agent-flywheel.com/cloud-agents/instructions.md?agent=codex). The Markdown is the exact copy-button content, including scripts, screenshot references and verification steps. Choose `agent=claude`, `codex`, `amp`, `devin`, `grok`, `muse` or `generic`; omitting `agent` defaults to Claude. The guide's **Open Markdown** link follows your selected provider.
+
 ### Claude Code on the web
 
 [Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) runs cloud sessions on a disposable Ubuntu 24.04 VM. ACFS uses [`scripts/claude-code-web-setup.sh`](scripts/claude-code-web-setup.sh) to install prebuilt agent-facing tools during setup, without provisioning users, upgrading the OS or starting background services. The [cloud guide](https://agent-flywheel.com/cloud-agents#claude) walks through it with copy buttons.

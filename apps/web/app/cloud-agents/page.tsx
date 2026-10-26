@@ -48,7 +48,7 @@ import {
   type ClaudeCodeWebToolGroup,
 } from "@/lib/claude-code-web";
 import { copyTextToClipboard, safeGetItem, safeSetItem } from "@/lib/utils";
-import { CLOUD_WALKTHROUGHS, getCloudAgentSetupInstructions, type SetupScreenshot, type SetupStep } from "@/lib/cloud-agent-walkthroughs";
+import { CLOUD_AGENT_INSTRUCTIONS_PATH, CLOUD_WALKTHROUGHS, getCloudAgentSetupInstructions, type SetupScreenshot, type SetupStep } from "@/lib/cloud-agent-walkthroughs";
 
 const GITHUB_URL = "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup";
 const README_URL = `${GITHUB_URL}#cloud-agent-environments`;
@@ -280,18 +280,20 @@ function HandoffCard({ agent }: { agent: CloudAgent }) {
         Copy one complete brief and paste it into a ChatGPT chat with computer use enabled, or any agent that can operate your browser. It follows every click, fills in the scripts and asks before sign-ins or policy changes.
       </p>
       {agent.id === "muse" && <p className="mt-2 text-xs leading-relaxed text-amber-200/90">Muse starts with a capability check; installation support is unverified.</p>}
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="mt-4">
         <Button
           type="button"
           size="lg"
           onClick={copy}
           aria-disabled={state === "copying"}
           aria-label={`Copy full instructions for ${agent.name}`}
-          className="min-h-12 gap-2 bg-primary px-5 text-base font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.75_0.18_195/0.7)] hover:bg-primary/90"
+          className="min-h-12 w-full gap-2 whitespace-normal bg-primary px-5 text-base font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.75_0.18_195/0.7)] hover:bg-primary/90 sm:w-auto"
         >
           {state === "copied" ? <Check className="size-5 shrink-0" aria-hidden="true" /> : <Copy className="size-5 shrink-0" aria-hidden="true" />}
           {state === "copied" ? "Full instructions copied" : state === "copying" ? "Copying…" : "Copy full instructions"}
         </Button>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-1">
         <button
           type="button"
           aria-expanded={preview}
@@ -302,11 +304,22 @@ function HandoffCard({ agent }: { agent: CloudAgent }) {
           {preview ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
           {preview ? "Hide brief" : "Preview brief"}
         </button>
+        <a
+          href={`${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=${encodeURIComponent(agent.id)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open full instructions for ${agent.name} as Markdown (new tab)`}
+          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground ${focusRing}`}
+        >
+          <FileText className="size-4" aria-hidden="true" />
+          Open Markdown
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+        </a>
       </div>
       <span role="status" aria-live="polite" className="sr-only">{state === "copied" ? `${agent.name} full instructions copied to clipboard` : ""}</span>
       {state === "error" && (
         <p role="alert" className="mt-3 text-sm leading-relaxed text-amber-200">
-          Clipboard access failed. Open the preview, select the whole brief and copy it, or try again.
+          Clipboard access failed. Select and copy the whole brief below, open its Markdown link, or try again.
         </p>
       )}
       {(preview || state === "error") && (

@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { CLOUD_AGENTS } from "../lib/claude-code-web";
+import { CLOUD_AGENT_INSTRUCTIONS_PATH, getCloudAgentSetupInstructions } from "../lib/cloud-agent-walkthroughs";
 
 type ClipboardProbe = Window & {
   clipboardWrites: string[];
@@ -53,6 +55,32 @@ async function chooseCodex(page: Page) {
   }).click();
   await expect(page.getByRole("button", { name: "Copy full instructions for ChatGPT / Codex", exact: true })).toBeVisible();
 }
+
+test("public Markdown matches every complete brief and follows the selected provider", async ({ page, request }) => {
+  for (const agent of CLOUD_AGENTS) {
+    const response = await request.get(`${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=${agent.id}`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("text/markdown; charset=utf-8");
+    expect(await response.text()).toBe(getCloudAgentSetupInstructions(agent.id));
+  }
+
+  await page.goto("/cloud-agents");
+  const claude = page.getByRole("link", { name: "Open full instructions for Claude Code as Markdown (new tab)", exact: true });
+  await expect(claude).toHaveAttribute("href", `${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=claude`);
+  await chooseCodex(page);
+  const codex = page.getByRole("link", { name: "Open full instructions for ChatGPT / Codex as Markdown (new tab)", exact: true });
+  await expect(codex).toHaveAttribute("href", `${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=codex`);
+  await page.getByRole("button", { name: "Preview brief", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Full agent instructions for ChatGPT / Codex", exact: true })).toHaveText(getCloudAgentSetupInstructions("codex"));
+  await codex.focus();
+  await expect(codex).toBeFocused();
+  const popupPromise = page.waitForEvent("popup");
+  await codex.press("Enter");
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(new URL(`${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=codex`, page.url()).href);
+  await expect(popup.locator("body")).toContainText("# Set up Agent Flywheel for ChatGPT / Codex");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
 
 test("an abandoned provider brief cannot overwrite the newer copied brief through fallback", async ({ page }) => {
   await installClipboardProbe(page, "pending-first");

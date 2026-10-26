@@ -7,6 +7,8 @@ import {
   GENERIC_CLOUD_TASK_INSTRUCTIONS,
 } from "./claude-code-web";
 
+export const CLOUD_AGENT_INSTRUCTIONS_PATH = "/cloud-agents/instructions.md";
+
 /** A control the step asks you to use, as a percentage box over the screenshot. */
 export type ScreenshotHighlight = {
   label: string;

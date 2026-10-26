@@ -26,9 +26,10 @@ import {
   cloudSubsetRecipe,
 } from "./claude-code-web";
 import nextConfig from "../next.config";
+import { GET as getInstructions } from "../app/cloud-agents/instructions.md/route";
 import { getStaticRouteSocialData } from "./social-image-routes";
 import { createSocialImage } from "./social-image";
-import { CLOUD_WALKTHROUGHS, DEVIN_CLOUD_BLUEPRINT, getCloudAgentSetupInstructions, GROK_CLOUD_CHECK_SCRIPT } from "./cloud-agent-walkthroughs";
+import { CLOUD_AGENT_INSTRUCTIONS_PATH, CLOUD_WALKTHROUGHS, DEVIN_CLOUD_BLUEPRINT, getCloudAgentSetupInstructions, GROK_CLOUD_CHECK_SCRIPT } from "./cloud-agent-walkthroughs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const script = readFileSync(join(REPO_ROOT, CLAUDE_CODE_WEB_SCRIPT_PATH), "utf-8");
@@ -47,6 +48,37 @@ function scriptDefault(name: string): string {
 }
 
 describe("cloud agent page data", () => {
+  test("public Markdown serves the exact complete copy brief for every provider", async () => {
+    for (const agent of CLOUD_AGENTS) {
+      const response = getInstructions(new Request(`https://agent-flywheel.com${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=${agent.id}`));
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+      expect(response.headers.get("content-disposition")).toBe('inline; filename="acfs-cloud-agents.md"');
+      expect(response.headers.get("cache-control")).toBe("public, max-age=300");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await response.text()).toBe(getCloudAgentSetupInstructions(agent.id));
+    }
+    expect(readme).toContain(`https://agent-flywheel.com${CLOUD_AGENT_INSTRUCTIONS_PATH}?agent=codex`);
+  });
+
+  test("public Markdown defaults to the page's initial provider", async () => {
+    const response = getInstructions(new Request(`https://agent-flywheel.com${CLOUD_AGENT_INSTRUCTIONS_PATH}`));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(getCloudAgentSetupInstructions(CLOUD_AGENTS[0].id));
+  });
+
+  test("public Markdown rejects unknown, empty and ambiguous provider selectors", async () => {
+    for (const query of ["agent=", "agent=unknown", "agent=__proto__", "agent=constructor", "agent=Codex", "agent=codex&agent=claude", "agent=codex&agent=codex", "agent=%3Cscript%3E"]) {
+      const response = getInstructions(new Request(`https://agent-flywheel.com${CLOUD_AGENT_INSTRUCTIONS_PATH}?${query}`));
+      expect(response.status).toBe(400);
+      expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.has("content-disposition")).toBe(false);
+      expect(await response.text()).toBe(`Choose one agent: ${CLOUD_AGENTS.map((agent) => agent.id).join(", ")}.\n`);
+    }
+  });
+
   test("computer-use handoff includes the complete selected walkthrough without provider docs links", () => {
     for (const agent of CLOUD_AGENTS) {
       const instructions = getCloudAgentSetupInstructions(agent.id);
