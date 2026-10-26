@@ -3410,76 +3410,116 @@ sync_acfs_deployed() {
 
     local synced=0
     _acfs_sync_deployed_file() {
-        local repo_rel="$1"
-        local deployed_rel="$2"
-        local deployed_file="$acfs_home/$deployed_rel"
-        local source_file=""
-        local source_tmp=""
-        local source_label="$repo_rel"
-        local source_mode=""
-        local target_mode_override=""
+        local sync_status=0
+        # Keep scratch-file cleanup and signal handlers local to this file's
+        # deployment; the updater/nightly caller has its own traps. Status 10
+        # means an intentional no-op, so only completed syncs affect the count.
+        (
+            local repo_rel="$1"
+            local deployed_rel="$2"
+            local deployed_file="$acfs_home/$deployed_rel"
+            local source_file=""
+            local source_tmp=""
+            local deployed_tmp=""
+            local source_label="$repo_rel"
+            local source_mode=""
+            local target_mode_override=""
 
-        if _acfs_deployed_path_is_git_tracked "$acfs_home" "$deployed_rel"; then
-            log_to_file "Skipped syncing $source_label -> $deployed_file (target is git-managed)"
-            return 0
-        fi
+            trap 'if [[ -n "$source_tmp" ]]; then rm -f -- "$source_tmp"; fi
+                  if [[ -n "$deployed_tmp" ]]; then rm -f -- "$deployed_tmp"; fi' EXIT
+            trap 'exit 129' HUP
+            trap 'exit 130' INT
+            trap 'exit 143' TERM
 
-        if [[ -n "$source_ref" ]]; then
-            source_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-deploy-sync.XXXXXX" 2>/dev/null)" || return 0
-            if ! git -C "$ACFS_REPO_ROOT" show "${source_ref}:${repo_rel}" > "$source_tmp" 2>/dev/null; then
-                rm -f "$source_tmp" 2>/dev/null || true
-                return 0
+            if _acfs_deployed_path_is_git_tracked "$acfs_home" "$deployed_rel"; then
+                log_to_file "Skipped syncing $source_label -> $deployed_file (target is git-managed)"
+                exit 10
             fi
-            source_file="$source_tmp"
-            source_label="${source_ref}:${repo_rel}"
-            source_mode="$(_acfs_deployed_source_mode "$repo_rel")"
-        else
-            source_file="$ACFS_REPO_ROOT/$repo_rel"
-            [[ -f "$source_file" ]] || return 0
-            # Never copy a file onto itself (identity pairs when the repo
-            # checkout and ~/.acfs are the same directory).
-            local resolved_source resolved_target
-            resolved_source="$(realpath "$source_file" 2>/dev/null || printf '%s\n' "$source_file")"
-            resolved_target="$(realpath "$deployed_file" 2>/dev/null || printf '%s\n' "$deployed_file")"
-            [[ "$resolved_source" != "$resolved_target" ]] || return 0
-        fi
-        target_mode_override="$(_acfs_deployed_target_mode_override "$deployed_rel")"
 
-        # Skip only when content and required deployed mode are both healthy.
-        if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file" && _acfs_deployed_target_mode_is_healthy "$deployed_file" "$target_mode_override"; then
-            if [[ -n "$source_tmp" ]]; then
-                rm -f "$source_tmp" 2>/dev/null || true
+            if [[ -n "$source_ref" ]]; then
+                if ! source_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-deploy-sync.XXXXXX" 2>/dev/null)"; then
+                    log_to_file "Failed to create source staging file for ${source_ref}:${repo_rel}"
+                    exit 1
+                fi
+                if ! git -C "$ACFS_REPO_ROOT" show "${source_ref}:${repo_rel}" > "$source_tmp" 2>/dev/null; then
+                    exit 10
+                fi
+                source_file="$source_tmp"
+                source_label="${source_ref}:${repo_rel}"
+                source_mode="$(_acfs_deployed_source_mode "$repo_rel")"
+            else
+                source_file="$ACFS_REPO_ROOT/$repo_rel"
+                [[ -f "$source_file" ]] || exit 10
+                # Never copy a file onto itself (identity pairs when the repo
+                # checkout and ~/.acfs are the same directory).
+                local resolved_source resolved_target
+                resolved_source="$(realpath "$source_file" 2>/dev/null || printf '%s\n' "$source_file")"
+                resolved_target="$(realpath "$deployed_file" 2>/dev/null || printf '%s\n' "$deployed_file")"
+                [[ "$resolved_source" != "$resolved_target" ]] || exit 10
             fi
-            return 0
-        fi
+            target_mode_override="$(_acfs_deployed_target_mode_override "$deployed_rel")"
 
-        if [[ "${DRY_RUN:-false}" == "true" ]]; then
-            log_to_file "Would sync $source_label -> $deployed_file"
-            synced=$((synced + 1))
-            if [[ -n "$source_tmp" ]]; then
-                rm -f "$source_tmp" 2>/dev/null || true
+            # Skip only when content and required deployed mode are both healthy.
+            if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file" && _acfs_deployed_target_mode_is_healthy "$deployed_file" "$target_mode_override"; then
+                exit 10
             fi
-            return 0
-        fi
 
-        mkdir -p "$(dirname "$deployed_file")"
-        cp "$source_file" "$deployed_file"
-        if [[ -n "$target_mode_override" ]]; then
-            chmod "$target_mode_override" "$deployed_file" 2>/dev/null || true
-        elif [[ -n "$source_ref" ]]; then
-            case "$source_mode" in
-                100755) chmod 755 "$deployed_file" 2>/dev/null || true ;;
-                100644) chmod 644 "$deployed_file" 2>/dev/null || true ;;
-            esac
-        else
-            chmod --reference="$source_file" "$deployed_file" 2>/dev/null || true
-        fi
-        log_to_file "Synced $source_label -> $deployed_file"
-        synced=$((synced + 1))
+            if [[ "${DRY_RUN:-false}" == "true" ]]; then
+                log_to_file "Would sync $source_label -> $deployed_file"
+                exit 0
+            fi
 
-        if [[ -n "$source_tmp" ]]; then
-            rm -f "$source_tmp" 2>/dev/null || true
-        fi
+            local deployed_dir="${deployed_file%/*}"
+            if ! mkdir -p -- "$deployed_dir"; then
+                log_to_file "Failed to create deployment directory for $deployed_file"
+                exit 1
+            fi
+            # Never truncate a deployed inode: Bash may still be reading it (in
+            # particular nightly-update.sh, update.sh itself, or bin/acfs). Stage
+            # beside the destination so the final rename stays on one filesystem.
+            if ! deployed_tmp="$(mktemp "$deployed_dir/.acfs-deploy.XXXXXX")"; then
+                log_to_file "Failed to create deployment staging file for $deployed_file"
+                exit 1
+            fi
+            if ! cp -- "$source_file" "$deployed_tmp"; then
+                log_to_file "Failed to stage $source_label -> $deployed_file"
+                exit 1
+            fi
+
+            local mode_status=0
+            if [[ -n "$target_mode_override" ]]; then
+                chmod "$target_mode_override" "$deployed_tmp" || mode_status=$?
+            elif [[ -n "$source_ref" ]]; then
+                case "$source_mode" in
+                    100755) chmod 755 "$deployed_tmp" || mode_status=$? ;;
+                    100644) chmod 644 "$deployed_tmp" || mode_status=$? ;;
+                    *)
+                        log_to_file "Failed to determine deployment permissions for $source_label (git mode: ${source_mode:-missing})"
+                        exit 1
+                        ;;
+                esac
+            else
+                chmod --reference="$source_file" "$deployed_tmp" || mode_status=$?
+            fi
+            if [[ "$mode_status" -ne 0 ]]; then
+                log_to_file "Failed to set deployment permissions for $deployed_file"
+                exit 1
+            fi
+            # -T rejects a directory target instead of moving the staging file
+            # inside it and falsely reporting a successful deployment.
+            if ! mv -fT -- "$deployed_tmp" "$deployed_file"; then
+                log_to_file "Failed to replace $deployed_file from $source_label"
+                exit 1
+            fi
+            deployed_tmp=""
+            log_to_file "Synced $source_label -> $deployed_file"
+        ) || sync_status=$?
+
+        case "$sync_status" in
+            0) synced=$((synced + 1)) ;;
+            10) return 0 ;;
+            *) return "$sync_status" ;;
+        esac
     }
 
     local -a file_pairs=(
@@ -3582,7 +3622,7 @@ sync_acfs_deployed() {
     for pair in "${file_pairs[@]}"; do
         local repo_rel="${pair%%:*}"
         local deployed_rel="${pair##*:}"
-        _acfs_sync_deployed_file "$repo_rel" "$deployed_rel"
+        _acfs_sync_deployed_file "$repo_rel" "$deployed_rel" || return $?
     done
 
     local -a generated_paths=(
@@ -3653,7 +3693,7 @@ sync_acfs_deployed() {
         elif [[ ! -f "$ACFS_REPO_ROOT/$generated_script" || -L "$ACFS_REPO_ROOT/$generated_script" ]]; then
             continue
         fi
-        _acfs_sync_deployed_file "$generated_script" "$generated_script"
+        _acfs_sync_deployed_file "$generated_script" "$generated_script" || return $?
     done
 
     local lesson_file=""
@@ -3662,13 +3702,13 @@ sync_acfs_deployed() {
         while IFS= read -r lesson_file; do
             [[ "$lesson_file" == acfs/onboard/lessons/*.md ]] || continue
             lesson_name="$(basename "$lesson_file")"
-            _acfs_sync_deployed_file "$lesson_file" "onboard/lessons/$lesson_name"
+            _acfs_sync_deployed_file "$lesson_file" "onboard/lessons/$lesson_name" || return $?
         done < <(git -C "$ACFS_REPO_ROOT" ls-tree -r --name-only "$source_ref" -- acfs/onboard/lessons 2>/dev/null || true)
     else
         for lesson_file in "$ACFS_REPO_ROOT/acfs/onboard/lessons/"*.md; do
             [[ -f "$lesson_file" ]] || continue
             lesson_name="$(basename "$lesson_file")"
-            _acfs_sync_deployed_file "acfs/onboard/lessons/$lesson_name" "onboard/lessons/$lesson_name"
+            _acfs_sync_deployed_file "acfs/onboard/lessons/$lesson_name" "onboard/lessons/$lesson_name" || return $?
         done
     fi
 
