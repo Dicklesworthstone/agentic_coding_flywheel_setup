@@ -120,18 +120,18 @@
       "bins": [
         "jsm"
       ],
-      "file": "jsm/v0.3.40/62f16a5a852b1c291e2a226c6c23d90be0363ddea002574382927ae2a55c9355/jsm-linux-x86_64.tar.gz",
-      "sha256": "62f16a5a852b1c291e2a226c6c23d90be0363ddea002574382927ae2a55c9355",
+      "file": "jsm/v0.3.43/a4d5fa41f88eabb7a387df59d01afac840a86487c16dc8d4e995f857c164dedd/jsm-linux-x86_64.tar.gz",
+      "sha256": "a4d5fa41f88eabb7a387df59d01afac840a86487c16dc8d4e995f857c164dedd",
       "source": {
         "asset": "jsm-x86_64-unknown-linux-musl.tar.gz",
         "repo": "Dicklesworthstone/jeffreys-skills.md",
-        "sha256": "234cb5d973091cf4b510c0797e20032ff1329deac91504cdf03730ef71b039e0",
-        "tag": "v0.3.40",
-        "upstream_url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.40/jsm-x86_64-unknown-linux-musl.tar.gz",
-        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/jsm-v0.3.40-linux-x86_64-234cb5d973091cf4b510c0797e20032ff1329deac91504cdf03730ef71b039e0.tar.gz",
+        "sha256": "09a207866ae47b2787b7c95822f90a31a22e50ed607b19487748ac1665ded611",
+        "tag": "v0.3.43",
+        "upstream_url": "https://jeffreys-skills.md/api/v1/downloads/jsm/v0.3.43/jsm-x86_64-unknown-linux-musl.tar.gz",
+        "url": "https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/releases/download/cloud-binaries-v1/jsm-v0.3.43-linux-x86_64-09a207866ae47b2787b7c95822f90a31a22e50ed607b19487748ac1665ded611.tar.gz",
         "verification": "sha256"
       },
-      "version": "v0.3.40"
+      "version": "v0.3.43"
     },
     "ms": {
       "bins": [
