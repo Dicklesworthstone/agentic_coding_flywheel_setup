@@ -2234,6 +2234,31 @@ ACFS deploys optimized configuration files to `~/.acfs/` on the target VPS.
 
 A comprehensive zsh configuration that's sourced by `~/.zshrc`:
 
+**Prompt resource limits on swarm hosts:**
+
+ACFS defaults `GITSTATUS_NUM_THREADS` to **2 worker threads** before loading
+Powerlevel10k. This bounds each new prompt daemon's worker pool on hosts with
+many tmux panes. A normal interactive terminal retains its Git prompt; each
+pane can still have its own daemon. An explicit nonempty value is preserved:
+
+```zsh
+# In ~/.zshrc, before sourcing the ACFS configuration:
+GITSTATUS_NUM_THREADS=4
+source "$HOME/.acfs/zsh/acfs.zshrc"
+```
+
+Prompt themes are initialized only for interactive terminal sessions with TTY
+input and output. Command-mode shells such as `zsh -lic 'command'`, including
+those running in a PTY, skip Powerlevel10k and the fallback Starship prompt.
+The agent markers `CODEX_REMOTE_PAYLOAD`, `SIFS_AGENT`, and `AGENT_ENV` also
+suppress theme initialization when nonempty. The existing VS Code plain
+prompt is selected before any heavy theme starts. Paths, aliases, and ACFS
+commands remain available in these shells.
+
+The thread setting applies when a daemon starts. Open a new shell or tmux pane
+after updating; ACFS does not terminate existing prompt daemons. A user theme
+loaded separately before ACFS remains under that user's control.
+
 **Oh-My-Zsh Plugins (14 total):**
 
 | Plugin | Category | What It Provides |

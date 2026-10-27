@@ -59,8 +59,26 @@ fi
 # --- Oh My Zsh ---
 export ZSH="$HOME/.oh-my-zsh"
 
-# Theme
-ZSH_THEME="powerlevel10k/powerlevel10k"
+# Each interactive pane can start its own gitstatus daemon. Keep its worker
+# pool small on swarm hosts instead of scaling every pane to the CPU count.
+# Set this before OMZ loads the theme, and preserve explicit user settings.
+: "${GITSTATUS_NUM_THREADS:=2}"
+
+# `-i` and a PTY do not imply that a shell will display a human prompt:
+# agent wrappers commonly use `zsh -lic command`. Check -c by presence so
+# even an empty command skips prompt startup. Keep paths and aliases below
+# available; only prompt themes and their daemons are suppressed.
+typeset -g _ACFS_PROMPT_ENABLED=false
+if [[ -o interactive && -t 0 && -t 1 && ${+ZSH_EXECUTION_STRING} -eq 0
+      && -z "${CODEX_REMOTE_PAYLOAD:-}" && -z "${SIFS_AGENT:-}"
+      && -z "${AGENT_ENV:-}" && "${TERM_PROGRAM:-}" != vscode ]]; then
+  _ACFS_PROMPT_ENABLED=true
+fi
+
+ZSH_THEME=""
+if [[ "$_ACFS_PROMPT_ENABLED" == true ]]; then
+  ZSH_THEME="powerlevel10k/powerlevel10k"
+fi
 
 # Disable p10k configuration wizard - we provide a pre-configured ~/.p10k.zsh
 # This is a fallback in case the config file is missing for some reason
@@ -122,10 +140,12 @@ else
   # Prompt: keep the user's starship (Omarchy's default) if present and not
   # already initialised; otherwise fall back to a compact informative prompt
   # rather than zsh's bare `%m%#`.
-  if command -v starship &>/dev/null; then
-    (( ${+functions[starship_precmd]} )) || eval "$(starship init zsh)"
-  elif [[ -z "${PROMPT:-}" || "$PROMPT" == '%m%# ' ]]; then
-    PROMPT='%F{green}%n@%m%f %F{blue}%~%f %# '
+  if [[ "$_ACFS_PROMPT_ENABLED" == true ]]; then
+    if command -v starship &>/dev/null; then
+      (( ${+functions[starship_precmd]} )) || eval "$(starship init zsh)"
+    elif [[ -z "${PROMPT:-}" || "$PROMPT" == '%m%# ' ]]; then
+      PROMPT='%F{green}%n@%m%f %F{blue}%~%f %# '
+    fi
   fi
   # mise (Omarchy's runtime manager) must be activated per shell to put its
   # shims on PATH; skip if the user's rc already did it.
@@ -364,10 +384,10 @@ if [[ -z "${ACFS_NO_ATUIN_INIT:-}" ]] && command -v atuin &>/dev/null; then
 fi
 
 # --- Prompt config ---
-if [[ "$TERM_PROGRAM" == "vscode" ]]; then
+if [[ "${TERM_PROGRAM:-}" == "vscode" ]]; then
   PROMPT='%n@%m:%~%# '
   RPROMPT=''
-else
+elif [[ "$_ACFS_PROMPT_ENABLED" == true ]]; then
   [[ -f "$HOME/.p10k.zsh" ]] && source "$HOME/.p10k.zsh"
 fi
 

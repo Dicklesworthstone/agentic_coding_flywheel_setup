@@ -9,10 +9,12 @@ on:
       - 'acfs.manifest.yaml'
       - 'checksums.yaml'
       - 'packages/manifest/**'
+      - 'acfs/zsh/**'
       - '.github/workflows/*.yml'
       - '.shellcheckrc'
       - 'tests/**/*.sh'
       - 'tests/unit/test_login_shell_safety.py'
+      - 'tests/unit/test_acfs_zshrc_prompt.py'
       - 'tests/unit/test_project_bootstrap*.py'
   pull_request:
     branches: [main]
@@ -22,10 +24,12 @@ on:
       - 'acfs.manifest.yaml'
       - 'checksums.yaml'
       - 'packages/manifest/**'
+      - 'acfs/zsh/**'
       - '.github/workflows/*.yml'
       - '.shellcheckrc'
       - 'tests/**/*.sh'
       - 'tests/unit/test_login_shell_safety.py'
+      - 'tests/unit/test_acfs_zshrc_prompt.py'
       - 'tests/unit/test_project_bootstrap*.py'
 
 jobs:
@@ -96,7 +100,7 @@ jobs:
       - name: Install ShellCheck
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck jq
+          sudo apt-get install -y shellcheck jq zsh
 
       - name: Run ShellCheck
         shell: bash
@@ -124,6 +128,11 @@ jobs:
 
       - name: Run login-shell safety regressions
         run: sudo python3 -B tests/unit/test_login_shell_safety.py
+
+      - name: Run Zsh prompt startup regressions
+        run: |
+          zsh -n acfs/zsh/acfs.zshrc
+          python3 -B tests/unit/test_acfs_zshrc_prompt.py
 
       - name: Run installer fault-injection contract test
         run: bash tests/unit/test_installer_fault_contract.sh
