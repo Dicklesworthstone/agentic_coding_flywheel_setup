@@ -2514,9 +2514,13 @@ describe("apt-only modules on non-apt distro families (#477)", () => {
       // families excluding arch would also keep it off Arch, but these modules'
       // tools are needed there; only their install path is apt-specific.
       expect(module.pre_install_check?.command, module.id).toBe(APT_GATE_COMMAND);
-      // The refusal names the manual route instead of a dead end.
+      // The refusal names the manual route instead of a dead end. PostgreSQL
+      // has no manual route: its installed check only recognizes the Ubuntu
+      // packages, so it points Arch at the default installer path instead.
       expect(module.pre_install_check?.skip_message, module.id).toMatch(
-        /Install .+ with your package manager instead \(Arch: sudo pacman -S --needed [^)]+\), then re-run$/,
+        module.id === "db.postgres18"
+          ? /On Arch, run the installer without --only\/--skip: its default path installs and initializes PostgreSQL with pacman$/
+          : /Install .+ with your package manager instead \(Arch: sudo pacman -S --needed [^)]+\), then re-run$/,
       );
       gated.push(module.id);
     }

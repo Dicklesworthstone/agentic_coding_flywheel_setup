@@ -1479,7 +1479,7 @@ modules:
     pre_install_check:
       run_as: current
       command: 'command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]'
-      skip_message: "installs PostgreSQL 18 with apt on Ubuntu only. Install PostgreSQL with your package manager instead (Arch: sudo pacman -S --needed postgresql), then re-run"
+      skip_message: "installs PostgreSQL 18 with apt on Ubuntu only, and only recognizes those packages, so installing PostgreSQL another way and re-running this module will not pass. On Arch, run the installer without --only/--skip: its default path installs and initializes PostgreSQL with pacman"
     installed_check:
       run_as: root
       command: |

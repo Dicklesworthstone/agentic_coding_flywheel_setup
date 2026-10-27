@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GENERATED = ROOT / "scripts/generated"
 HELPERS = ROOT / "scripts/lib/install_helpers.sh"
 
-# module id -> (category script, optional, package-manager hint in the refusal)
+# module id -> (category script, optional, what the refusal tells Arch users to run)
 GATED = {
     "base.system": ("install_base.sh", False, "sudo pacman -S --needed curl git"),
     "shell.zsh": ("install_shell.sh", False, "sudo pacman -S --needed zsh"),
@@ -34,7 +34,7 @@ GATED = {
     "network.tailscale": ("install_network.sh", False, "sudo pacman -S --needed tailscale"),
     "lang.go": ("install_lang.sh", False, "sudo pacman -S --needed go"),
     "tools.vault": ("install_tools.sh", True, "sudo pacman -S --needed vault"),
-    "db.postgres18": ("install_db.sh", True, "sudo pacman -S --needed postgresql"),
+    "db.postgres18": ("install_db.sh", True, "run the installer without --only/--skip"),
 }
 
 STUBS = r'''

@@ -370,7 +370,7 @@ acfs_generated_install_db_postgres18() {
 command -v apt-get >/dev/null 2>&1 && [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != arch ]]
 INSTALL_DB_POSTGRES18_PRE_INSTALL_CHECK
         then
-            log_warn "db.postgres18: installs PostgreSQL 18 with apt on Ubuntu only. Install PostgreSQL with your package manager instead (Arch: sudo pacman -S --needed postgresql), then re-run"
+            log_warn "db.postgres18: installs PostgreSQL 18 with apt on Ubuntu only, and only recognizes those packages, so installing PostgreSQL another way and re-running this module will not pass. On Arch, run the installer without --only/--skip: its default path installs and initializes PostgreSQL with pacman"
             # Optional-module failures are warnings on a default install, but a
             # module the user explicitly named with --only had exactly one job:
             # propagate the failure instead of reporting phase success (#373).
@@ -380,7 +380,7 @@ INSTALL_DB_POSTGRES18_PRE_INSTALL_CHECK
               return 1
             fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "installs PostgreSQL 18 with apt on Ubuntu only. Install PostgreSQL with your package manager instead (Arch: sudo pacman -S --needed postgresql), then re-run"
+              record_skipped_tool "db.postgres18" "installs PostgreSQL 18 with apt on Ubuntu only, and only recognizes those packages, so installing PostgreSQL another way and re-running this module will not pass. On Arch, run the installer without --only/--skip: its default path installs and initializes PostgreSQL with pacman"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "db.postgres18"
             fi
