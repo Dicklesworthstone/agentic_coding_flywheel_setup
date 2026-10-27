@@ -122,6 +122,78 @@ class DashboardHTTPTests(unittest.TestCase):
             self.assertEqual(status, 403)
             self.assertNotIn(b"private-artifact", body)
 
+    def test_dashboard_directory_symlink_is_not_followed(self):
+        retained = self.base / "retained-dashboard"
+        self.directory.rename(retained)
+        private = self.base / "private-dashboard"
+        private.mkdir()
+        (private / "index.html").write_bytes(b"private-parent-artifact")
+        self.directory.symlink_to(private, target_is_directory=True)
+        with self.server() as (port, _):
+            for method in ("GET", "HEAD"):
+                status, _, body = self.request(port, "/index.html?refresh=1", method)
+                self.assertNotIn(b"private-parent-artifact", body)
+                self.assertEqual(status, 403)
+        self.assertEqual((retained / "index.html").read_bytes(), PAGE)
+        self.assertEqual((private / "index.html").read_bytes(), b"private-parent-artifact")
+        self.assertTrue(self.directory.is_symlink())
+
+    def test_acfs_ancestor_symlink_is_not_followed(self):
+        retained = self.base / "retained-acfs"
+        self.acfs.rename(retained)
+        self.acfs.symlink_to(retained, target_is_directory=True)
+        (retained / "dashboard/index.html").write_bytes(b"private-ancestor-artifact")
+        with self.server() as (port, _):
+            for method in ("GET", "HEAD"):
+                status, _, body = self.request(port, "/", method)
+                self.assertNotIn(b"private-ancestor-artifact", body)
+                self.assertEqual(status, 403)
+        self.assertTrue(self.acfs.is_symlink())
+        self.assertEqual((retained / "dashboard/index.html").read_bytes(), b"private-ancestor-artifact")
+
+    def test_ancestor_replacement_after_start_is_not_followed(self):
+        with self.server() as (port, _):
+            retained = self.base / "retained-running-acfs"
+            self.acfs.rename(retained)
+            private = self.base / "private-running-acfs"
+            (private / "dashboard").mkdir(parents=True)
+            (private / "dashboard/index.html").write_bytes(b"private-replacement-artifact")
+            self.acfs.symlink_to(private, target_is_directory=True)
+            for method in ("GET", "HEAD"):
+                status, _, body = self.request(port, "/", method)
+                self.assertNotIn(b"private-replacement-artifact", body)
+                self.assertEqual(status, 403)
+            self.assertEqual((retained / "dashboard/index.html").read_bytes(), PAGE)
+
+    def test_symlink_before_dotdot_is_not_normalized_away(self):
+        self.directory.rename(self.base / "retained-dotdot-dashboard")
+        outside = self.base / "outside-dotdot"
+        outside.mkdir()
+        self.directory.symlink_to(outside, target_is_directory=True)
+        private = self.base / "dashboard"
+        private.mkdir()
+        (private / "index.html").write_bytes(b"private-dotdot-artifact")
+        # A checkout invocation permits an explicit ACFS_HOME. Keep the link
+        # followed by .. in that actual CLI argument, rather than resolving it.
+        self.script = self.base / "checkout/scripts/lib/dashboard.sh"
+        self.script.parent.mkdir(parents=True)
+        shutil.copyfile(SOURCE, self.script)
+        self.env["ACFS_HOME"] = str(self.acfs / "dashboard" / "..")
+        with self.server() as (port, _):
+            for method in ("GET", "HEAD"):
+                status, _, body = self.request(port, "/", method)
+                self.assertNotIn(b"private-dotdot-artifact", body)
+                self.assertEqual(status, 403)
+
+    def test_caller_python_path_cannot_replace_http_modules(self):
+        poison = self.base / "python-path"
+        poison.mkdir()
+        (poison / "http.py").write_text(
+            'raise RuntimeError("fixture module must never replace the standard HTTP server")\n')
+        self.env["PYTHONPATH"] = str(poison)
+        with self.server() as (port, _):
+            self.assertEqual(self.request(port)[2], PAGE)
+
     def test_index_directory_is_not_listed(self):
         with self.server() as (port, _):
             self.index.rename(self.directory / "retained-page.html")

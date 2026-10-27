@@ -993,8 +993,10 @@ EOF
     if [[ -n "$python_bin" ]]; then
         # The HTML is self-contained. Never expose the directory, interrupted
         # generation files, or symlink targets through a general file server.
-        "$python_bin" - "$host" "$port" "$html_file" <<'PY'
+        "$python_bin" -I - "$host" "$port" "$html_file" <<'PY'
+from contextlib import ExitStack, contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 import os
 import shutil
 import socket
@@ -1003,6 +1005,14 @@ import sys
 from urllib.parse import urlsplit
 
 host, port, html_file = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+
+
+@contextmanager
+def open_descriptor(name, flags, parent=None):
+    with ExitStack() as owner:
+        descriptor = os.open(name, flags, dir_fd=parent)
+        owner.callback(os.close, descriptor)
+        yield descriptor
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -1021,32 +1031,44 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path not in ("/", "/index.html"):
             self.send_error(404)
             return
-        try:
-            # Open the published file for each request so atomic regenerations
-            # remain visible. Reject symlinks and non-regular files without
-            # blocking on a FIFO substituted for index.html.
-            descriptor = os.open(html_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        except FileNotFoundError:
-            self.send_error(404)
-            return
-        except OSError:
-            self.send_error(403)
-            return
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
-            os.close(descriptor)
-            self.send_error(403)
-            return
-        with os.fdopen(descriptor, "rb") as page:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(metadata.st_size))
-            self.send_header("Last-Modified", self.date_time_string(metadata.st_mtime))
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            if send_body:
-                shutil.copyfileobj(page, self.wfile)
+        with ExitStack() as opened:
+            try:
+                # Reopen for every request so atomic page replacement remains
+                # visible. Hold each directory while looking up its child;
+                # O_NOFOLLOW on the leaf alone still follows linked parents.
+                path = Path(html_file)
+                if not path.is_absolute():
+                    self.send_error(403)
+                    return
+                directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                parent = opened.enter_context(open_descriptor("/", directory_flags))
+                # Keep literal .. components: normalizing first could hide a
+                # symlink traversed before backing out of its target directory.
+                for component in path.parts[1:-1]:
+                    parent = opened.enter_context(open_descriptor(component, directory_flags, parent))
+                descriptor = opened.enter_context(open_descriptor(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, parent))
+                metadata = os.fstat(descriptor)
+            except FileNotFoundError:
+                self.send_error(404)
+                return
+            except OSError:
+                self.send_error(403)
+                return
+            if not stat.S_ISREG(metadata.st_mode):
+                self.send_error(403)
+                return
+            # ExitStack owns the descriptor, including fdopen/header/stream
+            # failures. The wrapper must not close that same descriptor twice.
+            with os.fdopen(descriptor, "rb", closefd=False) as page:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(metadata.st_size))
+                self.send_header("Last-Modified", self.date_time_string(metadata.st_mtime))
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                if send_body:
+                    shutil.copyfileobj(page, self.wfile)
 
 
 class DashboardServer(ThreadingHTTPServer):

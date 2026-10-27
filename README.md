@@ -1325,6 +1325,7 @@ the SSH tunnel command printed at startup, then open `http://localhost:8080`.
 to anyone who can reach the port, including its hostnames and install state.
 Use an SSH tunnel on untrusted networks. The server publishes only `index.html`;
 temporary files, timestamps, other files, and directory listings are not served.
+The page and its parent directories must be real paths; linked paths are refused.
 Python 3 is required for HTTP serving; you can also open the generated HTML directly.
 
 The dashboard provides:
