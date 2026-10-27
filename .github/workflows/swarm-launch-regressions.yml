@@ -16,6 +16,7 @@ on:
       - 'scripts/generated/internal_checksums.sh'
       - 'tests/unit/test_swarm_launch.py'
       - 'tests/unit/test_swarm_launch_handoff.py'
+      - 'tests/unit/test_swarm_packet.sh'
       - 'tests/unit/test_swarm_packet_preparation.py'
       - '.github/workflows/swarm-launch-regressions.yml'
   workflow_dispatch:
@@ -39,6 +40,13 @@ jobs:
           bun install --frozen-lockfile --ignore-scripts
           bun run generate:diff
           bun test src/generate.test.ts
+      - name: Check packet credential redaction
+        run: |
+          set -euo pipefail
+          bash -n scripts/lib/swarm_packet.sh
+          bash -n tests/unit/test_swarm_packet.sh
+          shellcheck scripts/lib/swarm_packet.sh tests/unit/test_swarm_packet.sh
+          bash tests/unit/test_swarm_packet.sh
       - name: Check launcher and packet handoff regressions
         run: |
           set -euo pipefail

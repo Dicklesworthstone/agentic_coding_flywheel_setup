@@ -374,6 +374,110 @@ TEXT
     pass "context_credential_aliases_preserve_public_metadata"
 }
 
+test_quoted_credential_families_are_redacted() {
+    local bead agents readme cm cass output markdown_output
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/quoted-credentials-cm.json"
+    cass="$ARTIFACT_DIR/quoted-credentials-cass.txt"
+    cat > "$cm" <<'JSON'
+{"snippet":"PASSWORD=\"fixtureQuotedPasswordFirst fixtureQuotedPasswordTail\"\nTOKEN='fixtureQuotedTokenFirst fixtureQuotedTokenTail'\nPUBLIC_STATUS=\"deploy ready\"","publicLabel":"password rotation guidance","tokenCount":"public token count","passwordPolicy":"public policy","eventId":9007199254740993}
+JSON
+    cat > "$cass" <<'TEXT'
+PASSWORD="fixtureQuotedPasswordFirst fixtureQuotedPasswordTail"
+passwd='fixtureQuotedPasswdFirst fixtureQuotedPasswdTail'
+DB_PASSWORD="fixtureQuotedDatabaseFirst fixtureQuotedDatabaseTail"
+AUTH_TOKEN='fixtureQuotedAuthFirst fixtureQuotedAuthTail'
+AWS_SECRET_ACCESS_KEY="fixtureQuotedAccessFirst fixtureQuotedAccessTail"
+APPLICATION_SECRET=fixtureQuotedUnquoted
+PASSWORD="fixtureQuotedEscapeFirst \"fixtureQuotedEscapeTail"
+TOKEN=\"fixtureQuotedNestedFirst \\\"fixtureQuotedNestedTail\"
+PUBLIC_STATUS="deploy ready"
+tokenCount=public-count
+passwordPolicy=public-policy
+SECRET="fixtureQuotedIncompleteFirst fixtureQuotedIncompleteTail
+TEXT
+    cp "$cm" "$cm.before"
+    cp "$cass" "$cass.before"
+    output="$(run_packet_json quoted-credentials \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    markdown_output="$(run_packet_markdown quoted-credentials-markdown \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/quoted-credentials.exit")" -eq 0 &&
+       "$(cat "$ARTIFACT_DIR/quoted-credentials-markdown.exit")" -eq 0 ]] || return 1
+    [[ "$output" != *fixtureQuoted* && "$markdown_output" != *fixtureQuoted* ]] || return 1
+    jq -e '.status == "pass" and
+      ((.context.cm.text | fromjson) |
+        .snippet == "PASSWORD=\"[redacted]\"\nTOKEN=\u0027[redacted]\u0027\nPUBLIC_STATUS=\"deploy ready\"" and
+        .publicLabel == "password rotation guidance" and
+        .tokenCount == "public token count" and .passwordPolicy == "public policy") and
+      (.context.cm.text | contains("\"eventId\":9007199254740993")) and
+      (.context.cass.text | contains("PUBLIC_STATUS=\"deploy ready\"")) and
+      (.context.cass.text | contains("tokenCount=public-count")) and
+      (.context.cass.text | contains("passwordPolicy=public-policy"))' <<<"$output" >/dev/null || return 1
+    [[ "$markdown_output" == *'PUBLIC_STATUS="deploy ready"'* &&
+       "$markdown_output" == *tokenCount=public-count* &&
+       "$markdown_output" == *passwordPolicy=public-policy* ]] || return 1
+    cmp -s "$cm" "$cm.before" || return 1
+    cmp -s "$cass" "$cass.before" || return 1
+    pass "quoted_credential_families_are_redacted"
+}
+
+test_escaped_json_credentials_preserve_public_context() {
+    local bead agents readme cm cass output markdown_output
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/escaped-credentials-cm.json"
+    cass="$ARTIFACT_DIR/escaped-credentials-cass.json"
+    cat > "$cm" <<'JSON'
+{"password":"fixtureJsonPasswordFirst\"fixtureJsonPasswordTail","passwd":"fixtureJsonPasswdFirst\\fixtureJsonPasswdTail","secret":"fixtureJsonSecretFirst\nfixtureJsonSecretTail","token":"fixtureJsonTokenFirst\tfixtureJsonTokenTail","DB_PASSWORD":"fixtureJsonPrefixedFirst\"fixtureJsonPrefixedTail","document":"{\"password\":\"fixtureJsonNestedFirst\\\"fixtureJsonNestedTail\",\"publicLabel\":\"nested visible\",\"eventId\":9007199254740993}","snippet":"TOKEN=\"fixtureJsonSnippetFirst \\\"fixtureJsonSnippetTail\"","publicLabel":"credentials review \"quoted\" guide","passwordCount":"public count","publicPath":"C:\\public\\workspace","eventId":9007199254740993,"unconfigured":{"password":"","passwd":null,"secret":false,"token":0}}
+JSON
+    cat > "$cass" <<'JSON'
+{"results":[{"document":"{\"passwd\":\"fixtureJsonCassFirst\\\"fixtureJsonCassTail\",\"publicLabel\":\"cass visible\",\"eventId\":9007199254740993}","PASSWORD":"fixtureJsonUpperFirst\"fixtureJsonUpperTail","pass\u0077ord":"fixtureJsonEscapedKeyFirst\"fixtureJsonEscapedKeyTail"}]}
+JSON
+    cp "$cm" "$cm.before"
+    cp "$cass" "$cass.before"
+    output="$(run_packet_json escaped-credentials \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    markdown_output="$(run_packet_markdown escaped-credentials-markdown \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/escaped-credentials.exit")" -eq 0 &&
+       "$(cat "$ARTIFACT_DIR/escaped-credentials-markdown.exit")" -eq 0 ]] || return 1
+    [[ "$output" != *fixtureJson* && "$markdown_output" != *fixtureJson* ]] || return 1
+    jq -e '.status == "pass" and
+      ((.context.cm.text | fromjson) |
+        [.password, .passwd, .secret, .token, .DB_PASSWORD] ==
+          ["[redacted]", "[redacted]", "[redacted]", "[redacted]", "[redacted]"] and
+        (.document | fromjson | .password == "[redacted]" and .publicLabel == "nested visible") and
+        (.document | contains("\"eventId\":9007199254740993")) and
+        .snippet == "TOKEN=\"[redacted]\"" and
+        .publicLabel == "credentials review \"quoted\" guide" and
+        .passwordCount == "public count" and .publicPath == "C:\\public\\workspace" and
+        .unconfigured == {"password":"","passwd":null,"secret":false,"token":0}) and
+      (.context.cm.text | contains("\"eventId\":9007199254740993")) and
+      ((.context.cass.text | fromjson | .results[0]) |
+        .PASSWORD == "[redacted]" and .password == "[redacted]" and
+        (.document | fromjson | .passwd == "[redacted]" and .publicLabel == "cass visible") and
+        (.document | contains("\"eventId\":9007199254740993")))' <<<"$output" >/dev/null || return 1
+    [[ "$markdown_output" == *'9007199254740993'* &&
+       "$markdown_output" == *'nested visible'* &&
+       "$markdown_output" == *'cass visible'* &&
+       "$markdown_output" == *'public count'* ]] || return 1
+    cmp -s "$cm" "$cm.before" || return 1
+    cmp -s "$cass" "$cass.before" || return 1
+    pass "escaped_json_credentials_preserve_public_context"
+}
+
 test_packet_refuses_failed_credential_redaction() {
     local bead agents readme cm cass output real_jq bin_dir phase marked_bead
     real_jq="$(command -v jq)"
@@ -716,6 +820,8 @@ main() {
     run_test test_generated_content_lint_blocks_unsafe_templates
     run_test test_context_service_credentials_are_redacted_before_packet_output
     run_test test_context_credential_aliases_preserve_public_metadata
+    run_test test_quoted_credential_families_are_redacted
+    run_test test_escaped_json_credentials_preserve_public_context
     run_test test_packet_refuses_failed_credential_redaction
     run_test test_packet_preserves_empty_labels
     run_test test_packet_rejects_malformed_labels_without_echoing_values

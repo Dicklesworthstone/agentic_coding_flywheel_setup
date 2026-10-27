@@ -239,17 +239,21 @@ swarm_packet_sanitize_context_text() {
     # not whole parsed objects: serializing a whole object can round public
     # identifiers with older jq versions. Leave other bytes and metadata intact.
     text="$(printf '%s' "$text" | jq -Rrs '
-      def aliases: "api_?key|secret_?key|access_?key|private_?key|MYSQL_PWD";
+      def aliases: "password|passwd|secret|token|api_?key|secret_?key|access_?key|private_?key|MYSQL_PWD";
+      # Keep exact aliases case-insensitive and cover prefixed uppercase
+      # environment names without treating public fields like tokenCount as keys.
+      def credential_name:
+        "(?i:" + aliases + ")|[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*";
       def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
       def redact_fields:
         gsub("(?<field>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
           . as $match | (try (.field | fromjson) catch null) as $key
-          | if ($key != null and ($key | test("^(" + aliases + ")$"; "i"))) and .value != "\"\""
+          | if ($key != null and ($key | test("^(" + credential_name + ")$"))) and .value != "\"\""
             then .field + .separator + "\"[redacted]\""
             else $match.field + $match.separator + $match.value end);
       def redact_text:
         redact_fields
-        | ("(?<prefix>\\b(?i:" + aliases + ")\\b\\s*[=:]\\s*)") as $prefix
+        | ("(?<prefix>\\b(?:" + credential_name + ")\\b\\s*[=:]\\s*)") as $prefix
         | gsub($prefix + "(?<opening>\\\\[\"\u0027])[^\\r\\n]*";
             "\(.prefix)\(.opening)[redacted]\(.opening)")
         | gsub($prefix + "\"(?<value>(?:\\\\.|[^\"\\\\])+)(?<tail>\"|$)";
@@ -340,9 +344,7 @@ swarm_packet_sanitize_context_text() {
         -e 's/xox[bpsar]-[A-Za-z0-9-]{10,}/[slack token redacted]/g' \
         -e 's/AKIA[0-9A-Z]{16}/[aws key id redacted]/g' \
         -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[private key redacted]/g' \
-        -e 's/([Aa]uthorization:[[:space:]]*)(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+\/=-]+/\1[credential redacted]/g' \
-        -e 's/(([A-Z0-9_]*(PASSWORD|SECRET|TOKEN|API_?KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*)[[:space:]]*[=:][[:space:]]*)[^[:space:]"'"'"']+/\1[redacted]/g' \
-        -e 's/("(password|passwd|secret|token|api_key|apikey|access_key|private_key)"[[:space:]]*:[[:space:]]*")[^"]*(")/\1[redacted]\3/g'
+        -e 's/([Aa]uthorization:[[:space:]]*)(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+\/=-]+/\1[credential redacted]/g'
 }
 
 swarm_packet_collect_tool_context() {
