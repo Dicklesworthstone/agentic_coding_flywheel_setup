@@ -1914,6 +1914,7 @@ main() {
     local skip_agents=false
     local interactive_mode=false
     local git_initialized=false
+    local -a initial_commit_paths=()
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -2074,6 +2075,7 @@ main() {
 
         # Create README
         echo "# $project_name" > README.md
+        initial_commit_paths+=("README.md")
         CREATED_ITEMS+=("README.md")
 
         # Create universal .gitignore (patterns that apply to ALL project types)
@@ -2112,6 +2114,7 @@ venv/
 # Local AI agent settings
 .claude/settings.local.json
 EOF
+        initial_commit_paths+=(".gitignore")
         CREATED_ITEMS+=(".gitignore")
 
         # Create universal .ubsignore (patterns for UBS bug scanner)
@@ -2153,6 +2156,7 @@ test-results/
 .pnpm-store/
 .yarn/
 EOF
+        initial_commit_paths+=(".ubsignore")
         CREATED_ITEMS+=(".ubsignore")
     else
         echo -e "${CYAN}Git already initialized, skipping${NC}"
@@ -2164,6 +2168,16 @@ EOF
             if [[ ! -d .beads ]]; then
                 echo -e "${GREEN}Initializing beads (br)...${NC}"
                 br init
+                # Only known shareable br outputs belong to this bootstrap.
+                # Never sweep the directory: it also holds private databases
+                # and may acquire unrelated work while initialization runs.
+                local beads_path
+                for beads_path in .beads/.gitignore .beads/config.yaml .beads/metadata.json \
+                    .beads/issues.jsonl .beads/README.md; do
+                    if [[ -f "$beads_path" && ! -L "$beads_path" ]]; then
+                        initial_commit_paths+=("$beads_path")
+                    fi
+                done
                 CREATED_ITEMS+=("Beads tracking (.beads/)")
             else
                 echo -e "${CYAN}Beads already initialized, skipping${NC}"
@@ -2187,6 +2201,7 @@ EOF
   }
 }
 EOF
+            initial_commit_paths+=(".claude/settings.local.json")
             CREATED_ITEMS+=("Claude settings (.claude/settings.local.json)")
         else
             echo -e "${CYAN}Claude settings already exist, skipping${NC}"
@@ -2198,6 +2213,7 @@ EOF
         if [[ ! -f AGENTS.md ]]; then
             echo -e "${GREEN}Creating AGENTS.md template...${NC}"
             create_agents_template "$project_name"
+            initial_commit_paths+=("AGENTS.md")
             CREATED_ITEMS+=("AGENTS.md (template)")
         else
             echo -e "${CYAN}AGENTS.md already exists, skipping${NC}"
@@ -2205,12 +2221,37 @@ EOF
     fi
 
     if [[ "$git_initialized" == "true" ]]; then
-        git add -A
+        local -a commit_paths=()
+        local initial_path ignore_status diff_status
+        for initial_path in "${initial_commit_paths[@]}"; do
+            # Explicit paths otherwise make git add fail for ignored files
+            # (in particular the intentionally local Claude settings).
+            if git check-ignore -q -- "$initial_path"; then
+                continue
+            else
+                ignore_status=$?
+                if [[ "$ignore_status" -ne 1 ]]; then
+                    return "$ignore_status"
+                fi
+            fi
+            git add -- "$initial_path" || return $?
+            commit_paths+=("$initial_path")
+        done
 
         # Check if git user is configured before committing
         if git config user.name &>/dev/null && git config user.email &>/dev/null; then
-            if ! git diff --cached --quiet --ignore-submodules; then
-                git commit -m "Initial commit"
+            if [[ ${#commit_paths[@]} -gt 0 ]]; then
+                if git diff --cached --quiet --ignore-submodules -- "${commit_paths[@]}"; then
+                    : # No generated changes to commit.
+                else
+                    diff_status=$?
+                    if [[ "$diff_status" -ne 1 ]]; then
+                        return "$diff_status"
+                    fi
+                    # --only leaves any unrelated, already-staged work in
+                    # the index instead of including it in our first commit.
+                    git commit --only -m "Initial commit" -- "${commit_paths[@]}" || return $?
+                fi
             fi
         else
             echo -e "${YELLOW}Warning: Git user not configured, skipping initial commit${NC}"

@@ -1118,6 +1118,11 @@ acfs newproj myapp /custom/path
 acfs newproj myapp --no-br
 ```
 
+CLI mode's initial commit includes only the files it creates and known shareable Beads
+configuration files. It respects Git ignore rules, keeps Claude's local settings private,
+and leaves unrelated staged and untracked work out of the commit. If creation fails, the
+partial project stays on disk for inspection.
+
 Reviewed bootstrap (plan first, then apply; needs Python 3 and runs no agents):
 ```bash
 acfs newproj --guided                                    # choose, review, save and create in the terminal
