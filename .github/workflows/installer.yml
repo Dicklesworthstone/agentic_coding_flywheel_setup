@@ -13,6 +13,7 @@ on:
       - '.shellcheckrc'
       - 'tests/**/*.sh'
       - 'tests/unit/test_login_shell_safety.py'
+      - 'tests/unit/test_project_bootstrap*.py'
   pull_request:
     branches: [main]
     paths:
@@ -25,6 +26,7 @@ on:
       - '.shellcheckrc'
       - 'tests/**/*.sh'
       - 'tests/unit/test_login_shell_safety.py'
+      - 'tests/unit/test_project_bootstrap*.py'
 
 jobs:
   yaml-lint:
@@ -60,6 +62,29 @@ jobs:
           echo "Validating YAML syntax for all workflow files..."
           yamllint -c /tmp/yamllint.yml .github/workflows/*.yml
           echo "✅ All workflow YAML files have valid syntax"
+
+  project-bootstrap:
+    name: Reviewed Project Bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up starter source verification runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run isolated project bootstrap regressions
+        working-directory: tests/unit
+        run: >-
+          python3 -B -m unittest
+          test_project_bootstrap
+          test_project_bootstrap_mail
+          test_project_bootstrap_clients
+          test_project_bootstrap_guided
+          test_project_bootstrap_github
 
   shellcheck:
     name: ShellCheck

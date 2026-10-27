@@ -88,7 +88,7 @@ class GuidedBootstrapTests(unittest.TestCase):
         self.addCleanup(terminal.close)
         return terminal
 
-    def select(self, terminal, *, stack="", beads="", mail=False, plan_path=""):
+    def select(self, terminal, *, stack="", beads="", mail=False, plan_path="", github="", ru=""):
         terminal.answer("Project name: ", "demo")
         terminal.answer("Project directory (Enter uses the suggestion): ", str(self.target))
         terminal.answer("Starter language: python or typescript [python]: ", stack)
@@ -98,6 +98,10 @@ class GuidedBootstrapTests(unittest.TestCase):
             terminal.answer("Agent Mail URL: ", "https://mail.example/api/")
             terminal.answer("Token variable (or none for unauthenticated loopback) [AGENT_MAIL_TOKEN]: ", "GUIDED_TEST_TOKEN")
             terminal.answer("Clients: comma-separated claude,codex,gemini [claude,codex]: ", "claude,codex")
+        terminal.answer("GitHub publication: none/private/public [none]: ", github)
+        if github and github != "none":
+            terminal.answer("GitHub destination OWNER/REPO: ", "test-owner/demo")
+            terminal.answer("Register this repository with ru? yes/no [no]: ", ru)
         terminal.answer("Plan file (Enter uses the suggestion): ", plan_path)
 
     def review(self, terminal, **kwargs):

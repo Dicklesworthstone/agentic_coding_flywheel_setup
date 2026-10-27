@@ -1138,6 +1138,67 @@ acfs newproj --apply myapp-plan.json --yes --resume      # continue an interrupt
 - `--apply` regenerates the plan and refuses one that was edited or that this ACFS version would generate
   differently. It never overwrites existing files.
 
+#### Opt-in GitHub publication and `ru` registration
+
+To create a GitHub repository and publish the initial project, include **both** an explicit visibility
+and an exact `OWNER/REPO` destination in the reviewed plan. Replace `OWNER` with your GitHub account or
+organization. Add `--ru` if you also want `repo_updater` to manage the new repository:
+
+```bash
+acfs newproj --plan myapp --preset first-project --stack python \
+  --github=private --github-repo OWNER/myapp --ru > myapp-plan.json
+
+# Inspect the complete plan, including the files that will be published.
+cat myapp-plan.json
+acfs newproj --apply myapp-plan.json --yes
+```
+
+Use `--github=public` only when you intend to make those files public. Omitting `--github` preserves
+local-only creation; configuration variables never enable publication or registration implicitly.
+`--github-repo` is required with `--github`, and `--ru` requires GitHub publication. The selected preset
+or `--with` list must include `git`. These options belong to the reviewed `--plan` workflow; the older
+positional CLI and `--interactive` TUI remain local-only. `acfs newproj --guided` offers the same choices
+with `none` as the GitHub default and a separate opt-in for `ru`.
+
+Planning remains offline and creates nothing. The plan records repository visibility and destination,
+the initial commit and push to `main`, the exact publication file list, and any `ru` configuration/state
+directories that will be written. Applying with `--yes`, or choosing `create` after guided review,
+authorizes those specific operations. It does not authorize later agent pushes; the generated
+`AGENTS.md` keeps its explicit-permission requirement.
+
+Before applying, install `gh` and authenticate for GitHub with permission to create the requested
+repository (for example, `gh auth login --hostname github.com`). Install `ru` as well if you selected
+`--ru`. Apply checks required tools, authentication, and an existing repository name before creating
+the local project. An organization policy or a name claimed after preflight can still reject creation;
+the error is reported and the local project is retained.
+
+Only the plan's publication files enter the initial commit. Private recovery state, Agent Mail
+connection settings, Beads runtime metadata, and unrelated files in the directory are excluded.
+Publication never force-pushes. `--ru` registers the repository in the matching private/public list;
+it does not run `ru sync` or change `ru`'s projects directory or clone layout. In particular, a custom
+new-project path is not a new `ru` path mapping: later syncs follow your existing `ru` configuration.
+The plan captures the configuration and state directories from `RU_CONFIG_DIR`/`RU_STATE_DIR`, or their
+XDG/home defaults, so a changed environment cannot silently redirect registration at apply time.
+
+If a later step fails, keep the saved plan and project:
+
+```bash
+acfs newproj --apply myapp-plan.json --yes --resume
+```
+
+The failure report identifies completed steps, whether the repository was created, and whether initial
+publication is confirmed or still unconfirmed. A push failure keeps the new repository available for
+retry; a registration failure keeps the published repository and retries `ru` registration. Resume reuses the recorded initial commit
+and checks the repository identity, visibility, local files, Git configuration, remote, and `HEAD`
+before continuing. It refuses changed or unrelated work instead of overwriting it. No repository or
+project files are deleted as rollback.
+
+If creation may have succeeded but its immutable GitHub repository ID was not durably saved, automatic
+resume stops for manual review. It will not adopt a repository merely because the name matches. Inspect
+the reported GitHub destination and complete any remaining operations explicitly in that case. This
+workflow creates new repositories on GitHub.com; it does not attach existing repositories or configure
+GitHub Enterprise hosts.
+
 Notes:
 - The TUI uses gum when available (arrow keys, Space to toggle, Enter to confirm). Without gum, it falls back to numbered prompts.
 - Minimum terminal size: 60x15.

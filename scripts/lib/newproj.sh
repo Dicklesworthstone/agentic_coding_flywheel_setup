@@ -256,7 +256,46 @@ def mail_client_files(settings, clients, has_policy):
     return files, connection_files, "".join(instructions)
 
 
-def make_plan(name, directory, stack, features, target, agent_mail=None, agent_mail_clients=None):
+def github_settings(value):
+    if type(value) is not dict or set(value) != {"repository", "visibility"}:
+        raise ValueError("GitHub requires an explicit visibility and --github-repo OWNER/REPO")
+    repository, visibility = value["repository"], value["visibility"]
+    if (type(repository) is not str
+            or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}", repository)
+            or repository.split("/")[1] in (".", "..") or repository.endswith(".git")):
+        raise ValueError("--github-repo must be OWNER/REPO on github.com, without a URL or .git suffix")
+    if visibility not in ("private", "public"):
+        raise ValueError("GitHub visibility must be explicitly private or public")
+    return {"repository": repository, "visibility": visibility}
+
+
+def ru_settings(value):
+    if type(value) is not dict or set(value) != {"config_dir", "state_dir"}:
+        raise ValueError("invalid repo_updater destinations")
+    for directory in value.values():
+        if (type(directory) is not str or not directory.startswith("/") or directory == "/"
+                or str(Path(directory)) != directory or ".." in Path(directory).parts
+                or any(ord(c) < 32 or ord(c) == 127 for c in directory)):
+            raise ValueError("repo_updater destinations must be canonical absolute directories")
+    return dict(value)
+
+
+def selected_ru_settings():
+    # Freeze user-config destinations in the reviewed plan, never at apply time.
+    def destination(override, xdg, fallback):
+        base = os.environ.get(override)
+        if not base:
+            base = str(Path(os.environ.get(xdg) or str(Path.home() / fallback)) / "ru")
+        expanded = Path(base).expanduser()
+        if not expanded.is_absolute():
+            raise ValueError(override + " / " + xdg + " must be absolute when selecting --ru")
+        return str(expanded.resolve())
+    return ru_settings({"config_dir": destination("RU_CONFIG_DIR", "XDG_CONFIG_HOME", ".config"),
+                        "state_dir": destination("RU_STATE_DIR", "XDG_STATE_HOME", ".local/state")})
+
+
+def make_plan(name, directory, stack, features, target, agent_mail=None, agent_mail_clients=None,
+              github=None, repo_updater=None):
     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name):
         raise ValueError("project name must start with a letter and contain at most 64 letters, digits, _ or -")
     if stack not in ("python", "typescript"):
@@ -278,6 +317,14 @@ def make_plan(name, directory, stack, features, target, agent_mail=None, agent_m
         if agent_mail is None:
             raise ValueError("--agent-mail-clients requires --agent-mail URL")
         agent_mail_clients = mail_clients(agent_mail_clients)
+    if github is not None:
+        github = github_settings(github)
+        if "git" not in features:
+            raise ValueError("GitHub publication requires explicitly selecting git too")
+    if repo_updater is not None:
+        if github is None:
+            raise ValueError("--ru requires --github and --github-repo")
+        repo_updater = ru_settings(repo_updater)
     if not isinstance(directory, str) or not directory.startswith("/") or any(ord(c) < 32 for c in directory):
         raise ValueError("project directory must be an absolute path without control characters")
     if str(Path(directory)) != directory or ".." in Path(directory).parts or directory == "/":
@@ -333,6 +380,19 @@ def make_plan(name, directory, stack, features, target, agent_mail=None, agent_m
             files["AGENTS.md"] += "\n## Agent Mail\n\nRead AGENT_MAIL.md and register a distinct identity for each agent session.\n"
         if "FIRST_AGENT_PROMPT.md" in files:
             files["FIRST_AGENT_PROMPT.md"] += "\nAgent Mail exception to the network restriction above: read AGENT_MAIL.md,\nregister this session through the configured MCP server, and check its inbox.\nDo not send messages or reserve files until the task scope is approved.\n"
+    if github is not None:
+        url = "https://github.com/" + github["repository"]
+        if "README.md" in files:
+            files["README.md"] = files["README.md"].replace(
+                "No remote is configured.", "The reviewed bootstrap publishes the initial files to\n"
+                + url + " (" + github["visibility"] + ") on branch `main`.\n"
+                "This authorization covers initial publication only; future pushes require permission.")
+        # Even a minimal --with selection keeps recovery state out of future commits.
+        ignores = files.get(".gitignore", "")
+        for path in ("/.acfs/bootstrap-state.json", "/.acfs/bootstrap-state.tmp-*"):
+            if path not in ignores.splitlines():
+                ignores += path + "\n"
+        files[".gitignore"] = ignores
     plan = {
         "schema": SCHEMA,
         "project": {"name": name, "directory": directory, "stack": stack},
@@ -353,6 +413,41 @@ def make_plan(name, directory, stack, features, target, agent_mail=None, agent_m
                                  "writes": ["Agent Mail project namespace on the reviewed service"]})
     if agent_mail_clients is not None:
         plan["agent_mail_clients"] = agent_mail_clients
+    if github is not None:
+        plan["github"] = github
+        private_files = {".mcp.json", ".claude/settings.json", ".claude/settings.local.json",
+                         ".codex/config.toml", ".gemini/settings.json"}
+        publication_files = sorted(set(files) - private_files)
+        plan["publication"] = {
+            "url": url, "remote": "origin", "branch": "main", "files": publication_files,
+            "excluded_files": sorted(set(files) & private_files),
+            "commit_identity": "authenticated GitHub login and its GitHub noreply email",
+            "scope": "one initial commit of these exact planned files; no later commits, tags or force push",
+        }
+        plan["effects"].update({"network": True, "commit": True, "push": True,
+                                "github_repository": "create " + github["visibility"] + " " + github["repository"]})
+        plan["commands"].extend([
+            {"id": "github-commit", "transport": "git-plumbing", "files": publication_files,
+             "writes": [".git/objects/", ".git/index", ".git/refs/heads/main"]},
+            {"id": "github-create", "transport": "github-cli", "repository": github["repository"],
+             "visibility": github["visibility"], "writes": [url]},
+            {"id": "github-push", "transport": "git", "destination": url + ".git",
+             "refspec": "RECORDED_INITIAL_COMMIT:refs/heads/main", "force": False,
+             "writes": [".git/config (origin)", url + "/tree/main"]},
+        ])
+    if repo_updater is not None:
+        if any(Path(path).is_relative_to(Path(directory)) for path in repo_updater.values()):
+            raise ValueError("repo_updater configuration and state must be outside the new project")
+        plan["repo_updater"] = repo_updater
+        plan["effects"]["global_settings"] = True
+        plan["commands"].append({
+            "id": "ru-register", "argv": ["ru", "add", "--non-interactive"]
+            + (["--private"] if github["visibility"] == "private" else []) + [github["repository"]],
+            "verify_argv": ["ru", "list", "--" + github["visibility"], "--json"],
+            "environment": {"RU_CONFIG_DIR": repo_updater["config_dir"], "RU_STATE_DIR": repo_updater["state_dir"]},
+            "writes": [repo_updater["config_dir"] + "/ (config and repos.d/)", repo_updater["state_dir"] + "/ (state and logs)"],
+            "note": "Register repository identity only; ru sync uses its existing projects directory and layout. No sync runs here.",
+        })
     plan["plan_id"] = digest(canonical(plan))
     return plan
 
@@ -411,7 +506,7 @@ def read_plan(path):
     if type(value) is not dict or type(value.get("project")) is not dict:
         raise ValueError("invalid bootstrap plan")
     project = value["project"]
-    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"), value.get("agent_mail"), value.get("agent_mail_clients"))
+    expected = make_plan(project.get("name"), project.get("directory"), project.get("stack"), value.get("features"), value.get("target"), value.get("agent_mail"), value.get("agent_mail_clients"), value.get("github"), value.get("repo_updater"))
     if value != expected:
         raise ValueError("plan differs from this ACFS version's templates; regenerate and review it")
     return value
@@ -501,14 +596,14 @@ def save_state(state_dir, state):
     os.fsync(state_dir)
 
 
-def run_tool(executable, arguments, env):
+def capture_tool(executable, arguments, env, *, data=None, cwd=None, check=True):
     import signal
     # All argv are fixed by regenerated templates, never evaluated as shell.
-    process = subprocess.Popen([executable, *arguments], env=env, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               start_new_session=True)
+    process = subprocess.Popen([executable, *arguments], env=env, cwd=cwd,
+                               stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
-        code = process.wait(timeout=30)
+        output, _ = process.communicate(input=data, timeout=30)
     except BaseException:
         try:
             os.killpg(process.pid, signal.SIGKILL)
@@ -516,8 +611,333 @@ def run_tool(executable, arguments, env):
             pass
         process.wait()
         raise
-    if code:
-        raise ValueError(f"{Path(executable).name} failed (exit {code}); partial project retained")
+    if check and process.returncode:
+        raise ValueError(f"{Path(executable).name} failed (exit {process.returncode}); partial project retained")
+    if len(output) > 1024 * 1024:
+        raise ValueError(Path(executable).name + " response exceeds 1 MiB")
+    return process.returncode, output
+
+
+def run_tool(executable, arguments, env):
+    capture_tool(executable, arguments, env)
+
+
+def tool_environment():
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "BEADS_", "BR_"))
+           and k not in ("GH_REPO", "GH_DEBUG", "GH_FORCE_TTY", "GH_HTTP_UNIX_SOCKET")}
+    env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_SYSTEM": os.devnull, "GIT_TERMINAL_PROMPT": "0", "GIT_NO_REPLACE_OBJECTS": "1",
+                "GH_HOST": "github.com", "GH_PROMPT_DISABLED": "1"})
+    return env
+
+
+def resolve_tools(plan, state):
+    completed = state["completed_commands"] if state else []
+    required = set()
+    for command in plan["commands"]:
+        if command["id"] in completed:
+            continue
+        if command["id"].startswith("github-") or command["id"] == "ru-register":
+            required.update(("git", "gh"))
+        if "argv" in command:
+            required.add(command["argv"][0])
+    executables = {}
+    for name in sorted(required):
+        executable = shutil.which(name)
+        if not executable:
+            raise ValueError("required executable is missing: " + name)
+        executables[name] = os.path.abspath(executable)
+    if "ru-register" not in completed and "repo_updater" in plan:
+        check_ru_destinations(plan)
+    return executables
+
+
+def check_ru_destinations(plan):
+    # ru writes these conventional paths itself. Reject changed symlinks and
+    # special/hardlinked files before handing the reviewed destinations to it.
+    settings = plan["repo_updater"]
+    for directory in (settings["config_dir"], settings["config_dir"] + "/repos.d",
+                      settings["state_dir"], settings["state_dir"] + "/logs"):
+        try:
+            fd = open_directory(directory)
+        except FileNotFoundError:
+            continue
+        os.close(fd)
+    for path in (settings["config_dir"] + "/config", settings["config_dir"] + "/repos.d/public.txt",
+                 settings["config_dir"] + "/repos.d/private.txt"):
+        try:
+            parent = open_directory(str(Path(path).parent))
+        except FileNotFoundError:
+            continue
+        try:
+            try:
+                info = os.stat(Path(path).name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError("unsafe repo_updater configuration; review its files before applying")
+        finally:
+            os.close(parent)
+
+
+def github_request(executables, env, endpoint, *arguments):
+    code, raw = capture_tool(executables["gh"],
+                             ["api", "--hostname", "github.com", "--include", endpoint, *arguments], env, check=False)
+    header, separator, body = raw.replace(b"\r\n", b"\n").partition(b"\n\n")
+    match = re.match(rb"HTTP/[0-9.]+ ([0-9]{3})(?: |\n|$)", header)
+    if not separator or not match:
+        raise ValueError("GitHub did not return an HTTP status; check authentication and connectivity, then retry")
+    status = int(match[1])
+    if code and status < 400:
+        raise ValueError("GitHub request failed before its result could be confirmed")
+    return status, body
+
+
+def repository_identity(raw, plan):
+    try:
+        value = json.loads(raw, object_pairs_hook=unique_object)
+        if (type(value) is not dict or type(value.get("id")) is not int or value["id"] <= 0
+                or type(value.get("full_name")) is not str
+                or value["full_name"].lower() != plan["github"]["repository"].lower()
+                or value.get("visibility") != plan["github"]["visibility"]
+                or type(value.get("private")) is not bool
+                or value["private"] != (plan["github"]["visibility"] == "private")):
+            raise ValueError()
+        return value["id"]
+    except (ValueError, TypeError, UnicodeError):
+        raise ValueError("GitHub repository identity or visibility differs from the reviewed plan") from None
+
+
+def check_git_configuration(root, plan, executables, env):
+    if not check_tool_tree(root, ".git"):
+        raise ValueError("Git metadata is missing; review the partial project")
+    git_dir = os.open(".git", DIR_FLAGS, dir_fd=root)
+    try:
+        config = read_regular(git_dir, "config")
+        for path in ("commondir", "objects/info/alternates", "objects/info/http-alternates", "info/grafts", "shallow"):
+            try:
+                os.stat(path, dir_fd=git_dir, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise ValueError("Git metadata changed; refusing repository indirection on resume")
+        try:
+            hooks = os.open("hooks", DIR_FLAGS, dir_fd=git_dir)
+        except FileNotFoundError:
+            pass
+        else:
+            try:
+                if os.listdir(hooks):
+                    raise ValueError("Git hooks were added; review them before resuming publication")
+            finally:
+                os.close(hooks)
+    finally:
+        os.close(git_dir)
+    # Parse data without loading target-repository includes, aliases or helpers.
+    _, raw = capture_tool(executables["git"], ["config", "--file", "-", "--no-includes", "--null", "--list"],
+                          env, data=config, cwd="/")
+    url = plan["publication"]["url"] + ".git"
+    allowed = {"core.repositoryformatversion": {"0"}, "core.filemode": {"true", "false"},
+               "core.bare": {"false"}, "core.logallrefupdates": {"true"},
+               "core.ignorecase": {"true", "false"}, "core.precomposeunicode": {"true", "false"},
+               "remote.origin.url": {url}, "remote.origin.fetch": {"+refs/heads/*:refs/remotes/origin/*"},
+               "branch.main.remote": {"origin"}, "branch.main.merge": {"refs/heads/main"}}
+    seen = set()
+    for entry in raw.decode("utf-8").split("\0"):
+        if not entry:
+            continue
+        key, _, value = entry.partition("\n")
+        if key in seen or value not in allowed.get(key, set()):
+            raise ValueError("local Git configuration changed; refusing unreviewed remotes, push URLs or helpers")
+        seen.add(key)
+
+
+def git_capture(executables, env, *arguments, data=None, check=True):
+    return capture_tool(executables["git"], ["--no-replace-objects", "-c", "core.hooksPath=/dev/null",
+                        "-c", "commit.gpgsign=false", *arguments], env, data=data, check=check)
+
+
+def initial_commit(plan, state, state_dir, executables, env, actor):
+    # Construct blobs/trees from the reviewed bytes, never `git add .`. This
+    # avoids filters, extra staged files, private client configs and user work.
+    nodes = {}
+    index_entries = []
+    for entry in plan["files"]:
+        if entry["path"] not in plan["publication"]["files"]:
+            continue
+        _, raw = git_capture(executables, env, "hash-object", "-w", "--stdin", data=entry["content"].encode("utf-8"))
+        blob = raw.decode().strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", blob):
+            raise ValueError("Git did not return a valid blob identity")
+        mode = "100755" if entry["mode"] == "0755" else "100644"
+        index_entries.append((mode + " " + blob + " 0\t" + entry["path"]).encode())
+        node = nodes
+        parts = entry["path"].split("/")
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = (mode, blob)
+
+    def tree(node):
+        records = []
+        for name, value in sorted(node.items()):
+            if isinstance(value, dict):
+                records.append("040000 tree " + tree(value) + "\t" + name)
+            else:
+                records.append(value[0] + " blob " + value[1] + "\t" + name)
+        _, raw = git_capture(executables, env, "mktree", "-z", data=("\0".join(records) + "\0").encode())
+        result = raw.decode().strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", result):
+            raise ValueError("Git did not return a valid tree identity")
+        return result
+
+    expected_tree = tree(nodes)
+    _, branch = git_capture(executables, env, "symbolic-ref", "HEAD")
+    if branch.strip() != b"refs/heads/main":
+        raise ValueError("local branch changed; only the reviewed initial main commit may be published")
+    _, index = git_capture(executables, env, "ls-files", "--stage", "-z")
+    if index and sorted(index.rstrip(b"\0").split(b"\0")) != sorted(index_entries):
+        raise ValueError("Git index contains unreviewed changes; nothing will be committed or pushed")
+    code, head = git_capture(executables, env, "rev-parse", "--verify", "HEAD", check=False)
+    head = head.decode().strip() if code == 0 else None
+    commit = state["github"]["commit"]
+    if head is not None and head != commit:
+        raise ValueError("local HEAD changed; refusing to publish a different commit")
+    if commit is None:
+        commit_env = dict(env)
+        email = str(actor["id"]) + "+" + actor["login"] + "@users.noreply.github.com"
+        for role in ("AUTHOR", "COMMITTER"):
+            commit_env["GIT_" + role + "_NAME"] = actor["login"]
+            commit_env["GIT_" + role + "_EMAIL"] = email
+        message = "Initial project from ACFS\n\nBootstrap-plan: " + plan["plan_id"] + "\n"
+        _, raw = git_capture(executables, commit_env, "commit-tree", expected_tree, data=message.encode())
+        commit = raw.decode().strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise ValueError("Git did not return a valid commit identity")
+        state["github"]["commit"] = commit
+        # Persist the object identity before installing the ref, so a crash
+        # cannot turn a later user's HEAD into the authorized publication.
+        save_state(state_dir, state)
+    _, actual_tree = git_capture(executables, env, "rev-parse", commit + "^{tree}")
+    _, ancestry = git_capture(executables, env, "rev-list", "--parents", "-n", "1", commit)
+    if actual_tree.decode().strip() != expected_tree or ancestry.decode().strip() != commit:
+        raise ValueError("recorded initial commit no longer matches the reviewed files")
+    if head is None:
+        git_capture(executables, env, "update-ref", "refs/heads/main", commit, "0" * 40)
+    if not index:
+        git_capture(executables, env, "read-tree", expected_tree)
+
+
+def publication_preflight(plan, state, executables, env):
+    if "github" not in plan or all(c["id"] in (state or {}).get("completed_commands", [])
+                                   for c in plan["commands"]):
+        return None
+    progress = state["github"] if state else {"create_attempted": False, "repository_id": None}
+    if progress["create_attempted"] and progress["repository_id"] is None:
+        raise ValueError("GitHub creation outcome is uncertain for " + plan["publication"]["url"]
+                         + "; no repository ID was checkpointed. Inspect GitHub and finish manually; automatic adoption is refused")
+    try:
+        run_tool(executables["gh"], ["auth", "status", "--active", "--hostname", "github.com"], env)
+    except ValueError:
+        raise ValueError("GitHub authentication failed; run gh auth login --hostname github.com, then retry the reviewed plan") from None
+    _, raw = capture_tool(executables["gh"], ["api", "--hostname", "github.com", "user"], env)
+    actor = json.loads(raw, object_pairs_hook=unique_object)
+    if (type(actor) is not dict or type(actor.get("id")) is not int or actor["id"] <= 0
+            or type(actor.get("login")) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", actor["login"])):
+        raise ValueError("GitHub did not identify the authenticated account")
+    owner = plan["github"]["repository"].split("/")[0]
+    if progress["repository_id"] is None and owner.lower() != actor["login"].lower():
+        _, raw = capture_tool(executables["gh"], ["api", "--hostname", "github.com", "users/" + owner], env)
+        account = json.loads(raw, object_pairs_hook=unique_object)
+        if type(account) is not dict or account.get("type") != "Organization":
+            raise ValueError("destination owner must be the authenticated user or an organization they can create repositories in")
+    status, raw = github_request(executables, env, "repos/" + plan["github"]["repository"])
+    if progress["repository_id"] is None:
+        if status == 200:
+            raise ValueError("GitHub repository already exists: " + plan["publication"]["url"] + "; choose a new name and review a new plan")
+        if status != 404:
+            raise ValueError("GitHub name-conflict check failed (HTTP " + str(status) + "); absence was not established")
+    elif status != 200 or repository_identity(raw, plan) != progress["repository_id"]:
+        raise ValueError("GitHub repository identity or visibility changed; refusing to publish or register it")
+    return actor
+
+
+def create_github_repository(plan, state, state_dir, executables, env, actor):
+    owner, name = plan["github"]["repository"].split("/")
+    endpoint = "user/repos" if owner.lower() == actor["login"].lower() else "orgs/" + owner + "/repos"
+    state["github"]["create_attempted"] = True
+    save_state(state_dir, state)
+    status, raw = github_request(executables, env, endpoint, "--method", "POST", "--raw-field", "name=" + name,
+                                 "--field", "private=" + ("true" if plan["github"]["visibility"] == "private" else "false"),
+                                 "--field", "auto_init=false")
+    if status != 201:
+        # A rejected request can be retried; an interrupted response or server
+        # failure is ambiguous and must never adopt somebody else's repository.
+        if 400 <= status < 500 and status != 408:
+            state["github"]["create_attempted"] = False
+            save_state(state_dir, state)
+        raise ValueError("GitHub repository creation was not confirmed (HTTP " + str(status) + ")")
+    state["github"]["repository_id"] = repository_identity(raw, plan)
+    save_state(state_dir, state)
+
+
+def publish_initial_commit(plan, state, executables, env):
+    import shlex
+    commit = state["github"]["commit"]
+    _, head = git_capture(executables, env, "rev-parse", "HEAD")
+    _, branch = git_capture(executables, env, "symbolic-ref", "HEAD")
+    if head.decode().strip() != commit or branch.strip() != b"refs/heads/main":
+        raise ValueError("local HEAD changed; refusing to publish a different commit")
+    status, raw = github_request(executables, env, "repos/" + plan["github"]["repository"])
+    if status != 200 or repository_identity(raw, plan) != state["github"]["repository_id"]:
+        raise ValueError("GitHub repository identity changed before push")
+    url = plan["publication"]["url"] + ".git"
+    _, remotes = git_capture(executables, env, "remote")
+    if not remotes.strip():
+        git_capture(executables, env, "remote", "add", "origin", url)
+    for arguments in (("remote", "get-url", "--all", "origin"), ("remote", "get-url", "--push", "--all", "origin")):
+        _, actual = git_capture(executables, env, *arguments)
+        if actual.decode().splitlines() != [url]:
+            raise ValueError("origin or its push URL differs from the reviewed GitHub destination")
+    # Use gh's existing authentication without writing global Git settings.
+    options = ["-c", "credential.helper=", "-c", "credential.https://github.com.helper=!"
+               + shlex.quote(executables["gh"]) + " auth git-credential",
+               "-c", "http.followRedirects=false", "-c", "protocol.allow=never",
+               "-c", "protocol.https.allow=always", "-c", "push.followTags=false",
+               "-c", "push.gpgSign=false", "-c", "push.recurseSubmodules=no"]
+    _, remote_head = git_capture(executables, env, *options, "ls-remote", "--heads", "origin", "refs/heads/main")
+    if remote_head:
+        if remote_head.decode().splitlines() != [commit + "\trefs/heads/main"]:
+            raise ValueError("remote main already has a different commit; no force push will be attempted")
+    else:
+        git_capture(executables, env, *options, "push", "--no-force", "--no-follow-tags", "origin", commit + ":refs/heads/main")
+    git_capture(executables, env, "config", "--local", "branch.main.remote", "origin")
+    git_capture(executables, env, "config", "--local", "branch.main.merge", "refs/heads/main")
+
+
+def register_ru(plan, command, executables, env):
+    check_ru_destinations(plan)
+    ru_env = {**env, **command["environment"]}
+    run_tool(executables["ru"], command["argv"][1:], ru_env)
+    _, raw = capture_tool(executables["ru"], command["verify_argv"][1:], ru_env)
+    result = json.loads(raw, object_pairs_hook=unique_object)
+    repos = result.get("data", {}).get("repos") if type(result) is dict and type(result.get("data")) is dict else None
+    expected = plan["github"]["repository"].lower()
+    if type(repos) is not list or not any(type(repo) is dict and type(repo.get("repo")) is str
+                                          and repo["repo"].lower() == expected for repo in repos):
+        raise ValueError("ru did not confirm registration in the reviewed " + plan["github"]["visibility"]
+                         + " list; check list permissions and any existing registration in the other list")
+
+
+def external_progress(plan, state):
+    if "github" not in plan or state is None:
+        return {}
+    progress = state["github"]
+    return {"github": {"url": plan["publication"]["url"], "visibility": plan["github"]["visibility"],
+                       "repository_id": progress["repository_id"], "initial_commit": progress["commit"],
+                       "creation": "created" if progress["repository_id"] else ("uncertain" if progress["create_attempted"] else "not created"),
+                       "published": "github-push" in state["completed_commands"],
+                       "publication_status": "confirmed" if "github-push" in state["completed_commands"] else "unconfirmed; resume checks remote main before retrying"},
+            "repo_updater": {"requested": "repo_updater" in plan, "registered": "ru-register" in state["completed_commands"],
+                             "destinations": plan.get("repo_updater")}}
 
 
 def apply(plan, resume=False):
@@ -528,18 +948,19 @@ def apply(plan, resume=False):
     state = None
     touched = False
     token = None
+    env = tool_environment()
+    executables = None
+    actor = None
     try:
         if identity(os.fstat(parent)) != plan["target"]["parent"]:
             raise ValueError("parent directory changed after review; regenerate the plan")
         name = Path(directory).name
         if plan["target"]["directory"] is None and not resume:
             # Preflight before any mutation, including creation of the root.
-            for command in plan["commands"]:
-                if command["id"] == "agent-mail-project":
-                    token = mail_token(plan["agent_mail"])
-                    continue
-                if not shutil.which(command["argv"][0]):
-                    raise ValueError("required executable is missing: " + command["argv"][0])
+            executables = resolve_tools(plan, None)
+            if "agent_mail" in plan:
+                token = mail_token(plan["agent_mail"])
+            actor = publication_preflight(plan, None, executables, env)
             os.mkdir(name, 0o700, dir_fd=parent)
             touched = True
         root = os.open(name, DIR_FLAGS, dir_fd=parent)
@@ -550,7 +971,10 @@ def apply(plan, resume=False):
         if resume:
             state_dir = os.open(".acfs", DIR_FLAGS, dir_fd=root)
             state = json.loads(read_regular(state_dir, "bootstrap-state.json"), object_pairs_hook=unique_object)
-            if type(state) is not dict or set(state) != {"schema", "plan_id", "directory_identity", "status", "completed_files", "completed_commands"}:
+            fields = {"schema", "plan_id", "directory_identity", "status", "completed_files", "completed_commands"}
+            if "github" in plan:
+                fields.add("github")
+            if type(state) is not dict or set(state) != fields:
                 raise ValueError("invalid bootstrap checkpoint")
             if state["schema"] != SCHEMA or state["plan_id"] != plan["plan_id"] or state["directory_identity"] != root_identity:
                 raise ValueError("checkpoint does not belong to this plan and project")
@@ -560,6 +984,21 @@ def apply(plan, resume=False):
                 completed = state[field]
                 if type(completed) is not list or completed != expected[:len(completed)]:
                     raise ValueError("invalid checkpoint progress")
+            if "github" in plan:
+                progress = state["github"]
+                if (type(progress) is not dict or set(progress) != {"create_attempted", "repository_id", "commit"}
+                        or type(progress["create_attempted"]) is not bool
+                        or (progress["repository_id"] is not None
+                            and (type(progress["repository_id"]) is not int or progress["repository_id"] <= 0))
+                        or (progress["commit"] is not None
+                            and (type(progress["commit"]) is not str or not re.fullmatch(r"[0-9a-f]{40}", progress["commit"])))
+                        or (progress["repository_id"] is not None and (not progress["create_attempted"] or progress["commit"] is None))
+                        or ("github-commit" in state["completed_commands"] and progress["commit"] is None)
+                        or ("github-create" in state["completed_commands"] and progress["repository_id"] is None)):
+                    raise ValueError("invalid GitHub checkpoint progress")
+            # From here the checkpoint is bound to this reviewed project. A
+            # failed retry must still report partial success without new files.
+            touched = True
             check_existing_files(root, plan)
             for feature, metadata in (("git", ".git"), ("beads", ".beads")):
                 if feature in plan["features"]:
@@ -570,22 +1009,25 @@ def apply(plan, resume=False):
             raise ValueError("project directory is no longer empty; use --resume only for a reviewed interrupted bootstrap")
         # Resolve missing work now; completed commands need not be installed
         # again just to verify or resume file-only work.
-        executables = {}
+        if executables is None:
+            executables = resolve_tools(plan, state)
         for command in plan["commands"]:
             if state is not None and command["id"] in state["completed_commands"]:
                 continue
             if command["id"] == "agent-mail-project":
                 token = mail_token(plan["agent_mail"])
-                continue
-            executable = shutil.which(command["argv"][0])
-            if not executable:
-                raise ValueError("required executable is missing: " + command["argv"][0])
-            executables[command["id"]] = os.path.abspath(executable)
+        os.fchdir(root)
+        if "github" in plan and "git" in executables and check_tool_tree(root, ".git"):
+            check_git_configuration(root, plan, executables, env)
+        if actor is None:
+            actor = publication_preflight(plan, state, executables, env)
         if state is None:
             os.mkdir(".acfs", 0o700, dir_fd=root)
             state_dir = os.open(".acfs", DIR_FLAGS, dir_fd=root)
             state = {"schema": SCHEMA, "plan_id": plan["plan_id"], "directory_identity": root_identity,
                      "status": "applying", "completed_files": [], "completed_commands": []}
+            if "github" in plan:
+                state["github"] = {"create_attempted": False, "repository_id": None, "commit": None}
             write_new(state_dir, "bootstrap-state.json", canonical(state) + "\n", 0o600)
             os.fsync(state_dir)
             touched = True
@@ -605,30 +1047,37 @@ def apply(plan, resume=False):
                     save_state(state_dir, state)
             finally:
                 os.close(fd)
-        os.fchdir(root)
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "BEADS_", "BR_"))}
-        env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0"})
+        if actor is not None and "github-commit" in state["completed_commands"]:
+            initial_commit(plan, state, state_dir, executables, env, actor)
         for command in plan["commands"]:
             if command["id"] in state["completed_commands"]:
                 continue
             if command["id"] == "agent-mail-project":
                 ensure_mail_project(command, token)
-                state["completed_commands"].append(command["id"])
-                save_state(state_dir, state)
-                continue
-            executable = executables[command["id"]]
-            # br init may have succeeded just before a crash prevented the
-            # checkpoint write. A successful local ready probe verifies that
-            # database rather than blindly initializing it a second time.
-            if command["id"] == "beads-init" and check_tool_tree(root, ".beads"):
-                run_tool(executable, ["ready", "--json"], env)
+            elif command["id"] in ("github-commit", "github-create", "github-push", "ru-register"):
+                check_git_configuration(root, plan, executables, env)
+                if command["id"] == "github-commit":
+                    initial_commit(plan, state, state_dir, executables, env, actor)
+                elif command["id"] == "github-create":
+                    if state["github"]["repository_id"] is None:
+                        create_github_repository(plan, state, state_dir, executables, env, actor)
+                elif command["id"] == "github-push":
+                    publish_initial_commit(plan, state, executables, env)
+                else:
+                    register_ru(plan, command, executables, env)
             else:
-                run_tool(executable, command["argv"][1:], env)
-            metadata = ".beads" if command["id"] == "beads-init" else ".git"
-            if not check_tool_tree(root, metadata):
-                raise ValueError("tool exited successfully without creating " + metadata)
-            if command["id"] == "beads-init":
-                run_tool(executable, ["ready", "--json"], env)
+                executable = executables[command["argv"][0]]
+                # br init may have succeeded just before a crash prevented the
+                # checkpoint write. Probe it rather than initializing twice.
+                if command["id"] == "beads-init" and check_tool_tree(root, ".beads"):
+                    run_tool(executable, ["ready", "--json"], env)
+                else:
+                    run_tool(executable, command["argv"][1:], env)
+                metadata = ".beads" if command["id"] == "beads-init" else ".git"
+                if not check_tool_tree(root, metadata):
+                    raise ValueError("tool exited successfully without creating " + metadata)
+                if command["id"] == "beads-init":
+                    run_tool(executable, ["ready", "--json"], env)
             state["completed_commands"].append(command["id"])
             save_state(state_dir, state)
         state["status"] = "complete"
@@ -636,7 +1085,9 @@ def apply(plan, resume=False):
         return {"status": "resumed" if resume else "created", "plan_id": plan["plan_id"], "directory": directory,
                 "created_files": state["completed_files"], "completed_commands": state["completed_commands"],
                 "verification_commands": plan["verification_commands"],
-                "note": "Review the files and run the verification commands. No agent, commit, or push was started."}
+                **external_progress(plan, state),
+                "note": ("Initial publication completed. Review the files and run the verification commands. Future pushes require new authorization."
+                         if "github" in plan else "Review the files and run the verification commands. No agent, commit, or push was started.")}
     except BaseException:
         if state is not None and touched:
             state["status"] = "failed"
@@ -646,6 +1097,8 @@ def apply(plan, resume=False):
                 pass  # Preserve the original error and the last durable checkpoint.
         if touched:
             print("Partial project retained at " + directory + "; nothing was removed. Review it, then retry the same plan with --apply PLAN.json --yes --resume.", file=sys.stderr)
+            if "github" in plan and state is not None and type(state.get("github")) is dict:
+                print(json.dumps({"status": "partial", "directory": directory, **external_progress(plan, state)}), file=sys.stderr)
         raise
     finally:
         if state_dir is not None:
@@ -692,7 +1145,8 @@ def guided():
 
         show("ACFS first project — review before creating anything\n")
         show("This creates starter code, tests, project instructions and a local Git repository.")
-        show("It does not install packages, launch agents, change global settings, commit or push.")
+        show("It does not install packages or launch agents. Local-only creation is the default.")
+        show("GitHub creation/push and repo_updater registration require explicit selections below.")
         show("Beads and Agent Mail are optional. Press Ctrl-C to cancel.\n")
         name = ask("Project name")
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", name):
@@ -718,7 +1172,16 @@ def guided():
             settings = mail_settings({"url": url, "token_env": None if token_env == "none" else token_env})
             clients = mail_clients(ask("Clients: comma-separated claude,codex,gemini", "claude,codex").split(","))
             features.append("agent-mail")
-        plan = make_plan(name, directory, stack, features, target_snapshot(directory), settings, clients)
+        github = repo_updater = None
+        visibility = ask("GitHub publication: none/private/public", "none", ("none", "private", "public"))
+        if visibility != "none":
+            show("This will create a NEW " + visibility + " repository on github.com and push one reviewed initial commit.")
+            if visibility == "public":
+                show("PUBLIC: anyone will be able to read the published files.")
+            github = github_settings({"repository": ask("GitHub destination OWNER/REPO"), "visibility": visibility})
+            if ask("Register this repository with ru? yes/no", "no", ("yes", "no")) == "yes":
+                repo_updater = selected_ru_settings()
+        plan = make_plan(name, directory, stack, features, target_snapshot(directory), settings, clients, github, repo_updater)
         suggested_plan = str(Path(directory).parent / ("." + name + "-acfs-plan.json"))
         show("Suggested recovery plan: " + display(suggested_plan))
         raw_plan = Path(ask("Plan file (Enter uses the suggestion)") or suggested_plan).expanduser()
@@ -747,7 +1210,14 @@ def guided():
                 show("  " + display(command))
             show("Private checkpoint: " + display(plan["state_file"]))
             show("Private recovery plan (0600): " + display(plan_path))
-            show("Network access: " + ("YES — the reviewed Agent Mail operation" if settings else "no"))
+            show("Network access: " + ("YES — only the reviewed service operations" if plan["effects"]["network"] else "no"))
+            if github is not None:
+                show("GitHub: " + github["visibility"].upper() + " " + plan["publication"]["url"] + " / branch main")
+                show("Initial commit and push: YES — only " + display(plan["publication"]["files"]))
+                show("Excluded private connection files: " + display(plan["publication"]["excluded_files"]))
+            if repo_updater is not None:
+                show("User ru configuration/state writes: " + display(repo_updater))
+                show("ru registers the identity; its existing clone directory/layout stays in effect. No sync runs.")
             show("Verification commands (not run by create): " + display(plan["verification_commands"]))
             show("Type details to inspect the exact file contents and full JSON plan.")
             while True:
@@ -768,11 +1238,10 @@ def guided():
             finally:
                 os.close(current_plan_parent)
             if decision == "create":
+                resolve_tools(plan, None)
                 for command in plan["commands"]:
                     if command["id"] == "agent-mail-project":
                         mail_token(plan["agent_mail"])
-                    elif not shutil.which(command["argv"][0]):
-                        raise ValueError("required executable is missing: " + command["argv"][0])
             # Exclusive creation: a concurrent file, symlink or existing plan
             # is never replaced. A failed save prevents project creation.
             write_new(plan_parent, leaf, json.dumps(plan, indent=2, ensure_ascii=True) + "\n", 0o600)
@@ -812,14 +1281,19 @@ def main():
     parser.add_argument("--agent-mail", metavar="URL", help="also register the project on this Agent Mail service and configure project-local Claude MCP")
     parser.add_argument("--agent-mail-token-env", metavar="NAME", help="read authentication only from this environment variable at apply/client launch")
     parser.add_argument("--agent-mail-clients", metavar="claude,codex,gemini", help="explicit project-local client selection; omitted preserves the existing Claude-only plan")
+    parser.add_argument("--github", choices=("private", "public"), help="explicitly authorize a new GitHub repository and initial publication in this plan")
+    parser.add_argument("--github-repo", metavar="OWNER/REPO", help="exact new repository destination on github.com (required with --github)")
+    parser.add_argument("--ru", action="store_true", help="register the published repository with repo_updater (requires --github)")
     args = parser.parse_args()
     if args.guided:
         if any((args.directory, args.stack, args.preset, args.features, args.yes, args.resume,
-                args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None)):
+                args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None,
+                args.github is not None, args.github_repo is not None, args.ru)):
             parser.error("use --guided alone; select and approve its options in the terminal")
         result = guided()
     elif args.apply:
-        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None)):
+        if not args.yes or any((args.directory, args.stack, args.preset, args.features, args.beads, args.agent_mail, args.agent_mail_token_env, args.agent_mail_clients is not None,
+                                args.github is not None, args.github_repo is not None, args.ru)):
             parser.error("use --apply PLAN_JSON --yes without plan overrides")
         result = apply(read_plan(args.apply), args.resume)
     else:
@@ -831,6 +1305,10 @@ def main():
             parser.error("--agent-mail-clients requires --agent-mail URL")
         if args.agent_mail_token_env and not args.agent_mail:
             parser.error("--agent-mail-token-env requires --agent-mail URL")
+        if (args.github is None) != (args.github_repo is None):
+            parser.error("--github private|public and --github-repo OWNER/REPO must be selected together")
+        if args.ru and args.github is None:
+            parser.error("--ru requires --github and --github-repo")
         # Resolve parents once for a portable reviewable absolute destination;
         # apply still walks the resulting path without following symlinks.
         raw = Path(args.directory or str(Path(os.environ.get("ACFS_PROJECTS_DIR", "/data/projects")) / args.plan)).expanduser()
@@ -840,7 +1318,9 @@ def main():
             features.append("agent-mail")
         result = make_plan(args.plan, directory, args.stack or "python", features, target_snapshot(directory),
                            {"url": args.agent_mail, "token_env": args.agent_mail_token_env} if args.agent_mail else None,
-                           args.agent_mail_clients.split(",") if args.agent_mail_clients is not None else None)
+                           args.agent_mail_clients.split(",") if args.agent_mail_clients is not None else None,
+                           {"repository": args.github_repo, "visibility": args.github} if args.github is not None else None,
+                           selected_ru_settings() if args.ru else None)
     print(json.dumps(result, indent=2, ensure_ascii=True))
 
 
@@ -990,6 +1470,10 @@ print_help() {
     echo "  --agent-mail URL        Opt into project registration and Claude MCP setup"
     echo "  --agent-mail-token-env NAME  Read authentication from this variable, never store it"
     echo "  --agent-mail-clients claude,codex,gemini  Configure only the selected clients"
+    echo "  --github private|public --github-repo OWNER/REPO"
+    echo "                        Plan creation of a new GitHub repository and initial push"
+    echo "  --ru                  Also register the published repository with repo_updater"
+    echo "                        Local-only is the default; --apply PLAN.json --yes authorizes the reviewed effects"
     echo ""
     echo "CLI mode options:"
     echo "  --no-br         Skip beads (br) initialization"
