@@ -317,6 +317,113 @@ test_context_service_credentials_are_redacted_before_packet_output() {
     pass "context_service_credentials_are_redacted_before_packet_output"
 }
 
+test_context_credential_aliases_preserve_public_metadata() {
+    local bead agents readme cm cass output markdown_output
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/alias-cm.json"
+    cass="$ARTIFACT_DIR/alias-cass.txt"
+    cat > "$cm" <<'JSON'
+{"apiKey":"fixtureAliasApiKey2026","secretKey":"fixtureAliasSecret2026","accessKey":"fixtureAliasAccess2026","privateKey":"fixtureAliasPrivate2026","MYSQL_PWD":"fixtureAliasMysqlFirst fixtureAliasMysqlTail","snippet":"apiKey=\"fixtureAliasEscapedFirst fixtureAliasEscapedTail\"","document":"{\"privateKey\":\"fixtureAliasNested2026\",\"message\":\"MYSQL_PWD=\\\"fixtureAliasNestedMsgFirst fixtureAliasNestedMsgTail\\\"\",\"publicCount\":4}","PWD":"/public/workspace","apiKeyCount":123456789,"privateKeyCount":123456789,"eventId":9007199254740993,"unconfigured":{"apiKey":"","MYSQL_PWD":null,"secretKey":false}}
+JSON
+    cat > "$cass" <<'TEXT'
+apiKey=fixtureAliasShell2026
+MYSQL_PWD=fixtureAliasPassword2026
+secretKey="fixtureAliasSecretFirst fixtureAliasSecretTail"
+accessKey='fixtureAliasAccessFirst fixtureAliasAccessTail'
+privateKey = "fixtureAliasPrivateFirst fixtureAliasPrivateTail"
+ApiKey = 'fixtureAliasApiFirst fixtureAliasApiTail'
+mysql_pwd = "fixtureAliasMysqlFirst fixtureAliasMysqlTail"
+apiKey=\"fixtureAliasEscapedFirst fixtureAliasEscapedTail\"
+API_KEY='fixtureAliasExistingFirst fixtureAliasExistingTail'
+SECRET_KEY="fixtureAliasExistingSecretFirst fixtureAliasExistingSecretTail"
+apiKey=\"fixtureAliasNestedFirst \\\"fixtureAliasInnerQuote fixtureAliasNestedTail\"
+PWD=/public/workspace
+apiKeyCount=123456789
+privateKeyCount=123456789
+TEXT
+    cp "$cm" "$cm.before"
+    cp "$cass" "$cass.before"
+    output="$(run_packet_json alias-creds \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/alias-creds.exit")" -eq 0 ]] || return 1
+    [[ "$output" != *fixtureAlias* ]] || return 1
+    jq -e '.status == "pass" and
+      ((.context.cm.text | fromjson) | .PWD == "/public/workspace" and
+        .apiKeyCount == 123456789 and .privateKeyCount == 123456789 and
+        (.document | fromjson | .publicCount == 4) and
+        .unconfigured == {"apiKey":"","MYSQL_PWD":null,"secretKey":false}) and
+      (.context.cm.text | contains("\"eventId\":9007199254740993")) and
+      (.context.cass.text | contains("PWD=/public/workspace")) and
+      (.context.cass.text | contains("apiKeyCount=123456789")) and
+      (.context.cass.text | contains("privateKeyCount=123456789"))' <<<"$output" >/dev/null || return 1
+    markdown_output="$(run_packet_markdown alias-creds-markdown \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/alias-creds-markdown.exit")" -eq 0 ]] || return 1
+    [[ "$markdown_output" != *fixtureAlias* ]] || return 1
+    [[ "$markdown_output" == *"PWD=/public/workspace"* ]] || return 1
+    [[ "$markdown_output" == *"apiKeyCount=123456789"* ]] || return 1
+    [[ "$markdown_output" == *"privateKeyCount=123456789"* ]] || return 1
+    cmp -s "$cm" "$cm.before" || return 1
+    cmp -s "$cass" "$cass.before" || return 1
+    pass "context_credential_aliases_preserve_public_metadata"
+}
+
+test_packet_refuses_failed_credential_redaction() {
+    local bead agents readme cm cass output real_jq bin_dir phase marked_bead
+    real_jq="$(command -v jq)"
+    bin_dir="$ARTIFACT_DIR/unavailable-redactor-bin"
+    mkdir -p "$bin_dir"
+    {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf 'real_jq=%q\n' "$real_jq"
+        printf '%s\n' \
+            'if [[ "$1" == -Rrs ]]; then' \
+            '  input=$(cat)' \
+            '  if [[ "$input" == *fixtureAliasRedactorUnavailable* ]]; then' \
+            '    echo "redactor unavailable" >&2; exit 71' \
+            '  fi' \
+            '  printf "%s" "$input" | "$real_jq" "$@"' \
+            'else' \
+            '  exec "$real_jq" "$@"' \
+            'fi'
+    } > "$bin_dir/jq"
+    chmod +x "$bin_dir/jq"
+    for phase in title labels description agents readme cm cass; do
+        bead="$(bead_fixture)"
+        agents="$(agents_fixture)"
+        readme="$(readme_fixture)"
+        cm="$(cm_fixture)"
+        cass="$(cass_fixture)"
+        case "$phase" in
+            title|description|labels)
+                marked_bead="$ARTIFACT_DIR/unavailable-redactor-$phase-bead.json"
+                jq --arg phase "$phase" '.[0][$phase] = (if $phase == "labels"
+                  then ["fixtureAliasRedactorUnavailable"] else "fixtureAliasRedactorUnavailable" end)' \
+                    "$bead" > "$marked_bead"
+                bead="$marked_bead"
+                ;;
+            agents) printf '%s\n' 'fixtureAliasRedactorUnavailable' > "$agents" ;;
+            readme) printf '%s\n' 'fixtureAliasRedactorUnavailable' > "$readme" ;;
+            cm) printf '%s\n' '{"apiKey":"fixtureAliasRedactorUnavailable"}' > "$cm" ;;
+            cass) printf '%s\n' '{"apiKey":"fixtureAliasRedactorUnavailable"}' > "$cass" ;;
+        esac
+        output="$(PATH="$bin_dir:$PATH" run_packet_json "unavailable-redactor-$phase" \
+            --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+            --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+            --agent-name FixtureAgent --max-chars 20000)"
+        [[ "$(cat "$ARTIFACT_DIR/unavailable-redactor-$phase.exit")" -ne 0 ]] || return 1
+        [[ "$output" != *'"packet_markdown"'* ]] || return 1
+        [[ "$output" != *fixtureAlias* ]] || return 1
+    done
+    pass "packet_refuses_failed_credential_redaction"
+}
+
 test_packet_preserves_empty_labels() {
     local bead="$ARTIFACT_DIR/empty-label-bead.json"
     local source_bead agents readme cm cass output
@@ -608,6 +715,8 @@ main() {
     run_test test_missing_cm_and_cass_warn_without_failing
     run_test test_generated_content_lint_blocks_unsafe_templates
     run_test test_context_service_credentials_are_redacted_before_packet_output
+    run_test test_context_credential_aliases_preserve_public_metadata
+    run_test test_packet_refuses_failed_credential_redaction
     run_test test_packet_preserves_empty_labels
     run_test test_packet_rejects_malformed_labels_without_echoing_values
     run_test test_packet_preserves_label_string_boundaries

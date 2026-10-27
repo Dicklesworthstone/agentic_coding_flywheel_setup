@@ -232,6 +232,47 @@ swarm_packet_limit_text() {
 swarm_packet_sanitize_context_text() {
     local text="$1"
     local -a context_rules=()
+    # Context services return both structured JSON and shell snippets inside
+    # JSON strings. Decode those strings before masking complete quoted values;
+    # a raw text substitution can otherwise leave the rest of a password behind.
+    # jq is already required by the packet generator. Work on string tokens,
+    # not whole parsed objects: serializing a whole object can round public
+    # identifiers with older jq versions. Leave other bytes and metadata intact.
+    text="$(printf '%s' "$text" | jq -Rrs '
+      def aliases: "api_?key|secret_?key|access_?key|private_?key|MYSQL_PWD";
+      def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
+      def redact_fields:
+        gsub("(?<field>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
+          . as $match | (try (.field | fromjson) catch null) as $key
+          | if ($key != null and ($key | test("^(" + aliases + ")$"; "i"))) and .value != "\"\""
+            then .field + .separator + "\"[redacted]\""
+            else $match.field + $match.separator + $match.value end);
+      def redact_text:
+        redact_fields
+        | ("(?<prefix>\\b(?i:" + aliases + ")\\b\\s*[=:]\\s*)") as $prefix
+        | gsub($prefix + "(?<opening>\\\\[\"\u0027])[^\\r\\n]*";
+            "\(.prefix)\(.opening)[redacted]\(.opening)")
+        | gsub($prefix + "\"(?<value>(?:\\\\.|[^\"\\\\])+)(?<tail>\"|$)";
+            "\(.prefix)\"[redacted]\(.tail)")
+        | gsub($prefix + "\u0027(?<value>(?:\\\\.|[^\u0027\\\\])+)(?<tail>\u0027|$)";
+            "\(.prefix)\u0027[redacted]\(.tail)")
+        | gsub($prefix + "(?<value>[^\\s\"\u0027\\\\]+)"; "\(.prefix)[redacted]");
+      def redact_context:
+        . as $input | (try ($input | fromjson | true) catch false) as $is_json
+        | redact_fields
+        | gsub("(?<literal>" + string_token + ")";
+            .literal as $raw
+            | (try ($raw | fromjson) catch null) as $value
+            | if $value == null then $raw
+              else ($value | redact_context) as $safe
+                | if $safe == $value then $raw else $safe | tojson end
+              end)
+        | if $is_json then . else redact_text end;
+      redact_context
+    ')" || {
+        echo "Error: credential redaction failed; no packet was created" >&2
+        return 1
+    }
     # Tool names in titles/tags are data. Keep them intact while instructional
     # excerpts still receive the recommended br/bv/rch command forms.
     if [[ "${2:-}" != "metadata" ]]; then
@@ -566,7 +607,7 @@ swarm_packet_build_report() {
     bead_json="$(swarm_packet_collect_bead_json)"
     bead_id="$("$jq_bin" -r --arg fallback "$SWARM_PACKET_BEAD_ID" '.id // $fallback' <<<"$bead_json")"
     bead_title="$("$jq_bin" -r '.title // "Untitled Bead"' <<<"$bead_json")"
-    bead_title="$(swarm_packet_sanitize_context_text "$bead_title" metadata)"
+    bead_title="$(swarm_packet_sanitize_context_text "$bead_title" metadata)" || return 2
     bead_status="$("$jq_bin" -r '.status // "unknown"' <<<"$bead_json")"
     bead_priority="$("$jq_bin" -r '(.priority // "unknown") | tostring' <<<"$bead_json")"
     # Validate before process substitution: a jq failure in its producer would
@@ -581,7 +622,8 @@ swarm_packet_build_report() {
     fi
     while IFS= read -r label_json; do
         label="$("$jq_bin" -r . <<<"$label_json")"
-        safe_labels+=("$(swarm_packet_sanitize_context_text "$label" metadata)")
+        label="$(swarm_packet_sanitize_context_text "$label" metadata)" || return 2
+        safe_labels+=("$label")
     done < <("$jq_bin" -c '.[]' <<<"$bead_labels_json")
     bead_labels_json="$(swarm_packet_json_array_from_args "$jq_bin" "${safe_labels[@]}")"
     bead_labels_text="$("$jq_bin" -r 'if length == 0 then "none" else join(", ") end' <<<"$bead_labels_json")"
@@ -600,7 +642,8 @@ swarm_packet_build_report() {
       | if length == 0 then "No task brief recorded. Read the current Bead and agree on scope before editing."
         else .[] | "### " + .[0] + "\n\n" + .[1] + "\n" end
     ' <<<"$bead_json")"
-    task_brief="$(swarm_packet_sanitize_context_text "$task_brief" | swarm_packet_indent_text)"
+    task_brief="$(swarm_packet_sanitize_context_text "$task_brief")" || return 2
+    task_brief="$(printf '%s' "$task_brief" | swarm_packet_indent_text)"
 
     query="$bead_id $bead_title in $SWARM_PACKET_REPO_ROOT"
     if [[ ! -f "$SWARM_PACKET_AGENTS_FILE" ]]; then
@@ -612,8 +655,8 @@ swarm_packet_build_report() {
 
     agents_excerpt="$(swarm_packet_read_file_excerpt "$SWARM_PACKET_AGENTS_FILE" "AGENTS.md" 1800)"
     readme_excerpt="$(swarm_packet_read_file_excerpt "$SWARM_PACKET_README_FILE" "README.md" 1600)"
-    agents_excerpt="$(swarm_packet_sanitize_context_text "$agents_excerpt")"
-    readme_excerpt="$(swarm_packet_sanitize_context_text "$readme_excerpt")"
+    agents_excerpt="$(swarm_packet_sanitize_context_text "$agents_excerpt")" || return 2
+    readme_excerpt="$(swarm_packet_sanitize_context_text "$readme_excerpt")" || return 2
 
     cm_warning_count_before=${#SWARM_PACKET_WARNINGS[@]}
     if [[ -n "$SWARM_PACKET_CM_FILE" && ! -f "$SWARM_PACKET_CM_FILE" ]]; then
@@ -632,7 +675,7 @@ swarm_packet_build_report() {
         context_status=$?
         SWARM_PACKET_WARNINGS+=("cm context unavailable: command exited $context_status")
     fi
-    cm_context="$(swarm_packet_sanitize_context_text "$cm_context")"
+    cm_context="$(swarm_packet_sanitize_context_text "$cm_context")" || return 2
     if [[ -z "$cm_context" ]]; then
         if (( ${#SWARM_PACKET_WARNINGS[@]} == cm_warning_count_before )); then
             SWARM_PACKET_WARNINGS+=("cm context unavailable: command returned no output")
@@ -654,7 +697,7 @@ swarm_packet_build_report() {
         context_status=$?
         SWARM_PACKET_WARNINGS+=("cass context unavailable: command exited $context_status")
     fi
-    cass_context="$(swarm_packet_sanitize_context_text "$cass_context")"
+    cass_context="$(swarm_packet_sanitize_context_text "$cass_context")" || return 2
 
     if [[ -z "$cass_context" ]]; then
         if (( ${#SWARM_PACKET_WARNINGS[@]} == cass_warning_count_before )); then
