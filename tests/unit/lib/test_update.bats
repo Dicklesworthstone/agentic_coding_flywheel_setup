@@ -16518,6 +16518,45 @@ STUBS
     assert_output --partial "cm|ok|pid 88 runs /home/u/.local/bin/cm"
 }
 
+@test "acfs services drift compares content when a republished binary has a new inode (#490)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local dir="$BATS_TEST_TMPDIR/republish"
+
+    mkdir -p "$dir"
+    printf 'am 0.3.39 bytes\n' > "$dir/installed-am"
+    printf 'am 0.3.39 bytes\n' > "$dir/old-cli"
+    printf 'am 0.3.38 bytes\n' > "$dir/older-cli"
+
+    run bash -c '
+        source "$1"
+        set +e
+        dir="$2"
+        _AM_BIN="$dir/installed-am"
+        _proc_fs_available() { return 0; }
+        _service_process_pid() { printf "1347\n"; }
+        _file_identity() { case "$1" in /proc/*) printf "1:1357345\n" ;; *) printf "1:529764\n" ;; esac; }
+        # Hash the file the fake service runs wherever the code reads /proc/<pid>/exe.
+        eval "$(declare -f _file_sha256 | sed "1s/_file_sha256/_real_file_sha256/")"
+        _file_sha256() { case "$1" in /proc/*) _real_file_sha256 "$RUNNING" ;; *) _real_file_sha256 "$1" ;; esac; }
+        for running in old-cli older-cli; do
+            for gone in false true; do
+                RUNNING="$dir/$running"
+                _proc_exe_path() { _EXE_DELETED=$gone; _EXE_PATH="$RUNNING"; return 0; }
+                printf "%s deleted=%s: " "$running" "$gone"
+                _service_binary_drift agent-mail
+            done
+        done
+    ' _ "$services" "$dir"
+
+    assert_success
+    assert_output --partial "old-cli deleted=false: agent-mail|ok|pid 1347 runs identical content (sha256 "
+    assert_output --partial ") via $dir/old-cli"
+    assert_output --partial "old-cli deleted=true: agent-mail|ok|pid 1347 runs identical content (sha256 "
+    assert_output --partial ") via deleted $dir/old-cli"
+    assert_output --partial "older-cli deleted=false: agent-mail|stale|pid 1347 runs $dir/older-cli"
+    assert_output --partial "older-cli deleted=true: agent-mail|stale|pid 1347 runs a deleted executable ($dir/older-cli)"
+}
+
 @test "acfs services drift reports not-running and unknown states without procfs (#381)" {
     local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
 

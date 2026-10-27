@@ -806,14 +806,15 @@ _service_process_pid() {
 }
 
 # Emits "<service>|<state>|<detail>" for one service.
-#   ok           running the installed binary
-#   stale        running a replaced/deleted/different executable
+#   ok           running the installed binary, or a file with identical bytes
+#   stale        running a replaced/deleted executable with different bytes
 #   not-running  no live process
 #   unknown      could not compare (no procfs, unreadable link, no installed
 #                binary resolved)
 _service_binary_drift() {
     local service="$1"
     local pid="" exe="" installed="" running_id="" installed_id=""
+    local running_sha="" installed_sha=""
     local deleted=false
 
     # procfs first: without it we cannot even identify the service process, so
@@ -842,20 +843,37 @@ _service_binary_drift() {
     exe="$_EXE_PATH"
     deleted=$_EXE_DELETED
 
-    if $deleted; then
-        printf '%s|%s|%s\n' "$service" "stale" \
-            "pid $pid runs a deleted executable ($exe); installed: $installed (sha256 $(_short_sha "$installed"))"
+    if ! $deleted; then
+        running_id="$(_file_identity "/proc/$pid/exe" 2>/dev/null || true)"
+        installed_id="$(_file_identity "$installed" 2>/dev/null || true)"
+        if [[ -z "$running_id" || -z "$installed_id" ]]; then
+            printf '%s|%s|%s\n' "$service" "unknown" "cannot compare $exe with $installed"
+            return 0
+        fi
+        if [[ "$running_id" == "$installed_id" ]]; then
+            printf '%s|%s|%s\n' "$service" "ok" "pid $pid runs $installed"
+            return 0
+        fi
+    fi
+
+    # A different (or unlinked) file can still hold the installed bytes: the
+    # Agent Mail installer republishes an unchanged `am` on every run and keeps
+    # the old file as old-cli, so the service follows that inode. Calling it
+    # stale would ask for a restart every night, and an opted-in restart (#464)
+    # would then fire every night too (#490). /proc/<pid>/exe stays readable
+    # after unlink.
+    running_sha="$(_file_sha256 "/proc/$pid/exe" 2>/dev/null || true)"
+    installed_sha="$(_file_sha256 "$installed" 2>/dev/null || true)"
+    if [[ -n "$running_sha" && "$running_sha" == "$installed_sha" ]]; then
+        $deleted && exe="deleted $exe"
+        printf '%s|%s|%s\n' "$service" "ok" \
+            "pid $pid runs identical content (sha256 ${running_sha:0:12}) via $exe"
         return 0
     fi
 
-    running_id="$(_file_identity "/proc/$pid/exe" 2>/dev/null || true)"
-    installed_id="$(_file_identity "$installed" 2>/dev/null || true)"
-    if [[ -z "$running_id" || -z "$installed_id" ]]; then
-        printf '%s|%s|%s\n' "$service" "unknown" "cannot compare $exe with $installed"
-        return 0
-    fi
-    if [[ "$running_id" == "$installed_id" ]]; then
-        printf '%s|%s|%s\n' "$service" "ok" "pid $pid runs $installed"
+    if $deleted; then
+        printf '%s|%s|%s\n' "$service" "stale" \
+            "pid $pid runs a deleted executable ($exe); installed: $installed (sha256 $(_short_sha "$installed"))"
         return 0
     fi
 
