@@ -31,12 +31,14 @@
 #   deploy TARGET  Copy the canonical guide to a real instruction surface.
 #                  Creates the destination only when absent. On collision the
 #                  destination is left untouched and a merge candidate is
-#                  written next to it as <dest>.acfs-new.
+#                  written as <dest>.acfs-new (or a unique suffixed name if that
+#                  candidate already exists with different content).
 #
 # Options:
 #   --output PATH  Write the generated guide to PATH instead of the canonical
-#                  location (explicit destinations are honored as-is)
+#                  location, with the same create-only rules as deployment
 #   --dry-run      Print the generated guide to stdout instead of writing
+#   Publication requires python3. Interrupted sibling files are retained.
 #
 # Deploy targets:
 #   --codex-global   ~/.codex/AGENTS.md   (Codex global instruction scope)
@@ -50,7 +52,7 @@
 #   0  Success
 #   1  Write failed
 #   2  Usage error / missing prerequisites
-#   3  Deploy collision (destination exists and differs; candidate written)
+#   3  Output/deploy collision (destination differs; merge candidate retained)
 
 set -euo pipefail
 
@@ -97,14 +99,6 @@ export PATH
 
 CANONICAL_DIR="$TARGET_HOME/.acfs/docs"
 CANONICAL="$CANONICAL_DIR/flywheel-agent-guide.md"
-
-# Fix ownership when running as root so the target user owns the output.
-fix_ownership() {
-    local path="$1"
-    if [[ $EUID -eq 0 && "$TARGET_USER" != "root" ]]; then
-        chown "$TARGET_USER:$TARGET_USER" "$path" 2>/dev/null || true
-    fi
-}
 
 # --- Argument parsing ---
 MODE="generate"
@@ -364,79 +358,171 @@ Agents coordinate via **Agent Mail** (MCP server). Key concepts:
 SECTION2
 }
 
-# --- Content comparison that ignores the volatile timestamp line ---
-content_differs() {
-    local a="$1" b="$2"
-    ! diff -q \
-        <(grep -v '^> Auto-generated: ' "$a") \
-        <(grep -v '^> Auto-generated: ' "$b") \
-        > /dev/null 2>&1
-}
+# Publish a complete sibling, then link create-only (or replace the ACFS-owned
+# canonical path). Directory descriptors prevent symlink/path replacement races
+# from redirecting writes. Failed/interrupted siblings are deliberately retained.
+publish_guide() {
+    local destination="$1" mode="$2"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "ERROR: python3 is required for safe guide publication" >&2
+        return 2
+    fi
+    python3 -c '
+import contextlib, os, pathlib, pwd, secrets, stat, sys
 
-write_canonical() {
-    mkdir -p "$CANONICAL_DIR"
-    fix_ownership "$CANONICAL_DIR"
-    local content
-    content=$(generate)
-    printf '%s\n' "$content" > "$CANONICAL"
-    fix_ownership "$CANONICAL"
-    echo "Generated $CANONICAL ($(printf '%s\n' "$content" | wc -l) lines)"
+destination, mode, target_user = sys.argv[1:]
+data = sys.stdin.buffer.read()
+path = pathlib.Path(destination)
+if not path.is_absolute():
+    path = pathlib.Path.cwd() / path
+ownership = None
+if os.geteuid() == 0 and target_user != "root":
+    account = pwd.getpwnam(target_user)
+    ownership = account.pw_uid, account.pw_gid
+
+@contextlib.contextmanager
+def directory_descriptor(name, parent=None):
+    with contextlib.ExitStack() as handles:
+        descriptor = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        handles.callback(os.close, descriptor)
+        yield descriptor
+
+@contextlib.contextmanager
+def open_directory(parent, create):
+    with contextlib.ExitStack() as handles:
+        descriptor = handles.enter_context(directory_descriptor("/"))
+        for component in parent.parts[1:]:
+            try:
+                child = handles.enter_context(directory_descriptor(component, descriptor))
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(component, mode=0o755, dir_fd=descriptor)
+                    created = True
+                except FileExistsError:
+                    created = False
+                child = handles.enter_context(directory_descriptor(component, descriptor))
+                if created and ownership:
+                    os.fchown(child, *ownership)
+            descriptor = child
+        yield descriptor
+
+def current_parent():
+    with open_directory(path.parent, False) as check:
+        before, after = os.fstat(directory), os.fstat(check)
+        if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+            raise ValueError("Destination directory changed; no guide was published")
+
+def matching(name):
+    try:
+        with contextlib.ExitStack() as opened:
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+            opened.callback(os.close, descriptor)
+            return matching_descriptor(descriptor, name)
+    except FileNotFoundError:
+        return None
+
+def matching_descriptor(descriptor, name):
+    before = os.fstat(descriptor)
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError("Destination is not a regular file: " + str(path.with_name(name)))
+    if before.st_size > len(data) + 4096:
+        return False
+    with os.fdopen(descriptor, "rb", closefd=False) as source:
+        old = source.read(len(data) + 4096)
+    after = os.fstat(descriptor)
+    if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        return False
+    # Preserve the existing timestamp-insensitive redeployment contract.
+    clean = lambda value: b"".join(line for line in value.splitlines(keepends=True)
+                                   if not line.startswith(b"> Auto-generated: "))
+    return clean(old) == clean(data)
+
+def publish():
+    if mode not in ("replace", "create"):
+        raise ValueError("Unknown guide publication mode")
+    existing = matching(path.name)
+    if mode == "create" and existing:
+        current_parent()
+        print("  Status:      up to date (content already matches the canonical guide)")
+        sys.exit(0)
+    temporary = "." + path.name + ".acfs-" + secrets.token_hex(12) + ".tmp"
+    with contextlib.ExitStack() as opened:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o644, dir_fd=directory)
+        opened.callback(os.close, descriptor)
+        with os.fdopen(descriptor, "wb", closefd=False) as output:
+            output.write(data)
+            output.flush()
+            if ownership:
+                os.fchown(output.fileno(), *ownership)
+            os.fsync(output.fileno())
+    current_parent()
+    if mode == "replace":
+        # Only the canonical, ACFS-owned guide is replaceable. rename never
+        # follows a leaf symlink or modifies the inode of another hardlink.
+        os.replace(temporary, path.name, src_dir_fd=directory, dst_dir_fd=directory)
+        current_parent()
+        print("Generated " + str(path) + " (" + str(len(data.splitlines())) + " lines)")
+        sys.exit(0)
+    try:
+        os.link(temporary, path.name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+        current_parent()
+        print("  Status:      created (destination was absent)")
+        print("  Future ACFS updates refresh only the canonical source; re-run deployment to refresh this copy.")
+        sys.exit(0)
+    except FileExistsError:
+        # A concurrent writer has exactly the same protection as an earlier
+        # file. Never reopen it for writing, even after an absent preflight.
+        if matching(path.name):
+            current_parent()
+            print("  Status:      up to date (content already matches the canonical guide)")
+            sys.exit(0)
+    candidate = path.name + ".acfs-new"
+    while True:
+        try:
+            os.link(temporary, candidate, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+            break
+        except FileExistsError:
+            try:
+                if matching(candidate):
+                    break
+            except (OSError, ValueError):
+                pass
+            candidate = path.name + ".acfs-new." + secrets.token_hex(8)
+    current_parent()
+    print("  Status:      REFUSED — destination already exists and differs")
+    print("  " + str(path) + " was NOT modified (it may contain user-authored rules).")
+    print("  Review and merge the retained candidate manually:")
+    print("    " + str(path.with_name(candidate)))
+    sys.exit(3)
+
+try:
+    if not path.name or path.name == "..":
+        raise ValueError("Destination must name a file")
+    with open_directory(path.parent, True) as directory:
+        publish()
+except (OSError, ValueError, KeyError) as error:
+    print("ERROR: guide publication failed; existing files preserved: " + str(error), file=sys.stderr)
+    sys.exit(1)
+' "$destination" "$mode" "$TARGET_USER"
 }
 
 # --- Deploy: explicit, optional, non-overwriting ---
 do_deploy() {
     # Always refresh the canonical source first; it is the only file ACFS owns
     # and may freely replace.
-    write_canonical
+    local content
+    content=$(generate)
+    printf '%s\n' "$content" | publish_guide "$CANONICAL" replace || return $?
 
     echo ""
     echo "Deploy target: $DEPLOY_LABEL"
     echo "  Destination: $DEPLOY_DEST"
     echo "  Scope:       $DEPLOY_SCOPE"
 
-    local dest_dir
-    dest_dir="$(dirname "$DEPLOY_DEST")"
-
-    if [[ -e "$DEPLOY_DEST" ]]; then
-        if ! content_differs "$CANONICAL" "$DEPLOY_DEST"; then
-            echo "  Status:      up to date (content already matches the canonical guide)"
-            return 0
-        fi
-        # Collision: never overwrite. Leave the destination untouched and
-        # write an adjacent candidate for manual merging.
-        local candidate="$DEPLOY_DEST.acfs-new"
-        if ! cp "$CANONICAL" "$candidate" 2>/dev/null; then
-            echo "ERROR: destination exists and differs, and the merge candidate could not be written: $candidate" >&2
-            echo "       (insufficient permissions? re-run this exact deploy command with sudo)" >&2
-            return 1
-        fi
-        fix_ownership "$candidate"
-        echo "  Status:      REFUSED — destination already exists and differs"
-        echo ""
-        echo "  $DEPLOY_DEST was NOT modified (it may contain user-authored rules)."
-        echo "  A merge candidate was written to:"
-        echo "    $candidate"
-        echo "  Review the differences and merge manually:"
-        echo "    diff -u '$DEPLOY_DEST' '$candidate'"
-        return 3
-    fi
-
-    if ! mkdir -p "$dest_dir" 2>/dev/null; then
-        echo "ERROR: cannot create destination directory: $dest_dir" >&2
-        echo "       (insufficient permissions? re-run this exact deploy command with sudo)" >&2
-        return 1
-    fi
-    if ! cp "$CANONICAL" "$DEPLOY_DEST" 2>/dev/null; then
-        echo "ERROR: cannot write destination: $DEPLOY_DEST" >&2
-        echo "       (insufficient permissions? re-run this exact deploy command with sudo)" >&2
-        return 1
-    fi
-    fix_ownership "$DEPLOY_DEST"
-    echo "  Status:      created (destination was absent)"
-    echo ""
-    echo "  Future ACFS updates refresh only the canonical source; re-run this"
-    echo "  deploy command whenever you want to pick up a newer guide."
-    return 0
+    printf '%s\n' "$content" | publish_guide "$DEPLOY_DEST" create
 }
 
 # --- Output ---
@@ -449,15 +535,11 @@ case "$MODE" in
             generate
             exit 0
         fi
+        content=$(generate)
         if [[ -n "$OUTPUT" ]]; then
-            # Explicit destination: honored as-is (still no sudo, no magic).
-            mkdir -p "$(dirname "$OUTPUT")"
-            content=$(generate)
-            printf '%s\n' "$content" > "$OUTPUT"
-            fix_ownership "$OUTPUT"
-            echo "Generated $OUTPUT ($(printf '%s\n' "$content" | wc -l) lines)"
+            printf '%s\n' "$content" | publish_guide "$OUTPUT" create
         else
-            write_canonical
+            printf '%s\n' "$content" | publish_guide "$CANONICAL" replace
         fi
         ;;
 esac

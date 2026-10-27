@@ -183,6 +183,135 @@ test_flag_like_option_values_rejected() {
     [[ -z "$(ls -A "$sandbox/proj")" ]]
 }
 
+# Existing merge notes are user data, even when ACFS chose the candidate name.
+test_existing_merge_candidate_is_preserved() {
+    local sandbox rc
+    sandbox="$(make_sandbox)" || return 1
+    printf '%s\n' 'USER RULES' > "$sandbox/proj/AGENTS.md"
+    printf '%s\n' 'UNMERGED NOTES' > "$sandbox/proj/AGENTS.md.acfs-new"
+    run_generator "$sandbox" deploy --project "$sandbox/proj" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -eq 3 ]] || return 1
+    [[ "$(cat "$sandbox/proj/AGENTS.md")" == 'USER RULES' ]] || return 1
+    [[ "$(cat "$sandbox/proj/AGENTS.md.acfs-new")" == 'UNMERGED NOTES' ]] || return 1
+    local candidate found=0
+    for candidate in "$sandbox/proj/AGENTS.md.acfs-new."*; do
+        [[ -f "$candidate" ]] || continue
+        grep -q 'Flywheel VPS - Agent Guidelines' "$candidate" || return 1
+        grep -Fq "$candidate" "$sandbox/output" || return 1
+        found=1
+    done
+    [[ $found -eq 1 ]]
+}
+
+test_deploy_preserves_dangling_destination_symlink() {
+    local sandbox rc
+    sandbox="$(make_sandbox)" || return 1
+    ln -s "$sandbox/untouched" "$sandbox/proj/AGENTS.md"
+    run_generator "$sandbox" deploy --project "$sandbox/proj" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -ne 0 && -L "$sandbox/proj/AGENTS.md" && ! -e "$sandbox/untouched" ]]
+}
+
+test_candidate_symlink_target_is_preserved() {
+    local sandbox rc
+    sandbox="$(make_sandbox)" || return 1
+    printf '%s\n' 'USER RULES' > "$sandbox/proj/AGENTS.md"
+    printf '%s\n' 'KEEP TARGET' > "$sandbox/untouched"
+    ln -s "$sandbox/untouched" "$sandbox/proj/AGENTS.md.acfs-new"
+    run_generator "$sandbox" deploy --project "$sandbox/proj" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -eq 3 && -L "$sandbox/proj/AGENTS.md.acfs-new" ]] || return 1
+    [[ "$(cat "$sandbox/untouched")" == 'KEEP TARGET' ]]
+}
+
+test_explicit_output_preserves_existing_file() {
+    local sandbox rc
+    sandbox="$(make_sandbox)" || return 1
+    printf '%s\n' 'EXPLICIT USER RULES' > "$sandbox/proj/AGENTS.md"
+    run_generator "$sandbox" --output "$sandbox/proj/AGENTS.md" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -eq 3 ]] || return 1
+    [[ "$(cat "$sandbox/proj/AGENTS.md")" == 'EXPLICIT USER RULES' ]] || return 1
+    grep -q 'Flywheel VPS - Agent Guidelines' "$sandbox/proj/AGENTS.md.acfs-new"
+}
+
+test_concurrent_destination_is_preserved() {
+    local sandbox rc python_bin
+    sandbox="$(make_sandbox)" || return 1
+    python_bin="$(command -v python3)" || return 1
+    mkdir -p "$sandbox/shims" "$sandbox/hook"
+    cat > "$sandbox/shims/cp" <<'SH'
+#!/bin/bash
+if [[ "${2:-}" == "$ACFS_GUIDE_RACE_DEST" ]]; then
+    (set -C; printf '%s\n' 'CONCURRENT USER RULES' > "$ACFS_GUIDE_RACE_DEST") || exit 71
+fi
+exec /bin/cp "$@"
+SH
+    printf '#!/bin/bash\nPYTHONPATH=%q exec %q "$@"\n' "$sandbox/hook" "$python_bin" > "$sandbox/shims/python3"
+    cat > "$sandbox/hook/sitecustomize.py" <<'PY'
+import os
+original_link = os.link
+def concurrent_link(source, destination, *args, **kwargs):
+    if str(destination) == 'AGENTS.md':
+        descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                             0o600, dir_fd=kwargs.get('dst_dir_fd'))
+        with os.fdopen(descriptor, 'w') as output:
+            output.write('CONCURRENT USER RULES\n')
+    return original_link(source, destination, *args, **kwargs)
+os.link = concurrent_link
+PY
+    chmod +x "$sandbox/shims/cp" "$sandbox/shims/python3"
+    env ACFS_TARGET_HOME="$sandbox/home" ACFS_GUIDE_RACE_DEST="$sandbox/proj/AGENTS.md" \
+        PATH="$sandbox/shims:/usr/bin:/bin" bash "$GENERATOR" deploy --project "$sandbox/proj" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -eq 3 ]] || return 1
+    [[ "$(cat "$sandbox/proj/AGENTS.md")" == 'CONCURRENT USER RULES' ]]
+}
+
+test_interrupted_canonical_refresh_preserves_previous_guide() {
+    local sandbox rc canonical
+    sandbox="$(make_sandbox)" || return 1
+    canonical="$sandbox/home/.acfs/docs/flywheel-agent-guide.md"
+    mkdir -p "$(dirname "$canonical")"
+    printf '%s\n' 'PREVIOUS COMPLETE CANONICAL' > "$canonical"
+    env ACFS_TARGET_HOME="$sandbox/home" PATH="/usr/bin:/bin" \
+        bash -c 'ulimit -f 1; exec bash "$1"' _ "$GENERATOR" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -ne 0 ]] || return 1
+    [[ "$(cat "$canonical")" == 'PREVIOUS COMPLETE CANONICAL' ]]
+}
+
+test_deploy_preserves_hardlinked_rules_and_linked_parent() {
+    local sandbox rc
+    sandbox="$(make_sandbox)" || return 1
+    printf '%s\n' 'HARDLINKED USER RULES' > "$sandbox/original"
+    ln "$sandbox/original" "$sandbox/proj/AGENTS.md"
+    run_generator "$sandbox" deploy --project "$sandbox/proj" > "$sandbox/output" 2>&1
+    rc=$?
+    [[ $rc -eq 3 ]] || return 1
+    [[ "$sandbox/original" -ef "$sandbox/proj/AGENTS.md" ]] || return 1
+    [[ "$(cat "$sandbox/original")" == 'HARDLINKED USER RULES' ]] || return 1
+    mkdir "$sandbox/outside"
+    ln -s "$sandbox/outside" "$sandbox/linked"
+    run_generator "$sandbox" --output "$sandbox/linked/AGENTS.md" > "$sandbox/linked-output" 2>&1
+    rc=$?
+    [[ $rc -ne 0 && ! -e "$sandbox/outside/AGENTS.md" ]] || return 1
+    run_generator "$sandbox" --output "$sandbox/linked/../via-linked-parent.md" > "$sandbox/dotdot-output" 2>&1
+    rc=$?
+    [[ $rc -ne 0 && ! -e "$sandbox/via-linked-parent.md" ]]
+}
+
+test_matching_explicit_output_is_not_replaced() {
+    local sandbox inode_before
+    sandbox="$(make_sandbox)" || return 1
+    run_generator "$sandbox" --output "$sandbox/proj/AGENTS.md" > "$sandbox/output" 2>&1 || return 1
+    inode_before="$(ls -i "$sandbox/proj/AGENTS.md")"
+    run_generator "$sandbox" --output "$sandbox/proj/AGENTS.md" >> "$sandbox/output" 2>&1 || return 1
+    [[ "$(ls -i "$sandbox/proj/AGENTS.md")" == "$inode_before" ]] || return 1
+    [[ ! -e "$sandbox/proj/AGENTS.md.acfs-new" ]]
+}
+
 # ============================================================
 # Run tests
 # ============================================================
@@ -198,6 +327,14 @@ run_test "deploy without target is a usage error" test_deploy_requires_target
 run_test "dry-run writes nothing" test_dry_run
 run_test "--help anywhere writes nothing" test_help_anywhere_writes_nothing
 run_test "flag-like option values are usage errors" test_flag_like_option_values_rejected
+run_test "existing merge candidate is preserved" test_existing_merge_candidate_is_preserved
+run_test "dangling destination symlink is preserved" test_deploy_preserves_dangling_destination_symlink
+run_test "merge candidate symlink target is preserved" test_candidate_symlink_target_is_preserved
+run_test "explicit output preserves existing rules" test_explicit_output_preserves_existing_file
+run_test "concurrently created destination is preserved" test_concurrent_destination_is_preserved
+run_test "interrupted canonical refresh preserves previous guide" test_interrupted_canonical_refresh_preserves_previous_guide
+run_test "hardlinked rules and linked parent are preserved" test_deploy_preserves_hardlinked_rules_and_linked_parent
+run_test "matching explicit output is not replaced" test_matching_explicit_output_is_not_replaced
 
 echo ""
 echo "Passed: $TESTS_PASSED, Failed: $TESTS_FAILED, Skipped: $TESTS_SKIPPED"

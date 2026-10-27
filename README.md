@@ -1164,7 +1164,9 @@ acfs agents install --root               # deploy to /AGENTS.md (legacy; not aut
 acfs agents install --to PATH            # deploy anywhere else
 ```
 
-Deployment creates the destination only when it is absent. If the destination already exists with different content, the deploy refuses, leaves your file untouched, and writes a merge candidate next to it (`<dest>.acfs-new`) so you can diff and merge manually. Redeploying identical content is an idempotent no-op.
+Deployment creates the destination only when it is absent, including when another process creates it during deployment. If the destination already exists with different content, the deploy refuses, leaves your file untouched, and writes a merge candidate next to it (`<dest>.acfs-new`) so you can diff and merge manually. An existing different candidate is preserved and a unique suffixed candidate is reported. Redeploying identical content is an idempotent no-op.
+
+`acfs agents update --output PATH` uses the same create-only rules. Only the canonical guide in ACFS-owned storage is automatically replaced. Publication requires Python 3, rejects symlink destinations and parent directories, and stages complete content beside the destination before publishing it. Interrupted staging files are retained for inspection.
 
 Discovery scopes worth knowing: Codex reads global guidance from `~/.codex/AGENTS.md` and project guidance from the project root down to the working directory; filesystem-root `/AGENTS.md` is **not** automatically read by any major harness, which is exactly why ACFS no longer writes it.
 
