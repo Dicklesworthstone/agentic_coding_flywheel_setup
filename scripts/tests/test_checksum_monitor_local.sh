@@ -206,7 +206,10 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     # is not due must not call gh at all; a due alert posts once and records.
     : > "$GH_CALLS"
     _fail_alert_record "reason A" "$now"
-    date() { printf '%s\n' "$((now + 60))"; }
+    # Bash functions see their caller's locals: _fail_alert_due has its own
+    # empty `now`, so calculate the fixture clock before entering that scope.
+    alert_test_epoch=$((now + 60))
+    date() { printf '%s\n' "$alert_test_epoch"; }
     _alert_fail_closed_streak 4 "reason A"
     [[ ! -s "$GH_CALLS" ]] || fail "duplicate alert reached GitHub"
     _alert_fail_closed_streak 5 "reason B"
@@ -370,6 +373,110 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     record_external_review "$(report_with 3 4)" "$d1" authorized || fail "record_external_review failed"
     [[ "$(grep -c ' gh issue comment 446 ' "$GH_CALLS")" == 1 ]] || fail "authorized use was not recorded on the issue"
 ) || exit 1
+
+# Persisted numeric records must not abort fail_closed or silence delivery.
+# Exercise each scenario independently so the incumbent's arithmetic failure
+# cannot prevent the remaining regressions and positive controls from running.
+numeric_case() (
+    export ACFS_MONITOR_STATE="$STATE_TMP/numeric-$1"
+    export ACFS_MONITOR_REPO="$STATE_TMP/no-live-repo"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    calls="$STATE_DIR/calls"
+    : > "$calls"
+    run_failure_bounded() {
+        printf '%s\n' "$*" >> "$calls"
+        [[ "$*" == 'gh issue list '* ]] && printf '355\n'
+        return 0
+    }
+    curl() { printf 'PUSH\n' >> "$calls"; }
+    date() { printf '1000060\n'; }
+    case "$1" in
+        epoch-leading-zero)
+            printf '0001000000\treason\n' > "$FAIL_ALERT_FILE"
+            ! _fail_alert_due 4 reason 1000060 || fail 'decimal leading-zero epoch caused a duplicate alert'
+            ;;
+        epoch-eight)
+            printf '08\treason\n' > "$FAIL_ALERT_FILE"
+            _fail_alert_due 4 reason 1000060 || fail 'expired decimal epoch was silenced by octal parsing'
+            ;;
+        epoch-overflow)
+            printf '18446744073710551616\treason\n' > "$FAIL_ALERT_FILE"
+            _fail_alert_due 4 reason 1000060 || fail 'overflowed cooldown silenced alert'
+            ;;
+        epoch-future)
+            printf '1000061\treason\n' > "$FAIL_ALERT_FILE"
+            _fail_alert_due 4 reason 1000060 || fail 'future cooldown silenced alert'
+            ;;
+        epoch-normal)
+            _fail_alert_record reason 1000000
+            ! _fail_alert_due 2 other 9999999 || fail 'below-threshold alert became due'
+            ! _fail_alert_due 4 reason 1086399 || fail 'cooldown expired before 24 hours'
+            _fail_alert_due 4 reason 1086400 || fail '24-hour repeat was suppressed'
+            ;;
+        epoch-bad-clock)
+            _fail_alert_record reason 1000000
+            for bad_clock in 0 broken 18446744073710551616; do
+                _fail_alert_due 4 reason "$bad_clock" || fail 'bad clock silenced alert'
+                _fail_alert_record reason "$bad_clock"
+                [[ "$(cat "$FAIL_ALERT_FILE")" == $'1000000\treason' ]] || fail 'bad clock poisoned the delivery record'
+            done
+            ;;
+        counter-zero|counter-overflow|counter-long|counter-prefix|counter-binary|counter-limit|counter-normal|counter-invalid)
+            case "$1" in
+                counter-zero) raw=0008; expected=9 ;;
+                counter-overflow) raw=9223372036854775807; expected=2147483647 ;;
+                counter-long) printf -v raw '%0100d' 0; raw="${raw//0/9}"; expected=2147483647 ;;
+                counter-prefix) printf -v raw '%0100d' 0; raw="${raw}8"; expected=2147483647 ;;
+                counter-binary) raw=''; expected=1 ;;
+                counter-limit) raw=2147483647; expected=2147483647 ;;
+                counter-normal) raw=99; expected=100 ;;
+                counter-invalid) raw=not-a-count; expected=1 ;;
+            esac
+            printf '%s\n' "$raw" > "$FAIL_STREAK_FILE"
+            if [[ "$1" == counter-binary ]]; then
+                printf '\0%.0s' {1..64} > "$FAIL_STREAK_FILE"
+                printf '99\n' >> "$FAIL_STREAK_FILE"
+            fi
+            status=0
+            ( fail_closed 'numeric regression' ) > "$STATE_DIR/failure.log" 2>&1 || status=$?
+            [[ "$status" == 1 ]] || fail 'fail_closed lost its failure exit status'
+            [[ "$(cat "$FAIL_STREAK_FILE")" == "$expected" ]] || fail "incorrect failure counter for $1"
+            grep -q 'summary: result=fail_closed' "$STATE_DIR/failure.log" || fail 'fail_closed lost its summary'
+            if (( expected >= 3 )); then
+                grep -q '^gh issue comment 355 ' "$calls" || fail 'counted failure never reached alert delivery'
+            else
+                [[ ! -s "$calls" ]] || fail 'first failure bypassed the threshold'
+            fi
+            ;;
+        recovery-leading-zero)
+            _announce_recovery 0008 || fail 'decimal recovery count failed'
+            grep -q 'recovered after 8 consecutive' "$calls" || fail 'recovery did not normalize decimal count'
+            ;;
+        future-channels)
+            printf '1000061\treason\n' > "$FAIL_ALERT_FILE"
+            printf '1000061\treason\n' > "$FAIL_PUSH_ALERT_FILE"
+            export ACFS_NTFY_TOPIC=fixture-never-sent
+            _alert_fail_closed_streak 4 reason
+            _alert_fail_closed_streak 5 reason
+            [[ "$(grep -c '^PUSH$' "$calls")" == 1 ]] || fail 'future push record was not repaired exactly once'
+            [[ "$(grep -c '^gh issue comment 355 ' "$calls")" == 1 ]] || fail 'future GitHub record was not repaired exactly once'
+            ;;
+    esac
+)
+numeric_failures=0
+for numeric_scenario in epoch-leading-zero epoch-eight epoch-overflow epoch-future epoch-normal epoch-bad-clock \
+    counter-zero counter-overflow counter-long counter-prefix counter-binary counter-limit counter-normal counter-invalid \
+    recovery-leading-zero future-channels; do
+    if numeric_case "$numeric_scenario"; then
+        printf 'PASS: numeric monitor state %s\n' "$numeric_scenario"
+    else
+        numeric_failures=$((numeric_failures + 1))
+        printf 'FAIL: numeric monitor state %s\n' "$numeric_scenario" >&2
+    fi
+done
 
 # Opt-in full state-machine qualification uses an immutable source archive.
 # Git's real SSH transport protocol is redirected to disposable bare fixtures;
@@ -718,3 +825,4 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
         printf 'PASS: same-fixture incumbent rejects second-fetch variant; offline candidate accepts first observation\n'
     fi
 ) || exit 1
+[[ "$numeric_failures" == 0 ]] || exit 1

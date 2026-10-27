@@ -3030,6 +3030,12 @@ provenance claim.
 
 First-party changes can publish automatically after these checks. External changes require review **before publication**, rather than a post-publication alert. Repeated failures are logged and escalated through deduplicated GitHub issues and optional `ACFS_NTFY_TOPIC` notifications. Check the deployed timer's logs for its current health; the existence of workflow or timer files does not prove that monitoring is running.
 
+Alerts begin after three consecutive failures and normally repeat after 24 hours
+for an unchanged reason, with separate cooldowns for GitHub and push delivery.
+Saved numbers are read as decimal; oversized failure counts saturate at 2,147,483,647.
+Invalid or future cooldown timestamps cannot silence alerts. An unavailable clock
+does not advance a delivery record.
+
 ### Production Smoke Tests (`production-smoke.yml`)
 
 Validates deployments on real environments:

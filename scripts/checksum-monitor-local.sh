@@ -664,6 +664,44 @@ FAIL_ALERT_FILE="$STATE_DIR/fail_closed_alert"
 FAIL_PUSH_ALERT_FILE="$STATE_DIR/fail_closed_push_alert"
 FAIL_ALERT_REPEAT_SECONDS=86400
 FAIL_ALERT_MIN_STREAK=3
+FAIL_STREAK_MAX=2147483647
+
+# Bash otherwise interprets leading zeroes as octal and wraps large integers.
+# Eighteen decimal digits fit in its signed 64-bit arithmetic on our Linux host.
+_monitor_decimal() {
+    local value="${1:-}"
+    [[ "$value" =~ ^[0-9]{1,18}$ ]] || return 1
+    printf '%s\n' "$((10#$value))"
+}
+
+_read_failure_streak() {
+    local value=""
+    if [[ -f "$FAIL_STREAK_FILE" && ! -L "$FAIL_STREAK_FILE" ]]; then
+        # Bound malformed state reads. A long numeric record saturates rather
+        # than wrapping negative and disabling the alert threshold.
+        IFS= read -r value < <(/usr/bin/head -c 64 -- "$FAIL_STREAK_FILE" 2>/dev/null) || true
+    fi
+    if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+        printf '0\n'
+        return 0
+    fi
+    if [[ ${#value} -eq 64 ]]; then
+        printf '%s\n' "$FAIL_STREAK_MAX"
+        return 0
+    fi
+    while [[ ${#value} -gt 1 && "$value" == 0* ]]; do
+        value="${value#0}"
+    done
+    if [[ ${#value} -gt 10 ]]; then
+        printf '%s\n' "$FAIL_STREAK_MAX"
+    else
+        value="$(_monitor_decimal "$value")"
+        if (( value > FAIL_STREAK_MAX )); then
+            value="$FAIL_STREAK_MAX"
+        fi
+        printf '%s\n' "$value"
+    fi
+}
 
 # _fail_alert_due STREAK REASON [NOW_EPOCH [RECORD_FILE]]
 # True when an alert should be posted for this failure: the streak has just
@@ -674,13 +712,18 @@ _fail_alert_due() {
     local streak="$1" reason="$2" now="${3:-}"
     local record_file="${4:-$FAIL_ALERT_FILE}"
     local last_epoch="" last_reason=""
+    streak="$(_monitor_decimal "$streak")" || return 1
     (( streak >= FAIL_ALERT_MIN_STREAK )) || return 1
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
+    now="$(_monitor_decimal "$now")" || return 0
+    (( now > 0 )) || return 0
     if [[ -f "$record_file" && ! -L "$record_file" ]]; then
         IFS=$'\t' read -r last_epoch last_reason < "$record_file" || true
     fi
-    [[ "$last_epoch" =~ ^[0-9]+$ ]] || return 0      # nothing posted yet (or unreadable)
+    last_epoch="$(_monitor_decimal "$last_epoch")" || return 0
     [[ "$last_reason" == "$reason" ]] || return 0    # the failure changed: say so
+    # Clock rollback or corrupt future state must not silence alerts forever.
+    (( last_epoch <= now )) || return 0
     (( now - last_epoch >= FAIL_ALERT_REPEAT_SECONDS ))
 }
 
@@ -688,6 +731,8 @@ _fail_alert_record() {
     local reason="$1" now="${2:-}"
     local record_file="${3:-$FAIL_ALERT_FILE}"
     [[ -n "$now" ]] || now="$(date -u +%s 2>/dev/null || echo 0)"
+    now="$(_monitor_decimal "$now")" || return 0
+    (( now > 0 )) || return 0
     printf '%s\t%s\n' "$now" "$reason" > "$record_file" 2>/dev/null || true
 }
 
@@ -769,6 +814,7 @@ _alert_fail_closed_streak() {
 # healthy again so the alert does not stand as the last word. Best-effort.
 _announce_recovery() {
     local previous_streak="$1"
+    previous_streak="$(_monitor_decimal "$previous_streak")" || return 0
     (( previous_streak >= FAIL_ALERT_MIN_STREAK )) || return 0
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     local existing=""
@@ -791,9 +837,10 @@ _announce_recovery() {
 fail_closed() {
     log "FAIL-CLOSED: $*"
     local streak=0
-    streak="$(command cat "$FAIL_STREAK_FILE" 2>/dev/null || echo 0)"
-    [[ "$streak" =~ ^[0-9]+$ ]] || streak=0
-    streak=$((streak + 1))
+    streak="$(_read_failure_streak)"
+    if (( streak < FAIL_STREAK_MAX )); then
+        streak=$((streak + 1))
+    fi
     printf '%s\n' "$streak" > "$FAIL_STREAK_FILE" 2>/dev/null || true
     _alert_fail_closed_streak "$streak" "$*" || true
     log "summary: result=fail_closed state=$STATE streak=$streak repo=$MONITOR_REPO"
@@ -1140,8 +1187,7 @@ if [[ "$authorization_consumed" == "true" ]]; then
 fi
 
 # Only an accepted remote state can clear monitoring failure history.
-previous_fail_streak="$(command cat "$FAIL_STREAK_FILE" 2>/dev/null || echo 0)"
-[[ "$previous_fail_streak" =~ ^[0-9]+$ ]] || previous_fail_streak=0
+previous_fail_streak="$(_read_failure_streak)"
 printf '0\n' > "$FAIL_STREAK_FILE" \
     || fail_closed "remote publication is verified but the healthy-state marker could not be written"
 if [[ "$external_deferred" == "true" ]]; then
