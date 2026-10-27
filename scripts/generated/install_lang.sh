@@ -518,7 +518,7 @@ acfs_generated_install_lang_uv() {
                         elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
                             log_error "lang.uv: failed to make verified installer staging file read-only"
                             ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
-                        elif run_as_target_runner 'sh' "$verified_installer_file"; then
+                        elif run_as_target_runner '--acfs-require-sha256sum' 'sh' "$verified_installer_file"; then
                             install_success=true
                         else
                             log_error "lang.uv: verified installer execution failed"

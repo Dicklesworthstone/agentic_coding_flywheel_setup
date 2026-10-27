@@ -2705,3 +2705,213 @@ describe("apt-only modules on non-apt distro families (#477)", () => {
     expect(cass).not.toContain("ACFS_DISTRO_FAMILY");
   });
 });
+
+
+describe("uv archive verification prerequisite", () => {
+  // Exercise the actual runners and producers. Only network staging, host
+  // capacity, and the env transport are fixtures; the guard stays unchanged.
+  // Retain every fixture tree for inspection.
+  const helperPath = process.env.ACFS_UV_PREREQ_TEST_HELPERS
+    || resolve(PROJECT_ROOT, "scripts/lib/install_helpers.sh");
+  const legacyPath = process.env.ACFS_UV_PREREQ_TEST_INSTALL
+    || resolve(PROJECT_ROOT, "install.sh");
+  const generatedPath = process.env.ACFS_UV_PREREQ_TEST_GENERATED
+    || resolve(GENERATED_DIR, "install_lang.sh");
+  const legacySource = readFileSync(legacyPath, "utf8");
+  const generatedSource = readFileSync(generatedPath, "utf8");
+
+  function shellQuote(value: string): string {
+    return "'" + value.replaceAll("'", "'\\''") + "'";
+  }
+
+  function shellFunction(source: string, name: string, subshell = false): string {
+    const marker = "\n" + name + "() " + (subshell ? "(" : "{") + "\n";
+    const start = source.indexOf(marker);
+    if (start < 0) throw new Error("Missing real function: " + name);
+    const endMarker = subshell ? "\n)\n" : "\n}\n";
+    const end = source.indexOf(endMarker, start + marker.length);
+    if (end < 0) throw new Error("Unterminated real function: " + name);
+    return source.slice(start + 1, end + endMarker.length);
+  }
+
+  type Runner = "helper" | "legacy";
+  type Mode = "working" | "missing" | "failing" | "incorrect";
+  type Surface = "generated" | "legacy" | "direct" | "options" | "hook";
+  function runFixture(runner: Runner, mode: Mode, surface: Surface,
+                      tool = "uv", inlineEnv = false) {
+    const root = mkdtempSync(resolve(tmpdir(), "acfs-uv-prerequisite-"));
+    const targetBin = resolve(root, "target-bin");
+    const callerBin = resolve(root, "caller-bin");
+    mkdirSync(targetBin);
+    mkdirSync(callerBin);
+    symlinkSync("/usr/bin/env", resolve(targetBin, "fixture_env"));
+    symlinkSync("/usr/bin/sha256sum", resolve(callerBin, "sha256sum"));
+    const verifier = {
+      working: "/usr/bin/sha256sum",
+      missing: "",
+      failing: "/usr/bin/false",
+      incorrect: "/usr/bin/md5sum",
+    }[mode];
+    if (verifier) symlinkSync(verifier, resolve(targetBin, "sha256sum"));
+    const body = [
+      'printf "installer-started|%s|%s\\n" "$1" "${2:-}"',
+      'printf "target-path=%s\\n" "$PATH"',
+      'printf "hooks=%s|%s\\n" "${BASH_ENV:-unset}" "${ENV:-unset}"',
+      'printf "inline-env=%s\\n" "${RU_NON_INTERACTIVE:-unset}"',
+      'if [ "${3:-}" = "--fixture-exit-23" ]; then exit 23; fi',
+      'exit 0',
+      "",
+    ].join("\n");
+    const fixture = resolve(root, "installer.sh");
+    writeFileSync(fixture, body);
+    chmodSync(fixture, 0o444);
+    const hook = resolve(root, "untrusted-hook.sh");
+    writeFileSync(hook, 'printf "UNTRUSTED-HOOK\\n"\n');
+    const sourceLines = ['source ' + shellQuote(helperPath)];
+    if (runner === "legacy") {
+      sourceLines.push(
+        shellFunction(legacySource, "_acfs_clean_runner_env_allowed"),
+        shellFunction(legacySource, "_acfs_validate_clean_runner_command"),
+        shellFunction(legacySource, "run_as_target"),
+        shellFunction(legacySource, "run_as_target_runner", true),
+      );
+    }
+    const program = [
+      "set -euo pipefail",
+      ...sourceLines,
+      shellFunction(legacySource, "acfs_run_verified_upstream_script_as_target_with_env"),
+      shellFunction(generatedSource, "acfs_generated_install_lang_" + (tool === "uv" ? "uv" : "rust")),
+      'TARGET_USER="$(/usr/bin/id -un)"',
+      'TARGET_HOME="$FIXTURE_ROOT"',
+      'fixture_env() {',
+      '  local -a argv=("$@")',
+      '  local index',
+      '  for index in "${!argv[@]}"; do',
+      '    case "${argv[index]}" in',
+      '      -i) ;;',
+      '      PATH=*) argv[index]="PATH=$FIXTURE_BIN" ;;',
+      '      *=*) ;;',
+      '      *) break ;;',
+      '    esac',
+      '  done',
+      '  /usr/bin/env "${argv[@]}"',
+      '}',
+      'fixture_df() { printf "Filesystem 1024-blocks Used Available Capacity Mounted on\\nfixture 8000000 0 8000000 0%% /tmp\\n"; }',
+      '_acfs_system_binary_path() {',
+      '  case "$1" in',
+      '    env) printf "fixture_env\\n" ;;',
+      '    df) printf "fixture_df\\n" ;;',
+      '    *) [[ -x "/usr/bin/$1" ]] && printf "/usr/bin/%s\\n" "$1" ;;',
+      '  esac',
+      '}',
+      'acfs_early_system_binary_path() { _acfs_system_binary_path "$@"; }',
+      'acfs_early_resolve_current_user() { _acfs_resolve_current_user; }',
+      'acfs_early_getent_passwd_entry() { _acfs_getent_passwd_entry "$@"; }',
+      'acfs_home_for_user() { _acfs_resolve_target_home "$@"; }',
+      'acfs_generated_system_binary_path() { _acfs_system_binary_path "$@"; }',
+      'log_error() { printf "ERROR: %s\\n" "$*" >&2; }',
+      'log_warn() { printf "WARN: %s\\n" "$*" >&2; }',
+      'log_info() { :; }; log_step() { :; }; log_success() { :; }; log_detail() { :; }',
+      'acfs_require_contract() { :; }; acfs_generated_ensure_selection() { :; }; should_run_module() { :; }',
+      'run_as_target_shell() { /bin/cat >/dev/null; }',
+      'acfs_security_init() { :; }; acfs_load_upstream_checksums() { :; }',
+      'declare -A KNOWN_INSTALLERS=([uv]="https://fixture.invalid/uv.sh" [rust]="https://fixture.invalid/rust.sh")',
+      'declare -A ACFS_UPSTREAM_URLS=([uv]="https://fixture.invalid/uv.sh" [rust]="https://fixture.invalid/rust.sh")',
+      'declare -A ACFS_UPSTREAM_SHA256=([uv]="$EXPECTED_HASH" [rust]="$EXPECTED_HASH")',
+      'get_checksum() { printf "%s\\n" "$EXPECTED_HASH"; }',
+      'verify_fixture() {',
+      '  local digest',
+      '  if [[ -x /usr/bin/shasum ]]; then',
+      '    digest="$(/usr/bin/shasum -a 256 "$FIXTURE_SCRIPT")" || return',
+      '  else',
+      '    digest="$(/usr/bin/sha256sum "$FIXTURE_SCRIPT")" || return',
+      '  fi',
+      '  [[ "${digest%% *}" == "$EXPECTED_HASH" ]] || return 1',
+      '  printf "outer-verification-passed\\n" >&2',
+      '}',
+      'verify_checksum() { verify_fixture || return; /bin/cat "$FIXTURE_SCRIPT"; }',
+      'acfs_security_mktemp() { printf "%s/staged-installer.sh\\n" "$FIXTURE_ROOT"; }',
+      'acfs_stage_verified_installer() { verify_fixture || return; printf -v "$1" "%s" "$FIXTURE_SCRIPT"; }',
+      '_acfs_remove_temp_files() { :; }',
+      // Poison the caller after Bash starts; a real env-i child must not
+      // inherit these functions or startup hooks, or the caller-only PATH.
+      'sha256sum() { printf "POISONED-FUNCTION\\n"; return 0; }',
+      'export -f sha256sum',
+      'export BASH_ENV="$FIXTURE_HOOK" ENV="$FIXTURE_HOOK"',
+      'case "$SURFACE" in',
+      '  generated) acfs_generated_install_lang_' + (tool === "uv" ? "uv" : "rust") + ' ;;',
+      '  legacy) acfs_run_verified_upstream_script_as_target_with_env "$FIXTURE_TOOL" sh "$INLINE_ENV" "argument with spaces" "--literal" ;;',
+      '  direct) run_as_target_runner --acfs-require-sha256sum sh -s -- "argument with spaces" "--literal" --fixture-exit-23 < "$FIXTURE_SCRIPT" ;;',
+      '  options) run_as_target_runner --acfs-require-sha256sum sh -c "printf installer-started" ;;',
+      '  hook) run_as_target_runner --acfs-require-sha256sum env "BASH_ENV=$FIXTURE_HOOK" sh "$FIXTURE_SCRIPT" ;;',
+      'esac',
+    ].join("\n");
+    const result = spawnSync("/bin/bash", ["--noprofile", "--norc", "-c", program], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 10000,
+      env: {
+        HOME: root, PATH: callerBin + ":/usr/bin:/bin", TERM: "dumb",
+        FIXTURE_ROOT: root, FIXTURE_BIN: targetBin, FIXTURE_SCRIPT: fixture,
+        FIXTURE_HOOK: hook, EXPECTED_HASH: createHash("sha256").update(body).digest("hex"),
+        FIXTURE_TOOL: tool, SURFACE: surface,
+        INLINE_ENV: inlineEnv ? "RU_NON_INTERACTIVE=1" : "",
+      },
+    });
+    if (result.error) throw result.error;
+    expect(result.stdout + result.stderr).not.toContain("UNTRUSTED-HOOK");
+    expect(result.stdout + result.stderr).not.toContain("POISONED-FUNCTION");
+    return { ...result, root, targetBin };
+  }
+
+  for (const runner of ["helper", "legacy"] as const) {
+    for (const surface of ["generated", "legacy"] as const) {
+      for (const mode of ["missing", "failing", "incorrect"] as const) {
+        test(runner + " " + surface + " rejects " + mode + " target verifier", () => {
+          const result = runFixture(runner, mode, surface);
+          expect(result.stderr).toContain("outer-verification-passed");
+          expect(result.status).not.toBe(0);
+          expect(result.stderr).toContain("working sha256sum is required");
+          expect(result.stdout).not.toContain("installer-started");
+        });
+      }
+
+      test(runner + " " + surface + " executes with a working target verifier", () => {
+        const result = runFixture(runner, "working", surface);
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("installer-started");
+        expect(result.stdout).toContain("target-path=" + result.targetBin);
+        expect(result.stdout).toContain("hooks=unset|unset");
+      });
+
+      test(runner + " " + surface + " leaves other installers unchanged", () => {
+        const result = runFixture(runner, "missing", surface, "rust");
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("installer-started");
+      });
+    }
+
+    test(runner + " preserves stdin, argument boundaries, and installer status", () => {
+      const result = runFixture(runner, "working", "direct");
+      expect(result.status, result.stderr).toBe(23);
+      expect(result.stdout).toContain("installer-started|argument with spaces|--literal");
+    });
+
+    test(runner + " keeps accepted inline environment after the prerequisite", () => {
+      const result = runFixture(runner, "working", "legacy", "uv", true);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("inline-env=1");
+    });
+
+    for (const surface of ["options", "hook"] as const) {
+      test(runner + " does not weaken validation for " + surface, () => {
+        const result = runFixture(runner, "working", surface);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).not.toContain("installer-started");
+        expect(result.stderr).toContain(surface === "options"
+          ? "regular, non-symlink absolute script file"
+          : "unapproved clean runner environment variable: BASH_ENV");
+      });
+    }
+  }
+});

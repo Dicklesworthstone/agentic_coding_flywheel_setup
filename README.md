@@ -418,6 +418,14 @@ The security library (`scripts/lib/security.sh`) provides:
    ./scripts/lib/security.sh --checksum URL       # Calculate SHA256 of any URL
    ```
 
+The uv installer also requires a working `sha256sum` from `coreutils` in its
+clean target-user environment. Immediately before executing uv's verified
+installer, ACFS checks the verifier with a known SHA256 result using the same
+system `PATH` and account. A missing, failing, or incorrect verifier stops the
+installation before uv can download release archives, and asks you to repair
+or install `coreutils`. This applies to both
+the legacy and generated installers and preserves the installer's stdin.
+
 ### When Checksums Fail
 
 A checksum mismatch can mean:

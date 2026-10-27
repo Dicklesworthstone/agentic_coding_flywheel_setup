@@ -793,6 +793,12 @@ function buildVerifiedInstallerFileCommand(module: Module): string {
   }
 
   const parts: string[] = ["run_as_target_runner"];
+  if (vi.tool === "uv") {
+    // uv otherwise skips verification of its downloaded archive if the clean
+    // target environment has no usable sha256sum. The runner enforces this
+    // immediately before execution without consuming the installer stream.
+    parts.push(shellQuote("--acfs-require-sha256sum"));
+  }
   const envVars = vi.env ?? [];
   const args = vi.args ?? [];
   const tmpdirEnvValue = verifiedInstallerTmpdirEnvValue(module);

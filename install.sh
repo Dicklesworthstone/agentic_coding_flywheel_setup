@@ -5493,9 +5493,14 @@ acfs_warn_bun_global_binary_missing() {
 
 run_as_target() {
     local clean_environment=false
+    local require_sha256sum=false
     if [[ "${1:-}" == "--acfs-clean-environment" ]]; then
         clean_environment=true
         shift
+        if [[ "${1:-}" == "--acfs-require-sha256sum" ]]; then
+            require_sha256sum=true
+            shift
+        fi
     fi
     if [[ $# -eq 0 ]]; then
         log_error "run_as_target requires a command"
@@ -5685,6 +5690,23 @@ run_as_target() {
             bash) command_argv[0]="$bash_bin" ;;
             sh) command_argv[0]="$sh_bin" ;;
         esac
+    fi
+
+    # uv skips archive verification when sha256sum is unavailable. Probe in
+    # the same sanitized target context that will execute the installer,
+    # after validating its original argv. /dev/null preserves installer stdin.
+    if [[ "$require_sha256sum" == "true" ]]; then
+        # shellcheck disable=SC2016  # Expanded only by the clean target shell.
+        command_argv=("$sh_bin" -c '
+            if ! command -v sha256sum >/dev/null 2>&1 ||
+                ! checksum_output="$(sha256sum -b /dev/null </dev/null 2>/dev/null)" ||
+                [ "${checksum_output%%[[:space:]]*}" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
+                printf "%s\n" "uv: a working sha256sum is required for archive verification; repair or install coreutils before retrying." >&2
+                exit 1
+            fi
+            unset checksum_output
+            exec "$@"
+        ' acfs-uv-checksum-prerequisite "${command_argv[@]}")
     fi
 
     # Already the target user
@@ -6203,17 +6225,21 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     # their own script stream behave exactly as they did on the live-fetch
     # path. Capture status so the staging file is removed on both outcomes.
     local run_status=0
+    local -a runner_options=()
+    if [[ "$tool" == "uv" ]]; then
+        runner_options+=(--acfs-require-sha256sum)
+    fi
     if [[ -n "$runner_env_assignment" && -n "$tmpdir_assignment" ]]; then
-        run_as_target_runner env "$runner_env_assignment" "$tmpdir_assignment" \
+        run_as_target_runner "${runner_options[@]}" env "$runner_env_assignment" "$tmpdir_assignment" \
             "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     elif [[ -n "$tmpdir_assignment" ]]; then
-        run_as_target_runner env "$tmpdir_assignment" \
+        run_as_target_runner "${runner_options[@]}" env "$tmpdir_assignment" \
             "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     elif [[ -n "$runner_env_assignment" ]]; then
-        run_as_target_runner env "$runner_env_assignment" \
+        run_as_target_runner "${runner_options[@]}" env "$runner_env_assignment" \
             "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     else
-        run_as_target_runner "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
+        run_as_target_runner "${runner_options[@]}" "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     fi
 
     _acfs_remove_temp_files "$staged_installer"

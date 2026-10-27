@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="464cc04c8da8c000e76728aa650efaeaf2dc5e6dc5153af47849d3b38ef6a345"
+  [install.sh]="d65532b9cada51a92077feeedbca1ac005cfd8b021b596667456213c432fccf3"
   [checksums.yaml]="8bdce53c5d3a6d43a5fea89541ddd6a72e826d8382bd8ef7b4c3153b907cfcfc"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="14d6081e226db782c7befc6e770dbf4620b2e618c3eb40fcfa8564f3ac1c59b7"
@@ -29,7 +29,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/autofix_version_managers.sh]="e235b7bfb95115f00bf7a4e3398be504c576d1fbe97a64c64a988294d62d621e"
   [scripts/lib/ubuntu_upgrade.sh]="cf763f760654fae173dbf4af7a2c93f8533270a41fad079b35226e58af4389cd"
   [scripts/lib/upgrade_resume.sh]="539e556a3ef2f9e369ff068c33c2ace06bc3aa82f16af74f72335df3541c739c"
-  [scripts/lib/install_helpers.sh]="756f02d254e2b2e7809900ec6787a9a22ec8ba975397b7f329162368e6a843d0"
+  [scripts/lib/install_helpers.sh]="51cd3c3259daf3af1c2de1ffd93fb0975f50a5f5dceae98ecdcf50a1d4b8900b"
   [scripts/lib/logging.sh]="890d8e6e44332bede591e462b277a903ae8d8679adebd8cc4fc76face078f6be"
   [scripts/lib/output.sh]="95c83ae9c67fbd9364f1d69a6430ca8df7ebd1bd2cfa0fe9339afdead74e96eb"
   [scripts/lib/gum_ui.sh]="1616f7f6fdd730802da196a661a2e5f576e480e4e96d745ce12ea5b64f9559b5"
@@ -124,7 +124,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/generated/install_shell.sh]="629ac10cc75790d967486f647f147a3db1588a3a3da23b3ee2aac878c32629a4"
   [scripts/generated/install_cli.sh]="1ba35e172ed196db27ffbc4040f95c2a959c6d2f80aa43893ad31b25da7b3aac"
   [scripts/generated/install_network.sh]="8d2f88679d40e361b38eb4952f2eb73ad31d77e6e6767e349ab01362858077fc"
-  [scripts/generated/install_lang.sh]="3c3a02d56e05e53b1feebc1ad168ef2ca52b847fb4d9d0cc40124cfeebd7360e"
+  [scripts/generated/install_lang.sh]="174cea2a2d6b1fb3b8674cd25bea9f750f749749c9ca7062c769c70a9a9aa331"
   [scripts/generated/install_tools.sh]="d26fd666f114676fa76e9b525f15307c8985ac222ba7bcbb9e2ae4f96e0ee490"
   [scripts/generated/install_db.sh]="df69a8bada152baf98139efad9e4b20f0d7dcc4f7410ea8521ef16c5e5b464da"
   [scripts/generated/install_cloud.sh]="eca5d64f0e6bcdc546c70831b462e455d5de5a1d4368d1958b10c8e1a6c58db4"
