@@ -229,6 +229,78 @@ write_real_install_prelude() {
         "$PROJECT_ROOT/scripts/lib/doctor.sh"
 }
 
+@test "security: doctor home predicates preserve lexical trust boundaries" {
+    # Load only the pure predicates; do not run doctor or source installed
+    # helpers while testing accepted and refused home-directory strings.
+    source <(awk '
+        /^_acfs_doctor_(sanitize_abs_nonroot_path|assign_abs_nonroot_path|acfs_home_for_home|acfs_home_matches_home|trusted_lookup_acfs_home|trusted_runtime_acfs_home)\(\) \{/ { in_function = 1 }
+        in_function { print }
+        in_function && /^}/ { in_function = 0 }
+    ' "$PROJECT_ROOT/scripts/lib/doctor.sh")
+
+    local assigned="stale"
+    _acfs_doctor_assign_abs_nonroot_path assigned "/home/fixture/"
+    [ "$assigned" = "/home/fixture" ]
+    _acfs_doctor_assign_abs_nonroot_path assigned $'/home/fixture\n\n'
+    [ "$assigned" = "/home/fixture" ]
+    _acfs_doctor_assign_abs_nonroot_path assigned $'/home/fixture\nline'
+    [ "$assigned" = $'/home/fixture\nline' ]
+    if _acfs_doctor_assign_abs_nonroot_path assigned "/"; then
+        return 1
+    fi
+    [ "$assigned" = "" ]
+    run _acfs_doctor_assign_abs_nonroot_path 'assigned[0]' "/home/fixture"
+    [ "$status" -eq 2 ]
+    run _acfs_doctor_assign_abs_nonroot_path '_acfs_path_name' "/home/fixture"
+    [ "$status" -eq 2 ]
+    run _acfs_doctor_acfs_home_for_home "/home/fixture/"
+    [ "$status" -eq 0 ]
+    [ "$output" = "/home/fixture/.acfs" ]
+    run _acfs_doctor_acfs_home_matches_home "/home/fixture/.acfs/" "/home/fixture/"
+    [ "$status" -eq 0 ]
+    run _acfs_doctor_acfs_home_matches_home "/home/fixture//.acfs" "/home/fixture//"
+    [ "$status" -eq 0 ]
+    local invalid
+    for invalid in "" "/" "//" "relative"; do
+        run _acfs_doctor_acfs_home_for_home "$invalid"
+        [ "$status" -eq 1 ]
+        run _acfs_doctor_acfs_home_matches_home "$invalid" "/home/fixture"
+        [ "$status" -eq 1 ]
+        run _acfs_doctor_acfs_home_matches_home "/home/fixture/.acfs" "$invalid"
+        [ "$status" -eq 1 ]
+    done
+    _acfs_doctor_script_acfs_home=""
+    _ACFS_DOCTOR_ENV_TARGET_HOME="/home/fixture"
+    _acfs_doctor_current_home="/home/current"
+    TARGET_HOME="/home/target"
+    ACFS_HOME="/home/unrelated/.acfs"
+    run _acfs_doctor_trusted_lookup_acfs_home
+    [ "$status" -eq 1 ]
+    run _acfs_doctor_trusted_runtime_acfs_home
+    [ "$status" -eq 1 ]
+    ACFS_HOME="/home/fixture/.acfs"
+    run _acfs_doctor_trusted_lookup_acfs_home
+    [ "$status" -eq 0 ]
+    [ "$output" = "$ACFS_HOME" ]
+    run _acfs_doctor_trusted_runtime_acfs_home
+    [ "$status" -eq 1 ]
+    ACFS_HOME="/home/current/.acfs"
+    run _acfs_doctor_trusted_lookup_acfs_home
+    [ "$status" -eq 0 ]
+    ACFS_HOME="/home/target/.acfs"
+    run _acfs_doctor_trusted_runtime_acfs_home
+    [ "$status" -eq 0 ]
+    _acfs_doctor_script_acfs_home="/opt/fixture/.acfs"
+    ACFS_HOME="$_acfs_doctor_script_acfs_home"
+    run _acfs_doctor_trusted_lookup_acfs_home
+    [ "$status" -eq 0 ]
+    run _acfs_doctor_trusted_runtime_acfs_home
+    [ "$status" -eq 0 ]
+    ACFS_HOME="/home/target/.acfs"
+    run _acfs_doctor_trusted_runtime_acfs_home
+    [ "$status" -eq 1 ]
+}
+
 @test "security: early sudo resolution ignores an inherited executable override" {
     local poison_dir="$BATS_TEST_TMPDIR/poison"
     local marker_dir="$BATS_TEST_TMPDIR/markers"

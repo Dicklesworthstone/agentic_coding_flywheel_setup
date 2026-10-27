@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -463,6 +463,52 @@ describe("agent readiness audit", () => {
     expect(antigravity?.status).toBe("unknown");
     expect(antigravity?.config?.status).toBe("unknown");
     expect(JSON.stringify(report)).not.toContain(REDACTION_SAMPLE);
+  });
+
+  test.each(["agent-readiness", "agent_readiness", "readiness"])("installed %s does not initialize unrelated doctor libraries", (command) => {
+    const fixture = createCliFixture();
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    const acfsHome = join(fixture.home, ".acfs");
+    const marker = join(fixture.root, "doctor-library-loaded");
+    const installed: [string, string][] = [
+      ["scripts/lib/doctor.sh", "bin/acfs"],
+      ["scripts/agent-readiness-audit.sh", "scripts/agent-readiness-audit.sh"],
+      ...["agent-readiness-audit.ts", "agent-profile-rehearsal.ts", "binary-architecture.ts"].map(
+        (file): [string, string] => [`packages/manifest/src/${file}`, `packages/manifest/src/${file}`],
+      ),
+    ];
+    for (const [from, to] of installed) {
+      mkdirSync(dirname(join(acfsHome, to)), { recursive: true });
+      copyFileSync(join(repo, from), join(acfsHome, to));
+    }
+    // These modules belong to doctor, not readiness. A failing optional module
+    // must not execute, delay or abort the separate audit/rehearsal command.
+    for (const library of ["output.sh", "progress.sh", "gum_ui.sh", "doctor_fix.sh"]) {
+      writeRealFile(join(acfsHome, "scripts", "lib", library),
+        "printf '%s\\n' loaded >> \"$ACFS_DOCTOR_TEST_MARKER\"\nexit 73\n");
+    }
+    const env = { HOME: fixture.home, ACFS_HOME: acfsHome, ACFS_DOCTOR_TEST_MARKER: marker,
+      PATH: `${dirname(process.execPath)}:/usr/bin:/bin` };
+    const run = (args: string[]) => spawnSync("/bin/bash", [join(acfsHome, "bin", "acfs"), command, ...args], {
+      encoding: "utf8", env,
+    });
+    const audit = run(["--json", "--no-version", "--home", fixture.home, "--path", fixture.bin]);
+    expect([0, 1]).toContain(audit.status);
+    const report = parseCliJsonReport(audit.stdout);
+    expect(report.tools.map((tool) => [tool.id, tool.auth?.status ?? null])).toEqual([
+      ["claude", "pass"], ["codex", "pass"], ["agy", "pass"], ["caam", null],
+    ]);
+    expect(audit.stdout).not.toContain(fixture.secret);
+    const rehearsal = run(["--rehearse", "--help"]);
+    expect(rehearsal.status).toBe(0);
+    expect(rehearsal.stdout).toContain("--profile PROVIDER:NAME");
+    expect(existsSync(marker)).toBe(false);
+    // Doctor still initializes its own modules; only readiness is independent.
+    const doctor = spawnSync("/bin/bash", [join(acfsHome, "bin", "acfs"), "--help"], {
+      encoding: "utf8", env,
+    });
+    expect(doctor.status).toBe(73);
+    expect(existsSync(marker)).toBe(true);
   });
 
   test("installed `acfs agent-readiness` runs the shipped copy through the CLI dispatcher", () => {

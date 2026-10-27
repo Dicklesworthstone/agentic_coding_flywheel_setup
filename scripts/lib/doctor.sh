@@ -27,10 +27,29 @@ _acfs_doctor_sanitize_abs_nonroot_path() {
     printf '%s\n' "$path_value"
 }
 
+# Assign in the caller's scope without a command-substitution fork. Keep the
+# destination a plain identifier: printf -v must never evaluate array subscripts.
+_acfs_doctor_assign_abs_nonroot_path() {
+    local _acfs_path_name="${1:-}"
+    local _acfs_path_value="${2:-}"
+    [[ "$_acfs_path_name" =~ ^[a-zA-Z_][a-zA-Z_0-9]*$ ]] || return 2
+    [[ "$_acfs_path_name" != _acfs_path_* ]] || return 2
+    _acfs_path_value="${_acfs_path_value%/}"
+    if [[ "$_acfs_path_value" == /* && "$_acfs_path_value" != / ]]; then
+        # Match the former command substitution exactly, including its removal
+        # of trailing newlines. Do not alter embedded path characters.
+        _acfs_path_value="${_acfs_path_value%"${_acfs_path_value##*[!$'\n']}"}"
+        printf -v "$_acfs_path_name" '%s' "$_acfs_path_value"
+    else
+        printf -v "$_acfs_path_name" '%s' ""
+        return 1
+    fi
+}
+
 _acfs_doctor_existing_abs_nonroot_dir() {
     local path_value=""
 
-    path_value="$(_acfs_doctor_sanitize_abs_nonroot_path "${1:-}" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path path_value "${1:-}" || true
     [[ -n "$path_value" ]] || return 1
     [[ -d "$path_value" ]] || return 1
     printf '%s\n' "$path_value"
@@ -197,7 +216,7 @@ _acfs_doctor_passwd_home_from_entry() {
 
     [[ -n "$passwd_entry" ]] || return 1
     IFS=: read -r _ _ _ _ _ passwd_home _ <<< "$passwd_entry"
-    passwd_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$passwd_home" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path passwd_home "$passwd_home" || true
     [[ -n "$passwd_home" ]] || return 1
     printf '%s\n' "$passwd_home"
 }
@@ -208,7 +227,7 @@ _acfs_doctor_resolve_current_home() {
     local passwd_entry=""
     local passwd_home=""
 
-    home_candidate="$(_acfs_doctor_sanitize_abs_nonroot_path "${HOME:-}" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path home_candidate "${HOME:-}" || true
     current_user="$(_acfs_doctor_resolve_current_user 2>/dev/null || true)"
     if [[ "$current_user" == "root" ]]; then
         printf '/root\n'
@@ -231,7 +250,7 @@ _acfs_doctor_resolve_current_home() {
 }
 
 _acfs_doctor_current_home="$(_acfs_doctor_resolve_current_home 2>/dev/null || true)"
-_acfs_doctor_original_home="$(_acfs_doctor_sanitize_abs_nonroot_path "${HOME:-}" 2>/dev/null || true)"
+_acfs_doctor_assign_abs_nonroot_path _acfs_doctor_original_home "${HOME:-}" || true
 if [[ -n "$_acfs_doctor_original_home" ]]; then
     HOME="$_acfs_doctor_original_home"
     export HOME
@@ -244,16 +263,16 @@ _ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET=false
 if [[ -n "$_ACFS_DOCTOR_ENV_TARGET_USER" ]]; then
     _ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET=true
 fi
-_ACFS_DOCTOR_ENV_TARGET_HOME="$(_acfs_doctor_sanitize_abs_nonroot_path "${TARGET_HOME:-}" 2>/dev/null || true)"
-_ACFS_DOCTOR_ENV_ACFS_HOME="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_HOME:-}" 2>/dev/null || true)"
+_acfs_doctor_assign_abs_nonroot_path _ACFS_DOCTOR_ENV_TARGET_HOME "${TARGET_HOME:-}" || true
+_acfs_doctor_assign_abs_nonroot_path _ACFS_DOCTOR_ENV_ACFS_HOME "${ACFS_HOME:-}" || true
 TARGET_HOME="$_ACFS_DOCTOR_ENV_TARGET_HOME"
-ACFS_HOME="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_HOME:-}" 2>/dev/null || true)"
-ACFS_STATE_FILE="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_STATE_FILE:-}" 2>/dev/null || true)"
-ACFS_SYSTEM_STATE_FILE="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}" 2>/dev/null || true)"
+_acfs_doctor_assign_abs_nonroot_path ACFS_HOME "${ACFS_HOME:-}" || true
+_acfs_doctor_assign_abs_nonroot_path ACFS_STATE_FILE "${ACFS_STATE_FILE:-}" || true
+_acfs_doctor_assign_abs_nonroot_path ACFS_SYSTEM_STATE_FILE "${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}" || true
 if [[ -z "$ACFS_SYSTEM_STATE_FILE" ]]; then
     ACFS_SYSTEM_STATE_FILE="/var/lib/acfs/state.json"
 fi
-_ACFS_DOCTOR_ENV_BIN_DIR="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
+_acfs_doctor_assign_abs_nonroot_path _ACFS_DOCTOR_ENV_BIN_DIR "${ACFS_BIN_DIR:-}" || true
 ACFS_BIN_DIR=""
 export TARGET_HOME ACFS_HOME ACFS_STATE_FILE ACFS_SYSTEM_STATE_FILE ACFS_BIN_DIR
 
@@ -343,12 +362,12 @@ case "$SCRIPT_DIR" in
         _acfs_doctor_script_acfs_home="${SCRIPT_DIR%/scripts/lib}"
         ;;
 esac
-_acfs_doctor_script_acfs_home="$(_acfs_doctor_sanitize_abs_nonroot_path "${_acfs_doctor_script_acfs_home:-}" 2>/dev/null || true)"
+_acfs_doctor_assign_abs_nonroot_path _acfs_doctor_script_acfs_home "${_acfs_doctor_script_acfs_home:-}" || true
 
 _acfs_doctor_acfs_home_for_home() {
     local base_home="${1:-}"
 
-    base_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$base_home" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path base_home "$base_home" || true
     [[ -n "$base_home" ]] || return 1
     printf '%s\n' "$base_home/.acfs"
 }
@@ -356,19 +375,19 @@ _acfs_doctor_acfs_home_for_home() {
 _acfs_doctor_acfs_home_matches_home() {
     local acfs_home="${1:-}"
     local base_home="${2:-}"
-    local expected_acfs_home=""
-
-    acfs_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$acfs_home" 2>/dev/null || true)"
-    [[ -n "$acfs_home" ]] || return 1
-    expected_acfs_home="$(_acfs_doctor_acfs_home_for_home "$base_home" 2>/dev/null || true)"
-    [[ -n "$expected_acfs_home" ]] || return 1
-    [[ "$acfs_home" == "$expected_acfs_home" ]]
+    # These are lexical path checks, not filesystem queries. Avoid nested
+    # command substitutions here: every helper lookup repeats this predicate,
+    # and the extra fork/wait chains dominate startup on a contended host.
+    _acfs_doctor_assign_abs_nonroot_path acfs_home "$acfs_home" || true
+    _acfs_doctor_assign_abs_nonroot_path base_home "$base_home" || true
+    [[ -n "$acfs_home" && -n "$base_home" ]] || return 1
+    [[ "$acfs_home" == "$base_home/.acfs" ]]
 }
 
 _acfs_doctor_trusted_lookup_acfs_home() {
     local acfs_home="${ACFS_HOME:-}"
 
-    acfs_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$acfs_home" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path acfs_home "$acfs_home" || true
     [[ -n "$acfs_home" ]] || return 1
 
     if [[ -n "${_acfs_doctor_script_acfs_home:-}" ]]; then
@@ -393,7 +412,7 @@ _acfs_doctor_trusted_lookup_acfs_home() {
 _acfs_doctor_trusted_runtime_acfs_home() {
     local acfs_home="${ACFS_HOME:-}"
 
-    acfs_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$acfs_home" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path acfs_home "$acfs_home" || true
     [[ -n "$acfs_home" ]] || return 1
 
     if [[ -n "${_acfs_doctor_script_acfs_home:-}" ]]; then
@@ -415,11 +434,19 @@ _acfs_doctor_find_project_path() {
     local candidate=""
     local trusted_acfs_home=""
 
-    trusted_acfs_home="$(_acfs_doctor_trusted_lookup_acfs_home 2>/dev/null || true)"
-
     for candidate in \
         "$SCRIPT_DIR/../$rel_path" \
-        "$SCRIPT_DIR/../../$rel_path" \
+        "$SCRIPT_DIR/../../$rel_path"; do
+        if [[ -f "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    # Only resolve fallback homes when the checkout/installed relative paths
+    # are absent. Preserve their priority and the existing trusted-home rules.
+    trusted_acfs_home="$(_acfs_doctor_trusted_lookup_acfs_home 2>/dev/null || true)"
+    for candidate in \
         "${trusted_acfs_home:+$trusted_acfs_home/$rel_path}" \
         "${_acfs_doctor_current_home:+$_acfs_doctor_current_home/.acfs/$rel_path}"; do
         if [[ -f "$candidate" ]]; then
@@ -437,6 +464,58 @@ _acfs_doctor_find_lib_script() {
 
 _acfs_doctor_find_scripts_script() {
     _acfs_doctor_find_project_path "scripts/$1"
+}
+
+_acfs_doctor_exec_bash_script() {
+    local script_path="${1:-}"
+    local bash_bin=""
+    local env_bin=""
+    local passthrough_acfs_home=""
+    local passthrough_home=""
+    local passthrough_target_user=""
+    local passthrough_target_home=""
+    local passthrough_bin_dir=""
+    shift || true
+
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$bash_bin" ]]; then
+        echo "Error: bash not found" >&2
+        return 1
+    fi
+
+    _acfs_doctor_assign_abs_nonroot_path passthrough_acfs_home "${ACFS_HOME:-}" || true
+    _acfs_doctor_assign_abs_nonroot_path passthrough_target_home "${TARGET_HOME:-}" || true
+    passthrough_home="$passthrough_target_home"
+    if [[ -z "$passthrough_home" ]]; then
+        _acfs_doctor_assign_abs_nonroot_path passthrough_home "${_acfs_doctor_original_home:-}" || true
+    fi
+    _acfs_doctor_assign_abs_nonroot_path passthrough_bin_dir "${ACFS_BIN_DIR:-}" || true
+    passthrough_target_user="${TARGET_USER:-}"
+    if [[ -n "$passthrough_acfs_home" ]] && [[ -n "$passthrough_home" ]] && \
+       _acfs_doctor_acfs_home_matches_home "$passthrough_acfs_home" "$passthrough_home" 2>/dev/null; then
+        env_bin="$(_acfs_doctor_system_binary_path env 2>/dev/null || true)"
+        if [[ -n "$env_bin" ]]; then
+            exec "$env_bin" \
+                HOME="$passthrough_home" \
+                ACFS_HOME="$passthrough_acfs_home" \
+                TARGET_USER="$passthrough_target_user" \
+                TARGET_HOME="$passthrough_target_home" \
+                ACFS_BIN_DIR="$passthrough_bin_dir" \
+                "$bash_bin" "$script_path" "$@"
+        fi
+    fi
+
+    exec "$bash_bin" "$script_path" "$@"
+}
+
+_acfs_doctor_exec_readiness() {
+    local readiness_script=""
+    readiness_script="$(_acfs_doctor_find_scripts_script "agent-readiness-audit.sh" 2>/dev/null || true)"
+    if [[ -n "$readiness_script" ]]; then
+        _acfs_doctor_exec_bash_script "$readiness_script" "$@"
+    fi
+    echo "Error: agent-readiness-audit.sh not found; re-run the ACFS installer (or: acfs update --bootstrap-self-update)" >&2
+    return 1
 }
 
 _acfs_doctor_shell_has_active_assignment() {
@@ -522,9 +601,9 @@ _acfs_doctor_validate_bin_dir_for_home() {
     local passwd_home=""
     local hinted_home=""
 
-    bin_dir="$(_acfs_doctor_sanitize_abs_nonroot_path "$bin_dir" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path bin_dir "$bin_dir" || true
     [[ -n "$bin_dir" ]] || return 1
-    base_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$base_home" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path base_home "$base_home" || true
 
     if [[ -n "$base_home" ]] && [[ "$bin_dir" == "$base_home" || "$bin_dir" == "$base_home/"* ]]; then
         printf '%s\n' "$bin_dir"
@@ -540,7 +619,7 @@ _acfs_doctor_validate_bin_dir_for_home() {
         */go/bin) hinted_home="${bin_dir%/go/bin}" ;;
         */google-cloud-sdk/bin) hinted_home="${bin_dir%/google-cloud-sdk/bin}" ;;
     esac
-    hinted_home="$(_acfs_doctor_sanitize_abs_nonroot_path "$hinted_home" 2>/dev/null || true)"
+    _acfs_doctor_assign_abs_nonroot_path hinted_home "$hinted_home" || true
     if [[ -n "$hinted_home" ]] && [[ -n "$base_home" ]] && [[ "$hinted_home" != "$base_home" ]]; then
         return 1
     fi
@@ -562,23 +641,34 @@ _DOCTOR_OUTPUT_FORMAT=""
 _DOCTOR_SHOW_STATS=false
 
 
-# Prefer the installed VERSION file when available.
-_acfs_doctor_version_file="$(_acfs_doctor_find_project_path "VERSION" 2>/dev/null || true)"
-if [[ -n "$_acfs_doctor_version_file" ]]; then
-    ACFS_VERSION="$(cat "$_acfs_doctor_version_file" 2>/dev/null || echo "$ACFS_VERSION")"
+_acfs_doctor_readiness_dispatch=false
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    case "${1:-}" in
+        agent-readiness|agent_readiness|readiness) _acfs_doctor_readiness_dispatch=true ;;
+    esac
 fi
-unset _acfs_doctor_version_file
 
-# Prefer the installed state file for mode (vibe/safe) when available.
-ACFS_MODE="$(_acfs_doctor_normalize_mode "${ACFS_MODE:-}" 2>/dev/null || true)"
-_acfs_doctor_installed_state="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
-if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$_acfs_doctor_installed_state" ]]; then
-    ACFS_MODE="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_installed_state" "mode" 2>/dev/null || true)"
+# Descriptive doctor metadata is irrelevant to the separate readiness command.
+# Target identity/state resolution below still runs before it can dispatch.
+if [[ "$_acfs_doctor_readiness_dispatch" != true ]]; then
+    # Prefer the installed VERSION file when available.
+    _acfs_doctor_version_file="$(_acfs_doctor_find_project_path "VERSION" 2>/dev/null || true)"
+    if [[ -n "$_acfs_doctor_version_file" ]]; then
+        ACFS_VERSION="$(cat "$_acfs_doctor_version_file" 2>/dev/null || echo "$ACFS_VERSION")"
+    fi
+    unset _acfs_doctor_version_file
+
+    # Prefer the installed state file for mode (vibe/safe) when available.
     ACFS_MODE="$(_acfs_doctor_normalize_mode "${ACFS_MODE:-}" 2>/dev/null || true)"
+    _acfs_doctor_installed_state="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+    if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$_acfs_doctor_installed_state" ]]; then
+        ACFS_MODE="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_installed_state" "mode" 2>/dev/null || true)"
+        ACFS_MODE="$(_acfs_doctor_normalize_mode "${ACFS_MODE:-}" 2>/dev/null || true)"
+    fi
+    ACFS_MODE="${ACFS_MODE:-vibe}"
+    export ACFS_MODE
+    unset _acfs_doctor_installed_state
 fi
-ACFS_MODE="${ACFS_MODE:-vibe}"
-export ACFS_MODE
-unset _acfs_doctor_installed_state
 
 # Prefer authoritative installed/system state before ambient $HOME/.acfs state.
 _acfs_doctor_state_files=()
@@ -787,6 +877,18 @@ unset _ACFS_DOCTOR_ENV_TARGET_USER
 unset _ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET
 
 ensure_path
+
+# Readiness has its own audit/rehearsal implementation and needs no doctor UI,
+# autofix state or generated checks. Dispatch only after identity resolution,
+# the direct-root privilege drop and PATH setup above. Optional doctor modules
+# can otherwise delay or abort both the audit and even rehearsal --help.
+if [[ "$_acfs_doctor_readiness_dispatch" == true ]]; then
+    shift
+    _acfs_doctor_exec_readiness "$@"
+    exit $?
+fi
+unset _acfs_doctor_readiness_dispatch
+
 if command -v gum &>/dev/null; then
     HAS_GUM=true
 fi
@@ -1114,45 +1216,6 @@ print_acfs_help() {
     echo "  support-bundle      Collect diagnostic data for troubleshooting"
     echo "  version             Show ACFS version"
     echo "  help                Show this help message"
-}
-
-_acfs_doctor_exec_bash_script() {
-    local script_path="${1:-}"
-    local bash_bin=""
-    local env_bin=""
-    local passthrough_acfs_home=""
-    local passthrough_home=""
-    local passthrough_target_user=""
-    local passthrough_target_home=""
-    local passthrough_bin_dir=""
-    shift || true
-
-    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
-    if [[ -z "$bash_bin" ]]; then
-        echo "Error: bash not found" >&2
-        return 1
-    fi
-
-    passthrough_acfs_home="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_HOME:-}" 2>/dev/null || true)"
-    passthrough_target_home="$(_acfs_doctor_sanitize_abs_nonroot_path "${TARGET_HOME:-}" 2>/dev/null || true)"
-    passthrough_home="${passthrough_target_home:-$(_acfs_doctor_sanitize_abs_nonroot_path "${_acfs_doctor_original_home:-}" 2>/dev/null || true)}"
-    passthrough_bin_dir="$(_acfs_doctor_sanitize_abs_nonroot_path "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
-    passthrough_target_user="${TARGET_USER:-}"
-    if [[ -n "$passthrough_acfs_home" ]] && [[ -n "$passthrough_home" ]] && \
-       _acfs_doctor_acfs_home_matches_home "$passthrough_acfs_home" "$passthrough_home" 2>/dev/null; then
-        env_bin="$(_acfs_doctor_system_binary_path env 2>/dev/null || true)"
-        if [[ -n "$env_bin" ]]; then
-            exec "$env_bin" \
-                HOME="$passthrough_home" \
-                ACFS_HOME="$passthrough_acfs_home" \
-                TARGET_USER="$passthrough_target_user" \
-                TARGET_HOME="$passthrough_target_home" \
-                ACFS_BIN_DIR="$passthrough_bin_dir" \
-                "$bash_bin" "$script_path" "$@"
-        fi
-    fi
-
-    exec "$bash_bin" "$script_path" "$@"
 }
 
 resolve_session_lib() {
@@ -6268,15 +6331,8 @@ main() {
             ;;
         agent-readiness|agent_readiness|readiness)
             shift
-            local readiness_script=""
-            readiness_script="$(_acfs_doctor_find_scripts_script "agent-readiness-audit.sh" 2>/dev/null || true)"
-
-            if [[ -n "$readiness_script" ]]; then
-                _acfs_doctor_exec_bash_script "$readiness_script" "$@"
-            fi
-
-            echo "Error: agent-readiness-audit.sh not found; re-run the ACFS installer (or: acfs update --bootstrap-self-update)" >&2
-            return 1
+            _acfs_doctor_exec_readiness "$@"
+            return $?
             ;;
         support-bundle|bundle)
             shift
