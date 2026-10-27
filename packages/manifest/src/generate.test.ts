@@ -11,11 +11,15 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -58,6 +62,126 @@ const MANIFEST_PATH = resolve(PROJECT_ROOT, "acfs.manifest.yaml");
 const GENERATED_DIR = resolve(PROJECT_ROOT, "scripts/generated");
 const WEB_GENERATED_DIR = resolve(PROJECT_ROOT, "apps/web/lib/generated");
 const MANIFEST_INDEX_PATH = resolve(GENERATED_DIR, "manifest_index.sh");
+
+describe("Generator publication preflight", () => {
+  function fixture() {
+    const root = mkdtempSync(resolve(tmpdir(), "acfs-generator-publication-"));
+    const ledger = readFileSync(resolve(GENERATED_DIR, "internal_checksums.sh"), "utf8");
+    const files = new Set([
+      ...Array.from(ledger.matchAll(/^\s*\[([^\]]+)\]="[a-f0-9]{64}"$/gm), (match) => match[1]!),
+      "README.md",
+      ...["generate", "parser", "schema", "types", "utils", "validate"].map(
+        (name) => `packages/manifest/src/${name}.ts`,
+      ),
+    ]);
+    for (const file of files) {
+      const destination = resolve(root, file);
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(resolve(PROJECT_ROOT, file), destination);
+    }
+    // Only dependency resolution is shared; all generator inputs and outputs
+    // are real, private copies. No production entrypoint or fs call is mocked.
+    symlinkSync(resolve(PROJECT_ROOT, "packages/manifest/node_modules"), resolve(root, "node_modules"), "dir");
+    const run = (...args: string[]) => spawnSync(process.execPath,
+      ["run", resolve(root, "packages/manifest/src/generate.ts"), ...args],
+      { cwd: root, encoding: "utf8", timeout: 5000 });
+    const initial = run();
+    expect(initial.status, initial.stdout + initial.stderr).toBe(0);
+    return { root, run };
+  }
+
+  function publicationSnapshot(root: string, except?: string) {
+    return ["scripts/generated", "apps/web/lib/generated"].flatMap((directory) =>
+      readdirSync(resolve(root, directory)).map((name) => resolve(root, directory, name)),
+    ).filter((path) => path !== except).map((path) => ({
+      path,
+      sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+      inode: lstatSync(path).ino,
+    }));
+  }
+
+  for (const kind of ["symlink", "dangling symlink", "hardlink", "directory"] as const) {
+    test(`unsafe late ${kind} preserves every earlier output`, () => {
+      const item = fixture();
+      const early = resolve(item.root, "scripts/generated/install_base.sh");
+      writeFileSync(early, "# Existing output must survive rejected generation\n");
+      const late = resolve(item.root, "apps/web/lib/generated/manifest-web-index.ts");
+      renameSync(late, resolve(item.root, "retained-web-index.ts"));
+      const outside = resolve(item.root, "outside-target");
+      if (kind !== "dangling symlink") writeFileSync(outside, "private outside contents\n");
+      if (kind === "symlink" || kind === "dangling symlink") symlinkSync(outside, late);
+      else if (kind === "hardlink") linkSync(outside, late);
+      else mkdirSync(late);
+      const before = lstatSync(late);
+      const earlyInode = lstatSync(early).ino;
+      const outputsBefore = publicationSnapshot(item.root, late);
+      const diff = item.run("--diff");
+      expect(diff.status, diff.stdout + diff.stderr).toBe(1);
+      expect(diff.stdout).toContain("[DIFF] web/manifest-web-index.ts");
+      const result = item.run();
+      expect(result.status, result.stdout + result.stderr).not.toBe(0);
+      expect(readFileSync(early, "utf8")).toBe("# Existing output must survive rejected generation\n");
+      expect(lstatSync(early).ino).toBe(earlyInode);
+      expect(lstatSync(late).ino).toBe(before.ino);
+      expect(publicationSnapshot(item.root, late)).toEqual(outputsBefore);
+      if (kind === "dangling symlink") expect(existsSync(outside)).toBe(false);
+      else expect(readFileSync(outside, "utf8")).toBe("private outside contents\n");
+      expect(result.stdout).not.toContain("Generated:");
+    });
+  }
+
+  test("invalid README regions refuse before changing any output", () => {
+    const item = fixture();
+    const readme = resolve(item.root, "README.md");
+    writeFileSync(readme, "Handwritten documentation without generated region markers\n");
+    const before = publicationSnapshot(item.root);
+    const result = item.run();
+    expect(result.status, result.stdout + result.stderr).not.toBe(0);
+    expect(result.stderr).toContain("generated region");
+    expect(publicationSnapshot(item.root)).toEqual(before);
+    expect(readFileSync(readme, "utf8")).toBe("Handwritten documentation without generated region markers\n");
+    expect(result.stdout).not.toContain("Generated:");
+  });
+
+  test("dry-run and diff report a bad README without writing outputs", () => {
+    const item = fixture();
+    writeFileSync(resolve(item.root, "README.md"), "Missing generated region markers\n");
+    const before = publicationSnapshot(item.root);
+    const preview = item.run("--dry-run");
+    expect(preview.status, preview.stdout + preview.stderr).toBe(0);
+    expect(preview.stdout).toContain("Cannot update generated region");
+    const diff = item.run("--diff");
+    expect(diff.status, diff.stdout + diff.stderr).toBe(1);
+    expect(diff.stdout).toContain("[DIFF] README.md");
+    expect(publicationSnapshot(item.root)).toEqual(before);
+  });
+
+  test("invalid README does not create missing output directories", () => {
+    const item = fixture();
+    writeFileSync(resolve(item.root, "README.md"), "Missing generated region markers\n");
+    const directories = ["scripts/generated", "apps/web/lib/generated"];
+    for (const [index, directory] of directories.entries()) {
+      renameSync(resolve(item.root, directory), resolve(item.root, `retained-generated-${index}`));
+    }
+    const result = item.run();
+    expect(result.status, result.stdout + result.stderr).not.toBe(0);
+    expect(result.stderr).toContain("generated region");
+    for (const directory of directories) expect(existsSync(resolve(item.root, directory))).toBe(false);
+  });
+
+  test("valid generation replaces stale outputs and passes its real drift check", () => {
+    const item = fixture();
+    const path = resolve(item.root, "scripts/generated/install_base.sh");
+    const expected = readFileSync(path);
+    writeFileSync(path, "# Stale generated bytes\n");
+    const result = item.run();
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(readFileSync(path)).toEqual(expected);
+    const diff = item.run("--diff");
+    expect(diff.status, diff.stdout + diff.stderr).toBe(0);
+    expect(diff.stdout).toContain("All generated files are up to date.");
+  });
+});
 
 describe("Generator optional verify parsing", () => {
   test("reports stale generated paths without deleting them", () => {

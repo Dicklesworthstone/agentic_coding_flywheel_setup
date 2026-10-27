@@ -130,21 +130,25 @@ function assertSafeGeneratedDirectory(directory: string): void {
   let current = PROJECT_ROOT;
   for (const segment of rel.split(/[\\/]+/)) {
     current = join(current, segment);
-    if (!existsSync(current)) return;
-    const stat = lstatSync(current);
+    const stat = lstatSync(current, { throwIfNoEntry: false });
+    if (stat === undefined) return;
     if (stat.isSymbolicLink() || !stat.isDirectory()) {
       throw new Error(`Generated output parent is not a real directory: ${current}`);
     }
   }
 }
 
-function writeGeneratedFileNoFollow(path: string, content: string, mode: number): void {
-  if (existsSync(path)) {
-    const stat = lstatSync(path);
-    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
-      throw new Error(`Refusing unsafe generated output target: ${path}`);
-    }
+function assertSafeGeneratedTarget(path: string): void {
+  // existsSync follows links and misses dangling symlinks. Inspect the named
+  // entry itself so a broken link is preserved just like a live one.
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (stat !== undefined && (!stat.isFile() || stat.nlink !== 1)) {
+    throw new Error(`Refusing unsafe generated output target: ${path}`);
   }
+}
+
+function writeGeneratedFileNoFollow(path: string, content: string, mode: number): void {
+  assertSafeGeneratedTarget(path);
 
   // Write to a sibling temp file and rename it over the target so a crash
   // mid-write (or a concurrent reader — install.sh sources these files) can
@@ -4010,7 +4014,7 @@ async function main(): Promise<void> {
   assertAllInputSnapshotsUnchanged();
 
   for (const directory of [OUTPUT_DIR, WEB_OUTPUT_DIR]) {
-    if (existsSync(directory)) assertSafeGeneratedDirectory(directory);
+    assertSafeGeneratedDirectory(directory);
   }
   const actualPaths = [OUTPUT_DIR, WEB_OUTPUT_DIR].flatMap((directory) =>
     existsSync(directory) ? readdirSync(directory).map((name) => join(directory, name)) : [],
@@ -4027,7 +4031,7 @@ async function main(): Promise<void> {
       const filename = filepath.startsWith(WEB_OUTPUT_DIR)
         ? "web/" + filepath.replace(WEB_OUTPUT_DIR + "/", "")
         : filepath.replace(OUTPUT_DIR + "/", "");
-      if (existsSync(filepath)) {
+      if (lstatSync(filepath, { throwIfNoEntry: false }) !== undefined) {
         let existing: string | undefined;
         let actualMode: number | undefined;
         try {
@@ -4134,6 +4138,22 @@ async function main(): Promise<void> {
         .join(", ")}`,
     );
   }
+
+  // Reject known-invalid publication sets before creating directories or
+  // replacing any output. The per-write checks remain necessary because this
+  // preflight does not make publication a transaction against concurrent edits.
+  for (const filepath of filesToGenerate.keys()) {
+    assertSafeGeneratedTarget(filepath);
+  }
+  for (const [filepath, region] of regionsToPatch) {
+    if (region.error !== null || region.content === null) {
+      throw new Error(
+        `Cannot update the generated region in ${relative(PROJECT_ROOT, filepath)}: ${region.error ?? "render produced no content"}`,
+      );
+    }
+    assertInputSnapshotUnchanged(filepath, region.snapshot, region.label);
+  }
+  assertAllInputSnapshotsUnchanged();
 
   // Normal generation mode: write all files
   assertSafeGeneratedDirectory(OUTPUT_DIR);

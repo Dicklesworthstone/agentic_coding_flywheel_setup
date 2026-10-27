@@ -3848,6 +3848,11 @@ bun run generate           # Full regeneration
 bun run generate:dry       # Preview without writing
 ```
 
+Regeneration checks every destination and the marked README regions before writing.
+Unsafe output entries, including dangling links, or broken region markers cause a
+preflight rejection that preserves existing outputs. Each file is replaced atomically;
+the complete output set is not a transaction against concurrent edits or later I/O failures.
+
 ### Generated Manifest Index
 
 The generator produces `manifest_index.sh`, a comprehensive bash metadata file that provides programmatic access to manifest data at runtime:
