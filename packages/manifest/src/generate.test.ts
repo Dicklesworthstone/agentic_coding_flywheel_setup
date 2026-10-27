@@ -63,6 +63,170 @@ const GENERATED_DIR = resolve(PROJECT_ROOT, "scripts/generated");
 const WEB_GENERATED_DIR = resolve(PROJECT_ROOT, "apps/web/lib/generated");
 const MANIFEST_INDEX_PATH = resolve(GENERATED_DIR, "manifest_index.sh");
 
+describe("Pinned TUI release installers", () => {
+  const releases = {
+    lazygit: {
+      version: "0.44.1",
+      x86: "84682f4ad5a449d0a3ffbc8332200fe8651aee9dd91dcd8d87197ba6c2450dbc",
+      arm: "26a435f47b691325c086dad2f84daa6556df5af8efc52b6ed624fa657605c976",
+    },
+    lazydocker: {
+      version: "0.23.3",
+      x86: "1f3c7037326973b85cb85447b2574595103185f8ed067b605dd43cc201bc8786",
+      arm: "ae7bed0309289396d396b8502b2d78d153a4f8ce8add042f655332241e7eac31",
+    },
+  } as const;
+  let scripts: Record<"rendered" | "committed", string>;
+
+  beforeAll(() => {
+    const parsed = parseManifestFile(process.env.ACFS_LAZY_TEST_MANIFEST ?? MANIFEST_PATH);
+    if (!parsed.success || !parsed.data) throw new Error("Unable to parse TUI installer manifest");
+    scripts = {
+      rendered: generateCategoryScript(parsed.data, "tools"),
+      committed: readFileSync(process.env.ACFS_LAZY_TEST_GENERATED ?? resolve(GENERATED_DIR, "install_tools.sh"), "utf8"),
+    };
+  });
+
+  function runInstaller(tool: keyof typeof releases, architecture: string,
+    source: keyof typeof scripts, scenario = "success") {
+    const root = mkdtempSync(resolve(tmpdir(), "acfs-tui-release-"));
+    const payloadDir = resolve(root, "payload");
+    const installDir = resolve(root, "bin");
+    mkdirSync(payloadDir);
+    mkdirSync(installDir);
+    const payload = `#!/bin/sh\nprintf '%s\\n' '${tool} fixture-version'\n`;
+    writeFileSync(resolve(payloadDir, tool), payload);
+    const archive = resolve(root, "release.tar.gz");
+    const packed = spawnSync("/usr/bin/tar", ["-czf", archive, "-C", payloadDir, tool], { encoding: "utf8" });
+    expect(packed.status, packed.stderr).toBe(0);
+    const fixtureHash = createHash("sha256").update(readFileSync(archive)).digest("hex");
+    const release = releases[tool];
+    const functionName = toGeneratedFunctionName(`tools.${tool}`);
+    const start = scripts[source].indexOf(`${functionName}() {\n`);
+    const end = scripts[source].indexOf("\n}\n", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const original = scripts[source].slice(start, end + 3);
+    expect(original).toContain(release.arm);
+    expect(original).toContain(release.x86);
+    // Only the two trust anchors change for this offline archive fixture. The
+    // complete emitted function, URL selection, real sha256sum, tar and chmod
+    // still run. Published ARM64 archives were separately checked against the
+    // unchanged production pins; no upstream binary is executed by this test.
+    const modulePath = resolve(root, "module.sh");
+    writeFileSync(modulePath, original.replaceAll(release.arm, fixtureHash).replaceAll(release.x86, fixtureHash));
+    const expectedArchitecture = architecture === "x86_64" ? "x86_64" : "arm64";
+    const expectedUrl = `https://github.com/jesseduffield/${tool}/releases/download/v${release.version}/${tool}_${release.version}_Linux_${expectedArchitecture}.tar.gz`;
+    const harness = String.raw`
+set -euo pipefail
+uname() { [[ "$*" == -m ]] && printf '%s\n' "$TEST_ARCH"; }
+apt-get() {
+  printf '%s\n' "$@" > "$TEST_ROOT/apt-called"
+  [[ "$TEST_SCENARIO" == apt ]] || return 1
+  command cp "$TEST_ROOT/payload/$TEST_TOOL" "$TEST_ROOT/bin/$TEST_TOOL"
+  command chmod +x "$TEST_ROOT/bin/$TEST_TOOL"
+}
+curl() {
+  printf '%s\n' "$@" > "$TEST_ROOT/curl-called"
+  [[ $# == 5 && "$1" == -q && "$2" == -fsSL && "$3" == "$TEST_URL" && "$4" == -o ]] || return 22
+  [[ "$TEST_SCENARIO" != download ]] || return 22
+  if [[ "$TEST_SCENARIO" == corrupt ]]; then
+    printf '%s\n' 'corrupted release bytes' > "$5"
+  else
+    command cp "$TEST_ARCHIVE" "$5"
+  fi
+}
+tar() {
+  printf '%s\n' "$@" > "$TEST_ROOT/tar-called"
+  [[ $# == 5 && "$1" == -xzf && "$3" == -C && "$4" == /usr/local/bin && "$5" == "$TEST_TOOL" ]] || return 91
+  command tar -xzf "$2" -C "$TEST_ROOT/bin" "$5"
+}
+chmod() {
+  printf '%s\n' "$@" > "$TEST_ROOT/chmod-called"
+  [[ $# == 2 && "$1" == +x && "$2" == "/usr/local/bin/$TEST_TOOL" ]] || return 92
+  command chmod +x "$TEST_ROOT/bin/$TEST_TOOL"
+}
+# Retain every fixture, including the production installer's temporary archive.
+rm() { :; }
+export -f uname apt-get curl tar chmod rm
+source "$TEST_MODULE"
+acfs_require_contract() { :; }
+acfs_generated_ensure_selection() { :; }
+should_run_module() { return 0; }
+log_step() { :; }
+log_info() { :; }
+log_success() { :; }
+log_error() { printf '%s\n' "$*" >&2; }
+run_as_root_shell() { bash -euo pipefail; }
+run_as_target_shell() {
+  : > "$TEST_ROOT/verify-called"
+  PATH="$TEST_ROOT/bin:/usr/bin:/bin" bash -euo pipefail
+}
+"$TEST_FUNCTION"
+`;
+    const result = spawnSync("/usr/bin/bash", ["-c", harness], {
+      encoding: "utf8", timeout: 5000,
+      env: {
+        PATH: "/usr/bin:/bin", HOME: root, TMPDIR: root,
+        TEST_ROOT: root, TEST_ARCH: architecture, TEST_SCENARIO: scenario,
+        TEST_TOOL: tool, TEST_ARCHIVE: archive, TEST_URL: expectedUrl,
+        TEST_MODULE: modulePath, TEST_FUNCTION: functionName,
+      },
+    });
+    return { root, result, expectedUrl, payload, installed: resolve(installDir, tool),
+      called: (name: string) => existsSync(resolve(root, `${name}-called`)),
+      call: (name: string) => readFileSync(resolve(root, `${name}-called`), "utf8"),
+    };
+  }
+
+  for (const source of ["rendered", "committed"] as const) {
+    for (const tool of ["lazygit", "lazydocker"] as const) {
+      for (const architecture of ["x86_64", "aarch64", "arm64"]) {
+        test(`${source} ${tool} installs the pinned ${architecture} release and verifies it`, () => {
+          const run = runInstaller(tool, architecture, source);
+          expect(run.result.status, run.result.stdout + run.result.stderr).toBe(0);
+          expect(run.call("curl").split("\n")[2]).toBe(run.expectedUrl);
+          expect(run.called("tar")).toBe(true);
+          expect(run.called("chmod")).toBe(true);
+          expect(run.called("verify")).toBe(true);
+          expect(readFileSync(run.installed, "utf8")).toBe(run.payload);
+          expect(lstatSync(run.installed).mode & 0o111).not.toBe(0);
+          expect(run.result.stdout).toContain(`${tool} fixture-version`);
+        });
+      }
+      for (const scenario of ["download", "corrupt"]) {
+        test(`${source} ${tool} refuses ${scenario} failure before installation`, () => {
+          const run = runInstaller(tool, "x86_64", source, scenario);
+          expect(run.result.status).not.toBe(0);
+          expect(run.call("curl").split("\n")[2]).toBe(run.expectedUrl);
+          expect(run.called("tar")).toBe(false);
+          expect(run.called("chmod")).toBe(false);
+          expect(run.called("verify")).toBe(false);
+          expect(existsSync(run.installed)).toBe(false);
+          if (scenario === "corrupt") expect(run.result.stderr).toContain("did NOT match");
+        });
+      }
+      test(`${source} ${tool} refuses an unsupported architecture before downloads or verification`, () => {
+        const run = runInstaller(tool, "riscv64", source);
+        expect(run.result.status).not.toBe(0);
+        expect(run.result.stderr).toContain(`Unsupported arch for ${tool} binary: riscv64`);
+        expect(run.called("curl")).toBe(false);
+        expect(run.called("tar")).toBe(false);
+        expect(run.called("verify")).toBe(false);
+      });
+    }
+    test(`${source} lazygit retains its successful apt installation path`, () => {
+      const run = runInstaller("lazygit", "aarch64", source, "apt");
+      expect(run.result.status, run.result.stdout + run.result.stderr).toBe(0);
+      expect(run.called("apt")).toBe(true);
+      expect(run.called("curl")).toBe(false);
+      expect(run.called("tar")).toBe(false);
+      expect(run.called("verify")).toBe(true);
+      expect(run.result.stdout).toContain("lazygit fixture-version");
+    });
+  }
+});
+
 describe("Generator publication preflight", () => {
   function fixture() {
     const root = mkdtempSync(resolve(tmpdir(), "acfs-generator-publication-"));

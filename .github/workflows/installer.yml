@@ -183,6 +183,10 @@ jobs:
         run: bun test src/generate.test.ts --test-name-pattern 'uv archive verification prerequisite'
         working-directory: packages/manifest
 
+      - name: Run pinned TUI release installer regressions
+        run: bun test src/generate.test.ts --test-name-pattern 'Pinned TUI release installers'
+        working-directory: packages/manifest
+
       - name: Install ShellCheck
         run: |
           sudo apt-get update

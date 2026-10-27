@@ -374,12 +374,12 @@ fi
 LG_VER="0.44.1"
 ARCH=$(uname -m)
 case "$ARCH" in
-  x86_64) LG_SHA="84682f4ad5a449d0a3ffbc8332200fe8651aee9dd91dcd8d87197ba6c2450dbc" ;;
-  aarch64) LG_SHA="26a435f47b691325c086dad2f84daa6556df5af8efc52b6ed624fa657605c976" ;;
-  *) echo "Unsupported arch for lazygit binary: $ARCH"; exit 0 ;;
+  x86_64) LG_ARCH="x86_64"; LG_SHA="84682f4ad5a449d0a3ffbc8332200fe8651aee9dd91dcd8d87197ba6c2450dbc" ;;
+  aarch64|arm64) LG_ARCH="arm64"; LG_SHA="26a435f47b691325c086dad2f84daa6556df5af8efc52b6ed624fa657605c976" ;;
+  *) echo "Unsupported arch for lazygit binary: $ARCH" >&2; exit 1 ;;
 esac
 
-LG_URL="https://github.com/jesseduffield/lazygit/releases/download/v${LG_VER}/lazygit_${LG_VER}_Linux_${ARCH}.tar.gz"
+LG_URL="https://github.com/jesseduffield/lazygit/releases/download/v${LG_VER}/lazygit_${LG_VER}_Linux_${LG_ARCH}.tar.gz"
 TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/acfs_install.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
@@ -430,12 +430,12 @@ acfs_generated_install_tools_lazydocker() {
 LD_VER="0.23.3"
 ARCH=$(uname -m)
 case "$ARCH" in
-  x86_64) LD_SHA="1f3c7037326973b85cb85447b2574595103185f8ed067b605dd43cc201bc8786" ;;
-  aarch64) LD_SHA="ae7bed0309289396d396b8502b2d78d153a4f8ce8add042f655332241e7eac31" ;;
-  *) echo "Unsupported arch for lazydocker binary: $ARCH"; exit 0 ;;
+  x86_64) LD_ARCH="x86_64"; LD_SHA="1f3c7037326973b85cb85447b2574595103185f8ed067b605dd43cc201bc8786" ;;
+  aarch64|arm64) LD_ARCH="arm64"; LD_SHA="ae7bed0309289396d396b8502b2d78d153a4f8ce8add042f655332241e7eac31" ;;
+  *) echo "Unsupported arch for lazydocker binary: $ARCH" >&2; exit 1 ;;
 esac
 
-LD_URL="https://github.com/jesseduffield/lazydocker/releases/download/v${LD_VER}/lazydocker_${LD_VER}_Linux_${ARCH}.tar.gz"
+LD_URL="https://github.com/jesseduffield/lazydocker/releases/download/v${LD_VER}/lazydocker_${LD_VER}_Linux_${LD_ARCH}.tar.gz"
 TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/acfs_install.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
