@@ -15,6 +15,8 @@ CAPACITY_RESOURCE_PROFILE=false
 CAPACITY_RESOURCE_PROFILE_APPLY=false
 CAPACITY_RESOURCE_PROFILE_DISABLE=false
 CAPACITY_RESOURCE_PROFILE_ROOT=""
+CAPACITY_MEMORY_MAX_MIB=""
+CAPACITY_MEMORY_SWAP_MAX_MIB=""
 
 capacity_usage() {
     cat <<'EOF'
@@ -26,11 +28,18 @@ Options:
   --profile <agents>      Check a target agent count, e.g. 25 or 25-agents
   --recommend-ntm         Include an NTM launch recommendation
   --resource-profile      Report opt-in systemd resource profile wrappers
+  --memory-max-mib <MiB>  Explicit per-scope RAM ceiling (1..1048576 MiB)
+  --memory-swap-max-mib <MiB>
+                          Optional swap ceiling (0..1048576; requires RAM ceiling)
   --apply-resource-profile
                           Write opt-in ACFS wrapper files under ~/.acfs
   --disable-resource-profile
                           Write a disabled profile marker/snippet, no deletion
   -h, --help              Show this help
+
+Memory ceilings require a resource profile. Its bounded wrappers refuse to
+start commands unless a systemd user scope's cgroup v2 limits are verified.
+Without an explicit ceiling, the existing weights-only behavior is unchanged.
 
 Environment overrides for tests:
   ACFS_CAPACITY_CPU_COUNT
@@ -70,6 +79,28 @@ capacity_parse_args() {
                 CAPACITY_RESOURCE_PROFILE=true
                 shift
                 ;;
+            --memory-max-mib|--memory-swap-max-mib)
+                [[ $# -ge 2 ]] || { echo "Error: $1 requires a value" >&2; return 2; }
+                local limit minimum=0
+                [[ "$1" == --memory-max-mib ]] && minimum=1
+                if [[ ! "$2" =~ ^[0-9]{1,7}$ ]]; then
+                    echo "Error: $1 requires an integer number of MiB" >&2
+                    return 2
+                fi
+                limit=$((10#$2))
+                if (( limit < minimum || limit > 1048576 )); then
+                    echo "Error: $1 must be between $minimum and 1048576 MiB" >&2
+                    return 2
+                fi
+                if [[ "$1" == --memory-max-mib ]]; then
+                    [[ -z "$CAPACITY_MEMORY_MAX_MIB" ]] || { echo "Error: repeated --memory-max-mib" >&2; return 2; }
+                    CAPACITY_MEMORY_MAX_MIB="$limit"
+                else
+                    [[ -z "$CAPACITY_MEMORY_SWAP_MAX_MIB" ]] || { echo "Error: repeated --memory-swap-max-mib" >&2; return 2; }
+                    CAPACITY_MEMORY_SWAP_MAX_MIB="$limit"
+                fi
+                shift 2
+                ;;
             --apply-resource-profile)
                 CAPACITY_RESOURCE_PROFILE=true
                 CAPACITY_RESOURCE_PROFILE_APPLY=true
@@ -102,6 +133,16 @@ capacity_parse_args() {
 
     if [[ "$CAPACITY_RESOURCE_PROFILE_APPLY" == true && "$CAPACITY_RESOURCE_PROFILE_DISABLE" == true ]]; then
         echo "Error: choose only one of --apply-resource-profile or --disable-resource-profile" >&2
+        return 2
+    fi
+    if [[ -n "$CAPACITY_MEMORY_SWAP_MAX_MIB" && -z "$CAPACITY_MEMORY_MAX_MIB" ]]; then
+        echo "Error: --memory-swap-max-mib requires --memory-max-mib" >&2
+        return 2
+    fi
+    if [[ -n "$CAPACITY_MEMORY_MAX_MIB" ]] && {
+        [[ "$CAPACITY_RESOURCE_PROFILE" != true ]] || [[ "$CAPACITY_RESOURCE_PROFILE_DISABLE" == true ]];
+    }; then
+        echo "Error: memory ceilings require --resource-profile or --apply-resource-profile, and cannot be used while disabling it" >&2
         return 2
     fi
 }
@@ -283,6 +324,17 @@ capacity_resource_profile_state() {
     fi
 }
 
+capacity_resource_apply_command() {
+    printf 'acfs capacity --resource-profile'
+    if [[ -n "$CAPACITY_MEMORY_MAX_MIB" ]]; then
+        printf ' --memory-max-mib %s' "$CAPACITY_MEMORY_MAX_MIB"
+    fi
+    if [[ -n "$CAPACITY_MEMORY_SWAP_MAX_MIB" ]]; then
+        printf ' --memory-swap-max-mib %s' "$CAPACITY_MEMORY_SWAP_MAX_MIB"
+    fi
+    printf ' --apply-resource-profile'
+}
+
 capacity_resource_profile_json() {
     local root="$1"
     local state="$2"
@@ -308,6 +360,9 @@ capacity_resource_profile_json() {
         --arg manifest_file "$manifest_file" \
         --arg status "$status" \
         --arg failure_reason "$failure_reason" \
+        --arg apply_command "$(capacity_resource_apply_command)" \
+        --argjson memory_max_mib "${CAPACITY_MEMORY_MAX_MIB:-null}" \
+        --argjson memory_swap_max_mib "${CAPACITY_MEMORY_SWAP_MAX_MIB:-null}" \
         --argjson systemd_run_available "$systemd_run_available" \
         --argjson systemd_user_available "$systemd_user_available" \
         '{
@@ -324,6 +379,16 @@ capacity_resource_profile_json() {
                 systemd_run_available: $systemd_run_available,
                 user_manager_available: $systemd_user_available
             },
+            memory_bounds: {
+                enabled: ($memory_max_mib != null),
+                memory_max_mib: $memory_max_mib,
+                memory_swap_max_mib: $memory_swap_max_mib,
+                on_unavailable: (if $memory_max_mib == null then "direct-execution" else "refuse" end),
+                enforcement: (if $memory_max_mib == null then "none" else "cgroup-v2-verified" end),
+                applies_to: "each explicitly wrapped command and its descendants",
+                verification: "performed inside each new scope before starting the command",
+                aggregate_host_limit: false
+            },
             safety: {
                 no_hard_memory_limits_by_default: true,
                 direct_agent_aliases_unchanged: true,
@@ -331,15 +396,18 @@ capacity_resource_profile_json() {
                 limited_to_acfs_owned_files: true,
                 destructive_cleanup_required: false
             },
-            classes: [
+            classes: ([
                 {name: "agent", slice: "acfs-agent.slice", properties: ["CPUAccounting=yes", "MemoryAccounting=yes", "IOAccounting=yes", "TasksAccounting=yes", "CPUWeight=100", "IOWeight=100", "TasksMax=512"]},
                 {name: "background", slice: "acfs-background.slice", properties: ["CPUAccounting=yes", "MemoryAccounting=yes", "IOAccounting=yes", "TasksAccounting=yes", "CPUWeight=40", "IOWeight=50", "TasksMax=512"]},
                 {name: "local-build", slice: "acfs-local-build.slice", properties: ["CPUAccounting=yes", "MemoryAccounting=yes", "IOAccounting=yes", "TasksAccounting=yes", "CPUWeight=60", "IOWeight=50", "TasksMax=512"]},
                 {name: "support", slice: "acfs-support.slice", properties: ["CPUAccounting=yes", "MemoryAccounting=yes", "IOAccounting=yes", "TasksAccounting=yes", "CPUWeight=80", "IOWeight=100", "TasksMax=256"]},
                 {name: "rch", slice: "acfs-rch.slice", properties: ["CPUAccounting=yes", "MemoryAccounting=yes", "IOAccounting=yes", "TasksAccounting=yes", "CPUWeight=100", "IOWeight=100", "TasksMax=512"]}
-            ],
+            ] | map(.properties += (
+                (if $memory_max_mib == null then [] else ["MemoryMax=" + ($memory_max_mib * 1048576 | tostring)] end)
+                + (if $memory_swap_max_mib == null then [] else ["MemorySwapMax=" + ($memory_swap_max_mib * 1048576 | tostring)] end)
+            ))),
             wrappers: [
-                {name: "acfs-scope", path: ($bin_dir + "/acfs-scope"), purpose: "Run an explicit command in an opt-in ACFS systemd user scope when available; otherwise execute directly."},
+                {name: "acfs-scope", path: ($bin_dir + "/acfs-scope"), purpose: (if $memory_max_mib == null then "Run an explicit command in an opt-in ACFS systemd user scope when available; otherwise execute directly." else "Run an explicit command only after verifying its selected memory ceilings inside a systemd user scope." end)},
                 {name: "ccs", path: ($bin_dir + "/ccs"), command: "acfs-scope agent -- claude"},
                 {name: "cods", path: ($bin_dir + "/cods"), command: "acfs-scope agent -- codex"},
                 {name: "gmis", path: ($bin_dir + "/gmis"), command: "acfs-scope agent -- gemini"},
@@ -360,7 +428,7 @@ capacity_resource_profile_json() {
                     [
                         "Resource profile application did not complete.",
                         "Inspect filesystem permissions under the ACFS resource profile root.",
-                        "Fix the reported write failure, then rerun acfs capacity --resource-profile --apply-resource-profile."
+                        ("Fix the reported write failure, then rerun " + $apply_command + ".")
                     ] + (if $failure_reason == "" then [] else [$failure_reason] end)
                 else
                     []
@@ -382,19 +450,142 @@ capacity_resource_profile_json() {
         }'
 }
 
+capacity_scope_memory_guard_code() {
+    cat <<'ACFS_SCOPE_MEMORY_GUARD_PY'
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+
+
+def read_text(path, limit=262144, directory=None):
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory)
+    with os.fdopen(fd, "rb") as source:
+        if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            raise ValueError("non-regular cgroup observation")
+        data = source.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("oversized cgroup observation")
+    return data.decode("utf-8", "strict")
+
+
+def parts(path):
+    if not path.startswith("/") or "\x00" in path:
+        raise ValueError("invalid cgroup path")
+    result = path.split("/")[1:]
+    if any(part in (".", "..") for part in result) or len(result) > 128:
+        raise ValueError("unresolved cgroup path")
+    return tuple(part for part in result if part)
+
+
+def unescape(path):
+    return re.sub(r"\\(040|011|012|134)", lambda match: chr(int(match[1], 8)), path)
+
+
+def verify_limits(memory_max_bytes, swap_max_bytes=None, proc=Path("/proc")):
+    if type(memory_max_bytes) is not int or memory_max_bytes <= 0:
+        raise ValueError("invalid memory ceiling")
+    if swap_max_bytes is not None and (type(swap_max_bytes) is not int or swap_max_bytes < 0):
+        raise ValueError("invalid swap ceiling")
+    membership = read_text(proc / "self/cgroup")
+    mountinfo = read_text(proc / "self/mountinfo", 4 * 1024 * 1024)
+    groups = [line[3:] for line in membership.splitlines() if line.startswith("0::")]
+    if len(groups) != 1:
+        raise ValueError("cgroup v2 is required")
+    group = parts(groups[0])
+    choices = []
+    for line in mountinfo.splitlines():
+        before, separator, after = line.partition(" - ")
+        fields, extra = before.split(), after.split()
+        if not separator or len(fields) < 6 or len(extra) < 3:
+            raise ValueError("invalid mount observation")
+        if extra[0] != "cgroup2":
+            continue
+        root, point = parts(unescape(fields[3])), unescape(fields[4])
+        parts(point)
+        if group[:len(root)] == root:
+            choices.append((root, point))
+    if not choices:
+        raise ValueError("cgroup v2 mount is unavailable")
+    root, point = min(choices, key=lambda item: (len(item[0]), item[1]))
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in parts(point) + group[len(root):]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        limits = [("memory.max", memory_max_bytes)]
+        if swap_max_bytes is not None:
+            limits.append(("memory.swap.max", swap_max_bytes))
+        for name, requested in limits:
+            actual = read_text(name, 128, fd).strip()
+            if not re.fullmatch(r"[0-9]{1,20}", actual) or int(actual) > requested:
+                raise ValueError("requested memory ceiling is not enforced")
+        if membership != read_text(proc / "self/cgroup") or mountinfo != read_text(proc / "self/mountinfo", 4 * 1024 * 1024):
+            raise ValueError("cgroup changed during verification")
+    finally:
+        os.close(fd)
+
+
+if __name__ == "__main__":
+    try:
+        if len(sys.argv) < 4:
+            raise ValueError("command required")
+        verify_limits(int(sys.argv[1]), None if sys.argv[2] == "-" else int(sys.argv[2]))
+    except (OSError, ValueError):
+        print("Error: ACFS could not verify the requested cgroup v2 memory ceilings; command not started.", file=sys.stderr)
+        sys.exit(125)
+    try:
+        os.execvpe(sys.argv[3], sys.argv[3:], os.environ)
+    except FileNotFoundError:
+        print("Error: scoped command was not found.", file=sys.stderr)
+        sys.exit(127)
+    except OSError:
+        print("Error: scoped command could not be started.", file=sys.stderr)
+        sys.exit(126)
+ACFS_SCOPE_MEMORY_GUARD_PY
+}
+
 capacity_write_resource_scope_wrapper() {
     local path="$1"
-    cat > "$path" <<'EOF'
+    {
+        cat <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+EOF
+        # Freeze explicit limits in this wrapper. Environment settings or a
+        # different acfs-scope earlier in PATH must not silently remove them.
+        printf 'memory_max_bytes=%q\n' "${CAPACITY_MEMORY_MAX_MIB:+$((CAPACITY_MEMORY_MAX_MIB * 1048576))}"
+        printf 'memory_swap_max_bytes=%q\n' "${CAPACITY_MEMORY_SWAP_MAX_MIB:+$((CAPACITY_MEMORY_SWAP_MAX_MIB * 1048576))}"
+        printf 'memory_properties=('
+        if [[ -n "$CAPACITY_MEMORY_MAX_MIB" ]]; then
+            printf ' %q' "MemoryMax=$((CAPACITY_MEMORY_MAX_MIB * 1048576))"
+        fi
+        if [[ -n "$CAPACITY_MEMORY_SWAP_MAX_MIB" ]]; then
+            printf ' %q' "MemorySwapMax=$((CAPACITY_MEMORY_SWAP_MAX_MIB * 1048576))"
+        fi
+        printf ')\n'
+        if [[ -n "$CAPACITY_MEMORY_MAX_MIB" ]]; then
+            printf "memory_guard_code=\$(cat <<'ACFS_SCOPE_MEMORY_GUARD'\n"
+            capacity_scope_memory_guard_code
+            printf '\nACFS_SCOPE_MEMORY_GUARD\n)\n'
+        else
+            printf 'memory_guard_code=\n'
+        fi
+        cat <<'EOF'
 
 usage() {
     cat <<'USAGE'
 Usage: acfs-scope <agent|background|local-build|support|rch> -- <command> [args...]
 
 Runs a command inside an opt-in ACFS systemd user scope when systemd user
-scopes are available. Falls back to direct execution when unavailable.
+scopes are available. Explicit memory ceilings are verified inside the scope
+before starting the command; unavailable containment refuses the launch.
+Only profiles without memory ceilings fall back to direct execution.
 USAGE
+    printf '\nMemory ceiling: %s bytes; swap ceiling: %s bytes\n' \
+        "${memory_max_bytes:-not selected}" "${memory_swap_max_bytes:-not selected}"
 }
 
 class="${1:-}"
@@ -440,12 +631,21 @@ case "$class" in
         exit 2
         ;;
 esac
+properties+=("${memory_properties[@]}")
+
+unavailable() {
+    if [[ -n "$memory_max_bytes" ]]; then
+        echo "Error: memory-bounded ACFS scopes require systemd-run, a working user manager, and Python 3; command not started." >&2
+        exit 125
+    fi
+    exec "$@"
+}
 
 if ! command -v systemd-run >/dev/null 2>&1 || ! command -v systemctl >/dev/null 2>&1; then
-    exec "$@"
+    unavailable "$@"
 fi
 if ! systemctl --user show-environment >/dev/null 2>&1; then
-    exec "$@"
+    unavailable "$@"
 fi
 
 args=(--user --scope --same-dir --collect "--slice=$slice")
@@ -453,8 +653,14 @@ for property in "${properties[@]}"; do
     args+=("--property=$property")
 done
 
-exec systemd-run "${args[@]}" "$@"
+if [[ -n "$memory_max_bytes" ]]; then
+    python_bin="$(command -v python3)" || unavailable "$@"
+    exec systemd-run "${args[@]}" -- "$python_bin" -I -c "$memory_guard_code" \
+        "$memory_max_bytes" "${memory_swap_max_bytes:--}" "$@"
+fi
+exec systemd-run "${args[@]}" -- "$@"
 EOF
+    } > "$path"
 }
 
 capacity_write_resource_command_wrapper() {
@@ -465,7 +671,8 @@ capacity_write_resource_command_wrapper() {
     {
         printf '#!/usr/bin/env bash\n'
         printf 'set -euo pipefail\n'
-        printf 'exec acfs-scope %q --' "$class"
+        printf 'scope_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"\n'
+        printf 'exec "$scope_dir/acfs-scope" %q --' "$class"
         # printf ' %q' with zero args still emits " ''", which made the
         # generated wrapper exec the empty string.
         if (($#)); then
@@ -572,7 +779,14 @@ capacity_emit_resource_profile_human() {
     echo ""
     echo "Safety"
     echo "  Opt-in only:          true"
-    echo "  Hard MemoryMax:       not set"
+    if [[ -n "$CAPACITY_MEMORY_MAX_MIB" ]]; then
+        echo "  Hard MemoryMax:       $CAPACITY_MEMORY_MAX_MIB MiB per scope"
+        echo "  MemorySwapMax:        ${CAPACITY_MEMORY_SWAP_MAX_MIB:-not set} (MiB if selected)"
+        echo "  Unverified limits:    command will not start"
+        echo "  Aggregate host cap:   not set; each scope has its own ceiling"
+    else
+        echo "  Hard MemoryMax:       not set"
+    fi
     echo "  Direct cc/cod/agy:    unchanged"
     echo "  RCH build path:       remains preferred"
     echo ""
@@ -587,16 +801,20 @@ capacity_emit_resource_profile_human() {
 
     if [[ "$state" == "dry-run" ]]; then
         echo ""
-        echo "Apply: acfs capacity --resource-profile --apply-resource-profile"
+        echo "Apply: $(capacity_resource_apply_command)"
         echo "Disable marker/snippet: acfs capacity --resource-profile --disable-resource-profile"
     elif [[ "$state" == "applied" ]]; then
         echo ""
         echo "Enable in current shell: source $root/acfs-resource-profile.sh"
         echo "Inspect: $root/bin/acfs-scope --help"
         echo "Disable marker/snippet: acfs capacity --resource-profile --disable-resource-profile"
-    else
+    elif [[ "$state" == "disabled" ]]; then
         echo ""
         echo "Disabled. Re-enable with: acfs capacity --resource-profile --apply-resource-profile"
+    else
+        echo ""
+        echo "Profile write incomplete; existing files were retained."
+        echo "Retry after repairing the reported write failure: $(capacity_resource_apply_command)"
     fi
 
     if [[ "$apply_failed" == true ]]; then

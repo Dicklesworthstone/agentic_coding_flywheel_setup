@@ -1,153 +1,157 @@
-# Swarm Resource Isolation Research
+# Swarm Resource Isolation
 
-This note records the `bd-8qd3d` design decision for optional resource isolation on large ACFS hosts.
+ACFS provides optional `systemd-run --user --scope` wrappers for commands and
+their child processes. The default resource profile applies scheduling weights
+and accounting. An explicit memory limit adds containment for runaway agent
+children, addressing the per-scope protection layer of [issue #467](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues/467).
 
-## Decision
+The opt-in design established in `bd-8qd3d` and `bd-ylrmm` remains in effect:
+ordinary agent commands and the default resource profile receive no new hard
+memory limit. Existing `cc`, `cod`, and `gmi` aliases are unchanged.
 
-ACFS should not enforce CPU, memory, or I/O limits for agent CLIs by default.
+## Preview a Profile
 
-ACFS should expose an opt-in "balanced" resource profile later, implemented with `systemd-run --user --scope` wrappers for interactive agent commands and optional user-service drop-ins for support daemons. The first implementation should use scheduling weights and accounting before hard limits:
-
-- Prefer `CPUWeight=` and `IOWeight=` for agent/build/background classes.
-- Prefer `MemoryHigh=` only after a local capacity check can size it conservatively.
-- Avoid `MemoryMax=` for Claude, Codex, Gemini, and build commands by default.
-- Keep direct `cc`, `cod`, and `gmi` behavior unchanged unless the user opts in.
-
-This matches the current ACFS posture: the capacity model recommends agent counts and RCH offload, while the shell aliases in `acfs/zsh/acfs.zshrc` launch the model CLIs directly and the Agent Mail service is the only always-on user service that ACFS currently owns.
-
-## Why Systemd Is Appropriate
-
-Systemd slices are designed to group services/scopes under a cgroup resource-control tree, and resource settings on a slice apply to the units inside that slice. See the upstream `systemd.slice` manual and `systemd.resource-control` manual:
-
-- https://www.freedesktop.org/software/systemd/man/devel/systemd.slice.html
-- https://www.freedesktop.org/software/systemd/man/devel/systemd.resource-control.html
-
-For user sessions, systemd already defines user-side `app.slice`, `session.slice`, and `background.slice`. The upstream guidance describes `app.slice` for user applications, `session.slice` for latency-sensitive session services, and `background.slice` for non-interactive work:
-
-- https://www.freedesktop.org/software/systemd/man/256/systemd.special.html
-
-For shell-launched commands, `systemd-run --user --scope` is the least invasive shape because it creates a transient scope around a command instead of requiring a persistent service file. It also supports assigning a slice and properties such as resource controls:
-
-- https://www.freedesktop.org/software/systemd/man/devel/systemd-run.html
-
-## Proposed Resource Classes
-
-These are recommendations for a future opt-in profile, not current installer behavior.
-
-| Class | Commands | Proposed controls | Rationale |
-| --- | --- | --- | --- |
-| `acfs-agent.slice` | `claude`, `codex`, `gemini`, `ntm`-spawned interactive agents | `CPUWeight=100`, `IOWeight=100`, `TasksMax=512`, no default `MemoryMax` | Keep agent sessions first-class and avoid killing expensive context-heavy work. |
-| `acfs-background.slice` | CASS indexing, maintenance sweeps, update jobs, local analysis that is not user-interactive | `CPUWeight=40`, `IOWeight=50`, optional `MemoryHigh=` from capacity model | Let interactive shells and support services stay responsive under load. |
-| `acfs-local-build.slice` | Local fallback build/test commands when RCH is unavailable | `CPUWeight=60`, `IOWeight=50`, no default `MemoryMax` | Local builds are expensive but should not freeze the host; RCH remains the preferred path. |
-| `acfs-support.slice` | Agent Mail, local dashboards, support-bundle helpers, lightweight telemetry collectors | `CPUWeight=80`, `IOWeight=100`, `TasksMax=256`, optional `MemoryHigh=1G` | Coordination daemons should remain responsive but are not expected to consume large CPU. |
-| `acfs-rch.slice` | RCH CLI/daemon-side local processes | `CPUWeight=100`, `IOWeight=100` | RCH is already a pressure-relief layer; do not penalize the offload path. |
-
-The first profile should expose these values as documented recommendations and generated examples. It should not automatically rewrite user aliases or service units.
-
-## Example Future Wrapper
-
-This is the shape to test before implementation:
+First inspect the host's capacity and the proposed profile:
 
 ```bash
-systemd-run --user --scope --same-dir --collect \
-  --slice=acfs-agent.slice \
-  --property=CPUAccounting=yes \
-  --property=MemoryAccounting=yes \
-  --property=IOAccounting=yes \
-  --property=TasksAccounting=yes \
-  --property=CPUWeight=100 \
-  --property=IOWeight=100 \
-  --property=TasksMax=512 \
-  claude --dangerously-skip-permissions
-```
-
-For Codex and Gemini, substitute the command after the properties. A wrapper must preserve the current working directory, environment variables, terminal behavior, exit status, and auth/config lookup paths.
-
-## What To Avoid
-
-- Do not put hard `MemoryMax=` on model CLIs until real high-context sessions are tested.
-- Do not place all user processes under one capped `user-$UID.slice` profile; that risks surprising unrelated shells and editors.
-- Do not make `systemd-run` mandatory. Fresh VPS and container-like environments can have a missing or degraded user manager.
-- Do not wrap RCH-heavy commands in a way that hides the `rch exec --` policy or makes local fallback look like the preferred path.
-
-## Current Implementation
-
-ACFS exposes the first implementation through the existing capacity command:
-
-```bash
+acfs capacity --profile 25-agents --recommend-ntm
 acfs capacity --resource-profile
 ```
 
-That command is read-only by default. It reports proposed resource classes,
-wrapper paths, systemd user-manager availability, and the exact ACFS-owned files
-that would be written.
-
-To enable the opt-in wrappers:
+To preview an 8 GiB memory ceiling and a separate 2 GiB swap ceiling for each
+explicitly wrapped command:
 
 ```bash
-acfs capacity --resource-profile --apply-resource-profile
-source ~/.acfs/resource-profile/acfs-resource-profile.sh
+acfs capacity --resource-profile \
+  --memory-max-mib 8192 --memory-swap-max-mib 2048
 ```
 
-This writes files under `~/.acfs/resource-profile/` only:
+These commands are read-only. The profile report identifies the limits,
+resource classes, wrapper paths, systemd availability, and files that applying
+the profile would write. Add `--json` for machine-readable output.
 
-- `bin/acfs-scope` runs explicit commands in a named ACFS resource class.
-- `bin/ccs`, `bin/cods`, and `bin/gmis` wrap `claude`, `codex`, and `gemini`
-  without changing the existing `cc`, `cod`, or `gmi` aliases.
-- `bin/acfs-local-build` exists for explicit local fallback commands; RCH remains
-  the preferred build/test path.
-- `acfs-resource-profile.sh` is the opt-in PATH snippet.
-- `profile.json` records the generated profile.
+The example limits are choices to review against your workload, not an
+automatic sizing recommendation. `--memory-max-mib` accepts an integer from
+1 to 1048576. `--memory-swap-max-mib` accepts an integer from 0 to 1048576 and
+requires `--memory-max-mib`. A swap value of zero prevents that scope from using
+swap. Omitting the swap option leaves swap subject to the host's existing
+policy; it does not impose a new swap ceiling. Both options require a resource
+profile (`--resource-profile` or `--apply-resource-profile`).
 
-To inspect the active wrapper:
+## Apply and Use the Wrappers
+
+Repeat the reviewed limits when applying:
+
+```bash
+acfs capacity --resource-profile \
+  --memory-max-mib 8192 --memory-swap-max-mib 2048 \
+  --apply-resource-profile
+source ~/.acfs/resource-profile/acfs-resource-profile.sh
+
+ccs       # Claude in a bounded agent scope
+cods      # Codex in a bounded agent scope
+gmis      # Gemini in a bounded agent scope
+```
+
+For another explicit command, choose its resource class:
+
+```bash
+acfs-scope background -- python3 analysis.py
+acfs-scope support -- your-support-command
+```
+
+The generated wrapper retains the selected limits. Changing the limits requires
+reviewing and applying another profile; it does not alter already-running
+scopes. To generate the original profile with scheduling weights and accounting
+only, omit both memory options when applying.
+
+The profile writes these files under `~/.acfs/resource-profile/`:
+
+- `bin/acfs-scope` runs an explicit command in a named resource class.
+- `bin/ccs`, `bin/cods`, and `bin/gmis` wrap Claude, Codex, and Gemini.
+- `bin/acfs-local-build` wraps explicit local fallback work; RCH remains the
+  preferred build/test path.
+- `acfs-resource-profile.sh` adds these wrapper commands to the current shell's
+  PATH when sourced.
+- `profile.json` records the selected profile.
+
+Applying the profile does not rewrite NTM templates, existing aliases, or
+service units. NTM-launched agents use the limit only when their launch command
+explicitly selects a generated wrapper. Running support services are not moved
+into the new scopes.
+
+## Resource Classes
+
+Every class enables CPU, memory, I/O, and task accounting. When a memory limit
+is selected, the same ceiling applies separately to each invocation in all five
+classes, including the `rch` class.
+
+| Class | Slice | CPU weight | I/O weight | Task limit | Intended explicit commands |
+| --- | --- | ---: | ---: | ---: | --- |
+| `agent` | `acfs-agent.slice` | 100 | 100 | 512 | Claude, Codex, Gemini |
+| `background` | `acfs-background.slice` | 40 | 50 | 512 | Indexing, maintenance, analysis |
+| `local-build` | `acfs-local-build.slice` | 60 | 50 | 512 | Deliberate local fallback builds/tests |
+| `support` | `acfs-support.slice` | 80 | 100 | 256 | Explicitly launched support processes |
+| `rch` | `acfs-rch.slice` | 100 | 100 | 512 | Local RCH command processes |
+
+Weights determine relative scheduling under contention. Memory ceilings are
+set on each transient scope, not as a shared limit on the slice. Several scopes
+can collectively exhaust the host even when each stays below its own ceiling;
+capacity planning and RCH offload remain necessary. Wrapping a local RCH command
+does not impose this limit on a remote worker.
+
+## Enforcement and Failure Behavior
+
+With a selected memory ceiling, the wrapper requires `systemd-run`, a working
+systemd user manager, Python 3, and cgroup v2 memory control. After entering the
+new scope and before starting the requested command, it checks the actual
+kernel `memory.max`. The limit must be finite and no greater than the reviewed
+byte count. When a swap ceiling is selected, `memory.swap.max` must pass the
+same check. Tighter limits are acceptable.
+
+If the required tools, manager, controller, or limit evidence are unavailable,
+or creating the scope fails, the bounded wrapper stops without running the
+payload. It never retries that command outside containment. The default
+profile without a memory ceiling retains its direct-execution fallback when
+systemd user scopes are unavailable.
+
+`MemoryMax` covers memory charged to the scope's process tree. If usage cannot
+be contained, the kernel can kill a process within it. The killed process may
+be the agent itself: this feature does not guarantee preservation of an agent
+session. ACFS does not set `OOMPolicy`, preserving compatibility with systemd
+249; administrator policy and kernel victim selection still matter. See the
+[systemd 249 resource-control manual](https://www.freedesktop.org/software/systemd/man/249/systemd.resource-control.html)
+and [scope manual](https://www.freedesktop.org/software/systemd/man/249/systemd.scope.html).
+
+ACFS does not set `MemoryHigh`. That setting throttles and reclaims memory; its
+breach alone does not invoke the OOM killer. Do not treat a standalone
+`MemoryHigh` setting as runaway protection. If adding it independently, pair
+it with a verified escape mechanism such as a hard ceiling or a configured
+userspace OOM killer. See the kernel's [cgroup v2 memory interface](https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files).
+
+This profile does not install or configure `systemd-oomd`, tune limits
+automatically, or add swap/PSI admission checks. The report and isolated tests
+do not establish successful containment on every host; inspect the actual
+scope on the host where commands will run.
+
+## Inspect or Disable
 
 ```bash
 ~/.acfs/resource-profile/bin/acfs-scope --help
+cat ~/.acfs/resource-profile/profile.json
 systemctl --user show-environment
-systemd-run --user --scope --same-dir --collect --property=CPUAccounting=yes true
+systemctl --user list-units --type=scope
+# Substitute an actual running scope from the preceding command:
+systemctl --user show run-EXAMPLE.scope -p MemoryMax -p MemorySwapMax -p ControlGroup
 ```
 
-To disable the profile without deleting files:
+To write a disabled marker/snippet without deleting files:
 
 ```bash
 acfs capacity --resource-profile --disable-resource-profile
-source ~/.acfs/resource-profile/acfs-resource-profile.sh
 ```
 
-The disable command rewrites the profile marker/snippet to a disabled state. It
-does not remove wrapper files or touch non-ACFS paths. Starting a new shell
-without sourcing the opt-in snippet also leaves direct agent commands unchanged.
-
-## Remaining Implementation Path
-
-1. Add optional drop-ins for ACFS-owned user services only, starting with
-   `agent-mail.service.d/resource-profile.conf`, after wrapper tests have
-   accumulated enough evidence.
-2. Add NTM integration only after direct shell-wrapper tests pass; NTM should
-   receive explicit class hints rather than infer from command strings.
-3. Consider conservative `MemoryHigh=` recommendations only after capacity
-   calibration has measured real high-context agent sessions.
-
-## Verification Required Before Implementation
-
-Manual checks:
-
-```bash
-systemctl --user show-environment
-systemd-run --user --scope --same-dir --collect --property=CPUAccounting=yes true
-systemd-run --user --scope --same-dir --collect --slice=acfs-agent.slice --property=CPUWeight=100 claude --help
-systemd-cgls --user
-systemctl --user show acfs-agent.slice -p CPUAccounting -p CPUWeight -p TasksAccounting
-```
-
-Regression coverage:
-
-- Wrapper preserves exit code for success and failure commands.
-- Wrapper preserves `PWD` and auth/config environment for Claude, Codex, and Gemini.
-- Wrapper falls back to direct execution when `systemd-run --user` or the user bus is unavailable.
-- Agent Mail drop-in can be enabled, disabled, and reverted without breaking health checks.
-- Capacity output explains that weights are relative and hard memory limits are opt-in.
-
-## Final Recommendation
-
-Systemd slices are appropriate for ACFS, but only as an opt-in profile. The safe first step is a report plus wrappers that apply CPU/I/O weights and accounting. Hard memory limits should wait for measured high-context agent sessions and explicit user consent.
+Disabling prevents the snippet from adding wrappers in a new shell. It does not
+remove the wrapper directory from an existing shell's PATH, remove wrapper
+files, or stop scopes that are already running. Start a fresh shell without the
+opt-in snippet, or use the original agent commands directly.

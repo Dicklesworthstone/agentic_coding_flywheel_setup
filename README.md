@@ -4020,6 +4020,41 @@ tmux session: acfs-swarm
 └── ...
 ```
 
+### Capacity and Resource Profiles
+
+`acfs capacity --profile 25-agents --recommend-ntm` reports local CPU, memory,
+and disk capacity. Optional resource-profile wrappers provide scheduling
+weights and accounting; explicit memory limits can contain a runaway command
+and its children in a systemd user scope.
+
+Preview a profile, then repeat the reviewed values to apply it:
+
+```bash
+acfs capacity --resource-profile \
+  --memory-max-mib 8192 --memory-swap-max-mib 2048
+
+acfs capacity --resource-profile \
+  --memory-max-mib 8192 --memory-swap-max-mib 2048 \
+  --apply-resource-profile
+source ~/.acfs/resource-profile/acfs-resource-profile.sh
+
+ccs   # Claude; cods and gmis wrap Codex and Gemini
+```
+
+These example limits are per scope: 8 GiB of memory and a separate 2 GiB of
+swap. The swap limit is optional and requires a memory limit. Each accepts
+integer MiB up to 1048576; memory must be positive, while swap may be zero.
+The limits apply to all explicit `acfs-scope` classes. A bounded wrapper checks
+the actual cgroup v2 limits before starting the command and refuses to run it
+uncontained if the tools, user manager, or limit evidence are unavailable.
+
+Without memory options, the profile keeps its existing weights/accounting and
+direct-execution fallback. Ordinary aliases and NTM templates are unchanged.
+Multiple bounded scopes can still exhaust the host, and the kernel may kill
+the agent itself on a limit breach. This does not install `systemd-oomd` or
+automatically size limits. See [resource isolation](docs/operations/swarm-resource-isolation.md)
+for supported classes, inspection, failure behavior, and disabling the profile.
+
 ### Dry-Run Swarm Simulation
 
 Before launching any real swarm, ask ACFS for a queue-aware plan:

@@ -315,6 +315,416 @@ class CapacityModelTests(unittest.TestCase):
         self.assertEqual(result["ntm"]["agent_count"], 0)
 
 
+class MemoryScopeFixture:
+    """Synthetic kernel files; neither a live memory limit nor an OOM test."""
+
+    def setUp(self):
+        # Retain fixture files and command logs for diagnosing a failed guard.
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-memory-scope-"))
+        self.proc = self.base / "proc"
+        (self.proc / "self").mkdir(parents=True)
+        self.cgroup = self.base / "cgroup with spaces"
+        self.leaf = self.cgroup / "user.slice/run-acfs.scope"
+        self.leaf.mkdir(parents=True)
+        self.maximum = 8192 * 1024**2
+        self.swap = 2048 * 1024**2
+        self.write_membership()
+        self.write_mounts()
+        self.write_limits()
+
+    @staticmethod
+    def escape_mount(value):
+        return str(value).replace("\\", "\\134").replace(" ", "\\040").replace("\t", "\\011")
+
+    def write_membership(self, value="0::/user.slice/run-acfs.scope\n"):
+        (self.proc / "self/cgroup").write_text(value)
+
+    def write_mounts(self, root="/", point=None, kind="cgroup2"):
+        mount = "40 20 0:30 %s %s rw - %s cgroup rw\n" % (
+            self.escape_mount(root), self.escape_mount(point or self.cgroup), kind)
+        (self.proc / "self/mountinfo").write_text(mount)
+
+    def write_limits(self, memory=None, swap=None):
+        (self.leaf / "memory.max").write_text(str(self.maximum if memory is None else memory) + "\n")
+        (self.leaf / "memory.swap.max").write_text(str(self.swap if swap is None else swap) + "\n")
+
+    def guard_module(self):
+        marker = "ACFS_SCOPE_MEMORY_GUARD_PY"
+        source = SOURCE.read_text()
+        delimiter = "<<'" + marker + "'\n"
+        self.assertIn(delimiter, source, "runtime has no bounded-launch kernel guard")
+        code = source.split(delimiter, 1)[1].split("\n" + marker, 1)[0]
+        module = {"__name__": "memory_scope_tested_runtime"}
+        exec(compile(code, str(SOURCE) + "::scope_memory_guard", "exec"), module)
+        return module
+
+
+class MemoryScopeGuardTests(MemoryScopeFixture, unittest.TestCase):
+    def verify(self, swap=True):
+        self.guard_module()["verify_limits"](self.maximum, self.swap if swap else None, self.proc)
+
+    def assert_refused(self, swap=True):
+        with self.assertRaises((OSError, ValueError)):
+            self.verify(swap)
+
+    def test_exact_and_tighter_kernel_limits_admit_the_payload(self):
+        self.verify()
+        self.write_limits(memory=self.maximum // 2, swap=0)
+        self.verify()
+
+    def test_unlimited_or_larger_memory_limit_is_refused(self):
+        for value in ("max", self.maximum + 1):
+            with self.subTest(value=value):
+                self.write_limits(memory=value)
+                self.assert_refused()
+
+    def test_unlimited_or_larger_requested_swap_limit_is_refused(self):
+        for value in ("max", self.swap + 1):
+            with self.subTest(value=value):
+                self.write_limits(swap=value)
+                self.assert_refused()
+
+    def test_unselected_swap_is_not_restricted(self):
+        self.write_limits(swap="max")
+        self.verify(swap=False)
+        (self.leaf / "memory.swap.max").rename(self.leaf / "saved-swap.max")
+        self.verify(swap=False)
+
+    def test_missing_memory_controller_is_refused(self):
+        (self.leaf / "memory.max").rename(self.leaf / "saved-memory.max")
+        self.assert_refused()
+
+    def test_missing_requested_swap_controller_is_refused(self):
+        (self.leaf / "memory.swap.max").rename(self.leaf / "saved-swap.max")
+        self.assert_refused()
+
+    def test_malformed_kernel_limit_is_refused(self):
+        for value in ("", "-1", "1.5", "1e3", "NaN", "12 34", "1" * 5000, "\N{SNOWMAN}"):
+            with self.subTest(value=str(value)[:20]):
+                self.write_limits(memory=value)
+                self.assert_refused()
+
+    def test_v1_or_missing_unified_membership_is_refused(self):
+        for value in ("3:memory:/user.slice/run-acfs.scope\n", "", "garbage\n"):
+            with self.subTest(value=value):
+                self.write_membership(value)
+                self.assert_refused()
+
+    def test_ambiguous_or_escaping_membership_is_refused(self):
+        for value in ("0::/user.slice/run-acfs.scope\n0::/elsewhere\n", "0::/../outside\n",
+                      "1::/user.slice/run-acfs.scope\n", "0::relative/path\n"):
+            with self.subTest(value=value):
+                self.write_membership(value)
+                self.assert_refused()
+
+    def test_subtree_mount_maps_the_actual_current_scope(self):
+        self.write_mounts(root="/user.slice", point=self.cgroup / "user.slice")
+        self.verify()
+
+    def test_membership_outside_visible_mount_is_refused(self):
+        self.write_mounts(root="/another-user")
+        self.assert_refused()
+
+    def test_membership_change_during_verification_is_refused(self):
+        module = self.guard_module()
+        original = module["read_text"]
+        observed = 0
+
+        def reader(path, *arguments, **keywords):
+            nonlocal observed
+            value = original(path, *arguments, **keywords)
+            if str(path).endswith("/self/cgroup"):
+                observed += 1
+                if observed == 2:
+                    return "0::/moved-to-an-unlimited-scope\n"
+            return value
+
+        with patch.dict(module, read_text=reader):
+            with self.assertRaises(ValueError):
+                module["verify_limits"](self.maximum, self.swap, self.proc)
+
+    def test_non_cgroup_mount_cannot_supply_forged_controller_files(self):
+        self.write_mounts(kind="tmpfs")
+        self.assert_refused()
+
+    def test_symlinked_controller_file_is_refused_without_reading_target(self):
+        target = self.base / "private"
+        target.write_text("private-value\n")
+        (self.leaf / "memory.max").rename(self.leaf / "saved-memory.max")
+        (self.leaf / "memory.max").symlink_to(target)
+        self.assert_refused()
+        self.assertEqual(target.read_text(), "private-value\n")
+
+    def test_symlinked_parent_is_refused(self):
+        alias = self.base / "linked-cgroup"
+        alias.symlink_to(self.cgroup, target_is_directory=True)
+        self.write_mounts(point=alias)
+        self.assert_refused()
+
+    def test_fifo_controller_is_refused_without_blocking(self):
+        (self.leaf / "memory.max").rename(self.leaf / "saved-memory.max")
+        os.mkfifo(self.leaf / "memory.max")
+        # Run in a subprocess so a regression is bounded even if open blocks.
+        self.guard_module()
+        result = subprocess.run(
+            [sys.executable, "-I", "-c",
+             "import runpy,sys; m=runpy.run_path(sys.argv[1]); "
+             "m['MemoryScopeGuardTests']('test_fifo_controller_is_refused_without_blocking').guard_module()"
+             "['verify_limits'](int(sys.argv[2]),None,m['Path'](sys.argv[3]))",
+             str(Path(__file__).resolve()), str(self.maximum), str(self.proc)],
+            capture_output=True, text=True, timeout=3,
+            env={**os.environ, "ACFS_CAPACITY_TEST_SOURCE": str(SOURCE)})
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("private-value", result.stderr)
+
+
+class MemoryScopeWrapperTests(MemoryScopeFixture, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.root = self.base / "reviewed profile"
+        self.bin = self.base / "fixture-bin"
+        self.bin.mkdir()
+        self.log = self.base / "systemd-run.jsonl"
+        self.payload_log = self.base / "payload.jsonl"
+        self.env = {key: value for key, value in os.environ.items()
+                    if not key.startswith(("ACFS_", "BASH_FUNC_")) and key not in ("BASH_ENV", "ENV")}
+        self.env.update({"PATH": str(self.bin) + ":/usr/bin:/bin", "ACFS_RESOURCE_PROFILE_HOME": str(self.root),
+                         "ACFS_CAPACITY_BIN_DIR": str(self.bin), "FIXTURE_PROC": str(self.proc),
+                         "FIXTURE_SYSTEMD_LOG": str(self.log), "FIXTURE_PAYLOAD_LOG": str(self.payload_log),
+                         "AUTH_LOCATION": str(self.base / "private auth"), "HOME": str(self.base)})
+        (self.bin / "bash").symlink_to("/bin/bash")
+        (self.bin / "cat").symlink_to("/bin/cat")
+        (self.bin / "python3").symlink_to(sys.executable)
+        self.write_executable("systemctl", """import os, sys
+assert sys.argv[1:] == ['--user', 'show-environment'], sys.argv
+sys.exit(int(os.environ.get('FIXTURE_USER_MANAGER_STATUS', '0')))
+""")
+        self.write_executable("systemd-run", """import json, os, pathlib, sys, types
+arguments = sys.argv[1:]
+split = next((i for i, argument in enumerate(arguments) if not argument.startswith('--')), len(arguments))
+if '--' in arguments[:split]:
+    split = arguments.index('--')
+options, command = arguments[:split], arguments[split:]
+if command and command[0] == '--':
+    command = command[1:]
+assert {'--user', '--scope', '--same-dir', '--collect'}.issubset(options), options
+with open(os.environ['FIXTURE_SYSTEMD_LOG'], 'a') as stream:
+    stream.write(json.dumps({'options': options, 'command': command[:3], 'arguments': command[4:]}) + '\\n')
+if os.environ.get('FIXTURE_SCOPE_STATUS'):
+    sys.exit(int(os.environ['FIXTURE_SCOPE_STATUS']))
+assert len(command) >= 6 and command[1:3] == ['-I', '-c'], command[:3]
+# Replace only the kernel observation root. Execute the generated Python guard
+# and its real exec path; no production guard or payload result is mocked.
+RealPath = pathlib.Path
+def fixture_path(*parts):
+    if parts == ('/proc',):
+        parts = (os.environ['FIXTURE_PROC'],)
+    return RealPath(*parts)
+fixture_pathlib = types.ModuleType('pathlib')
+fixture_pathlib.Path = fixture_path
+sys.modules['pathlib'] = fixture_pathlib
+sys.argv = ['-c', *command[4:]]
+exec(compile(command[3], '<generated-acfs-memory-guard>', 'exec'), {'__name__': '__main__'})
+""")
+        payload = """import json, os, sys
+record = {'argv': sys.argv[1:], 'cwd': os.getcwd(), 'auth': os.environ.get('AUTH_LOCATION'), 'stdin': sys.stdin.read()}
+with open(os.environ['FIXTURE_PAYLOAD_LOG'], 'a') as stream:
+    stream.write(json.dumps(record) + '\\n')
+print('payload-stdout')
+print('payload-stderr', file=sys.stderr)
+sys.exit(int(os.environ.get('FIXTURE_PAYLOAD_STATUS', '0')))
+"""
+        for name in ("payload", "claude", "codex", "gemini"):
+            self.write_executable(name, payload)
+
+    def write_executable(self, name, code):
+        path = self.bin / name
+        path.write_text("#!" + sys.executable + "\n" + code)
+        path.chmod(0o755)
+        return path
+
+    def cli(self, *arguments, ok=True):
+        result = subprocess.run(["/bin/bash", str(SOURCE), "--json", *arguments],
+                                env=self.env, cwd=self.base, capture_output=True, text=True, timeout=8)
+        if ok:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        return result
+
+    def apply(self, swap=True):
+        arguments = ["--resource-profile", "--memory-max-mib", "8192", "--apply-resource-profile"]
+        if swap:
+            arguments += ["--memory-swap-max-mib", "2048"]
+        return self.cli(*arguments)
+
+    def launch(self, name="acfs-scope", *arguments, status=0):
+        result = subprocess.run([str(self.root / "bin" / name), *arguments],
+                                env=self.env, cwd=self.base, input="terminal-input\n", text=True,
+                                capture_output=True, timeout=8)
+        self.assertEqual(result.returncode, status, result.stderr)
+        return result
+
+    def records(self, path):
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_review_reports_exact_limits_for_every_class_without_writes(self):
+        report = self.cli("--resource-profile", "--memory-max-mib", "008192", "--memory-swap-max-mib", "0000")
+        self.assertFalse(self.root.exists())
+        expected = {
+            "enabled": True, "memory_max_mib": 8192, "memory_swap_max_mib": 0,
+            "on_unavailable": "refuse", "enforcement": "cgroup-v2-verified"}
+        self.assertEqual({key: report["memory_bounds"][key] for key in expected}, expected)
+        self.assertEqual({item["name"] for item in report["classes"]},
+                         {"agent", "background", "local-build", "support", "rch"})
+        for item in report["classes"]:
+            self.assertIn("MemoryMax=" + str(self.maximum), item["properties"])
+            self.assertIn("MemorySwapMax=0", item["properties"])
+
+    def test_invalid_limits_and_conflicting_options_fail_before_writes(self):
+        cases = [["--memory-max-mib", value] for value in
+                 ("0", "-1", "1.5", "8G", "1048577", "12345678", "infinity", "2;true")]
+        cases += [["--memory-max-mib", "8192", "--memory-swap-max-mib", value] for value in
+                  ("-1", "1.5", "1048577", "12345678", "max")]
+        cases += [["--memory-swap-max-mib", "0"],
+                  ["--memory-max-mib", "8192", "--memory-max-mib", "4096"],
+                  ["--memory-max-mib", "8192", "--memory-swap-max-mib", "0", "--memory-swap-max-mib", "1"],
+                  ["--memory-max-mib", "8192", "--disable-resource-profile"]]
+        for arguments in cases:
+            with self.subTest(arguments=arguments):
+                self.cli("--resource-profile", "--apply-resource-profile", *arguments, ok=False)
+                self.assertFalse(self.root.exists())
+        self.cli("--memory-max-mib", "8192", ok=False)
+        self.assertFalse(self.root.exists())
+
+    def test_all_classes_pass_exact_reviewed_properties_to_systemd(self):
+        report = self.apply()
+        saved = json.loads((self.root / "profile.json").read_text())
+        self.assertEqual(report["memory_bounds"], saved["memory_bounds"])
+        self.assertEqual(report["classes"], saved["classes"])
+        for name in ("agent", "background", "local-build", "support", "rch"):
+            self.launch("acfs-scope", name, "--", "payload", "--literal-option", "argument with spaces")
+            entry = self.records(self.log)[-1]
+            self.assertIn("--slice=acfs-" + name + ".slice", entry["options"])
+            self.assertIn("--property=MemoryMax=" + str(self.maximum), entry["options"])
+            self.assertIn("--property=MemorySwapMax=" + str(self.swap), entry["options"])
+            self.assertFalse(any("OOMPolicy" in option for option in entry["options"]))
+        self.assertEqual(len(self.records(self.payload_log)), 5)
+
+    def test_agent_and_build_wrappers_preserve_arguments_stdin_environment_and_exit(self):
+        self.apply()
+        self.env["FIXTURE_PAYLOAD_STATUS"] = "37"
+        for name, arguments in (("ccs", ["arg with spaces", "--flag", ""]),
+                                ("cods", ["arg with spaces", "--flag", ""]),
+                                ("gmis", ["arg with spaces", "--flag", ""]),
+                                ("acfs-local-build", ["payload", "arg with spaces", "--flag", ""])):
+            with self.subTest(wrapper=name):
+                result = self.launch(name, *arguments, status=37)
+                self.assertEqual(result.stdout, "payload-stdout\n")
+                self.assertEqual(result.stderr, "payload-stderr\n")
+                self.assertEqual(self.records(self.payload_log)[-1], {
+                    "argv": ["arg with spaces", "--flag", ""], "cwd": str(self.base),
+                    "auth": self.env["AUTH_LOCATION"], "stdin": "terminal-input\n"})
+        self.assertEqual(len(self.records(self.payload_log)), 4, "a failed payload must never be retried")
+
+    def test_named_wrappers_cannot_resolve_an_unbounded_scope_from_path(self):
+        self.apply()
+        decoy = self.write_executable("acfs-scope", "raise SystemExit('unbounded PATH scope executed')\n")
+        self.launch("ccs", "reviewed")
+        self.assertEqual(len(self.records(self.log)), 1)
+        self.assertEqual(self.records(self.payload_log)[0]["argv"], ["reviewed"])
+        self.assertTrue(decoy.exists())
+
+    def test_unavailable_user_manager_prevents_payload_execution(self):
+        self.apply()
+        self.env["FIXTURE_USER_MANAGER_STATUS"] = "1"
+        result = subprocess.run([str(self.root / "bin/acfs-scope"), "agent", "--", "payload"],
+                                env=self.env, capture_output=True, text=True, timeout=8)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.records(self.log), [])
+        self.assertEqual(self.records(self.payload_log), [])
+
+    def test_missing_systemd_tools_prevent_bounded_payload_execution(self):
+        self.apply()
+        bare = self.base / "bare-bin"
+        bare.mkdir()
+        (bare / "bash").symlink_to("/bin/bash")
+        (bare / "cat").symlink_to("/bin/cat")
+        self.env["PATH"] = str(bare)
+        result = subprocess.run([str(self.root / "bin/acfs-scope"), "agent", "--", str(self.bin / "payload")],
+                                env=self.env, capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(self.records(self.payload_log), [])
+
+    def test_missing_python_prevents_bounded_payload_execution(self):
+        self.apply()
+        (self.bin / "python3").rename(self.bin / "saved-python3")
+        self.env["PATH"] = str(self.bin)
+        result = subprocess.run([str(self.root / "bin/acfs-scope"), "agent", "--", str(self.bin / "payload")],
+                                env=self.env, capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(self.records(self.log), [])
+        self.assertEqual(self.records(self.payload_log), [])
+
+    def test_environment_cannot_remove_the_reviewed_limits(self):
+        self.apply()
+        self.env.update({"CAPACITY_MEMORY_MAX_MIB": "", "CAPACITY_MEMORY_SWAP_MAX_MIB": "",
+                         "memory_max_bytes": "", "memory_swap_max_bytes": ""})
+        self.launch("acfs-scope", "agent", "--", "payload")
+        entry = self.records(self.log)[0]
+        self.assertIn("--property=MemoryMax=" + str(self.maximum), entry["options"])
+        self.assertIn("--property=MemorySwapMax=" + str(self.swap), entry["options"])
+
+    def test_rejected_systemd_scope_never_falls_back_or_retries(self):
+        self.apply()
+        self.env["FIXTURE_SCOPE_STATUS"] = "79"
+        self.launch("acfs-scope", "agent", "--", "payload", status=79)
+        self.assertEqual(len(self.records(self.log)), 1)
+        self.assertEqual(self.records(self.payload_log), [])
+
+    def test_successful_systemd_launch_with_unenforced_memory_never_runs_payload(self):
+        self.apply()
+        self.write_limits(memory="max")
+        result = subprocess.run([str(self.root / "bin/acfs-scope"), "agent", "--", "payload"],
+                                env=self.env, capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIn("command not started", result.stderr)
+        self.assertEqual(len(self.records(self.log)), 1)
+        self.assertEqual(self.records(self.payload_log), [])
+
+    def test_successful_systemd_launch_with_unenforced_swap_never_runs_payload(self):
+        self.apply()
+        self.write_limits(swap="max")
+        result = subprocess.run([str(self.root / "bin/acfs-scope"), "agent", "--", "payload"],
+                                env=self.env, capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIn("command not started", result.stderr)
+        self.assertEqual(len(self.records(self.log)), 1)
+        self.assertEqual(self.records(self.payload_log), [])
+
+    def test_omitting_swap_limit_preserves_the_existing_swap_policy(self):
+        report = self.apply(swap=False)
+        self.assertIsNone(report["memory_bounds"]["memory_swap_max_mib"])
+        self.write_limits(swap="max")
+        self.launch("acfs-scope", "agent", "--", "payload")
+        self.assertFalse(any("MemorySwapMax" in arg for arg in self.records(self.log)[0]["options"]))
+        self.assertEqual(len(self.records(self.payload_log)), 1)
+
+    def test_default_profile_keeps_direct_fallback_and_no_memory_limit(self):
+        report = self.cli("--resource-profile", "--apply-resource-profile")
+        expected = {
+            "enabled": False, "memory_max_mib": None, "memory_swap_max_mib": None,
+            "on_unavailable": "direct-execution", "enforcement": "none"}
+        self.assertEqual({key: report["memory_bounds"][key] for key in expected}, expected)
+        self.assertFalse(any(property.startswith("MemoryMax=") for entry in report["classes"]
+                             for property in entry["properties"]))
+        self.env["FIXTURE_USER_MANAGER_STATUS"] = "1"
+        self.env["FIXTURE_PAYLOAD_STATUS"] = "37"
+        self.launch("acfs-scope", "agent", "--", "payload", status=37)
+        self.assertEqual(self.records(self.log), [])
+        self.assertEqual(len(self.records(self.payload_log)), 1)
+
+
 def live_smoke():
     env = {key: value for key, value in os.environ.items() if not key.startswith(("ACFS_CAPACITY_", "BASH_FUNC_"))}
     env.pop("BASH_ENV", None)
