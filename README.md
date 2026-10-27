@@ -1032,6 +1032,10 @@ full pre-downloaded package bundles as future work.
 
 Create a new project directory with ACFS defaults (git init, optional br/beads, Claude settings, AGENTS.md).
 The interactive wizard is recommended for beginners.
+Its file creation requires Python 3. It rejects symlink destinations and parent directories,
+and creates files exclusively so existing or concurrently created files are preserved.
+New directories and files are capped at 0755 and 0644; a stricter caller umask still applies.
+A failed write leaves the partial file in place for inspection; it does not roll back the project.
 
 Interactive wizard (recommended):
 ```bash

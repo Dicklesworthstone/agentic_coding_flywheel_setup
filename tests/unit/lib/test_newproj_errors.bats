@@ -277,6 +277,18 @@ teardown() {
     [[ "$(cat "$test_file")" == "Hello, World!" ]]
 }
 
+@test "preflight requires Python for safe wizard writes" {
+    command() {
+        if [[ "$1" == -v && "${2:-}" == python3 ]]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    run preflight_check
+    assert_failure
+    [[ "$output" == *"Required command not found: python3"* ]]
+}
+
 @test "try_write_file creates parent directories" {
     local test_file="$TEST_DIR/subdir/nested/file.txt"
 

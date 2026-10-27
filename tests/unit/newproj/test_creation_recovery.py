@@ -7,6 +7,7 @@ are retained for inspection. Run with Python's unittest runner or directly.
 """
 import os
 from pathlib import Path
+import resource
 import shutil
 import subprocess
 import sys
@@ -404,6 +405,217 @@ for name in ("config.yaml", "metadata.json", "issues.jsonl", "README.md", "beads
                                            ".beads/issues.jsonl", ".beads/README.md"})
         self.assertEqual((self.project / ".beads/user-notes.txt").read_text(), "fixture\n")
         self.assertEqual((self.project / ".beads/beads.db").read_text(), "fixture\n")
+
+
+@unittest.skipUnless(BASH, "Bash is required")
+class FileWriterTests(unittest.TestCase):
+    """Exercise the actual writer, including linked paths and failed writes."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="acfs-writer-"))
+        self.project = self.root / "project"
+        self.project.mkdir()
+        self.target = self.project / "new file.txt"
+        self.env = {**os.environ, "ERROR_SCRIPT": str(ROOT / "scripts/lib/newproj_errors.sh"),
+                    "TARGET": str(self.target), "PROJECT": str(self.project),
+                    "RECEIPT": str(self.root / "tracked"), "ACFS_TEST_MODE": "1",
+                    "CONTENT": "first line\nsecond line with ' quotes and λ\n\n"}
+
+    def write(self, setup="", *, target=None, limit=None):
+        if target is not None:
+            self.env["TARGET"] = str(target)
+        script = r'''
+set -euo pipefail
+source "$ERROR_SCRIPT"
+log_debug() { :; }
+log_info() { :; }
+log_error() { :; }
+log_file_op() { :; }
+begin_project_creation "$PROJECT"
+''' + setup + r'''
+status=0
+try_write_file "$TARGET" "$CONTENT" || status=$?
+printf '%s\0' "${WIZARD_CREATED_FILES[@]}" > "$RECEIPT"
+exit "$status"
+'''
+        def constrain_file():
+            resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
+        return subprocess.run([BASH, "-c", script], env=self.env, cwd=self.project,
+                              text=True, capture_output=True, timeout=10, check=False,
+                              preexec_fn=constrain_file if limit is not None else None)
+
+    def tracked(self):
+        return {os.fsdecode(p) for p in (self.root / "tracked").read_bytes().split(b"\0") if p}
+
+    def test_nested_content_and_umask_are_preserved(self):
+        target = self.project / "spaces ' [x]\nline" / "nested" / "file.txt"
+        result = self.write("umask 027\n", target=target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(target.read_bytes(), self.env["CONTENT"].encode())
+        self.assertEqual(target.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(self.tracked(), {str(target), str(target.parent), str(target.parent.parent)})
+        self.assertFalse(self.project.as_posix() in self.tracked())
+
+    def test_relative_target_and_empty_content(self):
+        self.env["CONTENT"] = ""
+        result = self.write(target=Path("relative") / "empty.txt")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.project / "relative/empty.txt").read_bytes(), b"")
+        self.assertEqual(self.tracked(), {"relative", "relative/empty.txt"})
+
+    def test_permissive_umask_does_not_grant_other_users_write_access(self):
+        target = self.project / "new-directory/file.txt"
+        result = self.write("umask 000\n", target=target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(target.parent.stat().st_mode & 0o777, 0o755)
+
+    def test_writer_does_not_change_callers_umask(self):
+        result = self.write("umask 027\nexpected_umask=$(umask)\n"
+                            "trap '[[ $(umask) == \"$expected_umask\" ]] || exit 93' EXIT\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_existing_file_is_not_overwritten(self):
+        self.target.write_bytes(b"user data")
+        result = self.write()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing to overwrite existing file", result.stderr)
+        self.assertEqual(self.target.read_bytes(), b"user data")
+        self.assertEqual(self.tracked(), set())
+
+    def test_dangling_leaf_is_not_followed(self):
+        outside = self.root / "outside-new"
+        self.target.symlink_to(outside)
+        result = self.write()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.target.is_symlink())
+        self.assertFalse(outside.exists())
+        self.assertEqual(self.tracked(), set())
+
+    def test_existing_symlink_and_hardlink_targets_are_preserved(self):
+        outside = self.root / "outside-data"
+        outside.write_bytes(b"retained user data")
+        for kind in ("symlink", "hardlink"):
+            with self.subTest(kind=kind):
+                target = self.project / kind
+                if kind == "symlink":
+                    target.symlink_to(outside)
+                else:
+                    os.link(outside, target)
+                result = self.write(target=target)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(outside.read_bytes(), b"retained user data")
+                self.assertEqual(self.tracked(), set())
+
+    def test_symlink_parent_never_creates_outside_file(self):
+        outside = self.root / "outside-directory"
+        outside.mkdir()
+        link = self.project / "linked"
+        link.symlink_to(outside, target_is_directory=True)
+        result = self.write(target=link / "nested/file.txt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertEqual(self.tracked(), set())
+
+    def test_symlink_then_dotdot_is_not_lexically_collapsed(self):
+        outside = self.root / "outside-directory"
+        outside.mkdir()
+        link = self.project / "linked"
+        link.symlink_to(outside, target_is_directory=True)
+        result = self.write(target=str(link) + "/../escaped.txt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "escaped.txt").exists())
+        self.assertFalse((self.project / "escaped.txt").exists())
+
+    def test_fifo_is_refused_without_blocking(self):
+        os.mkfifo(self.target)
+        result = self.write()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.tracked(), set())
+
+    def test_concurrent_file_is_not_overwritten(self):
+        # Insert a real competing write at content delivery. For the Bash
+        # writer this is after its existence check; the Python delegate waits
+        # for the same competing write before trying its exclusive open.
+        self.env["RACE_MARKER"] = str(self.root / "race-injected")
+        result = self.write(r'''
+printf() {
+    if [[ "$1" == '%s' && "${2:-}" == "$CONTENT" ]]; then
+        builtin printf 'concurrent user data' > "$TARGET"
+        : > "$RACE_MARKER"
+    fi
+    builtin printf "$@"
+}
+python3() {
+    for ((attempt=0; attempt<200; attempt++)); do
+        [[ -f "$RACE_MARKER" ]] && break
+        sleep 0.01
+    done
+    [[ -f "$RACE_MARKER" ]] || return 91
+    command python3 "$@"
+}
+''')
+        self.assertTrue((self.root / "race-injected").is_file())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.target.read_bytes(), b"concurrent user data")
+        self.assertEqual(self.tracked(), set())
+
+    def test_missing_python_refuses_before_creating_directories(self):
+        result = self.write(r'''
+command() {
+    if [[ "$1" == -v && "${2:-}" == python3 ]]; then return 1; fi
+    builtin command "$@"
+}
+''', target=self.project / "missing/child.txt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.project / "missing").exists())
+
+    def test_failed_write_preserves_partial_file_and_never_reports_success(self):
+        self.env["CONTENT"] = "x" * 4096
+        result = self.write("trap '' XFSZ\n", limit=512)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.target.is_file())
+        self.assertLessEqual(self.target.stat().st_size, 512)
+        self.assertEqual(self.tracked(), set())
+
+    def progress(self, body):
+        # Keep the existing step/renderer fixtures; substitute only the real
+        # file writer so recovery tests cannot hide its filesystem behavior.
+        env = {**self.env, "SCRIPT": str(SCRIPT), "EVENTS": str(self.root / "events"),
+               "OUTSIDE": str(self.root / "outside-policy")}
+        script = 'source "$ERROR_SCRIPT"\nactual_writer=$(declare -f try_write_file)\n'
+        script += HARNESS + '\neval "$actual_writer"\n' + body
+        return subprocess.run([BASH, "-c", script], env=env, cwd=self.root,
+                              text=True, capture_output=True, timeout=10, check=False)
+
+    def test_actual_writer_allows_resume_without_rewriting_completed_readme(self):
+        result = self.progress(r'''
+run_creation && exit 91
+before=$(stat -c '%i' "$PROJECT/README.md")
+FAIL_STEP=''
+run_creation
+[[ "$(stat -c '%i' "$PROJECT/README.md")" == "$before" ]]
+[[ "${STEP_STATUS[finalize]}" == success ]]
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertTrue((self.project / "AGENTS.md").is_file())
+        self.assertNotIn("CLEANUP", (self.root / "events").read_text())
+
+    def test_actual_writer_rejects_redirected_policy_during_resume(self):
+        result = self.progress(r'''
+FAIL_STEP=create_agents
+run_creation && exit 91
+ln -s "$OUTSIDE" "$PROJECT/AGENTS.md"
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+[[ "${STEP_STATUS[create_agents]}" == error ]]
+[[ -f "$PROJECT/README.md" && ! -e "$OUTSIDE" ]]
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "outside-policy").exists())
+        self.assertTrue((self.project / "AGENTS.md").is_symlink())
+        self.assertNotIn("CLEANUP", (self.root / "events").read_text())
 
 
 if __name__ == "__main__":

@@ -313,7 +313,7 @@ preflight_check() {
     fi
 
     # Check required commands
-    local required_cmds=(git)
+    local required_cmds=(git python3)
     for cmd in "${required_cmds[@]}"; do
         if ! command -v "$cmd" &>/dev/null; then
             errors+=("Required command not found: $cmd")
@@ -515,54 +515,105 @@ try_br_init() {
 try_write_file() {
     local file="$1"
     local content="$2"
-    local missing_dirs=()
 
     log_debug "Writing file: $file" 2>/dev/null || true
 
-    # Check parent directory
-    local parent_dir
-    parent_dir=$(dirname "$file")
-    if [[ ! -d "$parent_dir" ]]; then
-        local probe_dir="$parent_dir"
-        while [[ ! -d "$probe_dir" ]]; do
-            missing_dirs+=("$probe_dir")
-            local next_dir
-            next_dir=$(dirname "$probe_dir")
-            if [[ "$next_dir" == "$probe_dir" ]]; then
-                break
-            fi
-            probe_dir="$next_dir"
-        done
-
-        if ! mkdir -p "$parent_dir" 2>/dev/null; then
-            log_error "Failed to create parent directory: $parent_dir" 2>/dev/null || true
-            return 1
-        fi
-
-        local i
-        for ((i=${#missing_dirs[@]}-1; i>=0; i--)); do
-            register_cleanup "${missing_dirs[i]}"
-            track_created_file "${missing_dirs[i]}"
-        done
+    if ! command -v python3 >/dev/null 2>&1; then
+        show_error_with_recovery "write" "Safe wizard file creation requires python3"
+        return 1
     fi
 
-    if [[ -e "$file" ]]; then
+    if [[ -e "$file" || -L "$file" ]]; then
         log_error "Refusing to overwrite existing file: $file" 2>/dev/null || true
         show_error_with_recovery "exists" "Refusing to overwrite existing file: $file"
         return 1
     fi
 
-    # Write the file
-    printf '%s' "$content" > "$file" 2>/dev/null
-    local errno=$?
+    # Hold directory descriptors through creation: neither a linked ancestor
+    # nor a leaf created after the check above may redirect/truncate the write.
+    # Content uses stdin, not argv/environment. NUL records preserve even
+    # newline-containing paths while tracking only directories we created.
+    local writer_fd writer_pid created_path
+    if ! exec {writer_fd}< <(
+        set -o pipefail
+        printf '%s' "$content" | python3 -I /dev/fd/3 "$file" 3<<'ACFS_NEWPROJ_WRITE_PY'
+from contextlib import contextmanager, ExitStack
+import os
+import sys
+
+
+@contextmanager
+def opened(name, flags, mode=0o755, parent=None):
+    with ExitStack() as owner:
+        descriptor = os.open(name, flags, mode, dir_fd=parent)
+        owner.callback(os.close, descriptor)
+        yield descriptor
+
+
+def record(path):
+    sys.stdout.buffer.write(os.fsencode(path) + b"\0")
+    sys.stdout.buffer.flush()
+
+
+path = sys.argv[1]
+try:
+    parts = path.split("/")
+    if parts[-1] in ("", ".", ".."):
+        raise ValueError("file path must name an ordinary file")
+    data = memoryview(sys.stdin.buffer.read())
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    prefix = "/" if path.startswith("/") else ""
+    with ExitStack() as handles:
+        parent = handles.enter_context(opened(prefix or ".", flags))
+        for part in parts[:-1]:
+            if part in ("", "."):
+                continue
+            prefix = os.path.join(prefix, part)
+            try:
+                child = handles.enter_context(opened(part, flags, parent=parent))
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, mode=0o755, dir_fd=parent)
+                except FileExistsError:
+                    pass  # Another creator won; open without following links.
+                else:
+                    record(prefix)
+                child = handles.enter_context(opened(part, flags, parent=parent))
+            parent = child
+        output = handles.enter_context(opened(parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                              mode=0o644, parent=parent))
+        while data:
+            written = os.write(output, data)
+            if written <= 0:
+                raise OSError("file write made no progress")
+            data = data[written:]
+        os.fsync(output)
+        record(path)
+except FileExistsError:
+    print("Refusing to overwrite existing file: " + path, file=sys.stderr)
+    sys.exit(1)
+except (OSError, ValueError) as error:
+    print("Cannot safely create file: " + str(error), file=sys.stderr)
+    sys.exit(1)
+ACFS_NEWPROJ_WRITE_PY
+    ); then
+        show_error_with_recovery "write" "Could not start safe file creation: $file"
+        return 1
+    fi
+    writer_pid=$!
+    while IFS= read -r -d '' created_path <&"$writer_fd"; do
+        register_cleanup "$created_path"
+        track_created_file "$created_path"
+    done
+    exec {writer_fd}<&-
+    local errno=0
+    wait "$writer_pid" || errno=$?
     if [[ $errno -ne 0 ]]; then
         log_error "Failed to write file: $file (errno: $errno)" 2>/dev/null || true
         show_error_with_recovery "write" "Failed to write file: $file"
         return $errno
     fi
 
-    register_cleanup "$file"
-    track_created_file "$file"
     log_file_op "WRITE" "$file" "OK" 2>/dev/null || true
     return 0
 }
