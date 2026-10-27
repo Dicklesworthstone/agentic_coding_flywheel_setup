@@ -169,6 +169,138 @@ test_ip_discovery_does_not_create_cache() {
     pass "ip_discovery_does_not_create_cache"
 }
 
+# Exercise the actual cache consumer with local discovery recorded separately.
+# All paths/data are private fixtures; no host cache or network service is used.
+run_ip_cache_probe() {
+    local fixture="$1" bin_dir="$ARTIFACT_DIR/ip-cache-bin"
+    mkdir -p "$bin_dir"
+    cat > "$bin_dir/hostname" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' hostname >> "$ACFS_INFO_CACHE_CALLS"
+printf '%s\n' '203.0.113.23'
+SH
+    chmod +x "$bin_dir/hostname"
+    (
+        export TARGET_HOME="$fixture/home" ACFS_HOME="$fixture/home/.acfs"
+        export ACFS_INFO_CACHE_CALLS="$fixture/discovery-calls"
+        # shellcheck source=../../scripts/lib/info.sh
+        source "$INFO_SH"
+        info_get_data_home() { printf '%s\n' "${ACFS_INFO_TEST_DATA_HOME:-$fixture/home/.acfs}"; }
+        info_system_binary_path() {
+            case "$1" in
+                hostname) printf '%s\n' "$bin_dir/hostname" ;;
+                python3) [[ "${ACFS_INFO_TEST_NO_PYTHON:-0}" != 1 ]] && command -v python3 ;;
+                *) command -v "$1" ;;
+            esac
+        }
+        info_get_ip
+    )
+}
+
+test_valid_ip_caches_preserve_addresses_and_files() {
+    local fixture address output count=0
+    for address in 192.0.2.47 2001:db8::47 2001:DB8::47 ::1 ::ffff:192.0.2.47; do
+        fixture="$ARTIFACT_DIR/valid-cache-$count"
+        count=$((count + 1))
+        mkdir -p "$fixture/home/.acfs/cache"
+        printf '%s\n' "$address" > "$fixture/home/.acfs/cache/ip_address"
+        cp "$fixture/home/.acfs/cache/ip_address" "$fixture/before"
+        output="$(run_ip_cache_probe "$fixture")" || return 1
+        [[ "$output" == "$address" && ! -e "$fixture/discovery-calls" ]] || return 1
+        cmp -s "$fixture/before" "$fixture/home/.acfs/cache/ip_address" || return 1
+    done
+    pass "valid_ip_caches_preserve_addresses_and_files"
+}
+
+test_untrusted_ip_caches_fall_back_without_echoing_or_writing() {
+    local fixture variant output cache failed=0
+    for variant in malformed ipv4 ipv6 oversized multiline stale future leaf-link parent-link dotdot-link fifo; do
+        fixture="$ARTIFACT_DIR/untrusted-cache-$variant"
+        mkdir -p "$fixture/home/.acfs" "$fixture/outside"
+        cache="$fixture/home/.acfs/cache/ip_address"
+        if [[ "$variant" == parent-link || "$variant" == dotdot-link ]]; then
+            ln -s "$fixture/outside" "$fixture/home/.acfs/cache"
+            printf '%s\n' '192.0.2.99' > "$fixture/outside/ip_address"
+        else
+            mkdir "$fixture/home/.acfs/cache"
+            case "$variant" in
+                malformed) printf '%s\n' 'opaque-cache-fixture-not-an-address' > "$cache" ;;
+                ipv4) printf '%s\n' '999.1.2.3' > "$cache" ;;
+                ipv6) printf '%s\n' '2001::db8::47' > "$cache" ;;
+                oversized) printf '%0128d\n' 1 > "$cache" ;;
+                multiline) printf '%s\n' '192.0.2.99' 'opaque-cache-fixture-second-line' > "$cache" ;;
+                leaf-link)
+                    printf '%s\n' '192.0.2.99' > "$fixture/outside/ip_address"
+                    ln -s "$fixture/outside/ip_address" "$cache" ;;
+                fifo) mkfifo "$cache" ;;
+                stale|future)
+                    printf '%s\n' '192.0.2.99' > "$cache"
+                    python3 - "$cache" "$variant" <<'PY'
+import os, sys, time
+modified = time.time() + (600 if sys.argv[2] == 'future' else -7200)
+os.utime(sys.argv[1], (modified, modified))
+PY
+                    ;;
+            esac
+        fi
+        if [[ "$variant" != fifo ]]; then
+            cp "$cache" "$fixture/before"
+        fi
+        if [[ "$variant" == dotdot-link ]]; then
+            # Retain a linked component even when followed by ..; do not
+            # normalize the spelling before checking the directory chain.
+            mkdir "$fixture/cache"
+            printf '%s\n' '192.0.2.99' > "$fixture/cache/ip_address"
+            output="$(ACFS_INFO_TEST_DATA_HOME="$fixture/home/.acfs/cache/.." run_ip_cache_probe "$fixture")" || return 1
+        else
+            output="$(run_ip_cache_probe "$fixture")" || return 1
+        fi
+        if [[ "$output" != '203.0.113.23' || ! -f "$fixture/discovery-calls" ]]; then
+            printf '%s\n' "Cache rejection failed: $variant"
+            failed=1
+        elif [[ "$(cat "$fixture/discovery-calls")" != hostname ]]; then
+            return 1
+        fi
+        if [[ "$variant" != fifo ]]; then
+            cmp -s "$fixture/before" "$cache" || return 1
+        else
+            [[ -p "$cache" ]] || return 1
+        fi
+        if [[ "$variant" == leaf-link ]]; then
+            [[ -L "$cache" ]] || return 1
+        elif [[ "$variant" == parent-link || "$variant" == dotdot-link ]]; then
+            [[ -L "$fixture/home/.acfs/cache" ]] || return 1
+        fi
+    done
+    [[ $failed -eq 0 ]] || return 1
+    pass "untrusted_ip_caches_fall_back_without_echoing_or_writing"
+}
+
+test_ip_discovery_works_when_cache_reader_is_unavailable() {
+    local fixture="$ARTIFACT_DIR/cache-no-python" output
+    mkdir -p "$fixture/home/.acfs/cache"
+    printf '%s\n' '192.0.2.99' > "$fixture/home/.acfs/cache/ip_address"
+    cp "$fixture/home/.acfs/cache/ip_address" "$fixture/before"
+    output="$(ACFS_INFO_TEST_NO_PYTHON=1 run_ip_cache_probe "$fixture")" || return 1
+    [[ "$output" == '203.0.113.23' ]] || return 1
+    [[ "$(cat "$fixture/discovery-calls")" == hostname ]] || return 1
+    cmp -s "$fixture/before" "$fixture/home/.acfs/cache/ip_address" || return 1
+    pass "ip_discovery_works_when_cache_reader_is_unavailable"
+}
+
+test_ip_cache_reader_ignores_caller_python_path() {
+    local fixture="$ARTIFACT_DIR/cache-python-path" output
+    mkdir -p "$fixture/home/.acfs/cache" "$fixture/poison"
+    printf '%s\n' '2001:db8::47' > "$fixture/home/.acfs/cache/ip_address"
+    cat > "$fixture/poison/ipaddress.py" <<'PY'
+raise RuntimeError("fixture caller module must never be imported by the cache reader")
+PY
+    output="$(PYTHONPATH="$fixture/poison" run_ip_cache_probe "$fixture")" || return 1
+    [[ "$output" == '2001:db8::47' && ! -e "$fixture/discovery-calls" ]] || return 1
+    [[ "$(cat "$fixture/home/.acfs/cache/ip_address")" == '2001:db8::47' ]] || return 1
+    pass "ip_cache_reader_ignores_caller_python_path"
+}
+
 test_live_collector_preserves_callers_errexit() {
     local status_script
     status_script="$(pass_status_script)"
@@ -348,6 +480,10 @@ main() {
     run_test test_missing_collector_is_labeled
     run_test test_default_info_does_not_invoke_live_collector
     run_test test_ip_discovery_does_not_create_cache
+    run_test test_valid_ip_caches_preserve_addresses_and_files
+    run_test test_untrusted_ip_caches_fall_back_without_echoing_or_writing
+    run_test test_ip_discovery_works_when_cache_reader_is_unavailable
+    run_test test_ip_cache_reader_ignores_caller_python_path
     run_test test_live_collector_preserves_callers_errexit
     run_test test_sourced_info_resets_live_flag_for_each_call
 

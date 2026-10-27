@@ -1056,29 +1056,61 @@ info_get_hostname() {
 
 # Get primary IP address (cached or live)
 info_get_ip() {
-    # Try cached value first
+    # Legacy caches are only hints. Read one bounded, ordinary file through
+    # non-symlink directory descriptors and accept only a fresh literal address.
+    # Invalid/unavailable caches fall back to local discovery without writes.
     local data_home=""
     local cache_file=""
     data_home=$(info_get_data_home)
     [[ -n "$data_home" ]] && cache_file="${data_home}/cache/ip_address"
-    local now=""
-    local date_bin=""
+    local python_bin=""
+    local cached_ip=""
     local hostname_bin=""
     local ip_bin=""
 
-    date_bin="$(info_system_binary_path date 2>/dev/null || true)"
-    if [[ -n "$date_bin" ]]; then
-        now="$("$date_bin" +%s 2>/dev/null || echo "")"
-    fi
+    if [[ -n "$cache_file" && -f "$cache_file" ]]; then
+        python_bin="$(info_system_binary_path python3 2>/dev/null || true)"
+        if [[ -n "$python_bin" ]]; then
+            if cached_ip="$("$python_bin" -I - "$cache_file" 2>/dev/null <<'PY'
+import contextlib, ipaddress, os, pathlib, stat, sys, time
 
-    if [[ -n "$cache_file" ]] && [[ -f "$cache_file" ]] && [[ "$now" =~ ^[0-9]+$ ]]; then
-        local cache_mtime
-        if cache_mtime="$(info_get_file_mtime "$cache_file")" && [[ $cache_mtime -gt $((now - 3600)) ]]; then
-            local cached_ip=""
-            IFS= read -r cached_ip < "$cache_file" || true
-            cached_ip="${cached_ip//[[:space:]]/}"
-            if [[ -n "$cached_ip" ]] && [[ "$cached_ip" != "unknown" ]]; then
-                echo "$cached_ip"
+@contextlib.contextmanager
+def opened(name, flags, parent=None):
+    with contextlib.ExitStack() as handles:
+        descriptor = os.open(name, flags, dir_fd=parent)
+        handles.callback(os.close, descriptor)
+        yield descriptor
+
+try:
+    path = pathlib.Path(sys.argv[1])
+    if not path.is_absolute():
+        raise ValueError("Cache path must be absolute")
+    with contextlib.ExitStack() as handles:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent = handles.enter_context(opened("/", directory_flags))
+        for component in path.parts[1:-1]:
+            parent = handles.enter_context(opened(component, directory_flags, parent))
+        descriptor = handles.enter_context(opened(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, parent))
+        before = os.fstat(descriptor)
+        age = time.time() - before.st_mtime
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 64 or not 0 <= age < 3600:
+            raise ValueError("Cache metadata is invalid or stale")
+        raw = os.read(descriptor, 65)
+        after = os.fstat(descriptor)
+        if len(raw) != before.st_size or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise ValueError("Cache changed during inspection")
+        address = raw.decode("ascii").strip()
+        # Reject scoped interface strings and all surrounding diagnostic text,
+        # including markup/control bytes. ipaddress checks the actual grammar.
+        if not address or any(character not in "0123456789abcdefABCDEF:." for character in address):
+            raise ValueError("Cache does not contain a literal address")
+        ipaddress.ip_address(address)
+        print(address)
+except (OSError, ValueError, UnicodeError):
+    sys.exit(1)
+PY
+)"; then
+                printf '%s\n' "$cached_ip"
                 return 0
             fi
         fi

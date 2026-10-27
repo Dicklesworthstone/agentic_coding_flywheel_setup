@@ -1207,6 +1207,7 @@ Example output:
 - **Read-only by default**: Reads installation/onboarding state and local interfaces without invoking coordination tools or writing caches. Swarm values remain unknown until live telemetry is requested
 - **Live telemetry**: `--live` probes the optional coordination tools, which may update their own local state. Dashboard generation requests this mode explicitly to populate its operations panel
 - **Offline by default**: No network calls; IP discovery reads local interfaces and routing tables only
+- **Legacy IP cache**: A cached value is reused only after a bounded read confirms a recent ordinary file and a valid IPv4 or IPv6 address. Linked, malformed, oversized or stale caches fall back to local discovery without changing the cache. If Python 3 is unavailable, local discovery still works
 - **Fallback**: Graceful degradation if data missing
 
 ### `acfs cheatsheet` — Alias Discovery
