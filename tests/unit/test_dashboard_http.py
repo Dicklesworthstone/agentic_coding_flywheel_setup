@@ -283,5 +283,279 @@ class DashboardHTTPTests(unittest.TestCase):
             self.assertNotIn("Network URL:", log.read_text())
 
 
+class DashboardGenerationTests(unittest.TestCase):
+    """Run the real generator with a controlled, local info renderer."""
+
+    NEW_PAGE = b"<!doctype html><p>New generated status</p>\n"
+
+    def setUp(self):
+        self.scratch = tempfile.TemporaryDirectory(prefix="acfs-dashboard-generate-")
+        self.addCleanup(self.scratch.cleanup)
+        self.base = Path(self.scratch.name)
+        self.script = self.base / "checkout/scripts/lib/dashboard.sh"
+        self.script.parent.mkdir(parents=True)
+        shutil.copyfile(SOURCE, self.script)
+        self.acfs = self.base / ".acfs"
+        self.directory = self.acfs / "dashboard"
+        self.directory.mkdir(parents=True)
+        (self.acfs / "VERSION").write_text("0.0.0\n")
+        self.index = self.directory / "index.html"
+        self.index.write_bytes(PAGE)
+        self.stamp = self.directory / ".last_generated"
+        self.stamp.write_bytes(b"0\n")
+        self.called = self.base / "renderer-called"
+        self.started = self.base / "renderer-started"
+        self.release = self.base / "renderer-release"
+        (self.script.parent / "info.sh").write_text(
+            '#!/usr/bin/env bash\n'
+            '[[ $1 == --html && $2 == --live ]] || exit 77\n'
+            'printf "called\\n" >> "$ACFS_TEST_RENDER_CALLED"\n'
+            'if [[ $ACFS_TEST_RENDER_MODE == wait ]]; then\n'
+            '  : > "$ACFS_TEST_RENDER_STARTED"\n'
+            '  while [[ ! -f $ACFS_TEST_RENDER_RELEASE ]]; do sleep 0.01; done\n'
+            'fi\n'
+            'if [[ $ACFS_TEST_RENDER_MODE == fail ]]; then printf "partial\\n"; exit 9; fi\n'
+            'printf "%s" "$ACFS_TEST_RENDER_PAGE"\n')
+        self.env = dict(os.environ, HOME=str(self.base), ACFS_HOME=str(self.acfs),
+                        ACFS_SYSTEM_STATE_FILE=str(self.base / "absent-state.json"),
+                        ACFS_TEST_RENDER_CALLED=str(self.called),
+                        ACFS_TEST_RENDER_STARTED=str(self.started),
+                        ACFS_TEST_RENDER_RELEASE=str(self.release),
+                        ACFS_TEST_RENDER_PAGE=self.NEW_PAGE.decode())
+
+    @contextlib.contextmanager
+    def generation(self, *, mode="normal", force=True, limit=None):
+        command = ["bash", str(self.script), "generate", *(["--force"] if force else [])]
+        env = dict(self.env, ACFS_TEST_RENDER_MODE=mode)
+        with subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              start_new_session=True, preexec_fn=limit) as process:
+            try:
+                yield process
+            finally:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGTERM)
+                process.communicate(timeout=5)
+
+    def generate(self, **options):
+        with self.generation(**options) as process:
+            stdout, stderr = process.communicate(timeout=5)
+            return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+
+    def while_rendering(self, change):
+        with self.generation(mode="wait") as process:
+            deadline = time.monotonic() + 5
+            while not self.started.exists():
+                if process.poll() is not None:
+                    self.fail(process.communicate())
+                if time.monotonic() >= deadline:
+                    self.fail("Renderer did not start")
+                time.sleep(0.01)
+            change()
+            self.release.touch()
+            stdout, stderr = process.communicate(timeout=5)
+            return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+
+    def test_success_publishes_complete_page_and_freshness(self):
+        before = int(time.time())
+        result = self.generate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.index.read_bytes(), self.NEW_PAGE)
+        self.assertTrue(before <= int(self.stamp.read_bytes()) <= int(time.time()))
+
+    def test_recent_page_is_reused_without_rendering_or_writes(self):
+        self.stamp.write_text(str(int(time.time())) + "\n")
+        before = [(path.stat().st_ino, path.stat().st_mtime_ns) for path in (self.index, self.stamp)]
+        entries = set(self.directory.iterdir())
+        result = self.generate(force=False, mode="fail")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.called.exists())
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertEqual(before, [(path.stat().st_ino, path.stat().st_mtime_ns) for path in (self.index, self.stamp)])
+        self.assertEqual(entries, set(self.directory.iterdir()))
+
+    def test_timestamp_symlink_preserves_its_target_and_page(self):
+        self.stamp.rename(self.directory / "retained-timestamp")
+        private = self.base / "private-timestamp"
+        private.write_bytes(b"private timestamp data\n")
+        self.stamp.symlink_to(private)
+        result = self.generate()
+        self.assertEqual(private.read_bytes(), b"private timestamp data\n")
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.stamp.is_symlink())
+        self.assertFalse(self.called.exists())
+
+    def test_timestamp_hardlink_preserves_its_target_and_page(self):
+        self.stamp.rename(self.directory / "retained-timestamp")
+        private = self.base / "hardlinked-timestamp"
+        private.write_bytes(b"private hardlink data\n")
+        os.link(private, self.stamp)
+        result = self.generate()
+        self.assertEqual(private.read_bytes(), b"private hardlink data\n")
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(private.stat().st_ino, self.stamp.stat().st_ino)
+        self.assertFalse(self.called.exists())
+
+    def test_linked_dashboard_directory_does_not_redirect_writes(self):
+        retained = self.base / "retained-dashboard"
+        self.directory.rename(retained)
+        private = self.base / "private-dashboard"
+        private.mkdir()
+        (private / "index.html").write_bytes(b"private page\n")
+        (private / ".last_generated").write_bytes(b"private stamp\n")
+        self.directory.symlink_to(private, target_is_directory=True)
+        result = self.generate()
+        self.assertEqual((private / "index.html").read_bytes(), b"private page\n")
+        self.assertEqual((private / ".last_generated").read_bytes(), b"private stamp\n")
+        self.assertEqual((retained / "index.html").read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.called.exists())
+
+    def test_linked_acfs_ancestor_does_not_redirect_writes(self):
+        retained = self.base / "retained-acfs"
+        self.acfs.rename(retained)
+        self.acfs.symlink_to(retained, target_is_directory=True)
+        result = self.generate()
+        self.assertEqual((retained / "dashboard/index.html").read_bytes(), PAGE)
+        self.assertEqual((retained / "dashboard/.last_generated").read_bytes(), b"0\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.called.exists())
+
+    def test_directory_at_page_target_is_not_treated_as_publication(self):
+        self.index.rename(self.directory / "retained-page")
+        self.index.mkdir()
+        (self.index / "keep.txt").write_bytes(b"keep\n")
+        result = self.generate()
+        self.assertEqual({path.name for path in self.index.iterdir()}, {"keep.txt"})
+        self.assertEqual(self.stamp.read_bytes(), b"0\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.called.exists())
+
+    def test_linked_staging_directory_is_refused(self):
+        private = self.base / "private-staging"
+        private.mkdir()
+        (self.directory / ".staging").symlink_to(private, target_is_directory=True)
+        result = self.generate()
+        self.assertEqual(list(private.iterdir()), [])
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.called.exists())
+
+    def test_failed_renderer_preserves_publication_and_retains_partial_output(self):
+        result = self.generate(mode="fail")
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertEqual(self.stamp.read_bytes(), b"0\n")
+        self.assertNotEqual(result.returncode, 0)
+        staging = self.directory / ".staging"
+        self.assertTrue(staging.is_dir())
+        partial = [path for path in staging.iterdir() if path.is_file() and path.read_bytes() == b"partial\n"]
+        self.assertEqual(len(partial), 1)
+        self.assertEqual(partial[0].stat().st_mode & 0o777, 0o600)
+        self.assertIn(b".staging", result.stderr)
+        self.assertFalse(any(self.directory.glob("index.html.tmp.*")))
+
+    def test_invalid_or_future_freshness_is_rebuilt(self):
+        values = [b"opaque\n", b"9" * 128 + b"\n", str(int(time.time()) + 600).encode() + b"\n"]
+        for value in values:
+            with self.subTest(value=value):
+                self.index.write_bytes(PAGE)
+                self.stamp.write_bytes(value)
+                result = self.generate(force=False)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.index.read_bytes(), self.NEW_PAGE)
+                self.assertLess(abs(int(self.stamp.read_bytes()) - int(time.time())), 5)
+
+    def test_leading_zero_decimal_timestamp_reuses_recent_page(self):
+        self.stamp.write_bytes(b"0" + str(int(time.time())).encode() + b"\n")
+        before = self.stamp.read_bytes()
+        result = self.generate(force=False, mode="fail")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertEqual(self.stamp.read_bytes(), before)
+        self.assertFalse(self.called.exists())
+
+    def test_recent_page_is_reused_without_an_installed_renderer(self):
+        renderer = self.script.parent / "info.sh"
+        renderer.rename(renderer.with_name("retained-info.sh"))
+        self.stamp.write_text(str(int(time.time())) + "\n")
+        result = self.generate(force=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertFalse(self.called.exists())
+
+    def test_timestamp_fifo_is_refused_without_running_renderer(self):
+        self.stamp.rename(self.directory / "retained-timestamp")
+        os.mkfifo(self.stamp)
+        result = self.generate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertFalse(self.called.exists())
+
+    def test_timestamp_changed_during_render_does_not_redirect_writes(self):
+        private = self.base / "concurrent-private-stamp"
+        private.write_bytes(b"private concurrent stamp\n")
+        def change():
+            self.stamp.rename(self.directory / "retained-timestamp")
+            self.stamp.symlink_to(private)
+        result = self.while_rendering(change)
+        self.assertEqual(private.read_bytes(), b"private concurrent stamp\n")
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.stamp.is_symlink())
+
+    def test_parent_changed_during_render_does_not_redirect_writes(self):
+        private = self.base / "concurrent-private-dashboard"
+        private.mkdir()
+        (private / "index.html").write_bytes(b"private concurrent page\n")
+        (private / ".last_generated").write_bytes(b"private concurrent stamp\n")
+        retained = self.base / "retained-running-dashboard"
+        def change():
+            staged = list(self.directory.rglob("index.html.tmp.*"))
+            self.assertEqual(len(staged), 1)
+            relative = staged[0].relative_to(self.directory)
+            self.directory.rename(retained)
+            self.directory.symlink_to(private, target_is_directory=True)
+            forged = private / relative
+            forged.parent.mkdir(parents=True, exist_ok=True)
+            forged.write_bytes(b"forged concurrent page\n")
+        result = self.while_rendering(change)
+        self.assertEqual((private / "index.html").read_bytes(), b"private concurrent page\n")
+        self.assertEqual((private / ".last_generated").read_bytes(), b"private concurrent stamp\n")
+        self.assertEqual((retained / "index.html").read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_staged_page_replaced_during_render_is_not_published(self):
+        private = self.base / "private-stage-target"
+        private.write_bytes(b"private stage data\n")
+        def change():
+            staged = list(self.directory.rglob("index.html.tmp.*"))
+            self.assertEqual(len(staged), 1)
+            staged[0].rename(staged[0].with_name("retained-render-output"))
+            staged[0].symlink_to(private)
+        result = self.while_rendering(change)
+        self.assertEqual(private.read_bytes(), b"private stage data\n")
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertEqual(self.stamp.read_bytes(), b"0\n")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_interrupted_timestamp_write_preserves_both_previous_files(self):
+        import resource
+        def limit():
+            resource.setrlimit(resource.RLIMIT_FSIZE, (8, 8))
+        self.env["ACFS_TEST_RENDER_PAGE"] = "x\n"
+        result = self.generate(limit=limit)
+        self.assertEqual(self.stamp.read_bytes(), b"0\n")
+        self.assertEqual(self.index.read_bytes(), PAGE)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_missing_dashboard_directory_is_created_safely(self):
+        self.directory.rename(self.base / "retained-initial-dashboard")
+        result = self.generate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.index.read_bytes(), self.NEW_PAGE)
+        self.assertTrue(self.stamp.read_bytes().strip().isdigit())
+
+
 if __name__ == "__main__":
     unittest.main()

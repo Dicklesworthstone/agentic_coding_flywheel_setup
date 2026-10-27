@@ -42,13 +42,6 @@ dashboard_sanitize_abs_nonroot_path() {
     printf '%s\n' "$path_value"
 }
 
-dashboard_remove_temp_file() {
-    local tmp_file="${1:-}"
-    if [[ -n "$tmp_file" && -e "$tmp_file" ]]; then
-        rm -f -- "$tmp_file" 2>/dev/null || true
-    fi
-}
-
 dashboard_existing_abs_home() {
     local path_value=""
 
@@ -773,61 +766,191 @@ dashboard_generate() {
         return 1
     fi
 
-    local dashboard_dir="${_DASHBOARD_ACFS_HOME}/dashboard"
-    local html_file="${dashboard_dir}/index.html"
-    local timestamp_file="${dashboard_dir}/.last_generated"
-
-    mkdir -p "$dashboard_dir"
-
-    if [[ "$force" != "true" && -f "$html_file" ]]; then
-        local last_gen now age
-        last_gen="$(cat "$timestamp_file" 2>/dev/null || echo 0)"
-        if [[ ! "$last_gen" =~ ^[0-9]+$ ]]; then
-            last_gen=0
-        fi
-        now="$(date +%s)"
-        age=$((now - last_gen))
-
-        if [[ $age -ge 0 && $age -lt 3600 ]]; then
-            echo "Dashboard is recent ($((age / 60)) minutes old). Use --force to regenerate."
-            echo "Dashboard path: $html_file"
-            return 0
-        fi
-    fi
-
-    local info_script
-    if ! info_script="$(find_info_script)"; then
-        echo "Error: info.sh not found" >&2
-        echo "Re-run the ACFS installer to get the latest scripts." >&2
+    local python_bin="" info_script=""
+    python_bin="$(dashboard_system_binary_path python3 2>/dev/null || true)"
+    if [[ -z "$python_bin" ]]; then
+        echo "Error: Python 3 is required for safe dashboard generation." >&2
         return 1
     fi
+    # A recent page remains usable even when its optional renderer is missing.
+    info_script="$(find_info_script 2>/dev/null || true)"
+    "$python_bin" -I - "$_DASHBOARD_ACFS_HOME" "$force" "$info_script" <<'PY'
+from contextlib import ExitStack, contextmanager
+from pathlib import Path
+import os
+import secrets
+import signal
+import stat
+import subprocess
+import sys
+import time
 
-    echo "Generating dashboard..."
-    local tmp_file=""
-    tmp_file=$(mktemp "${dashboard_dir}/index.html.tmp.XXXXXX") || {
-        echo "Error: could not create temporary dashboard file" >&2
-        return 1
-    }
+acfs_home, force, renderer = sys.argv[1:]
+directory_path = Path(acfs_home) / "dashboard"
+directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
-    if ! bash "$info_script" --html --live > "$tmp_file"; then
-        echo "Error: dashboard generation failed" >&2
-        dashboard_remove_temp_file "$tmp_file"
-        return 1
-    fi
+@contextmanager
+def descriptor(name, flags, parent=None, mode=0o600):
+    with ExitStack() as owner:
+        handle = os.open(name, flags, mode, dir_fd=parent)
+        owner.callback(os.close, handle)
+        yield handle
 
-    if ! mv -- "$tmp_file" "$html_file"; then
-        echo "Error: could not replace dashboard file" >&2
-        dashboard_remove_temp_file "$tmp_file"
-        return 1
-    fi
+def identity(metadata):
+    return metadata.st_dev, metadata.st_ino
 
-    if ! date +%s > "$timestamp_file"; then
-        echo "Error: could not update dashboard timestamp" >&2
-        return 1
-    fi
+@contextmanager
+def directory_at(path, create=False):
+    if not path.is_absolute():
+        raise ValueError("Dashboard path must be absolute")
+    with ExitStack() as opened:
+        parent = opened.enter_context(descriptor("/", directory_flags))
+        chain = [identity(os.fstat(parent))]
+        # Keep .. components so a preceding link cannot be normalized away.
+        for component in path.parts[1:]:
+            try:
+                child = opened.enter_context(descriptor(component, directory_flags, parent))
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=parent)
+                except FileExistsError:
+                    pass
+                child = opened.enter_context(descriptor(component, directory_flags, parent))
+            parent = child
+            chain.append(identity(os.fstat(parent)))
+        yield parent, chain
 
-    echo "Dashboard generated: $html_file"
-    echo "Open with: open \"$html_file\" (macOS) or xdg-open \"$html_file\" (Linux)"
+def snapshot(metadata):
+    return (metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_nlink,
+            metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+def target(directory, name):
+    try:
+        metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+        raise ValueError("Refusing unsafe dashboard output: " + name)
+    return snapshot(metadata)
+
+def freshness(directory, expected):
+    if expected is None:
+        return None
+    with descriptor(".last_generated", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, directory) as handle:
+        before = os.fstat(handle)
+        if snapshot(before) != expected:
+            raise ValueError("Dashboard timestamp changed during inspection")
+        if not 0 < before.st_size <= 64:
+            return None
+        raw = os.read(handle, 65)
+        if len(raw) != before.st_size or snapshot(os.fstat(handle)) != expected:
+            raise ValueError("Dashboard timestamp changed during inspection")
+        value = raw.rstrip(b"\n")
+        return int(value, 10) if value and value.isdigit() else None
+
+def generate(directory, chain):
+    stage_directory = None
+    retained = None
+
+    def current_directory():
+        with directory_at(directory_path) as (current, current_chain):
+            if current_chain != chain or identity(os.fstat(current)) != identity(os.fstat(directory)):
+                raise ValueError("Dashboard directory changed during generation")
+            if stage_directory is not None:
+                named = os.stat(".staging", dir_fd=current, follow_symlinks=False)
+                if not stat.S_ISDIR(named.st_mode) or identity(named) != identity(os.fstat(stage_directory)):
+                    raise ValueError("Dashboard staging directory changed during generation")
+
+    expected_page = target(directory, "index.html")
+    expected_stamp = target(directory, ".last_generated")
+    if force != "true" and expected_page is not None:
+        previous = freshness(directory, expected_stamp)
+        age = int(time.time()) - previous if previous is not None else -1
+        if 0 <= age < 3600:
+            current_directory()
+            print(f"Dashboard is recent ({age // 60} minutes old). Use --force to regenerate.")
+            print("Dashboard path: " + str(directory_path / "index.html"))
+            return
+    if not renderer:
+        raise ValueError("info.sh not found; re-run the ACFS installer")
+    if not Path(renderer).is_absolute() or Path(renderer).name != "info.sh":
+        raise ValueError("Dashboard renderer must be an absolute info.sh path")
+    # Select only known system shells, never an executable from caller input/PATH.
+    bash = next((path for path in ("/usr/bin/bash", "/bin/bash", "/usr/local/bin/bash")
+                 if os.access(path, os.X_OK)), None)
+    if bash is None:
+        raise ValueError("Bash is required for dashboard generation")
+
+    with ExitStack() as opened:
+        try:
+            current_directory()
+            try:
+                os.mkdir(".staging", mode=0o700, dir_fd=directory)
+            except FileExistsError:
+                pass
+            stage_directory = opened.enter_context(descriptor(".staging", directory_flags, directory))
+            metadata = os.fstat(stage_directory)
+            if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+                raise ValueError("Dashboard .staging must be private and owned by the current user")
+            current_directory()
+            nonce = secrets.token_hex(16)
+            page_name, stamp_name = "index.html.tmp." + nonce, "timestamp.tmp." + nonce
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+            page = opened.enter_context(descriptor(page_name, flags, stage_directory))
+            retained = str(directory_path / ".staging")
+            stamp = opened.enter_context(descriptor(stamp_name, flags, stage_directory))
+            print("Generating dashboard...", flush=True)
+            with subprocess.Popen([bash, "--", renderer, "--html", "--live"],
+                                  stdin=subprocess.DEVNULL, stdout=page,
+                                  start_new_session=True) as result:
+                try:
+                    result.wait(timeout=60)
+                finally:
+                    if result.poll() is None:
+                        os.killpg(result.pid, signal.SIGKILL)
+                        result.wait(timeout=5)
+                if result.returncode != 0:
+                    raise ValueError("info.sh exited with status " + str(result.returncode))
+            os.fsync(page)
+            # Finish the freshness write before publishing either destination.
+            # Failures writing these staged files leave both old files untouched.
+            with os.fdopen(stamp, "wb", closefd=False) as output:
+                output.write((str(int(time.time())) + "\n").encode("ascii"))
+                output.flush()
+                os.fsync(stamp)
+            os.fsync(stage_directory)
+            current_directory()
+            if target(directory, "index.html") != expected_page or target(directory, ".last_generated") != expected_stamp:
+                raise ValueError("Dashboard output changed during generation")
+            for name, handle in ((page_name, page), (stamp_name, stamp)):
+                named = os.stat(name, dir_fd=stage_directory, follow_symlinks=False)
+                if not stat.S_ISREG(named.st_mode) or named.st_nlink != 1 or snapshot(named) != snapshot(os.fstat(handle)):
+                    raise ValueError("Dashboard staged output changed during generation")
+            os.replace(page_name, "index.html", src_dir_fd=stage_directory, dst_dir_fd=directory)
+            os.replace(stamp_name, ".last_generated", src_dir_fd=stage_directory, dst_dir_fd=directory)
+            os.fsync(directory)
+            current_directory()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            if retained:
+                try:
+                    retained = os.readlink("/proc/self/fd/" + str(stage_directory))
+                except OSError:
+                    pass
+                print("Retained generation files in: " + retained, file=sys.stderr)
+            raise
+    html_file = str(directory_path / "index.html")
+    print("Dashboard generated: " + html_file)
+    print('Open with: open "' + html_file + '" (macOS) or xdg-open "' + html_file + '" (Linux)')
+
+try:
+    with directory_at(directory_path, create=True) as (directory, chain):
+        generate(directory, chain)
+except (OSError, ValueError, subprocess.SubprocessError) as error:
+    print("Error: dashboard generation failed: " + str(error), file=sys.stderr)
+    sys.exit(1)
+PY
 }
 
 dashboard_serve() {
