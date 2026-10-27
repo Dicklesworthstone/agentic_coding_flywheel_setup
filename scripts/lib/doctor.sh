@@ -111,6 +111,71 @@ _acfs_doctor_read_json_string_key() {
     printf '%s\n' "$value"
 }
 
+# Resolve startup metadata in the caller, so a valid state file is parsed only
+# once per invocation rather than once per field in a fresh subshell. Keep the
+# general reader above for legacy/malformed state and non-startup consumers.
+_acfs_doctor_assign_state_string() {
+    local _acfs_state_name="${1:-}"
+    local _acfs_state_file="${2:-}"
+    local _acfs_state_key="${3:-}"
+    local _acfs_state_slot=0 _acfs_state_index=0 _acfs_state_offset=0
+    local _acfs_state_jq="" _acfs_state_value="" _acfs_state_path=""
+    local _acfs_state_found=false
+    local -a _acfs_state_fields=()
+
+    [[ "$_acfs_state_name" =~ ^[a-zA-Z_][a-zA-Z_0-9]*$ ]] || return 2
+    [[ "$_acfs_state_name" != _acfs_state_* ]] || return 2
+    case "$_acfs_state_key" in
+        target_user) _acfs_state_slot=0 ;;
+        target_home) _acfs_state_slot=1 ;;
+        bin_dir) _acfs_state_slot=2 ;;
+        mode) _acfs_state_slot=3 ;;
+        *) return 2 ;;
+    esac
+    [[ -f "$_acfs_state_file" ]] || { printf -v "$_acfs_state_name" '%s' ""; return 1; }
+
+    for _acfs_state_path in "${_ACFS_DOCTOR_STATE_PATHS[@]}"; do
+        if [[ "$_acfs_state_path" == "$_acfs_state_file" ]]; then
+            _acfs_state_found=true
+            break
+        fi
+        _acfs_state_index=$((_acfs_state_index + 1))
+    done
+    if [[ "$_acfs_state_found" != true ]]; then
+        _acfs_state_jq="$(_acfs_doctor_system_binary_path jq 2>/dev/null || true)"
+        if [[ -n "$_acfs_state_jq" ]]; then
+            while IFS= read -r -d '' _acfs_state_value; do
+                _acfs_state_fields+=("$_acfs_state_value")
+            done < <("$_acfs_state_jq" -j -s '
+                if length == 1 and (.[0] | type) == "object" then
+                    .[0] | [.target_user, .target_home, .bin_dir, .mode]
+                    | map(if type == "string" then . else "" end)
+                    | if all(.[]; contains("\u0000") | not)
+                      then .[] | ., "\u0000" else empty end
+                else empty end
+            ' "$_acfs_state_file" 2>/dev/null)
+            # A malformed/streamed document or embedded NUL keeps the exact
+            # original per-key reader, including its sed fallback behavior.
+            if [[ ${#_acfs_state_fields[@]} -eq 4 ]]; then
+                _ACFS_DOCTOR_STATE_PATHS+=("$_acfs_state_file")
+                _ACFS_DOCTOR_STATE_VALUES+=("${_acfs_state_fields[@]}")
+                _acfs_state_found=true
+            fi
+        fi
+    fi
+    if [[ "$_acfs_state_found" == true ]]; then
+        _acfs_state_offset=$((_acfs_state_index * 4 + _acfs_state_slot))
+        _acfs_state_value="${_ACFS_DOCTOR_STATE_VALUES[$_acfs_state_offset]}"
+        # Match command substitution's removal of trailing LF bytes exactly.
+        _acfs_state_value="${_acfs_state_value%"${_acfs_state_value##*[!$'\n']}"}"
+    fi
+    if [[ -z "$_acfs_state_value" || "$_acfs_state_value" == null ]]; then
+        _acfs_state_value="$(_acfs_doctor_read_json_string_key "$_acfs_state_file" "$_acfs_state_key" 2>/dev/null || true)"
+    fi
+    printf -v "$_acfs_state_name" '%s' "$_acfs_state_value"
+    [[ -n "$_acfs_state_value" && "$_acfs_state_value" != null ]]
+}
+
 _acfs_doctor_normalize_mode() {
     local mode="${1:-}"
 
@@ -642,6 +707,8 @@ _DOCTOR_SHOW_STATS=false
 
 
 _acfs_doctor_readiness_dispatch=false
+_ACFS_DOCTOR_STATE_PATHS=()
+_ACFS_DOCTOR_STATE_VALUES=()
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "${1:-}" in
         agent-readiness|agent_readiness|readiness) _acfs_doctor_readiness_dispatch=true ;;
@@ -662,7 +729,7 @@ if [[ "$_acfs_doctor_readiness_dispatch" != true ]]; then
     ACFS_MODE="$(_acfs_doctor_normalize_mode "${ACFS_MODE:-}" 2>/dev/null || true)"
     _acfs_doctor_installed_state="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
     if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$_acfs_doctor_installed_state" ]]; then
-        ACFS_MODE="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_installed_state" "mode" 2>/dev/null || true)"
+        _acfs_doctor_assign_state_string ACFS_MODE "$_acfs_doctor_installed_state" mode 2>/dev/null || true
         ACFS_MODE="$(_acfs_doctor_normalize_mode "${ACFS_MODE:-}" 2>/dev/null || true)"
     fi
     ACFS_MODE="${ACFS_MODE:-vibe}"
@@ -698,14 +765,14 @@ fi
 if [[ -z "${TARGET_USER:-}" ]]; then
     for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        TARGET_USER="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
+        _acfs_doctor_assign_state_string TARGET_USER "$_acfs_doctor_state_file" target_user 2>/dev/null || true
         [[ -n "${TARGET_USER:-}" ]] && break
     done
 fi
 if [[ -z "${TARGET_USER:-}" ]]; then
     for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        TARGET_USER="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
+        _acfs_doctor_assign_state_string TARGET_USER "$_acfs_doctor_state_file" target_user 2>/dev/null || true
         [[ -n "${TARGET_USER:-}" ]] && break
     done
 fi
@@ -729,7 +796,7 @@ TARGET_HOME=""
 if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
     for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        TARGET_HOME="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_home 2>/dev/null || true)"
+        _acfs_doctor_assign_state_string TARGET_HOME "$_acfs_doctor_state_file" target_home 2>/dev/null || true
         if [[ -n "${TARGET_HOME:-}" ]]; then
             TARGET_HOME="$(_acfs_doctor_existing_abs_nonroot_dir "${TARGET_HOME%/}" 2>/dev/null || true)"
         fi
@@ -739,9 +806,9 @@ if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
         _acfs_doctor_ambient_target_user=""
         for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
             [[ -f "$_acfs_doctor_state_file" ]] || continue
-            _acfs_doctor_ambient_target_user="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
+            _acfs_doctor_assign_state_string _acfs_doctor_ambient_target_user "$_acfs_doctor_state_file" target_user 2>/dev/null || true
             [[ "${_acfs_doctor_ambient_target_user:-}" == "$TARGET_USER" ]] || continue
-            TARGET_HOME="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_home 2>/dev/null || true)"
+            _acfs_doctor_assign_state_string TARGET_HOME "$_acfs_doctor_state_file" target_home 2>/dev/null || true
             if [[ -n "${TARGET_HOME:-}" ]]; then
                 TARGET_HOME="$(_acfs_doctor_existing_abs_nonroot_dir "${TARGET_HOME%/}" 2>/dev/null || true)"
             fi
@@ -752,7 +819,7 @@ if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
 fi
 for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
     [[ -f "$_acfs_doctor_state_file" ]] || continue
-    ACFS_BIN_DIR="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true)"
+    _acfs_doctor_assign_state_string ACFS_BIN_DIR "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true
     ACFS_BIN_DIR="$(_acfs_doctor_existing_abs_nonroot_dir "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
     ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
     [[ -n "${ACFS_BIN_DIR:-}" ]] && break
@@ -761,9 +828,9 @@ if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
     _acfs_doctor_ambient_target_user=""
     for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        _acfs_doctor_ambient_target_user="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
+        _acfs_doctor_assign_state_string _acfs_doctor_ambient_target_user "$_acfs_doctor_state_file" target_user 2>/dev/null || true
         [[ "${_acfs_doctor_ambient_target_user:-}" == "$TARGET_USER" ]] || continue
-        ACFS_BIN_DIR="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true)"
+        _acfs_doctor_assign_state_string ACFS_BIN_DIR "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true
         ACFS_BIN_DIR="$(_acfs_doctor_existing_abs_nonroot_dir "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
         ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
         [[ -n "${ACFS_BIN_DIR:-}" ]] && break
@@ -875,6 +942,8 @@ unset _ACFS_DOCTOR_ENV_BIN_DIR
 unset _ACFS_DOCTOR_ENV_TARGET_HOME
 unset _ACFS_DOCTOR_ENV_TARGET_USER
 unset _ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET
+unset _ACFS_DOCTOR_STATE_PATHS
+unset _ACFS_DOCTOR_STATE_VALUES
 
 ensure_path
 

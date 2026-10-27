@@ -7192,6 +7192,102 @@ EOF_DOCTOR_JSON_HELPER
     assert_failure
 }
 
+@test "doctor startup metadata batches one real JSON parse per state file" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local fixture="$BATS_TEST_TMPDIR/doctor-batched-state"
+    mkdir -p "$fixture"
+    printf '%s\n' '{"target_user":"tester","target_home":"/home/tester","bin_dir":"/home/tester/.local/bin","mode":"safe"}' > "$fixture/first.json"
+    printf '%s\n' '{"target_user":"second","target_home":"/home/second","bin_dir":"/home/second/.local/bin","mode":"vibe"}' > "$fixture/second.json"
+    cat > "$fixture/jq" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' parsed >> "$ACFS_TEST_STATE_PARSES"
+exec /usr/bin/jq "$@"
+EOF
+    chmod +x "$fixture/jq"
+    run env -i PATH=/usr/bin:/bin HOME="$HOME" ACFS_TEST_STATE_PARSES="$fixture/parses" bash -s -- "$doctor" "$fixture" <<'EOF'
+set -euo pipefail
+doctor="$1"; fixture="$2"
+eval "$(sed -n '/^_acfs_doctor_read_json_string_key()/,/^}$/p' "$doctor")"
+eval "$(sed -n '/^_acfs_doctor_assign_state_string()/,/^}$/p' "$doctor")"
+_acfs_doctor_system_binary_path() { [[ "$1" == jq ]] && printf '%s\n' "$fixture/jq"; }
+_ACFS_DOCTOR_STATE_PATHS=(); _ACFS_DOCTOR_STATE_VALUES=()
+value=""
+for state in first second; do
+    for key in target_user target_home bin_dir mode; do
+        _acfs_doctor_assign_state_string value "$fixture/$state.json" "$key"
+        [[ -n "$value" ]]
+    done
+done
+[[ "$(wc -l < "$fixture/parses")" -eq 2 ]]
+_acfs_doctor_assign_state_string value "$fixture/first.json" target_user
+[[ "$value" == tester ]]
+_acfs_doctor_assign_state_string value "$fixture/second.json" target_home
+[[ "$value" == /home/second ]]
+[[ "$(wc -l < "$fixture/parses")" -eq 2 ]]
+EOF
+    assert_success
+}
+
+@test "doctor startup metadata preserves per-key results for unusual and legacy state" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local fixture="$BATS_TEST_TMPDIR/doctor-state-values"
+    mkdir -p "$fixture"
+    python3 - "$fixture" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+values = ["tester", "", "null", None, 3, False, [], {}, " leading \tvalue\n\n", "one\ntwo", "caf\u00e9", "prefix\u0000suffix", "$(touch never-execute)"]
+for number, value in enumerate(values):
+    (root / (str(number) + '.json')).write_text(json.dumps(dict.fromkeys(['target_user', 'target_home', 'bin_dir', 'mode'], value)))
+(root / 'stream.json').write_text('{"target_user":"first"}\n{"target_user":"second"}\n')
+(root / 'legacy.json').write_text('{"target_user":"legacy", "target_home":"/home/legacy", broken}')
+PY
+    run env -i PATH=/usr/bin:/bin HOME="$HOME" bash -s -- "$doctor" "$fixture" <<'EOF'
+set -euo pipefail
+doctor="$1"; fixture="$2"
+eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor")"
+eval "$(sed -n '/^_acfs_doctor_read_json_string_key()/,/^}$/p' "$doctor")"
+eval "$(sed -n '/^_acfs_doctor_assign_state_string()/,/^}$/p' "$doctor")"
+_ACFS_DOCTOR_STATE_PATHS=(); _ACFS_DOCTOR_STATE_VALUES=()
+for state in "$fixture"/*.json; do
+    for key in target_user target_home bin_dir mode; do
+        expected="$(_acfs_doctor_read_json_string_key "$state" "$key" || true)"
+        actual=previous; result=0
+        _acfs_doctor_assign_state_string actual "$state" "$key" || result=$?
+        [[ "$actual" == "$expected" ]] || { printf '%s\n' "Mismatch: $state $key"; exit 1; }
+        if [[ -n "$expected" ]]; then [[ "$result" -eq 0 ]]; else [[ "$result" -eq 1 ]]; fi
+    done
+done
+EOF
+    assert_success
+}
+
+@test "doctor startup metadata keeps optional jq fallback and refuses evaluated destinations" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local state="$BATS_TEST_TMPDIR/doctor-no-jq.json"
+    printf '%s\n' '{"target_user":"legacy", "target_home":"/home/legacy"}' > "$state"
+    run env -i PATH=/usr/bin:/bin HOME="$HOME" bash -s -- "$doctor" "$state" <<'EOF'
+set -euo pipefail
+doctor="$1"; state="$2"
+eval "$(sed -n '/^_acfs_doctor_read_json_string_key()/,/^}$/p' "$doctor")"
+eval "$(sed -n '/^_acfs_doctor_assign_state_string()/,/^}$/p' "$doctor")"
+_acfs_doctor_system_binary_path() { case "$1" in jq) return 1;; sed|head) printf '/usr/bin/%s\n' "$1";; esac; }
+_ACFS_DOCTOR_STATE_PATHS=(); _ACFS_DOCTOR_STATE_VALUES=()
+expected="$(_acfs_doctor_read_json_string_key "$state" target_user)"
+value=previous
+_acfs_doctor_assign_state_string value "$state" target_user
+[[ "$value" == "$expected" ]]
+result=0; _acfs_doctor_assign_state_string value "$state.missing" target_user || result=$?
+[[ "$result" -eq 1 && -z "$value" ]]
+marker="$state.evaluated"
+bad='value[$(printf bad > "'"$marker"'")]'
+result=0; _acfs_doctor_assign_state_string "$bad" "$state" target_user || result=$?
+[[ "$result" -eq 2 && ! -e "$marker" ]]
+result=0; _acfs_doctor_assign_state_string _acfs_state_value "$state" target_user || result=$?
+[[ "$result" -eq 2 ]]
+EOF
+    assert_success
+}
+
 @test "dashboard generate failure clears cleanup RETURN trap under set -u" {
     local acfs_home
     local fake_info
