@@ -129,10 +129,65 @@ breach alone does not invoke the OOM killer. Do not treat a standalone
 it with a verified escape mechanism such as a hard ceiling or a configured
 userspace OOM killer. See the kernel's [cgroup v2 memory interface](https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files).
 
-This profile does not install or configure `systemd-oomd`, tune limits
-automatically, or add swap/PSI admission checks. The report and isolated tests
-do not establish successful containment on every host; inspect the actual
-scope on the host where commands will run.
+This profile does not install or configure `systemd-oomd` or tune limits
+automatically. The report and isolated tests do not establish successful
+containment on every host; inspect the actual scope on the host where commands
+will run.
+
+## Check Live Memory Pressure Before Launching
+
+The separate live preflight uses swap occupancy and Linux memory pressure stall
+information (PSI), alongside the existing RAM, load, and disk checks:
+
+```bash
+acfs swarm status --json
+acfs swarm doctor --json
+acfs swarm plan --agents 10 --json
+```
+
+The status collector reads `SwapTotal` and `SwapFree` from `/proc/meminfo` and
+the `some` and `full` `avg60` percentages from `/proc/pressure/memory`. Its
+schema-1 `host` object adds `swap_total_kb`, `swap_free_kb`,
+`memory_psi_some_avg60`, and `memory_psi_full_avg60`. Unavailable or malformed
+readings are `null` with a warning, never a fabricated zero. Swap readings must
+be nonnegative integers with free no greater than total; PSI percentages must
+be between 0 and 100 with full no greater than some.
+
+As described in the [kernel PSI documentation](https://docs.kernel.org/accounting/psi.html),
+`full` measures time when all non-idle tasks are simultaneously stalled on
+memory. The 60-second trend catches sustained stalls that free RAM and CPU load
+alone can miss. `some` is retained for diagnostics and consistency checking.
+These are instantaneous reads of the kernel's rolling averages; the command
+does not wait for a new 60-second sample.
+
+The following conservative thresholds are ACFS admission policy, not kernel
+defaults. Other existing blockers still apply.
+
+| Memory evidence | Doctor / plan status | Plan and explicit launch behavior |
+| --- | --- | --- |
+| At least 90% of configured swap is occupied | `warn` | `wait`; suppress launch advice and refuse a new explicit launch |
+| Memory `full avg60` is at least 1%, below 10% | `warn` | `wait`; suppress launch advice and refuse a new explicit launch |
+| Memory `full avg60` is at least 10% | `fail` | `wait`; refuse a new explicit launch even when RAM and load look healthy |
+| A required swap or PSI reading is missing | At least `warn` | `wait`; collect fresh, complete evidence before launching |
+| A saved reading has an invalid type, range, or relationship | `fail` | Refuse planning or launch from invalid evidence |
+| Swap total and free are both zero | No swap warning on its own | No swap is configured; the RAM and PSI checks still apply |
+
+High swap occupancy can reflect cold pages rather than active thrashing, so it
+produces a warning instead of asserting memory failure. ACFS still pauses new
+launches conservatively. Known severe PSI remains a failure even if another
+reading is unavailable. Older saved snapshots without these fields remain
+readable but cannot establish current readiness.
+
+`acfs swarm launch` already obtains a fresh live plan and requires its quiesce
+decision to be `proceed`. `--accept-warnings` cannot override `wait`, a hard
+failure, or an invalid report. The preflight does not change static capacity
+estimates, kill running agents, activate swap, or replace per-scope containment.
+It checks admission at launch time; it is not a continuous memory watchdog.
+
+For a blocked host, inspect `free -h` and `cat /proc/pressure/memory`, reduce or
+finish existing work, and rerun the live preflight when pressure has cleared.
+If PSI is unavailable, inspect kernel support and enable it through the host's
+normal administrative process rather than substituting zero values in a report.
 
 ## Inspect or Disable
 

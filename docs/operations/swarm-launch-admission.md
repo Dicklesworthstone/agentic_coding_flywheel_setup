@@ -179,7 +179,7 @@ Required checks:
 | Check | Pass | Warn | Fail |
 | --- | --- | --- | --- |
 | `host_capacity` | Requested count is at or below capacity recommendation. | Requested count is above recommendation but at or below safe count. | Requested count is above safe count or safe count is zero. |
-| `host_pressure` | Host load and available memory are within conservative launch thresholds. | Host load is high or available memory is below the conservative threshold. | Never fails directly; the quiesce advisory returns `wait` instead. |
+| `host_pressure` | Host load, available memory, swap use, and memory PSI are within conservative launch thresholds. | Host load or memory is under pressure, swap use is at least 90%, full memory PSI avg60 is at least 1%, or telemetry is incomplete. The quiesce advisory returns `wait`. | Full memory PSI avg60 is at least 10%; malformed telemetry also blocks planning. |
 | `rch_pressure` | RCH unavailable only when workload is light, or queue/worker pressure is clear. | RCH has a queue, busy workers, stale telemetry, or pressure warnings but enough slots remain. | RCH is required for the workload and unavailable, invalid, or has no available slots. |
 | `coordination_health` | Agent Mail, Beads, and bv probes are healthy. | Optional coordination probes degrade but Beads and bv remain usable. | Beads or bv JSON commands are unavailable for swarm planning. |
 | `active_work` | No in-progress Beads and no stale reservations reported. | In-progress Beads exist or stale reservations are suspected. | A requested launch would overlap active exclusive reservations without operator review. |

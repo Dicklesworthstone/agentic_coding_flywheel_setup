@@ -111,6 +111,12 @@ def n($v): if ($v == null) then 0 else $v end;
 def b($v): $v == true;
 def arr($v): if ($v | type) == "array" then $v else [] end;
 def s($v): if $v == null then "" else ($v | tostring) end;
+def swap_kb($v):
+  if ($v | type) == "number" then
+    $v >= 0 and $v <= 9007199254740991 and ($v | floor) == $v
+  else false end;
+def psi_pct($v):
+  if ($v | type) == "number" then $v >= 0 and $v <= 100 else false end;
 def ts_epoch($v):
   if ($v | type) == "string" and ($v | length) > 0 then
     (try ($v | sub("\\.[0-9]+Z$"; "Z") | sub("\\+00:00$"; "Z") | fromdateiso8601) catch null)
@@ -138,6 +144,21 @@ def check($id; $status; $summary; $details; $commands):
 | (n($host.disk_available_kb) / 1048576) as $disk_gib
 | (n($host.cpu_count)) as $cpu_count
 | (n($host.load_1m)) as $load_1m
+| (swap_kb($host.swap_total_kb) and swap_kb($host.swap_free_kb)
+   and $host.swap_free_kb <= $host.swap_total_kb) as $swap_known
+| (psi_pct($host.memory_psi_some_avg60) and psi_pct($host.memory_psi_full_avg60)) as $psi_known
+| (([$host.swap_total_kb, $host.swap_free_kb]
+     | any(. != null and (swap_kb(.) | not)))
+   or ([$host.memory_psi_some_avg60, $host.memory_psi_full_avg60]
+     | any(. != null and (psi_pct(.) | not)))
+   or (swap_kb($host.swap_total_kb) and swap_kb($host.swap_free_kb)
+     and $host.swap_free_kb > $host.swap_total_kb)
+   or ($psi_known and $host.memory_psi_full_avg60 > $host.memory_psi_some_avg60)) as $pressure_invalid
+| (if $swap_known and $host.swap_total_kb > 0 then
+     (($host.swap_total_kb - $host.swap_free_kb) / $host.swap_total_kb * 100)
+   else null end) as $swap_used_pct
+| (psi_pct($host.memory_psi_full_avg60) and $host.memory_psi_full_avg60 >= 10) as $memory_stalled
+| (psi_pct($host.memory_psi_full_avg60) and $host.memory_psi_full_avg60 >= 1) as $memory_pressure
 | [
     $bead_items[]?
     | (.updated_at // .last_activity_ts // .created_at // "") as $activity_ts
@@ -286,17 +307,30 @@ def check($id; $status; $summary; $details; $commands):
     ),
     check(
       "resource_pressure";
-      (if ($mem_gib < 2 or $disk_gib < 10) then "fail"
-       elif (($cpu_count > 0 and $load_1m > ($cpu_count * 1.5)) or $mem_gib < 8 or $disk_gib < 50) then "warn"
+      (if ($pressure_invalid or $memory_stalled or $mem_gib < 2 or $disk_gib < 10) then "fail"
+       elif (($swap_known | not) or ($psi_known | not) or $memory_pressure or $swap_used_pct >= 90
+         or ($cpu_count > 0 and $load_1m > ($cpu_count * 1.5)) or $mem_gib < 8 or $disk_gib < 50) then "warn"
        else "pass" end);
-      (if ($mem_gib < 2) then "Available memory is below 2 GiB"
+      (if $pressure_invalid then "Swap or memory pressure telemetry is invalid; collect a fresh status snapshot"
+       elif $memory_stalled then "Memory full-stall pressure is at least 10% over 60 seconds; pause new launches"
+       elif ($mem_gib < 2) then "Available memory is below 2 GiB"
        elif ($disk_gib < 10) then "Available disk is below 10 GiB"
+       elif $memory_pressure then "Memory full-stall pressure is at least 1% over 60 seconds; pause new launches"
+       elif $swap_used_pct >= 90 then "At least 90% of configured swap is in use; pause new launches"
+       elif (($swap_known | not) or ($psi_known | not)) then "Swap or memory pressure telemetry is unavailable; refresh before launching"
        elif ($cpu_count > 0 and $load_1m > ($cpu_count * 1.5)) then "Load average is high for the CPU count"
        elif ($mem_gib < 8) then "Available memory is low for a large swarm"
        elif ($disk_gib < 50) then "Available disk is low for a large swarm"
        else "Local resource pressure is acceptable" end);
-      ($host.warnings // []);
-      ["acfs capacity --recommend-ntm", "acfs swarm status --json"]
+      (($host.warnings // []) + [
+        (if ($swap_known | not) then "Swap usage is unknown"
+         elif $host.swap_total_kb == 0 then "No swap is configured; swap exhaustion does not apply"
+         else "Swap used: " + ($swap_used_pct | tostring) + "%" end),
+        (if ($psi_known | not) then "Memory PSI is unknown"
+         else "Memory PSI avg60: some=" + ($host.memory_psi_some_avg60 | tostring)
+           + "%, full=" + ($host.memory_psi_full_avg60 | tostring) + "%" end)
+      ]);
+      ["acfs capacity --recommend-ntm", "acfs swarm status --json", "free -h", "cat /proc/pressure/memory"]
     ),
     check(
       "active_work";

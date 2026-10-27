@@ -71,6 +71,19 @@ make_stub_dir() {
     stub_dir="$(mktemp -d "$ARTIFACT_DIR/stubs.XXXXXX")"
     # Restricted tool PATHs must still exercise the real timeout boundary.
     ln -s "$(command -v timeout)" "$stub_dir/timeout"
+    # Healthy coordination fixtures must not depend on the test host exposing
+    # PSI. This invokes the real entrypoint and pressure parsers; only kernel
+    # observations are replaced in this test process, without a runtime override.
+    write_executable "$stub_dir/swarm-status-fixture" '#!/usr/bin/env bash
+source "$1"
+shift
+swarm_status_read_swap_info() {
+    printf "SwapTotal: 8388608 kB\nSwapFree: 6291456 kB\n" | swarm_status_parse_swap_info
+}
+swarm_status_read_memory_psi() {
+    printf "some avg10=0.10 avg60=0.20 avg300=0.30 total=1234\nfull avg10=0.00 avg60=0.10 avg300=0.20 total=123\n" | swarm_status_parse_memory_psi
+}
+swarm_status_main "$@"'
     printf '%s\n' "$stub_dir"
 }
 
@@ -135,11 +148,15 @@ case "$*" in
 esac'
 
     local output
-    output="$(run_and_capture stubbed_tools env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture stubbed_tools env PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$stub_dir/swarm-status-fixture" "$SWARM_STATUS_SH" --json)"
     write_artifact "stubbed_tools.json" "$output"
 
     jq -e '
       .status == "pass" and
+      .host.swap_total_kb == 8388608 and
+      .host.swap_free_kb == 6291456 and
+      .host.memory_psi_some_avg60 == 0.2 and
+      .host.memory_psi_full_avg60 == 0.1 and
       .probes.ntm.available == true and
       .probes.ntm.robot_status_ok == true and
       .probes.ntm.tmux_session_count == 2 and
@@ -312,7 +329,7 @@ case "$*" in
 esac'
 
     local output
-    output="$(run_and_capture resource_pressure env HOME="$ARTIFACT_DIR/pressure-home" PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$SWARM_STATUS_SH" --json)"
+    output="$(run_and_capture resource_pressure env HOME="$ARTIFACT_DIR/pressure-home" PATH="$stub_dir:/usr/bin:/bin" ACFS_SWARM_STATUS_TIMEOUT=1 "$BASH" "$stub_dir/swarm-status-fixture" "$SWARM_STATUS_SH" --json)"
     write_artifact "resource_pressure.json" "$output"
 
     jq -e '
@@ -320,6 +337,10 @@ esac'
       .status == "pass" and
       .host.cpu_count == 2 and
       .host.disk_available_kb == 512000 and
+      .host.swap_total_kb == 8388608 and
+      .host.swap_free_kb == 6291456 and
+      .host.memory_psi_some_avg60 == 0.2 and
+      .host.memory_psi_full_avg60 == 0.1 and
       .probes.beads.ready_count == 1 and
       .probes.rch.status_json_ok == true and
       .probes.rch.queue_json_ok == true and
@@ -328,6 +349,119 @@ esac'
     ' <<<"$output" >/dev/null || return 1
 
     pass "resource_pressure_snapshot_records_host_data"
+}
+
+run_memory_fixture_json() {
+    local name="$1" meminfo="$2" psi="$3"
+    printf '%s\n' "$meminfo" > "$ARTIFACT_DIR/$name.meminfo"
+    printf '%s\n' "$psi" > "$ARTIFACT_DIR/$name.psi"
+    run_and_capture "$name" env PATH="/usr/bin:/bin" "$BASH" -c '
+        source "$1"
+        swap_fixture="$2"
+        psi_fixture="$3"
+        swarm_status_read_swap_info() { swarm_status_parse_swap_info < "$swap_fixture"; }
+        swarm_status_read_memory_psi() { swarm_status_parse_memory_psi < "$psi_fixture"; }
+        swarm_status_collect_host
+        swarm_status_emit_json
+    ' _ "$SWARM_STATUS_SH" "$ARTIFACT_DIR/$name.meminfo" "$ARTIFACT_DIR/$name.psi"
+}
+
+test_memory_pressure_values_and_no_swap() {
+    local output psi
+    psi=$'some avg10=1.25 avg60=12.345678 avg300=2.50 total=12345\nfull avg10=0.10 avg60=10.01 avg300=0.25 total=100'
+    output="$(run_memory_fixture_json pressure_values $'MemTotal: 33554432 kB\nSwapTotal: 8388608 kB\nSwapFree: 1024 kB' "$psi")"
+    jq -e '.host.swap_total_kb == 8388608 and .host.swap_free_kb == 1024 and
+        .host.memory_psi_some_avg60 == 12.345678 and .host.memory_psi_full_avg60 == 10.01 and
+        .host.status == "pass"' <<< "$output" >/dev/null || return 1
+
+    output="$(run_memory_fixture_json no_swap $'SwapTotal: 0 kB\nSwapFree: 0 kB' "$psi")"
+    jq -e '.host.swap_total_kb == 0 and .host.swap_free_kb == 0 and .host.status == "pass"' <<< "$output" >/dev/null || return 1
+
+    output="$(run_memory_fixture_json exhausted_swap $'SwapTotal: 8388608 kB\nSwapFree: 0 kB' "$psi")"
+    jq -e '.host.swap_total_kb == 8388608 and .host.swap_free_kb == 0 and .host.status == "pass"' <<< "$output" >/dev/null || return 1
+
+    output="$(run_memory_fixture_json exact_integer_limit $'SwapTotal: 9007199254740991 kB\nSwapFree: 9007199254740991 kB' "$psi")"
+    jq -e '.host.swap_total_kb == 9007199254740991 and .host.swap_free_kb == 9007199254740991' <<< "$output" >/dev/null || return 1
+    pass "memory_pressure_values_and_no_swap"
+}
+
+test_invalid_swap_is_unknown() {
+    local output input index=0 psi
+    psi=$'some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0'
+    local -a invalid=(
+        ''
+        $'SwapTotal: 1024 kB'
+        $'SwapTotal: -1 kB\nSwapFree: 0 kB'
+        $'SwapTotal: 1.5 kB\nSwapFree: 0 kB'
+        $'SwapTotal: 1e9 kB\nSwapFree: 0 kB'
+        $'SwapTotal: 9007199254740992 kB\nSwapFree: 0 kB'
+        $'SwapTotal: 1024 kB\nSwapFree: 2048 kB'
+        $'SwapTotal: 0 kB\nSwapFree: 1 kB'
+        $'SwapTotal: 1024 MB\nSwapFree: 512 kB'
+        $'SwapTotal: 1024 kB\nSwapTotal: 2048 kB\nSwapFree: 512 kB'
+        $'SwapTotal: 1024 kB\nSwapFree: 512 kB extra'
+    )
+    for input in "${invalid[@]}"; do
+        index=$((index + 1))
+        output="$(run_memory_fixture_json "invalid_swap_$index" "$input" "$psi")"
+        jq -e '.host.status == "warn" and .host.swap_total_kb == null and .host.swap_free_kb == null and
+            .host.memory_psi_some_avg60 == 0 and .host.memory_psi_full_avg60 == 0 and
+            any(.host.warnings[]; contains("Swap headroom is unknown"))' <<< "$output" >/dev/null || return 1
+    done
+    pass "invalid_swap_is_unknown ($index cases)"
+}
+
+test_invalid_memory_psi_is_unknown() {
+    local output input index=0 some full
+    some='some avg10=0.00 avg60=10.00 avg300=0.00 total=100'
+    full='full avg10=0.00 avg60=1.00 avg300=0.00 total=10'
+    local -a invalid=(
+        ''
+        "$some"
+        "$some"$'\nfull avg10=0.00 avg60=11.00 avg300=0.00 total=10'
+        $'some avg10=0.00 avg60=100.01 avg300=0.00 total=100\n'"$full"
+        "$some"$'\nfull avg10=0.00 avg60=-1.00 avg300=0.00 total=10'
+        "$some"$'\nfull avg10=0.00 avg60=NaN avg300=0.00 total=10'
+        "$some"$'\nfull avg10=0.00 avg60=1e1 avg300=0.00 total=10'
+        "$some"$'\nfull avg10=0.00 avg60=1.1234567 avg300=0.00 total=10'
+        "$some"$'\n'"$full"$'\n'"$full"
+        "$some"$'\nfull avg10=0.00 avg60=1.00 avg60=2.00 total=10'
+        "$some"$'\nfull avg10=0.00 avg60=1.00 avg300=0.00'
+        "$some"$'\nfull avg10=0.00 avg60=1.00 avg300=0.00 other=10'
+    )
+    for input in "${invalid[@]}"; do
+        index=$((index + 1))
+        output="$(run_memory_fixture_json "invalid_psi_$index" $'SwapTotal: 1024 kB\nSwapFree: 512 kB' "$input")"
+        jq -e '.host.status == "warn" and .host.memory_psi_some_avg60 == null and .host.memory_psi_full_avg60 == null and
+            .host.swap_total_kb == 1024 and .host.swap_free_kb == 512 and
+            any(.host.warnings[]; contains("Memory PSI is unknown"))' <<< "$output" >/dev/null || return 1
+    done
+    pass "invalid_memory_psi_is_unknown ($index cases)"
+}
+
+test_memory_pressure_read_failures_and_size_bounds() {
+    local output oversized psi
+    output="$(run_and_capture unreadable_pressure env PATH="/usr/bin:/bin" "$BASH" -c '
+        source "$1"
+        swarm_status_read_swap_info() { return 1; }
+        swarm_status_read_memory_psi() { return 1; }
+        swarm_status_collect_host
+        swarm_status_emit_json
+    ' _ "$SWARM_STATUS_SH")"
+    jq -e '.host.status == "warn" and .host.swap_total_kb == null and .host.swap_free_kb == null and
+        .host.memory_psi_some_avg60 == null and .host.memory_psi_full_avg60 == null and
+        any(.host.warnings[]; contains("Swap headroom is unknown")) and
+        any(.host.warnings[]; contains("Memory PSI is unknown"))' <<< "$output" >/dev/null || return 1
+
+    psi=$'some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0'
+    oversized="$(printf '%65537s' '')"
+    output="$(run_memory_fixture_json oversized_meminfo $'SwapTotal: 1024 kB\nSwapFree: 512 kB\n'"$oversized" "$psi")"
+    jq -e '.host.swap_total_kb == null and .host.swap_free_kb == null and .host.status == "warn"' <<< "$output" >/dev/null || return 1
+
+    oversized="$(printf '%4097s' '')"
+    output="$(run_memory_fixture_json oversized_psi $'SwapTotal: 1024 kB\nSwapFree: 512 kB' "$psi"$'\n'"$oversized")"
+    jq -e '.host.memory_psi_some_avg60 == null and .host.memory_psi_full_avg60 == null and .host.status == "warn"' <<< "$output" >/dev/null || return 1
+    pass "memory_pressure_read_failures_and_size_bounds"
 }
 
 test_timeout_becomes_structured_warning() {
@@ -384,9 +518,32 @@ test_human_output() {
 
     grep -Fq "ACFS Swarm Status" <<<"$output" || return 1
     grep -Fq "Status:" <<<"$output" || return 1
+    grep -Fq "memory PSI avg60:" <<<"$output" || return 1
     grep -Fq "Warnings:" <<<"$output" || return 1
 
     pass "human_output"
+}
+
+test_human_memory_pressure_labels() {
+    local output
+    output="$(run_and_capture human_pressure_labels "$BASH" -c '
+        source "$1"
+        HOST_SWAP_TOTAL_KB=0
+        HOST_SWAP_FREE_KB=0
+        swarm_status_emit_human
+        HOST_SWAP_TOTAL_KB=1024
+        HOST_SWAP_FREE_KB=0
+        HOST_MEMORY_PSI_SOME_AVG60=10.250000
+        HOST_MEMORY_PSI_FULL_AVG60=2.500000
+        swarm_status_emit_human
+        HOST_SWAP_TOTAL_KB=null
+        HOST_SWAP_FREE_KB=null
+        swarm_status_emit_human
+    ' _ "$SWARM_STATUS_SH")"
+    grep -Fq 'Swap: none configured (0/0 KiB); memory PSI avg60: some=unknown, full=unknown' <<< "$output" || return 1
+    grep -Fq 'Swap: 0/1024 KiB free; memory PSI avg60: some=10.250000%, full=2.500000%' <<< "$output" || return 1
+    grep -Fq 'Swap: unknown; memory PSI avg60:' <<< "$output" || return 1
+    pass "human_memory_pressure_labels"
 }
 
 test_editor_collector_uses_calling_bash() {
@@ -462,9 +619,14 @@ main() {
     run_test test_rch_queue_pressure_metrics
     run_test test_partial_swarm_records_down_subsystems
     run_test test_resource_pressure_snapshot_records_host_data
+    run_test test_memory_pressure_values_and_no_swap
+    run_test test_invalid_swap_is_unknown
+    run_test test_invalid_memory_psi_is_unknown
+    run_test test_memory_pressure_read_failures_and_size_bounds
     run_test test_timeout_becomes_structured_warning
     run_test test_rch_queue_timeout_becomes_structured_warning
     run_test test_human_output
+    run_test test_human_memory_pressure_labels
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"

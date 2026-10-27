@@ -55,7 +55,7 @@ test_pass_fixture_exits_zero() {
 {
   "schema_version": 1,
   "status": "pass",
-  "host": {"status": "pass", "cpu_count": 64, "load_1m": 8, "mem_available_kb": 134217728, "disk_available_kb": 209715200, "warnings": []},
+  "host": {"status": "pass", "cpu_count": 64, "load_1m": 8, "mem_available_kb": 134217728, "disk_available_kb": 209715200, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0, "memory_psi_full_avg60": 0, "warnings": []},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 3, "in_progress_count": 0, "open_count": 7, "warnings": []},
@@ -79,6 +79,79 @@ JSON
     ' <<<"$output" >/dev/null || return 1
 
     pass "pass_fixture_exits_zero"
+}
+
+run_pressure_case() {
+    local name="$1" filter="$2" expected="$3"
+    local fixture="$ARTIFACT_DIR/$name.json" output status expected_exit
+    case "$expected" in
+        pass) expected_exit=0 ;;
+        warn) expected_exit=1 ;;
+        fail) expected_exit=2 ;;
+        *) return 1 ;;
+    esac
+    jq "$filter" "$ARTIFACT_DIR/pass_fixture.json" > "$fixture" || return 1
+    output="$(run_doctor_json "$name" "$fixture")"
+    status="$(cat "$ARTIFACT_DIR/$name.exit")"
+    [[ "$status" -eq "$expected_exit" ]] || {
+        fail "$name" "expected exit $expected_exit, got $status"
+        return 1
+    }
+    jq -e --arg expected "$expected" --argjson exit_code "$expected_exit" '
+      .status == $expected and .exit_code == $exit_code and
+      any(.checks[]; .id == "resource_pressure" and .status == $expected)
+    ' <<<"$output" >/dev/null || return 1
+    pass "$name"
+}
+
+test_memory_pressure_thresholds() {
+    run_pressure_case no_swap '
+      .host.swap_total_kb = 0 | .host.swap_free_kb = 0' pass || return 1
+    jq -e 'any(.checks[]; .id == "resource_pressure" and
+      any(.details[]; contains("No swap is configured")))' \
+      "$ARTIFACT_DIR/no_swap.output.json" >/dev/null || return 1
+    run_pressure_case swap_below_threshold '
+      .host.swap_total_kb = 10000 | .host.swap_free_kb = 1001' pass || return 1
+    run_pressure_case swap_at_threshold '
+      .host.swap_total_kb = 10000 | .host.swap_free_kb = 1000' warn || return 1
+    run_pressure_case swap_exhausted '.host.swap_free_kb = 0' warn || return 1
+    run_pressure_case psi_below_threshold '
+      .host.memory_psi_some_avg60 = 2 | .host.memory_psi_full_avg60 = 0.99' pass || return 1
+    run_pressure_case psi_at_warning '
+      .host.memory_psi_some_avg60 = 2 | .host.memory_psi_full_avg60 = 1' warn || return 1
+    run_pressure_case psi_below_failure '
+      .host.memory_psi_some_avg60 = 12 | .host.memory_psi_full_avg60 = 9.99' warn || return 1
+    run_pressure_case psi_at_failure '
+      .host.memory_psi_some_avg60 = 12 | .host.memory_psi_full_avg60 = 10' fail || return 1
+    run_pressure_case psi_fully_stalled '
+      .host.memory_psi_some_avg60 = 100 | .host.memory_psi_full_avg60 = 100' fail || return 1
+    run_pressure_case severe_psi_with_missing_swap '
+      .host.swap_total_kb = null | .host.swap_free_kb = null |
+      .host.memory_psi_some_avg60 = 12 | .host.memory_psi_full_avg60 = 10' fail || return 1
+    run_pressure_case severe_psi_with_missing_some '
+      .host.memory_psi_some_avg60 = null | .host.memory_psi_full_avg60 = 10' fail || return 1
+}
+
+test_missing_or_invalid_pressure_never_passes() {
+    run_pressure_case legacy_snapshot '
+      del(.host.swap_total_kb, .host.swap_free_kb,
+          .host.memory_psi_some_avg60, .host.memory_psi_full_avg60)' warn || return 1
+    run_pressure_case unavailable_swap '
+      .host.swap_total_kb = null | .host.swap_free_kb = null' warn || return 1
+    run_pressure_case unavailable_psi '
+      .host.memory_psi_some_avg60 = null | .host.memory_psi_full_avg60 = null' warn || return 1
+    run_pressure_case partial_swap '.host.swap_free_kb = null' warn || return 1
+    run_pressure_case partial_psi '.host.memory_psi_full_avg60 = null' warn || return 1
+    run_pressure_case impossible_swap '.host.swap_free_kb = 8388609' fail || return 1
+    run_pressure_case negative_swap '.host.swap_total_kb = -1' fail || return 1
+    run_pressure_case fractional_swap '.host.swap_free_kb = 0.5' fail || return 1
+    run_pressure_case excessive_swap '.host.swap_total_kb = 9007199254740992' fail || return 1
+    run_pressure_case string_swap '.host.swap_total_kb = "8388608"' fail || return 1
+    run_pressure_case impossible_psi '.host.memory_psi_full_avg60 = 1' fail || return 1
+    run_pressure_case excessive_psi '.host.memory_psi_some_avg60 = 101' fail || return 1
+    run_pressure_case negative_psi '.host.memory_psi_full_avg60 = -1' fail || return 1
+    run_pressure_case string_psi '.host.memory_psi_some_avg60 = "0"' fail || return 1
+    run_pressure_case boolean_psi '.host.memory_psi_some_avg60 = true' fail || return 1
 }
 
 test_missing_required_tools_fail() {
@@ -357,6 +430,8 @@ main() {
     }
 
     run_test test_pass_fixture_exits_zero
+    run_test test_memory_pressure_thresholds
+    run_test test_missing_or_invalid_pressure_never_passes
     run_test test_missing_required_tools_fail
     run_test test_partial_state_warns
     run_test test_stale_beads_warn_with_manual_commands

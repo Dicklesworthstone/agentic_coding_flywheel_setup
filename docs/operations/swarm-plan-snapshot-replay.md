@@ -44,6 +44,16 @@ slots, high host pressure, stale work, missing host pressure measurements, and
 incomplete or stale RCH queue/worker telemetry. Hard failures also block advice.
 Busy RCH slots can reduce, but never increase, the host's recommended count.
 
+Host memory evidence includes `swap_total_kb`, `swap_free_kb`,
+`memory_psi_some_avg60`, and `memory_psi_full_avg60`. At least 90% swap occupancy
+or at least 1% full memory PSI over 60 seconds produces `warn`/`wait`; full PSI
+of at least 10% is a hard failure. Zero total/free swap means no swap is
+configured, not exhaustion. Missing values, including older snapshots without
+these fields, produce `warn`/`wait`; malformed values are rejected. See
+[live memory preflight](swarm-resource-isolation.md#check-live-memory-pressure-before-launching)
+for the policy and operational limits. Explicit launch requires a fresh plan
+with `proceed`, so `--accept-warnings` does not bypass a memory-pressure wait.
+
 Exit codes are:
 
 - `0`: the supplied evidence supports the proposed launch size.

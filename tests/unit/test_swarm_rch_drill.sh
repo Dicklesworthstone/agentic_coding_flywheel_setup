@@ -70,7 +70,7 @@ status_fixture_with_rch() {
 {
   "schema_version": 1,
   "status": "warn",
-  "host": {"status": "pass", "cpu_count": 64, "load_1m": 8, "mem_available_kb": 134217728, "disk_available_kb": 314572800, "warnings": []},
+  "host": {"status": "pass", "cpu_count": 64, "load_1m": 8, "mem_available_kb": 134217728, "disk_available_kb": 314572800, "swap_total_kb": 8388608, "swap_free_kb": 6291456, "memory_psi_some_avg60": 0.2, "memory_psi_full_avg60": 0.1, "warnings": []},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 12, "in_progress_count": 0, "open_count": 20, "warnings": []},

@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import unittest
 
+from test_swarm_plan_admission import healthy_capacity, healthy_status
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/lib/swarm_launch.sh"
 
 FIXTURE = r'''#!/usr/bin/env python3
@@ -124,6 +126,19 @@ class LaunchTests(unittest.TestCase):
     def count_spawns(self):
         return sum(name == "ntm" and "--dry-run" not in argv for name, argv in self.calls())
 
+    def install_real_planner(self, status):
+        # These launch cases request two agents; keep existing sessions from
+        # independently requiring scale-down before evaluating memory pressure.
+        status["probes"]["ntm"]["tmux_session_count"] = 0
+        shutil.copyfile(SCRIPT.with_name("swarm_plan.sh"), self.lib / "swarm_plan.sh")
+        for name, snapshot in (("swarm_status.sh", status), ("capacity.sh", healthy_capacity())):
+            collector = self.lib / name
+            collector.write_text("#!/usr/bin/env bash\n"
+                + "printf '%s\\n' '" + json.dumps([name, []]) + "' >> \"$LAUNCH_TEST_ROOT/calls\"\n"
+                + "cat <<'JSON'\n" + json.dumps(snapshot) + "\nJSON\n", encoding="utf-8")
+        self.env.update(ACFS_SWARM_STATUS_SCRIPT=str(self.lib / "swarm_status.sh"),
+                        ACFS_SWARM_CAPACITY_SCRIPT=str(self.lib / "capacity.sh"))
+
     def invoke(self, mode="ok", extra=(), launch=False):
         request = {"repo": str(self.repo), "session": "project", "agents": [
             {"agent_name": "BlueLake", "agent_type": "codex"}, {"agent_name": "RedFox", "agent_type": "claude"}],
@@ -221,6 +236,30 @@ class LaunchTests(unittest.TestCase):
                 self.assertFalse(self.receipt.exists())
                 self.assertNotIn("sensitive-probe", json.dumps(report))
         self.assertTrue(all(name == "swarm_plan.sh" for name, _ in self.calls()))
+
+    def test_real_planner_healthy_control_reaches_launch(self):
+        self.install_real_planner(healthy_status())
+        code, report = self.invoke(launch=True)
+        self.assertEqual((code, report["status"]), (0, "ready"), report)
+        self.assertEqual([name for name, _ in self.calls()][:2], ["swarm_status.sh", "capacity.sh"])
+        self.assertEqual(self.count_spawns(), 1)
+
+    def test_real_planner_memory_pressure_cannot_be_accepted_as_warning(self):
+        for change in ({"swap_total_kb": 1000, "swap_free_kb": 100},
+                       {"memory_psi_some_avg60": 1, "memory_psi_full_avg60": 1},
+                       {"memory_psi_some_avg60": 10, "memory_psi_full_avg60": 10},
+                       {"memory_psi_full_avg60": None}):
+            with self.subTest(change=change):
+                with LaunchTests("test_real_planner_healthy_control_reaches_launch") as case:
+                    status = healthy_status()
+                    status["host"].update(change)
+                    case.install_real_planner(status)
+                    code, report = case.invoke(launch=True, extra=("--accept-warnings",))
+                    self.assertEqual(code, 2, report)
+                    self.assertIn("Launch admission blocked", report["error"])
+                    self.assertFalse(case.receipt.exists())
+                    self.assertEqual([name for name, _ in case.calls()], ["swarm_status.sh", "capacity.sh"])
+                    self.assertEqual(case.count_spawns(), 0)
 
     def test_ntm_dry_run_failure_prevents_intent_and_spawn(self):
         for mode in ("existing-session", "unsupported", "ntm-defer", "no-ntm-admission", "extra-agent", "wrong-project",

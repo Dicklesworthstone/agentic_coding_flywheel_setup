@@ -229,6 +229,14 @@ swarm_plan_validate_snapshot() {
         number_value | . >= 0 and . <= 9007199254740991;
       def count:
         number_value | . >= 0 and . <= 9007199254740991 and . == floor;
+      def telemetry_count:
+        if type == "number" then
+          isfinite and (isnan | not) and . >= 0 and . <= 9007199254740991 and . == floor
+        else false end;
+      def psi_percentage:
+        if type == "number" then
+          isfinite and (isnan | not) and . >= 0 and . <= 100
+        else false end;
       def counts($keys):
         . as $o | all($keys[]; . as $k | $o[$k] == null or ($o[$k] | count));
       def state:
@@ -254,7 +262,14 @@ swarm_plan_validate_snapshot() {
         and if $kind == "status" then
           (.host | type == "object" and diagnostic
             and counts(["cpu_count", "mem_available_kb"])
-            and (.load_1m == null or (.load_1m | nonnegative)))
+            and (.load_1m == null or (.load_1m | nonnegative))
+            and (.swap_total_kb == null or (.swap_total_kb | telemetry_count))
+            and (.swap_free_kb == null or (.swap_free_kb | telemetry_count))
+            and (.swap_total_kb == null or .swap_free_kb == null or .swap_free_kb <= .swap_total_kb)
+            and (.memory_psi_some_avg60 == null or (.memory_psi_some_avg60 | psi_percentage))
+            and (.memory_psi_full_avg60 == null or (.memory_psi_full_avg60 | psi_percentage))
+            and (.memory_psi_some_avg60 == null or .memory_psi_full_avg60 == null
+              or .memory_psi_full_avg60 <= .memory_psi_some_avg60))
           and (.probes | type == "object"
             and all(.agent_mail, .beads, .bv, .rch, .ntm; probe))
           and (.stale_work == null or (.stale_work | type == "object"
@@ -340,9 +355,21 @@ $status as $s
 | (n($host.cpu_count)) as $host_cpu_count
 | (n($host.load_1m)) as $host_load_1m
 | (n($host.mem_available_kb)) as $host_mem_available_kb
-| ($host_cpu_count > 0 and $host.load_1m != null and $host.mem_available_kb != null) as $host_evidence_known
+| ($host.swap_total_kb != null and $host.swap_free_kb != null) as $host_swap_known
+| ($host.memory_psi_some_avg60 != null and $host.memory_psi_full_avg60 != null) as $host_psi_known
+| ($host_cpu_count > 0 and $host.load_1m != null and $host.mem_available_kb != null
+   and $host_swap_known and $host_psi_known) as $host_evidence_known
+| (if $host_swap_known and $host.swap_total_kb > 0 then
+     (($host.swap_total_kb - $host.swap_free_kb) / $host.swap_total_kb * 100)
+   else null end) as $host_swap_used_percent
+# These are conservative launch-admission thresholds, not kernel OOM limits.
+# No configured swap (0/0) is distinct from exhausted configured swap.
+| ($host.memory_psi_full_avg60 != null and $host.memory_psi_full_avg60 >= 10) as $host_memory_stalled
+| ($host.memory_psi_full_avg60 != null and $host.memory_psi_full_avg60 >= 1) as $host_memory_pressure
 | (if n($host.cpu_count) > 0 then (n($host.load_1m) / n($host.cpu_count)) else 0 end) as $host_load_ratio
-| (($host_cpu_count > 0 and $host_load_ratio >= 1.25) or ($host.mem_available_kb != null and $host_mem_available_kb < 4194304)) as $host_pressure_high
+| (($host_cpu_count > 0 and $host_load_ratio >= 1.25)
+   or ($host.mem_available_kb != null and $host_mem_available_kb < 4194304)
+   or $host_memory_pressure or $host_swap_used_percent >= 90) as $host_pressure_high
 | (n($c.capacity.recommended_agent_count)) as $capacity_recommended
 | (n($c.capacity.safe_agent_count)) as $capacity_safe
 # Zero is a real capacity limit, not a request to use the larger legacy maximum.
@@ -407,15 +434,24 @@ $status as $s
     ),
     check(
       "host_pressure";
-      (if ($host_evidence_known | not) or $host_pressure_high then "warn" else "pass" end);
-      (if ($host_evidence_known | not) then "Host pressure telemetry is incomplete; collect fresh CPU, load and memory readings"
+      (if $host_memory_stalled then "fail"
+       elif ($host_evidence_known | not) or $host_pressure_high then "warn" else "pass" end);
+      (if $host_memory_stalled then "Sustained full memory pressure is at least 10%; wait for stalls to clear"
+       elif $host_memory_pressure then "Sustained full memory pressure is at least 1%; pause new launches"
+       elif $host_swap_used_percent >= 90 then "Swap use is at least 90%; pause new launches until headroom recovers"
+       elif ($host_evidence_known | not) then "Host pressure telemetry is incomplete; collect fresh CPU, load, memory, swap and PSI readings"
        elif ($host_cpu_count > 0 and $host_load_ratio >= 1.25 and $host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Host load and available memory are already under pressure"
        elif ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "Host load is already high; pause new launches until pressure clears"
        elif ($host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "Available memory is below the conservative launch threshold"
        else "Host pressure is acceptable" end);
       ([
         if ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "load_1m=" + ($host_load_1m | tostring) + " cpu_count=" + ($host_cpu_count | tostring) else empty end,
-        if ($host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "mem_available_kb=" + ($host_mem_available_kb | tostring) else empty end
+        if ($host.mem_available_kb != null and $host_mem_available_kb < 4194304) then "mem_available_kb=" + ($host_mem_available_kb | tostring) else empty end,
+        if $host.swap_total_kb != null then "swap_total_kb=" + ($host.swap_total_kb | tostring) else "swap_total_kb=unknown" end,
+        if $host.swap_free_kb != null then "swap_free_kb=" + ($host.swap_free_kb | tostring) else "swap_free_kb=unknown" end,
+        if $host_swap_used_percent != null then "swap_used_percent=" + ($host_swap_used_percent | tostring) else empty end,
+        if $host.memory_psi_some_avg60 != null then "memory_psi_some_avg60=" + ($host.memory_psi_some_avg60 | tostring) else "memory_psi_some_avg60=unknown" end,
+        if $host.memory_psi_full_avg60 != null then "memory_psi_full_avg60=" + ($host.memory_psi_full_avg60 | tostring) else "memory_psi_full_avg60=unknown" end
       ]);
       ["acfs swarm status --json", "acfs capacity --json --recommend-ntm"]
     ),

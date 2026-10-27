@@ -103,6 +103,52 @@ class SwarmSnapshotTests(unittest.TestCase):
                 self.status["host"][key] = None
                 self.assert_wait(self.run_plan())
 
+    def test_missing_or_null_swap_and_psi_wait_without_live_probes(self):
+        fields = ("swap_total_kb", "swap_free_kb", "memory_psi_some_avg60", "memory_psi_full_avg60")
+        for key in fields:
+            for absent in (False, True):
+                with self.subTest(key=key, absent=absent):
+                    self.status = healthy_status()
+                    if absent:
+                        del self.status["host"][key]
+                    else:
+                        self.status["host"][key] = None
+                    self.assert_wait(self.run_plan())
+        self.status = healthy_status()
+        for key in fields:
+            del self.status["host"][key]
+        self.assert_wait(self.run_plan())
+
+    def test_invalid_swap_counters_are_blocked(self):
+        for key in ("swap_total_kb", "swap_free_kb"):
+            for invalid in (True, -1, 0.5, "100", "oops", 1e30, float("nan"),
+                            float("inf"), {}, []):
+                with self.subTest(key=key, invalid=invalid):
+                    self.status = healthy_status()
+                    self.status["host"][key] = invalid
+                    report = self.assert_blocked(self.run_plan())
+                    self.assertEqual(report["checks"][0]["id"], "planner_input")
+
+    def test_invalid_psi_is_blocked(self):
+        for key in ("memory_psi_some_avg60", "memory_psi_full_avg60"):
+            for invalid in (True, -0.01, 100.01, "1.0", "oops", float("nan"),
+                            float("inf"), float("-inf"), {}, []):
+                with self.subTest(key=key, invalid=invalid):
+                    self.status = healthy_status()
+                    self.status["host"][key] = invalid
+                    report = self.assert_blocked(self.run_plan())
+                    self.assertEqual(report["checks"][0]["id"], "planner_input")
+
+    def test_contradictory_swap_and_psi_are_blocked(self):
+        for change in ({"swap_total_kb": 100, "swap_free_kb": 101},
+                       {"swap_total_kb": 0, "swap_free_kb": 1},
+                       {"memory_psi_some_avg60": 0.5, "memory_psi_full_avg60": 1}):
+            with self.subTest(change=change):
+                self.status = healthy_status()
+                self.status["host"].update(change)
+                report = self.assert_blocked(self.run_plan())
+                self.assertEqual(report["checks"][0]["id"], "planner_input")
+
     def test_missing_rch_counters_wait(self):
         for key in ("queue_depth", "active_build_count", "slots_available", "workers_total", "workers_healthy"):
             with self.subTest(key=key):

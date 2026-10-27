@@ -16,7 +16,9 @@ def healthy_status():
     return {
         "schema_version": 1, "status": "pass",
         "host": {"status": "pass", "cpu_count": 64, "load_1m": 8,
-                 "mem_available_kb": 134217728, "warnings": []},
+                 "mem_available_kb": 134217728, "swap_total_kb": 8388608,
+                 "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05,
+                 "memory_psi_full_avg60": 0.01, "warnings": []},
         "probes": {
             "agent_mail": {"status": "pass", "available": True, "healthy": True},
             "beads": {"status": "pass", "available": True, "ready_count": 12,
@@ -109,6 +111,66 @@ class SwarmAdmissionTests(unittest.TestCase):
                 code, report = self.run_plan()
                 self.assertEqual(code, 1)
                 self.assert_wait(report)
+
+    def test_swap_headroom_boundaries_and_swapless_host(self):
+        for total, free, expected in ((1000, 101, 0), (1000, 100, 1),
+                                      (1000, 0, 1), (0, 0, 0)):
+            with self.subTest(total=total, free=free):
+                self.status["host"].update(swap_total_kb=total, swap_free_kb=free)
+                code, report = self.run_plan()
+                self.assertEqual(code, expected)
+                pressure = next(c for c in report["checks"] if c["id"] == "host_pressure")
+                self.assertEqual(pressure["status"], "warn" if expected else "pass")
+                if expected:
+                    self.assert_wait(report)
+                    self.assertIn("Swap", pressure["summary"])
+                    self.assertEqual(report["safe_agents"], 64, "live pressure must not rewrite static sizing")
+                else:
+                    self.assertEqual(report["recommendation"], "launch")
+
+    def test_memory_psi_thresholds_wait_without_launch_advice(self):
+        for full, expected in ((0.99, 0), (1, 1), (9.99, 1), (10, 2), (100, 2)):
+            with self.subTest(full=full):
+                self.status["host"].update(memory_psi_some_avg60=full,
+                                           memory_psi_full_avg60=full)
+                code, report = self.run_plan()
+                self.assertEqual(code, expected)
+                pressure = next(c for c in report["checks"] if c["id"] == "host_pressure")
+                self.assertEqual(pressure["status"], {0: "pass", 1: "warn", 2: "fail"}[expected])
+                if expected:
+                    self.assert_wait(report)
+                    self.assertIn("memory pressure", pressure["summary"].lower())
+                    self.assertTrue(any("memory_psi_full_avg60=" in d for d in pressure["details"]))
+                else:
+                    self.assertEqual(report["recommendation"], "launch")
+
+    def test_known_severe_psi_remains_a_failure_with_missing_swap(self):
+        self.status["host"].update(swap_free_kb=None, memory_psi_some_avg60=20,
+                                   memory_psi_full_avg60=10)
+        code, report = self.run_plan()
+        self.assertEqual(code, 2)
+        self.assert_wait(report)
+        pressure = next(c for c in report["checks"] if c["id"] == "host_pressure")
+        self.assertEqual(pressure["status"], "fail")
+        self.assertIn("memory pressure", pressure["summary"].lower())
+
+    def test_high_some_psi_alone_does_not_imply_full_stall(self):
+        self.status["host"].update(memory_psi_some_avg60=70, memory_psi_full_avg60=0.01)
+        code, report = self.run_plan()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["recommendation"], "launch")
+
+    def test_memory_pressure_human_output_has_no_spawn(self):
+        for host_change in ({"swap_total_kb": 1000, "swap_free_kb": 100},
+                            {"memory_psi_some_avg60": 1, "memory_psi_full_avg60": 1},
+                            {"memory_psi_some_avg60": 10, "memory_psi_full_avg60": 10}):
+            with self.subTest(host_change=host_change):
+                self.status = healthy_status()
+                self.status["host"].update(host_change)
+                code, text = self.run_plan(human=True)
+                self.assertIn(code, (1, 2))
+                self.assertNotIn("ntm spawn", text)
+                self.assertNotIn("Launch command", text)
 
     def test_stale_work_waits(self):
         self.status["probes"]["beads"]["stale_in_progress_count"] = 1

@@ -23,6 +23,10 @@ HOST_CPU_COUNT=0
 HOST_LOAD_1M="null"
 HOST_MEM_TOTAL_KB=0
 HOST_MEM_AVAILABLE_KB=0
+HOST_SWAP_TOTAL_KB="null"
+HOST_SWAP_FREE_KB="null"
+HOST_MEMORY_PSI_SOME_AVG60="null"
+HOST_MEMORY_PSI_FULL_AVG60="null"
 HOST_DISK_AVAILABLE_KB=0
 
 NTM_STATUS="warn"
@@ -302,6 +306,99 @@ swarm_status_parse_rch_queue_metrics() {
     [[ "$workers_offline" =~ ^[0-9]+$ ]] && RCH_WORKERS_OFFLINE="$workers_offline"
 }
 
+# Parse a complete, bounded observation. Unknown data must not become zero:
+# 0/0 swap means no configured swap, while a positive total with zero free
+# means exhausted swap. Stay within the integer precision shared by JSON users.
+swarm_status_parse_swap_info() {
+    LC_ALL=C awk '
+        {
+            bytes += length($0) + 1
+            if (bytes > 65536) { bad = 1; exit }
+        }
+        $1 == "SwapTotal:" || $1 == "SwapFree:" {
+            if (++seen[$1] != 1 || NF != 3 || $3 != "kB" ||
+                $2 !~ /^[0-9]+$/ || length($2) > 16 ||
+                ($2 + 0) > 9007199254740991) {
+                bad = 1
+                exit
+            }
+            value[$1] = $2 + 0
+        }
+        END {
+            if (bad || seen["SwapTotal:"] != 1 || seen["SwapFree:"] != 1 ||
+                value["SwapFree:"] > value["SwapTotal:"]) exit 1
+            printf "%.0f\t%.0f\n", value["SwapTotal:"], value["SwapFree:"]
+        }
+    '
+}
+
+swarm_status_parse_memory_psi() {
+    LC_ALL=C awk '
+        function percentage(value, parts, count) {
+            count = split(value, parts, ".")
+            return value ~ /^[0-9]+([.][0-9]+)?$/ &&
+                length(parts[1]) <= 3 &&
+                (count == 1 || length(parts[2]) <= 6) && (value + 0) <= 100
+        }
+        {
+            bytes += length($0) + 1
+            if (bytes > 4096) { bad = 1; exit }
+            if (NF == 0) next
+            if (($1 != "some" && $1 != "full") || ++seen[$1] != 1 || NF != 5) {
+                bad = 1
+                exit
+            }
+            kind = $1
+            for (i = 2; i <= NF; i++) {
+                if (split($i, pair, "=") != 2 || ++fields[kind, pair[1]] != 1) {
+                    bad = 1
+                    exit
+                }
+                if (pair[1] == "avg10" || pair[1] == "avg60" || pair[1] == "avg300") {
+                    if (!percentage(pair[2])) { bad = 1; exit }
+                    if (pair[1] == "avg60") value[kind] = pair[2] + 0
+                } else if (pair[1] != "total" || pair[2] !~ /^[0-9]+$/ || length(pair[2]) > 20) {
+                    bad = 1
+                    exit
+                }
+            }
+        }
+        END {
+            if (bad || seen["some"] != 1 || seen["full"] != 1 ||
+                fields["some", "avg60"] != 1 || fields["full", "avg60"] != 1 ||
+                value["full"] > value["some"]) exit 1
+            printf "%.6f\t%.6f\n", value["some"], value["full"]
+        }
+    '
+}
+
+swarm_status_read_swap_info() {
+    head -c 65537 /proc/meminfo 2>/dev/null | swarm_status_parse_swap_info
+}
+
+swarm_status_read_memory_psi() {
+    head -c 4097 /proc/pressure/memory 2>/dev/null | swarm_status_parse_memory_psi
+}
+
+swarm_status_collect_memory_pressure() {
+    local observation=""
+    HOST_SWAP_TOTAL_KB="null"
+    HOST_SWAP_FREE_KB="null"
+    HOST_MEMORY_PSI_SOME_AVG60="null"
+    HOST_MEMORY_PSI_FULL_AVG60="null"
+
+    if observation="$(swarm_status_read_swap_info)"; then
+        IFS=$'\t' read -r HOST_SWAP_TOTAL_KB HOST_SWAP_FREE_KB <<< "$observation"
+    else
+        HOST_WARNINGS+=("Swap headroom is unknown: /proc/meminfo is unreadable, incomplete, or invalid")
+    fi
+    if observation="$(swarm_status_read_memory_psi)"; then
+        IFS=$'\t' read -r HOST_MEMORY_PSI_SOME_AVG60 HOST_MEMORY_PSI_FULL_AVG60 <<< "$observation"
+    else
+        HOST_WARNINGS+=("Memory PSI is unknown: /proc/pressure/memory is unreadable, incomplete, or invalid")
+    fi
+}
+
 swarm_status_collect_host() {
     local start_ms=""
     start_ms="$(swarm_status_now_ms)"
@@ -324,6 +421,7 @@ swarm_status_collect_host() {
     fi
     [[ "$HOST_MEM_TOTAL_KB" =~ ^[0-9]+$ ]] || HOST_MEM_TOTAL_KB=0
     [[ "$HOST_MEM_AVAILABLE_KB" =~ ^[0-9]+$ ]] || HOST_MEM_AVAILABLE_KB=0
+    swarm_status_collect_memory_pressure
 
     HOST_DISK_AVAILABLE_KB="$(df -k "${HOME:-/}" 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)"
     [[ "$HOST_DISK_AVAILABLE_KB" =~ ^[0-9]+$ ]] || HOST_DISK_AVAILABLE_KB=0
@@ -607,6 +705,10 @@ swarm_status_emit_json() {
         --argjson host_load_1m "$HOST_LOAD_1M" \
         --argjson host_mem_total_kb "$(swarm_status_json_number "$HOST_MEM_TOTAL_KB")" \
         --argjson host_mem_available_kb "$(swarm_status_json_number "$HOST_MEM_AVAILABLE_KB")" \
+        --argjson host_swap_total_kb "$HOST_SWAP_TOTAL_KB" \
+        --argjson host_swap_free_kb "$HOST_SWAP_FREE_KB" \
+        --argjson host_memory_psi_some_avg60 "$HOST_MEMORY_PSI_SOME_AVG60" \
+        --argjson host_memory_psi_full_avg60 "$HOST_MEMORY_PSI_FULL_AVG60" \
         --argjson host_disk_available_kb "$(swarm_status_json_number "$HOST_DISK_AVAILABLE_KB")" \
         --arg ntm_status "$NTM_STATUS" \
         --argjson ntm_warnings "$ntm_warnings_json" \
@@ -664,6 +766,10 @@ swarm_status_emit_json() {
                 load_1m: $host_load_1m,
                 mem_total_kb: $host_mem_total_kb,
                 mem_available_kb: $host_mem_available_kb,
+                swap_total_kb: $host_swap_total_kb,
+                swap_free_kb: $host_swap_free_kb,
+                memory_psi_some_avg60: $host_memory_psi_some_avg60,
+                memory_psi_full_avg60: $host_memory_psi_full_avg60,
                 disk_available_kb: $host_disk_available_kb
             },
             probes: {
@@ -725,9 +831,20 @@ swarm_status_emit_json() {
 }
 
 swarm_status_emit_human() {
+    local swap_reading="unknown" psi_some_reading="unknown" psi_full_reading="unknown"
+    if [[ "$HOST_SWAP_TOTAL_KB" != "null" && "$HOST_SWAP_FREE_KB" != "null" ]]; then
+        if [[ "$HOST_SWAP_TOTAL_KB" == 0 ]]; then
+            swap_reading="none configured (0/0 KiB)"
+        else
+            swap_reading="${HOST_SWAP_FREE_KB}/${HOST_SWAP_TOTAL_KB} KiB free"
+        fi
+    fi
+    [[ "$HOST_MEMORY_PSI_SOME_AVG60" == "null" ]] || psi_some_reading="${HOST_MEMORY_PSI_SOME_AVG60}%"
+    [[ "$HOST_MEMORY_PSI_FULL_AVG60" == "null" ]] || psi_full_reading="${HOST_MEMORY_PSI_FULL_AVG60}%"
     echo "ACFS Swarm Status"
     echo "Status: $SWARM_STATUS_OVERALL"
     echo "Host: ${HOST_CPU_COUNT} CPU, ${HOST_MEM_AVAILABLE_KB}/${HOST_MEM_TOTAL_KB} KiB memory available"
+    echo "Swap: $swap_reading; memory PSI avg60: some=$psi_some_reading, full=$psi_full_reading"
     echo "NTM/tmux: $NTM_STATUS (${NTM_TMUX_SESSION_COUNT} sessions, ${NTM_TMUX_WINDOW_COUNT} windows)"
     echo "Agent Mail: $AGENT_MAIL_STATUS"
     echo "Beads: $BEADS_STATUS (ready=${BEADS_READY_COUNT}, in_progress=${BEADS_IN_PROGRESS_COUNT}, open=${BEADS_OPEN_COUNT})"
@@ -758,4 +875,6 @@ swarm_status_main() {
     fi
 }
 
-swarm_status_main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    swarm_status_main "$@"
+fi

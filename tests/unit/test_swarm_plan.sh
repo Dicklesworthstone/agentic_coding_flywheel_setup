@@ -64,7 +64,7 @@ healthy_status_fixture() {
 {
   "schema_version": 1,
   "status": "pass",
-  "host": {"status": "pass", "cpu_count": 64, "load_1m": 8, "mem_available_kb": 134217728, "disk_available_kb": 314572800, "warnings": []},
+  "host": {"status": "pass", "cpu_count": 64, "load_1m": 8, "mem_available_kb": 134217728, "disk_available_kb": 314572800, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05, "memory_psi_full_avg60": 0.01, "warnings": []},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 12, "in_progress_count": 0, "open_count": 20, "warnings": []},
@@ -81,7 +81,7 @@ busy_rch_status_fixture() {
 {
   "schema_version": 1,
   "status": "warn",
-  "host": {"status": "pass", "cpu_count": 64, "load_1m": 12, "mem_available_kb": 134217728, "disk_available_kb": 314572800, "warnings": []},
+  "host": {"status": "pass", "cpu_count": 64, "load_1m": 12, "mem_available_kb": 134217728, "disk_available_kb": 314572800, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05, "memory_psi_full_avg60": 0.01, "warnings": []},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 12, "in_progress_count": 1, "open_count": 20, "warnings": []},
@@ -98,7 +98,7 @@ missing_agent_mail_status_fixture() {
 {
   "schema_version": 1,
   "status": "warn",
-  "host": {"status": "pass", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "warnings": []},
+  "host": {"status": "pass", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05, "memory_psi_full_avg60": 0.01, "warnings": []},
   "probes": {
     "agent_mail": {"status": "warn", "available": false, "healthy": null, "warnings": ["Agent Mail CLI not found in PATH"]},
     "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 0, "open_count": 12, "warnings": []},
@@ -115,7 +115,7 @@ high_load_status_fixture() {
 {
   "schema_version": 1,
   "status": "warn",
-  "host": {"status": "warn", "cpu_count": 16, "load_1m": 24, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "warnings": ["host load is high"]},
+  "host": {"status": "warn", "cpu_count": 16, "load_1m": 24, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05, "memory_psi_full_avg60": 0.01, "warnings": ["host load is high"]},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 0, "open_count": 12, "warnings": []},
@@ -132,7 +132,7 @@ low_memory_status_fixture() {
 {
   "schema_version": 1,
   "status": "warn",
-  "host": {"status": "warn", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 2097152, "disk_available_kb": 157286400, "warnings": ["available memory is low"]},
+  "host": {"status": "warn", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 2097152, "disk_available_kb": 157286400, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05, "memory_psi_full_avg60": 0.01, "warnings": ["available memory is low"]},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 0, "open_count": 12, "warnings": []},
@@ -149,7 +149,7 @@ stale_work_status_fixture() {
 {
   "schema_version": 1,
   "status": "warn",
-  "host": {"status": "pass", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "warnings": []},
+  "host": {"status": "pass", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "swap_total_kb": 8388608, "swap_free_kb": 8388608, "memory_psi_some_avg60": 0.05, "memory_psi_full_avg60": 0.01, "warnings": []},
   "probes": {
     "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
     "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 2, "stale_in_progress_count": 1, "open_count": 12, "warnings": []},
