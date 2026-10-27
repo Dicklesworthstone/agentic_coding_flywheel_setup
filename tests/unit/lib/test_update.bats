@@ -7288,6 +7288,30 @@ EOF
     assert_success
 }
 
+@test "doctor startup metadata ignores PATH-poisoned jq during the batched read" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local fixture="$BATS_TEST_TMPDIR/doctor-state-poison"
+    mkdir -p "$fixture/bin"
+    printf '%s\n' '{"target_user":"tester","target_home":"/home/tester","bin_dir":"/home/tester/.local/bin","mode":"safe"}' > "$fixture/state.json"
+    cat > "$fixture/bin/jq" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' used > "$ACFS_TEST_POISON"
+EOF
+    chmod +x "$fixture/bin/jq"
+    run env -i PATH="$fixture/bin:/usr/bin:/bin" HOME="$HOME" ACFS_TEST_POISON="$fixture/poisoned" bash -s -- "$doctor" "$fixture" <<'EOF'
+set -euo pipefail
+doctor="$1"; fixture="$2"
+eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor")"
+eval "$(sed -n '/^_acfs_doctor_read_json_string_key()/,/^}$/p' "$doctor")"
+eval "$(sed -n '/^_acfs_doctor_assign_state_string()/,/^}$/p' "$doctor")"
+_ACFS_DOCTOR_STATE_PATHS=(); _ACFS_DOCTOR_STATE_VALUES=()
+value=""
+_acfs_doctor_assign_state_string value "$fixture/state.json" target_user
+[[ "$value" == tester && ! -e "$fixture/poisoned" ]]
+EOF
+    assert_success
+}
+
 @test "dashboard generate failure clears cleanup RETURN trap under set -u" {
     local acfs_home
     local fake_info
