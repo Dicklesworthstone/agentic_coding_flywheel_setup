@@ -25,6 +25,8 @@ QUIET=true VERBOSE=false DRY_RUN="$TEST_DRY_RUN"
 ABORT_ON_FAILURE="$TEST_ABORT"
 UPDATE_LOG_FILE="$TEST_ROOT/update.log"
 UPDATE_CMD_TIMEOUT="$TEST_TIMEOUT"
+ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+ACFS_UPDATE_RETRY_MAX_ATTEMPTS=3
 update_getent_passwd_entry() {
     [[ "$1" == "$TEST_USER" ]] || return 1
     printf '%s:x:%s:%s:Runtime fixture:%s:/bin/bash\n' \
@@ -32,11 +34,15 @@ update_getent_passwd_entry() {
 }
 # Keep run_cmd's captures; never remove a fixture or source artifact.
 rm() { :; }
-if [[ "$TEST_TRANSPORT" == runuser || "$TEST_TRANSPORT" == none ]]; then
+if [[ "$TEST_TRANSPORT" == runuser || "$TEST_TRANSPORT" == none || "$TEST_TRANSPORT" == usage ]]; then
     # Select the real runuser fallback, or model unavailable account transport.
     # env, timeout and every remaining executable still use trusted paths.
     update_system_binary_path() {
-        [[ "$1" != sudo ]] || return 1
+        if [[ "$1" == sudo ]]; then
+            [[ "$TEST_TRANSPORT" == usage ]] || return 1
+            printf '%s\n' "$TEST_ROOT/transport-usage"
+            return 0
+        fi
         [[ "$TEST_TRANSPORT" != none || "$1" != runuser ]] || return 1
         local candidate
         for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
@@ -341,6 +347,351 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
         self.assertEqual(self.events()[0][-1], "install ast-grep --locked --force")
         self.assertTrue((self.cargo_home / "cargo-install").is_file())
         self.assertFalse((foreign_cargo / "cargo-install").exists())
+
+    def write_native_tool(self, tool, *, directory=None, origin="native"):
+        directory = directory or self.home / ".local/bin"
+        self.owned_dir(directory)
+        script = "#!/bin/bash\nset -euo pipefail\n"
+        script += "fixture=" + shlex.quote(str(self.base)) + "\n"
+        script += "tool=" + shlex.quote(tool) + "\norigin=" + shlex.quote(origin) + "\n"
+        script += r'''
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$tool" "$EUID" "$HOME" "$PWD" "${RUSTUP_HOME-<unset>}" \
+    "${CARGO_HOME-<unset>}" "${RUSTUP_TOOLCHAIN-<unset>}" \
+    "${RUSTUP_AUTO_INSTALL-<unset>}" "$origin" "$*" >> "$fixture/events.tsv"
+if [[ -f "$fixture/unsupported-probe-$tool" ]]; then
+    printf 'Usage: %s OTHER (unknown option)\n' "$tool" >&2
+    exit 2
+fi
+case "$*" in
+    --version|version)
+        if [[ -f "$fixture/hang-probe-$tool" ]]; then /bin/sleep 5; fi
+        if [[ -f "$fixture/read-stdin-$tool" ]] && IFS= read -r line; then
+            printf '%s\n' "$line" > "$HOME/probe-read-stdin"
+            exit 65
+        fi
+        if [[ "$tool" == bun ]]; then printf '1.2.3-fixture\nbun metadata\n'
+        else printf '%s 1.2.3-fixture\nextra metadata\n' "$tool"; fi
+        [[ ! -f "$fixture/version-tail-$tool" ]] || cat "$fixture/version-tail-$tool"
+        exit 0
+        ;;
+    --help)
+        if [[ -f "$fixture/no-atuin-self-update" ]]; then printf 'ordinary commands\n'
+        else printf 'self-update\n'; fi
+        [[ ! -f "$fixture/help-tail-$tool" ]] || cat "$fixture/help-tail-$tool"
+        exit 0
+        ;;
+esac
+case "$tool:$*" in
+    bun:upgrade|uv:'self update'|atuin:self-update|atuin-update:)
+        attempt_file="$HOME/$tool-native-attempts"
+        attempt=0
+        [[ ! -f "$attempt_file" ]] || read -r attempt < "$attempt_file"
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" > "$attempt_file"
+        mode=success
+        [[ ! -f "$fixture/mode-$tool" ]] || read -r mode < "$fixture/mode-$tool"
+        case "$mode" in
+            failure) printf 'permanent fixture failure\n' >&2; exit 17 ;;
+            transient)
+                if [[ "$attempt" -eq 1 ]]; then printf 'curl: (7) Connection refused\n' >&2; exit 7; fi
+                ;;
+            hang) /bin/sleep 5 ;;
+        esac
+        printf '%s\n' "$EUID" > "$HOME/$tool-native-installed"
+        ;;
+    *) exit 64 ;;
+esac
+'''
+        path = directory / tool
+        path.write_text(script)
+        path.chmod(0o755)
+        self.own(path)
+        return path
+
+    def test_all_executable_version_branches_use_target_account_and_keep_arguments(self):
+        generic_tools = (
+            "claude", "codex", "agy", "gemini", "opencode", "omp", "grok", "wrangler", "supabase", "vercel",
+            "ubs", "bv", "cass", "cm", "caam", "slb", "ru", "dcg", "apr", "pt", "xf", "jfp", "ms", "br",
+            "rch", "giil", "csctf", "srps", "tru", "rano", "mdwb", "s2p", "brenner", "fsfs", "sbh", "casr",
+            "dsr", "asb", "aadc", "rust_proxy", "ee", "fmd", "pi", "sg", "lsd", "dust", "tldr",
+        )
+        special = {"bun": "bun", "uv": "uv", "atuin": "atuin", "zoxide": "zoxide",
+                   "ntm": "ntm", "pcr": "claude-post-compact-reminder", "pfr": "pfr"}
+        for tool in (*generic_tools, *special.values()):
+            self.write_native_tool(tool)
+        (self.base / "version-tail-claude").write_text("version metadata\n" * 8192)
+        names = (*generic_tools, *special)
+        command = "\n".join("printf 'VERSION %s=[%s]\\n' " + shlex.quote(name) +
+                            ' "$(get_version ' + shlex.quote(name) + ')"' for name in names)
+        output = self.run_update(cross=True, command=command)
+        self.assert_target_events(self.events())
+        expected = [(name, "--version") for name in generic_tools]
+        expected += [(binary, "version" if name == "ntm" else "--version")
+                     for name, binary in special.items() if name != "pfr"]
+        self.assertEqual([(e[0], e[-1]) for e in self.events()], expected)
+        for tool in generic_tools:
+            self.assertIn(f"VERSION {tool}=[{tool} 1.2.3-fixture]", output)
+        self.assertIn("VERSION bun=[1.2.3-fixture\nbun metadata]", output)
+        for tool in ("uv", "atuin", "zoxide"):
+            self.assertIn(f"VERSION {tool}=[1.2.3-fixture\nmetadata]", output)
+        self.assertIn("VERSION pcr=[claude-post-compact-reminder 1.2.3-fixture]", output)
+        self.assertIn("VERSION ntm=[ntm 1.2.3-fixture]", output)
+        self.assertIn("VERSION pfr=[installed]", output)
+
+    def test_version_from_explicit_path_uses_target_account(self):
+        binary = self.write_native_tool("fixture-native")
+        output = self.run_update(cross=True, command="update_tool_version_from_path fixture " + shlex.quote(str(binary)))
+        self.assert_target_events(self.events())
+        self.assertIn("fixture-native 1.2.3-fixture", output)
+        self.assertEqual([e[-1] for e in self.events()], ["--version"])
+
+    def test_native_bun_upgrade_runs_as_target_and_preserves_failure_accounting(self):
+        self.write_native_tool("bun")
+        (self.base / "mode-bun").write_text("failure\n")
+        output = self.run_update(cross=True, command="update_bun")
+        self.assert_target_events(self.events())
+        self.assertEqual([e[-1] for e in self.events()], ["--version", "upgrade", "--version"])
+        self.assertIn("COUNTS=0,0,1", output)
+        self.assertIn("exit code: 17", (self.base / "update.log").read_text())
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_native_uv_retries_as_target_and_succeeds_without_fallback(self):
+        self.write_native_tool("uv")
+        (self.base / "mode-uv").write_text("transient\n")
+        command = 'update_require_security() { printf unexpected-fallback; return 1; }; update_uv'
+        output = self.run_update(cross=True, command=command)
+        self.assert_target_events(self.events())
+        self.assertEqual([e[-1] for e in self.events()], ["--version", "self update", "self update", "--version"])
+        self.assertIn("COUNTS=1,0,0", output)
+        self.assertNotIn("unexpected-fallback", output)
+        self.assertEqual((self.home / "uv-native-installed").stat().st_uid, self.account.pw_uid)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_uv_failure_keeps_verified_installer_fallback_dispatch(self):
+        self.write_native_tool("uv")
+        (self.base / "mode-uv").write_text("failure\n")
+        command = r'''
+update_require_security() { printf 'security-check\n'; return 0; }
+update_run_verified_installer_with_shell_repair() {
+    printf 'VERIFIED-FALLBACK:%s|%s|%s\n' "$1" "$2" "$3"
+    return 1
+}
+update_uv
+'''
+        output = self.run_update(cross=True, command=command)
+        self.assert_target_events(self.events())
+        self.assertIn("security-check", output)
+        self.assertIn("VERIFIED-FALLBACK:uv verified installer fallback|uv|update_repair_uv_install", output)
+        self.assertEqual([e[-1] for e in self.events()].count("self update"), 1)
+
+    def test_atuin_dedicated_updater_is_targeted_and_retains_native_success(self):
+        self.write_native_tool("atuin")
+        self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
+        output = self.run_update(cross=True, command="update_atuin")
+        self.assert_target_events(self.events())
+        self.assertIn(("atuin-update", ""), [(e[0], e[-1]) for e in self.events()])
+        self.assertNotIn("--help", [e[-1] for e in self.events()])
+        self.assertIn("COUNTS=1,0,0", output)
+        self.assertEqual((self.home / "atuin-update-native-installed").stat().st_uid, self.account.pw_uid)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_atuin_compatibility_probe_and_self_update_retry_as_target(self):
+        self.write_native_tool("atuin")
+        (self.base / "mode-atuin").write_text("transient\n")
+        output = self.run_update(cross=True, command="update_atuin")
+        self.assert_target_events(self.events())
+        args = [e[-1] for e in self.events()]
+        self.assertEqual(args.count("--help"), 1)
+        self.assertEqual(args.count("self-update"), 2)
+        self.assertIn("COUNTS=1,0,0", output)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_atuin_compatibility_match_drains_trailing_help_output(self):
+        self.write_native_tool("atuin")
+        (self.base / "help-tail-atuin").write_text("additional help text\n" * 8192)
+        output = self.run_update(cross=True, command="update_atuin")
+        self.assert_target_events(self.events())
+        self.assertIn("self-update", [e[-1] for e in self.events()])
+        self.assertIn("COUNTS=1,0,0", output)
+
+    def test_nightly_selection_drains_trailing_toolchain_list_output(self):
+        (self.rust_home / "toolchains.txt").write_text(
+            "nightly-x86_64-unknown-linux-gnu\n" + "stable-fixture-toolchain\n" * 8192)
+        output = self.run_update(cross=True)
+        self.assert_target_events(self.events())
+        self.assertIn("update nightly", [e[-1] for e in self.events()])
+        self.assertIn("COUNTS=3,0,0", output)
+
+    def test_failed_dedicated_atuin_updater_does_not_invoke_setup(self):
+        self.write_native_tool("atuin")
+        self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
+        (self.base / "mode-atuin-update").write_text("failure\n")
+        output = self.run_update(cross=True, command='update_require_security() { printf unexpected-setup; }; update_atuin')
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertNotIn("unexpected-setup", output)
+        self.assertFalse((self.home / "atuin-update-native-installed").exists())
+
+    def test_atuin_agent_aware_setup_refusal_remains_enforced(self):
+        self.write_native_tool("atuin")
+        (self.base / "no-atuin-self-update").write_text("fixture\n")
+        command = r'''
+update_require_security() { return 0; }
+declare -A KNOWN_INSTALLERS=([atuin]=https://setup.atuin.sh)
+update_run_verified_installer_with_shell_repair() { printf unexpected-setup; return 1; }
+update_atuin
+'''
+        output = self.run_update(cross=True, command=command)
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=0,1,0", output)
+        self.assertIn("refusing agent-aware setup installer", (self.base / "update.log").read_text())
+        self.assertNotIn("unexpected-setup", output)
+
+    def test_native_updates_keep_deadlines_inside_target_account(self):
+        self.write_native_tool("bun")
+        self.write_native_tool("uv")
+        self.write_native_tool("atuin")
+        self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
+        for tool in ("bun", "uv", "atuin-update"):
+            (self.base / f"mode-{tool}").write_text("hang\n")
+        output = self.run_update(cross=True, timeout="0.1",
+                                 command='update_require_security() { return 1; }; update_bun; update_uv; update_atuin')
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=0,1,2", output)
+        log = (self.base / "update.log").read_text()
+        self.assertIn("Failed: Bun self-upgrade (exit code: 124)", log)
+        self.assertIn("Failed: uv self-update (exit code: 124", log)
+        self.assertIn("Failed: Atuin updater (exit code: 124", log)
+        for tool in ("bun", "uv", "atuin-update"):
+            self.assertFalse((self.home / f"{tool}-native-installed").exists())
+
+    def test_native_dry_run_probes_target_but_never_self_updates(self):
+        self.write_native_tool("bun")
+        self.write_native_tool("uv")
+        self.write_native_tool("atuin")
+        self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
+        output = self.run_update(cross=True, dry_run=True, command="update_bun; update_uv; update_atuin")
+        self.assert_target_events(self.events())
+        self.assertEqual(set(e[-1] for e in self.events()), {"--version"})
+        self.assertIn("COUNTS=0,3,0", output)
+        for tool in ("bun", "uv", "atuin-update"):
+            self.assertFalse((self.home / f"{tool}-native-attempts").exists())
+
+    def test_native_versions_and_updates_refuse_missing_account_transport(self):
+        self.write_native_tool("bun")
+        self.write_native_tool("uv")
+        self.write_native_tool("atuin")
+        self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
+        output = self.run_update(cross=True, transport="none",
+                                 command='update_require_security() { return 1; }; update_bun; update_uv; update_atuin')
+        self.assertEqual(self.events(), [])
+        self.assertIn("COUNTS=0,1,2", output)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_custom_only_cargo_packages_are_discovered_probed_and_updated(self):
+        cargo_home = self.work / "custom packages"
+        self.owned_dir(cargo_home)
+        self.write_tools(cargo_home / "bin", "custom-cargo")
+        for tool in ("sg", "lsd", "dust", "tldr"):
+            self.write_native_tool(tool, directory=cargo_home / "bin", origin="custom-package")
+        output = self.run_update(overrides={"CARGO_HOME": "custom packages"}, command="update_cargo_tools")
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=4,0,0", output)
+        self.assertEqual([e[-1] for e in self.events() if e[0] == "cargo"],
+                         [f"install {name} --locked --force" for name in ("ast-grep", "lsd", "du-dust", "tealdeer")])
+        self.assertEqual([e[0] for e in self.events() if e[0] != "cargo"],
+                         [name for name in ("sg", "lsd", "dust", "tldr") for _ in range(2)])
+        for event in self.events():
+            self.assertEqual(event[5], str(cargo_home), event)
+
+    def test_cross_account_cargo_package_discovery_ignores_callers_custom_home(self):
+        foreign_cargo = self.caller / "foreign-cargo"
+        self.owned_dir(foreign_cargo)
+        for tool in ("sg", "lsd", "dust", "tldr"):
+            self.write_native_tool(tool, directory=self.cargo_home / "bin", origin="target-package")
+            self.write_native_tool(tool, directory=foreign_cargo / "bin", origin="foreign-package")
+        output = self.run_update(cross=True, transport="runuser", command="update_cargo_tools",
+                                 overrides={"CARGO_HOME": str(foreign_cargo)})
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=4,0,0", output)
+        for event in self.events():
+            self.assertEqual(event[5], "<unset>", event)
+            self.assertNotEqual(event[8], "foreign-package", event)
+
+    def test_all_repair_version_probes_execute_as_target(self):
+        for tool in ("atuin", "zoxide", "uv"):
+            self.write_native_tool(tool)
+        self.run_update(cross=True, command="update_repair_atuin_install; update_repair_zoxide_install; update_repair_uv_install")
+        self.assert_target_events(self.events())
+        self.assertEqual([(e[0], e[-1]) for e in self.events()],
+                         [(tool, "--version") for tool in ("atuin", "zoxide", "uv")])
+
+    def test_rollback_smoke_probe_uses_target_account_and_detaches_stdin(self):
+        binary = self.write_native_tool("claude")
+        (self.base / "read-stdin-claude").write_text("fixture\n")
+        command = "printf 'do-not-read\\n' | update_run_smoke_probe " + shlex.quote(str(binary)) + " --version"
+        output = self.run_update(cross=True, command=command)
+        self.assert_target_events(self.events())
+        self.assertFalse((self.home / "probe-read-stdin").exists())
+        # Real sudo may precede the payload with a host audit diagnostic; it
+        # belongs in combined output, while internal receipts must never leak.
+        self.assertTrue(output.endswith("claude 1.2.3-fixture\nextra metadata\nCOUNTS=0,0,0\n"), output)
+        self.assertNotIn("ACFS_SMOKE_STARTED_", output)
+
+    def test_rollback_smoke_deadline_and_status_are_preserved(self):
+        binary = self.write_native_tool("claude")
+        (self.base / "hang-probe-claude").write_text("fixture\n")
+        command = "UPDATE_SMOKE_TIMEOUT=0.1 update_run_smoke_probe " + shlex.quote(str(binary)) + " --version"
+        self.run_update(cross=True, command=command, expected=124)
+        self.assert_target_events(self.events())
+
+    def test_rollback_smoke_never_falls_back_to_caller_when_transport_is_missing(self):
+        binary = self.write_native_tool("claude")
+        command = "rc=0; update_tool_smoke_check claude " + shlex.quote(str(binary)) + \
+            ' || rc=$?; printf "SMOKE=%s\\n" "$UPDATE_LAST_SMOKE_VERDICT"; exit "$rc"'
+        output = self.run_update(cross=True, transport="none", command=command, expected=1)
+        self.assertIn("SMOKE=broken", output)
+        self.assertEqual(self.events(), [])
+
+    def test_rollback_smoke_reports_unresolvable_target_home_as_broken(self):
+        binary = self.write_native_tool("claude")
+        command = "rc=0; update_tool_smoke_check claude " + shlex.quote(str(binary)) + \
+            ' || rc=$?; printf "SMOKE=%s\\n" "$UPDATE_LAST_SMOKE_VERDICT"; exit "$rc"'
+        output = self.run_update(cross=True, command=command, expected=1,
+                                 overrides={"TEST_HOME": str(self.base / "absent-home")})
+        self.assertIn("SMOKE=broken", output)
+        self.assertEqual(self.events(), [])
+
+    def test_transport_usage_error_cannot_impersonate_an_executed_probe(self):
+        binary = self.write_native_tool("claude")
+        transport = self.base / "transport-usage"
+        transport.write_text("#!/bin/sh\nprintf 'usage: transport (unknown option)\\n' >&2\nexit 1\n")
+        transport.chmod(0o755)
+        command = "rc=0; update_tool_smoke_check claude " + shlex.quote(str(binary)) + \
+            ' || rc=$?; printf "SMOKE=%s\\n" "$UPDATE_LAST_SMOKE_VERDICT"; exit "$rc"'
+        output = self.run_update(cross=True, transport="usage", command=command, expected=1)
+        self.assertIn("SMOKE=broken", output)
+        self.assertEqual(self.events(), [])
+
+    def test_timeout_setup_failure_cannot_impersonate_an_executed_probe(self):
+        binary = self.write_native_tool("claude")
+        command = "rc=0; UPDATE_SMOKE_TIMEOUT=invalid update_tool_smoke_check claude " + \
+            shlex.quote(str(binary)) + \
+            ' || rc=$?; printf "SMOKE=%s\\n" "$UPDATE_LAST_SMOKE_VERDICT"; exit "$rc"'
+        output = self.run_update(cross=True, command=command, expected=1)
+        self.assertIn("SMOKE=broken", output)
+        self.assertEqual(self.events(), [])
+
+    def test_genuine_unsupported_probe_keeps_its_distinct_verdict(self):
+        binary = self.write_native_tool("claude")
+        (self.base / "unsupported-probe-claude").write_text("fixture\n")
+        command = "rc=0; update_tool_smoke_check claude " + shlex.quote(str(binary)) + \
+            ' || rc=$?; printf "SMOKE=%s\\n" "$UPDATE_LAST_SMOKE_VERDICT"; exit "$rc"'
+        output = self.run_update(cross=True, command=command, expected=1)
+        self.assertIn("SMOKE=unsupported", output)
+        self.assert_target_events(self.events())
+        self.assertEqual([e[-1] for e in self.events()], ["--version", "--help", "version"])
 
 
 if __name__ == "__main__":

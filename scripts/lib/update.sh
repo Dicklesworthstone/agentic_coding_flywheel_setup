@@ -812,7 +812,10 @@ update_runtime_shell_home() {
 
 update_binary_exists() {
     local resolved=""
-    resolved="$(update_binary_path "$1" 2>/dev/null || true)"
+    case "$1" in
+        sg|lsd|dust|tldr) resolved="$(update_rust_binary_path "$1" 2>/dev/null || true)" ;;
+        *) resolved="$(update_binary_path "$1" 2>/dev/null || true)" ;;
+    esac
     [[ -n "$resolved" ]]
 }
 
@@ -868,10 +871,10 @@ update_tool_version_from_path() {
 
     case "$tool" in
         atuin|zoxide)
-            "$binary_path" --version 2>/dev/null | awk '{print $2}' || echo "unknown"
+            update_run_bounded_in_target_context "$binary_path" --version 2>/dev/null | awk '{print $2}' || echo "unknown"
             ;;
         *)
-            "$binary_path" --version 2>/dev/null | head -1 || echo "unknown"
+            update_run_bounded_in_target_context "$binary_path" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown"
             ;;
     esac
 }
@@ -1077,7 +1080,7 @@ get_version() {
         bun)
             tool_bin="$(update_binary_path "bun" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" --version 2>/dev/null || echo "unknown")
+                version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null || echo "unknown")
             else
                 version="unknown"
             fi
@@ -1097,7 +1100,7 @@ get_version() {
         uv)
             tool_bin="$(update_binary_path "uv" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+                version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null | awk '{print $2}' || echo "unknown")
             else
                 version="unknown"
             fi
@@ -1105,7 +1108,7 @@ get_version() {
         claude|codex|agy|gemini|opencode|omp|grok|wrangler|supabase|vercel)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" --version 2>/dev/null | head -1 || echo "unknown")
+                version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
             else
                 version="unknown"
             fi
@@ -1114,7 +1117,7 @@ get_version() {
             local pcr_bin=""
             pcr_bin="$(update_binary_path "claude-post-compact-reminder" 2>/dev/null || true)"
             if [[ -n "$pcr_bin" ]]; then
-                version=$("$pcr_bin" --version 2>/dev/null | head -1 || echo "unknown")
+                version=$(update_run_bounded_in_target_context "$pcr_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
             else
                 version="unknown"
             fi
@@ -1131,7 +1134,7 @@ get_version() {
         ntm)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" version 2>/dev/null | head -1 || echo "unknown")
+                version=$(update_run_bounded_in_target_context "$tool_bin" version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
             else
                 version="unknown"
             fi
@@ -1139,15 +1142,15 @@ get_version() {
         ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner|fsfs|sbh|casr|dsr|asb|aadc|rust_proxy|ee|fmd|pi)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" --version 2>/dev/null | head -1 || echo "unknown")
+                version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
             else
                 version="unknown"
             fi
             ;;
         sg|lsd|dust|tldr)
-            tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
+            tool_bin="$(update_rust_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" --version 2>/dev/null | head -1 || echo "unknown")
+                version=$(update_run_rust_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
             else
                 version="unknown"
             fi
@@ -1677,7 +1680,7 @@ update_repair_atuin_install() {
     local resolved_bin=""
     resolved_bin="$(update_tool_binary_path "atuin" 2>/dev/null || true)"
     [[ -n "$resolved_bin" && -x "$resolved_bin" ]] || return 1
-    "$resolved_bin" --version >/dev/null 2>&1
+    update_run_bounded_in_target_context "$resolved_bin" --version >/dev/null 2>&1
 }
 
 update_repair_zoxide_install() {
@@ -1705,7 +1708,7 @@ update_repair_zoxide_install() {
     local resolved_bin=""
     resolved_bin="$(update_tool_binary_path "zoxide" 2>/dev/null || true)"
     [[ -n "$resolved_bin" && -x "$resolved_bin" ]] || return 1
-    "$resolved_bin" --version >/dev/null 2>&1
+    update_run_bounded_in_target_context "$resolved_bin" --version >/dev/null 2>&1
 }
 
 update_repair_uv_install() {
@@ -1736,7 +1739,7 @@ update_repair_uv_install() {
     local resolved_bin=""
     resolved_bin="$(update_tool_binary_path "uv" 2>/dev/null || true)"
     [[ -n "$resolved_bin" && -x "$resolved_bin" ]] || return 1
-    "$resolved_bin" --version >/dev/null 2>&1
+    update_run_bounded_in_target_context "$resolved_bin" --version >/dev/null 2>&1
 }
 
 update_run_verified_installer_with_shell_repair() {
@@ -2883,11 +2886,24 @@ update_run_in_target_context() {
     return 1
 }
 
+# Native target commands still need a deadline when invoked through a shell
+# function: run_cmd's outer timeout applies only to external executables.
+update_run_bounded_in_target_context() {
+    [[ $# -gt 0 ]] || return 1
+    local timeout_bin=""
+    local -a command_argv=("$@")
+    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        command_argv=("$timeout_bin" --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "${command_argv[@]}")
+    fi
+    update_run_in_target_context "" "${command_argv[@]}"
+}
+
 # The caller's custom Cargo bin directory is relevant only for its own account.
 # Resolve relative overrides before the target runner changes directory.
 update_rust_binary_path() {
     local tool="${1:-}" target_user="" current_user="" cargo_home=""
-    case "$tool" in rustup|rustc|cargo) ;; *) return 1 ;; esac
+    case "$tool" in rustup|rustc|cargo|sg|lsd|dust|tldr) ;; *) return 1 ;; esac
     target_user="$(update_target_user)" || return 1
     current_user="$(update_current_user)" || return 1
     if [[ "$target_user" == "$current_user" && -n "${CARGO_HOME:-}" ]]; then
@@ -2909,9 +2925,9 @@ update_rust_binary_path() {
 # Preserve explicit overrides when the caller is updating its own toolchain.
 update_run_rust_in_target_context() {
     [[ $# -gt 0 ]] || return 1
-    local target_user="" current_user="" env_bin="" timeout_bin=""
+    local target_user="" current_user="" env_bin=""
     local name="" value="" caller_dir=""
-    local -a rust_env=() command_argv=("$@")
+    local -a rust_env=()
     target_user="$(update_target_user)" || return 1
     current_user="$(update_current_user)" || return 1
 
@@ -2933,13 +2949,7 @@ update_run_rust_in_target_context() {
         return 1
     fi
 
-    # run_cmd only bounds external executables, not shell-function wrappers.
-    # Keep the native command's deadline after switching to the target account.
-    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        command_argv=("$timeout_bin" --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "${command_argv[@]}")
-    fi
-    update_run_in_target_context "" "$env_bin" "${rust_env[@]}" "${command_argv[@]}"
+    update_run_bounded_in_target_context "$env_bin" "${rust_env[@]}" "$@"
 }
 
 # ============================================================
@@ -5076,7 +5086,8 @@ update_tool_smoke_probe() {
 }
 
 # Exit statuses that prove the binary itself is broken, independent of which
-# probe argument it was given: timeout(1) expiry (124), cannot execute (126),
+# probe argument it was given: timeout(1) expiry (124), cannot execute or
+# target-context setup failure (126),
 # missing interpreter/loader (127), or death by signal (128+N).
 update_smoke_exit_status_is_fatal() {
     local status="${1:-0}"
@@ -5107,18 +5118,45 @@ update_smoke_output_indicates_probe_rejected() {
 
 # Run one probe with a bounded wall clock, stdin detached (a TUI must never
 # block verification on a terminal). Prints the probe's combined output and
-# returns its exit status; 124 when the timeout expired.
+# returns its exit status; 124 when the timeout expired, or 126 when the
+# target context could not start the probe.
 update_run_smoke_probe() {
     local binary="${1:-}"
     shift
-    local timeout_bin=""
+    local timeout_bin="" sh_bin="" output="" status=0
+    sh_bin="$(update_system_binary_path sh 2>/dev/null || true)"
+    if [[ -z "$sh_bin" ]]; then
+        printf 'Cannot start target-account smoke probe (sh unavailable)\n' >&2
+        return 126
+    fi
+
+    # A transport or timeout setup error can also print "usage". Only classify
+    # native CLI output after this trusted payload, inside the target account
+    # and the timeout, reaches the exec boundary. Keep the receipt out of the
+    # returned output and preserve the native status and trailing newlines.
+    local receipt="ACFS_SMOKE_STARTED_${BASHPID}_${RANDOM}_${RANDOM}"
+    local start_marker=$'\n'"$receipt"$'\n'
+    local end_marker="${receipt}:done"
+    local -a command_argv=("$sh_bin" -c 'printf "\n%s\n" "$1"; shift; exec "$@"' \
+        acfs-smoke "$receipt" "$binary" "$@")
     timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
     if [[ -n "$timeout_bin" ]]; then
-        "$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" \
-            "$binary" "$@" </dev/null 2>&1
-    else
-        "$binary" "$@" </dev/null 2>&1
+        command_argv=("$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" "${command_argv[@]}")
     fi
+    output="$(
+        probe_status=0
+        update_run_in_target_context "" "${command_argv[@]}" </dev/null 2>&1 || probe_status=$?
+        printf '%s' "$end_marker"
+        exit "$probe_status"
+    )" || status=$?
+    output="${output%"$end_marker"}"
+    if [[ "$output" != *"$start_marker"* ]]; then
+        printf '%s' "$output"
+        printf '\nTarget-account smoke probe did not reach execution\n' >&2
+        return 126
+    fi
+    printf '%s' "${output/"$start_marker"/}"
+    return "$status"
 }
 
 # Smoke-check an installed binary. Generous 20s ceiling per probe: a healthy
@@ -5177,7 +5215,7 @@ update_tool_smoke_check() {
         attempts+=("'$probe' exit $status")
         if update_smoke_exit_status_is_fatal "$status"; then
             UPDATE_LAST_SMOKE_VERDICT="broken"
-            UPDATE_LAST_SMOKE_DETAIL="'$binary $probe' exit $status (timeout, not executable, or killed by signal)"
+            UPDATE_LAST_SMOKE_DETAIL="'$binary $probe' exit $status (timeout, target context unavailable, not executable, or killed by signal)"
             return 1
         fi
         update_smoke_output_indicates_probe_rejected "$output" || all_rejected=false
@@ -6683,7 +6721,7 @@ update_bun() {
     # Capture version before update
     capture_version_before "bun"
 
-    run_cmd "Bun self-upgrade" "$bun_bin" upgrade
+    run_cmd "Bun self-upgrade" update_run_bounded_in_target_context "$bun_bin" upgrade
 
     # Capture version after and log if changed (don't use log_item "ok" to avoid double-counting)
     if capture_version_after "bun"; then
@@ -7518,7 +7556,7 @@ update_rust() {
     run_cmd "Rust stable" update_run_rust_in_target_context "$rustup_bin" update stable
 
     # Check if nightly is installed and update it too
-    if update_run_rust_in_target_context "$rustup_bin" toolchain list 2>/dev/null | grep -q "^nightly"; then
+    if update_run_rust_in_target_context "$rustup_bin" toolchain list 2>/dev/null | grep "^nightly" >/dev/null; then
         run_cmd "Rust nightly" update_run_rust_in_target_context "$rustup_bin" update nightly
     fi
 
@@ -7592,7 +7630,7 @@ update_uv() {
     # Capture version before update
     capture_version_before "uv"
 
-    if ! run_cmd_attempt_with_retry "uv self-update" "$uv_bin" self update; then
+    if ! run_cmd_attempt_with_retry "uv self-update" update_run_bounded_in_target_context "$uv_bin" self update; then
         if update_require_security; then
             update_run_verified_installer_with_shell_repair "uv verified installer fallback" "uv" update_repair_uv_install || true
         else
@@ -8221,7 +8259,7 @@ update_atuin() {
     [[ -n "$target_home" ]] && atuin_update_bin="$target_home/.atuin/bin/atuin-update"
 
     if [[ -x "$atuin_update_bin" ]]; then
-        if run_cmd_attempt_with_retry "Atuin updater" "$atuin_update_bin"; then
+        if run_cmd_attempt_with_retry "Atuin updater" update_run_bounded_in_target_context "$atuin_update_bin"; then
             if ! update_repair_atuin_install >/dev/null 2>&1; then
                 log_item "fail" "Atuin" "updated, but agent-integration cleanup failed"
                 return 1
@@ -8237,8 +8275,8 @@ update_atuin() {
             return 0
         fi
     # Compatibility path for releases that exposed self-update on the main CLI.
-    elif "$atuin_bin" --help 2>&1 | grep -q "self-update"; then
-        if run_cmd_attempt_with_retry "Atuin self-update" "$atuin_bin" self-update; then
+    elif update_run_bounded_in_target_context "$atuin_bin" --help 2>&1 | grep "self-update" >/dev/null; then
+        if run_cmd_attempt_with_retry "Atuin self-update" update_run_bounded_in_target_context "$atuin_bin" self-update; then
             if ! update_repair_atuin_install >/dev/null 2>&1; then
                 log_item "fail" "Atuin" "updated, but agent-integration cleanup failed"
                 return 1
