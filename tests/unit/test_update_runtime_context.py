@@ -52,12 +52,13 @@ if [[ "$TEST_TRANSPORT" == runuser || "$TEST_TRANSPORT" == none || "$TEST_TRANSP
     # Select the real runuser fallback, or model unavailable account transport.
     # env, timeout and every remaining executable still use trusted paths.
     update_system_binary_path() {
-        if [[ "$1" == sudo ]]; then
-            [[ "$TEST_TRANSPORT" == usage ]] || return 1
-            printf '%s\n' "$TEST_ROOT/transport-usage"
-            return 0
+        if [[ "$1" == sudo || "$1" == runuser ]]; then
+            if [[ "$TEST_TRANSPORT" == usage ]]; then
+                printf '%s\n' "$TEST_ROOT/transport-usage"
+                return 0
+            fi
+            [[ "$1" != sudo && "$TEST_TRANSPORT" != none ]] || return 1
         fi
-        [[ "$TEST_TRANSPORT" != none || "$1" != runuser ]] || return 1
         local candidate
         for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
             [[ -x "$candidate" ]] || continue
@@ -117,6 +118,8 @@ class RustRuntimeContextTests(unittest.TestCase):
             os.chown(path, self.account.pw_uid, self.account.pw_gid)
 
     def owned_dir(self, path):
+        # Root's umask must not make intermediate fixture directories
+        # inaccessible to the account that actually executes the tools.
         created = []
         ancestor = path
         while not ancestor.exists():
@@ -129,13 +132,17 @@ class RustRuntimeContextTests(unittest.TestCase):
         path.chmod(0o755)
         self.own(path)
 
+    def write_input(self, path, content):
+        path.write_text(content)
+        self.own(path)
+
     def prepare_rust_homes(self, rust_home, cargo_home, *, nightly=True):
         self.owned_dir(rust_home)
         self.owned_dir(cargo_home)
         listing = "stable-x86_64-unknown-linux-gnu (default)\n"
         if nightly:
             listing += "nightly-x86_64-unknown-linux-gnu\n"
-        (rust_home / "toolchains.txt").write_text(listing)
+        self.write_input(rust_home / "toolchains.txt", listing)
 
     def write_tools(self, directory, origin):
         self.owned_dir(directory)
@@ -237,6 +244,40 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
             self.assertEqual(path.stat().st_uid, self.account.pw_uid)
         self.assertEqual(list(self.caller.iterdir()), [])
 
+    def root_transport_fixture(self):
+        if os.geteuid() != 0:
+            self.skipTest("root transport selection requires root")
+        sentinel = self.base / "unexpected-sudo"
+        sentinel.write_text('#!/bin/sh\nprintf invoked > "$TEST_ROOT/sudo-invoked"\nexit 97\n')
+        sentinel.chmod(0o755)
+        return r'''
+update_system_binary_path() {
+    if [[ "$1" == sudo ]]; then
+        printf '%s\n' "$TEST_ROOT/unexpected-sudo"
+        return 0
+    fi
+    local candidate
+    for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
+        if [[ -x "$candidate" ]]; then printf '%s\n' "$candidate"; return 0; fi
+    done
+    return 1
+}
+update_rust
+'''
+
+    def test_root_prefers_runuser_even_when_sudo_is_available(self):
+        self.run_update(cross=True, command=self.root_transport_fixture())
+        self.assert_target_events(self.events())
+        self.assertFalse((self.base / "sudo-invoked").exists())
+        self.assertTrue((self.rust_home / "updated-stable").is_file())
+
+    def test_failed_root_command_is_not_replayed_through_sudo(self):
+        (self.base / "fail-stable").write_text("fail once\n")
+        self.run_update(cross=True, command=self.root_transport_fixture(), abort=True, expected=1)
+        self.assert_target_events(self.events())
+        self.assertEqual(sum(e[-1] == "update stable" for e in self.events()), 1)
+        self.assertFalse((self.base / "sudo-invoked").exists())
+
     def test_cross_account_discards_caller_rust_homes_and_toolchain(self):
         foreign_rust = self.caller / "foreign-rust"
         foreign_cargo = self.caller / "foreign-cargo"
@@ -329,7 +370,7 @@ printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
         self.assertFalse((self.cargo_home / "self-update").exists())
 
     def test_nightly_is_updated_only_when_target_has_it(self):
-        (self.rust_home / "toolchains.txt").write_text("stable-x86_64-unknown-linux-gnu (default)\n")
+        self.write_input(self.rust_home / "toolchains.txt", "stable-x86_64-unknown-linux-gnu (default)\n")
         output = self.run_update()
         self.assertIn("COUNTS=2,0,0", output)
         self.assertNotIn("update nightly", [e[-1] for e in self.events()])
@@ -434,6 +475,8 @@ esac
         return path
 
     def test_all_executable_version_branches_use_target_account_and_keep_arguments(self):
+        if os.geteuid() != 0:
+            self.skipTest("cross-account execution requires root")
         generic_tools = (
             "claude", "codex", "agy", "gemini", "opencode", "omp", "grok", "wrangler", "supabase", "vercel",
             "ubs", "bv", "cass", "cm", "caam", "slb", "ru", "dcg", "apr", "pt", "xf", "jfp", "ms", "br",
@@ -444,11 +487,23 @@ esac
                    "ntm": "ntm", "pcr": "claude-post-compact-reminder", "pfr": "pfr"}
         for tool in (*generic_tools, *special.values()):
             self.write_native_tool(tool)
-        (self.base / "version-tail-claude").write_text("version metadata\n" * 8192)
+        self.write_input(self.base / "version-tail-claude", "version metadata\n" * 8192)
         names = (*generic_tools, *special)
-        command = "\n".join("printf 'VERSION %s=[%s]\\n' " + shlex.quote(name) +
-                            ' "$(get_version ' + shlex.quote(name) + ')"' for name in names)
-        output = self.run_update(cross=True, command=command)
+        outputs = []
+        # Each executable keeps the same 20-second subprocess deadline. A
+        # batch of independent probes must not consume one probe's budget.
+        for name in names:
+            with self.subTest(tool=name):
+                command = "printf 'VERSION %s=[%s]\\n' " + shlex.quote(name) + \
+                          ' "$(get_version ' + shlex.quote(name) + ')"'
+                try:
+                    outputs.append(self.run_update(cross=True, command=command))
+                finally:
+                    for channel in ("stdout", "stderr", "exit"):
+                        artifact = self.base / channel
+                        if artifact.exists():
+                            artifact.rename(self.base / f"{name}.{channel}")
+        output = "\n".join(outputs)
         self.assert_target_events(self.events())
         expected = [(name, "--version") for name in generic_tools]
         expected += [(binary, "version" if name == "ntm" else "--version")
@@ -470,9 +525,18 @@ esac
         self.assertIn("fixture-native 1.2.3-fixture", output)
         self.assertEqual([e[-1] for e in self.events()], ["--version"])
 
+    def test_version_probe_keeps_its_native_command_deadline(self):
+        self.write_native_tool("bun")
+        (self.base / "hang-probe-bun").write_text("fixture\n")
+        output = self.run_update(cross=True, command="get_version bun", timeout="0.1")
+        self.assert_target_events(self.events())
+        self.assertEqual(len(self.events()), 1)
+        self.assertIn("unknown", output)
+        self.assertEqual([e[-1] for e in self.events()], ["--version"])
+
     def test_native_bun_upgrade_runs_as_target_and_preserves_failure_accounting(self):
         self.write_native_tool("bun")
-        (self.base / "mode-bun").write_text("failure\n")
+        self.write_input(self.base / "mode-bun", "failure\n")
         output = self.run_update(cross=True, command="update_bun")
         self.assert_target_events(self.events())
         self.assertEqual([e[-1] for e in self.events()], ["--version", "upgrade", "--version"])
@@ -482,7 +546,7 @@ esac
 
     def test_native_uv_retries_as_target_and_succeeds_without_fallback(self):
         self.write_native_tool("uv")
-        (self.base / "mode-uv").write_text("transient\n")
+        self.write_input(self.base / "mode-uv", "transient\n")
         command = 'update_require_security() { printf unexpected-fallback; return 1; }; update_uv'
         output = self.run_update(cross=True, command=command)
         self.assert_target_events(self.events())
@@ -494,7 +558,7 @@ esac
 
     def test_uv_failure_keeps_verified_installer_fallback_dispatch(self):
         self.write_native_tool("uv")
-        (self.base / "mode-uv").write_text("failure\n")
+        self.write_input(self.base / "mode-uv", "failure\n")
         command = r'''
 update_require_security() { printf 'security-check\n'; return 0; }
 update_run_verified_installer_with_shell_repair() {
@@ -522,7 +586,7 @@ update_uv
 
     def test_atuin_compatibility_probe_and_self_update_retry_as_target(self):
         self.write_native_tool("atuin")
-        (self.base / "mode-atuin").write_text("transient\n")
+        self.write_input(self.base / "mode-atuin", "transient\n")
         output = self.run_update(cross=True, command="update_atuin")
         self.assert_target_events(self.events())
         args = [e[-1] for e in self.events()]
@@ -533,14 +597,14 @@ update_uv
 
     def test_atuin_compatibility_match_drains_trailing_help_output(self):
         self.write_native_tool("atuin")
-        (self.base / "help-tail-atuin").write_text("additional help text\n" * 8192)
+        self.write_input(self.base / "help-tail-atuin", "additional help text\n" * 8192)
         output = self.run_update(cross=True, command="update_atuin")
         self.assert_target_events(self.events())
         self.assertIn("self-update", [e[-1] for e in self.events()])
         self.assertIn("COUNTS=1,0,0", output)
 
     def test_nightly_selection_drains_trailing_toolchain_list_output(self):
-        (self.rust_home / "toolchains.txt").write_text(
+        self.write_input(self.rust_home / "toolchains.txt",
             "nightly-x86_64-unknown-linux-gnu\n" + "stable-fixture-toolchain\n" * 8192)
         output = self.run_update(cross=True)
         self.assert_target_events(self.events())
@@ -550,7 +614,7 @@ update_uv
     def test_failed_dedicated_atuin_updater_does_not_invoke_setup(self):
         self.write_native_tool("atuin")
         self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
-        (self.base / "mode-atuin-update").write_text("failure\n")
+        self.write_input(self.base / "mode-atuin-update", "failure\n")
         output = self.run_update(cross=True, command='update_require_security() { printf unexpected-setup; }; update_atuin')
         self.assert_target_events(self.events())
         self.assertIn("COUNTS=0,1,0", output)
@@ -578,7 +642,7 @@ update_atuin
         self.write_native_tool("atuin")
         self.write_native_tool("atuin-update", directory=self.home / ".atuin/bin")
         for tool in ("bun", "uv", "atuin-update"):
-            (self.base / f"mode-{tool}").write_text("hang\n")
+            self.write_input(self.base / f"mode-{tool}", "hang\n")
         output = self.run_update(cross=True, timeout="0.1",
                                  command='update_require_security() { return 1; }; update_bun; update_uv; update_atuin')
         self.assert_target_events(self.events())
@@ -924,7 +988,10 @@ update_stack
 
     def test_guide_nonexecutable_fallback_needs_no_global_link_repair(self):
         self.write_maintenance_tool("fallback-guide", path=self.home / ".acfs/bin/flywheel-update-agents-md", executable=False)
-        command = 'run_cmd_sudo() { printf "UNEXPECTED-GLOBAL-LINK\\n"; return 97; }; update_root_agents_md'
+        # Exercise fallback selection even on a host with a legitimate
+        # system-wide guide command. Installed-command precedence is covered
+        # independently below; the real fallback resolver/runner stays active.
+        command = 'update_binary_path() { return 1; }; run_cmd_sudo() { printf "UNEXPECTED-GLOBAL-LINK\\n"; return 97; }; update_root_agents_md'
         output = self.run_update(cross=True, command=command)
         self.assert_target_events(self.events())
         self.assertEqual([e[0] for e in self.events()], ["fallback-guide"])
@@ -1065,7 +1132,7 @@ update_binary_path() {
 
     def fixture_git(self, *args, cwd=None):
         template = self.artifacts / "empty-git-template"
-        template.mkdir(exist_ok=True)
+        self.owned_dir(template)
         env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home), "GIT_CONFIG_NOSYSTEM": "1",
                "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TEMPLATE_DIR": str(template),
                "GIT_AUTHOR_NAME": "ACFS fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",

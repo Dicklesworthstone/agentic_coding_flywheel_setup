@@ -2871,6 +2871,15 @@ update_run_in_target_context() {
         return $?
     fi
 
+    # Root already has authority to drop privileges. Prefer runuser, which
+    # also works when no-new-privileges prevents sudo from starting.
+    local runuser_bin=""
+    runuser_bin="$(update_system_binary_path runuser 2>/dev/null || true)"
+    if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
+        "$runuser_bin" -u "$target_user" -- "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$@"
+        return $?
+    fi
+
     local sudo_bin=""
     sudo_bin="$(update_system_binary_path sudo 2>/dev/null || true)"
     if [[ -n "$sudo_bin" ]]; then
@@ -2878,8 +2887,6 @@ update_run_in_target_context() {
         return $?
     fi
 
-    local runuser_bin=""
-    runuser_bin="$(update_system_binary_path runuser 2>/dev/null || true)"
     if [[ -n "$runuser_bin" ]]; then
         "$runuser_bin" -u "$target_user" -- "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$@"
         return $?

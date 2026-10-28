@@ -1809,7 +1809,8 @@ _setup_stack_agent_mail_gate_fixture() {
     [[ -f "$HOME/mcp-agent-mail-installer-ran" ]]
     [[ -f "$HOME/caam-ran" ]]
     grep -qF "Success: MCP Agent Mail" "$UPDATE_LOG_FILE"
-    ! grep -qF "[fail] MCP Agent Mail" "$UPDATE_LOG_FILE"
+    run grep -qF "[fail] MCP Agent Mail" "$UPDATE_LOG_FILE"
+    assert_failure
 }
 
 @test "update_stack runs CASS through target tmpdir fallback and continues on failure" {
@@ -8245,6 +8246,7 @@ exit 2
 EOF
                 chmod +x "$doctor_bin_dir/id" "$doctor_bin_dir/whoami" "$doctor_bin_dir/getent"
                 eval "$(sed -n '/^_acfs_doctor_sanitize_abs_nonroot_path()/,/^}$/p' "$script")"
+                eval "$(sed -n '/^_acfs_doctor_assign_abs_nonroot_path()/,/^}$/p' "$script")"
                 eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$script")"
                 eval "$(sed -n '/^_acfs_doctor_resolve_current_user()/,/^}$/p' "$script")"
                 eval "$(sed -n '/^_acfs_doctor_getent_passwd_entry()/,/^}$/p' "$script")"
@@ -9200,6 +9202,7 @@ EOF
         check_supabase_status() { SERVICE_STATUS[supabase]="configured"; }
         run_as_user() {
             local arg=""
+            local token="" expected="" provider=""
             for arg in "$@"; do
                 case "$arg" in
                     *vercel-secret-sentinel*|*supabase-secret-sentinel*|*cloudflare-secret-sentinel*)
@@ -9209,9 +9212,29 @@ EOF
                 esac
                 printf "arg=<%s>\n" "$arg"
             done
+            # The real child reads the piped token before it exits. A stub
+            # that exits without reading races printf under pipefail and can
+            # report SIGPIPE as a rejected credential. Validate the actual
+            # stdin transport while leaving the prompt-read poison in place.
+            if [[ "${1:-}" == "/bin/bash" && "${2:-}" == "-c" ]]; then
+                case "${3:-}" in
+                    *"export VERCEL_TOKEN="*) expected="$VERCEL_TOKEN"; provider=vercel ;;
+                    *"export CLOUDFLARE_API_TOKEN="*) expected="$CLOUDFLARE_API_TOKEN"; provider=cloudflare ;;
+                    *) return 92 ;;
+                esac
+            elif [[ "${1:-}" == "/usr/bin/true" && "${2:-}" == "login" && "${3:-}" == "--no-browser" ]]; then
+                expected="$SUPABASE_ACCESS_TOKEN"; provider=supabase
+            fi
+            if [[ -n "$provider" ]]; then
+                IFS= builtin read -r token || return 93
+                [[ "$token" == "$expected" ]] || return 94
+                printf "stdin-token=%s\n" "$provider"
+                return 0
+            fi
             if [[ "${1:-}" == "/usr/bin/true" && "${2:-}" == "whoami" ]]; then
                 return 1
             fi
+            return 0
         }
 
         setup_vercel
@@ -9227,6 +9250,8 @@ EOF
     assert_output --partial 'exec "$0" whoami'
     assert_output --partial 'arg=<login>'
     assert_output --partial 'arg=<--no-browser>'
+    assert_output --partial 'stdin-token=vercel'
+    assert_output --partial 'stdin-token=supabase'
 
     run grep -F 'run_as_user env CLOUDFLARE_API_TOKEN=' "$services_setup"
     assert_failure
@@ -9388,14 +9413,30 @@ EOF
     local support="$PROJECT_ROOT/scripts/lib/support.sh"
     local private_key_redactor=""
     local bundle_redactor=""
+    local scratch_allocator=""
     local hook="$PROJECT_ROOT/scripts/hooks/pre-commit"
+    local fixture="$BATS_TEST_TMPDIR/private-key.log"
+    local original_key=$'-----BEGIN PRIVATE KEY-----\nfixture-private-key-body\n-----END PRIVATE KEY-----\npublic diagnostic'
 
     private_key_redactor="$(sed -n '/^redact_private_key_blocks() {$/,/^}$/p' "$support")"
     bundle_redactor="$(sed -n '/^redact_bundle() {$/,/^}$/p' "$support")"
-    [[ "$private_key_redactor" == *'mktemp "${file}.redacted.XXXXXX") || return 1'* ]]
+    scratch_allocator="$(sed -n '/^support_redaction_tempfile() {$/,/^}$/p' "$support")"
+    [[ "$private_key_redactor" == *'tmp_file=$(support_redaction_tempfile "$file") || return 1'* ]]
+    [[ "$scratch_allocator" == *'mktemp "${file}.redacted.XXXXXX"'* ]]
     [[ "$private_key_redactor" == *'return 1'* ]]
     [[ "$private_key_redactor" != *'|| return 0'* ]]
     [[ "$bundle_redactor" == *'if ! redact_file "$file"'* ]]
+
+    printf '%s\n' "$original_key" > "$fixture"
+    run bash -c 'source "$1"; SUPPORT_REDACTION_TEMP_DIR="$3/missing-parent"; redact_private_key_blocks "$2"' \
+        _ "$support" "$fixture" "$BATS_TEST_TMPDIR"
+    assert_failure
+    assert_equal "$(<"$fixture")" "$original_key"
+    run bash -c 'source "$1"; unset SUPPORT_REDACTION_TEMP_DIR; redact_private_key_blocks "$2"' \
+        _ "$support" "$fixture"
+    assert_success
+    assert_equal "$(<"$fixture")" $'<REDACTED:private_key>\npublic diagnostic'
+
     run grep -F 'if ! redact_bundle "$bundle_dir"' "$support"
     assert_success
     run grep -F "before_hash=\$(md5sum \"\$file\" 2>/dev/null | awk '{print \$1}') || return 0" "$support"
@@ -10482,7 +10523,10 @@ EOF
     run grep -F 'local explicit_user_home_for_repair=""' "$installer"
     assert_success
 
-    run grep -F 'useradd -m -d "$TARGET_HOME" -s /bin/bash "$TARGET_USER"' "$installer"
+    run grep -F 'initial_shell="$(user_select_initial_login_shell bash)"' "$installer"
+    assert_success
+
+    run grep -F 'useradd -m -d "$TARGET_HOME" -s "$initial_shell" "$TARGET_USER"' "$installer"
     assert_success
 
     run grep -F "LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 || true" "$installer"
@@ -10989,16 +11033,19 @@ EOF
     run grep -F 'if ! binary_installed "zsh"; then' "$installer"
     assert_success
 
-    run grep -F 'if ! binary_installed "go"; then' "$installer"
+    run grep -F 'if ! acfs_should_skip_module "lang.go"; then' "$installer"
     assert_success
 
-    run grep -F 'if binary_installed "uv"; then' "$installer"
+    run grep -F 'executable="$(binary_path go 2>/dev/null)" || executable="/usr/local/go/bin/go"' "$installer"
     assert_success
 
-    run grep -F 'if [[ -d "$TARGET_HOME/.atuin" ]] || binary_installed "atuin"; then' "$installer"
+    run grep -F 'if acfs_should_skip_module "lang.uv"; then' "$installer"
     assert_success
 
-    run grep -F 'if binary_installed "zoxide"; then' "$installer"
+    run grep -F 'if acfs_should_skip_module "tools.atuin"; then' "$installer"
+    assert_success
+
+    run grep -F 'if acfs_should_skip_module "tools.zoxide"; then' "$installer"
     assert_success
 
     run grep -F 'if binary_installed "gum"; then' "$installer"
@@ -11013,10 +11060,10 @@ EOF
     run grep -F 'if ! binary_installed "lazydocker"; then' "$installer"
     assert_success
 
-    run grep -F 'elif psql_bin="$(binary_path psql 2>/dev/null || true)" && [[ -n "$psql_bin" ]]; then' "$installer"
+    run grep -F 'elif acfs_postgres_ready; then' "$installer"
     assert_success
 
-    run grep -F 'elif vault_bin="$(binary_path vault 2>/dev/null || true)" && [[ -n "$vault_bin" ]]; then' "$installer"
+    run grep -F 'elif acfs_should_skip_module "tools.vault"; then' "$installer"
     assert_success
 
     run grep -F 'binary_installed "go" || missing_lang+=("go")' "$installer"
@@ -11025,10 +11072,10 @@ EOF
     run grep -F 'gh_bin="$(binary_path gh 2>/dev/null || true)"' "$installer"
     assert_success
 
-    run grep -F 'psql_bin="$(binary_path psql 2>/dev/null || true)"' "$installer"
+    run grep -F 'psql_bin="$(acfs_early_system_binary_path psql 2>/dev/null || true)"' "$installer"
     assert_success
 
-    run grep -F 'vault_bin="$(binary_path vault 2>/dev/null || true)"' "$installer"
+    run grep -F 'elif binary_installed "vault"; then' "$installer"
     assert_success
 
     run grep -F 'export PATH="${ACFS_BIN_DIR:-$HOME/.local/bin}:$HOME/.local/bin:$HOME/.acfs/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"' "$installer"
@@ -11131,7 +11178,7 @@ EOF
 
 @test "install.sh: DCG hook installer passes target paths as argv/env data" {
     local installer="$PROJECT_ROOT/install.sh"
-    local try_step_line="try_step \"Installing DCG hook\" \\"
+    local try_step_line="try_step_optional \"Installing DCG hook\" \\"
     local env_line="env \"TARGET_USER=\$TARGET_USER\" \"TARGET_HOME=\$TARGET_HOME\" \\"
 
     run grep -F "$try_step_line" "$installer"
@@ -11700,6 +11747,7 @@ EOF
 
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_sanitize_abs_nonroot_path()/,/^}$/p' "$doctor_lib")"
+    eval "$(sed -n '/^_acfs_doctor_assign_abs_nonroot_path()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
@@ -14290,7 +14338,20 @@ EOF
     chmod +x "$TARGET_HOME/mcp_agent_mail/am"
 
     run doctor_agent_mail_cli_path
-    assert_failure
+    # A fleet host may already have a legitimate system-wide am. The
+    # contract excludes the caller's PATH and the unshimmed checkout, not
+    # the fixed trusted system directories. Never execute any real am here.
+    if [[ "$status" -eq 0 ]]; then
+        case "$output" in
+            /usr/local/bin/am|/usr/local/sbin/am|/usr/bin/am|/bin/am|/usr/sbin/am|/sbin/am|/snap/bin/am)
+                [[ -x "$output" ]] || fail "resolved system am is not executable"
+                ;;
+            *) fail "resolved an untrusted or unshimmed am: $output" ;;
+        esac
+    else
+        assert_failure
+        assert_output ""
+    fi
 
     cat > "$ACFS_BIN_DIR/am" <<'EOF'
 #!/usr/bin/env bash
@@ -14742,7 +14803,8 @@ setup_missing_bun_update_fixture() {
     [[ "$(grep -c 'Bun not installed' "$HOME/update.log")" == "1" ]]
     [[ "$(grep -c 'Codex CLI' "$HOME/update.log")" == "1" ]]
     grep -q '\[skip\] Codex CLI - not installed; Bun not installed either' "$HOME/update.log"
-    ! grep -q '\[fail\]' "$HOME/update.log"
+    run grep -q '\[fail\]' "$HOME/update.log"
+    assert_failure
 }
 
 @test "update_agents: missing Bun with Codex installed is one Codex failure line" {
@@ -16217,12 +16279,18 @@ esac'
     update_smoke_exit_status_is_fatal 126
     update_smoke_exit_status_is_fatal 127
     update_smoke_exit_status_is_fatal 139
-    ! update_smoke_exit_status_is_fatal 0
-    ! update_smoke_exit_status_is_fatal 1
-    ! update_smoke_exit_status_is_fatal 2
-    ! update_smoke_exit_status_is_fatal 64
-    ! update_smoke_exit_status_is_fatal 101
-    ! update_smoke_exit_status_is_fatal abc
+    run update_smoke_exit_status_is_fatal 0
+    assert_failure
+    run update_smoke_exit_status_is_fatal 1
+    assert_failure
+    run update_smoke_exit_status_is_fatal 2
+    assert_failure
+    run update_smoke_exit_status_is_fatal 64
+    assert_failure
+    run update_smoke_exit_status_is_fatal 101
+    assert_failure
+    run update_smoke_exit_status_is_fatal abc
+    assert_failure
 }
 
 @test "smoke output classifier: recognises common parser rejections and not tracebacks" {
@@ -16232,9 +16300,12 @@ esac'
     update_smoke_output_indicates_probe_rejected "error: unexpected argument '--version' found"
     update_smoke_output_indicates_probe_rejected "tool: unrecognized option '--version'"
     update_smoke_output_indicates_probe_rejected "Try 'tool --help' for more information."
-    ! update_smoke_output_indicates_probe_rejected "Traceback (most recent call last):"
-    ! update_smoke_output_indicates_probe_rejected "thread 'main' panicked at src/main.rs:1:1"
-    ! update_smoke_output_indicates_probe_rejected ""
+    run update_smoke_output_indicates_probe_rejected "Traceback (most recent call last):"
+    assert_failure
+    run update_smoke_output_indicates_probe_rejected "thread 'main' panicked at src/main.rs:1:1"
+    assert_failure
+    run update_smoke_output_indicates_probe_rejected ""
+    assert_failure
 }
 
 @test "verify-or-rollback: unsupported probe keeps the new binary and records no backoff" {
@@ -16254,7 +16325,8 @@ esac'
     [[ "$output" != *"ROLLED BACK"* ]]
     grep -q 'Usage: oddtool' "$bin"
     [[ -f "$bin.prev" ]]
-    ! update_rollback_state_lookup oddtool
+    run update_rollback_state_lookup oddtool
+    assert_failure
 }
 
 @test "verify-or-rollback: a broken binary is rolled back and put in backoff" {
@@ -16308,7 +16380,8 @@ esac'
     run update_verify_tool_or_rollback fsfs
     assert_success
     [[ "$output" != *"VERIFICATION"* ]]
-    ! update_rollback_state_lookup fsfs
+    run update_rollback_state_lookup fsfs
+    assert_failure
 }
 
 # ============================================================
@@ -17016,27 +17089,69 @@ _staging_head_refusing_first_write() {
     }
 }
 
+# These probes must use the real system temp roots, but their bytes must
+# survive the test. Supply only the cleanup transport: it accepts the exact
+# rm contract and moves this test's owned files into its private HOME. The
+# caller must still request cleanup and leave no original temp pathname.
+_staging_retain_removed_files() {
+    export STAGING_RETAIN_PREFIX="$1"
+    export STAGING_RETAIN_DIR="$HOME/staging-retained"
+    export STAGING_REAL_MV STAGING_REAL_STAT
+    STAGING_REAL_MV="$(update_system_binary_path mv)"
+    STAGING_REAL_STAT="$(update_system_binary_path stat)"
+    mkdir -p "$STAGING_RETAIN_DIR"
+    local retaining_rm="$HOME/retaining-rm"
+    cat > "$retaining_rm" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+[[ $# -eq 3 && "$1" == -f && "$2" == -- ]] || exit 64
+file="$3"
+case "$file" in
+    /tmp/"$STAGING_RETAIN_PREFIX".*|/var/tmp/"$STAGING_RETAIN_PREFIX".*) ;;
+    *) exit 65 ;;
+esac
+[[ -e "$file" || -L "$file" ]] || exit 0
+[[ -f "$file" && ! -L "$file" ]] || exit 66
+[[ "$("$STAGING_REAL_STAT" -c %u -- "$file")" == "$EUID" ]] || exit 67
+destination="$STAGING_RETAIN_DIR/${file##*/}"
+[[ ! -e "$destination" && ! -L "$destination" ]] || exit 68
+"$STAGING_REAL_MV" -n -- "$file" "$destination"
+[[ ! -e "$file" && ! -L "$file" ]]
+EOF
+    chmod 0755 "$retaining_rm"
+    eval "$(declare -f update_system_binary_path | sed '1s/update_system_binary_path/_staging_cleanup_real_binary_path/')"
+    update_system_binary_path() {
+        if [[ "$1" == rm ]]; then printf '%s\n' "$HOME/retaining-rm"; else _staging_cleanup_real_binary_path "$@"; fi
+    }
+}
+
 @test "verified installer staging: /tmp that takes mktemp but refuses the write falls back to /var/tmp" {
     [[ ! -L /tmp && -d /var/tmp && -k /var/tmp ]] || skip "needs a real /tmp and a sticky /var/tmp"
     local prefix="acfs-bats-stage-$$" file=""
     _staging_head_refusing_first_write
+    _staging_retain_removed_files "$prefix"
     update_run_in_target_context() { shift; "$@"; }
 
     file="$(update_create_target_readable_temp_file "$prefix")"
 
     [[ "$file" == /var/tmp/"$prefix".* && -f "$file" && ! -s "$file" ]] || fail "got: $file"
-    rm -f -- "$file"
-    [[ -z "$(compgen -G "/tmp/$prefix.*")" ]] || fail "probe file left in /tmp"
+    "$(update_system_binary_path rm)" -f -- "$file"
+    [[ -z "$(compgen -G "/tmp/$prefix.*")$(compgen -G "/var/tmp/$prefix.*")" ]] || fail "probe file left behind"
+    local -a retained=("$STAGING_RETAIN_DIR"/"$prefix".*)
+    [[ "${#retained[@]}" -eq 2 && -f "${retained[0]}" && -f "${retained[1]}" ]] || fail "both probe files must be retained"
 }
 
 @test "verified installer staging: fails closed when no system temp dir takes the write" {
     local prefix="acfs-bats-stage-full-$$" out="" rc=0
+    _staging_retain_removed_files "$prefix"
     update_run_in_target_context() { shift; "$@"; }
 
     out="$(ulimit -f 64; update_create_target_readable_temp_file "$prefix" 2>/dev/null)" || rc=$?
 
     [[ "$rc" -ne 0 && -z "$out" ]] || fail "rc=$rc out=$out"
     [[ -z "$(compgen -G "/tmp/$prefix.*")$(compgen -G "/var/tmp/$prefix.*")" ]] || fail "probe file left behind"
+    local -a retained=("$STAGING_RETAIN_DIR"/"$prefix".*)
+    [[ "${#retained[@]}" -eq 2 && -f "${retained[0]}" && -f "${retained[1]}" ]] || fail "both failed-write probes must be retained"
 }
 
 # The Version header names the git checkout; fleet nightlies run the deployed
