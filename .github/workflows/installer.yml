@@ -126,6 +126,9 @@ jobs:
       - name: Run library globals integration test
         run: bash tests/unit/test_lib_globals.sh
 
+      - name: Run session export sanitization regressions
+        run: bash tests/unit/test_session_sanitization.sh
+
       - name: Run login-shell safety regressions
         run: sudo python3 -B tests/unit/test_login_shell_safety.py
 

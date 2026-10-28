@@ -413,61 +413,83 @@ acfs_session_assert_no_private_key_material() {
     esac
 }
 
-# Sanitize content by applying redaction patterns
-# Usage: sanitize_content [file|content] (or reads from stdin)
-# Returns: sanitized content via stdout
+# Use one redactor for text and JSON exports. Work on original JSON tokens:
+# round-tripping the full object through jq can round large public identifiers.
+# Secret object keys retain their existing broad matching and redact complete
+# values, including arrays, objects, booleans, nulls, and empty strings.
+acfs_session_sanitize_stream() {
+    local core_pattern optional_pattern redact_optional=false
+    printf -v core_pattern '%s|' "${REDACT_PATTERNS[@]}"
+    printf -v optional_pattern '%s|' "${OPTIONAL_REDACT_PATTERNS[@]}"
+    [[ "${ACFS_SANITIZE_OPTIONAL:-0}" != "1" ]] || redact_optional=true
+
+    acfs_session_jq -Rrs \
+        --arg core_pattern "${core_pattern%|}" \
+        --arg optional_pattern "${optional_pattern%|}" \
+        --argjson redact_optional "$redact_optional" '
+      def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
+      def secret_names: "password|secret|api_key|apikey|auth_token|access_token|private_key|secret_key";
+      def is_secret_key: test(secret_names; "i");
+      def redact_private_keys:
+        gsub("(?is)-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----.*?-----END ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----"; "[PRIVATE_KEY_REDACTED]") |
+        gsub("(?is)-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----.*$"; "[PRIVATE_KEY_REDACTED]");
+      def redact_inline:
+        ("(?<prefix>(?i:" + secret_names + ")[\"\u0027]?\\s*[:=]\\s*)") as $prefix
+        | gsub($prefix + "(?<opening>\\\\[\"\u0027])[^\\r\\n]*";
+            "\(.prefix)\(.opening)[SECRET_REDACTED]\(.opening)")
+        | gsub($prefix + "\"(?<value>(?:\\\\.|[^\"\\\\])+)(?<tail>\"|$)";
+            "\(.prefix)\"[SECRET_REDACTED]\(.tail)")
+        | gsub($prefix + "\u0027(?<value>(?:\\\\.|[^\u0027\\\\])+)(?<tail>\u0027|$)";
+            "\(.prefix)\u0027[SECRET_REDACTED]\(.tail)")
+        | gsub($prefix + "(?<value>[^\\s\"\u0027\\\\\\}\\]\\),;\\[]+)";
+            "\(.prefix)[SECRET_REDACTED]")
+        # Retain the existing fallback for other inline credential forms.
+        | gsub("(?i)(password|secret|api_key|apikey|auth_token|access_token)[\"\\s:=]+[\"\u0027]?[^\\s\"\u0027\\}\\]\\),;\\[]{8,}[\"\u0027]?"; "[SECRET_REDACTED]");
+      def sanitize:
+        . as $input | (try ($input | fromjson | true) catch false) as $is_json
+        | if $is_json then
+            # Keys include their colon, so a value string cannot be mistaken
+            # for a key. Only punctuation tokens affect container depth.
+            reduce (match(string_token + "(?:\\s*:\\s*)?|[{}\\[\\],:]|\\s+|[^\\s{}\\[\\],:\"]+"; "g") | .string) as $token
+              ({text:"", secret:false, depth:0};
+                if .depth > 0 then
+                  if $token == "{" or $token == "[" then .depth += 1
+                  elif $token == "}" or $token == "]" then .depth -= 1
+                  else . end
+                elif .secret then
+                  if ($token | test("^\\s+$")) then .text += $token
+                  else .text += "\"[REDACTED]\"" | .secret = false
+                    | if $token == "{" or $token == "[" then .depth = 1 else . end
+                  end
+                elif ($token | test("^" + string_token + "\\s*:\\s*$")) then
+                  .text += $token
+                  | .secret = ($token | match("^" + string_token).string | fromjson | is_secret_key)
+                elif ($token | startswith("\"")) then
+                  ($token | fromjson) as $value | ($value | sanitize) as $safe
+                  | .text += (if $safe == $value then $token else ($safe | tojson) end)
+                else .text += $token end)
+            | .text
+          else
+            redact_private_keys | redact_inline
+            | gsub($core_pattern; "[REDACTED]"; "i")
+            | if $redact_optional then gsub($optional_pattern; "[REDACTED]"; "i") else . end
+          end;
+      sanitize
+    '
+}
+
+# Usage: sanitize_content [file|content] (or reads from stdin).
 sanitize_content() {
-    local sed_flags="g"
-    local sed_bin=""
-    local pipeline_status=0
-
-    sed_bin="$(acfs_session_system_binary_path sed 2>/dev/null || true)"
-    if [[ -z "$sed_bin" ]]; then
-        log_error "sed is required for session sanitization but not installed"
-        return 1
-    fi
-
-    # BSD sed doesn't support case-insensitive replacement flags. Prefer gI when available.
-    if printf 'test' | "$sed_bin" -E 's/test/TEST/gI' >/dev/null 2>&1; then
-        sed_flags="gI"
-    fi
-
-    local sed_script=""
-    for pattern in "${REDACT_PATTERNS[@]}"; do
-        sed_script+="s/${pattern}/[REDACTED]/${sed_flags}; "
-    done
-
-    # Redact common key/value secrets while preserving surrounding structure.
-    local kv_pattern="([\"']?)(password|secret|api_key|apikey|auth_token|access_token)([\"']?)([[:space:]]*[:=][[:space:]]*)([\"']?)[^][[:space:]\"'}),;[]{8,}([\"']?)"
-    sed_script+="s/${kv_pattern}/\\1\\2\\3\\4\\5[REDACTED]\\6/${sed_flags}; "
-
-    # Apply optional patterns if enabled
-    if [[ "${ACFS_SANITIZE_OPTIONAL:-0}" == "1" ]]; then
-        for pattern in "${OPTIONAL_REDACT_PATTERNS[@]}"; do
-            sed_script+="s/${pattern}/[REDACTED]/${sed_flags}; "
-        done
-    fi
-
-    if [[ $# -gt 0 ]]; then
-        if [[ -f "$1" ]]; then
-            (
-                set -o pipefail
-                acfs_session_redact_private_key_blocks < "$1" | "$sed_bin" -E "$sed_script"
-            ) || pipeline_status=$?
-        else
-            (
-                set -o pipefail
-                printf '%s' "$1" | acfs_session_redact_private_key_blocks | "$sed_bin" -E "$sed_script"
-            ) || pipeline_status=$?
-        fi
-    else
+    if [[ $# -gt 0 && -f "$1" ]]; then
+        acfs_session_sanitize_stream < "$1"
+    elif [[ $# -gt 0 ]]; then
         (
             set -o pipefail
-            acfs_session_redact_private_key_blocks | "$sed_bin" -E "$sed_script"
-        ) || pipeline_status=$?
+            printf '%s' "$1" | acfs_session_sanitize_stream
+        )
+    else
+        acfs_session_sanitize_stream
     fi
-
-    return "$pipeline_status"
 }
 
 acfs_session_remove_temp_files() {
@@ -490,8 +512,9 @@ sanitize_session_export() {
         return 1
     fi
 
-    # Validate it's valid JSON first
-    if ! acfs_session_jq -e . "$file" >/dev/null 2>&1; then
+    # Require one JSON document; treating a JSON stream as plain text could
+    # miss secret-bearing structures in later documents.
+    if ! acfs_session_jq -es 'length == 1' "$file" >/dev/null 2>&1; then
         log_error "Invalid JSON in session export: $file"
         return 1
     fi
@@ -510,74 +533,15 @@ sanitize_session_export() {
         return 1
     }
 
-    # Sanitize all string values in the JSON.
-    # This processes transcript content, summary, key_prompts, etc.
-    #
-    # Keep this as heredocs to avoid shell quoting issues with jq regex patterns.
-    local jq_filter_base
-    read -r -d '' jq_filter_base <<'JQ_BASE' || true
-def is_secret_key:
-    test("(?i)password|secret|api_key|apikey|auth_token|access_token|private_key|secret_key");
-
-def redact_private_keys:
-    gsub("(?is)-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----.*?-----END ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----"; "[PRIVATE_KEY_REDACTED]") |
-    gsub("(?is)-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----.*$"; "[PRIVATE_KEY_REDACTED]");
-
-def sanitize_value:
-    if type == "string" then
-        redact_private_keys |
-        gsub("sk-[a-zA-Z0-9_-]{20,}"; "[REDACTED]") |
-        gsub("sk-ant-[a-zA-Z0-9_-]{20,}"; "[REDACTED]") |
-        gsub("AIza[a-zA-Z0-9_-]{35}"; "[REDACTED]") |
-        gsub("github_pat_[a-zA-Z0-9_]{50,}"; "[REDACTED]") |
-        gsub("ghp_[a-zA-Z0-9]{36}"; "[REDACTED]") |
-        gsub("gho_[a-zA-Z0-9]{36}"; "[REDACTED]") |
-        gsub("ghs_[a-zA-Z0-9]{36}"; "[REDACTED]") |
-        gsub("ghr_[a-zA-Z0-9]{36}"; "[REDACTED]") |
-        gsub("xoxb-[a-zA-Z0-9-]+"; "[REDACTED]") |
-        gsub("xoxp-[a-zA-Z0-9-]+"; "[REDACTED]") |
-        gsub("AKIA[A-Z0-9]{16}"; "[REDACTED]") |
-        gsub("hf_[a-zA-Z0-9]{34}"; "[REDACTED]") |
-        gsub("[rs]k_(live|test)_[a-zA-Z0-9]{24,}"; "[REDACTED]") |
-        # Fallback for inline key=value pairs in strings.
-        # Since jq gsub doesn't support backreferences in the replacement string,
-        # we use a capture-and-replace approach or just redact the whole match.
-        # Redacting the whole match is safer for security.
-        gsub("(?i)(password|secret|api_key|apikey|auth_token|access_token)[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[SECRET_REDACTED]")
-JQ_BASE
-
-    local jq_filter_optional=""
-    if [[ "${ACFS_SANITIZE_OPTIONAL:-0}" == "1" ]]; then
-        read -r -d '' jq_filter_optional <<'JQ_OPTIONAL' || true
-        |
-        gsub("\\b[0-9]{1,3}(\\.[0-9]{1,3}){3}\\b"; "[REDACTED]") |
-        gsub("\\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}\\b"; "[REDACTED]")
-JQ_OPTIONAL
-    fi
-
-    local jq_filter_tail
-    read -r -d '' jq_filter_tail <<'JQ_TAIL' || true
-    elif type == "array" then
-        map(sanitize_value)
-    elif type == "object" then
-        with_entries(
-            if (.key | is_secret_key) then
-                .value = "[REDACTED]"
-            else
-                .value |= sanitize_value
-            end
-        )
-    else
-        .
-    end;
-sanitize_value
-JQ_TAIL
-
-    local jq_filter="${jq_filter_base}${jq_filter_optional}${jq_filter_tail}"
-
-    if ! acfs_session_jq "$jq_filter" "$file" > "$tmpfile"; then
+    if ! acfs_session_sanitize_stream < "$file" > "$tmpfile"; then
         acfs_session_remove_temp_files "$tmpfile"
         log_error "Failed to sanitize session export"
+        return 1
+    fi
+
+    if ! acfs_session_jq -es 'length == 1' "$tmpfile" >/dev/null 2>&1; then
+        acfs_session_remove_temp_files "$tmpfile"
+        log_error "Sanitization produced invalid JSON; refusing output"
         return 1
     fi
 

@@ -2183,6 +2183,13 @@ update_is_transient_failure_output() {
 
     [[ -n "$output" ]] || return 1
 
+    # Recovery failures are terminal for this attempt, even when an upstream
+    # diagnostic also mentions a network error. Retrying would immediately
+    # hit the newly recorded backoff and hide a damaged install as a skip.
+    case "$output" in
+        *"POST-INSTALL VERIFICATION FAILED for "*|*"ROLLBACK FAILED for "*) return 1 ;;
+    esac
+
     # HTTP status codes must be whole tokens: a bare '500' also matched
     # version strings like 2.500.1, and a bare 'curl:' matched permanent
     # failures such as 'curl: (22) ... 404', which then retried forever and
@@ -5268,7 +5275,7 @@ update_tool_rollback_backoff_details() {
 
     local retry_display=""
     retry_display="$(date -d "@$retry_epoch" +%F 2>/dev/null || date -r "$retry_epoch" +%F 2>/dev/null || echo "later")"
-    UPDATE_LAST_BACKOFF_DETAILS="post-install verification failed ${count} time(s) and the previous binary was kept; retry suppressed until ${retry_display} (use --force to retry now)"
+    UPDATE_LAST_BACKOFF_DETAILS="post-install verification failed ${count} time(s); retry suppressed until ${retry_display} (use --force to retry now)"
     return 0
 }
 
@@ -5298,8 +5305,8 @@ update_snapshot_tool_binary() {
     return 0
 }
 
-# After a successful installer run: smoke-check the installed binary and roll
-# back to the retained .prev on failure. Returns 0 when the tool is healthy
+# After an installer run: smoke-check the installed binary and roll back to
+# the retained .prev on failure. Returns 0 when the tool is healthy
 # (or unverifiable), 1 when verification failed (rolled back or not).
 update_verify_tool_or_rollback() {
     local tool="${1:-}"
@@ -5312,9 +5319,10 @@ update_verify_tool_or_rollback() {
 
     local new_path=""
     new_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
-    if [[ -z "$new_path" ]]; then
-        # Nothing resolvable to verify; the per-tool wrappers still do their
-        # own existence/version verification.
+    if [[ -z "$new_path" && -z "$prev_path" ]]; then
+        # A fresh install with no single discoverable binary still delegates
+        # verification to its per-tool wrapper. A retained installation that
+        # disappeared or lost executability must instead reach rollback.
         return 0
     fi
 
@@ -5339,7 +5347,9 @@ update_verify_tool_or_rollback() {
     if [[ -n "$prev_path" && -f "$prev_path" ]]; then
         local restore_target="$new_path"
         [[ -n "${UPDATE_ROLLBACK_BIN_PATH:-}" ]] && restore_target="$UPDATE_ROLLBACK_BIN_PATH"
-        if mv -f "$prev_path" "$restore_target" 2>/dev/null; then
+        # Never treat a directory left at the old binary path as a destination
+        # container: moving .prev into it would falsely report a restoration.
+        if mv -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
             echo "ROLLED BACK: restored previous $tool binary at $restore_target" >&2
             log_to_file "ROLLED BACK $tool: restored previous binary at $restore_target"
             if [[ "$restore_target" != "$new_path" ]]; then
@@ -5482,8 +5492,15 @@ update_run_verified_installer_with_env() {
     # the pre-execution checksum-refusal classification used by callers.
     [[ "$exit_code" == "$UPDATE_EXIT_CHECKSUM" ]] && exit_code=1
 
-    if [[ $exit_code -eq 0 ]]; then
-        update_verify_tool_or_rollback "$tool" "$expected_sha256" || return 1
+    if [[ $exit_code -eq 0 ]] || {
+        [[ -n "${UPDATE_ROLLBACK_PREV_PATH:-}" && -n "${UPDATE_ROLLBACK_BIN_PATH:-}" ]]
+    }; then
+        # An installer may damage the working binary before failing. Check the
+        # retained installation on that path too, but preserve its original
+        # failure status even if recovery succeeds or verification is healthy.
+        if ! update_verify_tool_or_rollback "$tool" "$expected_sha256"; then
+            [[ $exit_code -ne 0 ]] || exit_code=1
+        fi
     fi
 
     return "$exit_code"

@@ -1,7 +1,8 @@
 """Exercise real updater/verification functions with inert downloaded scripts.
 
-Only network acquisition, installed-tool discovery and binary snapshots are
-fixtures. SHA256 verification, metadata recovery, shell execution, background
+Network acquisition and installed-tool discovery are fixtures. Pin-classification
+tests stub binary snapshots; rollback tests use real snapshots and filesystem
+restoration. SHA256 verification, metadata recovery, shell execution, background
 status propagation, retry dispatch and final summaries run the repository code.
 No system packages, real agent installations or external services are touched.
 """
@@ -15,7 +16,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 COMMON = r'''
-source "$REPO_ROOT/scripts/lib/update.sh"
+source "$UPDATE_TEST_LIBRARY"
 source "$REPO_ROOT/scripts/lib/security.sh"
 DRY_RUN=false
 FORCE_MODE=false
@@ -39,6 +40,8 @@ update_snapshot_tool_binary() { printf 'snapshot\n' >> "$TEST_ROOT/events"; }
 update_verify_tool_or_rollback() { printf 'smoke\n' >> "$TEST_ROOT/events"; }
 update_create_target_readable_temp_file() { mktemp "$TEST_ROOT/stage.XXXXXX"; }
 update_run_in_target_context() { shift; "$@"; }
+# Preserve temporary fixture files for inspection after each run.
+rm() { :; }
 acfs_download_to_file() {
     printf 'download\n' >> "$TEST_ROOT/events"
     if [[ "${TEST_NETWORK_FAIL:-false}" == true ]]; then
@@ -69,9 +72,7 @@ result() {
 
 class PinFailureTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="acfs-pin-test-")
-        self.addCleanup(self.tmp.cleanup)
-        self.base = Path(self.tmp.name)
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-pin-test-"))
         self.script = b'#!/bin/bash\nprintf "execute\\n" >> "$TEST_ROOT/events"\nexit "${TEST_INSTALLER_EXIT:-0}"\n'
         self.new_script = self.script + b'# refreshed entrypoint\n'
         (self.base / "installer.sh").write_bytes(self.script)
@@ -81,6 +82,7 @@ class PinFailureTests(unittest.TestCase):
             "PATH": "/usr/bin:/bin", "HOME": str(self.base),
             "TARGET_HOME": str(self.base), "TEST_ROOT": str(self.base),
             "REPO_ROOT": str(ROOT), "TMPDIR": str(self.base),
+            "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
             "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
             "TEST_ACTUAL": self.actual, "TEST_PIN": "1" * 64,
             "TEST_NEW_ACTUAL": hashlib.sha256(self.new_script).hexdigest(),
@@ -286,6 +288,204 @@ class PinFailureTests(unittest.TestCase):
         self.assertIn("COUNTS=1,0,1,1", output)
         self.assertIn("CHECKSUM BLOCKED: 1 update(s)", output)
         self.assertIn("Partial failure", output)
+
+
+ROLLBACK_COMMON = r'''
+source "$UPDATE_TEST_LIBRARY"
+source "$REPO_ROOT/scripts/lib/security.sh"
+DRY_RUN=false FORCE_MODE=false VERBOSE=false QUIET=true ABORT_ON_FAILURE=false
+UPDATE_LOG_FILE="$TEST_ROOT/update.log"
+RED='' GREEN='' YELLOW='' CYAN='' BOLD='' DIM='' NC=''
+SUCCESS_COUNT=0 SKIP_COUNT=0 FAIL_COUNT=0
+UPDATE_SECURITY_READY=true
+UPDATE_SMOKE_TIMEOUT=2
+ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+ACFS_UPDATE_RETRY_MAX_ATTEMPTS=3
+KNOWN_INSTALLERS["$TEST_TOOL"]='https://fixture.invalid/installer.sh'
+update_require_security() { return 0; }
+get_checksum() { printf '%s\n' "$TEST_PIN"; }
+update_tool_hold_details() { return 1; }
+update_tool_latest_release_tag() { printf '%s\n' 'v2.0.0'; }
+update_tool_binary_path() {
+    [[ -x "$TEST_ROOT/bin/fixturetool" && ! -d "$TEST_ROOT/bin/fixturetool" ]] || return 1
+    printf '%s\n' "$TEST_ROOT/bin/fixturetool"
+}
+update_binary_path() { update_tool_binary_path "$@"; }
+update_create_target_readable_temp_file() { mktemp "$TEST_ROOT/stage.XXXXXX"; }
+update_private_installer_tmpdir() { return 0; }
+update_run_in_target_context() { shift; "$@"; }
+acfs_download_to_file() {
+    printf 'download\n' >> "$TEST_ROOT/events"
+    cat "$TEST_ROOT/installer.sh" > "$2"
+}
+acfs_refresh_loaded_checksums_from_remote() { return 1; }
+# Keep the verified script and capture files; all binary fixture versions are
+# also retained separately even when the real rollback replaces a broken file.
+rm() { :; }
+'''
+
+
+class RollbackFailureTests(unittest.TestCase):
+    def fixture(self, action="broken", installer_exit=17, *, initial=True,
+                command="direct", expected=17, transient=False, pin=None, tool="fixturetool"):
+        base = Path(tempfile.mkdtemp(prefix="acfs-rollback-test-"))
+        (base / "bin").mkdir()
+        (base / "originals").mkdir()
+        versions = {
+            "old": b'#!/bin/bash\nprintf "fixturetool 1.0.0\\n"\n',
+            "healthy": b'#!/bin/bash\nprintf "fixturetool 2.0.0\\n"\n',
+            "broken": b'#!/bin/bash\nprintf "missing runtime dependency\\n" >&2\nexit 1\n',
+            "unsupported": b'#!/bin/bash\nprintf "Usage: fixturetool OTHER\\n" >&2\nexit 2\n',
+        }
+        for name, data in versions.items():
+            path = base / "originals" / name
+            path.write_bytes(data)
+            path.chmod(0o755)
+        active = base / "bin/fixturetool"
+        if initial:
+            active.write_bytes(versions["old"])
+            active.chmod(0o755)
+        original_inode = active.stat().st_ino if initial else None
+        installer = br'''#!/bin/bash
+set -eu
+printf 'execute\n' >> "$TEST_ROOT/events"
+case "$TEST_ACTION" in
+    broken|healthy|unsupported)
+        cp "$TEST_ROOT/originals/$TEST_ACTION" "$TEST_ROOT/bin/fixturetool" ;;
+    nonexec)
+        cp "$TEST_ROOT/originals/healthy" "$TEST_ROOT/bin/fixturetool"
+        chmod 0644 "$TEST_ROOT/bin/fixturetool" ;;
+    missing|directory)
+        mv "$TEST_ROOT/bin/fixturetool" "$TEST_ROOT/installer-displaced"
+        if [[ "$TEST_ACTION" == directory ]]; then mkdir "$TEST_ROOT/bin/fixturetool"; fi ;;
+    unchanged) : ;;
+    *) exit 99 ;;
+esac
+if [[ "$TEST_TRANSIENT" == true ]]; then printf 'curl: (7) Connection refused\n' >&2; fi
+exit "$TEST_INSTALLER_EXIT"
+'''
+        (base / "installer.sh").write_bytes(installer)
+        actual_pin = hashlib.sha256(installer).hexdigest()
+        env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(base), "TARGET_HOME": str(base),
+            "XDG_STATE_HOME": str(base / "state"), "TMPDIR": str(base),
+            "REPO_ROOT": str(ROOT), "TEST_ROOT": str(base), "NO_COLOR": "1",
+            "ACFS_INTERACTIVE": "false", "TEST_ACTION": action,
+            "TEST_TOOL": tool,
+            "TEST_INSTALLER_EXIT": str(installer_exit), "TEST_TRANSIENT": str(transient).lower(),
+            "TEST_PIN": actual_pin if pin is None else pin,
+            "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+        }
+        commands = {
+            "direct": 'update_run_verified_installer "$TEST_TOOL"',
+            "captured": 'update_run_command_capture_with_retry fixture update_run_verified_installer "$TEST_TOOL"',
+            "consumer": 'update_run_verified_installer_or_existing_on_transient fixture "$TEST_TOOL" fixturetool fixturetool',
+        }
+        body = ROLLBACK_COMMON + '\nrc=0\n' + commands[command] + r''' || rc=$?
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+exit "$rc"
+'''
+        result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", body],
+                                env=env, text=True, capture_output=True, timeout=15)
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, expected, output + "\nArtifacts: " + str(base))
+        return base, active, versions, actual_pin, original_inode, output
+
+    def assert_restored(self, fixture):
+        base, active, versions, pin, _, output = fixture
+        self.assertTrue(active.is_file(), output)
+        self.assertEqual(active.read_bytes(), versions["old"], output)
+        self.assertTrue(os.access(active, os.X_OK))
+        probe = subprocess.run([str(active), "--version"], capture_output=True, text=True, timeout=2)
+        self.assertEqual((probe.returncode, probe.stdout), (0, "fixturetool 1.0.0\n"))
+        state = (base / "state/acfs/update-rollback.state").read_text().split()
+        self.assertEqual(state[0:2], ["fixturetool", "1"])
+        self.assertEqual(state[3:], [pin, "v2.0.0"])
+        self.assertIn("ROLLED BACK", (base / "update.log").read_text())
+
+    def test_nonzero_installer_recovers_each_damaged_binary_and_preserves_status(self):
+        for action in ("broken", "nonexec", "missing"):
+            with self.subTest(action=action):
+                self.assert_restored(self.fixture(action))
+
+    def test_zero_exit_installer_recovers_each_damaged_binary_and_fails(self):
+        for action in ("broken", "nonexec", "missing"):
+            with self.subTest(action=action):
+                self.assert_restored(self.fixture(action, 0, expected=1))
+
+    def test_nonzero_installer_keeps_healthy_binary_and_original_error(self):
+        for action in ("unchanged", "healthy"):
+            with self.subTest(action=action):
+                base, active, versions, _, inode, output = self.fixture(action)
+                self.assertEqual(active.read_bytes(), versions["old" if action == "unchanged" else "healthy"])
+                self.assertEqual((base / "bin/fixturetool.prev").read_bytes(), versions["old"])
+                self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+                self.assertNotIn("ROLLED BACK", output)
+                if action == "unchanged": self.assertEqual(active.stat().st_ino, inode)
+
+    def test_healthy_success_keeps_manual_rollback_copy(self):
+        base, active, versions, _, _, _ = self.fixture("healthy", 0, expected=0)
+        self.assertEqual(active.read_bytes(), versions["healthy"])
+        self.assertEqual((base / "bin/fixturetool.prev").read_bytes(), versions["old"])
+        self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+
+    def test_unsupported_smoke_probe_does_not_trigger_rollback_or_backoff(self):
+        for status in (0, 17):
+            with self.subTest(status=status):
+                base, active, versions, _, _, output = self.fixture("unsupported", status, expected=status)
+                self.assertEqual(active.read_bytes(), versions["unsupported"])
+                self.assertEqual((base / "bin/fixturetool.prev").read_bytes(), versions["old"])
+                self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+                if status == 0: self.assertIn("VERIFICATION UNAVAILABLE", output)
+
+    def test_fresh_unverifiable_install_preserves_per_tool_delegation(self):
+        for status in (0, 17):
+            with self.subTest(status=status):
+                base, active, _, _, _, _ = self.fixture("unchanged", status, initial=False, expected=status)
+                self.assertFalse(active.exists())
+                self.assertFalse((base / "bin/fixturetool.prev").exists())
+                self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+
+    def test_shell_function_installer_retains_its_no_binary_exception(self):
+        base, active, versions, _, inode, _ = self.fixture("unchanged", tool="nvm")
+        self.assertEqual(active.read_bytes(), versions["old"])
+        self.assertEqual(active.stat().st_ino, inode)
+        self.assertFalse((base / "bin/fixturetool.prev").exists())
+        self.assertFalse((base / "state/acfs/update-rollback.state").exists())
+
+    def test_directory_at_restore_target_cannot_absorb_backup_or_report_success(self):
+        for status in (0, 17):
+            with self.subTest(status=status):
+                base, active, versions, _, _, output = self.fixture("directory", status, expected=status or 1)
+                self.assertTrue(active.is_dir())
+                self.assertEqual(list(active.iterdir()), [])
+                self.assertEqual((base / "bin/fixturetool.prev").read_bytes(), versions["old"])
+                self.assertIn("ROLLBACK FAILED", output)
+                self.assertNotIn("ROLLED BACK:", output)
+
+    def test_upstream_checksum_exit_cannot_impersonate_refusal_after_damage(self):
+        fixture = self.fixture("broken", 95, expected=1)
+        self.assert_restored(fixture)
+        self.assertNotIn("CHECKSUM BLOCKED", fixture[-1])
+
+    def test_pin_refusal_never_snapshots_or_executes(self):
+        base, active, versions, _, inode, _ = self.fixture(pin="1" * 64, expected=95)
+        self.assertEqual(active.read_bytes(), versions["old"])
+        self.assertEqual(active.stat().st_ino, inode)
+        self.assertFalse((base / "bin/fixturetool.prev").exists())
+        self.assertEqual((base / "events").read_text().splitlines(), ["download"])
+
+    def test_transient_output_cannot_retry_failed_recovery_into_backoff_skip(self):
+        for command, expected in (("captured", 17), ("consumer", 1)):
+            with self.subTest(command=command):
+                base, active, versions, _, _, output = self.fixture("directory", command=command,
+                                                                  expected=expected, transient=True)
+                self.assertTrue(active.is_dir())
+                self.assertEqual((base / "bin/fixturetool.prev").read_bytes(), versions["old"])
+                self.assertEqual((base / "events").read_text().splitlines(), ["download", "execute"])
+                self.assertIn("ROLLBACK FAILED", (base / "update.log").read_text())
+                self.assertNotIn("BACKOFF:", output)
+                if command == "consumer": self.assertIn("COUNTS=0,0,1", output)
 
 
 if __name__ == "__main__":
