@@ -428,6 +428,163 @@ TEXT
     pass "quoted_credential_families_are_redacted"
 }
 
+test_oauth_credentials_are_redacted_in_actual_packets() {
+    local bead agents readme cm cass output markdown_output
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/oauth-cm.json"
+    cass="$ARTIFACT_DIR/oauth-cass.txt"
+    cat > "$cm" <<'JSON'
+{"access_token":"fixtureOAuthAccess","refresh_token":"fixtureOAuthRefresh","id_token":"fixtureOAuthId","auth_token":"fixtureOAuthAuth","client_secret":"fixtureOAuthClient","accessToken":"fixtureOAuthCamelAccess","refreshToken":"fixtureOAuthCamelRefresh","idToken":"fixtureOAuthCamelId","authToken":"fixtureOAuthCamelAuth","clientSecret":"fixtureOAuthCamelClient","azure_client_secret":"fixtureOAuthQualified","oauth.access_token":"fixtureOAuthDotted","oauth-refreshToken":"fixtureOAuthDashed","document":"{\"access_\\u0074oken\":\"fixtureOAuthEncoded\\\"fixtureOAuthTail\",\"publicId\":9007199254740993}","client_id":"public-client","token_type":"Bearer","expires_in":3600,"scope":"read write","tokenCount":123,"accessTokenCount":7,"refreshTokenCount":8,"clientSecretPolicy":"rotate quarterly","eventId":9007199254740993,"unconfigured":{"access_token":"","refreshToken":null,"client_secret":false,"auth_token":0}}
+JSON
+    cat > "$cass" <<'TEXT'
+access_token=fixtureOAuthShell
+refreshToken='fixtureOAuthFirst fixtureOAuthLast'
+idToken="fixtureOAuthIdFirst \"fixtureOAuthIdTail"
+auth_token="fixtureOAuthAuthFirst fixtureOAuthAuthTail"
+service_auth_token=fixtureOAuthQualifiedShell
+service.clientSecret="fixtureOAuthDottedFirst fixtureOAuthDottedTail"
+access_token=\"fixtureOAuthEscapedFirst \\\"fixtureOAuthEscapedTail\"
+client_id=public-client
+token_type=Bearer
+expires_in=3600
+scope="read write"
+accessTokenCount=7
+refreshTokenCount=8
+clientSecretPolicy="rotate quarterly"
+client_secret="fixtureOAuthIncompleteFirst fixtureOAuthIncompleteTail
+TEXT
+    cp "$cm" "$cm.before"
+    cp "$cass" "$cass.before"
+    output="$(run_packet_json oauth-creds \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    markdown_output="$(run_packet_markdown oauth-creds-markdown \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/oauth-creds.exit")" -eq 0 &&
+       "$(cat "$ARTIFACT_DIR/oauth-creds-markdown.exit")" -eq 0 ]] || return 1
+    [[ "$output" != *fixtureOAuth* && "$markdown_output" != *fixtureOAuth* ]] || return 1
+    jq -e '.status == "pass" and
+      ((.context.cm.text | fromjson) |
+        ([.access_token, .refresh_token, .id_token, .auth_token, .client_secret,
+          .accessToken, .refreshToken, .idToken, .authToken, .clientSecret,
+          .azure_client_secret, .["oauth.access_token"], .["oauth-refreshToken"]]
+          | all(. == "[redacted]")) and
+        (.document | fromjson | .access_token == "[redacted]") and
+        (.document | contains("\"publicId\":9007199254740993")) and
+        .client_id == "public-client" and .token_type == "Bearer" and
+        .expires_in == 3600 and .scope == "read write" and .tokenCount == 123 and
+        .accessTokenCount == 7 and .refreshTokenCount == 8 and
+        .clientSecretPolicy == "rotate quarterly" and
+        .unconfigured == {"access_token":"","refreshToken":null,"client_secret":false,"auth_token":0}) and
+      (.context.cm.text | contains("\"eventId\":9007199254740993"))' <<<"$output" >/dev/null || return 1
+    [[ "$markdown_output" == *client_id=public-client* &&
+       "$markdown_output" == *token_type=Bearer* &&
+       "$markdown_output" == *expires_in=3600* &&
+       "$markdown_output" == *'scope="read write"'* &&
+       "$markdown_output" == *accessTokenCount=7* &&
+       "$markdown_output" == *refreshTokenCount=8* &&
+       "$markdown_output" == *'clientSecretPolicy="rotate quarterly"'* ]] || return 1
+    cmp -s "$cm" "$cm.before" || return 1
+    cmp -s "$cass" "$cass.before" || return 1
+    pass "oauth_credentials_are_redacted_in_actual_packets"
+}
+
+test_authorization_credentials_are_redacted_in_actual_packets() {
+    local bead agents readme cm cass output markdown_output
+    bead="$(bead_fixture)"
+    agents="$(agents_fixture)"
+    readme="$(readme_fixture)"
+    cm="$ARTIFACT_DIR/authorization-cm.json"
+    cass="$ARTIFACT_DIR/authorization-cass.txt"
+    cat > "$cm" <<'JSON'
+{"headers":{"Authorization":"bEaReR fixtureHeaderBearer","Proxy-Authorization":"Basic fixtureHeaderBasic","aUtHoRiZaTiOn":"Digest username=\"fixtureHeaderUser\", response=\"fixtureHeaderResponse\"","pRoXy-AuThOrIzAtIoN":"fixtureHeaderOpaque"},"document":"{\"Authoriz\\u0061tion\":\"Bearer fixtureHeaderEncoded\\\"fixtureHeaderTail\",\"publicId\":9007199254740993}","snippet":"Authorization: Bearer fixtureHeaderSnippet\npRoXy-AuThOrIzAtIoN: bAsIc fixtureHeaderProxySnippet\nX-Public-Header: visible","authorizationCount":4,"authorizationPolicy":"public policy","Proxy-Authorization-Policy":"public proxy policy","eventId":9007199254740993,"unconfigured":{"Authorization":"","Proxy-Authorization":null}}
+JSON
+    cat > "$cass" <<'TEXT'
+Authorization: Bearer fixtureHeaderExisting
+aUtHoRiZaTiOn: bEaReR fixtureHeaderMixed
+pRoXy-AuThOrIzAtIoN: bAsIc fixtureHeaderProxy
+Authorization: Digest username="fixtureHeaderUser", response="fixtureHeaderResponse"
+Authorization: "Bearer fixtureHeaderQuotedFirst fixtureHeaderQuotedLast"
+Proxy-Authorization: 'Basic fixtureHeaderSingleFirst fixtureHeaderSingleLast'
+Authorization: \"Bearer fixtureHeaderEscapedFirst \\\"fixtureHeaderEscapedLast\"
+curl -H "Authorization: Bearer fixtureHeaderCurl" https://example.com/public
+X-Public-Header: visible
+Authorization-Policy: public policy
+authorizationCount=4
+TEXT
+    cp "$cm" "$cm.before"
+    cp "$cass" "$cass.before"
+    output="$(run_packet_json authorization-creds \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    markdown_output="$(run_packet_markdown authorization-creds-markdown \
+        --bead-file "$bead" --agents-file "$agents" --readme-file "$readme" \
+        --cm-file "$cm" --cass-file "$cass" --repo "$REPO_ROOT" \
+        --agent-name FixtureAgent --max-chars 20000)"
+    [[ "$(cat "$ARTIFACT_DIR/authorization-creds.exit")" -eq 0 &&
+       "$(cat "$ARTIFACT_DIR/authorization-creds-markdown.exit")" -eq 0 ]] || return 1
+    [[ "$output" != *fixtureHeader* && "$markdown_output" != *fixtureHeader* ]] || return 1
+    jq -e '.status == "pass" and
+      ((.context.cm.text | fromjson) |
+        (.headers | all(. == "[redacted]")) and
+        (.document | fromjson | .Authorization == "[redacted]") and
+        (.document | contains("\"publicId\":9007199254740993")) and
+        (.snippet | contains("X-Public-Header: visible")) and
+        .authorizationCount == 4 and .authorizationPolicy == "public policy" and
+        .["Proxy-Authorization-Policy"] == "public proxy policy" and
+        .unconfigured == {"Authorization":"","Proxy-Authorization":null}) and
+      (.context.cm.text | contains("\"eventId\":9007199254740993"))' <<<"$output" >/dev/null || return 1
+    [[ "$markdown_output" == *https://example.com/public* &&
+       "$markdown_output" == *'X-Public-Header: visible'* &&
+       "$markdown_output" == *'Authorization-Policy: public policy'* &&
+       "$markdown_output" == *authorizationCount=4* ]] || return 1
+    cmp -s "$cm" "$cm.before" || return 1
+    cmp -s "$cass" "$cass.before" || return 1
+    pass "authorization_credentials_are_redacted_in_actual_packets"
+}
+
+test_sanitizer_masks_complete_header_values_without_touching_public_text() {
+    local input output
+    input="$(cat <<'TEXT'
+AUTHORIZATION: bEaReR fixtureDirectOpaque
+pRoXy-AuThOrIzAtIoN: BaSiC fixtureDirectProxy
+Authorization: "Bearer fixtureDirectMultilineFirst
+fixtureDirectMultilineTail"
+request Authorization: Digest username="fixtureDirectLoggedUser", response="fixtureDirectLoggedResponse"
+request Proxy-Authorization: bAsIc "fixtureDirectLoggedQuotedFirst fixtureDirectLoggedQuotedTail"
+curl -H 'Authorization: Bearer fixtureDirectFirst fixtureDirectTail' https://example.com/public
+curl -H 'Proxy-Authorization: Digest username="fixtureDirectUser", response="fixtureDirectResponse"' https://example.com/digest
+oauth.access_token="fixtureDirectQuoted \"fixtureDirectQuotedTail"
+token_type=Bearer
+client_id=public-client
+accessTokenCount=7
+refreshTokenCount=8
+clientSecretPolicy="rotate quarterly"
+authorizationCount=4
+Authorization-Policy: public policy
+TEXT
+)"
+    output="$(bash -c 'source "$1" --help >/dev/null; swarm_packet_sanitize_context_text "$2"' \
+        _ "$SWARM_PACKET_SH" "$input")" || return 1
+    [[ "$output" != *fixtureDirect* &&
+       "$output" == *https://example.com/public* &&
+       "$output" == *https://example.com/digest* &&
+       "$output" == *token_type=Bearer* &&
+       "$output" == *client_id=public-client* &&
+       "$output" == *accessTokenCount=7* &&
+       "$output" == *refreshTokenCount=8* &&
+       "$output" == *'clientSecretPolicy="rotate quarterly"'* &&
+       "$output" == *authorizationCount=4* &&
+       "$output" == *'Authorization-Policy: public policy'* ]] || return 1
+    pass "sanitizer_masks_complete_header_values_without_touching_public_text"
+}
+
 test_escaped_json_credentials_preserve_public_context() {
     local bead agents readme cm cass output markdown_output
     bead="$(bead_fixture)"
@@ -821,6 +978,9 @@ main() {
     run_test test_context_service_credentials_are_redacted_before_packet_output
     run_test test_context_credential_aliases_preserve_public_metadata
     run_test test_quoted_credential_families_are_redacted
+    run_test test_oauth_credentials_are_redacted_in_actual_packets
+    run_test test_authorization_credentials_are_redacted_in_actual_packets
+    run_test test_sanitizer_masks_complete_header_values_without_touching_public_text
     run_test test_escaped_json_credentials_preserve_public_context
     run_test test_packet_refuses_failed_credential_redaction
     run_test test_packet_preserves_empty_labels

@@ -240,19 +240,44 @@ swarm_packet_sanitize_context_text() {
     # identifiers with older jq versions. Leave other bytes and metadata intact.
     text="$(printf '%s' "$text" | jq -Rrs '
       def aliases: "password|passwd|secret|token|api_?key|secret_?key|access_?key|private_?key|MYSQL_PWD";
+      # OAuth values are opaque: the field name, not a provider token shape,
+      # identifies them. Match complete names and delimited qualifiers without
+      # treating accessTokenCount or clientSecretPolicy as credentials.
+      def oauth_name:
+        "(?i:(?:[a-z0-9]+[._-])*(?:(?:access|refresh|id|auth)_?token|client_?secret))";
+      def authorization_name: "(?i:(?:proxy[-_]?)?authorization)";
       # Keep exact aliases case-insensitive and cover prefixed uppercase
       # environment names without treating public fields like tokenCount as keys.
       def credential_name:
-        "(?i:" + aliases + ")|[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*";
+        "(?i:" + aliases + ")|" + oauth_name + "|[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*";
       def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
       def redact_fields:
         gsub("(?<field>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
           . as $match | (try (.field | fromjson) catch null) as $key
-          | if ($key != null and ($key | test("^(" + credential_name + ")$"))) and .value != "\"\""
+          | if ($key != null and ($key | test("^(" + credential_name + "|" + authorization_name + ")$"))) and .value != "\"\""
             then .field + .separator + "\"[redacted]\""
             else $match.field + $match.separator + $match.value end);
+      # Header values include both a scheme and credentials, and Digest can
+      # contain several quoted parameters. Keep them out of the scalar
+      # assignment matcher, which would mask only Bearer/Basic and leak its tail.
+      # Match once: rematching a masked quoted curl header could swallow its
+      # public URL. Complete quoted values also take priority over line bounds.
+      def redact_authorization:
+        ("\\b(?:" + authorization_name + ")[ \\t]*:[ \\t]*") as $header
+        | gsub(
+            "\u0027(?<single_prefix>[ \\t]*" + $header + ")(?:\\\\.|[^\u0027\\\\])+(?<single_tail>\u0027|$)"
+            + "|\"(?<double_prefix>[ \\t]*" + $header + ")(?:\\\\.|[^\"\\\\])+(?<double_tail>\"|$)"
+            + "|(?<double_value_prefix>" + $header + ")\"(?:\\\\.|[^\"\\\\])+(?<double_value_tail>\"|$)"
+            + "|(?<single_value_prefix>" + $header + ")\u0027(?:\\\\.|[^\u0027\\\\])+(?<single_value_tail>\u0027|$)"
+            + "|(?<line_prefix>" + $header + ")[^\\r\\n]+";
+            if .single_prefix != null then "\u0027\(.single_prefix)[credential redacted]\(.single_tail)"
+            elif .double_prefix != null then "\"\(.double_prefix)[credential redacted]\(.double_tail)"
+            elif .double_value_prefix != null then "\(.double_value_prefix)\"[credential redacted]\(.double_value_tail)"
+            elif .single_value_prefix != null then "\(.single_value_prefix)\u0027[credential redacted]\(.single_value_tail)"
+            else "\(.line_prefix)[credential redacted]" end);
       def redact_text:
         redact_fields
+        | redact_authorization
         | ("(?<prefix>\\b(?:" + credential_name + ")\\b\\s*[=:]\\s*)") as $prefix
         | gsub($prefix + "(?<opening>\\\\[\"\u0027])[^\\r\\n]*";
             "\(.prefix)\(.opening)[redacted]\(.opening)")
