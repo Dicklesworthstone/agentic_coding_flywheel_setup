@@ -1384,13 +1384,13 @@ EOF
 @test "update.sh: runtime resolver gates avoid inherited PATH leaks" {
     local update="$PROJECT_ROOT/scripts/lib/update.sh"
 
-    run grep -F 'cargo_bin="$(update_binary_path cargo 2>/dev/null || true)"' "$update"
+    run grep -F 'cargo_bin="$(update_rust_binary_path cargo 2>/dev/null || true)"' "$update"
     assert_success
 
     run grep -F 'bun_bin="$(update_binary_path bun 2>/dev/null || true)"' "$update"
     assert_success
 
-    run grep -F 'rustup_bin="$(update_binary_path rustup 2>/dev/null || true)"' "$update"
+    run grep -F 'rustup_bin="$(update_rust_binary_path rustup 2>/dev/null || true)"' "$update"
     assert_success
 
     run grep -F 'uv_bin="$(update_binary_path uv 2>/dev/null || true)"' "$update"
@@ -1407,7 +1407,7 @@ EOF
     run grep -F 'cargo install --git https://github.com/Dicklesworthstone/meta_skill' "$update"
     assert_failure
 
-    run grep -F 'run_cmd "Update $tool" update_run_in_target_context "" "$cargo_bin" install "$tool" --locked --force' "$update"
+    run grep -F 'run_cmd "Update $tool" update_run_rust_in_target_context "$cargo_bin" install "$tool" --locked --force' "$update"
     assert_success
 
     run grep -F 'run_cmd "Update $tool" "$cargo_bin" install "$tool" --locked --force' "$update"

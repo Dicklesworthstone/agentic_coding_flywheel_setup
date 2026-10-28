@@ -1083,9 +1083,13 @@ get_version() {
             fi
             ;;
         rust)
-            tool_bin="$(update_binary_path "rustc" 2>/dev/null || true)"
-            if [[ -n "$tool_bin" ]]; then
-                version=$("$tool_bin" --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+            tool_bin="$(update_rust_binary_path "rustc" 2>/dev/null || true)"
+            local rust_env_bin=""
+            rust_env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+            if [[ -n "$tool_bin" && -n "$rust_env_bin" ]]; then
+                # A version probe must not install a missing override toolchain,
+                # including during --dry-run.
+                version=$(update_run_rust_in_target_context "$rust_env_bin" RUSTUP_AUTO_INSTALL=0 "$tool_bin" --version 2>/dev/null | awk '{print $2}' || echo "unknown")
             else
                 version="unknown"
             fi
@@ -2877,6 +2881,65 @@ update_run_in_target_context() {
 
     echo "Cannot switch to target user '$target_user' (sudo/runuser unavailable)" >&2
     return 1
+}
+
+# The caller's custom Cargo bin directory is relevant only for its own account.
+# Resolve relative overrides before the target runner changes directory.
+update_rust_binary_path() {
+    local tool="${1:-}" target_user="" current_user="" cargo_home=""
+    case "$tool" in rustup|rustc|cargo) ;; *) return 1 ;; esac
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    if [[ "$target_user" == "$current_user" && -n "${CARGO_HOME:-}" ]]; then
+        cargo_home="$CARGO_HOME"
+        if [[ "$cargo_home" != /* ]]; then
+            cargo_home="$(builtin pwd -P)/$cargo_home" || return 1
+        fi
+        if [[ -x "$cargo_home/bin/$tool" && ! -d "$cargo_home/bin/$tool" ]]; then
+            printf '%s\n' "$cargo_home/bin/$tool"
+            return 0
+        fi
+    fi
+    update_binary_path "$tool"
+}
+
+# Rustup chooses its toolchain and install directories from the environment,
+# not the path of the rustup/rustc executable. A root caller updating another
+# account must not carry its own Rust homes or toolchain into that account.
+# Preserve explicit overrides when the caller is updating its own toolchain.
+update_run_rust_in_target_context() {
+    [[ $# -gt 0 ]] || return 1
+    local target_user="" current_user="" env_bin="" timeout_bin=""
+    local name="" value="" caller_dir=""
+    local -a rust_env=() command_argv=("$@")
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+
+    if [[ "$target_user" == "$current_user" ]]; then
+        for name in RUSTUP_HOME CARGO_HOME; do
+            value="${!name:-}"
+            if [[ -n "$value" && "$value" != /* ]]; then
+                [[ -n "$caller_dir" ]] || caller_dir="$(builtin pwd -P)" || return 1
+                rust_env+=("$name=$caller_dir/$value")
+            fi
+        done
+    else
+        rust_env=(-u RUSTUP_HOME -u CARGO_HOME -u RUSTUP_TOOLCHAIN)
+    fi
+
+    env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$env_bin" ]]; then
+        echo "Cannot isolate target-user Rust environment (env unavailable)" >&2
+        return 1
+    fi
+
+    # run_cmd only bounds external executables, not shell-function wrappers.
+    # Keep the native command's deadline after switching to the target account.
+    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        command_argv=("$timeout_bin" --kill-after=30s "${UPDATE_CMD_TIMEOUT:-1800}" "${command_argv[@]}")
+    fi
+    update_run_in_target_context "" "$env_bin" "${rust_env[@]}" "${command_argv[@]}"
 }
 
 # ============================================================
@@ -7441,7 +7504,7 @@ update_rust() {
     log_section "Rust Toolchain"
 
     local rustup_bin=""
-    rustup_bin="$(update_binary_path rustup 2>/dev/null || true)"
+    rustup_bin="$(update_rust_binary_path rustup 2>/dev/null || true)"
 
     if [[ -z "$rustup_bin" ]]; then
         log_item "skip" "Rust" "not installed"
@@ -7452,15 +7515,15 @@ update_rust() {
     capture_version_before "rust"
 
     # Update stable toolchain
-    run_cmd "Rust stable" "$rustup_bin" update stable
+    run_cmd "Rust stable" update_run_rust_in_target_context "$rustup_bin" update stable
 
     # Check if nightly is installed and update it too
-    if "$rustup_bin" toolchain list 2>/dev/null | grep -q "^nightly"; then
-        run_cmd "Rust nightly" "$rustup_bin" update nightly
+    if update_run_rust_in_target_context "$rustup_bin" toolchain list 2>/dev/null | grep -q "^nightly"; then
+        run_cmd "Rust nightly" update_run_rust_in_target_context "$rustup_bin" update nightly
     fi
 
     # Update rustup itself
-    run_cmd "rustup self-update" "$rustup_bin" self update
+    run_cmd "rustup self-update" update_run_rust_in_target_context "$rustup_bin" self update
 
     # Show version change without double-counting
     if capture_version_after "rust"; then
@@ -7469,7 +7532,7 @@ update_rust() {
 
     # Log installed toolchains
     local toolchains
-    toolchains=$("$rustup_bin" toolchain list 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
+    toolchains=$(update_run_rust_in_target_context "$rustup_bin" toolchain list 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
     log_to_file "Installed toolchains: $toolchains"
 }
 
@@ -7481,7 +7544,7 @@ update_cargo_tools() {
     log_section "Cargo Tools"
 
     local cargo_bin=""
-    cargo_bin="$(update_binary_path cargo 2>/dev/null || true)"
+    cargo_bin="$(update_rust_binary_path cargo 2>/dev/null || true)"
     if [[ -z "$cargo_bin" ]]; then
         log_item "skip" "Cargo tools" "cargo not found"
         return 0
@@ -7503,7 +7566,7 @@ update_cargo_tools() {
         
         # force is required to update existing install with cargo
         # Use run_cmd to log and handle errors
-        run_cmd "Update $tool" update_run_in_target_context "" "$cargo_bin" install "$tool" --locked --force
+        run_cmd "Update $tool" update_run_rust_in_target_context "$cargo_bin" install "$tool" --locked --force
 
         if capture_version_after "$binary_name"; then
              update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[$binary_name]}" "${VERSION_AFTER[$binary_name]}"
