@@ -317,27 +317,26 @@ function UsageOption({
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      whileHover={{ x: 4, scale: 1.01 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
+      className="min-w-0 border-t border-white/10 py-6 first:border-t-0 first:pt-0"
     >
       <div className="flex items-center gap-4 mb-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold shadow-lg shadow-primary/20 group-hover:shadow-primary/40 group-hover:scale-110 transition duration-300">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-300/20 bg-violet-300/10 font-mono font-semibold text-violet-200">
           {number}
         </div>
-        <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
+        <h3 className="text-lg font-semibold text-white">
           {title}
         </h3>
       </div>
 
       {steps.length > 0 && (
-        <ol className="space-y-2 ml-14">
+        <ol className="space-y-3 sm:ml-14">
           {steps.map((step, i) => (
             <li
               key={i}
-              className="text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors"
+              className="flex items-start gap-3 leading-relaxed text-zinc-300"
             >
-              <span className="text-primary font-medium">{i + 1}.</span>
-              {step}
+              <span aria-hidden="true" className="shrink-0 font-mono text-violet-300">{i + 1}.</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">{step}</span>
             </li>
           ))}
         </ol>

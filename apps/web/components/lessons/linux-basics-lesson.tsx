@@ -1965,22 +1965,16 @@ function VerificationCard() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -4, scale: 1.02 }}
       transition={{ delay: 0.6 }}
-      className="group relative rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/20"
+      className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-5 py-5 sm:px-6"
     >
-      {/* Decorative elements */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 rounded-full blur-3xl group-hover:bg-emerald-500/30 transition-colors duration-500" />
-
-      <div className="relative flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30 group-hover:shadow-emerald-500/50 group-hover:scale-110 transition duration-300">
-          <CheckCircle2 className="h-7 w-7 text-white" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-white group-hover:text-emerald-300 transition-colors">
+      <div className="flex items-start gap-3">
+        <CheckCircle2 aria-hidden="true" className="mt-0.5 h-6 w-6 shrink-0 text-emerald-300" />
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-white">
             All Commands Work?
           </h3>
-          <p className="text-emerald-300/80 group-hover:text-emerald-200 transition-colors">
+          <p className="mt-1 leading-relaxed text-emerald-200">
             You&apos;re ready for the next lesson!
           </p>
         </div>

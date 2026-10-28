@@ -367,11 +367,11 @@ export function DiagramArrow({ direction = "right" }: { direction?: "right" | "d
 }
 
 // =============================================================================
-// HIGHLIGHT TEXT - Gradient highlighted text
+// HIGHLIGHT TEXT - Readable lesson emphasis
 // =============================================================================
 export function Highlight({ children }: { children: ReactNode }) {
   return (
-    <span className="font-semibold bg-gradient-to-r from-primary to-violet-400 bg-clip-text text-transparent">
+    <span className="font-semibold text-violet-300">
       {children}
     </span>
   );

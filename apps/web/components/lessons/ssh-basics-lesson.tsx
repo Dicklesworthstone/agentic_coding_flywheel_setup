@@ -1879,28 +1879,27 @@ function StageCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -4, scale: 1.02 }}
       transition={{ delay: 0.2 + number * 0.1 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
+      className="min-w-0 border-t border-white/10 py-6"
     >
       <div className="relative">
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white text-sm font-bold group-hover:bg-white/20 group-hover:scale-110 transition duration-300">
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${gradient} font-mono text-sm font-semibold text-white`}>
             {number}
           </div>
           <div>
-            <h3 className="font-bold text-white group-hover:text-primary transition-colors">
+            <h3 className="font-semibold text-white">
               {title}
             </h3>
-            <span className="text-xs text-muted-foreground group-hover:text-white/70 transition-colors">
+            <span className="text-xs text-zinc-400">
               {subtitle}
             </span>
           </div>
         </div>
-        <p className="text-sm text-white/60 mb-4 group-hover:text-white/70 transition-colors">
+        <p className="mb-4 text-sm leading-relaxed text-zinc-300">
           {description}
         </p>
-        <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.06] text-xs font-mono text-white/80 overflow-x-auto group-hover:border-primary/20 group-hover:bg-black/40 transition duration-300">
+        <code className="block overflow-x-auto rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-zinc-200">
           {code}
         </code>
       </div>

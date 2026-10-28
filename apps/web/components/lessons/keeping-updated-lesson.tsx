@@ -489,7 +489,7 @@ function CongratulationsCard() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-white/[0.1]">
-          <p className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+          <p className="text-2xl font-semibold tracking-tight text-emerald-300">
             Go build something amazing!
           </p>
         </div>

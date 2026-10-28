@@ -174,7 +174,7 @@ export function P({ children, highlight }: { children: ReactNode; highlight?: bo
     <p
       className={`text-[1.1rem] sm:text-[1.2rem] leading-[1.8] tracking-[-0.01em] ${
         highlight
-          ? "text-white font-normal bg-gradient-to-r from-[#FF5500]/10 to-transparent p-6 sm:p-8 rounded-2xl border-l-4 border-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
+          ? "rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/[0.06] px-5 py-5 font-normal text-zinc-100 sm:px-6 sm:py-6"
           : "text-zinc-300 font-light"
       }`}
     >
@@ -188,12 +188,12 @@ export function P({ children, highlight }: { children: ReactNode; highlight?: bo
 // =============================================================================
 export function BlockQuote({ children }: { children: ReactNode }) {
   return (
-    <div className="relative pl-8 sm:pl-12 py-8 my-12 border-l-4 border-[#FF5500]/40 bg-gradient-to-r from-white/[0.02] to-transparent rounded-r-3xl group/quote hover:border-[#FF5500] transition-colors duration-500">
-      <Quote className="absolute left-4 top-8 h-8 w-8 text-[#FF5500]/20 -scale-x-100 pointer-events-none group-hover/quote:text-[#FF5500]/40 transition-colors duration-500" />
-      <div className="relative text-white/90 italic leading-[1.8] text-[1.2rem] sm:text-[1.35rem] font-light tracking-tight">
+    <blockquote className="my-10 flex items-start gap-4 border-y border-white/10 py-6 sm:my-12 sm:gap-5 sm:py-8">
+      <Quote aria-hidden="true" className="mt-1 h-6 w-6 shrink-0 -scale-x-100 text-[#FF5500] sm:h-7 sm:w-7" />
+      <div className="min-w-0 text-[1.1rem] font-light italic leading-[1.8] tracking-tight text-zinc-200 sm:text-[1.35rem]">
         {children}
       </div>
-    </div>
+    </blockquote>
   );
 }
 

@@ -276,9 +276,8 @@ export function PlanToBeadsViz() {
 
       <div className="relative z-10 mt-2 grid gap-6 p-6 sm:p-8 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
-          <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
-            <div className="relative z-10 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/40">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
               <FileText className="h-3.5 w-3.5" />
               Human Plan
             </div>
@@ -292,8 +291,8 @@ export function PlanToBeadsViz() {
                     type="button"
                     aria-pressed={isSelected}
                     onClick={() => setSelectedConceptId(concept.id)}
-                    initial={reducedMotion ? false : { opacity: 0, y: 16 }}
-                    animate={isInView ? { opacity: 1, y: 0 } : undefined}
+                    initial={false}
+                    animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : undefined}
                     transition={{
                       type: "spring",
                       stiffness: 220,
@@ -344,8 +343,8 @@ export function PlanToBeadsViz() {
           </div>
 
           <motion.div
-            initial={reducedMotion ? false : { opacity: 0, y: 16 }}
-            animate={isInView ? { opacity: 1, y: 0 } : undefined}
+            initial={false}
+            animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : undefined}
             transition={{
               type: "spring",
               stiffness: 220,
@@ -384,10 +383,8 @@ export function PlanToBeadsViz() {
           </motion.div>
         </div>
 
-        <div className="relative rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(34,211,238,0.05),transparent_50%),radial-gradient(ellipse_at_bottom_left,rgba(167,139,250,0.05),transparent_50%)] pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0 border-t border-white/10 pt-5 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0">
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div>
               <div className="text-xs font-bold uppercase tracking-widest text-white/40">
                 Translation Output
@@ -419,8 +416,8 @@ export function PlanToBeadsViz() {
               return (
                 <div key={bead.id}>
                   <motion.article
-                    initial={reducedMotion ? false : { opacity: 0, x: 18 }}
-                    animate={isInView ? { opacity: 1, x: 0 } : undefined}
+                    initial={false}
+                    animate={reducedMotion || isInView ? { opacity: 1, x: 0 } : undefined}
                     transition={{
                       type: "spring",
                       stiffness: 220,
@@ -558,58 +555,58 @@ export function PlanToBeadsViz() {
         </div>
       </div>
 
-      <div className="relative z-10 p-6 sm:p-8 pt-0 grid gap-5 md:grid-cols-3">
-        <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-5 shadow-lg group">
-          <div className="text-xs font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
-            Execution Readiness
+      <div className="relative z-10 px-6 pb-6 sm:px-8 sm:pb-8">
+        <dl className="grid divide-y divide-white/10 border-t border-white/10 md:grid-cols-2 md:divide-x md:divide-y-0">
+          <div className="py-5 md:pr-6">
+            <dt className="text-sm font-medium text-zinc-400">Execution Readiness</dt>
+            <dd className="mt-2">
+              <span
+                className={cn(
+                  "block font-mono text-4xl font-semibold tracking-tight tabular-nums transition-colors duration-500",
+                  mode === "rich" ? "text-[#FFBD2E]" : "text-[#FF5500]",
+                )}
+              >
+                {readinessScore}%
+              </span>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                {MODE_COPY[mode].description}
+              </p>
+            </dd>
           </div>
-          <div
-            className={cn(
-              "mt-3 text-4xl font-black tracking-tighter transition-colors duration-500",
-              mode === "rich" ? "text-[#FFBD2E]" : "text-[#FF5500]",
-            )}
-          >
-            {readinessScore}%
+          <div className="py-5 md:pl-6">
+            <dt className="text-sm font-medium text-zinc-400">Unanswered Questions</dt>
+            <dd className="mt-2">
+              <span
+                className={cn(
+                  "block font-mono text-4xl font-semibold tracking-tight tabular-nums transition-colors duration-500",
+                  mode === "rich" ? "text-white" : "text-[#FF5500]",
+                )}
+              >
+                {ambiguityCount}
+              </span>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                {mode === "rich"
+                  ? "Most architecture has already been decided upstream."
+                  : "Missing context must be rediscovered during implementation."}
+              </p>
+            </dd>
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-light">
-            {MODE_COPY[mode].description}
-          </p>
-        </div>
+        </dl>
 
-        <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-5 shadow-lg group">
-          <div className="text-xs font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">
-            Unanswered Questions
-          </div>
-          <div
-            className={cn(
-              "mt-3 text-4xl font-black tracking-tighter transition-colors duration-500",
-              mode === "rich" ? "text-white" : "text-[#FF5500]",
-            )}
-          >
-            {ambiguityCount}
-          </div>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-light">
-            {mode === "rich"
-              ? "Most architecture has already been decided upstream."
-              : "Missing context must be rediscovered during implementation."}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-[#FFBD2E]/20 bg-[#FFBD2E]/5 p-5 shadow-lg relative overflow-hidden group">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,189,46,0.1),transparent_50%)] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative z-10 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
+        <aside className="border-t border-[#FFBD2E]/20 pt-5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#FFBD2E]">
             <CheckCircle2 className="h-3.5 w-3.5" />
             The Takeaway
           </div>
-          <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-medium">
+          <p className="mt-3 text-sm leading-relaxed text-zinc-300">
             {MODE_COPY[mode].takeaway}
           </p>
-          <div className="relative z-10 mt-4 inline-flex items-center gap-2 rounded-xl border border-[#FFBD2E]/30 bg-[#FFBD2E]/10 px-3 py-2 text-xs font-bold uppercase tracking-widest text-[#FFBD2E]">
+          <div className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#FFBD2E]/10 px-3 py-2 text-xs font-medium text-[#FFBD2E]">
             <Zap className="h-3.5 w-3.5" />
             Impacts {selectedConcept.mapsTo.length} bead
             {selectedConcept.mapsTo.length > 1 ? "s" : ""}
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );

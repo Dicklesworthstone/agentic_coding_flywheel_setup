@@ -159,7 +159,7 @@ export function PlanEvolutionStudio() {
       </div>
 
       <div className="relative z-10 mt-2 grid gap-6 p-6 sm:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid content-start gap-5 sm:grid-cols-2">
           {PLAN_MODEL_DATA.map((model, index) => {
             const enabled = enabledModels[model.id];
             return (
@@ -168,8 +168,8 @@ export function PlanEvolutionStudio() {
                 type="button"
                 aria-pressed={enabled}
                 onClick={() => toggleModel(model.id)}
-                initial={reducedMotion ? false : { opacity: 0, y: 18 }}
-                animate={isInView ? { opacity: 1, y: 0 } : undefined}
+                initial={false}
+                animate={reducedMotion || isInView ? { opacity: 1, y: 0 } : undefined}
                 transition={{
                   type: "spring",
                   stiffness: 220,
@@ -177,7 +177,7 @@ export function PlanEvolutionStudio() {
                   delay: reducedMotion ? 0 : index * 0.06,
                 }}
                 className={cn(
-                  "rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
+                  "min-w-0 rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
                   enabled
                     ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
                     : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80",
@@ -196,8 +196,8 @@ export function PlanEvolutionStudio() {
                     }}
                   />
                 )}
-                <div className="flex items-start justify-between gap-4 relative z-10">
-                  <div>
+                <div className="relative z-10 flex flex-col items-start gap-3">
+                  <div className="min-w-0">
                     <div
                       className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
                       style={{ color: model.color }}
@@ -248,21 +248,21 @@ export function PlanEvolutionStudio() {
         </div>
 
         <div className="space-y-5">
-          <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg">
-            <div className="flex items-center justify-between gap-4">
+          <div className="border-b border-white/10 pb-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-bold uppercase tracking-widest text-white/40">
+                <div className="text-sm font-medium text-zinc-400">
                   Hybrid Plan Quality
                 </div>
-                <div className="mt-1 text-4xl font-black tracking-tighter text-white drop-shadow-md">
+                <div className="mt-2 font-mono text-4xl font-semibold tracking-tight text-white tabular-nums">
                   {totalScore}%
                 </div>
               </div>
-              <div className="rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/10 px-5 py-3 text-right shadow-inner">
-                <div className="text-xs font-bold uppercase tracking-widest text-[#FF5500]">
+              <div className="text-right">
+                <div className="text-sm font-medium text-zinc-400">
                   Active Inputs
                 </div>
-                <div className="mt-1 text-2xl font-black text-[#FF5500]">
+                <div className="mt-2 font-mono text-2xl font-semibold text-[#FF5500] tabular-nums">
                   {selectedModels.length}
                 </div>
               </div>
@@ -337,8 +337,8 @@ export function PlanEvolutionStudio() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-6 shadow-lg">
-            <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-5">
+          <div className="pt-1">
+            <div className="mb-5 text-sm font-semibold text-zinc-200">
               What the hybrid gains
             </div>
             <div className="space-y-4">

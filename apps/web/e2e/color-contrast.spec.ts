@@ -584,6 +584,36 @@ test.describe("Complete guide crash recovery", () => {
 test.describe("Complete guide reduced motion", () => {
   test.use({ contextOptions: { reducedMotion: "reduce" } });
 
+  test("plan exhibits reveal instructional text before scrolling", async ({ page }) => {
+    await page.goto("/complete-guide");
+    for (const label of ["Hybrid Plan Quality", "Human Plan"]) {
+      const exhibit = page.getByText(label, { exact: true }).first()
+        .locator("xpath=ancestor::*[contains(@class, 'group/viz')][1]");
+      expect(await exhibit.getByRole("button").count()).toBeGreaterThan(0);
+      await expect.poll(() => exhibit.evaluate((root) => {
+        const hidden: string[] = [];
+        for (const element of root.querySelectorAll("*")) {
+          if (element.closest('[aria-hidden="true"], .sr-only')) continue;
+          const text = Array.from(element.childNodes)
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent ?? "").join(" ").trim();
+          if (!text || !element.getBoundingClientRect().width) continue;
+          for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+            if (Number(getComputedStyle(ancestor).opacity) === 0) {
+              hidden.push(text);
+              break;
+            }
+          }
+        }
+        return hidden;
+      })).toEqual([]);
+      expect(await exhibit.getByRole("button").evaluateAll((buttons) => buttons
+        .filter((button) => button.scrollWidth > button.clientWidth + 1)
+        .map((button) => button.textContent?.trim()))).toEqual([]);
+    }
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
   test("all guide sections are fully visible without scrolling", async ({ page }) => {
     const runtimeErrors: string[] = [];
     page.on("pageerror", (error) => runtimeErrors.push(error.message));
