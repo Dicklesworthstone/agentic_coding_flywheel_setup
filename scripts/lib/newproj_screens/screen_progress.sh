@@ -25,6 +25,67 @@ declare -gA STEP_STATUS=()
 declare -ga STEP_ORDER=()
 CREATION_REQUEST=""
 CREATION_PROJECT_DIR=""
+CREATION_DIRECTORY_ID=""
+CREATION_DIRECTORY_FD=""
+
+# Inspect every component without following links. With --held, compare the
+# path to the original directory handle, not merely an inode that could be
+# recycled after the directory was removed.
+creation_directory_identity() {
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 -I - "$1" "${2:-}" <<'ACFS_CREATION_IDENTITY_PY'
+from contextlib import contextmanager, ExitStack
+import os
+import sys
+
+
+@contextmanager
+def opened(name, parent=None):
+    with ExitStack() as owner:
+        handle = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        owner.callback(os.close, handle)
+        yield handle
+
+
+try:
+    path, mode = sys.argv[1:]
+    if not path or mode not in ("", "--held"):
+        raise ValueError("invalid directory inspection")
+    with ExitStack() as handles:
+        current = handles.enter_context(opened("/" if path.startswith("/") else "."))
+        for part in path.split("/"):
+            if part not in ("", "."):
+                current = handles.enter_context(opened(part, current))
+        info = os.fstat(current)
+        if mode == "--held":
+            held = os.fstat(3)
+            if (held.st_dev, held.st_ino) != (info.st_dev, info.st_ino):
+                raise ValueError("directory was replaced")
+        print(str(info.st_dev) + ":" + str(info.st_ino))
+except (OSError, ValueError):
+    sys.exit(1)
+ACFS_CREATION_IDENTITY_PY
+}
+
+creation_forget_directory() {
+    if [[ "${CREATION_DIRECTORY_FD:-}" =~ ^[1-9][0-9]+$ ]]; then
+        { exec {CREATION_DIRECTORY_FD}<&-; } 2>/dev/null || true
+    fi
+    CREATION_DIRECTORY_FD=""
+    CREATION_DIRECTORY_ID=""
+}
+
+creation_verify_directory() {
+    local current_identity=""
+    if [[ "${CREATION_DIRECTORY_FD:-}" =~ ^[1-9][0-9]+$ && -n "$CREATION_DIRECTORY_ID" ]] \
+        && current_identity=$(creation_directory_identity "$CREATION_PROJECT_DIR" --held 3<&"$CREATION_DIRECTORY_FD") \
+        && [[ "$current_identity" == "$CREATION_DIRECTORY_ID" ]]; then
+        return 0
+    fi
+    newproj_tty_printf '%s\n' 'The retained project directory is missing, replaced, or no longer safe.' \
+        'Restore the original directory to retry, or choose a different directory. Nothing was removed.'
+    return 1
+}
 
 # Bind retry to the settings that produced the retained files. This is an
 # opaque comparison string, never shell source and never passed to eval.
@@ -220,7 +281,24 @@ execute_step() {
 
     case "$step" in
         create_dir)
+            local parent_dir
+            parent_dir=$(dirname -- "$project_dir") || return 1
+            if ! creation_directory_identity "$parent_dir" >/dev/null; then
+                update_step "$step" "error"
+                newproj_tty_printf '%s\n' 'Cannot safely inspect the project parent directory.'
+                return 1
+            fi
             if try_create_directory "$project_dir"; then
+                creation_forget_directory
+                # /.: require a directory during lookup, so a substituted
+                # FIFO cannot block the shell while opening its reference.
+                if ! { exec {CREATION_DIRECTORY_FD}<"$project_dir/."; } \
+                    || ! CREATION_DIRECTORY_ID=$(creation_directory_identity "$project_dir" --held 3<&"$CREATION_DIRECTORY_FD"); then
+                    creation_forget_directory
+                    update_step "$step" "error"
+                    newproj_tty_printf '%s\n' 'Cannot retain the project directory identity; no further steps were run.'
+                    return 1
+                fi
                 update_step "$step" "success"
                 return 0
             else
@@ -438,6 +516,7 @@ run_creation() {
             return 1
         fi
     else
+        creation_forget_directory
         init_creation_steps || return 1
         CREATION_PROJECT_DIR="$project_dir"
         CREATION_REQUEST="$request"
@@ -452,6 +531,9 @@ run_creation() {
         case "${STEP_STATUS[$step]:-pending}" in
             success|skipped) continue ;;
         esac
+        if [[ "$step" != create_dir ]]; then
+            creation_verify_directory || return 1
+        fi
         if ! execute_step "$step"; then
             update_step "$step" "error"
             newproj_tty_printf '\nFailed at: %s\nProject preserved: %s\n' \
@@ -460,6 +542,7 @@ run_creation() {
             return 1
         fi
     done
+    creation_verify_directory || return 1
     commit_project_creation || return 1
     return 0
 }

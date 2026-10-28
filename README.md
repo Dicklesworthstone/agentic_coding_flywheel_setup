@@ -1036,6 +1036,9 @@ Its file creation requires Python 3. It rejects symlink destinations and parent 
 and creates files exclusively so existing or concurrently created files are preserved.
 New directories and files are capped at 0755 and 0644; a stricter caller umask still applies.
 A failed write leaves the partial file in place for inspection; it does not roll back the project.
+While the wizard remains open, Retry is bound to the original directory, not just its name.
+If that directory is moved or replaced, restore it to retry, or choose another directory;
+the replacement cannot inherit completed steps from the old project.
 
 Interactive wizard (recommended):
 ```bash

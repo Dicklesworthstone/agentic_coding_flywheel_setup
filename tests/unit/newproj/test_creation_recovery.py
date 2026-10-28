@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import resource
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -118,6 +119,150 @@ class RecoveryTests(unittest.TestCase):
         result = self.run_shell("FAIL_STEP=''; run_creation; run_creation")
         self.assert_success(result)
         self.assertEqual(self.events_read().count("finalize"), 1)
+
+    def test_replacement_directory_cannot_inherit_completed_steps(self):
+        result = self.run_shell(r'''
+if run_creation; then exit 91; fi
+mv -- "$PROJECT" "$PROJECT-retained"
+mkdir -- "$PROJECT"
+printf 'replacement user work' > "$PROJECT/user.txt"
+before=$(wc -l < "$EVENTS")
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+[[ "$(wc -l < "$EVENTS")" == "$before" ]]
+''')
+        self.assert_success(result)
+        self.assertEqual((self.project / "user.txt").read_text(), "replacement user work")
+        self.assertEqual({p.name for p in self.project.iterdir()}, {"user.txt"})
+        self.assertTrue(Path(str(self.project) + "-retained", "README.md").is_file())
+
+    def test_missing_directory_is_not_silently_recreated_during_retry(self):
+        result = self.run_shell(r'''
+if run_creation; then exit 91; fi
+mv -- "$PROJECT" "$PROJECT-retained"
+before=$(wc -l < "$EVENTS")
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+[[ "$(wc -l < "$EVENTS")" == "$before" ]]
+''')
+        self.assert_success(result)
+        self.assertFalse(self.project.exists())
+        self.assertTrue(Path(str(self.project) + "-retained", "README.md").is_file())
+
+    def test_linked_replacement_does_not_receive_unfinished_steps(self):
+        result = self.run_shell(r'''
+if run_creation; then exit 91; fi
+mv -- "$PROJECT" "$PROJECT-retained"
+mkdir -- "$PROJECT-outside"
+ln -s -- "$PROJECT-outside" "$PROJECT"
+before=$(wc -l < "$EVENTS")
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+[[ "$(wc -l < "$EVENTS")" == "$before" ]]
+''')
+        self.assert_success(result)
+        self.assertTrue(self.project.is_symlink())
+        self.assertEqual(list(Path(str(self.project) + "-outside").iterdir()), [])
+
+    def test_completed_project_replacement_is_not_reported_ready(self):
+        result = self.run_shell(r'''
+FAIL_STEP=''
+run_creation
+mv -- "$PROJECT" "$PROJECT-retained"
+mkdir -- "$PROJECT"
+if run_creation; then exit 92; fi
+''')
+        self.assert_success(result)
+        self.assertEqual(list(self.project.iterdir()), [])
+
+    def test_restoring_original_directory_allows_retry(self):
+        result = self.run_shell(r'''
+if run_creation; then exit 91; fi
+mv -- "$PROJECT" "$PROJECT-retained"
+mkdir -- "$PROJECT"
+printf 'other work' > "$PROJECT/user.txt"
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+mv -- "$PROJECT" "$PROJECT-replacement"
+mv -- "$PROJECT-retained" "$PROJECT"
+run_creation
+[[ "${STEP_STATUS[finalize]}" == success ]]
+''')
+        self.assert_success(result)
+        self.assertTrue((self.project / "README.md").is_file())
+        self.assertTrue((self.project / "AGENTS.md").is_file())
+        self.assertEqual(Path(str(self.project) + "-replacement", "user.txt").read_text(), "other work")
+        self.assertEqual(self.events_read().count("create_readme"), 1)
+
+    def test_edits_inside_original_directory_remain_valid_on_retry(self):
+        result = self.run_shell(r'''
+if run_creation; then exit 91; fi
+printf 'my edited readme' > "$PROJECT/README.md"
+FAIL_STEP=''
+run_creation
+''')
+        self.assert_success(result)
+        self.assertEqual((self.project / "README.md").read_text(), "my edited readme")
+
+    def test_directory_replaced_by_a_step_stops_before_the_next_step(self):
+        result = self.run_shell(r'''
+try_git_init() {
+    mkdir -- "$1/.git"
+    mv -- "$1" "$1-retained"
+    mkdir -- "$1"
+}
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+''')
+        self.assert_success(result)
+        self.assertEqual(list(self.project.iterdir()), [])
+        self.assertTrue(Path(str(self.project) + "-retained", ".git").is_dir())
+
+    def test_linked_parent_is_rejected_before_directory_creation(self):
+        result = self.run_shell(r'''
+mkdir -- "$PROJECT-outside"
+ln -s -- "$PROJECT-outside" "$PROJECT-parent"
+values[project_dir]="$PROJECT-parent/new"
+PROJECT="$PROJECT-parent/new"
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+''')
+        self.assert_success(result)
+        self.assertEqual(list(Path(str(self.project) + "-outside").iterdir()), [])
+
+    def test_initial_directory_link_is_rejected_before_git_init(self):
+        result = self.run_shell(r'''
+mkdir -- "$PROJECT-outside"
+ln -s -- "$PROJECT-outside" "$PROJECT"
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+''')
+        self.assert_success(result)
+        self.assertTrue(self.project.is_symlink())
+        self.assertEqual(list(Path(str(self.project) + "-outside").iterdir()), [])
+        self.assertNotIn("init_git", self.events_read())
+
+    def test_closed_directory_reference_never_authorizes_rebinding(self):
+        result = self.run_shell(r'''
+if run_creation; then exit 91; fi
+[[ "${CREATION_DIRECTORY_FD:-}" =~ ^[0-9]+$ ]]
+exec {CREATION_DIRECTORY_FD}<&-
+before=$(wc -l < "$EVENTS")
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+[[ "$(wc -l < "$EVENTS")" == "$before" ]]
+''')
+        self.assert_success(result)
+
+    def test_directory_reference_open_cannot_block_on_a_substituted_fifo(self):
+        result = self.run_shell(r'''
+try_create_directory() { mkfifo -- "$1"; }
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+''')
+        self.assert_success(result)
+        self.assertTrue(stat.S_ISFIFO(self.project.stat().st_mode))
+        self.assertNotIn("create_readme", self.events_read())
 
     def test_changed_settings_do_not_mutate_partial_project(self):
         for setting in ("project_name", "tech_stack", "agents_md_custom", "enable_agents",
@@ -616,6 +761,18 @@ if run_creation; then exit 92; fi
         self.assertFalse((self.root / "outside-policy").exists())
         self.assertTrue((self.project / "AGENTS.md").is_symlink())
         self.assertNotIn("CLEANUP", (self.root / "events").read_text())
+
+    def test_actual_writer_cannot_complete_a_replacement_project(self):
+        result = self.progress(r'''
+run_creation && exit 91
+mv -- "$PROJECT" "$PROJECT-retained"
+mkdir -- "$PROJECT"
+FAIL_STEP=''
+if run_creation; then exit 92; fi
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list(self.project.iterdir()), [])
+        self.assertTrue(Path(str(self.project) + "-retained", "README.md").is_file())
 
 
 if __name__ == "__main__":
