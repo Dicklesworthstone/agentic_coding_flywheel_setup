@@ -584,6 +584,51 @@ test.describe("Complete guide crash recovery", () => {
 test.describe("Complete guide reduced motion", () => {
   test.use({ contextOptions: { reducedMotion: "reduce" } });
 
+  for (const preference of ["reduce", "no-preference"] as const) {
+    test(`section navigation supports keyboard activation and browser history (${preference})`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: preference });
+      await page.goto("/complete-guide");
+      const originalURL = page.url();
+      const rail = page.getByRole("navigation", { name: "On this page", exact: true });
+      await page.locator("#workflow").evaluate((section) => section.scrollIntoView({ block: "start", behavior: "instant" }));
+      await expect(rail.locator('a[aria-current="location"]')).toHaveCount(1);
+      const planning = rail.locator('a[href="#planning"]');
+      await planning.focus();
+      await planning.press("Enter");
+      await expect(page).toHaveURL(`${originalURL}#planning`);
+      await expect.poll(async () => {
+        const heading = await page.locator("#planning h2").boundingBox();
+        const navigation = await rail.boundingBox();
+        const viewport = page.viewportSize();
+        return heading !== null && navigation !== null && viewport !== null
+          && heading.y >= navigation.y + navigation.height
+          && heading.y + heading.height <= viewport.height;
+      }).toBe(true);
+      await page.goBack();
+      await expect(page).toHaveURL(originalURL);
+      await page.goForward();
+      await expect(page).toHaveURL(`${originalURL}#planning`);
+    });
+  }
+
+  test("section navigation preserves modified clicks in a new tab", async ({ page, context }) => {
+    await page.goto("/complete-guide");
+    const originalURL = page.url();
+    const rail = page.getByRole("navigation", { name: "On this page", exact: true });
+    await page.locator("#workflow").evaluate((section) => section.scrollIntoView({ block: "start", behavior: "instant" }));
+    await expect(rail.locator('a[aria-current="location"]')).toHaveCount(1);
+    const [other] = await Promise.all([
+      context.waitForEvent("page", { timeout: 5000 }),
+      rail.locator('a[href="#planning"]').click({ modifiers: ["ControlOrMeta"] }),
+    ]);
+    try {
+      await expect(other).toHaveURL(`${originalURL}#planning`);
+      expect(page.url()).toBe(originalURL);
+    } finally {
+      await other.close();
+    }
+  });
+
   test("plan exhibits reveal instructional text before scrolling", async ({ page }) => {
     await page.goto("/complete-guide");
     for (const label of ["Hybrid Plan Quality", "Human Plan"]) {

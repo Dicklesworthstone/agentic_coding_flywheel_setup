@@ -871,6 +871,8 @@ export function TableOfContents({
   }, [activeId, prefersReducedMotion]);
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+    // Keep native new-tab/window behavior and respect an earlier event handler.
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const el = document.getElementById(id);
     if (!el) return; // fall back to the browser's own hash navigation
     e.preventDefault();
