@@ -1476,7 +1476,7 @@ EOF
     run grep -F 'run_cmd "Rust Proxy" bash -c' "$update"
     assert_failure
 
-    run grep -F 'run_cmd "DCG Hook" "$dcg_bin" install --force' "$update"
+    run grep -F 'run_cmd "DCG Hook" update_run_maintenance_in_target_context hook "$dcg_bin" install --force' "$update"
     assert_success
 
     run grep -F 'update_run_verified_installer_or_existing_on_transient "NTM" ntm ntm ntm' "$update"

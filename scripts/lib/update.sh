@@ -1163,20 +1163,23 @@ get_version() {
             ;;
         omz)
             # OMZ version from .oh-my-zsh git tag or commit
-            local omz_dir="${ZSH:-$HOME/.oh-my-zsh}"
-            if [[ -d "$omz_dir/.git" ]]; then
-                version=$(git -C "$omz_dir" describe --tags --abbrev=0 2>/dev/null || \
-                          git -C "$omz_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            local omz_dir=""
+            omz_dir="$(update_shell_install_dir omz 2>/dev/null || true)"
+            if [[ -n "$omz_dir" && -d "$omz_dir/.git" ]]; then
+                version=$(update_run_shell_git "$omz_dir" describe --tags --abbrev=0 2>/dev/null || \
+                          update_run_shell_git "$omz_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
             else
                 version="unknown"
             fi
             ;;
         p10k)
             # P10K version from git tag or commit
-            local p10k_dir="${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/themes/powerlevel10k"
-            if [[ -d "$p10k_dir/.git" ]]; then
-                version=$(git -C "$p10k_dir" describe --tags --abbrev=0 2>/dev/null || \
-                          git -C "$p10k_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            local p10k_dir=""
+            p10k_dir="$(update_shell_install_dir custom 2>/dev/null || true)"
+            [[ -z "$p10k_dir" ]] || p10k_dir+="/themes/powerlevel10k"
+            if [[ -n "$p10k_dir" && -d "$p10k_dir/.git" ]]; then
+                version=$(update_run_shell_git "$p10k_dir" describe --tags --abbrev=0 2>/dev/null || \
+                          update_run_shell_git "$p10k_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
             else
                 version="unknown"
             fi
@@ -2950,6 +2953,159 @@ update_run_rust_in_target_context() {
     fi
 
     update_run_bounded_in_target_context "$env_bin" "${rust_env[@]}" "$@"
+}
+
+# Account-owned maintenance keeps the caller's custom paths only when the
+# caller is updating its own installation. Anchor relative paths before the
+# target runner changes directory; do not source shell startup files to find
+# another user's configuration.
+update_maintenance_absolute_path() {
+    local value="${1:-}"
+    [[ -n "$value" ]] || return 1
+    if [[ "$value" != /* ]]; then
+        value="$(builtin pwd -P)/$value" || return 1
+    fi
+    printf '%s\n' "$value"
+}
+
+update_shell_install_dir() {
+    local kind="${1:-}" target_user="" current_user="" target_home="" omz="" custom=""
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != / ]] || return 1
+    omz="$target_home/.oh-my-zsh"
+    if [[ "$current_user" == "$target_user" && -n "${ZSH:-}" ]]; then
+        omz="$(update_maintenance_absolute_path "$ZSH")" || return 1
+    fi
+    custom="$omz/custom"
+    if [[ "$current_user" == "$target_user" && -n "${ZSH_CUSTOM:-}" ]]; then
+        custom="$(update_maintenance_absolute_path "$ZSH_CUSTOM")" || return 1
+    fi
+    case "$kind" in
+        omz) printf '%s\n' "$omz" ;;
+        custom) printf '%s\n' "$custom" ;;
+        *) return 1 ;;
+    esac
+}
+
+# This is a policy for these maintenance commands, not generic environment
+# isolation. Preserve same-account configuration/auth choices; cross-account
+# commands use the target's storage roots and cannot inherit caller selectors
+# for GitHub/gcloud credentials, shell installations, or Claude hook settings.
+update_run_maintenance_in_target_context() {
+    local kind="${1:-}"
+    shift
+    [[ $# -gt 0 ]] || return 1
+    case "$kind" in cloud|shell|guide|hook) ;; *) return 1 ;; esac
+    local target_user="" current_user="" target_home="" env_bin="" name="" value=""
+    local -a env_unsets=() env_values=() path_names=()
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != / ]] || return 1
+    if [[ "$current_user" == "$target_user" ]]; then
+        path_names=(XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME)
+    else
+        env_values+=("XDG_CONFIG_HOME=$target_home/.config" "XDG_CACHE_HOME=$target_home/.cache"
+            "XDG_DATA_HOME=$target_home/.local/share" "XDG_STATE_HOME=$target_home/.local/state")
+        env_unsets+=(-u XDG_RUNTIME_DIR)
+    fi
+    case "$kind" in
+        cloud)
+            if [[ "$current_user" == "$target_user" ]]; then
+                path_names+=(GH_CONFIG_DIR CLOUDSDK_CONFIG CLOUDSDK_AUTH_ACCESS_TOKEN_FILE
+                    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE)
+                # A bare interpreter name is searched on PATH. Only a relative
+                # pathname changes meaning when the target runner changes cwd.
+                if [[ "${CLOUDSDK_PYTHON:-}" == */* && "$CLOUDSDK_PYTHON" != /* ]]; then
+                    value="$(update_maintenance_absolute_path "$CLOUDSDK_PYTHON")" || return 1
+                    env_values+=("CLOUDSDK_PYTHON=$value")
+                fi
+            else
+                env_values+=("CLOUDSDK_CONFIG=$target_home/.config/gcloud")
+                env_unsets+=(-u CLOUDSDK_ACTIVE_CONFIG_NAME -u CLOUDSDK_CORE_ACCOUNT
+                    -u CLOUDSDK_AUTH_ACCESS_TOKEN -u CLOUDSDK_AUTH_ACCESS_TOKEN_FILE
+                    -u CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE -u CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT
+                    -u CLOUDSDK_PYTHON)
+            fi
+            ;;
+        shell)
+            value="$(update_shell_install_dir omz)" || return 1
+            env_values+=("ZSH=$value")
+            value="$(update_shell_install_dir custom)" || return 1
+            env_values+=("ZSH_CUSTOM=$value")
+            if [[ "$current_user" == "$target_user" ]]; then
+                path_names+=(ZDOTDIR ZSH_CACHE_DIR ZSH_COMPDUMP)
+            else
+                env_unsets+=(-u ZDOTDIR -u ZSH_CACHE_DIR -u ZSH_COMPDUMP)
+            fi
+            ;;
+        guide)
+            # The guide has its own resolver, using ACFS_TARGET_* rather than
+            # TARGET_*; authoritative values must also beat inherited SUDO_USER.
+            env_values+=("ACFS_TARGET_USER=$target_user" "ACFS_TARGET_HOME=$target_home")
+            ;;
+        hook)
+            if [[ "$current_user" != "$target_user" ]]; then
+                env_unsets+=(-u CLAUDE_CONFIG_DIR)
+            elif [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
+                value="$CLAUDE_CONFIG_DIR"
+                # DCG explicitly expands these two tilde forms itself.
+                case "$value" in
+                    '~') value="$target_home" ;;
+                    \~/*) value="$target_home/${value#\~/}" ;;
+                    *) value="$(update_maintenance_absolute_path "$value")" || return 1 ;;
+                esac
+                env_values+=("CLAUDE_CONFIG_DIR=$value")
+            fi
+            ;;
+    esac
+    for name in "${path_names[@]}"; do
+        value="${!name:-}"
+        [[ -n "$value" ]] || continue
+        value="$(update_maintenance_absolute_path "$value")" || return 1
+        env_values+=("$name=$value")
+    done
+    if [[ "$kind" == shell || "$kind" == cloud ]]; then
+        # Explicit -C repositories (including gh Git extensions) must not be
+        # redirected by a surrounding shell's repository/index/object selectors.
+        env_unsets+=(-u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE
+            -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES)
+        if [[ "$current_user" != "$target_user" ]]; then
+            # Shell Git can call `gh auth git-credential` too. Its target
+            # account's stored credentials must win over caller selectors.
+            # Same-account shell GH_CONFIG_DIR stays unchanged: a Git helper
+            # interprets it after -C, not in the updater's original cwd.
+            env_values+=("GH_CONFIG_DIR=$target_home/.config/gh")
+            env_unsets+=(-u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u GH_HOST)
+            env_unsets+=(-u GIT_CONFIG -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_SYSTEM
+                -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT -u GIT_ASKPASS
+                -u GIT_SSH -u GIT_SSH_COMMAND)
+        fi
+    fi
+    env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$env_bin" ]]; then
+        printf 'Cannot build target-account maintenance environment (env unavailable)\n' >&2
+        return 1
+    fi
+    update_run_bounded_in_target_context "$env_bin" "${env_unsets[@]}" "${env_values[@]}" "$@"
+}
+
+update_run_shell_command() {
+    local duration="$1" timeout_bin=""
+    shift
+    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+    [[ -n "$timeout_bin" ]] || { printf 'Shell update requires system timeout\n' >&2; return 127; }
+    update_run_maintenance_in_target_context shell "$timeout_bin" "$duration" "$@"
+}
+
+update_run_shell_git() {
+    local directory="$1" git_bin=""
+    shift
+    git_bin="$(update_system_binary_path git 2>/dev/null || true)"
+    [[ -n "$git_bin" ]] || { printf 'Shell update requires system git\n' >&2; return 127; }
+    update_run_shell_command 60 "$git_bin" -C "$directory" "$@"
 }
 
 # ============================================================
@@ -7496,13 +7652,22 @@ update_cloud() {
     if [[ -n "$gh_bin" ]]; then
         capture_version_before "gh"
         # Update gh extensions if any are installed
-        local gh_extensions=0
-        gh_extensions=$("$gh_bin" extension list 2>/dev/null | grep -v "no installed extensions found" | grep -c -v "No extensions installed" || true)
-        gh_extensions=$((gh_extensions + 0))  # Strip whitespace, ensure integer
-        if [[ $gh_extensions -gt 0 ]]; then
-            run_cmd "GitHub CLI extensions" "$gh_bin" extension upgrade --all
+        local gh_extensions=0 gh_inventory="" gh_inventory_status=0
+        # Keep stderr separate: a transport warning is not an extension row.
+        # An unreadable inventory must not masquerade as a successful empty list.
+        gh_inventory=$(update_run_maintenance_in_target_context cloud "$gh_bin" extension list) || gh_inventory_status=$?
+        if [[ $gh_inventory_status -ne 0 ]]; then
+            log_item "fail" "GitHub CLI extensions" "extension inventory failed (exit $gh_inventory_status)"
+            log_to_file "GitHub CLI extension inventory failed (exit $gh_inventory_status)"
         else
-            log_item "ok" "GitHub CLI" "no extensions to update"
+            gh_extensions=$(printf '%s\n' "$gh_inventory" | awk '
+                NF && $0 !~ /no installed extensions found|No extensions installed/ { count++ }
+                END { print count + 0 }')
+            if [[ $gh_extensions -gt 0 ]]; then
+                run_cmd "GitHub CLI extensions" update_run_maintenance_in_target_context cloud "$gh_bin" extension upgrade --all
+            else
+                log_item "ok" "GitHub CLI" "no extensions to update"
+            fi
         fi
         # gh itself is updated via apt, log current version
         if capture_version_after "gh"; then
@@ -7524,7 +7689,7 @@ update_cloud() {
         else
             capture_version_before "gcloud"
             # gcloud components update requires --quiet for non-interactive
-            run_cmd "Google Cloud SDK" "$gcloud_bin" components update --quiet
+            run_cmd "Google Cloud SDK" update_run_maintenance_in_target_context cloud "$gcloud_bin" components update --quiet
             if capture_version_after "gcloud"; then
                 update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[gcloud]}" "${VERSION_AFTER[gcloud]}"
             fi
@@ -7904,7 +8069,7 @@ update_stack() {
         local dcg_bin=""
         dcg_bin="$(update_binary_path dcg 2>/dev/null || true)"
         if [[ -n "$dcg_bin" ]]; then
-            run_cmd "DCG Hook" "$dcg_bin" install --force 2>/dev/null || true
+            run_cmd "DCG Hook" update_run_maintenance_in_target_context hook "$dcg_bin" install --force 2>/dev/null || true
         fi
     fi
 
@@ -8049,7 +8214,6 @@ update_root_agents_md() {
     root_agents_generator="$(update_binary_path flywheel-update-agents-md 2>/dev/null || true)"
 
     if [[ -z "$root_agents_generator" ]]; then
-        local generator=""
         local candidate=""
         local primary_bin=""
         local runtime_acfs_home=""
@@ -8064,29 +8228,29 @@ update_root_agents_md() {
 
         for candidate in "${security_candidates[@]}"; do
             if [[ -n "$candidate" ]] && [[ -f "$candidate" ]]; then
-                generator="$candidate"
+                root_agents_generator="$(update_maintenance_absolute_path "$candidate")" || return 1
                 break
             fi
         done
-
-        if [[ -f "$generator" ]]; then
-            if ! run_cmd_sudo "Install flywheel-update-agents-md" ln -sf "$generator" /usr/local/bin/flywheel-update-agents-md; then
-                log_item "skip" "Root AGENTS.md" "flywheel-update-agents-md not installed"
-                return 0
-            fi
-        else
-            log_item "skip" "Root AGENTS.md" "flywheel-update-agents-md not installed"
-            return 0
-        fi
     fi
-
-    root_agents_generator="$(update_binary_path flywheel-update-agents-md 2>/dev/null || true)"
-    [[ -n "$root_agents_generator" ]] || root_agents_generator="flywheel-update-agents-md"
-    # Run as the invoking user, NOT via sudo: the generator writes only the
-    # ACFS-owned canonical guide (~/.acfs/docs/flywheel-agent-guide.md), and
-    # tool detection under root's restricted PATH would falsely report
-    # user-local tools (~/.local/bin, ~/go/bin) as missing.
-    run_cmd "Agent guide" "$root_agents_generator"
+    if [[ -z "$root_agents_generator" || "$root_agents_generator" != /* || ! -f "$root_agents_generator" ]]; then
+        log_item "skip" "Agent guide" "flywheel-update-agents-md not installed"
+        return 0
+    fi
+    local -a generator_argv=("$root_agents_generator")
+    if [[ ! -x "$root_agents_generator" ]]; then
+        local bash_bin=""
+        bash_bin="$(update_system_binary_path bash 2>/dev/null || true)"
+        if [[ -z "$bash_bin" ]]; then
+            log_item "fail" "Agent guide" "system bash unavailable"
+            return 1
+        fi
+        generator_argv=("$bash_bin" "$root_agents_generator")
+    fi
+    # Installed command discovery still wins. A selected fallback can run
+    # directly; refreshing a user guide does not require repairing a global
+    # command link or falling back to an unresolved executable name.
+    run_cmd "Agent guide" update_run_maintenance_in_target_context guide "${generator_argv[@]}"
 }
 
 # ============================================================
@@ -8096,9 +8260,10 @@ update_root_agents_md() {
 
 # Update Oh-My-Zsh via its built-in upgrade script
 update_omz() {
-    local omz_dir="${ZSH:-$HOME/.oh-my-zsh}"
+    local omz_dir=""
+    omz_dir="$(update_shell_install_dir omz 2>/dev/null || true)"
 
-    if [[ ! -d "$omz_dir" ]]; then
+    if [[ -z "$omz_dir" || ! -d "$omz_dir" ]]; then
         log_item "skip" "Oh-My-Zsh" "not installed"
         return 0
     fi
@@ -8109,13 +8274,20 @@ update_omz() {
     # Set DISABLE_UPDATE_PROMPT to avoid interactive prompts
     local upgrade_script="$omz_dir/tools/upgrade.sh"
     if [[ -x "$upgrade_script" ]]; then
-        run_cmd "Oh-My-Zsh upgrade" timeout 120 env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" "$upgrade_script"
+        local env_bin=""
+        env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+        [[ -n "$env_bin" ]] || { log_item "fail" "Oh-My-Zsh" "system env unavailable"; return 1; }
+        run_cmd "Oh-My-Zsh upgrade" update_run_shell_command 120 "$env_bin" DISABLE_UPDATE_PROMPT=true "$upgrade_script"
     elif [[ -f "$upgrade_script" ]]; then
-        run_cmd "Oh-My-Zsh upgrade" timeout 120 env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" bash "$upgrade_script"
+        local env_bin="" bash_bin=""
+        env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+        bash_bin="$(update_system_binary_path bash 2>/dev/null || true)"
+        [[ -n "$env_bin" && -n "$bash_bin" ]] || { log_item "fail" "Oh-My-Zsh" "system env/bash unavailable"; return 1; }
+        run_cmd "Oh-My-Zsh upgrade" update_run_shell_command 120 "$env_bin" DISABLE_UPDATE_PROMPT=true "$bash_bin" "$upgrade_script"
     else
         # Fallback to git pull
         if [[ -d "$omz_dir/.git" ]]; then
-            run_cmd "Oh-My-Zsh (git pull)" timeout 60 git -C "$omz_dir" pull --ff-only
+            run_cmd "Oh-My-Zsh (git pull)" update_run_shell_git "$omz_dir" pull --ff-only
         else
             log_item "skip" "Oh-My-Zsh" "no upgrade mechanism found"
             return 0
@@ -8130,9 +8302,11 @@ update_omz() {
 
 # Update Powerlevel10k theme via git
 update_p10k() {
-    local p10k_dir="${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/themes/powerlevel10k"
+    local p10k_dir=""
+    p10k_dir="$(update_shell_install_dir custom 2>/dev/null || true)"
+    [[ -z "$p10k_dir" ]] || p10k_dir+="/themes/powerlevel10k"
 
-    if [[ ! -d "$p10k_dir" ]]; then
+    if [[ -z "$p10k_dir" || ! -d "$p10k_dir" ]]; then
         log_item "skip" "Powerlevel10k" "not installed"
         return 0
     fi
@@ -8152,10 +8326,10 @@ update_p10k() {
     # Use --ff-only to avoid merge conflicts
     local output=""
     local exit_code=0
-    output=$(timeout 60 git -C "$p10k_dir" pull --ff-only 2>&1) || exit_code=$?
+    output=$(update_run_shell_git "$p10k_dir" pull --ff-only 2>&1) || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
-        if ! echo "$output" | grep -q "Already up to date"; then
+        if ! grep -q "Already up to date" <<< "$output"; then
             if capture_version_after "p10k"; then
                 log_item "ok" "Powerlevel10k updated" "${VERSION_BEFORE[p10k]} → ${VERSION_AFTER[p10k]}"
             else
@@ -8166,7 +8340,7 @@ update_p10k() {
         fi
     else
         # Check if it's a ff-only failure (local changes)
-        if echo "$output" | grep -q "fatal.*not possible to fast-forward"; then
+        if grep -qi "fatal.*not possible to fast-forward" <<< "$output"; then
             log_item "skip" "Powerlevel10k" "local changes detected, manual merge required"
             log_to_file "P10K update failed: $output"
         else
@@ -8179,7 +8353,12 @@ update_p10k() {
 
 # Update zsh plugins via git
 update_zsh_plugins() {
-    local zsh_custom="${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}"
+    local zsh_custom=""
+    zsh_custom="$(update_shell_install_dir custom 2>/dev/null || true)"
+    if [[ -z "$zsh_custom" ]]; then
+        log_item "fail" "zsh plugins" "unable to resolve target shell directory"
+        return 1
+    fi
     local plugins_dir="$zsh_custom/plugins"
 
     if update_is_read_only_mode; then
@@ -8213,17 +8392,17 @@ update_zsh_plugins() {
 
         local output=""
         local exit_code=0
-        output=$(timeout 60 git -C "$plugin_dir" pull --ff-only 2>&1) || exit_code=$?
+        output=$(update_run_shell_git "$plugin_dir" pull --ff-only 2>&1) || exit_code=$?
 
         if [[ $exit_code -eq 0 ]]; then
-            if ! echo "$output" | grep -q "Already up to date"; then
+            if ! grep -q "Already up to date" <<< "$output"; then
                 log_item "ok" "$plugin" "updated"
                 ((updated += 1))
             else
                 ((skipped += 1))
             fi
         else
-            if echo "$output" | grep -q "fatal.*not possible to fast-forward"; then
+            if grep -qi "fatal.*not possible to fast-forward" <<< "$output"; then
                 log_item "skip" "$plugin" "local changes"
             else
                 log_item "fail" "$plugin" "git pull failed"
