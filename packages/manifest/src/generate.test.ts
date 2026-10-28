@@ -2908,7 +2908,9 @@ describe("uv archive verification prerequisite", () => {
     const callerBin = resolve(root, "caller-bin");
     mkdirSync(targetBin);
     mkdirSync(callerBin);
-    symlinkSync("/usr/bin/env", resolve(targetBin, "fixture_env"));
+    // Multicall coreutils dispatches by argv[0] and rejects the fixture alias.
+    // Forward through env's real name without changing argv or installer stdin.
+    writeFileSync(resolve(targetBin, "fixture_env"), '#!/bin/sh\nexec /usr/bin/env "$@"\n', { mode: 0o755 });
     symlinkSync("/usr/bin/sha256sum", resolve(callerBin, "sha256sum"));
     const verifier = {
       working: "/usr/bin/sha256sum",
