@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-10-28T02:16:21+00:00
+# checksums.yaml - Auto-generated 2026-10-28T03:31:20+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -160,7 +160,7 @@ installers:
 
   s2p:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"
-    sha256: "9f03284c2a5503e8690b83fcbadc1f58796da1cabe715d1c50e874f07922abae"
+    sha256: "72f75e165256a7aaf901e2f6a71556fd088ac012c6652a390012d76f08ab0a05"
 
   sbh:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
