@@ -4757,6 +4757,10 @@ By default, sensitive data is automatically redacted:
 | Passwords | `"password": "..."` | `"password": "<REDACTED:password>"` |
 | Private key blocks | `-----BEGIN ... PRIVATE KEY-----` | `<REDACTED:private_key>` |
 
+Quoted credentials are masked as complete values, including escaped quotes and
+JSON-encoded diagnostic strings. Public numeric identifiers retain their original
+bytes. If redaction fails, bundle creation stops.
+
 ### Credential lifecycle guide
 
 Start by choosing which providers your project needs. ACFS installs tools without

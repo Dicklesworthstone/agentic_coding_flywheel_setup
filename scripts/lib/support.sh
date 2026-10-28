@@ -3325,6 +3325,56 @@ support_redact_identity() {
     return 0
 }
 
+# Mask complete quoted values before the line-oriented token filters run.
+# Decode JSON string tokens individually: reserializing whole objects can
+# round public identifiers, while matching raw quotes leaks escaped tails.
+support_redact_quoted_values() {
+    local file="$1" jq_bin="" tmp=""
+    jq_bin="$(support_system_binary_path jq)" || return 1
+    [[ -n "$jq_bin" && -f "$file" && ! -L "$file" ]] || return 1
+    tmp="$(support_redaction_tempfile "$file")" || return 1
+    if "$jq_bin" -Rjs '
+      def string_token: "\"(?:\\\\.|[^\"\\\\])*\"";
+      def aliases:
+        "(?i:password|passwd|MYSQL_PWD|api_?key|api_secret|secret_?key|access_?key|access_token|refresh_token|auth_token|client_secret|private_?key)";
+      def suffixes:
+        "password|passwd|api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key|secret|token";
+      def names:
+        aliases + "|[A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(?i:" + suffixes + ")|[A-Za-z][A-Za-z0-9]*(Password|Passwd|ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token)";
+      def snippet_key: test("^(body_md|body_text|thread_snippet|message_snippet|mail_snippet|message_preview)$");
+      def redact_fields:
+        gsub("(?<key>" + string_token + ")(?<separator>\\s*:\\s*)(?<value>" + string_token + ")";
+          . as $match | (.key | fromjson) as $key | (.value | fromjson) as $value
+          | if ($key | snippet_key) or
+              (($key | test("^(" + names + ")$")) and
+               ($value | length) >= (if ($key | test("(?i:password|passwd|MYSQL_PWD)$")) then 4 else 8 end))
+            then .key + .separator + "\"<REDACTED:quoted_secret>\""
+            else $match.key + $match.separator + $match.value end);
+      def redact_inline:
+        ("(?<prefix>\\b(?:" + names + ")\\b\\s*[=:]\\s*)") as $prefix
+        | gsub($prefix + "\"(?<value>(?:\\\\.|[^\"\\\\])+)(?<tail>\"|$)";
+            "\(.prefix)\"<REDACTED:quoted_secret>\(.tail)")
+        | gsub($prefix + "\u0027(?<value>(?:\\\\.|[^\u0027\\\\])+)(?<tail>\u0027|$)";
+            "\(.prefix)\u0027<REDACTED:quoted_secret>\(.tail)");
+      def scrub:
+        . as $input | (try ($input | fromjson | true) catch false) as $is_json
+        | redact_fields
+        | gsub("(?<literal>" + string_token + ")";
+            .literal as $raw | (try ($raw | fromjson) catch null) as $value
+            | if $value == null then $raw
+              else ($value | scrub) as $safe
+                | if $safe == $value then $raw else ($safe | tojson) end
+              end)
+        | if $is_json then . else redact_inline end;
+      scrub
+    ' < "$file" > "$tmp" \
+        && [[ -f "$file" && ! -L "$file" ]] \
+        && mv -- "$tmp" "$file"; then
+        return 0
+    fi
+    return 1
+}
+
 # Redact sensitive values from a single text file in-place.
 # Increments REDACTION_COUNT once when the file content changes.
 # Usage: redact_file <file_path>
@@ -3344,6 +3394,11 @@ redact_file() {
     # Count lines before redaction for diff
     local before_hash
     before_hash=$(md5sum "$file" 2>/dev/null | awk '{print $1}') || before_hash=""
+
+    if ! support_redact_quoted_values "$file"; then
+        printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+        return 1
+    fi
 
     if ! redact_private_key_blocks "$file"; then
         printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true

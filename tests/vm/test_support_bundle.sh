@@ -169,55 +169,55 @@ test_bundle_contains_expected_files() {
     contents=$(tar tzf "$archive_path" 2>/dev/null) || contents=""
 
     # Check expected files
-    if echo "$contents" | grep -q 'state.json'; then
+    if grep -q 'state.json' <<< "$contents"; then
         harness_pass "Bundle contains state.json"
     else
         harness_fail "Bundle contains state.json"
     fi
 
-    if echo "$contents" | grep -q 'VERSION'; then
+    if grep -q 'VERSION' <<< "$contents"; then
         harness_pass "Bundle contains VERSION"
     else
         harness_fail "Bundle contains VERSION"
     fi
 
-    if echo "$contents" | grep -q 'manifest.json'; then
+    if grep -q 'manifest.json' <<< "$contents"; then
         harness_pass "Bundle contains manifest.json"
     else
         harness_fail "Bundle contains manifest.json"
     fi
 
-    if echo "$contents" | grep -q 'performance_budget_20260126_220000.json'; then
+    if grep -q 'performance_budget_20260126_220000.json' <<< "$contents"; then
         harness_pass "Bundle contains performance budget JSON"
     else
         harness_fail "Bundle contains performance budget JSON"
     fi
 
-    if echo "$contents" | grep -q 'swarm_status.json'; then
+    if grep -q 'swarm_status.json' <<< "$contents"; then
         harness_pass "Bundle contains swarm status JSON"
     else
         harness_fail "Bundle contains swarm status JSON"
     fi
 
-    if echo "$contents" | grep -q 'swarm_timeline.json'; then
+    if grep -q 'swarm_timeline.json' <<< "$contents"; then
         harness_pass "Bundle contains swarm timeline JSON"
     else
         harness_fail "Bundle contains swarm timeline JSON"
     fi
 
-    if echo "$contents" | grep -q 'swarm_inventory.json'; then
+    if grep -q 'swarm_inventory.json' <<< "$contents"; then
         harness_pass "Bundle contains swarm inventory JSON"
     else
         harness_fail "Bundle contains swarm inventory JSON"
     fi
 
-    if echo "$contents" | grep -q 'versions.json'; then
+    if grep -q 'versions.json' <<< "$contents"; then
         harness_pass "Bundle contains versions.json"
     else
         harness_fail "Bundle contains versions.json"
     fi
 
-    if echo "$contents" | grep -q 'environment.json'; then
+    if grep -q 'environment.json' <<< "$contents"; then
         harness_pass "Bundle contains environment.json"
     else
         harness_fail "Bundle contains environment.json"
@@ -533,69 +533,69 @@ test_redaction_catches_secrets() {
     log_content=$(cat "$log_file")
 
     # Secrets MUST be redacted
-    if echo "$log_content" | grep -q 'sk-proj-abc123'; then
+    if grep -q 'sk-proj-abc123' <<< "$log_content"; then
         harness_fail "API key redacted" "Found raw sk-proj key in bundle"
     else
         harness_pass "API key redacted"
     fi
 
-    if echo "$log_content" | grep -q 'hvs.CAESIJRem'; then
+    if grep -q 'hvs.CAESIJRem' <<< "$log_content"; then
         harness_fail "Vault token redacted" "Found raw Vault token in bundle"
     else
         harness_pass "Vault token redacted"
     fi
 
-    if echo "$log_content" | grep -q 'ghp_ABCDEFGHIJKL'; then
+    if grep -q 'ghp_ABCDEFGHIJKL' <<< "$log_content"; then
         harness_fail "GitHub token redacted" "Found raw GitHub token in bundle"
     else
         harness_pass "GitHub token redacted"
     fi
 
-    if echo "$log_content" | grep -q 'gho_ABCDEFGHIJKL'; then
+    if grep -q 'gho_ABCDEFGHIJKL' <<< "$log_content"; then
         harness_fail "GitHub OAuth token redacted" "Found raw GitHub OAuth token in bundle"
     else
         harness_pass "GitHub OAuth token redacted"
     fi
 
-    if echo "$log_content" | grep -q 'AKIAIOSFODNN7'; then
+    if grep -q 'AKIAIOSFODNN7' <<< "$log_content"; then
         harness_fail "AWS key redacted" "Found raw AWS key in bundle"
     else
         harness_pass "AWS key redacted"
     fi
 
-    if echo "$log_content" | grep -q 'eyJhbGciOiJIUzI1NiI'; then
+    if grep -q 'eyJhbGciOiJIUzI1NiI' <<< "$log_content"; then
         harness_fail "JWT redacted" "Found raw JWT in bundle"
     else
         harness_pass "JWT redacted"
     fi
 
-    if echo "$log_content" | grep -q 'b3BlbnNzaC1rZXktdjE'; then
+    if grep -q 'b3BlbnNzaC1rZXktdjE' <<< "$log_content"; then
         harness_fail "Private key block redacted" "Found raw private key payload in bundle"
     else
         harness_pass "Private key block redacted"
     fi
 
-    if echo "$log_content" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
+    if grep -q 'BEGIN OPENSSH PRIVATE KEY' <<< "$log_content"; then
         harness_fail "Private key header redacted" "Found raw private key header in bundle"
     else
         harness_pass "Private key header redacted"
     fi
 
     # Redaction markers MUST be present
-    if echo "$log_content" | grep -q '<REDACTED:'; then
+    if grep -q '<REDACTED:' <<< "$log_content"; then
         harness_pass "Redaction markers present in output"
     else
         harness_fail "Redaction markers present in output"
     fi
 
     # Safe values MUST NOT be redacted
-    if echo "$log_content" | grep -q 'hostname=myserver.example.com'; then
+    if grep -q 'hostname=myserver.example.com' <<< "$log_content"; then
         harness_pass "Hostname NOT redacted (safe value)"
     else
         harness_fail "Hostname NOT redacted (safe value)"
     fi
 
-    if echo "$log_content" | grep -q 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0'; then
+    if grep -q 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0' <<< "$log_content"; then
         harness_pass "Git SHA NOT redacted (safe value)"
     else
         harness_fail "Git SHA NOT redacted (safe value)"
@@ -609,13 +609,13 @@ test_redaction_catches_secrets() {
         local summary_content
         summary_content=$(cat "$summary_file")
 
-        if echo "$summary_content" | grep -q 'my_very_secret_value'; then
+        if grep -q 'my_very_secret_value' <<< "$summary_content"; then
             harness_fail "Generic secret_key redacted in summary JSON" "Found raw secret_key"
         else
             harness_pass "Generic secret_key redacted in summary JSON"
         fi
 
-        if echo "$summary_content" | grep -q 'test-server'; then
+        if grep -q 'test-server' <<< "$summary_content"; then
             harness_pass "Hostname preserved in summary JSON"
         else
             harness_fail "Hostname preserved in summary JSON"
@@ -630,13 +630,13 @@ test_redaction_catches_secrets() {
         local budget_content
         budget_content=$(cat "$budget_file")
 
-        if echo "$budget_content" | grep -q 'budget_secret_value'; then
+        if grep -q 'budget_secret_value' <<< "$budget_content"; then
             harness_fail "Generic secret_key redacted in performance budget JSON" "Found raw secret_key"
         else
             harness_pass "Generic secret_key redacted in performance budget JSON"
         fi
 
-        if echo "$budget_content" | grep -q 'total_install_duration'; then
+        if grep -q 'total_install_duration' <<< "$budget_content"; then
             harness_pass "Budget metric name preserved in performance budget JSON"
         else
             harness_fail "Budget metric name preserved in performance budget JSON"
@@ -728,7 +728,7 @@ test_no_redact_flag() {
         log_content=$(cat "$log_file")
 
         # With --no-redact, secrets should be present
-        if echo "$log_content" | grep -q 'ghp_ABCDEFGHIJKL'; then
+        if grep -q 'ghp_ABCDEFGHIJKL' <<< "$log_content"; then
             harness_pass "--no-redact preserves GitHub token"
         else
             harness_fail "--no-redact preserves GitHub token" "Token was redacted despite --no-redact"
@@ -758,7 +758,7 @@ test_verbose_flag() {
     stderr_output=$(HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
         bash "$SUPPORT_SH" --verbose --output "$output_dir" 2>&1 >/dev/null) || true
 
-    if echo "$stderr_output" | grep -qiE 'collected|scanned|redact'; then
+    if grep -qiE 'collected|scanned|redact' <<< "$stderr_output"; then
         harness_pass "--verbose produces additional detail output"
     else
         harness_fail "--verbose produces additional detail output"
@@ -1035,11 +1035,90 @@ test_unknown_flag_errors() {
     fi
 }
 
+test_complete_quoted_redaction() {
+    if python3 - "$SUPPORT_SH" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+script = sys.argv[1]
+checks = unittest.TestCase()
+root = Path(tempfile.mkdtemp(prefix="acfs-support-quoted-"))
+secret = 'fixtureSecretFirst "fixtureSecretMiddle" fixtureSecretTail\\end'
+public = '{"apiKeyCount":9007199254740993,"tokenCount":5,"url":"https://example.com/docs","empty":{"password":"","apiKey":null}}'
+structured = json.dumps({"password": secret, "secretKey": secret, "MYSQL_PWD": secret,
+                         "service_api_key": secret, "serviceAccessToken": secret})
+structured = structured[:-1] + ',"public":' + public + '}'
+cases = {
+    "json": structured,
+    "json-lines": structured + "\n" + structured,
+    "embedded-json": "[diagnostic] " + structured,
+    "encoded-json": json.dumps({"diagnostic": structured}),
+    "encoded-shell": json.dumps({"diagnostic": 'MYSQL_PWD="' + secret.replace('"', '\\"') + '"'}),
+    "shell": 'MYSQL_PWD="' + secret.replace('"', '\\"') + '"',
+    "single-quoted-shell": "MYSQL_PWD='" + secret + "'",
+    "message-snippet": json.dumps({"body_md": secret}),
+    "multiline-json": json.dumps({"apiKey": "fixtureSecretFirst\nfixtureSecretTail"}, indent=2),
+    "escaped-key": '{"passw\\u006frd":' + json.dumps(secret) + '}',
+    "public": public,
+}
+for name, body in cases.items():
+    target = root / (name + ".log")
+    target.write_text(body + "\n")
+    result = subprocess.run(["bash", "-c", 'source "$1"; redact_file "$2"', "_", script, str(target)],
+                            capture_output=True, text=True, timeout=10, check=False)
+    checks.assertEqual(result.returncode, 0, (name, result.stderr))
+    safe = target.read_text()
+    checks.assertNotIn("fixtureSecret", safe, (name, safe))
+    try:
+        if name in ("json", "encoded-json", "encoded-shell", "multiline-json", "escaped-key", "public", "message-snippet"):
+            json.loads(safe)
+        if name == "json-lines":
+            for line in safe.splitlines():
+                json.loads(line)
+    except json.JSONDecodeError as error:
+        raise AssertionError((name, "redacted JSON is malformed", safe)) from error
+    if "9007199254740993" in body:
+        checks.assertIn("9007199254740993", safe, (name, "public integer changed", safe))
+    if name == "public":
+        checks.assertEqual(safe, body + "\n")
+    else:
+        checks.assertIn("<REDACTED:", safe, (name, safe))
+    print("PASS quoted redaction:", name)
+
+target = root / "failed-redactor.log"
+target.write_text(structured + "\n")
+result = subprocess.run(["bash", "-c", '''source "$1"
+support_system_binary_path() {
+    if [[ "$1" == jq ]]; then printf '/bin/false\\n'; else command -v "$1"; fi
+}
+redact_file "$2"
+''', "_", script, str(target)], capture_output=True, text=True, timeout=10, check=False)
+checks.assertNotEqual(result.returncode, 0, result.stderr)
+checks.assertEqual(target.read_text(), "<REDACTED:redaction_failed>\n")
+print("PASS quoted redaction: dependency failure stays closed")
+PY
+    then
+        harness_pass "Complete quoted credentials are redacted without damaging public JSON"
+    else
+        harness_fail "Complete quoted credentials are redacted without damaging public JSON"
+    fi
+}
+
 # ============================================================
 # Main
 # ============================================================
 main() {
     harness_init "ACFS Support Bundle Tests"
+
+    if [[ "${1:-}" == --redaction-only ]]; then
+        test_complete_quoted_redaction
+        harness_summary
+        return $?
+    fi
 
     if [[ "${1:-}" == --output-safety-only ]]; then
         harness_section "Output Filesystem Safety Tests"
@@ -1073,6 +1152,7 @@ main() {
     test_manifest_matches_bundle_inventory || true
 
     harness_section "Redaction Tests"
+    test_complete_quoted_redaction || true
     test_redaction_catches_secrets || true
     test_binary_log_replaced_with_redaction_marker || true
     test_no_redact_flag || true
