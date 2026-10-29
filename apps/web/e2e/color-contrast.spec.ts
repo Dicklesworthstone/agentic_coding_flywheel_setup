@@ -581,6 +581,39 @@ test.describe("Complete guide crash recovery", () => {
   });
 });
 
+test.describe("Complete guide prompt panels", () => {
+  test.use({ contextOptions: { reducedMotion: "reduce" } });
+
+  for (const width of [1280, 375, 320]) {
+    test(`prompt headers keep full titles and usable Copy targets at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/complete-guide");
+      const copies = page.getByRole("button", { name: /^Copy prompt:/ });
+      await expect(copies).toHaveCount(42);
+      await expect(copies.first()).toBeVisible();
+      expect(await copies.evaluateAll((buttons) => buttons.flatMap((button) => {
+        const toolbar = button.parentElement;
+        const title = toolbar?.querySelector("span");
+        if (!toolbar || !title) return ["Missing prompt header"];
+        const control = button.getBoundingClientRect();
+        const label = title.getBoundingClientRect();
+        const header = toolbar.getBoundingClientRect();
+        const fits = toolbar.scrollWidth <= toolbar.clientWidth + 1
+          && title.scrollWidth <= title.clientWidth + 1
+          && label.right <= control.left
+          && control.right <= header.right
+          && control.width >= 44 && control.height >= 44;
+        return fits ? [] : [button.getAttribute("aria-label")];
+      }))).toEqual([]);
+      const copy = page.getByRole("button", { name: "Copy prompt: Operator 8: Feedback-to-Infrastructure Closure", exact: true });
+      await copy.focus();
+      await expect(copy).toBeFocused();
+      await expect(copy).toBeInViewport();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    });
+  }
+});
+
 test.describe("Complete guide reduced motion", () => {
   test.use({ contextOptions: { reducedMotion: "reduce" } });
 
