@@ -104,12 +104,11 @@ validated observations, requires a clean pinned base and allowed publication
 paths, and verifies publication. Pending external pins stay deferred while
 eligible internal updates may proceed.
 
-The current monitor authorizes the external mismatch set together. It does
-not offer a per-tool interpretation of #494's digest. A review accepting
-three entries and deferring Grok cannot safely write that authorization.
-A future separate reviewed apply set must be produced through an explicit,
-supported authorization workflow; do not reinterpret the existing digest
-or hand-edit `checksums.yaml`.
+At the start of this audit, the monitor authorized the external mismatch set
+together. A review accepting three entries and deferring Grok cannot safely
+write #494's four-tool authorization. The follow-up implementation below adds
+a separately scoped review workflow; it does not give #494's digest a per-tool
+interpretation or authorize hand-editing `checksums.yaml`.
 
 ## Atuin: successive releases explain the changing bytes
 
@@ -335,6 +334,57 @@ unavailable. `ubs` and `br` are also unavailable, so UBS and beads sync are
 not claimed as completed; no bead is closed. `/data/projects/AGENTS.md` is
 absent. The delivered evidence preserves these precise limitations instead
 of substituting local fixture results for host installation checks.
+
+## Follow-up: publication boundaries and scoped human review
+
+The follow-up review reproduced a temporal authorization defect in the
+previous monitor. Its final remote-head probes could block after the last
+approval check. Revoking approval during those probes still allowed both
+remote refs to advance; the later acceptance check detected revocation only
+after publication. A trusted-only run could also report success after its
+retained evidence was modified, because the final evidence recheck was
+conditional on consuming an external approval.
+
+The monitor now rechecks selected authorization and retained evidence after
+the remote probes, before local commit and immediately before push. It also
+rechecks retained evidence before final acceptance for every run, including
+trusted-only and no-candidate runs, and preserves the separate recheck before
+consuming a selected approval. Tests inject revocation and body changes
+at those boundaries using real local bare Git repositories. They distinguish
+preventing publication from detecting an evidence change after a push has
+already completed; a failed final check cannot undo an earlier remote write.
+
+An offline `--review-checksum-subset` command now provides the missing
+workflow for reviewing some external mismatches while deferring others. It
+requires the complete policy-bound report and distinct external mismatch
+names. Its domain-separated v2 digest binds only the selected exact
+`{actual, expected, name, url}` tuples. The review includes both complete
+input hashes and selected/deferred names. The monitor checks those hashes
+against its original observation before accepting the matching private
+`authorize-subset:<digest>:<sorted-tools>` record. Invalid initial records
+grant no external authority; changes to an already selected record stop
+acceptance. Unselected pins remain unchanged, review delivery remains a
+prerequisite for authorized mutation, and consumption follows verified
+remote publication. The legacy aggregate format keeps its original meaning.
+
+This supports a future human review selecting `atuin omp uv` while retaining
+Grok's pin. It does not produce or install a real authorization for #494.
+The original complete host reports remain unavailable here; a historical
+issue table is not a substitute for the complete report required by this
+command. No external pin, URL, or real authorization file changes in the
+follow-up.
+
+The review also confirmed a trusted-owner classification defect using an
+inert URL. The old strict loader and complete report validator accepted
+`https://raw.githubusercontent.com/Dicklesworthstone/../outside_owner/repo/main/install.sh`.
+The monitor classified its literal prefix as trusted, while libcurl 8.5's
+URL API normalized it to the outside owner's path. No network request or
+installer execution was needed to demonstrate that disagreement. The strict
+loader now rejects exact raw `.` and `..` path components before
+classification and requires unencoded spelling in trusted raw-owner paths.
+Encoded traversal at GitHub's server was not demonstrated; the percent-path
+restriction is a canonical authority policy, not such a claim. All 48 current
+installer URLs, including 35 trusted-owner URLs, already satisfy this rule.
 
 ## Primary source links
 

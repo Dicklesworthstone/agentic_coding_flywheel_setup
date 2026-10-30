@@ -351,7 +351,10 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     run_bounded() {
         printf '%s\n' "$*" >> "$GH_CALLS"
         case "$*" in
-            "45 gh issue list "*) [[ -n "${OPEN_ISSUE:-}" ]] && printf '%s\n' "$OPEN_ISSUE" ;;
+            "45 gh issue list "*)
+                printf '%s\n' "$ISSUE_CANDIDATES"
+                return "${ISSUE_LOOKUP_EXIT:-0}"
+                ;;
         esac
         return 0
     }
@@ -359,19 +362,130 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     BASE_HEAD=0000000000000000000000000000000000000000
     VERIFICATION_REPORT_SHA256="$(hx 9)"
     RUN_TS=unit
-    : > "$GH_CALLS"; OPEN_ISSUE=""
+    authorization_mode=aggregate
+    : > "$GH_CALLS"; ISSUE_CANDIDATES='[]'
     HOME="$STATE_TMP" record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
     grep -q -- '--state all' "$GH_CALLS" || fail "authorization lookup ignores closed issues"
+    grep -q -- '--json number,body' "$GH_CALLS" || fail 'authorization lookup cannot bind the primary digest and scope'
     review_body="$(grep -o -- '--body-file [^ ]*' "$GH_CALLS" | tail -n 1 | cut -d' ' -f2)"
     grep -qF 'place exactly this line in `~/state/authorized-checksum-change`' "$review_body" \
         || fail "authorization issue does not say where the authorization file goes"
     ! grep -qF "$STATE_TMP" "$review_body" || fail "public authorization issue names the home directory"
     [[ "$(grep -c ' gh issue create ' "$GH_CALLS")" == 1 ]] || fail "first pending request did not open one issue"
-    : > "$GH_CALLS"; OPEN_ISSUE=446
+    legacy_review_body="$(printf -- '- Authorization digest: `%s`\n' "$d1")"
+    ISSUE_CANDIDATES="$(jq -cn --arg body "$legacy_review_body" '[{number:446,body:$body}]')"
+    : > "$GH_CALLS"
     record_external_review "$(report_with 3 4)" "$d1" required || fail "record_external_review failed"
     ! grep -qE ' gh issue (comment|create) ' "$GH_CALLS" || fail "a still-pending authorization was re-posted"
     record_external_review "$(report_with 3 4)" "$d1" authorized || fail "record_external_review failed"
     [[ "$(grep -c ' gh issue comment 446 ' "$GH_CALLS")" == 1 ]] || fail "authorized use was not recorded on the issue"
+
+    # A subset issue may quote the aggregate digest as supporting evidence.
+    # Search ordering and incidental references must not identify its scope.
+    other_digest="$(hx 8)"
+    incidental_body="$(printf -- '- Authorization digest: `%s`\n- Authorization scope: `subset`\n- Aggregate observation digest (separate review): `%s`\n' "$other_digest" "$d1")"
+    wrong_scope_body="$(printf -- '- Authorization digest: `%s`\n- Authorization scope: `subset`\n' "$d1")"
+    ISSUE_CANDIDATES="$(jq -cn --arg incidental "$incidental_body" --arg wrong "$wrong_scope_body" --arg exact "$legacy_review_body" \
+        '[{number:500,body:$incidental},{number:501,body:$wrong},{number:446,body:$exact}]')"
+    : > "$GH_CALLS"
+    record_external_review "$(report_with 3 4)" "$d1" authorized || fail 'exact aggregate issue lookup failed'
+    grep -q ' gh issue comment 446 ' "$GH_CALLS" || fail 'aggregate review was not matched by its exact primary digest'
+    ! grep -qE ' gh issue comment (500|501) ' "$GH_CALLS" || fail 'incidental or differently scoped digest captured an authorization'
+
+    for ambiguous_review in duplicate-digest duplicate-scope invalid-number; do
+        case "$ambiguous_review" in
+            duplicate-digest) ambiguous_body="$legacy_review_body"$'\n'"$legacy_review_body" ;;
+            duplicate-scope) ambiguous_body="$legacy_review_body"$'\n- Authorization scope: `aggregate`\n- Authorization scope: `aggregate`' ;;
+            invalid-number) ambiguous_body="$legacy_review_body" ;;
+        esac
+        ISSUE_CANDIDATES="$(jq -cn --arg body "$ambiguous_body" --arg kind "$ambiguous_review" \
+            '[{number:(if $kind == "invalid-number" then 0 else 500 end),body:$body}]')"
+        : > "$GH_CALLS"
+        record_external_review "$(report_with 3 4)" "$d1" authorized || fail "$ambiguous_review prevented a fresh exact review"
+        ! grep -q ' gh issue comment ' "$GH_CALLS" || fail "$ambiguous_review was accepted as an exact review"
+        [[ "$(grep -c ' gh issue create ' "$GH_CALLS")" == 1 ]] || fail "$ambiguous_review did not open a fresh exact review"
+    done
+    for malformed_lookup in not-json '{}' $'[]\n[]'; do
+        ISSUE_CANDIDATES="$malformed_lookup"
+        : > "$GH_CALLS"
+        ! record_external_review "$(report_with 3 4)" "$d1" authorized || fail 'malformed issue lookup was treated as an empty result'
+        ! grep -qE ' gh issue (comment|create) ' "$GH_CALLS" || fail 'malformed lookup emitted an authorization message'
+    done
+    ISSUE_CANDIDATES='[]'; ISSUE_LOOKUP_EXIT=1; : > "$GH_CALLS"
+    ! record_external_review "$(report_with 3 4)" "$d1" authorized || fail 'failed issue lookup was treated as an empty result'
+    ! grep -qE ' gh issue (comment|create) ' "$GH_CALLS" || fail 'failed lookup emitted an authorization message'
+    ISSUE_LOOKUP_EXIT=0
+
+    authorization_mode=subset
+    authorized_external_changed=ext
+    deferred_changed=grok
+    aggregate_authorization_digest="$other_digest"
+    selected_authorization_record="authorize-subset:$d1:ext"
+    ISSUE_CANDIDATES="$(jq -cn --arg aggregate "$legacy_review_body" --arg subset "$wrong_scope_body" \
+        '[{number:446,body:$aggregate},{number:447,body:$subset}]')"
+    : > "$GH_CALLS"
+    record_external_review "$(report_with 3 4)" "$d1" authorized || fail 'exact subset issue lookup failed'
+    grep -q ' gh issue comment 447 ' "$GH_CALLS" || fail 'subset review did not select the exact subset scope'
+    ! grep -q ' gh issue comment 446 ' "$GH_CALLS" || fail 'subset review was recorded on the aggregate issue'
+    review_body="$(grep -o -- '--body-file [^ ]*' "$GH_CALLS" | tail -n 1 | cut -d' ' -f2)"
+    grep -qF -- '- Authorization scope: `subset`' "$review_body" || fail 'subset issue omitted its authorization scope'
+    grep -qF -- '- Deferred external tools: `grok`' "$review_body" || fail 'subset issue concealed deferred tools'
+    grep -qF "$selected_authorization_record" "$review_body" || fail 'subset issue omitted the exact selected record'
+    : > "$GH_CALLS"
+    record_external_review "$(report_with 3 4)" "$d1" required || fail 'pending subset issue lookup failed'
+    ! grep -qE ' gh issue (comment|create) ' "$GH_CALLS" || fail 'pending subset review was re-posted'
+    printf 'PASS: exact digest and scope review lookup, legacy deduplication and lookup failure guards\n'
+) || exit 1
+
+# The subset record is a canonical private byte string, distinct from legacy
+# aggregate authorization. Parsing alone never validates the selected digest.
+(
+    export ACFS_MONITOR_STATE="$STATE_TMP/subset-record-state"
+    export ACFS_MONITOR_REPO="$STATE_TMP/does-not-exist"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    subset_digest="$(printf '%064d' 1)"
+    canonical_record="authorize-subset:$subset_digest:atuin,omp,uv"
+    printf '%s\n' "$canonical_record" > "$AUTHORIZATION_FILE"
+    chmod 600 "$AUTHORIZATION_FILE"
+    [[ "$(read_subset_authorization_record)" == "$canonical_record" ]] || fail 'canonical subset record rejected'
+    subset_authorization_is_valid "$canonical_record" 600 || fail 'exact subset record/mode rejected'
+    ! authorization_is_valid "$subset_digest" || fail 'subset grant was reinterpreted as legacy aggregate approval'
+    chmod 400 "$AUTHORIZATION_FILE"
+    [[ "$(read_subset_authorization_record)" == "$canonical_record" ]] || fail 'read-only private record cannot be read'
+    ! subset_authorization_is_valid "$canonical_record" 600 || fail 'owner-only mode replacement retained selected authority'
+    for record_case in no-lf crlf extra-line trailing-space nul duplicate unsorted empty uppercase oversize public symlink hardlink legacy used; do
+        AUTHORIZATION_FILE="$STATE_DIR/record-$record_case"
+        if [[ "$record_case" == symlink || "$record_case" == hardlink ]]; then
+            record_target="$STATE_DIR/target-$record_case"
+            printf '%s\n' "$canonical_record" > "$record_target"
+            chmod 600 "$record_target"
+            if [[ "$record_case" == symlink ]]; then ln -s "$record_target" "$AUTHORIZATION_FILE"; else ln "$record_target" "$AUTHORIZATION_FILE"; fi
+        else
+            printf '%s\n' "$canonical_record" > "$AUTHORIZATION_FILE"
+            chmod 600 "$AUTHORIZATION_FILE"
+            case "$record_case" in
+                no-lf) printf '%s' "$canonical_record" > "$AUTHORIZATION_FILE" ;;
+                crlf) printf '%s\r\n' "$canonical_record" > "$AUTHORIZATION_FILE" ;;
+                extra-line) printf '%s\nignored\n' "$canonical_record" > "$AUTHORIZATION_FILE" ;;
+                trailing-space) printf '%s \n' "$canonical_record" > "$AUTHORIZATION_FILE" ;;
+                nul) printf '%s\0\n' "$canonical_record" > "$AUTHORIZATION_FILE" ;;
+                duplicate) printf 'authorize-subset:%s:atuin,omp,omp\n' "$subset_digest" > "$AUTHORIZATION_FILE" ;;
+                unsorted) printf 'authorize-subset:%s:uv,atuin\n' "$subset_digest" > "$AUTHORIZATION_FILE" ;;
+                empty) printf 'authorize-subset:%s:\n' "$subset_digest" > "$AUTHORIZATION_FILE" ;;
+                uppercase) printf 'authorize-subset:%s:Atuin\n' "$subset_digest" > "$AUTHORIZATION_FILE" ;;
+                oversize) { printf 'authorize-subset:%s:' "$subset_digest"; printf 'a%.0s' {1..4096}; printf '\n'; } > "$AUTHORIZATION_FILE" ;;
+                public) chmod 644 "$AUTHORIZATION_FILE" ;;
+                legacy) printf 'authorize:%s\n' "$subset_digest" > "$AUTHORIZATION_FILE" ;;
+                used) printf 'used-subset:%s:atuin,omp,uv:%040d\n' "$subset_digest" 1 > "$AUTHORIZATION_FILE" ;;
+            esac
+        fi
+        ! read_subset_authorization_record > "$STATE_DIR/$record_case-output" \
+            || fail "noncanonical or unsafe subset record accepted: $record_case"
+    done
+    printf 'PASS: canonical private subset records, exact mode binding and aggregate separation\n'
 ) || exit 1
 
 # Retained first-observation evidence is independently rehashed before it can
@@ -621,7 +735,9 @@ RETAIN
         git branch master
     ) || fail 'could not prepare clean integration base'
     integration_cases=(pending external-only approved review-unavailable approved-review-unavailable push-rejected fetch-error
-        authorization-revoked-before-commit authorization-revoked-before-push evidence-changed-before-push evidence-changed-after-push)
+        authorization-revoked-before-commit authorization-revoked-before-push evidence-changed-before-push evidence-changed-after-push
+        subset-approved subset-review-unavailable subset-stale subset-malformed subset-push-rejected
+        subset-grant-replaced-before-push subset-mode-changed-before-push subset-grant-replaced-before-consumption)
     if [[ -n "${ACFS_MONITOR_TEST_CASE:-}" ]]; then
         integration_case_found=false
         for integration_case in "${integration_cases[@]}"; do
@@ -660,10 +776,20 @@ RETAIN
             integration_match_hash="$(printf '#!/bin/sh\n# monitor match fixture\n' | sha256sum | awk '{print $1}')"
             br_actual="$(printf '#!/bin/sh\n# monitor trusted fixture\n' | sha256sum | awk '{print $1}')"
             omp_actual="$(printf '#!/bin/sh\n# monitor external fixture\n' | sha256sum | awk '{print $1}')"
+            atuin_actual="$(printf '#!/bin/sh\n# monitor Atuin fixture\n' | sha256sum | awk '{print $1}')"
+            grok_actual="$(printf '#!/bin/sh\n# monitor Grok fixture\n' | sha256sum | awk '{print $1}')"
+            uv_actual="$(printf '#!/bin/sh\n# monitor uv fixture\n' | sha256sum | awk '{print $1}')"
             for integration_tool in "${!integration_hashes[@]}"; do
                 integration_actual="${integration_hashes[$integration_tool]}"
                 if [[ "$integration_tool" == br && "$integration_case" != external-only ]]; then integration_actual="$br_actual"; fi
                 if [[ "$integration_tool" == omp && "$integration_case" != evidence-changed-after-push ]]; then integration_actual="$omp_actual"; fi
+                if [[ "$integration_case" == subset-* ]]; then
+                    case "$integration_tool" in
+                        atuin) integration_actual="$atuin_actual" ;;
+                        grok) integration_actual="$grok_actual" ;;
+                        uv) integration_actual="$uv_actual" ;;
+                    esac
+                fi
                 jq -cn --arg name "$integration_tool" --arg url "${integration_urls[$integration_tool]}" \
                     --arg expected "${integration_hashes[$integration_tool]}" --arg actual "$integration_actual" \
                     '{name:$name,url:$url,expected:$expected,actual:$actual}'
@@ -682,7 +808,29 @@ RETAIN
                     chmod 600 "$AUTHORIZATION_FILE"
                     ;;
             esac
-            if [[ "$integration_case" == push-rejected ]]; then
+            if [[ "$integration_case" == subset-* ]]; then
+                bash "$REPO_ROOT/scripts/lib/security.sh" --review-checksum-subset \
+                    "$case_root/repo/checksums.yaml" "$integration_report" atuin omp uv --retain-temp-files \
+                    > "$case_root/state/subset-proposal.json" || fail 'could not produce the real subset review fixture'
+                integration_subset_record="$(jq -er '.authorization_line' "$case_root/state/subset-proposal.json")" \
+                    || fail 'subset review fixture has no authorization record'
+                integration_digest="$(jq -er '.authorization_digest' "$case_root/state/subset-proposal.json")"
+                printf '%s\n' "$integration_subset_record" > "$AUTHORIZATION_FILE"
+                case "$integration_case" in
+                    subset-stale) printf 'authorize-subset:%064d:atuin,omp,uv\n' 0 > "$AUTHORIZATION_FILE" ;;
+                    subset-malformed) printf 'authorize-subset:%s:uv,omp,atuin\n' "$integration_digest" > "$AUTHORIZATION_FILE" ;;
+                    subset-grant-replaced-before-push|subset-grant-replaced-before-consumption)
+                        bash "$REPO_ROOT/scripts/lib/security.sh" --review-checksum-subset \
+                            "$case_root/repo/checksums.yaml" "$integration_report" atuin omp --retain-temp-files \
+                            > "$case_root/state/replacement-proposal.json" || fail 'could not produce a distinct valid grant'
+                        jq -er '.authorization_line' "$case_root/state/replacement-proposal.json" \
+                            > "$case_root/state/replacement-authorization" || fail 'replacement review fixture is invalid'
+                        ;;
+                esac
+                chmod 600 "$AUTHORIZATION_FILE"
+                cp "$AUTHORIZATION_FILE" "$case_root/state/initial-authorization"
+            fi
+            if [[ "$integration_case" == push-rejected || "$integration_case" == subset-push-rejected ]]; then
                 printf '#!/usr/bin/env bash\nexit 1\n' > "$case_root/remote.git/hooks/pre-receive"
                 chmod 755 "$case_root/remote.git/hooks/pre-receive"
             fi
@@ -693,7 +841,8 @@ RETAIN
             fi
             record_external_review() {
                 printf '%s\t%s\n' "$2" "$3" >> "$case_root/state/reviews.tsv"
-                [[ "$integration_case" != review-unavailable && "$integration_case" != approved-review-unavailable ]]
+                [[ "$integration_case" != review-unavailable && "$integration_case" != approved-review-unavailable \
+                    && "$integration_case" != subset-review-unavailable ]]
             }
             _alert_fail_closed_streak() { return 0; }
             _announce_recovery() { return 0; }
@@ -711,6 +860,12 @@ RETAIN
                     authorization-revoked-before-commit:STAGED|authorization-revoked-before-push:COMMITTED)
                         printf 'revoked\n' > "$AUTHORIZATION_FILE" || return 1
                         ;;
+                    subset-grant-replaced-before-push:COMMITTED)
+                        cat "$case_root/state/replacement-authorization" > "$AUTHORIZATION_FILE" || return 1
+                        ;;
+                    subset-mode-changed-before-push:COMMITTED)
+                        chmod 400 "$AUTHORIZATION_FILE" || return 1
+                        ;;
                     evidence-changed-before-push:COMMITTED|evidence-changed-after-push:ATOMIC_PUBLISHED)
                         [[ -n "$DOWNLOAD_EVIDENCE_ROOT" && -f "$DOWNLOAD_EVIDENCE_ROOT/omp/body" ]] \
                             || fail 'missing retained body at the publication boundary'
@@ -719,6 +874,17 @@ RETAIN
                     *) return 0 ;;
                 esac
                 printf '%s\t%s\n' "$integration_case" "$STATE" > "$case_root/state/boundary-mutation"
+            }
+            integration_state_advancer="$(declare -f advance_state)"
+            integration_state_advancer="${integration_state_advancer/#advance_state /fixture_advance_state }"
+            [[ "$integration_state_advancer" == 'fixture_advance_state ()'* ]] \
+                || fail 'could not capture the actual state transition helper'
+            advance_state() {
+                fixture_advance_state "$@" || return 1
+                if [[ "$integration_case:$STATE" == subset-grant-replaced-before-consumption:REMOTE_VERIFIED ]]; then
+                    cat "$case_root/state/replacement-authorization" > "$AUTHORIZATION_FILE" || return 1
+                    printf '%s\t%s\n' "$integration_case" "$STATE" > "$case_root/state/boundary-mutation"
+                fi
             }
             write_fixture_download_evidence() {
                 local temp_root="$1" root="" name="" url="" expected="" actual="" dir="" header_hash=""
@@ -732,6 +898,9 @@ RETAIN
                             "$integration_match_hash") printf '#!/bin/sh\n# monitor match fixture\n' ;;
                             "$br_actual") printf '#!/bin/sh\n# monitor trusted fixture\n' ;;
                             "$omp_actual") printf '#!/bin/sh\n# monitor external fixture\n' ;;
+                            "$atuin_actual") printf '#!/bin/sh\n# monitor Atuin fixture\n' ;;
+                            "$grok_actual") printf '#!/bin/sh\n# monitor Grok fixture\n' ;;
+                            "$uv_actual") printf '#!/bin/sh\n# monitor uv fixture\n' ;;
                             *) exit 1 ;;
                         esac > "$dir/body" || exit 1
                         cp "$dir/body" "$dir/body.wire"
@@ -786,13 +955,15 @@ RETAIN
             # Run in a fresh strict shell: putting a function/subshell on the
             # left of || would disable errexit inside the tested state machine.
             export case_root integration_root integration_case integration_report integration_match_hash br_actual omp_actual integration_bun_cache
+            export atuin_actual grok_actual uv_actual
             export ACFS_MONITOR_LIBRARY_ONLY=1
             {
                 printf '#!/usr/bin/env bash\nset -euo pipefail\nsource %q\n' "$integration_monitor"
                 printf 'BUN_BIN=%q\n' "$integration_bun"
                 printf '%s\n' "$integration_remote_reader"
+                printf '%s\n' "$integration_state_advancer"
                 declare -f fail record_external_review _alert_fail_closed_streak _announce_recovery \
-                    read_remote_heads write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
+                    read_remote_heads advance_state write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
                 printf 'checksum_monitor_main\n'
             } > "$case_root/state/runner.sh"
             monitor_exit=0
@@ -806,6 +977,78 @@ RETAIN
             fi
             [[ "$(wc -l < "$case_root/state/network-calls")" -eq 1 ]] || fail "$integration_case did not observe exactly once"
             case "$integration_case" in
+                subset-approved|subset-stale|subset-malformed|subset-grant-replaced-before-consumption)
+                    local_head="$(git -C "$case_root/repo" rev-parse HEAD)"
+                    printf 'Subset evidence: case=%s exit=%s base=%s remote-main=%s remote-mirror=%s local=%s\n' \
+                        "$integration_case" "$monitor_exit" "$integration_base" "$remote_main" "$remote_master" "$local_head"
+                    [[ "$remote_main" != "$integration_base" && "$local_head" == "$remote_main" ]] \
+                        || fail "$integration_case did not publish its valid candidate"
+                    git --git-dir="$case_root/remote.git" show "$remote_main:checksums.yaml" > "$case_root/state/published.yaml"
+                    declare -A subset_urls=() subset_hashes=()
+                    acfs_load_checksums_strict "$case_root/state/published.yaml" subset_urls subset_hashes
+                    for integration_tool in "${!integration_hashes[@]}"; do
+                        expected_pin="${integration_hashes[$integration_tool]}"
+                        if [[ "$integration_tool" == br ]]; then expected_pin="$br_actual"; fi
+                        if [[ "$integration_case" != subset-stale && "$integration_case" != subset-malformed ]]; then
+                            case "$integration_tool" in
+                                atuin) expected_pin="$atuin_actual" ;;
+                                omp) expected_pin="$omp_actual" ;;
+                                uv) expected_pin="$uv_actual" ;;
+                            esac
+                        fi
+                        [[ "${subset_hashes[$integration_tool]}" == "$expected_pin" ]] \
+                            || fail "$integration_case changed an unselected pin or missed a selected pin: $integration_tool"
+                    done
+                    if [[ "$integration_case" == subset-grant-replaced-before-consumption ]]; then
+                        [[ "$monitor_exit" -ne 0 \
+                            && "$(cat "$case_root/state/boundary-mutation")" == "$integration_case"$'\tREMOTE_VERIFIED' ]] \
+                            || fail 'replacement grant was not rejected at the receipt boundary'
+                        cmp -s "$AUTHORIZATION_FILE" "$case_root/state/replacement-authorization" \
+                            || fail 'replacement subset grant was overwritten or consumed'
+                        ! grep -qE 'state=(HEALTHY|DEFERRED)' "$case_root/state/full-run.log" \
+                            || fail 'replacement at the receipt boundary was falsely accepted'
+                    else
+                        [[ "$monitor_exit" -eq 0 ]] || fail "$integration_case failed"
+                        grep -q 'result=deferred state=DEFERRED' "$case_root/state/full-run.log" \
+                            || fail 'unselected external mismatches were falsely reported healthy'
+                        if [[ "$integration_case" == subset-approved ]]; then
+                            [[ "$(cat "$AUTHORIZATION_FILE")" == "used-subset:$integration_digest:atuin,omp,uv:$remote_main" ]] \
+                                || fail 'subset receipt did not bind the exact selected set and accepted commit'
+                            grep -q 'deferred=grok' "$case_root/state/full-run.log" || fail 'Grok did not remain deferred'
+                            grep -qF "$integration_digest"$'\tauthorized' "$case_root/state/reviews.tsv" \
+                                || fail 'selected subset authorization was not recorded'
+                        else
+                            cmp -s "$AUTHORIZATION_FILE" "$case_root/state/initial-authorization" \
+                                || fail 'invalid subset record was reinterpreted or consumed'
+                        fi
+                    fi
+                    [[ -z "$(git -C "$case_root/repo" status --porcelain --untracked-files=all)" ]] \
+                        || fail "$integration_case left a dirty publication clone"
+                    ;;
+                subset-review-unavailable|subset-push-rejected|subset-grant-replaced-before-push|subset-mode-changed-before-push)
+                    local_head="$(git -C "$case_root/repo" rev-parse HEAD)"
+                    printf 'Subset evidence: case=%s exit=%s base=%s remote-main=%s remote-mirror=%s local=%s\n' \
+                        "$integration_case" "$monitor_exit" "$integration_base" "$remote_main" "$remote_master" "$local_head"
+                    [[ "$monitor_exit" -ne 0 && "$remote_main" == "$integration_base" ]] \
+                        || fail "$integration_case published an unaccepted subset"
+                    if [[ "$integration_case" == subset-grant-replaced-before-push ]]; then
+                        cmp -s "$AUTHORIZATION_FILE" "$case_root/state/replacement-authorization" \
+                            || fail 'different valid subset grant was overwritten or consumed'
+                    else
+                        cmp -s "$AUTHORIZATION_FILE" "$case_root/state/initial-authorization" \
+                            || fail "$integration_case consumed an unaccepted subset grant"
+                    fi
+                    if [[ "$integration_case" == subset-mode-changed-before-push ]]; then
+                        [[ "$(stat -c '%a' "$AUTHORIZATION_FILE")" == 400 ]] || fail 'replacement authorization mode was overwritten'
+                    fi
+                    if [[ "$integration_case" == subset-grant-replaced-before-push || "$integration_case" == subset-mode-changed-before-push ]]; then
+                        [[ "$local_head" != "$integration_base" \
+                            && "$(cat "$case_root/state/boundary-mutation")" == "$integration_case"$'\tCOMMITTED' ]] \
+                            || fail 'subset replacement did not follow the real local commit'
+                        grep -qF 'selected external subset authorization changed before acceptance' "$case_root/state/full-run.log" \
+                            || fail 'pre-push guard did not reject the changed subset grant'
+                    fi
+                    ;;
                 evidence-changed-after-push)
                     local_head="$(git -C "$case_root/repo" rev-parse HEAD)"
                     printf 'Boundary evidence: case=%s exit=%s base=%s remote-main=%s remote-mirror=%s local=%s\n' \
@@ -1025,6 +1268,54 @@ printf 'PASS: checksum monitor accepts newer same-major Bun and deduplicates fai
         AUTHORIZATION_FILE="$STATE_DIR/authorization-symlink"
         ! authorization_is_valid "$first_digest" || fail 'authorization symlink accepted'
     ) || fail 'symlink authorization check failed'
+
+    # The offline helper's selected digest is intentionally independent of
+    # unrelated observations, but its response must still bind this run's
+    # exact policy and report snapshots before it grants any authority.
+    unit_subset_proposal="$STATE_DIR/unit-subset-proposal.json"
+    bash "$REPO_ROOT/scripts/lib/security.sh" --review-checksum-subset checksums.yaml "$report" omp --retain-temp-files \
+        > "$unit_subset_proposal" || fail 'real offline subset proposal failed'
+    unit_subset_record="$(jq -er '.authorization_line' "$unit_subset_proposal")"
+    printf '%s\n' "$unit_subset_record" > "$AUTHORIZATION_FILE"
+    chmod 600 "$AUTHORIZATION_FILE"
+    cp "$AUTHORIZATION_FILE" "$STATE_DIR/unit-subset-original-authorization"
+    authorization_mode=none
+    authorization_consumed=false
+    SELECTED_EXTERNAL_CHANGED=()
+    select_external_subset_authorization "$report" || fail 'valid exact helper proposal was rejected'
+    [[ "$authorization_mode" == subset && "${SELECTED_EXTERNAL_CHANGED[*]}" == omp \
+        && "$selected_authorization_record" == "$unit_subset_record" && "$selected_authorization_file_mode" == 600 \
+        && "$authorization_consumed" == false ]] || fail 'valid helper selection did not retain exact record and mode'
+    for proposal_fault in checksums_yaml_sha256 verification_report_sha256 authorization_digest selected schema scope authorization_line; do
+        bad_proposal="$STATE_DIR/proposal-bad-$proposal_fault.json"
+        case "$proposal_fault" in
+            selected) jq '.selected = ["atuin"]' "$unit_subset_proposal" > "$bad_proposal" ;;
+            schema) jq '.schema = "unbound-review"' "$unit_subset_proposal" > "$bad_proposal" ;;
+            scope) jq '.scope = "aggregate"' "$unit_subset_proposal" > "$bad_proposal" ;;
+            authorization_line) jq '.authorization_line += ",uv"' "$unit_subset_proposal" > "$bad_proposal" ;;
+            *) jq --arg field "$proposal_fault" '.[$field] = ("0" * 64)' "$unit_subset_proposal" > "$bad_proposal" ;;
+        esac
+        (
+            authorization_mode=none
+            authorization_digest=""
+            selected_authorization_record=""
+            selected_authorization_file_mode=""
+            authorized_external_changed=""
+            SELECTED_EXTERNAL_CHANGED=()
+            run_clean_bounded() {
+                shift
+                [[ "${1:-}" == bash && "${2:-}" == scripts/lib/security.sh && "${3:-}" == --review-checksum-subset ]] \
+                    || fail 'unexpected command in subset proposal fault fixture'
+                cat "$bad_proposal"
+            }
+            ! select_external_subset_authorization "$report" || fail "unbound helper proposal was accepted: $proposal_fault"
+            [[ "$authorization_mode" == none && ${#SELECTED_EXTERNAL_CHANGED[@]} == 0 \
+                && -z "$selected_authorization_record" ]] || fail "$proposal_fault left selected external authority"
+            cmp -s "$AUTHORIZATION_FILE" "$STATE_DIR/unit-subset-original-authorization" \
+                || fail "$proposal_fault modified the human record"
+        ) || fail 'subset helper response binding failed'
+    done
+    printf 'PASS: subset proposal binds exact policy/report snapshots, selected set, digest, scope and record\n'
     require_clean_tree || fail 'selection tests mutated the repository'
     printf 'PASS: bound offline candidates, independent external approval, pending review and authority guards\n'
     if [[ -n "${ACFS_MONITOR_TEST_INCUMBENT:-}" ]]; then

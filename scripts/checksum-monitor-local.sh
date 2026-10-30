@@ -459,9 +459,8 @@ restrict_checksum_candidate() {
     ' "$current" "$raw"
 }
 
-authorization_is_valid() {
-    local digest="$1" owner="" links="" mode="" size="" mode_value=""
-    local -a lines=()
+authorization_file_is_private() {
+    local limit="$1" owner="" links="" mode="" size="" mode_value=""
     [[ -f "$AUTHORIZATION_FILE" && ! -L "$AUTHORIZATION_FILE" ]] || return 1
     owner="$(stat -c '%u' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
     links="$(stat -c '%h' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
@@ -469,11 +468,75 @@ authorization_is_valid() {
     size="$(stat -c '%s' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
     [[ "$owner" == "$(id -u)" && "$links" == "1" ]] || return 1
     [[ "$mode" =~ ^[0-7]{3,4}$ && "$size" =~ ^[0-9]+$ ]] || return 1
-    (( size > 0 && size <= 256 )) || return 1
+    (( size > 0 && size <= limit )) || return 1
     mode_value=$((8#$mode))
     (( (mode_value & 077) == 0 )) || return 1
+}
+
+authorization_is_valid() {
+    local digest="$1"
+    local -a lines=()
+    # Preserve the legacy aggregate record and its original size/line rules.
+    authorization_file_is_private 256 || return 1
     mapfile -t lines < "$AUTHORIZATION_FILE" || return 1
     [[ ${#lines[@]} -eq 1 && "${lines[0]}" == "authorize:$digest" ]]
+}
+
+read_subset_authorization_record() {
+    local record="" names="" sorted_names="" record_digest="" file_digest=""
+    authorization_file_is_private 4096 || return 1
+    # read requires the terminating LF; the byte hash also rejects NUL bytes
+    # discarded by Bash, additional records, CRLF, and trailing data.
+    IFS= read -r record < "$AUTHORIZATION_FILE" || return 1
+    [[ "$record" =~ ^authorize-subset:([0-9a-f]{64}):([a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*)$ ]] || return 1
+    names="${record##*:}"
+    sorted_names="$(jq -nr --arg names "$names" '$names | split(",") | sort | unique | join(",")')" || return 1
+    [[ "$names" == "$sorted_names" ]] || return 1
+    record_digest="$(printf '%s\n' "$record" | sha256sum | awk '{print $1}')" || return 1
+    file_digest="$(sha256_file "$AUTHORIZATION_FILE")" || return 1
+    [[ "$record_digest" == "$file_digest" ]] || return 1
+    printf '%s\n' "$record"
+}
+
+subset_authorization_is_valid() {
+    local expected_record="$1" expected_mode="$2" record="" mode=""
+    record="$(read_subset_authorization_record)" || return 1
+    mode="$(stat -c '%a' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
+    [[ "$record" == "$expected_record" && "$mode" == "$expected_mode" ]]
+}
+
+# The security library owns complete report validation and the v2 digest.
+# This selects no authority unless its exact offline proposal matches the
+# private human record. Never prune stale names or reinterpret a subset as
+# an aggregate grant. No production authorization file is created here.
+select_external_subset_authorization() {
+    local report="$1" record="" mode="" names="" proposal="" proposed_record="" digest="" requested_json=""
+    local -a requested=()
+    record="$(read_subset_authorization_record)" || return 1
+    mode="$(stat -c '%a' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
+    names="${record##*:}"
+    IFS=, read -r -a requested <<< "$names"
+    digest="${record#authorize-subset:}"
+    digest="${digest%%:*}"
+    requested_json="$(printf '%s\n' "${requested[@]}" | jq -R . | jq -s .)" || return 1
+    proposal="$(run_clean_bounded 30 bash scripts/lib/security.sh \
+        --review-checksum-subset checksums.yaml "$report" "${requested[@]}" 2>>"$LOG_FILE")" || return 1
+    proposed_record="$(printf '%s\n' "$proposal" | jq -er \
+        --arg policy "$CURRENT_CHECKSUMS_SHA256" --arg report "$VERIFICATION_REPORT_SHA256" \
+        --arg digest "$digest" --argjson requested "$requested_json" '
+        select(.schema == "acfs.external-checksum-review.v1" and .scope == "subset" and
+               .checksums_yaml_sha256 == $policy and .verification_report_sha256 == $report and
+               .authorization_digest == $digest and .selected == $requested) |
+        .authorization_line | select(type == "string")
+    ')" || return 1
+    [[ "$record" == "$proposed_record" ]] || return 1
+    subset_authorization_is_valid "$record" "$mode" || return 1
+    authorization_mode="subset"
+    selected_authorization_record="$record"
+    selected_authorization_file_mode="$mode"
+    authorization_digest="$digest"
+    SELECTED_EXTERNAL_CHANGED=("${requested[@]}")
+    authorized_external_changed="$names"
 }
 
 require_selected_external_authorization() {
@@ -481,14 +544,27 @@ require_selected_external_authorization() {
         require_download_evidence_current
     fi
     if [[ "$authorization_consumed" == "true" ]]; then
-        authorization_is_valid "$authorization_digest" \
-            || fail_closed "selected external authorization changed before acceptance"
+        case "${authorization_mode:-aggregate}" in
+            aggregate)
+                authorization_is_valid "$authorization_digest" \
+                    || fail_closed "selected external authorization changed before acceptance"
+                ;;
+            subset)
+                subset_authorization_is_valid "$selected_authorization_record" "$selected_authorization_file_mode" \
+                    || fail_closed "selected external subset authorization changed before acceptance"
+                ;;
+            *) fail_closed "unknown selected external authorization mode" ;;
+        esac
     fi
 }
 
 record_external_review() {
     local report="$1" digest="$2" authorization_status="$3"
     local body_file="" existing="" external_names_json="[]" external_evidence="" repo_slug=""
+    local review_scope="aggregate" issue_candidates=""
+    if [[ "${authorization_mode:-aggregate}" == subset ]]; then
+        review_scope="subset"
+    fi
     repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     body_file="$(mktemp "$STATE_DIR/external-review-$RUN_TS.XXXXXX.md")" || return 1
     external_names_json="$(printf '%s\n' "${EXTERNAL_CHANGED[@]}" | jq -R . | jq -s .)" \
@@ -502,23 +578,57 @@ record_external_review() {
         printf 'This monitor observed installer bytes outside the exact trusted owner boundary.\n\n'
         printf -- '- Authorization digest: `%s`\n' "$digest"
         printf -- '- Authorization status: `%s`\n' "$authorization_status"
+        printf -- '- Authorization scope: `%s`\n' "$review_scope"
         printf -- '- Pinned base: `%s`\n' "$BASE_HEAD"
         printf -- '- Verification report SHA256: `%s`\n' "$VERIFICATION_REPORT_SHA256"
         printf -- '- Download evidence index SHA256: `%s`\n\n' "$DOWNLOAD_EVIDENCE_INDEX_SHA256"
+        if [[ "${authorization_mode:-aggregate}" == subset ]]; then
+            printf -- '- Authorized external tools: `%s`\n' "$authorized_external_changed"
+            printf -- '- Deferred external tools: `%s`\n' "${deferred_changed:-none}"
+            printf -- '- Aggregate observation digest (separate review): `%s`\n\n' "$aggregate_authorization_digest"
+        fi
         printf 'Exact first-observation bodies, raw responses and redirect headers are retained privately on the monitor host.\n\n'
         printf '### First-observation evidence\n\n'
         printf '%s\n' "$external_evidence"
         printf '\n### Human authorization\n\n'
         printf 'After reviewing the upstream bytes, place exactly this line in `%s` as an owner-only, non-symlink file:\n\n' "$(public_text "$AUTHORIZATION_FILE")"
-        printf '```text\nauthorize:%s\n```\n' "$digest"
+        if [[ "${authorization_mode:-aggregate}" == subset ]]; then
+            printf 'This record authorizes only the selected external tools listed above. Deferred tools remain pinned.\n\n'
+            printf '```text\n%s\n```\n' "$selected_authorization_record"
+        else
+            printf '```text\nauthorize:%s\n```\n' "$digest"
+        fi
     } > "$body_file" || return 1
 
-    # One issue per digest, open or closed; identical pending evidence is
-    # already recorded, so only an authorized use warrants another comment.
-    existing="$(run_bounded 45 gh issue list --repo "$repo_slug" --state all \
+    # Search only discovers candidates. Incidental digest references in a
+    # different review scope cannot identify the approval being recorded.
+    issue_candidates="$(run_bounded 45 gh issue list --repo "$repo_slug" --state all \
         --label security --label checksum-update \
-        --search "$digest" --json number -q '.[0].number' \
-        2>>"$LOG_FILE" || true)"
+        --search "$digest" --json number,body \
+        2>>"$LOG_FILE")" || return 1
+    existing="$(printf '%s\n' "$issue_candidates" | jq -ers \
+        --arg digest "$digest" --arg scope "$review_scope" '
+        if length != 1 or (.[0] | type) != "array" then
+            error("expected one issue array")
+        else
+            .[0]
+        end
+        | [
+            .[]
+            | select((.number | type) == "number" and (.body | type) == "string")
+            | select(.number > 0 and .number == (.number | floor))
+            | (.body | split("\n")) as $lines
+            | ($lines | map(select(startswith("- Authorization digest:")))) as $digests
+            | ($lines | map(select(startswith("- Authorization scope:")))) as $scopes
+            | select($digests == ["- Authorization digest: `\($digest)`"])
+            | select($scopes == ["- Authorization scope: `\($scope)`"]
+                     or ($scope == "aggregate" and $scopes == []))
+            | .number
+          ]
+        | .[0] // ""
+    ')" || return 1
+    # Identical pending evidence is already recorded. Only an authorized use
+    # warrants another comment on the matching review.
     if [[ -n "$existing" && "$existing" != "null" ]]; then
         if [[ "$authorization_status" != "authorized" ]]; then
             log "external authorization still pending on #$existing"
@@ -544,8 +654,10 @@ record_external_review() {
 prepare_checksum_candidate() {
     local report="$1" mismatch_rows="" name="" url=""
     local -a deferred_names=()
+    local -A selected_names=()
     TRUSTED_CHANGED=()
     EXTERNAL_CHANGED=()
+    SELECTED_EXTERNAL_CHANGED=()
     mismatch_rows="$(jq -r '.mismatches[] | [.name, .url] | @tsv' "$report")" \
         || fail_closed "could not classify validated checksum mismatches"
     while IFS=$'\t' read -r name url; do
@@ -566,6 +678,11 @@ prepare_checksum_candidate() {
     deferred_changed=""
     external_deferred=false
     authorization_digest=""
+    aggregate_authorization_digest=""
+    authorization_mode="none"
+    selected_authorization_record=""
+    selected_authorization_file_mode=""
+    authorized_external_changed=""
     authorization_status="not-required"
     authorization_consumed=false
     [[ "$(sha256_file "$report")" == "$VERIFICATION_REPORT_SHA256" ]] \
@@ -575,10 +692,30 @@ prepare_checksum_candidate() {
             || fail_closed "could not hash external-change authorization evidence"
         [[ "$authorization_digest" =~ ^[0-9a-f]{64}$ ]] \
             || fail_closed "could not derive external-change authorization digest"
+        aggregate_authorization_digest="$authorization_digest"
         if authorization_is_valid "$authorization_digest"; then
+            authorization_mode="aggregate"
             authorization_status="authorized"
             applicable_changed="$changed_tools"
             authorization_consumed=true
+            authorized_external_changed="$external_changed"
+            SELECTED_EXTERNAL_CHANGED=("${EXTERNAL_CHANGED[@]}")
+        elif select_external_subset_authorization "$report"; then
+            authorization_status="authorized"
+            authorization_consumed=true
+            for name in "${SELECTED_EXTERNAL_CHANGED[@]}"; do
+                selected_names["$name"]=1
+                applicable_changed+="${applicable_changed:+,}$name"
+            done
+            for name in "${EXTERNAL_CHANGED[@]}"; do
+                if [[ -z "${selected_names[$name]+present}" ]]; then
+                    deferred_names+=("$name")
+                fi
+            done
+            if (( ${#deferred_names[@]} > 0 )); then
+                external_deferred=true
+                deferred_changed="$(IFS=,; printf '%s' "${deferred_names[*]}")"
+            fi
         else
             authorization_status="required"
             external_deferred=true
@@ -1223,6 +1360,7 @@ if [[ "$publication_required" == "true" ]]; then
         -m "Trusted: ${trusted_changed:-none}" \
         -m "External: ${external_changed:-none}" \
         -m "Deferred (awaiting authorization): ${deferred_changed:-none}" \
+        -m "Authorization scope: ${authorization_mode}; selected external: ${authorized_external_changed:-none}" \
         -m "Authorization: ${authorization_digest:-not-required} (${authorization_status})" \
         || fail_closed "closed checksum publication commit failed"
     PUBLISH_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -1299,9 +1437,15 @@ advance_state ATOMIC_PUBLISHED REMOTE_VERIFIED
 
 if [[ "$authorization_consumed" == "true" ]]; then
     require_selected_external_authorization
-    printf 'used:%s:%s\n' "$authorization_digest" "$PUBLISH_HEAD" \
-        > "$AUTHORIZATION_FILE" \
-        || fail_closed "remote publication succeeded but authorization consumption could not be recorded"
+    if [[ "$authorization_mode" == subset ]]; then
+        printf 'used-subset:%s:%s:%s\n' "$authorization_digest" "$authorized_external_changed" "$PUBLISH_HEAD" \
+            > "$AUTHORIZATION_FILE" \
+            || fail_closed "remote publication succeeded but subset authorization consumption could not be recorded"
+    else
+        printf 'used:%s:%s\n' "$authorization_digest" "$PUBLISH_HEAD" \
+            > "$AUTHORIZATION_FILE" \
+            || fail_closed "remote publication succeeded but authorization consumption could not be recorded"
+    fi
 fi
 
 # Only an accepted remote state can clear monitoring failure history.

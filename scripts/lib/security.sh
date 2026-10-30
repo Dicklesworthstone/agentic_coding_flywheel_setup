@@ -2214,6 +2214,7 @@ acfs_load_checksums_strict() {
     local current_tool=""
     local previous_tool=""
     local url=""
+    local url_path=""
     local checksum=""
     local tool=""
     local expected_count=0
@@ -2324,6 +2325,32 @@ acfs_load_checksums_strict() {
                     || [[ "$url" == *\"* ]] \
                     || [[ "$url" == *\\* ]]; then
                     acfs_strict_checksums_error "$file" "$line_number" "installer URLs must be unambiguous HTTPS scalars"
+                    return 1
+                fi
+                # Curl normalizes raw dot segments before fetching. A literal
+                # trusted-owner prefix must never classify a different path.
+                # Fragments and queries are not path components; exclude them
+                # before removing the HTTPS authority, in that order.
+                url_path="${url%%#*}"
+                url_path="${url_path%%\?*}"
+                url_path="${url_path#https://}"
+                if [[ "$url_path" == */* ]]; then
+                    url_path="/${url_path#*/}"
+                else
+                    url_path=""
+                fi
+                case "$url_path/" in
+                    */./*|*/../*)
+                        acfs_strict_checksums_error "$file" "$line_number" "installer URL paths must not contain dot segments"
+                        return 1
+                        ;;
+                esac
+                # Trusted-owner paths use a literal canonical spelling. This
+                # deliberately excludes percent escapes without asserting how
+                # every upstream server interprets encoded path components.
+                if [[ "$url" == https://raw.githubusercontent.com/Dicklesworthstone/* \
+                    && "$url_path" == *%* ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "trusted-owner installer URL paths must not contain percent escapes"
                     return 1
                 fi
                 _acfs_strict_staged_urls["$current_tool"]="$url"
@@ -3780,6 +3807,107 @@ acfs_build_checksum_candidate() (
     acfs_security_cat_file "$validated"
 )
 
+# Describe an explicit subset of external first observations for human review.
+# This is an offline, read-only operation: it neither grants authorization nor
+# changes pins. The v2 digest binds only the selected exact tuples, while the
+# review also records the complete policy/report bindings used to validate them.
+acfs_review_checksum_subset() (
+    local current_file="${1:-}" report_file="${2:-}"
+    local review_current_snapshot="" review_current_fd="" review_current_digest=""
+    local review_report_snapshot="" review_report_fd="" review_report_digest=""
+    local jq_bin="" tool="" selected_json="" selected_csv=""
+    local authorization_input="" authorization_digest="" authorization_line="" review_json=""
+    local -A review_urls=() review_checksums=() review_matches=()
+    local -A review_mismatch_expected=() review_mismatch_actual=() review_errors=() review_skipped=()
+    local -A selected_tools=()
+
+    if (( $# < 3 )); then
+        log_error "Checksum subset review requires policy, report, and at least one external mismatch"
+        return 1
+    fi
+    shift 2
+    trap 'acfs_security_release_bound_snapshot "$review_report_snapshot" "$review_report_fd";
+          acfs_security_release_bound_snapshot "$review_current_snapshot" "$review_current_fd"' EXIT
+    if [[ -e "$current_file" && -e "$report_file" && "$current_file" -ef "$report_file" ]]; then
+        log_error "Current policy and report must be distinct files"
+        return 1
+    fi
+    acfs_security_open_bound_snapshot "$current_file" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-review-current.XXXXXX" "current checksums policy" \
+        review_current_snapshot review_current_fd review_current_digest || return 1
+    acfs_security_open_bound_snapshot "$report_file" "$ACFS_CHECKSUM_REPORT_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-review-report.XXXXXX" "checksum verification report" \
+        review_report_snapshot review_report_fd review_report_digest || return 1
+    acfs_load_checksums_strict "$review_current_snapshot" review_urls review_checksums || return 1
+    acfs_validate_installer_checksum_report "$review_report_snapshot" review_urls review_checksums "$review_current_digest" \
+        review_matches review_mismatch_expected review_mismatch_actual review_errors review_skipped || return 1
+    if (( ${#review_errors[@]} > 0 || ${#review_skipped[@]} > 0 )); then
+        log_error "Checksum subset cannot be reviewed from errors or skipped installers"
+        return 1
+    fi
+    for tool in "${!review_mismatch_actual[@]}"; do
+        if [[ "${review_mismatch_actual[$tool]}" == "${review_mismatch_expected[$tool]}" ]]; then
+            log_error "Checksum report labels a matching observation as a mismatch: $tool"
+            return 1
+        fi
+    done
+    for tool in "$@"; do
+        if [[ ! "$tool" =~ ^[a-z][a-z0-9_]*$ ]] || [[ -n "${selected_tools[$tool]+present}" ]]; then
+            log_error "Checksum subset contains an invalid or duplicate name: $tool"
+            return 1
+        fi
+        if [[ -z "${review_mismatch_actual[$tool]+present}" ]]; then
+            log_error "Checksum subset must select an observed mismatch: $tool"
+            return 1
+        fi
+        case "${review_urls[$tool]}" in
+            https://raw.githubusercontent.com/Dicklesworthstone/*)
+                log_error "Checksum subset may select only external-owner installers: $tool"
+                return 1
+                ;;
+        esac
+        selected_tools["$tool"]=1
+    done
+
+    jq_bin="$(acfs_security_required_binary_path jq)" || return $?
+    selected_json="$(printf '%s\n' "$@" | "$jq_bin" -Rsc 'split("\n")[:-1] | sort')" || return 1
+    authorization_input="$("$jq_bin" -cS --argjson selected "$selected_json" '
+        {schema:"acfs.external-checksum-authorization.v2", scope:"subset",
+         observations:(.mismatches
+           | map(select(.name as $name | $selected | index($name)) | {actual,expected,name,url})
+           | sort_by(.name))}
+    ' "$review_report_snapshot")" || return 1
+    authorization_digest="$(printf '%s\n' "$authorization_input" | calculate_sha256)" || return 1
+    [[ "$authorization_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    selected_csv="$(printf '%s\n' "$selected_json" | "$jq_bin" -r 'join(",")')" || return 1
+    authorization_line="authorize-subset:$authorization_digest:$selected_csv"
+    # Names and the digest are ASCII; include the terminating LF in the same
+    # byte limit enforced on the monitor's owner-only authorization file.
+    if (( ${#authorization_line} + 1 > 4096 )); then
+        log_error "Checksum subset authorization line exceeds the 4096-byte limit"
+        return 1
+    fi
+    review_json="$("$jq_bin" -cS --argjson selected "$selected_json" \
+        --argjson authorization "$authorization_input" --arg digest "$authorization_digest" \
+        --arg authorization_line "$authorization_line" \
+        --arg policy "$review_current_digest" --arg report "$review_report_digest" '
+        {schema:"acfs.external-checksum-review.v1", scope:"subset", selected:$selected,
+         deferred_external:(.mismatches
+           | map(select(.url | startswith("https://raw.githubusercontent.com/Dicklesworthstone/") | not)
+                 | select(.name as $name | $selected | index($name) | not) | .name) | sort),
+         observations:$authorization.observations, authorization_digest:$digest,
+         authorization_line:$authorization_line,
+         checksums_yaml_sha256:$policy, verification_report_sha256:$report}
+    ' "$review_report_snapshot")" || return 1
+
+    # Nothing reaches stdout before both original handles pass the final fence.
+    acfs_security_bound_snapshot_is_current "$current_file" "$review_current_fd" "$review_current_digest" \
+        "$ACFS_CHECKSUMS_YAML_MAX_BYTES" "current checksums policy" || return 1
+    acfs_security_bound_snapshot_is_current "$report_file" "$review_report_fd" "$review_report_digest" \
+        "$ACFS_CHECKSUM_REPORT_MAX_BYTES" "checksum verification report" || return 1
+    printf '%s\n' "$review_json"
+)
+
 # ============================================================
 # CLI Interface
 # ============================================================
@@ -3800,6 +3928,9 @@ Commands:
                                                (deferred mismatches must keep their current pin)
   --build-checksum-candidate CURRENT REPORT [DEFERRED_TOOL...]
                                                Build candidate from bound observations, offline
+  --review-checksum-subset CURRENT REPORT TOOL...
+                                               Review selected external mismatches, offline
+                                               (emits review data; does not authorize or write pins)
   --checksum URL                               Calculate SHA256 of a URL
   --help                                       Show this help
 
@@ -3807,7 +3938,7 @@ Options:
   --json               Output in JSON format (use with --verify)
   --retain-temp-files  Retain metadata downloads, headers and snapshots for this
                        invocation; one bounded fetch attempt per installer.
-                       Supported with checksum/update/verify/candidate commands.
+                       Supported with checksum/update/verify/candidate/review commands.
                        JSON verification additionally retains private per-tool
                        body/raw/header evidence under TMPDIR/acfs-observations.*.
 
@@ -3819,6 +3950,7 @@ Examples:
   ./security.sh --verify
   ./security.sh --verify --json
   ./security.sh --validate-checksum-candidate checksums.yaml /tmp/candidate.yaml /tmp/verification.json > /tmp/validated.yaml
+  ./security.sh --review-checksum-subset checksums.yaml /tmp/verification.json atuin uv
   ./security.sh --checksum https://bun.sh/install
   ./security.sh --update-checksums --retain-temp-files > /tmp/acfs-checksums.retained.candidate.yaml
 EOF
@@ -3845,7 +3977,7 @@ main() {
 
     if [[ "$ACFS_SECURITY_RETAIN_TEMP_FILES" == "true" ]]; then
         case "${1:-}" in
-            --update-checksums|--verify|--validate-checksum-candidate|--build-checksum-candidate|--checksum) ;;
+            --update-checksums|--verify|--validate-checksum-candidate|--build-checksum-candidate|--review-checksum-subset|--checksum) ;;
             *)
                 echo "--retain-temp-files requires a checksum metadata command" >&2
                 return 1
@@ -3902,6 +4034,14 @@ main() {
             fi
             shift
             acfs_build_checksum_candidate "$@"
+            ;;
+        --review-checksum-subset)
+            if [[ "$#" -lt 4 ]]; then
+                echo "Usage: security.sh --review-checksum-subset CURRENT REPORT TOOL..." >&2
+                return 1
+            fi
+            shift
+            acfs_review_checksum_subset "$@"
             ;;
         --checksum)
             if [[ "$#" -ne 2 || -z "${2:-}" ]]; then

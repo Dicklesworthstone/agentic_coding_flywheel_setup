@@ -425,6 +425,117 @@ test_strict_checksums_parser_rejects_byte_boundary_smuggling() {
     fi
 }
 
+test_strict_checksums_parser_rejects_ambiguous_url_paths() {
+    local name="strict checksum parser rejects dot segments and escaped trusted-owner paths transactionally"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local -A boundary_urls=([trusted]="https://trusted.example/install.sh")
+    local -A boundary_checksums=([trusted]="$STRICT_HASH_D")
+    local policy="$TEST_TMP_DIR/strict-url-boundary.yaml" url="" passed=true
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    for url in \
+        'https://raw.githubusercontent.com/Dicklesworthstone/../outside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/../../outside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/./repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/.' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/..' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/../?version=1' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/..#install' \
+        'https://example.com/../install.sh' \
+        'https://example.com/./install.sh' \
+        'https://example.com/.' \
+        'https://example.com/..?version=1' \
+        'https://example.com/path//../install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/%2e%2e/outside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/%2E%2E/outside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/%2e%2e%2foutside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/main/install%2esh'; do
+        write_strict_policy_fixture "$policy" "$STRICT_HASH_A" "$STRICT_HASH_B" "$url"
+        if acfs_load_checksums_strict "$policy" boundary_urls boundary_checksums 2>/dev/null; then
+            passed=false
+        fi
+        [[ "${#boundary_urls[@]}" -eq 1 && "${#boundary_checksums[@]}" -eq 1 \
+            && "${boundary_urls[trusted]:-}" == "https://trusted.example/install.sh" \
+            && "${boundary_checksums[trusted]:-}" == "$STRICT_HASH_D" ]] || passed=false
+    done
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_strict_checksums_parser_preserves_unambiguous_url_paths() {
+    local name="strict checksum parser preserves filenames, external escapes, and query or fragment text"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local -A boundary_urls=() boundary_checksums=()
+    local policy="$TEST_TMP_DIR/strict-url-compatible.yaml" url="" passed=true
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    for url in \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/main/.github/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/release.v1/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/main/install..sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/main/install.sh?path=/../&escaped=%2e%2e' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/main/install.sh#/%2e%2e/../?ignored' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/main/install.sh?path=/./#/%2f/..' \
+        'https://example.com/%2e%2e/install.sh' \
+        'https://example.com/release%20name/install.sh' \
+        'https://example.com?path=/../&escaped=%2f' \
+        'https://example.com#/%2e%2e/../?ignored' \
+        'https://raw.githubusercontent.com/Dicklesworthstone-other/%2e%2e/install.sh'; do
+        write_strict_policy_fixture "$policy" "$STRICT_HASH_A" "$STRICT_HASH_B" "$url"
+        if ! acfs_load_checksums_strict "$policy" boundary_urls boundary_checksums 2>/dev/null \
+            || [[ "${boundary_urls[beta]:-}" != "$url" || "${boundary_checksums[beta]:-}" != "$STRICT_HASH_B" ]]; then
+            passed=false
+        fi
+    done
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_candidate_rejects_ambiguous_owner_urls_in_complete_reports() {
+    local name="complete bound policy/report validation rejects trusted-owner path escapes before candidate output"
+    local current="$TEST_TMP_DIR/owner-current.yaml" candidate="$TEST_TMP_DIR/owner-candidate.yaml"
+    local report="$TEST_TMP_DIR/owner-report.json" output="$TEST_TMP_DIR/owner-output.yaml"
+    local canonical='https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh'
+    local url="" passed=true
+    for url in "$canonical" \
+        'https://raw.githubusercontent.com/Dicklesworthstone/../outside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/repo/../../outside_owner/repo/main/install.sh' \
+        'https://raw.githubusercontent.com/Dicklesworthstone/%2e%2e/outside_owner/repo/main/install.sh'; do
+        python3 - "$PROJECT_ROOT/checksums.yaml" "$current" "$candidate" "$report" "$url" <<'PY'
+import hashlib, json, pathlib, re, sys
+original, current, candidate, report, url = sys.argv[1:]
+policy = pathlib.Path(original).read_text()
+policy, count = re.subn(r'(^  ntm:\n    url: ")[^"\n]+("$)',
+                        lambda match: match[1] + url + match[2], policy, flags=re.M)
+assert count == 1
+entries = re.findall(r'^  ([a-z][a-z0-9_]*):\n    url: "([^"\n]+)"\n    sha256: "([0-9a-f]{64})"$', policy, re.M)
+assert entries and any(name == 'ntm' for name, _, _ in entries)
+proof = dict(schema='acfs.installer-checksum-verification.v1', schemaVersion=1,
+             timestamp='2026-10-30T12:00:00Z', checksumsYamlSha256=hashlib.sha256(policy.encode()).hexdigest(),
+             total=len(entries), matches=[], mismatches=[], errors=[], skipped=[])
+for name, entry_url, expected in entries:
+    if name == 'ntm':
+        actual = 'a' * 64 if expected != 'a' * 64 else 'b' * 64
+        proof['mismatches'].append(dict(name=name, url=entry_url, expected=expected, actual=actual))
+        observed_policy = policy.replace(f'    url: "{entry_url}"\n    sha256: "{expected}"',
+                                         f'    url: "{entry_url}"\n    sha256: "{actual}"', 1)
+    else:
+        proof['matches'].append(dict(name=name, url=entry_url, checksum=expected))
+pathlib.Path(current).write_text(policy)
+pathlib.Path(candidate).write_text(observed_policy)
+pathlib.Path(report).write_text(json.dumps(proof, separators=(',', ':')) + '\n')
+PY
+        if [[ "$url" == "$canonical" ]]; then
+            acfs_validate_checksum_candidate "$current" "$candidate" "$report" > "$output" 2> "$output.stderr" \
+                && cmp -s "$candidate" "$output" || passed=false
+        else
+            if acfs_validate_checksum_candidate "$current" "$candidate" "$report" > "$output" 2> "$output.stderr"; then
+                passed=false
+            fi
+            [[ ! -s "$output" ]] || passed=false
+        fi
+    done
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
 test_versioned_checksum_report_binds_urls_hashes_and_exit_status() {
     local name="versioned checksum report binds URLs/hashes and returns nonzero on mismatch"
     local -A urls=(
@@ -649,6 +760,270 @@ EOF
     else
         test_fail "$name" "Duplicate-key or stale-digest evidence was accepted"
     fi
+}
+
+write_subset_review_fixture() {
+    local current="$1" report="$2"
+    local beta_url="${3:-https://example.com/beta.sh}" beta_expected="${4:-$STRICT_HASH_B}"
+    local beta_actual="${5:-$STRICT_HASH_C}" alpha_actual="${6:-$STRICT_HASH_D}"
+    local gamma_expected="${7:-$STRICT_HASH_C}" alpha_name="${8:-alpha}" policy_digest=""
+    cat > "$current" <<EOF
+# checksums.yaml - Auto-generated 2026-10-30T12:00:00Z
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  $alpha_name:
+    url: "https://example.com/alpha.sh"
+    sha256: "$STRICT_HASH_A"
+
+  beta:
+    url: "$beta_url"
+    sha256: "$beta_expected"
+
+  gamma:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/project/main/install.sh"
+    sha256: "$gamma_expected"
+
+  omega:
+    url: "https://example.com/omega.sh"
+    sha256: "$STRICT_HASH_D"
+EOF
+    policy_digest="$(calculate_file_sha256 "$current")"
+    cat > "$report" <<EOF
+{"schema":"acfs.installer-checksum-verification.v1","schemaVersion":1,"timestamp":"2026-10-30T12:00:00Z","checksumsYamlSha256":"$policy_digest","total":4,"matches":[{"name":"omega","url":"https://example.com/omega.sh","checksum":"$STRICT_HASH_D"}],"mismatches":[{"name":"$alpha_name","url":"https://example.com/alpha.sh","expected":"$STRICT_HASH_A","actual":"$alpha_actual"},{"name":"beta","url":"$beta_url","expected":"$beta_expected","actual":"$beta_actual"},{"name":"gamma","url":"https://raw.githubusercontent.com/Dicklesworthstone/project/main/install.sh","expected":"$gamma_expected","actual":"$STRICT_HASH_D"}],"errors":[],"skipped":[]}
+EOF
+}
+
+subset_review_expect_rejection() {
+    local output="$1"
+    shift
+    if acfs_review_checksum_subset "$@" > "$output" 2> "$output.stderr"; then
+        return 1
+    fi
+    [[ ! -s "$output" ]]
+}
+
+test_checksum_subset_review_is_exact_offline_and_canonical() {
+    local name="subset review emits exact sorted external observations without granting or fetching"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/subset-current.yaml" report="$TEST_TMP_DIR/subset-report.json"
+    local network_marker="$TEST_TMP_DIR/subset-network-called" policy_digest="" report_digest=""
+    local review="" ordered="" single="" passed=false
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta gamma omega)
+    write_subset_review_fixture "$current" "$report"
+    policy_digest="$(calculate_file_sha256 "$current")"
+    report_digest="$(calculate_file_sha256 "$report")"
+    fetch_checksum() { printf 'unexpected fetch\n' > "$network_marker"; return 99; }
+    if review="$(acfs_review_checksum_subset "$current" "$report" beta alpha 2>/dev/null)" \
+        && ordered="$(acfs_review_checksum_subset "$current" "$report" alpha beta 2>/dev/null)" \
+        && single="$(acfs_review_checksum_subset "$current" "$report" beta 2>/dev/null)" \
+        && [[ "$review" == "$ordered" && "$review" != *$'\n'* && ! -e "$network_marker" ]] \
+        && [[ "$(calculate_file_sha256 "$current")" == "$policy_digest" ]] \
+        && [[ "$(calculate_file_sha256 "$report")" == "$report_digest" ]] \
+        && printf '%s\n' "$review" | jq -e --arg policy "$policy_digest" --arg report "$report_digest" '
+          keys == ["authorization_digest","authorization_line","checksums_yaml_sha256","deferred_external","observations","schema","scope","selected","verification_report_sha256"]
+          and .schema == "acfs.external-checksum-review.v1" and .scope == "subset"
+          and .selected == ["alpha","beta"] and .deferred_external == []
+          and (.observations | map(.name)) == ["alpha","beta"]
+          and all(.observations[]; keys == ["actual","expected","name","url"])
+          and .authorization_digest == "1595a4dc417ed33288a749a2ee73e7c70520de8555fd36dc2bea83a2a47156e5"
+          and .authorization_line == "authorize-subset:1595a4dc417ed33288a749a2ee73e7c70520de8555fd36dc2bea83a2a47156e5:alpha,beta"
+          and .checksums_yaml_sha256 == $policy and .verification_report_sha256 == $report
+        ' >/dev/null \
+        && printf '%s\n' "$single" | jq -e '
+          .selected == ["beta"] and .deferred_external == ["alpha"]
+          and (.observations | map(.name)) == ["beta"]
+          and .authorization_digest == "2b1464041bdd938a8567d7a16a405c5ffb3eac45d3ed8e2f3bd4e30a2cc33277"
+        ' >/dev/null; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_subset_review_rejects_invalid_selection_and_evidence() {
+    local name="subset review rejects invalid selections and incomplete or contradictory reports without stdout"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/subset-invalid-current.yaml" report="$TEST_TMP_DIR/subset-invalid-report.json"
+    local variant="$TEST_TMP_DIR/subset-invalid-variant.json" output="$TEST_TMP_DIR/subset-invalid-output"
+    local selection="" filter="" passed=true
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta gamma omega)
+    write_subset_review_fixture "$current" "$report"
+    subset_review_expect_rejection "$output" "$current" "$report" || passed=false
+    subset_review_expect_rejection "$output" "$current" "$report" beta beta || passed=false
+    for selection in omega gamma unknown 'be ta' '../beta' '' 'Beta' 'beta,alpha'; do
+        # Ambient repository settings cannot change the literal trusted owner.
+        ACFS_REPO_OWNER=example subset_review_expect_rejection "$output" "$current" "$report" "$selection" || passed=false
+    done
+    for filter in \
+        '.mismatches |= map(if .name == "beta" then .actual = .expected else . end)' \
+        '.mismatches |= map(if .name == "alpha" then .actual = .expected else . end)' \
+        '.mismatches |= map(select(.name != "alpha")) | .errors = [{name:"alpha",url:"https://example.com/alpha.sh",error:"unavailable"}]' \
+        '.mismatches |= map(select(.name != "alpha")) | .skipped = [{name:"alpha",url:"https://example.com/alpha.sh",reason:"deferred fetch"}]' \
+        '.mismatches |= map(select(.name != "alpha")) | .total = 3' \
+        '.checksumsYamlSha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"' \
+        '.mismatches |= map(if .name == "beta" then .url = "https://other.example/install.sh" else . end)'; do
+        jq -c "$filter" "$report" > "$variant"
+        subset_review_expect_rejection "$output" "$current" "$variant" beta || passed=false
+    done
+    printf '{"schema":"concealed",%s\n' "$(tail -c +2 "$report")" > "$variant"
+    subset_review_expect_rejection "$output" "$current" "$variant" beta || passed=false
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_subset_review_rejects_file_aliases_and_unsafe_paths() {
+    local name="subset review refuses policy/report aliases, symlinks and non-regular inputs"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/subset-path-current.yaml" report="$TEST_TMP_DIR/subset-path-report.json"
+    local output="$TEST_TMP_DIR/subset-path-output" passed=true
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta gamma omega)
+    write_subset_review_fixture "$current" "$report"
+    ln "$current" "$current.alias"
+    ln -s "$current" "$current.link"
+    ln -s "$report" "$report.link"
+    mkfifo "$report.fifo"
+    subset_review_expect_rejection "$output" "$current" "$current" beta || passed=false
+    subset_review_expect_rejection "$output" "$current" "$current.alias" beta || passed=false
+    grep -q 'distinct files' "$output.stderr" || passed=false
+    subset_review_expect_rejection "$output" "$current.link" "$report" beta || passed=false
+    subset_review_expect_rejection "$output" "$current" "$report.link" beta || passed=false
+    subset_review_expect_rejection "$output" "$current" "$report.fifo" beta || passed=false
+    subset_review_expect_rejection "$output" "$TEST_TMP_DIR" "$report" beta || passed=false
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_subset_review_digest_binds_selected_tuples_only() {
+    local name="subset digest changes with selected tuples but survives unrelated trusted and deferred changes"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/subset-scope-current.yaml" report="$TEST_TMP_DIR/subset-scope-report.json"
+    local review="" digest="" variant="" passed=true
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta gamma omega)
+    write_subset_review_fixture "$current" "$report"
+    review="$(acfs_review_checksum_subset "$current" "$report" beta)" || passed=false
+    digest="$(printf '%s\n' "$review" | jq -r '.authorization_digest')"
+    # The deferred external actual hash changes, while the selected tuple stays.
+    write_subset_review_fixture "$current" "$report" '' '' '' "$STRICT_HASH_C"
+    variant="$(acfs_review_checksum_subset "$current" "$report" beta)" || passed=false
+    [[ "$(printf '%s\n' "$variant" | jq -r '.authorization_digest')" == "$digest" ]] || passed=false
+    [[ "$(printf '%s\n' "$variant" | jq -r '.verification_report_sha256')" != "$(printf '%s\n' "$review" | jq -r '.verification_report_sha256')" ]] || passed=false
+    # Changing the trusted owner's pin changes the bound full policy, not v2.
+    write_subset_review_fixture "$current" "$report" '' '' '' '' "$STRICT_HASH_B"
+    variant="$(acfs_review_checksum_subset "$current" "$report" beta)" || passed=false
+    [[ "$(printf '%s\n' "$variant" | jq -r '.authorization_digest')" == "$digest" ]] || passed=false
+    [[ "$(printf '%s\n' "$variant" | jq -r '.checksums_yaml_sha256')" != "$(printf '%s\n' "$review" | jq -r '.checksums_yaml_sha256')" ]] || passed=false
+    for variant in url expected actual; do
+        case "$variant" in
+            url) write_subset_review_fixture "$current" "$report" 'https://other.example/beta.sh' ;;
+            expected) write_subset_review_fixture "$current" "$report" '' "$STRICT_HASH_A" ;;
+            actual) write_subset_review_fixture "$current" "$report" '' '' "$STRICT_HASH_D" ;;
+        esac
+        review="$(acfs_review_checksum_subset "$current" "$report" beta)" || passed=false
+        [[ "$(printf '%s\n' "$review" | jq -r '.authorization_digest')" != "$digest" ]] || passed=false
+    done
+    write_subset_review_fixture "$current" "$report"
+    review="$(acfs_review_checksum_subset "$current" "$report" alpha)" || passed=false
+    [[ "$(printf '%s\n' "$review" | jq -r '.authorization_digest')" != "$digest" ]] || passed=false
+    # A similar-looking owner is external; only the exact literal is trusted.
+    write_subset_review_fixture "$current" "$report" 'https://raw.githubusercontent.com/Dicklesworthstone-other/project/main/install.sh'
+    acfs_review_checksum_subset "$current" "$report" beta >/dev/null || passed=false
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_subset_review_rechecks_original_handles() {
+    local name="subset review emits nothing when a source changes after digest calculation"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/subset-race-current.yaml" report="$TEST_TMP_DIR/subset-race-report.json"
+    local output="$TEST_TMP_DIR/subset-race-output" race_target="" scenario="" passed=true
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta gamma omega)
+    for scenario in policy-bytes report-bytes report-identity hash-failure; do
+        write_subset_review_fixture "$current" "$report"
+        race_target="$report"
+        [[ "$scenario" == policy-bytes ]] && race_target="$current"
+        if (
+            # Mutate at the digest hook, after parsing but before final output.
+            # shellcheck disable=SC2329
+            calculate_sha256() {
+                local result=""
+                result="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')" || return 1
+                case "$scenario" in
+                    policy-bytes|report-bytes) printf '\n' >> "$race_target" ;;
+                    report-identity)
+                        cp "$race_target" "$race_target.replacement"
+                        mv "$race_target" "$race_target.before-replacement"
+                        mv "$race_target.replacement" "$race_target"
+                        ;;
+                    hash-failure) printf '%s\n' "$result"; return 17 ;;
+                esac
+                printf '%s\n' "$result"
+            }
+            acfs_review_checksum_subset "$current" "$report" beta
+        ) > "$output" 2> "$output.stderr"; then
+            passed=false
+        fi
+        [[ ! -s "$output" ]] || passed=false
+    done
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_subset_review_bounds_authorization_line() {
+    local name="subset review accepts 4096-byte authorization records and rejects larger records"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/subset-bound-current.yaml" report="$TEST_TMP_DIR/subset-bound-report.json"
+    local output="$TEST_TMP_DIR/subset-bound-output" prefix="authorize-subset:$STRICT_HASH_A:" long_name="" passed=true
+    printf -v long_name '%*s' "$((4095 - ${#prefix}))" ''
+    long_name="${long_name// /a}"
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("$long_name" beta gamma omega)
+    write_subset_review_fixture "$current" "$report" '' '' '' '' '' "$long_name"
+    if acfs_review_checksum_subset "$current" "$report" "$long_name" > "$output"; then
+        [[ "$(jq -r '.authorization_line' "$output" | wc -c | tr -d '[:space:]')" == 4096 ]] || passed=false
+    else
+        passed=false
+    fi
+    long_name+="a"
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("$long_name" beta gamma omega)
+    write_subset_review_fixture "$current" "$report" '' '' '' '' '' "$long_name"
+    subset_review_expect_rejection "$output" "$current" "$report" "$long_name" || passed=false
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
+}
+
+test_checksum_subset_review_cli() {
+    local name="subset review CLI validates a complete real policy and emits canonical review data"
+    local current="$TEST_TMP_DIR/subset-cli-current.yaml" report="$TEST_TMP_DIR/subset-cli-report.json"
+    local output="$TEST_TMP_DIR/subset-cli-output" passed=true
+    cp "$PROJECT_ROOT/checksums.yaml" "$current"
+    python3 - "$current" "$report" <<'PY'
+import hashlib, json, pathlib, re, sys
+policy = pathlib.Path(sys.argv[1]).read_bytes()
+entries = re.findall(r'^  ([a-z][a-z0-9_]*):\n    url: "([^"\n]+)"\n    sha256: "([0-9a-f]{64})"$', policy.decode(), re.M)
+assert entries
+report = dict(schema='acfs.installer-checksum-verification.v1', schemaVersion=1,
+              timestamp='2026-10-30T12:00:00Z', checksumsYamlSha256=hashlib.sha256(policy).hexdigest(),
+              total=len(entries), matches=[], mismatches=[], errors=[], skipped=[])
+for name, url, expected in entries:
+    if name in ('atuin', 'grok', 'uv', 'br'):
+        actual = 'a' * 64 if expected != 'a' * 64 else 'b' * 64
+        report['mismatches'].append(dict(name=name, url=url, expected=expected, actual=actual))
+    else:
+        report['matches'].append(dict(name=name, url=url, checksum=expected))
+pathlib.Path(sys.argv[2]).write_text(json.dumps(report, separators=(',', ':')) + '\n')
+PY
+    if bash "$SCRIPT_DIR/security.sh" --review-checksum-subset "$current" "$report" uv atuin --retain-temp-files > "$output" \
+        && jq -e '.selected == ["atuin","uv"] and .deferred_external == ["grok"]
+          and (.authorization_line | test("^authorize-subset:[0-9a-f]{64}:atuin,uv$"))' "$output" >/dev/null; then
+        :
+    else
+        passed=false
+    fi
+    if bash "$SCRIPT_DIR/security.sh" --review-checksum-subset "$current" "$report" br --retain-temp-files > "$output" 2> "$output.stderr"; then passed=false; fi
+    [[ ! -s "$output" ]] || passed=false
+    if bash "$SCRIPT_DIR/security.sh" --review-checksum-subset "$current" "$report" --retain-temp-files > "$output" 2> "$output.stderr"; then passed=false; fi
+    [[ ! -s "$output" ]] || passed=false
+    if [[ "$passed" == true ]]; then test_pass "$name"; else test_fail "$name"; fi
 }
 
 # ============================================================
@@ -1049,12 +1424,22 @@ test_strict_checksums_parser_accepts_canonical_closed_world
 test_strict_checksums_parser_rejects_noncanonical_mutations_transactionally
 test_strict_checksums_parser_rejects_incomplete_set_and_extra_syntax
 test_strict_checksums_parser_rejects_byte_boundary_smuggling
+test_strict_checksums_parser_rejects_ambiguous_url_paths
+test_strict_checksums_parser_preserves_unambiguous_url_paths
+test_checksum_candidate_rejects_ambiguous_owner_urls_in_complete_reports
 test_versioned_checksum_report_binds_urls_hashes_and_exit_status
 test_checksum_candidate_validation_is_exact_and_network_free
 test_checksum_candidate_validation_rejects_cross_wired_hashes
 test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence
 test_checksum_candidate_validation_defers_only_observed_mismatches
 test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift
+test_checksum_subset_review_is_exact_offline_and_canonical
+test_checksum_subset_review_rejects_invalid_selection_and_evidence
+test_checksum_subset_review_rejects_file_aliases_and_unsafe_paths
+test_checksum_subset_review_digest_binds_selected_tuples_only
+test_checksum_subset_review_rechecks_original_handles
+test_checksum_subset_review_bounds_authorization_line
+test_checksum_subset_review_cli
 
 if bash "$PROJECT_ROOT/tests/unit/test_security_fd_identity.sh"; then
     test_pass "retained descriptor identity and diagnostic stream regression"

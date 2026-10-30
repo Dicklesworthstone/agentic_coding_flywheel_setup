@@ -3060,9 +3060,53 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 
 1. **Bind a clean base**: Requires a clean `main` checkout matching both remote compatibility refs. Installs manifest dependencies with `--frozen-lockfile --ignore-scripts` and checks generated artifacts with `scripts/check-manifest-drift.sh --json`. Existing drift stops the run and must be repaired separately.
 2. **Observe the complete installer set**: Downloads every required installer and binds its URL and SHA256 to the exact existing `checksums.yaml`. Any fetch error, skipped entry, malformed report, or repository change stops publication.
-3. **Select prior authorization**: For changed URLs outside `https://raw.githubusercontent.com/Dicklesworthstone/`, records review evidence in a GitHub issue. A human must review the upstream bytes and authorize the exact digest printed there. The digest contains only external tool names, URLs, expected pins and observed hashes; unrelated commits and trusted changes do not invalidate it. The authorization file must be owner-only, regular, non-symlink, and contain only `authorize:<digest>`.
-4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Pending external review selects only trusted-owner mismatches and leaves every external pin unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
-5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including when there were no trusted changes to publish, and leaves its review issue open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
+3. **Select prior authorization**: For changed URLs outside the canonical `https://raw.githubusercontent.com/Dicklesworthstone/` owner path, records review evidence in a GitHub issue. A human must review the upstream bytes and authorize either the complete external digest with `authorize:<digest>` or an explicitly reviewed subset using the command below. Digests bind external tool names, URLs, expected pins and observed hashes; unrelated commits and trusted changes do not invalidate them. The authorization file must be owner-only, regular, single-link, and non-symlink. A missing, malformed, stale, or unsafe record grants no external authority.
+4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
+5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
+
+#### Review an external subset
+
+Use the complete saved verification report from the monitor host and its matching
+checksum policy. For example, to prepare review of Atuin, oh-my-pi, and uv while
+leaving other external changes deferred:
+
+```bash
+bash scripts/lib/security.sh --review-checksum-subset \
+  checksums.yaml /path/to/verification-report.json atuin omp uv
+```
+
+This offline command validates the complete policy/report pair and prints a JSON
+review proposal. It does not fetch or execute installers, write authorization,
+or change pins. The proposal identifies selected and deferred external tools,
+exact selected observations, policy/report hashes, and an `authorization_line`:
+
+```text
+authorize-subset:<digest>:atuin,omp,uv
+```
+
+The subset digest uses the separate `acfs.external-checksum-authorization.v2`
+schema and binds the sorted selected observations. It is not the aggregate
+digest printed by an earlier four-tool issue. Selected tools must be distinct
+external mismatches in the complete report; unknown, unchanged, trusted-owner,
+or stale selections fail rather than being silently removed. A later change to
+any selected tuple invalidates the grant. Unselected observations remain outside
+its authority.
+
+A human must first inspect the monitor's retained original bodies and headers,
+compare the expected and observed versions, and establish upstream provenance.
+Reproducible hashes alone do not approve content. Only after that review should
+the human place the proposal's exact line, with one terminating LF and no other
+bytes, in the monitor's private authorization file. Subset records are limited
+to 4,096 bytes and require names in sorted order. The monitor freezes the chosen
+record and its permission mode for the run; replacement, revocation, or mode
+changes stop acceptance. After verified publication it replaces that record
+with `used-subset:<digest>:<sorted-tools>:<commit>`. Legacy aggregate records
+retain their existing format and checks.
+
+The strict policy loader rejects raw `.` and `..` URL path components. Trusted
+raw-owner paths must also use literal, unencoded path spelling, so prefix
+classification cannot grant automatic authority to a path with obscured owner
+boundaries. Query and fragment values do not participate in this path rule.
 
 The drift check combines `bun run generate:diff` with semantic checks across `scripts/generated/doctor_checks.sh`, `apps/web/lib/generated`, `acfs/onboard/lessons`, README snippets, and installer checksum coverage.
 
