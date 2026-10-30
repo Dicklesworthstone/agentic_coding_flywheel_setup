@@ -824,6 +824,7 @@ test_https_download_preserves_executable_bytes() {
 import gzip
 import hashlib
 import http.server
+import json
 import os
 from pathlib import Path
 import ssl
@@ -835,6 +836,7 @@ import threading
 library, bash = sys.argv[1:]
 root = Path(tempfile.mkdtemp(prefix="acfs-https-security-"))
 script = b"#!/bin/bash\nprintf 'verified executable bytes\\n'\n"
+binary_body = b"#!/bin/sh\n# inert binary evidence\x00with trailing newlines\n\n"
 cert, key = root / "cert.pem", root / "key.pem"
 subprocess.run([
     "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
@@ -862,6 +864,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        elif self.path == "/binary.sh":
+            coding = None
+        elif self.path == "/partial.sh":
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(script) + 20))
+            self.end_headers()
+            self.wfile.write(script)
+            self.close_connection = True
+            return
         elif self.path == "/hop.sh":
             # Only the final response describes the saved body.
             self.send_response(302)
@@ -873,7 +884,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_error(404)
             return
-        body = gzip.compress(script, mtime=0) if coding else script
+        body = binary_body if self.path == "/binary.sh" else gzip.compress(script, mtime=0) if coding else script
         self.send_response(200)
         self.send_header("Content-Type", "text/x-sh")
         self.send_header("Content-Length", str(len(body)))
@@ -930,6 +941,47 @@ try:
                     raise AssertionError(f"{mode}{path}: saved bytes are not the identity script")
             elif done.returncode == 0:
                 raise AssertionError(f"{mode}{path}: accepted an undecodable content coding")
+    # The retained JSON verifier must bind the very bytes it observed, with
+    # private raw/decoded/header evidence. These bodies are never interpreted.
+    for path in ("/install.sh", "/stubborn.sh", "/binary.sh", "/partial.sh"):
+        attempt_root = root / ("evidence" + path.replace("/", "-"))
+        attempt_root.mkdir(mode=0o700)
+        observation_env = dict(env, TMPDIR=str(attempt_root))
+        done = subprocess.run([
+            bash, "-c", '''source "$1"
+declare -A fixture_urls=([fixture]="$2") fixture_hashes=([fixture]="$3")
+verify_all_installers_json "$4" fixture_urls fixture_hashes''',
+            "evidence-test", library, base + path, hashlib.sha256(script).hexdigest(), "a" * 64,
+        ], env=observation_env, timeout=60, capture_output=True)
+        report = json.loads(done.stdout)
+        roots = list(attempt_root.glob("acfs-observations.*"))
+        if len(roots) != 1:
+            raise AssertionError(f"{path}: missing unique observation root")
+        observation = roots[0] / "fixture"
+        metadata = json.loads((observation / "metadata.json").read_bytes())
+        expected_body = binary_body if path == "/binary.sh" else script
+        if (observation / "body").read_bytes() != expected_body:
+            raise AssertionError(f"{path}: first observation body changed")
+        expected_wire = gzip.compress(script, mtime=0) if path == "/stubborn.sh" else expected_body
+        if (observation / "body.wire").read_bytes() != expected_wire:
+            raise AssertionError(f"{path}: raw response was replaced by decoded bytes")
+        for field, filename in (("bodySha256", "body"), ("wireSha256", "body.wire"), ("headersSha256", "body.headers")):
+            if metadata[field] != hashlib.sha256((observation / filename).read_bytes()).hexdigest():
+                raise AssertionError(f"{path}: {field} does not bind retained bytes")
+        for directory in (roots[0], observation):
+            if directory.stat().st_mode & 0o777 != 0o700:
+                raise AssertionError(f"{path}: evidence directory is not private")
+        for item in observation.iterdir():
+            if item.stat().st_mode & 0o777 != 0o600:
+                raise AssertionError(f"{path}: evidence file is not private: {item.name}")
+        if path == "/partial.sh":
+            if done.returncode == 0 or len(report["errors"]) != 1 or metadata["status"] != "error":
+                raise AssertionError("partial response incorrectly became an observed checksum")
+        else:
+            decisive = report["matches"] + report["mismatches"]
+            observed = decisive[0].get("actual", decisive[0].get("checksum"))
+            if metadata["actual"] != observed or metadata["status"] != "observed":
+                raise AssertionError(f"{path}: evidence does not bind the report")
     print(f"Verified {len(actual)} executable bytes over TLS; evidence retained at {root}")
 finally:
     server.shutdown()

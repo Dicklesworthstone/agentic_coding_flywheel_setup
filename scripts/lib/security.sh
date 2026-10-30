@@ -404,18 +404,32 @@ acfs_download_to_file() {
     # GitHub retry helper (which has its own cleanup). A failed single attempt
     # stays failed, and both response headers and any partial body survive.
     if [[ "${ACFS_SECURITY_RETAIN_TEMP_FILES:-false}" == "true" ]]; then
-        local retained_headers
-        retained_headers="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-hdr.XXXXXX")" || return 1
+        local retained_headers="${output_path}.headers" retained_raw="${output_path}.wire" retained_status=0 retained_cat_bin=""
+        # Sidecars share the random body's private parent and fixed suffixes:
+        # reviewers can recover the exact response for a hashed body without
+        # trusting a pathname embedded in remote data. Never overwrite evidence.
+        ( umask 077; set -o noclobber; : > "$retained_headers" ) || return 1
+        if [[ ! -e "$output_path" ]]; then
+            ( umask 077; set -o noclobber; : > "$output_path" ) || return 1
+        fi
         printf 'Retaining download headers: %s\n' "$retained_headers" >&2
         if acfs_curl -A "$ACFS_HTTP_USER_AGENT" \
             --proto '=https' --proto-redir '=https' \
             --connect-timeout 15 --max-time 45 --max-filesize 1048576 \
             "$url" -o "$output_path" -D "$retained_headers"; then
-            acfs_decode_content_encoding "$retained_headers" "$output_path" "$name"
-            return $?
+            retained_status=0
         else
-            return $?
+            retained_status=$?
         fi
+        # Content-Encoding decoding replaces output_path. Keep curl's response
+        # entity too, including partial bodies on failed transfers. Curl has
+        # already removed HTTP transfer framing; .wire retains content coding.
+        retained_cat_bin="$(acfs_security_required_binary_path cat)" || return 1
+        ( umask 077; set -o noclobber; "$retained_cat_bin" "$output_path" > "$retained_raw" ) || return 1
+        printf 'Retaining raw response: %s\n' "$retained_raw" >&2
+        (( retained_status == 0 )) || return "$retained_status"
+        acfs_decode_content_encoding "$retained_headers" "$output_path" "$name"
+        return $?
     fi
 
     # Use GitHub-specific backoff only for an exact approved GitHub origin.
@@ -1651,6 +1665,7 @@ _acfs_offline_pack_verify_artifact_snapshot() {
 # Fetch content and calculate checksum (using temp file)
 fetch_checksum() {
     local url="$1"
+    local evidence_dir="${2:-}"
 
     if ! enforce_https "$url"; then
         return 1
@@ -1658,10 +1673,17 @@ fetch_checksum() {
 
     # Create safe temp file
     local tmp_file
-    tmp_file="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-fetch.XXXXXX")" || {
-        log_error "Failed to create temp file"
-        return 1
-    }
+    if [[ -n "$evidence_dir" ]]; then
+        [[ "${ACFS_SECURITY_RETAIN_TEMP_FILES:-false}" == "true" \
+            && -d "$evidence_dir" && ! -L "$evidence_dir" ]] || return 1
+        tmp_file="$evidence_dir/body"
+        ( umask 077; set -o noclobber; : > "$tmp_file" ) || return 1
+    else
+        tmp_file="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-fetch.XXXXXX")" || {
+            log_error "Failed to create temp file"
+            return 1
+        }
+    fi
 
     local status=0
     local file_sha256=""
@@ -3148,12 +3170,22 @@ verify_all_installers_json() {
     local -a installer_names=()
     local total=0
     local name=""
+    local evidence_root="" mkdir_bin=""
 
     [[ "$checksums_digest" =~ ^[0-9a-f]{64}$ ]] || {
         log_error "Cannot emit checksum evidence without a bound checksums.yaml digest"
         return 1
     }
     timestamp="$(acfs_security_date -u +"%Y-%m-%dT%H:%M:%SZ")" || return 1
+
+    # Keep first observations, not a later re-fetch. This is a private sidecar
+    # to the existing strict report, so neither its schema nor the external
+    # authorization tuple changes. The monitor supplies a fresh private TMPDIR.
+    if [[ "${ACFS_SECURITY_RETAIN_TEMP_FILES:-false}" == "true" ]]; then
+        evidence_root="$(acfs_security_mktemp -d "${TMPDIR:-/tmp}/acfs-observations.XXXXXX")" || return 1
+        mkdir_bin="$(acfs_security_required_binary_path mkdir)" || return 1
+        printf 'Retaining checksum observation evidence: %s\n' "$evidence_root" >&2
+    fi
 
     _json_escape() {
         local s="$1"
@@ -3178,6 +3210,7 @@ verify_all_installers_json() {
         local actual=""
         local fetch_error=""
         local tmp_err=""
+        local evidence_dir="" body_digest="" wire_digest="" headers_digest="" observation_status="error"
         total=$((total + 1))
 
         if [[ -z "$url" || -z "$expected" ]]; then
@@ -3185,9 +3218,17 @@ verify_all_installers_json() {
             continue
         fi
 
-        tmp_err="$(acfs_security_mktemp 2>/dev/null || true)"
+        if [[ -n "$evidence_root" ]]; then
+            # Strict policy names are path components, never paths.
+            [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]] || return 1
+            evidence_dir="$evidence_root/$name"
+            "$mkdir_bin" -m 700 -- "$evidence_dir" || return 1
+            tmp_err="$(acfs_security_mktemp "$evidence_dir/fetch-stderr.XXXXXX")" || return 1
+        else
+            tmp_err="$(acfs_security_mktemp 2>/dev/null || true)"
+        fi
         if [[ -n "$tmp_err" ]]; then
-            if actual="$(fetch_checksum "$url" 2>"$tmp_err")"; then
+            if actual="$(fetch_checksum "$url" "$evidence_dir" 2>"$tmp_err")"; then
                 :
             else
                 fetch_error="$(acfs_security_cat_file "$tmp_err" 2>/dev/null || true)"
@@ -3201,6 +3242,20 @@ verify_all_installers_json() {
         # Bound error evidence so a hostile upstream cannot inflate the JSON
         # artifact without limit through diagnostics.
         fetch_error="${fetch_error:0:2048}"
+        if [[ -n "$evidence_dir" ]]; then
+            body_digest="$(calculate_file_sha256 "$evidence_dir/body" 2>/dev/null || true)"
+            wire_digest="$(calculate_file_sha256 "$evidence_dir/body.wire" 2>/dev/null || true)"
+            headers_digest="$(calculate_file_sha256 "$evidence_dir/body.headers" 2>/dev/null || true)"
+            if [[ -z "$fetch_error" && "$actual" =~ ^[0-9a-f]{64}$ ]]; then
+                observation_status="observed"
+            fi
+            ( umask 077; set -o noclobber
+              printf '{"schema":"acfs.installer-download-evidence.v1","name":"%s","url":"%s","expected":"%s","actual":"%s","status":"%s","bodySha256":"%s","wireSha256":"%s","headersSha256":"%s"}\n' \
+                "$(_json_escape "$name")" "$(_json_escape "$url")" "$expected" \
+                "$(_json_escape "$actual")" "$observation_status" "$body_digest" "$wire_digest" "$headers_digest" \
+                > "$evidence_dir/metadata.json"
+            ) || return 1
+        fi
         if [[ -n "$fetch_error" ]]; then
             errors+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"error\":\"$(_json_escape "$fetch_error")\"}")
         elif [[ ! "$actual" =~ ^[0-9a-f]{64}$ ]]; then
@@ -3753,6 +3808,8 @@ Options:
   --retain-temp-files  Retain metadata downloads, headers and snapshots for this
                        invocation; one bounded fetch attempt per installer.
                        Supported with checksum/update/verify/candidate commands.
+                       JSON verification additionally retains private per-tool
+                       body/raw/header evidence under TMPDIR/acfs-observations.*.
 
 Examples:
   ./security.sh --print

@@ -374,6 +374,96 @@ printf 'Retaining checksum monitor test fixtures: %s\n' "$STATE_TMP" >&2
     [[ "$(grep -c ' gh issue comment 446 ' "$GH_CALLS")" == 1 ]] || fail "authorized use was not recorded on the issue"
 ) || exit 1
 
+# Retained first-observation evidence is independently rehashed before it can
+# support publication. Use inert binary fixtures, never execute their bodies.
+(
+    export ACFS_MONITOR_STATE="$STATE_TMP/download-evidence-state"
+    export ACFS_MONITOR_REPO="$STATE_TMP/does-not-exist"
+    unset ACFS_NTFY_TOPIC
+    ACFS_MONITOR_LIBRARY_ONLY=1
+    # shellcheck source=../checksum-monitor-local.sh
+    source "$MONITOR"
+    CURRENT_CHECKSUMS_SHA256="$(printf 'a%.0s' {1..64})"
+    for evidence_case in valid body wire headers missing symlink hardlink file-mode directory-mode \
+        wrong-name wrong-url extra-field traversal extra-tool late-body late-wire late-headers index-tamper index-mode; do
+        run_dir="$(mktemp -d "$STATE_TMP/evidence-$evidence_case.XXXXXX")"
+        evidence_root="$(mktemp -d "$run_dir/acfs-observations.XXXXXX")"
+        observation="$evidence_root/fixture"
+        mkdir -m 700 "$observation"
+        (
+            umask 077
+            printf '#!/bin/sh\n# inert bytes\000with trailing newlines\n\n' > "$observation/body"
+            cp "$observation/body" "$observation/body.wire"
+            printf 'HTTP/2 200\r\nContent-Type: text/plain\r\nSet-Cookie: private-test-cookie\r\n\r\n' \
+                > "$observation/body.headers"
+            body_hash="$(sha256_file "$observation/body")"
+            header_hash="$(sha256_file "$observation/body.headers")"
+            jq -cn --arg actual "$body_hash" --arg headers "$header_hash" '{
+                schema:"acfs.installer-download-evidence.v1",name:"fixture",url:"https://example.invalid/install.sh",
+                expected:$actual,actual:$actual,status:"observed",bodySha256:$actual,wireSha256:$actual,headersSha256:$headers
+            }' > "$observation/metadata.json"
+            jq -cn --arg actual "$body_hash" '{matches:[{name:"fixture",url:"https://example.invalid/install.sh",checksum:$actual}],mismatches:[]}' \
+                > "$run_dir/report.json"
+        )
+        report="$run_dir/report.json"
+        VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
+        DOWNLOAD_EVIDENCE_INDEX_FILE=""
+        DOWNLOAD_EVIDENCE_INDEX_SHA256=""
+        case "$evidence_case" in
+            body) printf '\nchanged' >> "$observation/body" ;;
+            wire) printf '\nchanged' >> "$observation/body.wire" ;;
+            headers) printf '\r\nchanged' >> "$observation/body.headers" ;;
+            missing) mv "$observation/body" "$observation/body.saved" ;;
+            symlink)
+                mv "$observation/body" "$observation/body.saved"
+                ln -s "$observation/body.saved" "$observation/body"
+                ;;
+            hardlink) ln "$observation/body" "$run_dir/body-link" ;;
+            file-mode) chmod 644 "$observation/body.headers" ;;
+            directory-mode) chmod 755 "$observation" ;;
+            wrong-name|wrong-url|extra-field)
+                case "$evidence_case" in
+                    wrong-name) filter='.name = "someone_else"' ;;
+                    wrong-url) filter='.url = "https://example.invalid/other.sh"' ;;
+                    extra-field) filter='.path = "../../outside"' ;;
+                esac
+                jq -c "$filter" "$observation/metadata.json" > "$run_dir/changed-metadata.json"
+                cat "$run_dir/changed-metadata.json" > "$observation/metadata.json"
+                ;;
+            traversal)
+                jq -c '.matches[0].name = "../../outside"' "$report" > "$run_dir/changed-report.json"
+                report="$run_dir/changed-report.json"
+                VERIFICATION_REPORT_SHA256="$(sha256_file "$report")"
+                ;;
+            extra-tool) mkdir -m 700 "$evidence_root/unreported" ;;
+        esac
+        if [[ "$evidence_case" == valid || "$evidence_case" == index-* || "$evidence_case" == late-* ]]; then
+            validate_download_evidence "$report" "$run_dir" || fail "$evidence_case: valid evidence rejected"
+            original_index="$DOWNLOAD_EVIDENCE_INDEX_SHA256"
+            validate_download_evidence "$report" "$run_dir" "$original_index" || fail 'unchanged evidence recheck failed'
+            if [[ "$evidence_case" == index-tamper ]]; then
+                printf 'changed\n' > "$DOWNLOAD_EVIDENCE_INDEX_FILE"
+            elif [[ "$evidence_case" == index-mode ]]; then
+                chmod 644 "$DOWNLOAD_EVIDENCE_INDEX_FILE"
+            elif [[ "$evidence_case" == late-body ]]; then
+                printf '\nchanged' >> "$observation/body"
+            elif [[ "$evidence_case" == late-wire ]]; then
+                printf '\nchanged' >> "$observation/body.wire"
+            elif [[ "$evidence_case" == late-headers ]]; then
+                printf '\r\nchanged' >> "$observation/body.headers"
+            else
+                continue
+            fi
+            ! validate_download_evidence "$report" "$run_dir" "$original_index" \
+                || fail "$evidence_case: original review index was not bound"
+        else
+            ! validate_download_evidence "$report" "$run_dir" \
+                || fail "$evidence_case: unsafe evidence was accepted"
+        fi
+    done
+    printf 'PASS: private download evidence binds body, raw response, headers, identity and original index\n'
+) || exit 1
+
 # Persisted numeric records must not abort fail_closed or silence delivery.
 # Exercise each scenario independently so the incumbent's arithmetic failure
 # cannot prevent the remaining regressions and positive controls from running.
@@ -485,9 +575,12 @@ done
 # deterministic fixtures, so this does not assert live GitHub acceptance.
 if [[ -n "${ACFS_MONITOR_TEST_ARCHIVE:-}" ]]; then
     [[ -f "$ACFS_MONITOR_TEST_ARCHIVE" ]] || fail 'integration source archive missing'
+    integration_bun="${ACFS_MONITOR_TEST_BUN_BIN:-$(command -v bun || printf '%s' "$HOME/.bun/bin/bun")}"
+    [[ -x "$integration_bun" ]] || fail 'integration Bun unavailable; set ACFS_MONITOR_TEST_BUN_BIN'
     integration_root="$STATE_TMP/integration"
+    integration_bun_cache="${BUN_INSTALL_CACHE_DIR:-$integration_root/home/.bun/install/cache}"
     mkdir -p "$integration_root/seed" "$integration_root/home/.bun/bin"
-    command cp "$HOME/.bun/bin/bun" "$integration_root/home/.bun/bin/bun"
+    command cp "$integration_bun" "$integration_root/home/.bun/bin/bun"
     chmod 755 "$integration_root/home/.bun/bin" "$integration_root/home/.bun/bin/bun"
     tar -xzf "$ACFS_MONITOR_TEST_ARCHIVE" -C "$integration_root/seed"
     cat > "$integration_root/transport.sh" <<'TRANSPORT'
@@ -507,8 +600,17 @@ export -f rm
 RETAIN
     (
         cd "$integration_root/seed" || exit 1
-        "$HOME/.bun/bin/bun" install --cwd packages/manifest --frozen-lockfile --ignore-scripts --silent
-        "$HOME/.bun/bin/bun" run packages/manifest/src/generate.ts > "$integration_root/seed-generation.log"
+        # Actual fixture bytes back every policy pin. Invented digests cannot
+        # qualify the independent first-observation evidence validator.
+        fixture_hash="$(printf '#!/bin/sh\n# monitor match fixture\n' | sha256sum | awk '{print $1}')"
+        awk -v hash="$fixture_hash" '
+            /^    sha256: / { print "    sha256: \"" hash "\""; next }
+            { print }
+        ' checksums.yaml > "$integration_root/fixture-checksums.yaml"
+        command cp "$integration_root/fixture-checksums.yaml" checksums.yaml
+        BUN_INSTALL_CACHE_DIR="$integration_bun_cache" "$integration_bun" install \
+            --cwd packages/manifest --frozen-lockfile --ignore-scripts --silent
+        "$integration_bun" run packages/manifest/src/generate.ts > "$integration_root/seed-generation.log"
         git -c init.templateDir= init -q -b main
         git add -- .
         git -c core.hooksPath=/dev/null -c user.name='Monitor Test' -c user.email='monitor-test@example.invalid' \
@@ -538,8 +640,9 @@ RETAIN
             acfs_load_checksums_strict "$case_root/repo/checksums.yaml" integration_urls integration_hashes
             integration_base="$(git -C "$case_root/repo" rev-parse HEAD)"
             integration_policy_digest="$(sha256_file "$case_root/repo/checksums.yaml")"
-            br_actual="$(printf 'a%.0s' {1..64})"
-            omp_actual="$(printf 'b%.0s' {1..64})"
+            integration_match_hash="$(printf '#!/bin/sh\n# monitor match fixture\n' | sha256sum | awk '{print $1}')"
+            br_actual="$(printf '#!/bin/sh\n# monitor trusted fixture\n' | sha256sum | awk '{print $1}')"
+            omp_actual="$(printf '#!/bin/sh\n# monitor external fixture\n' | sha256sum | awk '{print $1}')"
             for integration_tool in "${!integration_hashes[@]}"; do
                 integration_actual="${integration_hashes[$integration_tool]}"
                 if [[ "$integration_tool" == br && "$integration_case" != external-only ]]; then integration_actual="$br_actual"; fi
@@ -577,12 +680,46 @@ RETAIN
             }
             _alert_fail_closed_streak() { return 0; }
             _announce_recovery() { return 0; }
+            write_fixture_download_evidence() {
+                local temp_root="$1" root="" name="" url="" expected="" actual="" dir="" header_hash=""
+                root="$(mktemp -d "$temp_root/acfs-observations.XXXXXX")" || return 1
+                while IFS=$'\t' read -r name url expected actual; do
+                    dir="$root/$name"
+                    mkdir -m 700 "$dir" || return 1
+                    (
+                        umask 077
+                        case "$actual" in
+                            "$integration_match_hash") printf '#!/bin/sh\n# monitor match fixture\n' ;;
+                            "$br_actual") printf '#!/bin/sh\n# monitor trusted fixture\n' ;;
+                            "$omp_actual") printf '#!/bin/sh\n# monitor external fixture\n' ;;
+                            *) exit 1 ;;
+                        esac > "$dir/body" || exit 1
+                        cp "$dir/body" "$dir/body.wire"
+                        printf 'HTTP/2 200\r\nContent-Type: text/plain\r\n\r\n' > "$dir/body.headers"
+                        header_hash="$(sha256_file "$dir/body.headers")"
+                        jq -cn --arg name "$name" --arg url "$url" --arg expected "$expected" --arg actual "$actual" \
+                            --arg headers "$header_hash" '{schema:"acfs.installer-download-evidence.v1",name:$name,url:$url,
+                            expected:$expected,actual:$actual,status:"observed",bodySha256:$actual,wireSha256:$actual,headersSha256:$headers}' \
+                            > "$dir/metadata.json"
+                    ) || return 1
+                done < <(jq -r '([.matches[] | {name,url,expected:.checksum,actual:.checksum}] + .mismatches)[] |
+                    [.name,.url,.expected,.actual] | @tsv' "$integration_report")
+            }
             run_clean_bounded() {
-                local budget="$1"
+                local budget="$1" observation_tmp=""
                 shift
+                if [[ "${1:-}" == env && "${2:-}" == TMPDIR=* ]]; then
+                    observation_tmp="${2#TMPDIR=}"
+                    shift 2
+                    [[ "${1:-}" == bash && "${2:-}" == scripts/lib/security.sh && "${3:-}" == --verify ]] \
+                        || fail 'unexpected environment-wrapped command in monitor fixture'
+                fi
                 if [[ "${1:-}" == bash && "${2:-}" == scripts/lib/security.sh ]]; then
                     if [[ "${3:-}" == --verify ]]; then
+                        [[ -n "$observation_tmp" && "${!#}" == --retain-temp-files ]] \
+                            || fail 'monitor observation did not request private retained evidence'
                         printf 'observation\n' >> "$case_root/state/network-calls"
+                        write_fixture_download_evidence "$observation_tmp" || fail 'could not create observation fixture'
                         cat "$integration_report"
                         return 1
                     fi
@@ -597,18 +734,22 @@ RETAIN
             run_bun_clean_bounded() {
                 local budget="$1"
                 shift
+                # Reuse the cache populated by the same frozen seed install.
+                # This is fixture dependency preparation, not a substitute for
+                # the real frozen/lifecycle-disabled install below.
                 run_bounded "$budget" env -i HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" \
                     PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" LANG=C LC_ALL=C TZ=UTC CI=1 NO_COLOR=1 \
-                    TMPDIR="$case_root/state/tmp" BASH_ENV="$integration_root/retain.sh" "$BUN_BIN" "$@"
+                    TMPDIR="$case_root/state/tmp" BASH_ENV="$integration_root/retain.sh" \
+                    BUN_INSTALL_CACHE_DIR="$integration_bun_cache" "$BUN_BIN" "$@"
             }
             # Run in a fresh strict shell: putting a function/subshell on the
             # left of || would disable errexit inside the tested state machine.
-            export case_root integration_root integration_case integration_report
+            export case_root integration_root integration_case integration_report integration_match_hash br_actual omp_actual integration_bun_cache
             export ACFS_MONITOR_LIBRARY_ONLY=1
             {
                 printf '#!/usr/bin/env bash\nset -euo pipefail\nsource %q\n' "$MONITOR"
-                declare -f record_external_review _alert_fail_closed_streak _announce_recovery \
-                    run_clean_bounded run_bun_clean_bounded
+                declare -f fail record_external_review _alert_fail_closed_streak _announce_recovery \
+                    write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
                 printf 'checksum_monitor_main\n'
             } > "$case_root/state/runner.sh"
             monitor_exit=0
@@ -616,6 +757,10 @@ RETAIN
             remote_main="$(git --git-dir="$case_root/remote.git" rev-parse main)"
             remote_master="$(git --git-dir="$case_root/remote.git" rev-parse master)"
             [[ "$remote_main" == "$remote_master" ]] || fail "$integration_case published mixed refs"
+            if [[ ! -f "$case_root/state/network-calls" ]]; then
+                tail -15 "$case_root/state/full-run.log" >&2
+                fail "$integration_case stopped before the fixture observation (monitor exit $monitor_exit)"
+            fi
             [[ "$(wc -l < "$case_root/state/network-calls")" -eq 1 ]] || fail "$integration_case did not observe exactly once"
             case "$integration_case" in
                 approved-review-unavailable|push-rejected|fetch-error)

@@ -17,6 +17,10 @@
 # trusted-owner changes still publish. Publication is a closed-path commit
 # pushed to both refs in one atomic transaction and re-read from the remote
 # before health is recorded.
+# Every observation retains its decoded body, original content-coded response
+# entity, headers and digest bindings under an owner-only downloads-* state
+# directory. Evidence is never automatically expired: the monitor owner must
+# provision and archive its state directory as part of host maintenance.
 #
 # Deployment (maintainer host):
 #   git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup ~/acfs-monitor
@@ -68,6 +72,10 @@ MONITOR_RUN_BUDGET_SECONDS=1050
 MONITOR_FAILURE_RESERVE_SECONDS=60
 MONITOR_STARTED_AT_SECONDS=$SECONDS
 STATE="INIT"
+DOWNLOAD_EVIDENCE_RUN_DIR=""
+DOWNLOAD_EVIDENCE_ROOT=""
+DOWNLOAD_EVIDENCE_INDEX_FILE=""
+DOWNLOAD_EVIDENCE_INDEX_SHA256=""
 
 # Exact files the monitor may publish. Directory pathspecs and extension
 # globs are intentionally absent: a newly generated filename must first be
@@ -326,6 +334,93 @@ validate_verification_report() {
         "$file" >/dev/null 2>&1
 }
 
+# Download evidence is kept outside Git, in a fresh owner-only directory.
+# No paths from sidecars are followed: the strict policy name determines each
+# directory, and all filenames below are fixed. Headers may contain cookies
+# or signed redirects, so neither their contents nor bodies go into issues.
+private_download_evidence_path() {
+    local path="$1" kind="$2" limit="${3:-0}" owner="" mode="" links="" size=""
+    [[ ! -L "$path" ]] || return 1
+    owner="$(stat -c '%u' -- "$path" 2>/dev/null)" || return 1
+    mode="$(stat -c '%a' -- "$path" 2>/dev/null)" || return 1
+    [[ "$owner" == "$(id -u)" ]] || return 1
+    if [[ "$kind" == directory ]]; then
+        [[ -d "$path" && "$mode" == 700 ]]
+    else
+        [[ -f "$path" && "$mode" == 600 ]] || return 1
+        links="$(stat -c '%h' -- "$path" 2>/dev/null)" || return 1
+        size="$(stat -c '%s' -- "$path" 2>/dev/null)" || return 1
+        [[ "$links" == 1 && "$size" =~ ^[0-9]+$ ]] || return 1
+        (( size <= limit ))
+    fi
+}
+
+validate_download_evidence() {
+    local report="$1" run_dir="$2" expected_index="${3:-}"
+    local root="" rows="" name="" url="" expected="" actual="" dir="" metadata=""
+    local body_digest="" wire_digest="" headers_digest="" report_digest="" row_file="" index_file="" index_digest=""
+    local -a roots=("$run_dir"/acfs-observations.*) entries=()
+    local -A seen=()
+    if [[ -n "$expected_index" ]]; then
+        private_download_evidence_path "$DOWNLOAD_EVIDENCE_INDEX_FILE" file 1048576 \
+            && [[ "$(sha256_file "$DOWNLOAD_EVIDENCE_INDEX_FILE")" == "$expected_index" ]] || return 1
+    fi
+    private_download_evidence_path "$run_dir" directory || return 1
+    (( ${#roots[@]} == 1 )) || return 1
+    root="${roots[0]}"
+    private_download_evidence_path "$root" directory || return 1
+    rows="$(jq -er '
+      ([.matches[] | {name,url,expected:.checksum,actual:.checksum}] + .mismatches)
+      | sort_by(.name) | .[] | [.name,.url,.expected,.actual] | @tsv
+    ' "$report")" || return 1
+    report_digest="$(sha256_file "$report")" || return 1
+    [[ "$report_digest" == "$VERIFICATION_REPORT_SHA256" ]] || return 1
+    row_file="$(mktemp "$run_dir/evidence-rows.XXXXXX.jsonl")" || return 1
+    while IFS=$'\t' read -r name url expected actual; do
+        [[ "$name" =~ ^[a-z][a-z0-9_]*$ && -z "${seen[$name]+present}" ]] || return 1
+        seen["$name"]=1
+        dir="$root/$name"
+        metadata="$dir/metadata.json"
+        private_download_evidence_path "$dir" directory \
+            && private_download_evidence_path "$metadata" file 16384 \
+            && private_download_evidence_path "$dir/body" file 16777216 \
+            && private_download_evidence_path "$dir/body.wire" file 1048576 \
+            && private_download_evidence_path "$dir/body.headers" file 1048576 || return 1
+        [[ -s "$dir/body.headers" ]] || return 1
+        canonical_compact_json_is_exact "$metadata" || return 1
+        body_digest="$(sha256_file "$dir/body")" || return 1
+        wire_digest="$(sha256_file "$dir/body.wire")" || return 1
+        headers_digest="$(sha256_file "$dir/body.headers")" || return 1
+        jq -e --arg name "$name" --arg url "$url" --arg expected "$expected" --arg actual "$actual" \
+            --arg body "$body_digest" --arg wire "$wire_digest" --arg headers "$headers_digest" '
+          (keys | sort) == (["schema","name","url","expected","actual","status","bodySha256","wireSha256","headersSha256"] | sort) and
+          .schema == "acfs.installer-download-evidence.v1" and .status == "observed" and
+          .name == $name and .url == $url and .expected == $expected and .actual == $actual and
+          .bodySha256 == $actual and .bodySha256 == $body and
+          .wireSha256 == $wire and .headersSha256 == $headers
+        ' "$metadata" >/dev/null 2>&1 || return 1
+        cat -- "$metadata" >> "$row_file" || return 1
+    done <<< "$rows"
+    entries=("$root"/*)
+    (( ${#entries[@]} == ${#seen[@]} )) || return 1
+    index_file="$(mktemp "$run_dir/evidence-index.XXXXXX.json")" || return 1
+    jq -cs --arg report "$report_digest" --arg policy "$CURRENT_CHECKSUMS_SHA256" \
+        '{schema:"acfs.installer-download-evidence-index.v1",verificationReportSha256:$report,checksumsYamlSha256:$policy,observations:.}' \
+        "$row_file" > "$index_file" || return 1
+    index_digest="$(sha256_file "$index_file")" || return 1
+    [[ -z "$expected_index" || "$index_digest" == "$expected_index" ]] || return 1
+    DOWNLOAD_EVIDENCE_ROOT="$root"
+    if [[ -z "$DOWNLOAD_EVIDENCE_INDEX_FILE" ]]; then
+        DOWNLOAD_EVIDENCE_INDEX_FILE="$index_file"
+    fi
+    DOWNLOAD_EVIDENCE_INDEX_SHA256="$index_digest"
+}
+
+require_download_evidence_current() {
+    validate_download_evidence "$verify_json" "$DOWNLOAD_EVIDENCE_RUN_DIR" "$DOWNLOAD_EVIDENCE_INDEX_SHA256" \
+        || fail_closed "first-observation download evidence is missing, unsafe, or changed"
+}
+
 is_trusted_installer_url() {
     case "$1" in
         https://raw.githubusercontent.com/Dicklesworthstone/*) return 0 ;;
@@ -382,6 +477,9 @@ authorization_is_valid() {
 }
 
 require_selected_external_authorization() {
+    if [[ -n "$DOWNLOAD_EVIDENCE_INDEX_SHA256" ]]; then
+        require_download_evidence_current
+    fi
     if [[ "$authorization_consumed" == "true" ]]; then
         authorization_is_valid "$authorization_digest" \
             || fail_closed "selected external authorization changed before acceptance"
@@ -405,7 +503,9 @@ record_external_review() {
         printf -- '- Authorization digest: `%s`\n' "$digest"
         printf -- '- Authorization status: `%s`\n' "$authorization_status"
         printf -- '- Pinned base: `%s`\n' "$BASE_HEAD"
-        printf -- '- Verification report SHA256: `%s`\n\n' "$VERIFICATION_REPORT_SHA256"
+        printf -- '- Verification report SHA256: `%s`\n' "$VERIFICATION_REPORT_SHA256"
+        printf -- '- Download evidence index SHA256: `%s`\n\n' "$DOWNLOAD_EVIDENCE_INDEX_SHA256"
+        printf 'Exact first-observation bodies, raw responses and redirect headers are retained privately on the monitor host.\n\n'
         printf '### First-observation evidence\n\n'
         printf '%s\n' "$external_evidence"
         printf '\n### Human authorization\n\n'
@@ -994,8 +1094,11 @@ CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)" \
     || fail_closed "canonical checksums.yaml is missing, unsafe, or unreadable"
 verify_json="$(mktemp "$STATE_DIR/verify-$RUN_TS.XXXXXX.json")" \
     || fail_closed "could not allocate verification evidence file"
+DOWNLOAD_EVIDENCE_RUN_DIR="$(mktemp -d "$STATE_DIR/downloads-$RUN_TS.XXXXXX")" \
+    || fail_closed "could not allocate private first-observation download evidence"
 set +e
-run_clean_bounded 300 bash scripts/lib/security.sh --verify --json >"$verify_json" 2>>"$LOG_FILE"
+run_clean_bounded 300 env TMPDIR="$DOWNLOAD_EVIDENCE_RUN_DIR" \
+    bash scripts/lib/security.sh --verify --json --retain-temp-files >"$verify_json" 2>>"$LOG_FILE"
 verify_exit=$?
 set -e
 validate_verification_report "$verify_json" "$CURRENT_CHECKSUMS_SHA256" \
@@ -1018,6 +1121,9 @@ fi
 if [[ "$mismatches" -gt 0 && "$verify_exit" -ne 1 ]]; then
     fail_closed "verification reported $mismatches mismatch(es) but exited $verify_exit"
 fi
+validate_download_evidence "$verify_json" "$DOWNLOAD_EVIDENCE_RUN_DIR" \
+    || fail_closed "verification did not retain complete private first-observation evidence"
+log "download evidence: $DOWNLOAD_EVIDENCE_INDEX_FILE (sha256=$DOWNLOAD_EVIDENCE_INDEX_SHA256)"
 [[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]] \
     || fail_closed "checksums.yaml changed during first observation"
 [[ "$(git rev-parse HEAD 2>/dev/null || true)" == "$BASE_HEAD" ]] \
@@ -1108,6 +1214,7 @@ if [[ "$publication_required" == "true" ]]; then
         -m "chore(security): publish validated checksums for ${applicable_changed}" \
         -m "Observed checksums policy: ${CURRENT_CHECKSUMS_SHA256}" \
         -m "Verification evidence: ${VERIFICATION_REPORT_SHA256}" \
+        -m "Download evidence index: ${DOWNLOAD_EVIDENCE_INDEX_SHA256}" \
         -m "Validated candidate: ${CANDIDATE_SHA256}" \
         -m "Changed tools: ${changed_tools}" \
         -m "Trusted: ${trusted_changed:-none}" \
