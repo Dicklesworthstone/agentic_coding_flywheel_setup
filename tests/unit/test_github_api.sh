@@ -587,6 +587,115 @@ test_fetch_with_backoff_ignores_shell_function_curl() {
     [[ "$status" -ne 0 && ! -e "$marker" ]]
 }
 
+test_fetch_with_backoff_content_encoding() {
+    local scenario="$1"
+    local temp_dir status=0 fetch_status=0 expect_failure=false
+    local output_mode=file library_mode=normal decoded_limit=16777216
+    temp_dir=$(mktemp -d)
+
+    # Preserve NUL and trailing newline bytes through both file and stdout APIs.
+    printf 'fixture\000payload\n\n' > "$temp_dir/expected"
+    printf 'keep existing destination\n' > "$temp_dir/sentinel"
+    cp "$temp_dir/sentinel" "$temp_dir/result"
+    printf 'HTTP/2 200\r\nContent-Encoding: gzip\r\n\r\n' > "$temp_dir/headers"
+    gzip -n -c "$temp_dir/expected" > "$temp_dir/body"
+    case "$scenario" in
+        gzip) ;;
+        gzip-stdout) output_mode=stdout ;;
+        x-gzip)
+            printf 'HTTP/2 200\r\nCoNtEnT-EnCoDiNg: X-GZip\r\n\r\n' > "$temp_dir/headers"
+            ;;
+        redirect-identity|standalone-redirect)
+            printf 'HTTP/1.1 302 Found\r\nContent-Encoding: gzip\r\n\r\nHTTP/2 200\r\n\r\n' > "$temp_dir/headers"
+            cp "$temp_dir/expected" "$temp_dir/body"
+            [[ "$scenario" == standalone-redirect ]] && library_mode=standalone
+            ;;
+        redirect-gzip)
+            printf 'HTTP/1.1 302 Found\r\nContent-Encoding: br\r\n\r\nHTTP/2 200\r\nContent-Encoding: gzip\r\n\r\n' > "$temp_dir/headers"
+            ;;
+        invalid-gzip|invalid-gzip-stdout)
+            printf 'not a gzip stream\n' > "$temp_dir/body"
+            expect_failure=true
+            [[ "$scenario" == invalid-gzip-stdout ]] && output_mode=stdout
+            ;;
+        unsupported)
+            printf 'HTTP/2 200\r\nContent-Encoding: br\r\n\r\n' > "$temp_dir/headers"
+            expect_failure=true
+            ;;
+        oversized) decoded_limit=4; expect_failure=true ;;
+        archive)
+            printf 'HTTP/2 200\r\nContent-Type: application/gzip\r\n\r\n' > "$temp_dir/headers"
+            cp "$temp_dir/body" "$temp_dir/expected"
+            ;;
+        standalone-identity)
+            library_mode=standalone
+            printf 'HTTP/2 200\r\nContent-Encoding: identity\r\n\r\n' > "$temp_dir/headers"
+            cp "$temp_dir/expected" "$temp_dir/body"
+            ;;
+        standalone-gzip) library_mode=standalone; expect_failure=true ;;
+        *) return 1 ;;
+    esac
+
+    cat > "$temp_dir/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+headers=""
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -D) headers="$2"; shift 2 ;;
+        -o) output="$2"; shift 2 ;;
+        -w) shift 2 ;;
+        *) shift ;;
+    esac
+done
+cp "$TEST_GITHUB_CURL_DIR/headers" "$headers"
+cp "$TEST_GITHUB_CURL_DIR/body" "$output"
+printf '200'
+EOF
+    chmod +x "$temp_dir/curl"
+
+    TEST_GITHUB_CURL_DIR="$temp_dir" bash -c '
+        set -euo pipefail
+        if [[ "$3" == standalone ]]; then
+            # A caller can provide acfs_curl without shipping security.sh.
+            acfs_curl() { return 0; }
+        fi
+        source "$1"
+        _github_api_curl_binary_path() {
+            printf "%s/curl\n" "$TEST_GITHUB_CURL_DIR"
+        }
+        _github_effective_token() { printf ""; }
+        ACFS_CURL_BASE_ARGS=(--proto "=https" --proto-redir "=https" -sSL)
+        ACFS_DOWNLOAD_MAX_DECODED_BYTES="$4"
+        GITHUB_MAX_RETRIES=1
+        output="$TEST_GITHUB_CURL_DIR/result"
+        [[ "$2" == stdout ]] && output=""
+        github_fetch_with_backoff "https://raw.githubusercontent.com/example/project/main/fixture" "$output" "encoding-test"
+    ' _ "$LIB_DIR/github_api.sh" "$output_mode" "$library_mode" "$decoded_limit" \
+        > "$temp_dir/stdout" 2> "$temp_dir/stderr" || fetch_status=$?
+
+    if [[ "$expect_failure" == true ]]; then
+        [[ "$fetch_status" -ne 0 ]] || status=1
+        cmp -s "$temp_dir/sentinel" "$temp_dir/result" || status=1
+        [[ ! -s "$temp_dir/stdout" ]] || status=1
+    elif [[ "$output_mode" == stdout ]]; then
+        [[ "$fetch_status" -eq 0 ]] || status=1
+        cmp -s "$temp_dir/expected" "$temp_dir/stdout" || status=1
+        cmp -s "$temp_dir/sentinel" "$temp_dir/result" || status=1
+    else
+        [[ "$fetch_status" -eq 0 ]] || status=1
+        cmp -s "$temp_dir/expected" "$temp_dir/result" || status=1
+        [[ ! -s "$temp_dir/stdout" ]] || status=1
+    fi
+
+    if [[ "$status" -ne 0 ]]; then
+        printf 'Scenario %s: fetch status %s; fixture retained at %s\n' "$scenario" "$fetch_status" "$temp_dir" >&2
+        cat "$temp_dir/stderr" >&2
+    fi
+    return "$status"
+}
+
 test_latest_release_returns_nonzero_on_fetch_failure() {
     (
         github_api_fetch() {
@@ -655,6 +764,22 @@ main() {
     run_test "Fetch backoff ignores shell function curl" test_fetch_with_backoff_ignores_shell_function_curl
     run_test "Latest release failure returns non-zero" test_latest_release_returns_nonzero_on_fetch_failure
     run_test "Latest release preserves caller RETURN trap" test_latest_release_preserves_caller_return_trap
+
+    echo ""
+    echo "--- Response Content Encoding (offline fixtures) ---"
+    run_test "Gzip final response decodes before file publication" test_fetch_with_backoff_content_encoding gzip
+    run_test "Gzip final response decodes before stdout publication" test_fetch_with_backoff_content_encoding gzip-stdout
+    run_test "Mixed-case x-gzip coding decodes" test_fetch_with_backoff_content_encoding x-gzip
+    run_test "Intermediate redirect coding is ignored" test_fetch_with_backoff_content_encoding redirect-identity
+    run_test "Final gzip coding wins over redirect coding" test_fetch_with_backoff_content_encoding redirect-gzip
+    run_test "Invalid gzip leaves destination untouched" test_fetch_with_backoff_content_encoding invalid-gzip
+    run_test "Invalid gzip emits no response body" test_fetch_with_backoff_content_encoding invalid-gzip-stdout
+    run_test "Unsupported coding leaves destination untouched" test_fetch_with_backoff_content_encoding unsupported
+    run_test "Oversized decoded body leaves destination untouched" test_fetch_with_backoff_content_encoding oversized
+    run_test "Gzip archive without content coding stays intact" test_fetch_with_backoff_content_encoding archive
+    run_test "Standalone helper still accepts identity responses" test_fetch_with_backoff_content_encoding standalone-identity
+    run_test "Standalone helper ignores intermediate redirect coding" test_fetch_with_backoff_content_encoding standalone-redirect
+    run_test "Standalone helper fails closed without a gzip decoder" test_fetch_with_backoff_content_encoding standalone-gzip
 
     # Skip network tests if SKIP_NETWORK_TESTS is set
     if [[ "${SKIP_NETWORK_TESTS:-}" != "true" ]]; then

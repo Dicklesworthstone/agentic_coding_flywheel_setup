@@ -521,6 +521,37 @@ _github_curl_args_for_status_capture() {
     done
 }
 
+# Validate the final response representation before publishing its private body.
+# Normal ACFS callers use security.sh's bounded decoder. Standalone callers may
+# provide acfs_curl without loading security.sh; retain identity downloads there,
+# but never publish encoded bytes when no decoder is available.
+_github_decode_content_encoding() {
+    local headers_file="$1" body_file="$2" description="$3"
+    if declare -f acfs_decode_content_encoding &>/dev/null; then
+        acfs_decode_content_encoding "$headers_file" "$body_file" "$description"
+        return $?
+    fi
+
+    local awk_bin="" encoding=""
+    awk_bin="$(_github_api_system_binary_path awk)" || return 1
+    encoding="$("$awk_bin" '
+        { line = $0; sub(/\r$/, "", line) }
+        line ~ /^HTTP\// { encoding = "" }
+        tolower(line) ~ /^content-encoding:/ {
+            sub(/^[^:]*:[ \t]*/, "", line)
+            sub(/[ \t]+$/, "", line)
+            encoding = tolower(line)
+        }
+        END { print encoding }
+    ' "$headers_file")" || return 1
+    case "$encoding" in
+        ""|identity) return 0 ;;
+    esac
+    printf 'GitHub fetch failed: Content-Encoding %s requires the bounded security decoder for %s\n' \
+        "$encoding" "$description" >&2
+    return 1
+}
+
 # Fetch URL with exponential backoff for rate limits
 #
 # Arguments:
@@ -615,6 +646,13 @@ github_fetch_with_backoff() {
 
         # Success
         if [[ "$http_code" == "200" ]]; then
+            # Pins and API parsers consume identity bytes, just like the
+            # non-GitHub downloader. Decode only after the final response, while
+            # failures can still leave the caller's file/stdout untouched.
+            if ! _github_decode_content_encoding "$tmp_headers" "$tmp_body" "$description"; then
+                _github_remove_temp_files "$tmp_body" "$tmp_headers"
+                return 2
+            fi
             local status=0
             if [[ -n "$output_file" ]]; then
                 if mv "$tmp_body" "$output_file" 2>/dev/null; then
