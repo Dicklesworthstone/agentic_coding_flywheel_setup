@@ -579,10 +579,13 @@ if [[ -n "${ACFS_MONITOR_TEST_ARCHIVE:-}" ]]; then
     [[ -x "$integration_bun" ]] || fail 'integration Bun unavailable; set ACFS_MONITOR_TEST_BUN_BIN'
     integration_root="$STATE_TMP/integration"
     integration_bun_cache="${BUN_INSTALL_CACHE_DIR:-$integration_root/home/.bun/install/cache}"
-    mkdir -p "$integration_root/seed" "$integration_root/home/.bun/bin"
-    command cp "$integration_bun" "$integration_root/home/.bun/bin/bun"
-    chmod 755 "$integration_root/home/.bun/bin" "$integration_root/home/.bun/bin/bun"
+    mkdir -p "$integration_root/seed" "$integration_root/home"
     tar -xzf "$ACFS_MONITOR_TEST_ARCHIVE" -C "$integration_root/seed"
+    # Default to the immutable archive's implementation. A separately captured
+    # incumbent can run against these same fixtures for regression proof.
+    integration_monitor="${ACFS_MONITOR_TEST_IMPLEMENTATION:-$integration_root/seed/scripts/checksum-monitor-local.sh}"
+    [[ -f "$integration_monitor" && ! -L "$integration_monitor" ]] \
+        || fail 'integration monitor implementation is missing or unsafe'
     cat > "$integration_root/transport.sh" <<'TRANSPORT'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -609,7 +612,7 @@ RETAIN
         ' checksums.yaml > "$integration_root/fixture-checksums.yaml"
         command cp "$integration_root/fixture-checksums.yaml" checksums.yaml
         BUN_INSTALL_CACHE_DIR="$integration_bun_cache" "$integration_bun" install \
-            --cwd packages/manifest --frozen-lockfile --ignore-scripts --silent
+            --cwd packages/manifest --frozen-lockfile --ignore-scripts --backend=hardlink --silent
         "$integration_bun" run packages/manifest/src/generate.ts > "$integration_root/seed-generation.log"
         git -c init.templateDir= init -q -b main
         git add -- .
@@ -617,7 +620,17 @@ RETAIN
             commit -qm 'Clean generated base'
         git branch master
     ) || fail 'could not prepare clean integration base'
-    for integration_case in pending external-only approved review-unavailable approved-review-unavailable push-rejected fetch-error; do
+    integration_cases=(pending external-only approved review-unavailable approved-review-unavailable push-rejected fetch-error
+        authorization-revoked-before-commit authorization-revoked-before-push evidence-changed-before-push evidence-changed-after-push)
+    if [[ -n "${ACFS_MONITOR_TEST_CASE:-}" ]]; then
+        integration_case_found=false
+        for integration_case in "${integration_cases[@]}"; do
+            if [[ "$integration_case" == "$ACFS_MONITOR_TEST_CASE" ]]; then integration_case_found=true; fi
+        done
+        [[ "$integration_case_found" == true ]] || fail 'unknown integration case requested'
+        integration_cases=("$ACFS_MONITOR_TEST_CASE")
+    fi
+    for integration_case in "${integration_cases[@]}"; do
         (
             case_root="$integration_root/$integration_case"
             mkdir -p "$case_root/state/tmp"
@@ -632,7 +645,11 @@ RETAIN
             unset ACFS_NTFY_TOPIC
             ACFS_MONITOR_LIBRARY_ONLY=1
             # shellcheck source=../checksum-monitor-local.sh
-            source "$MONITOR"
+            source "$integration_monitor"
+            # Reuse the selected real runtime even when fixture TMPDIR is on
+            # a separate or noexec filesystem. Its production ownership/mode/
+            # link/version checks still run inside checksum_monitor_main.
+            BUN_BIN="$integration_bun"
             # shellcheck source=../lib/security.sh
             source "$REPO_ROOT/scripts/lib/security.sh"
             export ACFS_SECURITY_RETAIN_TEMP_FILES=true
@@ -646,7 +663,7 @@ RETAIN
             for integration_tool in "${!integration_hashes[@]}"; do
                 integration_actual="${integration_hashes[$integration_tool]}"
                 if [[ "$integration_tool" == br && "$integration_case" != external-only ]]; then integration_actual="$br_actual"; fi
-                if [[ "$integration_tool" == omp ]]; then integration_actual="$omp_actual"; fi
+                if [[ "$integration_tool" == omp && "$integration_case" != evidence-changed-after-push ]]; then integration_actual="$omp_actual"; fi
                 jq -cn --arg name "$integration_tool" --arg url "${integration_urls[$integration_tool]}" \
                     --arg expected "${integration_hashes[$integration_tool]}" --arg actual "$integration_actual" \
                     '{name:$name,url:$url,expected:$expected,actual:$actual}'
@@ -660,7 +677,7 @@ RETAIN
             }' "$case_root/state/observations.jsonl" > "$integration_report"
             integration_digest="$(external_authorization_digest "$integration_report" omp)"
             case "$integration_case" in
-                approved|approved-review-unavailable|push-rejected)
+                approved|approved-review-unavailable|push-rejected|authorization-revoked-before-commit|authorization-revoked-before-push)
                     printf 'authorize:%s\n' "$integration_digest" > "$AUTHORIZATION_FILE"
                     chmod 600 "$AUTHORIZATION_FILE"
                     ;;
@@ -680,6 +697,29 @@ RETAIN
             }
             _alert_fail_closed_streak() { return 0; }
             _announce_recovery() { return 0; }
+            # Delegate to the real remote reader before changing private state.
+            # These deterministic interleavings occur after the last staging
+            # check and are invisible to Git worktree/ref cleanliness checks.
+            integration_remote_reader="$(declare -f read_remote_heads)"
+            integration_remote_reader="${integration_remote_reader/#read_remote_heads /fixture_read_remote_heads }"
+            [[ "$integration_remote_reader" == 'fixture_read_remote_heads ()'* ]] \
+                || fail 'could not capture the actual remote reader'
+            read_remote_heads() {
+                fixture_read_remote_heads || return 1
+                [[ ! -e "$case_root/state/boundary-mutation" ]] || return 0
+                case "$integration_case:$STATE" in
+                    authorization-revoked-before-commit:STAGED|authorization-revoked-before-push:COMMITTED)
+                        printf 'revoked\n' > "$AUTHORIZATION_FILE" || return 1
+                        ;;
+                    evidence-changed-before-push:COMMITTED|evidence-changed-after-push:ATOMIC_PUBLISHED)
+                        [[ -n "$DOWNLOAD_EVIDENCE_ROOT" && -f "$DOWNLOAD_EVIDENCE_ROOT/omp/body" ]] \
+                            || fail 'missing retained body at the publication boundary'
+                        printf '\n# changed after staging\n' >> "$DOWNLOAD_EVIDENCE_ROOT/omp/body" || return 1
+                        ;;
+                    *) return 0 ;;
+                esac
+                printf '%s\t%s\n' "$integration_case" "$STATE" > "$case_root/state/boundary-mutation"
+            }
             write_fixture_download_evidence() {
                 local temp_root="$1" root="" name="" url="" expected="" actual="" dir="" header_hash=""
                 root="$(mktemp -d "$temp_root/acfs-observations.XXXXXX")" || return 1
@@ -737,6 +777,7 @@ RETAIN
                 # Reuse the cache populated by the same frozen seed install.
                 # This is fixture dependency preparation, not a substitute for
                 # the real frozen/lifecycle-disabled install below.
+                if [[ "${1:-}" == install ]]; then set -- "$@" --backend=hardlink; fi
                 run_bounded "$budget" env -i HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" \
                     PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" LANG=C LC_ALL=C TZ=UTC CI=1 NO_COLOR=1 \
                     TMPDIR="$case_root/state/tmp" BASH_ENV="$integration_root/retain.sh" \
@@ -747,9 +788,11 @@ RETAIN
             export case_root integration_root integration_case integration_report integration_match_hash br_actual omp_actual integration_bun_cache
             export ACFS_MONITOR_LIBRARY_ONLY=1
             {
-                printf '#!/usr/bin/env bash\nset -euo pipefail\nsource %q\n' "$MONITOR"
+                printf '#!/usr/bin/env bash\nset -euo pipefail\nsource %q\n' "$integration_monitor"
+                printf 'BUN_BIN=%q\n' "$integration_bun"
+                printf '%s\n' "$integration_remote_reader"
                 declare -f fail record_external_review _alert_fail_closed_streak _announce_recovery \
-                    write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
+                    read_remote_heads write_fixture_download_evidence run_clean_bounded run_bun_clean_bounded
                 printf 'checksum_monitor_main\n'
             } > "$case_root/state/runner.sh"
             monitor_exit=0
@@ -763,6 +806,48 @@ RETAIN
             fi
             [[ "$(wc -l < "$case_root/state/network-calls")" -eq 1 ]] || fail "$integration_case did not observe exactly once"
             case "$integration_case" in
+                evidence-changed-after-push)
+                    local_head="$(git -C "$case_root/repo" rev-parse HEAD)"
+                    printf 'Boundary evidence: case=%s exit=%s base=%s remote-main=%s remote-mirror=%s local=%s\n' \
+                        "$integration_case" "$monitor_exit" "$integration_base" "$remote_main" "$remote_master" "$local_head"
+                    [[ "$(cat "$case_root/state/boundary-mutation")" == "$integration_case"$'\tATOMIC_PUBLISHED' ]] \
+                        || fail 'post-publication evidence mutation did not follow the real push'
+                    [[ "$remote_main" != "$integration_base" && "$local_head" == "$remote_main" ]] \
+                        || fail 'post-publication case did not publish its valid trusted candidate'
+                    git --git-dir="$case_root/remote.git" show "$remote_main:checksums.yaml" > "$case_root/state/published.yaml"
+                    declare -A accepted_urls=() accepted_hashes=()
+                    acfs_load_checksums_strict "$case_root/state/published.yaml" accepted_urls accepted_hashes
+                    [[ "${accepted_hashes[br]}" == "$br_actual" && "${accepted_hashes[omp]}" == "${integration_hashes[omp]}" ]] \
+                        || fail 'post-publication case changed pins outside its trusted candidate'
+                    [[ "$monitor_exit" -ne 0 && ! -e "$AUTHORIZATION_FILE" ]] \
+                        || fail 'changed post-publication evidence was falsely accepted'
+                    grep -qF 'first-observation download evidence is missing, unsafe, or changed' "$case_root/state/full-run.log" \
+                        || fail 'final acceptance did not reject changed retained evidence'
+                    ! grep -qE 'state=(REMOTE_VERIFIED|HEALTHY|DEFERRED)' "$case_root/state/full-run.log" \
+                        || fail 'changed evidence reached a verified or healthy acceptance state'
+                    ;;
+                authorization-revoked-before-commit|authorization-revoked-before-push|evidence-changed-before-push)
+                    local_head="$(git -C "$case_root/repo" rev-parse HEAD)"
+                    printf 'Boundary evidence: case=%s exit=%s base=%s remote-main=%s remote-mirror=%s local=%s\n' \
+                        "$integration_case" "$monitor_exit" "$integration_base" "$remote_main" "$remote_master" "$local_head"
+                    [[ -s "$case_root/state/boundary-mutation" ]] || fail "$integration_case did not reach its mutation boundary"
+                    [[ "$monitor_exit" -ne 0 && "$remote_main" == "$integration_base" ]] \
+                        || fail "$integration_case published after its authority/evidence changed"
+                    if [[ "$integration_case" == evidence-changed-before-push ]]; then
+                        [[ ! -e "$AUTHORIZATION_FILE" ]] || fail 'trusted-only evidence failure created an authorization'
+                        grep -qF 'first-observation download evidence is missing, unsafe, or changed' "$case_root/state/full-run.log" \
+                            || fail 'trusted publication did not reject changed retained evidence'
+                    else
+                        [[ "$(cat "$AUTHORIZATION_FILE")" == revoked ]] || fail 'revoked authorization was overwritten or consumed'
+                        grep -qF 'selected external authorization changed before acceptance' "$case_root/state/full-run.log" \
+                            || fail 'publication did not reject revoked external authorization'
+                    fi
+                    if [[ "$integration_case" == authorization-revoked-before-commit ]]; then
+                        [[ "$local_head" == "$integration_base" ]] || fail 'revoked authorization created a local commit'
+                    else
+                        [[ "$local_head" != "$integration_base" ]] || fail 'pre-push mutation did not follow the real local commit'
+                    fi
+                    ;;
                 approved-review-unavailable|push-rejected|fetch-error)
                     [[ "$monitor_exit" -ne 0 && "$remote_main" == "$integration_base" ]] \
                         || fail "$integration_case did not fail closed before remote acceptance"

@@ -1205,6 +1205,9 @@ read_remote_heads || fail_closed "could not re-read remote refs before commit"
 committed=false
 PUBLISH_HEAD="$BASE_HEAD"
 if [[ "$publication_required" == "true" ]]; then
+    # The remote-base probe above may block. Approval and retained evidence
+    # live outside Git, so a clean index cannot prove they survived that wait.
+    require_selected_external_authorization
     # The author name is public history: no host name in it.
     git -c "user.name=acfs-checksum-monitor" \
         -c user.email=jeff141421@gmail.com \
@@ -1248,6 +1251,10 @@ if [[ "$publication_required" == "true" ]]; then
         || fail_closed "could not allocate publication journal"
     printf 'prepared\t%s\t%s\n' "$BASE_HEAD" "$PUBLISH_HEAD" >> "$publication_journal" \
         || fail_closed "could not record prepared publication"
+    # This is the last local authority check before the remote side effect.
+    # In particular, do not defer revocation/evidence checks until readback:
+    # failing after a successful push cannot undo an unauthorized publication.
+    require_selected_external_authorization
     set +e
     run_bounded 90 git -c core.hooksPath=/dev/null push --atomic --quiet origin \
         "$PUBLISH_HEAD:refs/heads/main" \
@@ -1284,6 +1291,10 @@ read_remote_heads || fail_closed "remote verification after publication failed"
 [[ "$(git rev-parse HEAD 2>/dev/null || true)" == "$PUBLISH_HEAD" ]] \
     || fail_closed "local HEAD changed before remote acceptance"
 require_clean_tree || fail_closed "repository is not clean at remote acceptance"
+# Retained observations remain part of acceptance even when only trusted
+# changes published, or the run had no candidate. Do not gate their recheck
+# on whether an external authorization happens to need consumption.
+require_selected_external_authorization
 advance_state ATOMIC_PUBLISHED REMOTE_VERIFIED
 
 if [[ "$authorization_consumed" == "true" ]]; then
