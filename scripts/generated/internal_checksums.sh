@@ -11,7 +11,7 @@ ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [install.sh]="d65532b9cada51a92077feeedbca1ac005cfd8b021b596667456213c432fccf3"
-  [checksums.yaml]="415ef8da724ad9457ea0dcc3754c6b280d364711577a037808ff59adb505a627"
+  [checksums.yaml]="5de4a32a6811ff908d9ffcb1afe11f5ceb5852595d9a1a7bcb15bc351eb52acf"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="1d600c472f69725f22ea2a8b3b0c9e3dc0b3a533205b593b174fd6bf070d1c04"
   [scripts/lib/holds.sh]="8f303cd51b5bfd75059ab1d01448e1c01bd31d3005dd6bb4352fc96dc3c29377"
@@ -56,7 +56,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [packages/onboard/onboard.sh]="cf47140798c04e003b4041b40f0fbaeb6d520c0302bc6ab94b5d5b0755dd75f6"
   [VERSION]="dc24feb5bd35084d8ae32a4eafbec12352707d4662401fcbcc9bbd696cde77a9"
   [acfs.manifest.yaml]="3ae02fc6970c9e3507fa718b7ef5d89a7427ad225b513835ef0046aac4636339"
-  [acfs/AGENTS.md]="776fd97cc8b9e332ce5cffcbbcf9c84e88bb33eb9b0951694a64e4ef223208df"
+  [acfs/AGENTS.md]="eb5caa1e1e2d86d408ab223d8a2e48cb2f2cf19beaa0eca1e92231e3d0037eb6"
   [acfs/onboard/docs/ntm/command_palette.md]="32a60a206d8431c60f948016cc13b85baa6a9470f345e083783f5f4bf224bfee"
   [acfs/tmux/tmux.conf]="d5a8c0e6e8be67b34fb3fdddef0396cba9761318992107fe70c57c549b475b03"
   [acfs/zsh/acfs.zshrc]="7c40ed4d100d9fd0d541d39871c37d370bc7665a27281fbdebc8826087d85c86"
