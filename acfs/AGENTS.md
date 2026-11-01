@@ -1,3 +1,9 @@
+## Permanent CI/automation policy: DSR only
+
+GitHub Actions must NEVER be used for ANY purpose in this project. Do not create, enable, dispatch, rerun, or rely on GitHub Actions workflows, whether they use GitHub-hosted runners or self-hosted runners registered with Actions. This is permanent policy, not a billing, quota, or outage workaround.
+
+Use [DSR (Doodlestein Self-Releaser)](https://github.com/Dicklesworthstone/doodlestein_self_releaser) directly for CI, checks, builds, tests, releases, deployment automation, scheduled jobs, and other automation. DSR is the execution path, not a fallback after trying Actions. Existing workflow YAML may remain as input for local DSR/`act` execution; that does not authorize execution through GitHub Actions. Do not delete those definitions merely to enforce this policy. Keep all existing quality gates and evidence requirements when routing work through DSR.
+
 # AGENTS.md — Agentic Coding Flywheel Setup
 
 > Guidelines for AI coding agents working in projects on this VPS.
@@ -471,7 +477,7 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 | `sbh status` | Inspect Storage Ballast Helper protection before disk pressure turns into outages |
 | `pt scan` | Find abandoned or zombie processes before killing things manually |
 | `casr providers` | Check which agent/provider handoffs CASR can resume |
-| `dsr check --all` | Validate fallback release readiness when GitHub Actions is throttled |
+| `dsr repos validate` | Validate DSR repository configuration before direct DSR execution |
 | `ru status --fetch` | Inspect repo drift before starting a swarm or large maintenance pass |
 | `asb backup --all` | Back up agent settings before risky hook/config experiments |
 | `test -x "$HOME/.local/bin/claude-post-compact-reminder"` | Verify the PCR hook script exists before checking Claude settings |
@@ -487,7 +493,7 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 - `sbh`: Disk pressure, full-volume risk, or ballast-pool diagnostics. It is protection infrastructure, not clutter.
 - `pt`: Suspected zombie processes, stuck dev servers, port conflicts, or mysterious CPU burners.
 - `casr`: Provider handoffs when a session needs to move between Claude, Codex, Gemini, or another supported agent.
-- `dsr`: Release fallback when GitHub Actions is unavailable, quota-throttled, or too slow to trust.
+- `dsr`: The direct execution path for releases and all CI/automation; GitHub Actions is permanently forbidden.
 - `ru`: Before broad repo sweeps, after multi-agent sessions, or when a machine has many stale `/data/projects/*` clones.
 - `asb`: Before editing agent config folders, hook settings, auth files, or shell integrations you may need to restore.
 - `pcr`: When Claude Code keeps forgetting project rules after compaction; PCR is the hook that forces the reminder.
@@ -502,7 +508,7 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 - SBH: Do not disable or remove ballast files casually; that defeats the whole point of the safety margin.
 - PT: Treat its output as triage, not blind authorization. Verify before killing unfamiliar processes.
 - CASR: Session handoff quality depends on what was captured; inspect the generated resume context before trusting it.
-- DSR: It assumes the repo already has sane release automation inputs; DSR is the fallback runner, not magic release design.
+- DSR: It assumes the repo already has sane release automation inputs; DSR is the required execution path, not a substitute for sound release design.
 - ASB: Backups may contain sensitive tokens or local auth state. Handle the backup repo like secrets-adjacent material.
 - PCR: It is a Claude Code hook, not a normal interactive CLI. Verify the hook script and Claude settings entry, not just `command -v`.
 - EE: Memory is advisory context, not ground truth. Live AGENTS.md, README, and repo state always win over recalled memories.
