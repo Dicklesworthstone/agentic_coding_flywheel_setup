@@ -2902,9 +2902,9 @@ modules:
       - rch --version || rch --help
 
   - id: stack.wezterm_automata
-    # Superseded by FrankenTerm; kept installable for existing users but no
-    # longer part of the default install (it is also the only module that
-    # compiles from source via cargo).
+    # Superseded by FrankenTerm and not part of the default install. Kept so
+    # doctor and installed checks still recognize an existing wa binary;
+    # selecting it no longer builds anything (see the install step).
     description: WezTerm Automata (wa) - terminal automation and orchestration for AI agents
     category: stack
     phase: 9
@@ -2933,20 +2933,25 @@ modules:
       stars: 42
       cli_name: "wa"
     dependencies:
-      - lang.rust
+      - base.system
     installed_check:
       run_as: target_user
       command: "command -v wa"
     install:
-      # No install.sh yet - build from source via cargo
+      # The repository is now FrankenTerm. Its workspace has no `wa` package,
+      # so the former `cargo build --release -p wa` could not succeed, and it
+      # compiled the whole workspace with no memory bound (#486). FrankenTerm
+      # supports only its own signed release installer, which needs a release
+      # carrying the CLI/mux/PTY-guardian family; a bare `ft` copy or a
+      # `cargo install` is explicitly unsupported upstream. Until ACFS can call
+      # that installer against such a release, refuse without building.
       - |
-        WA_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wa_build.XXXXXX")"
-        trap 'rm -rf "$WA_TMP"' EXIT
-        cd "$WA_TMP"
-        git clone --depth 1 https://github.com/Dicklesworthstone/wezterm_automata.git .
-        cargo build --release -p wa
-        cp "${CARGO_TARGET_DIR:-target}/release/wa" ~/.cargo/bin/
-        rm -rf "$WA_TMP"
+        # acfs-summary: FrankenTerm is not installed by ACFS yet (no source build)
+        echo "stack.wezterm_automata: not installed. ACFS no longer builds wa from source:" >&2
+        echo "  the repository is now FrankenTerm and has no 'wa' package." >&2
+        echo "  Install FrankenTerm with its own verified release installer:" >&2
+        echo "  https://github.com/Dicklesworthstone/frankenterm#installation" >&2
+        exit 1
     verify:
       - wa --version || wa --help
 

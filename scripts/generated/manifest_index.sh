@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="3ae02fc6970c9e3507fa718b7ef5d89a7427ad225b513835ef0046aac4636339"
+ACFS_MANIFEST_SHA256="3f66fd096c01b2756a2feb88b891b5e3f68cb494a662085598acc2618b72054c"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -229,7 +229,7 @@ declare -gA ACFS_MODULE_DEPS=(
   ['stack.ru']="cli.modern,stack.ntm,users.ubuntu"
   ['stack.brenner_bot']="lang.rust,stack.cass,users.ubuntu"
   ['stack.rch']="lang.rust,users.ubuntu"
-  ['stack.wezterm_automata']="lang.rust,users.ubuntu"
+  ['stack.wezterm_automata']="base.system,users.ubuntu"
   ['stack.srps']="base.system,lang.go,users.ubuntu"
   ['stack.frankensearch']="lang.rust,users.ubuntu"
   ['stack.storage_ballast_helper']="lang.rust,users.ubuntu"

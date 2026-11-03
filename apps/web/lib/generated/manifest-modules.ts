@@ -41,7 +41,7 @@ export interface ManifestProvenanceMetadata {
 
 export const manifestProvenance = {
   acfsVersion: "0.10.0",
-  manifestSha256: "3ae02fc6970c9e3507fa718b7ef5d89a7427ad225b513835ef0046aac4636339",
+  manifestSha256: "3f66fd096c01b2756a2feb88b891b5e3f68cb494a662085598acc2618b72054c",
   checksumsYamlSha256: "87b155fa0a90bdc05357cedcfbfcacde717e0e06ab13fb8d6c1fba34bebc06a6",
 } as const satisfies ManifestProvenanceMetadata;
 
@@ -810,7 +810,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     category: "stack",
     phase: 9,
     dependencies: [
-      "lang.rust",
+      "base.system",
       "users.ubuntu",
     ],
     tags: [

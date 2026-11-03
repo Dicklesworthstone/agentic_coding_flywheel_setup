@@ -2,6 +2,13 @@
 
 Terminal automation and orchestration for AI agents using WezTerm.
 
+> **Status:** ACFS no longer installs `wa`. The repository is now
+> [FrankenTerm](https://github.com/Dicklesworthstone/frankenterm), and its
+> workspace has no `wa` package. Selecting `stack.wezterm_automata` reports this
+> and builds nothing. An existing `wa` binary is still detected by `acfs doctor`.
+> Install FrankenTerm with its own release installer, described in its
+> [installation guide](https://github.com/Dicklesworthstone/frankenterm#installation).
+
 ## What It Does
 
 `wa` (WezTerm Automata) provides programmatic control over WezTerm terminal sessions:

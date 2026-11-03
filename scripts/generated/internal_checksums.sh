@@ -55,7 +55,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/templates/acfs-nightly-update.timer]="aa4fbad4fadabe0b61d202b4bf4311ce71c1132ad0ce8453099b593aa04988c3"
   [packages/onboard/onboard.sh]="cf47140798c04e003b4041b40f0fbaeb6d520c0302bc6ab94b5d5b0755dd75f6"
   [VERSION]="dc24feb5bd35084d8ae32a4eafbec12352707d4662401fcbcc9bbd696cde77a9"
-  [acfs.manifest.yaml]="3ae02fc6970c9e3507fa718b7ef5d89a7427ad225b513835ef0046aac4636339"
+  [acfs.manifest.yaml]="3f66fd096c01b2756a2feb88b891b5e3f68cb494a662085598acc2618b72054c"
   [acfs/AGENTS.md]="eb5caa1e1e2d86d408ab223d8a2e48cb2f2cf19beaa0eca1e92231e3d0037eb6"
   [acfs/onboard/docs/ntm/command_palette.md]="32a60a206d8431c60f948016cc13b85baa6a9470f345e083783f5f4bf224bfee"
   [acfs/tmux/tmux.conf]="d5a8c0e6e8be67b34fb3fdddef0396cba9761318992107fe70c57c549b475b03"
@@ -115,7 +115,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [packages/manifest/src/agent-readiness-audit.ts]="21e51f44ee65b27a073487edc6dc3ee0b05680c006277e400e4fa22144bb6cc6"
   [packages/manifest/src/agent-profile-rehearsal.ts]="8858ed81e4a895d9dfd9be5b73648ee9a7b18f96930b4c47a8782bd4add0dfb4"
   [packages/manifest/src/binary-architecture.ts]="687bf55741faa7b3fd7c302ec828d49746f3694187e86ee2c8fb56215e5ecf68"
-  [scripts/generated/manifest_index.sh]="7d513ac87dd40343545afe126639dc3f1c19be617b8d1ab9b241b50685a816f1"
+  [scripts/generated/manifest_index.sh]="9041028c73e16eb66dcfd717e2017ebef0682a49a95e8e48607a3c7bdc17cf55"
   [scripts/generated/doctor_checks.sh]="8411b8d66659b3ead8224fed483be497c60b931e16945a5089eea7cf10a63c27"
   [scripts/generated/install_all.sh]="8f2d0764822447b868373b1bd9e69ff6d964e74c4e8fce04c7e459448bd76995"
   [scripts/generated/install_base.sh]="1b4298256c799a509f14a7cc1c8757f1eb32fc8161eafacf2e893fd0305ada42"
@@ -129,7 +129,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/generated/install_db.sh]="df69a8bada152baf98139efad9e4b20f0d7dcc4f7410ea8521ef16c5e5b464da"
   [scripts/generated/install_cloud.sh]="eca5d64f0e6bcdc546c70831b462e455d5de5a1d4368d1958b10c8e1a6c58db4"
   [scripts/generated/install_agents.sh]="ecb4a017226cb03ba0bff80c4cb8dde5d63a1d1520e179caa2157233d27399d5"
-  [scripts/generated/install_stack.sh]="2ca466b4d7f746e18443bf3138e0e529b1e59d3d2e089eb953286bc999497177"
+  [scripts/generated/install_stack.sh]="a5abd18b576bb51fa40d998b7337c2a28fd0d1447f48e0d9137a91a1259d3ea5"
   [scripts/generated/install_acfs.sh]="4dcf07c126639499cf5b5cd9c3a2580ad343f675ce293c0157a800886b3d5925"
 )
 

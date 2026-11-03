@@ -3014,19 +3014,18 @@ acfs_generated_install_stack_wezterm_automata() {
     log_step "Installing stack.wezterm_automata"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: trap 'rm -rf \"\$WA_TMP\"' EXIT (target_user)"
+        log_info "dry-run: install: FrankenTerm is not installed by ACFS yet (no source build) (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_WEZTERM_AUTOMATA'
-WA_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wa_build.XXXXXX")"
-trap 'rm -rf "$WA_TMP"' EXIT
-cd "$WA_TMP"
-git clone --depth 1 https://github.com/Dicklesworthstone/wezterm_automata.git .
-cargo build --release -p wa
-cp "${CARGO_TARGET_DIR:-target}/release/wa" ~/.cargo/bin/
-rm -rf "$WA_TMP"
+# acfs-summary: FrankenTerm is not installed by ACFS yet (no source build)
+echo "stack.wezterm_automata: not installed. ACFS no longer builds wa from source:" >&2
+echo "  the repository is now FrankenTerm and has no 'wa' package." >&2
+echo "  Install FrankenTerm with its own verified release installer:" >&2
+echo "  https://github.com/Dicklesworthstone/frankenterm#installation" >&2
+exit 1
 INSTALL_STACK_WEZTERM_AUTOMATA
         then
-            log_warn "stack.wezterm_automata: install command failed: trap 'rm -rf \"\$WA_TMP\"' EXIT"
+            log_warn "stack.wezterm_automata: install command failed: FrankenTerm is not installed by ACFS yet (no source build)"
             # Optional-module failures are warnings on a default install, but a
             # module the user explicitly named with --only had exactly one job:
             # propagate the failure instead of reporting phase success (#373).
@@ -3036,7 +3035,7 @@ INSTALL_STACK_WEZTERM_AUTOMATA
               return 1
             fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "stack.wezterm_automata" "install command failed: trap 'rm -rf \"\$WA_TMP\"' EXIT"
+              record_skipped_tool "stack.wezterm_automata" "install command failed: FrankenTerm is not installed by ACFS yet (no source build)"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "stack.wezterm_automata"
             fi
