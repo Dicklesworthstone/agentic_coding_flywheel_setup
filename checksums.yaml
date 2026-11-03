@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-03T06:31:28+00:00
+# checksums.yaml - Auto-generated 2026-11-03T14:31:06+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "cbd44d26155b186f15b2940778a46d0ddba526b99b1ec7b458cc9d148613991a"
+    sha256: "bc751160564dd5b8b62b6fb480c51128056ba385a617095969c54a8ca86d9c6b"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -172,7 +172,7 @@ installers:
 
   srps:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/system_resource_protection_script/main/install.sh"
-    sha256: "c8a04bc73a584f1016bc8a123d79f209ea3be0141de2cd8cde7c4c2d1f02996b"
+    sha256: "c1c0f5f7924a68bf97fb29da0bee6873ba5521fcfe53b652b48b700a22caf67f"
 
   tru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
