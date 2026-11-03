@@ -225,6 +225,20 @@ cargo test --all-targets
     pass "policy_matrix_reports_expected_policy_ids"
 }
 
+test_shipped_guidance_passes() {
+    local output="$ARTIFACT_DIR/shipped.json"
+
+    # The default file set is ACFS's own docs, lessons and templates. A clean
+    # checkout must pass, or `acfs policy-lint` cannot serve as a local gate.
+    if ! bash "$POLICY_LINT_SH" --json --root "$REPO_ROOT" > "$output"; then
+        jq -r '.violations[] | "  \(.file):\(.line): \(.policy_id)"' "$output" 2>/dev/null || true
+        return 1
+    fi
+    jq -e '.status == "pass" and .summary.violations == 0 and .summary.files_scanned > 0' "$output" >/dev/null || return 1
+
+    pass "shipped_guidance_passes"
+}
+
 run_test() {
     local name="$1"
 
@@ -244,6 +258,7 @@ main() {
     run_test test_detects_local_cpu_heavy_cargo_example
     run_test test_detects_missing_agent_mail_reservation_guidance
     run_test test_policy_matrix_reports_expected_policy_ids
+    run_test test_shipped_guidance_passes
 
     echo ""
     echo "Tests passed: $TESTS_PASSED"

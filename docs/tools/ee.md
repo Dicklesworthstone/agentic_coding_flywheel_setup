@@ -101,7 +101,7 @@ ee init --workspace . --force --skip-boilerplate
 ```bash
 # A durable rule
 ee remember --workspace . --level procedural --kind rule --tags release,ci \
-  "Run cargo test and clippy with --all-targets before tagging a release; cargo check misses test-only compile errors."
+  "Before tagging a release, run rch exec -- cargo test --all-targets and rch exec -- cargo clippy --all-targets; cargo check misses test-only compile errors."
 
 # A failure and its cause
 ee remember --workspace . --kind failure \
