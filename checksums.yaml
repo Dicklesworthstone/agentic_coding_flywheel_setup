@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-03T17:01:39+00:00
+# checksums.yaml - Auto-generated 2026-11-03T16:04:57-05:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -156,7 +156,7 @@ installers:
 
   rust:
     url: "https://sh.rustup.rs"
-    sha256: "9502b514362a21096210d498f143b8cdacda365d3dfcf45e8f5541e089ccafc0"
+    sha256: "d890e2fef6fa991b19cde2e608199bc1dca4e37f41f884edf8849ff693048de6"
 
   s2p:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"
@@ -184,7 +184,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "f7a56e7afaec49a3bcbc3ac3cdbe917e7c6ce30e0d815308a12e531aa5ef23b7"
+    sha256: "d263ee68314cf5bea36b08e6bd9e2c4563240d7adb73756cf33af5c199b92db4"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
