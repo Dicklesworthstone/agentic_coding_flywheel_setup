@@ -215,6 +215,60 @@ stub_acfs_curl_response() {
     refute_output --partial "Trusted-tool auto-accept"
 }
 
+# Issue #478: the guidance claimed checksums.yaml "is refreshed from upstream
+# automatically", which read as a promise that the pin would fix itself. It
+# must say what ACFS actually did: re-check against the newest published pin
+# (so a different checksums ref cannot help), or fail to fetch it.
+@test "verify_checksum: stale-pin guidance says the newest published pin was already checked" {
+    local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
+
+    run bash -c '
+        source "$1"
+        acfs_download_to_file() {
+            printf "%s" "changed upstream installer" > "$2"
+        }
+        acfs_refresh_loaded_checksums_from_remote() {
+            ACFS_CHECKSUMS_REMOTE_REFRESHED=true
+            return 0
+        }
+        verify_checksum \
+            "https://example.com/install.sh" \
+            "0000000000000000000000000000000000000000000000000000000000000000" \
+            "example_tool"
+    ' _ "$security_lib"
+
+    assert_failure
+    assert_output --partial "Checksum mismatch"
+    assert_output --partial "already re-checked this installer against the newest published"
+    assert_output --partial "main will not help"
+    assert_output --partial "acfs hold example_tool"
+    refute_output --partial "refreshed from upstream automatically"
+    refute_output --partial "could not load the newest published"
+}
+
+@test "verify_checksum: stale-pin guidance says when the newest published pin could not be fetched" {
+    local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
+
+    run bash -c '
+        source "$1"
+        acfs_download_to_file() {
+            printf "%s" "changed upstream installer" > "$2"
+        }
+        acfs_refresh_loaded_checksums_from_remote() {
+            return 1
+        }
+        verify_checksum \
+            "https://example.com/install.sh" \
+            "0000000000000000000000000000000000000000000000000000000000000000" \
+            "example_tool"
+    ' _ "$security_lib"
+
+    assert_failure
+    assert_output --partial "could not load the newest published checksums.yaml"
+    assert_output --partial "acfs hold example_tool"
+    refute_output --partial "already re-checked"
+}
+
 @test "acfs_curl: ignores shell function curl" {
     local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
     local marker="${BATS_TEST_TMPDIR:-/tmp}/acfs-curl-poison-marker"
