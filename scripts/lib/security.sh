@@ -1809,10 +1809,10 @@ verify_checksum() {
             printf "  Fix:\n" >&2
             if [[ "${ACFS_CHECKSUMS_REMOTE_REFRESHED:-false}" == "true" ]]; then
                 printf "    - End users: ACFS already re-checked this installer against the newest published\n" >&2
-                printf "      checksums.yaml (ref: %s), and that pin does not match either, so retrying or\n" "${ACFS_CHECKSUMS_REF:-main}" >&2
+                printf "      checksums.yaml (ref: %s), and that pin does not match either, so retrying now or\n" "${ACFS_CHECKSUMS_REF:-main}" >&2
                 printf "      --checksums-ref main will not help. Upstream changed its installer and the PUBLISHED\n" >&2
-                printf "      pin is stale; there is nothing to repair locally. A new pin is published only after\n" >&2
-                printf "      the changed installer is reviewed. Hold the tool until then:\n" >&2
+                printf "      pin is stale; there is nothing to repair locally. A new pin is published after the\n" >&2
+                printf "      changed installer has been checked. Hold the tool until then:\n" >&2
             else
                 printf "    - End users: ACFS could not load the newest published checksums.yaml (ref: %s) to\n" "${ACFS_CHECKSUMS_REF:-main}" >&2
                 printf "      re-check this pin, so a refreshed pin may already exist. Retry when GitHub is\n" >&2
