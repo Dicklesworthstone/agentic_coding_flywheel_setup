@@ -1376,7 +1376,11 @@ modules:
       - base.system
     installed_check:
       run_as: target_user
-      command: "command -v grok"
+      command: "acfs_grok_check ready"
+    pre_install_check:
+      run_as: target_user
+      command: "acfs_grok_check preflight"
+      skip_message: "Grok command ownership is unresolved; existing commands were preserved. Switch back to Grok in Cursor or resolve the command conflict before retrying."
     # GROK_BIN_DIR steers the install away from the upstream default
     # ~/.grok/bin (which is on no PATH ACFS manages) into ~/.local/bin.
     verified_installer:
@@ -1385,28 +1389,36 @@ modules:
       env: ["GROK_BIN_DIR=$TARGET_HOME/.local/bin"]
     install:
       - |
-        # acfs-summary: ensure grok is on the ACFS bin dir PATH
+        # acfs-summary: bind grok to its installed payload without replacing another command
+        acfs_grok_check preflight || exit 1
         target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
-        if [[ ! -x "$target_bin/grok" ]]; then
-          grok_bin=""
-          for candidate in "$HOME/.local/bin/grok" "$HOME/.grok/bin/grok"; do
-            if [[ -x "$candidate" ]]; then
-              grok_bin="$candidate"
-              break
-            fi
-          done
-          if [[ -z "$grok_bin" ]]; then
-            echo "Grok CLI: installer finished but no grok executable found" >&2
-            exit 1
-          fi
-          acfs_link_primary_bin_command "$grok_bin" "grok"
+        grok_payload="$(acfs_grok_payload_path)" || exit 1
+        if [[ ! -f "$grok_payload" || ! -x "$grok_payload" || -L "$grok_payload" ]]; then
+          echo "Grok CLI: installer finished without a regular executable payload" >&2
+          exit 1
         fi
+        if [[ ! -e "$target_bin/grok" && ! -L "$target_bin/grok" ]]; then
+          acfs_child_ensure_primary_bin_dir "$target_bin" || exit 1
+          ln_bin="$(acfs_child_primary_bin_tool_path ln)" || exit 1
+          if acfs_child_primary_bin_requires_root "$target_bin"; then
+            acfs_child_run_root_bin_command "$ln_bin" -sT -- "$grok_payload" "$target_bin/grok" || exit 1
+          else
+            "$ln_bin" -sT -- "$grok_payload" "$target_bin/grok" || exit 1
+          fi
+        fi
+        acfs_grok_check ready || exit 1
     verify:
-      - grok --version || grok --help
+      - |
+        # acfs-summary: verify the Grok payload and command binding
+        acfs_grok_check ready || exit 1
+        grok_payload="$(acfs_grok_payload_path)" || exit 1
+        /usr/bin/timeout --kill-after=2s 10s "$grok_payload" --version
     notes:
       - "Auth is 'grok login' (browser) or GROK_DEPLOYMENT_KEY; GROK_CHANNEL selects stable/alpha/enterprise"
       - "No documented native self-update; acfs update re-runs the verified installer"
       - "Upstream installer appends a '# >>> grok installer >>>' PATH block to the login shell rc file"
+      - "Cursor-owned or conflicting grok/agent commands block installation and readiness; ACFS preserves them"
+      - "Command binding checks do not authenticate the upstream binary payload or authorize a changed installer checksum"
 
   # ============================================================
   # PHASE 8: Cloud & database tools

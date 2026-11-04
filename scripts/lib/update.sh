@@ -834,6 +834,12 @@ update_tool_binary_path() {
     primary_bin="$(update_preferred_user_bin_dir 2>/dev/null || true)"
 
     case "$tool" in
+        grok)
+            # Grok's command may deliberately belong to Cursor. Snapshot and
+            # smoke-check only the payload to which the verified command binds.
+            update_check_grok_command ready
+            return $?
+            ;;
         atuin)
             [[ -n "$primary_bin" ]] && candidates+=("$primary_bin/atuin")
             [[ -n "$user_bin" ]] && candidates+=("$user_bin/atuin")
@@ -1105,7 +1111,19 @@ get_version() {
                 version="unknown"
             fi
             ;;
-        claude|codex|agy|gemini|opencode|omp|grok|wrangler|supabase|vercel)
+        grok)
+            # A preserved Cursor command can answer --version successfully.
+            # Check ownership without execution, then probe the Grok payload.
+            if update_require_security >/dev/null 2>&1; then
+                tool_bin="$(update_check_grok_command ready 2>/dev/null || true)"
+            fi
+            if [[ -n "$tool_bin" ]]; then
+                version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
+            else
+                version="unknown"
+            fi
+            ;;
+        claude|codex|agy|gemini|opencode|omp|wrangler|supabase|vercel)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
                 version=$(update_run_bounded_in_target_context "$tool_bin" --version 2>/dev/null | awk 'NR == 1 { print }' || echo "unknown")
@@ -4655,6 +4673,88 @@ update_require_security() {
     return 0
 }
 
+# Grok's ownership check and installer must see the same account, command
+# directory and Cursor selectors. Do not accept inline overrides that could
+# inspect one account and then install into another. The caller's custom
+# selectors belong only to its own account, as with other maintenance jobs.
+update_grok_target_env() {
+    local inline_env="${1:-}"
+    local target_user="" current_user="" target_home="" primary_bin="" target_path=""
+    local cursor_config="" xdg_config="" value="" assignment=""
+    target_user="$(update_target_user)" || return 1
+    current_user="$(update_current_user)" || return 1
+    target_home="$(update_target_home "$target_user")" || return 1
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != / ]] || return 1
+    primary_bin="$(update_runtime_primary_bin_dir)" || return 1
+    primary_bin="$(update_validate_bin_dir_for_home "$primary_bin" "$target_home")" || return 1
+    target_path="$(ACFS_BIN_DIR="$primary_bin" update_target_path "$target_home")" || return 1
+
+    if [[ "$target_user" == "$current_user" ]]; then
+        cursor_config="${CURSOR_CONFIG_DIR:-}"
+        xdg_config="${XDG_CONFIG_HOME:-}"
+    fi
+    for value in "$target_home" "$primary_bin" "$target_path" "$cursor_config" "$xdg_config"; do
+        if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            printf 'Grok update: target paths must not contain line breaks.\n' >&2
+            return 1
+        fi
+    done
+    if [[ -n "$cursor_config" ]]; then
+        cursor_config="$(update_maintenance_absolute_path "$cursor_config")" || return 1
+    fi
+    if [[ -n "$xdg_config" ]]; then
+        xdg_config="$(update_maintenance_absolute_path "$xdg_config")" || return 1
+    fi
+    # Relative selectors can acquire line breaks from the caller's directory.
+    # Validate their final values before serializing environment assignments.
+    for value in "$cursor_config" "$xdg_config"; do
+        if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            printf 'Grok update: target paths must not contain line breaks.\n' >&2
+            return 1
+        fi
+    done
+
+    while IFS= read -r assignment || [[ -n "$assignment" ]]; do
+        [[ -n "$assignment" ]] || continue
+        if [[ "$assignment" != "GROK_BIN_DIR=$primary_bin" ]]; then
+            printf 'Grok update: only GROK_BIN_DIR matching the configured ACFS bin directory is accepted.\n' >&2
+            return 1
+        fi
+    done <<< "$inline_env"
+
+    printf '%s\n' "HOME=$target_home" "PATH=$target_path" \
+        "ACFS_BIN_DIR=$primary_bin" "GROK_BIN_DIR=$primary_bin" \
+        "CURSOR_CONFIG_DIR=$cursor_config" "XDG_CONFIG_HOME=$xdg_config"
+}
+
+# The canonical check is side-effect free and must run as the target account:
+# root's writability checks and Cursor configuration do not describe that user.
+# A ready result prints the payload path so consumers never rediscover a
+# different executable through the updater's generic candidate search.
+update_check_grok_command() {
+    local mode="${1:-}"
+    case "$mode" in preflight|ready) ;; *) return 1 ;; esac
+    local helper_source="" target_env="" env_bin="" bash_bin="" assignment=""
+    local -a env_args=()
+    if ! helper_source="$(declare -f acfs_grok_payload_path acfs_grok_check)"; then
+        printf 'Grok update: canonical command ownership verification is unavailable.\n' >&2
+        return 1
+    fi
+    target_env="$(update_grok_target_env)" || return 1
+    while IFS= read -r assignment; do
+        env_args+=("$assignment")
+    done <<< "$target_env"
+    env_bin="$(update_system_binary_path env)" || return 1
+    bash_bin="$(update_system_binary_path bash)" || return 1
+    update_run_bounded_in_target_context "$env_bin" -i "${env_args[@]}" \
+        "$bash_bin" --noprofile --norc -c "$helper_source"$'\n''
+acfs_grok_check "$1" || exit 1
+if [[ "$1" == ready ]]; then
+    acfs_grok_payload_path
+fi
+' acfs-grok-check "$mode"
+}
+
 update_fsfs_linux_target_triple() {
     local arch=""
 
@@ -5559,7 +5659,19 @@ update_snapshot_tool_binary() {
     bin_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
     [[ -n "$bin_path" && -x "$bin_path" && ! -d "$bin_path" ]] || return 0
 
-    if cp -p "$bin_path" "$bin_path.prev" 2>/dev/null; then
+    local -a snapshot_command=(cp -p "$bin_path" "$bin_path.prev")
+    if [[ "$tool" == grok ]]; then
+        # The payload directory is target-owned. A root updater must not
+        # follow a .prev symlink or write there with the caller's privileges.
+        if [[ -L "$bin_path.prev" || ( -e "$bin_path.prev" && ! -f "$bin_path.prev" ) ]]; then
+            log_to_file "Refusing unsafe Grok snapshot destination at $bin_path.prev"
+            return 0
+        fi
+        local cp_bin=""
+        cp_bin="$(update_system_binary_path cp)" || return 0
+        snapshot_command=(update_run_in_target_context "" "$cp_bin" -p --remove-destination -- "$bin_path" "$bin_path.prev")
+    fi
+    if "${snapshot_command[@]}" 2>/dev/null; then
         UPDATE_ROLLBACK_PREV_PATH="$bin_path.prev"
         UPDATE_ROLLBACK_BIN_PATH="$bin_path"
         log_to_file "Retained previous $tool binary at $bin_path.prev"
@@ -5613,7 +5725,17 @@ update_verify_tool_or_rollback() {
         [[ -n "${UPDATE_ROLLBACK_BIN_PATH:-}" ]] && restore_target="$UPDATE_ROLLBACK_BIN_PATH"
         # Never treat a directory left at the old binary path as a destination
         # container: moving .prev into it would falsely report a restoration.
-        if mv -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
+        local restore_status=1
+        if [[ "$tool" == grok ]]; then
+            local mv_bin=""
+            if [[ ! -L "$prev_path" ]] && mv_bin="$(update_system_binary_path mv)" \
+                && update_run_in_target_context "" "$mv_bin" -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
+                restore_status=0
+            fi
+        elif mv -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
+            restore_status=0
+        fi
+        if [[ "$restore_status" -eq 0 ]]; then
             echo "ROLLED BACK: restored previous $tool binary at $restore_target" >&2
             log_to_file "ROLLED BACK $tool: restored previous binary at $restore_target"
             if [[ "$restore_target" != "$new_path" ]]; then
@@ -5705,6 +5827,14 @@ update_run_verified_installer_with_env() {
         bash_env_assignment="${normalized_env_assignment%$'\n'}"
     fi
 
+    if [[ "$tool" == grok ]]; then
+        bash_env_assignment="$(update_grok_target_env "$bash_env_assignment")" || return 1
+        if ! update_check_grok_command preflight; then
+            printf 'Grok update blocked before download: existing command ownership could not be verified.\n' >&2
+            return 1
+        fi
+    fi
+
     local tmp_install=""
     tmp_install="$(update_create_target_readable_temp_file "acfs-update-${tool}" 2>/dev/null)" || tmp_install=""
     if [[ -z "$tmp_install" ]]; then
@@ -5755,6 +5885,19 @@ update_run_verified_installer_with_env() {
     # A verified upstream script may use any exit code. It cannot manufacture
     # the pre-execution checksum-refusal classification used by callers.
     [[ "$exit_code" == "$UPDATE_EXIT_CHECKSUM" ]] && exit_code=1
+
+    if [[ "$tool" == grok ]] && ! update_check_grok_command ready >/dev/null; then
+        # The installer exit alone is not readiness. A damaged payload may
+        # still be safely restored when its command bindings remain owned.
+        # A conflict must return before probing or rolling back any command.
+        printf 'Grok update failed command readiness verification.\n' >&2
+        [[ "$exit_code" -ne 0 ]] || exit_code=1
+        if [[ -z "${UPDATE_ROLLBACK_PREV_PATH:-}" || -z "${UPDATE_ROLLBACK_BIN_PATH:-}" ]] \
+            || ! update_check_grok_command preflight; then
+            printf 'Grok recovery stopped; competing commands were not probed or rolled back.\n' >&2
+            return "$exit_code"
+        fi
+    fi
 
     if [[ $exit_code -eq 0 ]] || {
         [[ -n "${UPDATE_ROLLBACK_PREV_PATH:-}" && -n "${UPDATE_ROLLBACK_BIN_PATH:-}" ]]

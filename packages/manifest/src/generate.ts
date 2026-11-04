@@ -60,6 +60,8 @@ const WEB_OUTPUT_DIR = join(PROJECT_ROOT, "apps/web/lib/generated");
 const CHECKSUMS_PATH = join(PROJECT_ROOT, "checksums.yaml");
 const VERSION_PATH = join(PROJECT_ROOT, "VERSION");
 const README_PATH = join(PROJECT_ROOT, "README.md");
+const GROK_HELPERS_PATH = join(PROJECT_ROOT, "scripts/lib/security.sh");
+let grokHelperSnapshot: Buffer | undefined;
 
 export function findUnexpectedGeneratedPaths(
   expectedPaths: Iterable<string>,
@@ -1012,9 +1014,23 @@ function commandLinesNeedGeneratedHelpers(commandLines: string[]): boolean {
 function commandLinesNeedPrimaryBinHelpers(commandLines: string[]): boolean {
   return commandLines.some(
     (line) =>
+      line.includes("acfs_child_") ||
       line.includes("acfs_link_primary_bin_command") ||
       line.includes("acfs_install_executable_into_primary_bin"),
   );
+}
+
+function grokHelperPreludeLines(): string[] {
+  grokHelperSnapshot ??= readRegularFileNoFollow(GROK_HELPERS_PATH, "Grok command helpers");
+  const source = grokHelperSnapshot.toString("utf-8");
+  const startMarker = "# BEGIN ACFS GROK COMMAND HELPERS\n";
+  const endMarker = "\n# END ACFS GROK COMMAND HELPERS";
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  if (start < 0 || end < 0) {
+    throw new Error("Grok command helper markers not found in security.sh");
+  }
+  return source.slice(start + startMarker.length, end).split("\n");
 }
 
 function primaryBinHelperPreludeLines(): string[] {
@@ -1172,6 +1188,14 @@ function commandLinesWithChildHelperPreludes(commandLines: string[]): string[] {
     preludeLines.push(
       "# Primary-bin helper functions used by this child shell.",
       ...primaryBinHelperPreludeLines(),
+      "",
+    );
+  }
+
+  if (commandLines.some((line) => line.includes("acfs_grok_"))) {
+    preludeLines.push(
+      "# Shared Grok command ownership checks from security.sh.",
+      ...grokHelperPreludeLines(),
       "",
     );
   }
@@ -2197,7 +2221,10 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
       // This is executable source, not display metadata: flattening newlines
       // changes comments, loops, functions and heredocs. A literal shell word
       // preserves every byte without executing substitutions while sourcing.
-      lines.push(`  ['${module.id}']=${shellQuote(module.installed_check.command)}`);
+      const check = commandLinesWithChildHelperPreludes(
+        module.installed_check.command.split("\n"),
+      ).join("\n");
+      lines.push(`  ['${module.id}']=${shellQuote(check)}`);
     }
   }
   lines.push(")");
@@ -2498,7 +2525,10 @@ export function generateDoctorChecks(manifest: Manifest): string {
       const cleanCmd = stripOptionalVerifySuffix(verify);
       const suffix = module.verify.length > 1 ? `.${i + 1}` : "";
       const description = escapeBash(module.description);
-      const encodedCmd = encodeDoctorCommand(cleanCmd);
+      const check = cleanCmd.includes("acfs_grok_")
+        ? commandLinesWithChildHelperPreludes(cleanCmd.split("\n")).join("\n")
+        : cleanCmd;
+      const encodedCmd = encodeDoctorCommand(check);
 
       // Use tab delimiter (\t) instead of pipe to avoid conflicts with || in commands.
       // RUN_AS is the verify context, the same one the installer verifies in (#461).
@@ -3880,9 +3910,13 @@ async function main(): Promise<void> {
   }
 
   const projectVersion = readProjectVersion();
+  // Bind the helper bytes embedded in child shells to the same snapshot used
+  // for the internal checksum ledger. A concurrent edit must fail generation.
+  grokHelperSnapshot = readRegularFileNoFollow(GROK_HELPERS_PATH, "Grok command helpers");
   const boundStaticSnapshots = new Map<string, Buffer>([
     [MANIFEST_PATH, manifestBytes],
     [CHECKSUMS_PATH, checksumsBytes],
+    [GROK_HELPERS_PATH, grokHelperSnapshot],
   ]);
 
   // Build map of all files we would generate

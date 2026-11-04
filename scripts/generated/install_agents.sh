@@ -2133,6 +2133,129 @@ acfs_generated_install_agents_grok() {
     log_step "Installing agents.grok"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: acfs_grok_check preflight (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_AGENTS_GROK_PRE_INSTALL_CHECK'
+# Shared Grok command ownership checks from security.sh.
+# The generator embeds this exact block in Grok's child-shell checks. Keep it
+# self-contained: the updater runs the same functions as the target user.
+# This checks command ownership, not the authenticity of the downloaded binary.
+acfs_grok_payload_path() {
+    local arch=""
+    [[ "${HOME:-}" == /* && "$HOME" != / ]] || return 1
+    [[ "$(/usr/bin/uname -s)" == Linux ]] || return 1
+    arch="$(/usr/bin/uname -m)" || return 1
+    case "$arch" in
+        x86_64|amd64) arch=x86_64 ;;
+        aarch64|arm64) arch=aarch64 ;;
+        *) return 1 ;;
+    esac
+    printf '%s/.grok/downloads/grok-linux-%s\n' "${HOME%/}" "$arch"
+}
+
+acfs_grok_check() {
+    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
+    local cursor_dir="" candidate="" name="" resolved="" expected=""
+    local -a cursor_dirs=() bin_dirs=()
+    case "$mode" in preflight|ready) ;; *) return 1 ;; esac
+    payload="$(acfs_grok_payload_path)" || {
+        printf 'Grok CLI: cannot determine the target Linux payload path.\n' >&2
+        return 1
+    }
+    primary_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+    [[ "$primary_bin" == /* && "$primary_bin" != / ]] || return 1
+
+    # The verified installer uses a clean environment, whereas an existing
+    # Cursor session may use either override. Check all relevant records so a
+    # discarded environment selector cannot authorize replacing its commands.
+    cursor_dirs=("$HOME/.cursor")
+    [[ -z "${CURSOR_CONFIG_DIR:-}" ]] || cursor_dirs+=("$CURSOR_CONFIG_DIR")
+    [[ -z "${XDG_CONFIG_HOME:-}" ]] || cursor_dirs+=("$XDG_CONFIG_HOME/cursor")
+    for cursor_dir in "${cursor_dirs[@]}"; do
+        if [[ "$cursor_dir" != /* ]]; then
+            printf 'Grok CLI: Cursor configuration path must be absolute before installation.\n' >&2
+            return 1
+        fi
+        record="$cursor_dir/grok-switch.json"
+        [[ -e "$record" || -L "$record" ]] || continue
+        # A switch record is never permission to take a command name. Only a
+        # readable, bounded, explicitly inactive record allows normal binding
+        # checks; unknown/new states require owner review too. Do not print its
+        # contents or execute a command selected by it.
+        if [[ ! -f "$record" || ! -r "$record" || -L "$record" ]]; then
+            printf 'Grok CLI: cannot safely read Cursor switch state; existing commands were preserved.\n' >&2
+            return 1
+        fi
+        record_size="$(/usr/bin/stat -c %s -- "$record" 2>/dev/null)" || return 1
+        if [[ ! "$record_size" =~ ^[0-9]+$ ]] || (( record_size > 65536 )); then
+            printf 'Grok CLI: invalid Cursor switch record; existing commands were preserved.\n' >&2
+            return 1
+        fi
+        if ! /usr/bin/timeout --kill-after=1s 2s /usr/bin/jq -e -s '
+            length == 1 and (.[0] | type == "object" and .schema == 1 and .state == "inactive")
+        ' "$record" >/dev/null 2>&1; then
+            printf 'Grok CLI: Cursor switch is active, pending, or unrecognized. Switch back to Grok in Cursor and retry; existing commands were preserved.\n' >&2
+            return 1
+        fi
+    done
+
+    if [[ -L "$payload" || ( -e "$payload" && ! -f "$payload" ) ]]; then
+        printf 'Grok CLI: expected payload is not a regular file; refusing command replacement.\n' >&2
+        return 1
+    fi
+    bin_dirs=("$primary_bin" "$HOME/.local/bin" "$HOME/.grok/bin")
+    # Both pinned and deployed installers may add links here when their bin
+    # directory is absent from PATH. Inspect it only when the target can write
+    # there; normal unprivileged users cannot replace these system commands.
+    [[ ! -w /usr/local/bin ]] || bin_dirs+=(/usr/local/bin)
+    for cursor_dir in "${bin_dirs[@]}"; do
+        for name in grok agent; do
+            candidate="$cursor_dir/$name"
+            [[ -e "$candidate" || -L "$candidate" ]] || continue
+            # A broken link to this exact payload is repairable. A dangling
+            # link to any other program still owns its name and must survive.
+            if [[ "$mode" == preflight && -L "$candidate" && ! -e "$payload" ]]; then
+                resolved="$(/usr/bin/readlink -m -- "$candidate")" || return 1
+                expected="$(/usr/bin/readlink -m -- "$payload")" || return 1
+                [[ "$resolved" != "$expected" ]] || continue
+            fi
+            if [[ ! -f "$candidate" || ! "$candidate" -ef "$payload" ]]; then
+                printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
+                return 1
+            fi
+        done
+    done
+    [[ "$mode" == ready ]] || return 0
+    resolved="$(builtin command -v grok 2>/dev/null)" || resolved=""
+    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* \
+        || ! -f "$resolved" || ! "$resolved" -ef "$payload" ]]; then
+        printf 'Grok CLI: grok does not resolve to the installed Grok payload; installation is not ready.\n' >&2
+        return 1
+    fi
+    return 0
+}
+
+acfs_grok_check preflight
+INSTALL_AGENTS_GROK_PRE_INSTALL_CHECK
+        then
+            log_warn "agents.grok: Grok command ownership is unresolved; existing commands were preserved. Switch back to Grok in Cursor or resolve the command conflict before retrying."
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.grok"; then
+              log_error "agents.grok: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.grok" "Grok command ownership is unresolved; existing commands were preserved. Switch back to Grok in Cursor or resolve the command conflict before retrying."
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.grok"
+            fi
+            return 0
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verified installer: agents.grok"
     else
         if ! {
@@ -2230,7 +2353,7 @@ acfs_generated_install_agents_grok() {
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: ensure grok is on the ACFS bin dir PATH (target_user)"
+        log_info "dry-run: install: bind grok to its installed payload without replacing another command (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_AGENTS_GROK'
 # Generated helper functions used by this child shell.
@@ -2391,25 +2514,126 @@ acfs_install_executable_into_primary_bin() {
     "$install_bin" -m 0755 "$src_path" "$dest_path"
 }
 
-# acfs-summary: ensure grok is on the ACFS bin dir PATH
-target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
-if [[ ! -x "$target_bin/grok" ]]; then
-  grok_bin=""
-  for candidate in "$HOME/.local/bin/grok" "$HOME/.grok/bin/grok"; do
-    if [[ -x "$candidate" ]]; then
-      grok_bin="$candidate"
-      break
+# Shared Grok command ownership checks from security.sh.
+# The generator embeds this exact block in Grok's child-shell checks. Keep it
+# self-contained: the updater runs the same functions as the target user.
+# This checks command ownership, not the authenticity of the downloaded binary.
+acfs_grok_payload_path() {
+    local arch=""
+    [[ "${HOME:-}" == /* && "$HOME" != / ]] || return 1
+    [[ "$(/usr/bin/uname -s)" == Linux ]] || return 1
+    arch="$(/usr/bin/uname -m)" || return 1
+    case "$arch" in
+        x86_64|amd64) arch=x86_64 ;;
+        aarch64|arm64) arch=aarch64 ;;
+        *) return 1 ;;
+    esac
+    printf '%s/.grok/downloads/grok-linux-%s\n' "${HOME%/}" "$arch"
+}
+
+acfs_grok_check() {
+    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
+    local cursor_dir="" candidate="" name="" resolved="" expected=""
+    local -a cursor_dirs=() bin_dirs=()
+    case "$mode" in preflight|ready) ;; *) return 1 ;; esac
+    payload="$(acfs_grok_payload_path)" || {
+        printf 'Grok CLI: cannot determine the target Linux payload path.\n' >&2
+        return 1
+    }
+    primary_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+    [[ "$primary_bin" == /* && "$primary_bin" != / ]] || return 1
+
+    # The verified installer uses a clean environment, whereas an existing
+    # Cursor session may use either override. Check all relevant records so a
+    # discarded environment selector cannot authorize replacing its commands.
+    cursor_dirs=("$HOME/.cursor")
+    [[ -z "${CURSOR_CONFIG_DIR:-}" ]] || cursor_dirs+=("$CURSOR_CONFIG_DIR")
+    [[ -z "${XDG_CONFIG_HOME:-}" ]] || cursor_dirs+=("$XDG_CONFIG_HOME/cursor")
+    for cursor_dir in "${cursor_dirs[@]}"; do
+        if [[ "$cursor_dir" != /* ]]; then
+            printf 'Grok CLI: Cursor configuration path must be absolute before installation.\n' >&2
+            return 1
+        fi
+        record="$cursor_dir/grok-switch.json"
+        [[ -e "$record" || -L "$record" ]] || continue
+        # A switch record is never permission to take a command name. Only a
+        # readable, bounded, explicitly inactive record allows normal binding
+        # checks; unknown/new states require owner review too. Do not print its
+        # contents or execute a command selected by it.
+        if [[ ! -f "$record" || ! -r "$record" || -L "$record" ]]; then
+            printf 'Grok CLI: cannot safely read Cursor switch state; existing commands were preserved.\n' >&2
+            return 1
+        fi
+        record_size="$(/usr/bin/stat -c %s -- "$record" 2>/dev/null)" || return 1
+        if [[ ! "$record_size" =~ ^[0-9]+$ ]] || (( record_size > 65536 )); then
+            printf 'Grok CLI: invalid Cursor switch record; existing commands were preserved.\n' >&2
+            return 1
+        fi
+        if ! /usr/bin/timeout --kill-after=1s 2s /usr/bin/jq -e -s '
+            length == 1 and (.[0] | type == "object" and .schema == 1 and .state == "inactive")
+        ' "$record" >/dev/null 2>&1; then
+            printf 'Grok CLI: Cursor switch is active, pending, or unrecognized. Switch back to Grok in Cursor and retry; existing commands were preserved.\n' >&2
+            return 1
+        fi
+    done
+
+    if [[ -L "$payload" || ( -e "$payload" && ! -f "$payload" ) ]]; then
+        printf 'Grok CLI: expected payload is not a regular file; refusing command replacement.\n' >&2
+        return 1
     fi
-  done
-  if [[ -z "$grok_bin" ]]; then
-    echo "Grok CLI: installer finished but no grok executable found" >&2
-    exit 1
-  fi
-  acfs_link_primary_bin_command "$grok_bin" "grok"
+    bin_dirs=("$primary_bin" "$HOME/.local/bin" "$HOME/.grok/bin")
+    # Both pinned and deployed installers may add links here when their bin
+    # directory is absent from PATH. Inspect it only when the target can write
+    # there; normal unprivileged users cannot replace these system commands.
+    [[ ! -w /usr/local/bin ]] || bin_dirs+=(/usr/local/bin)
+    for cursor_dir in "${bin_dirs[@]}"; do
+        for name in grok agent; do
+            candidate="$cursor_dir/$name"
+            [[ -e "$candidate" || -L "$candidate" ]] || continue
+            # A broken link to this exact payload is repairable. A dangling
+            # link to any other program still owns its name and must survive.
+            if [[ "$mode" == preflight && -L "$candidate" && ! -e "$payload" ]]; then
+                resolved="$(/usr/bin/readlink -m -- "$candidate")" || return 1
+                expected="$(/usr/bin/readlink -m -- "$payload")" || return 1
+                [[ "$resolved" != "$expected" ]] || continue
+            fi
+            if [[ ! -f "$candidate" || ! "$candidate" -ef "$payload" ]]; then
+                printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
+                return 1
+            fi
+        done
+    done
+    [[ "$mode" == ready ]] || return 0
+    resolved="$(builtin command -v grok 2>/dev/null)" || resolved=""
+    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* \
+        || ! -f "$resolved" || ! "$resolved" -ef "$payload" ]]; then
+        printf 'Grok CLI: grok does not resolve to the installed Grok payload; installation is not ready.\n' >&2
+        return 1
+    fi
+    return 0
+}
+
+# acfs-summary: bind grok to its installed payload without replacing another command
+acfs_grok_check preflight || exit 1
+target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+grok_payload="$(acfs_grok_payload_path)" || exit 1
+if [[ ! -f "$grok_payload" || ! -x "$grok_payload" || -L "$grok_payload" ]]; then
+  echo "Grok CLI: installer finished without a regular executable payload" >&2
+  exit 1
 fi
+if [[ ! -e "$target_bin/grok" && ! -L "$target_bin/grok" ]]; then
+  acfs_child_ensure_primary_bin_dir "$target_bin" || exit 1
+  ln_bin="$(acfs_child_primary_bin_tool_path ln)" || exit 1
+  if acfs_child_primary_bin_requires_root "$target_bin"; then
+    acfs_child_run_root_bin_command "$ln_bin" -sT -- "$grok_payload" "$target_bin/grok" || exit 1
+  else
+    "$ln_bin" -sT -- "$grok_payload" "$target_bin/grok" || exit 1
+  fi
+fi
+acfs_grok_check ready || exit 1
 INSTALL_AGENTS_GROK
         then
-            log_warn "agents.grok: install command failed: ensure grok is on the ACFS bin dir PATH"
+            log_warn "agents.grok: install command failed: bind grok to its installed payload without replacing another command"
             # Optional-module failures are warnings on a default install, but a
             # module the user explicitly named with --only had exactly one job:
             # propagate the failure instead of reporting phase success (#373).
@@ -2419,7 +2643,7 @@ INSTALL_AGENTS_GROK
               return 1
             fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "agents.grok" "install command failed: ensure grok is on the ACFS bin dir PATH"
+              record_skipped_tool "agents.grok" "install command failed: bind grok to its installed payload without replacing another command"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "agents.grok"
             fi
@@ -2429,13 +2653,115 @@ INSTALL_AGENTS_GROK
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: grok --version || grok --help (target_user)"
+        log_info "dry-run: verify: verify the Grok payload and command binding (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_AGENTS_GROK'
-grok --version || grok --help
+# Shared Grok command ownership checks from security.sh.
+# The generator embeds this exact block in Grok's child-shell checks. Keep it
+# self-contained: the updater runs the same functions as the target user.
+# This checks command ownership, not the authenticity of the downloaded binary.
+acfs_grok_payload_path() {
+    local arch=""
+    [[ "${HOME:-}" == /* && "$HOME" != / ]] || return 1
+    [[ "$(/usr/bin/uname -s)" == Linux ]] || return 1
+    arch="$(/usr/bin/uname -m)" || return 1
+    case "$arch" in
+        x86_64|amd64) arch=x86_64 ;;
+        aarch64|arm64) arch=aarch64 ;;
+        *) return 1 ;;
+    esac
+    printf '%s/.grok/downloads/grok-linux-%s\n' "${HOME%/}" "$arch"
+}
+
+acfs_grok_check() {
+    local mode="${1:-ready}" payload="" primary_bin="" record="" record_size=""
+    local cursor_dir="" candidate="" name="" resolved="" expected=""
+    local -a cursor_dirs=() bin_dirs=()
+    case "$mode" in preflight|ready) ;; *) return 1 ;; esac
+    payload="$(acfs_grok_payload_path)" || {
+        printf 'Grok CLI: cannot determine the target Linux payload path.\n' >&2
+        return 1
+    }
+    primary_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+    [[ "$primary_bin" == /* && "$primary_bin" != / ]] || return 1
+
+    # The verified installer uses a clean environment, whereas an existing
+    # Cursor session may use either override. Check all relevant records so a
+    # discarded environment selector cannot authorize replacing its commands.
+    cursor_dirs=("$HOME/.cursor")
+    [[ -z "${CURSOR_CONFIG_DIR:-}" ]] || cursor_dirs+=("$CURSOR_CONFIG_DIR")
+    [[ -z "${XDG_CONFIG_HOME:-}" ]] || cursor_dirs+=("$XDG_CONFIG_HOME/cursor")
+    for cursor_dir in "${cursor_dirs[@]}"; do
+        if [[ "$cursor_dir" != /* ]]; then
+            printf 'Grok CLI: Cursor configuration path must be absolute before installation.\n' >&2
+            return 1
+        fi
+        record="$cursor_dir/grok-switch.json"
+        [[ -e "$record" || -L "$record" ]] || continue
+        # A switch record is never permission to take a command name. Only a
+        # readable, bounded, explicitly inactive record allows normal binding
+        # checks; unknown/new states require owner review too. Do not print its
+        # contents or execute a command selected by it.
+        if [[ ! -f "$record" || ! -r "$record" || -L "$record" ]]; then
+            printf 'Grok CLI: cannot safely read Cursor switch state; existing commands were preserved.\n' >&2
+            return 1
+        fi
+        record_size="$(/usr/bin/stat -c %s -- "$record" 2>/dev/null)" || return 1
+        if [[ ! "$record_size" =~ ^[0-9]+$ ]] || (( record_size > 65536 )); then
+            printf 'Grok CLI: invalid Cursor switch record; existing commands were preserved.\n' >&2
+            return 1
+        fi
+        if ! /usr/bin/timeout --kill-after=1s 2s /usr/bin/jq -e -s '
+            length == 1 and (.[0] | type == "object" and .schema == 1 and .state == "inactive")
+        ' "$record" >/dev/null 2>&1; then
+            printf 'Grok CLI: Cursor switch is active, pending, or unrecognized. Switch back to Grok in Cursor and retry; existing commands were preserved.\n' >&2
+            return 1
+        fi
+    done
+
+    if [[ -L "$payload" || ( -e "$payload" && ! -f "$payload" ) ]]; then
+        printf 'Grok CLI: expected payload is not a regular file; refusing command replacement.\n' >&2
+        return 1
+    fi
+    bin_dirs=("$primary_bin" "$HOME/.local/bin" "$HOME/.grok/bin")
+    # Both pinned and deployed installers may add links here when their bin
+    # directory is absent from PATH. Inspect it only when the target can write
+    # there; normal unprivileged users cannot replace these system commands.
+    [[ ! -w /usr/local/bin ]] || bin_dirs+=(/usr/local/bin)
+    for cursor_dir in "${bin_dirs[@]}"; do
+        for name in grok agent; do
+            candidate="$cursor_dir/$name"
+            [[ -e "$candidate" || -L "$candidate" ]] || continue
+            # A broken link to this exact payload is repairable. A dangling
+            # link to any other program still owns its name and must survive.
+            if [[ "$mode" == preflight && -L "$candidate" && ! -e "$payload" ]]; then
+                resolved="$(/usr/bin/readlink -m -- "$candidate")" || return 1
+                expected="$(/usr/bin/readlink -m -- "$payload")" || return 1
+                [[ "$resolved" != "$expected" ]] || continue
+            fi
+            if [[ ! -f "$candidate" || ! "$candidate" -ef "$payload" ]]; then
+                printf 'Grok CLI: command conflict at %s; ACFS will not run or replace it. Switch back to Grok in Cursor or resolve the command ownership first.\n' "$candidate" >&2
+                return 1
+            fi
+        done
+    done
+    [[ "$mode" == ready ]] || return 0
+    resolved="$(builtin command -v grok 2>/dev/null)" || resolved=""
+    if [[ ! -f "$payload" || ! -x "$payload" || "$resolved" != /* \
+        || ! -f "$resolved" || ! "$resolved" -ef "$payload" ]]; then
+        printf 'Grok CLI: grok does not resolve to the installed Grok payload; installation is not ready.\n' >&2
+        return 1
+    fi
+    return 0
+}
+
+# acfs-summary: verify the Grok payload and command binding
+acfs_grok_check ready || exit 1
+grok_payload="$(acfs_grok_payload_path)" || exit 1
+/usr/bin/timeout --kill-after=2s 10s "$grok_payload" --version
 INSTALL_AGENTS_GROK
         then
-            log_warn "agents.grok: verify failed: grok --version || grok --help"
+            log_warn "agents.grok: verify failed: verify the Grok payload and command binding"
             # Optional-module failures are warnings on a default install, but a
             # module the user explicitly named with --only had exactly one job:
             # propagate the failure instead of reporting phase success (#373).
@@ -2445,7 +2771,7 @@ INSTALL_AGENTS_GROK
               return 1
             fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "agents.grok" "verify failed: grok --version || grok --help"
+              record_skipped_tool "agents.grok" "verify failed: verify the Grok payload and command binding"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "agents.grok"
             fi

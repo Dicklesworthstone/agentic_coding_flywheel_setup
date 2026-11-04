@@ -454,7 +454,21 @@ describe("Generated manifest_index.sh content", () => {
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(modules.map((module) => module.installed_check!.command + "\0").join(""));
+    // Grok's child shell must receive the exact canonical ownership helpers,
+    // followed by its unchanged authored command. Other modules still require
+    // an exact raw-command round trip; do not normalize shell source here.
+    const securitySource = readFileSync(resolve(PROJECT_ROOT, "scripts/lib/security.sh"), "utf8");
+    const grokHelperBlocks = [...securitySource.matchAll(
+      /^# BEGIN ACFS GROK COMMAND HELPERS\n([\s\S]*?)\n# END ACFS GROK COMMAND HELPERS$/gm,
+    )];
+    expect(grokHelperBlocks).toHaveLength(1);
+    const grokPrelude = "# Shared Grok command ownership checks from security.sh.\n"
+      + grokHelperBlocks[0]![1]! + "\n\n";
+    const expectedCommands = modules.map((module) => {
+      const authoredCommand = module.installed_check!.command;
+      return (module.id === "agents.grok" ? grokPrelude + authoredCommand : authoredCommand) + "\0";
+    });
+    expect(result.stdout).toBe(expectedCommands.join(""));
     for (const command of result.stdout.split("\0").slice(0, -1)) {
       const syntax = spawnSync("bash", ["-n"], { input: command, encoding: "utf8" });
       expect(syntax.status, syntax.stderr).toBe(0);
