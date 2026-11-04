@@ -16312,12 +16312,11 @@ esac'
     export XDG_STATE_HOME="$HOME/.local/state"
     mkdir -p "$HOME/bin"
     local bin="$HOME/bin/oddtool"
-    write_smoke_fake_binary "$bin" 'echo "Usage: oddtool <SUBCOMMAND>" >&2; exit 2'
-    printf '#!/usr/bin/env bash\necho old\n' > "$bin.prev"
-    chmod +x "$bin.prev"
+    write_smoke_fake_binary "$bin" 'echo old'
     update_tool_binary_path() { printf '%s\n' "$HOME/bin/oddtool"; }
-    UPDATE_ROLLBACK_PREV_PATH="$bin.prev"
-    UPDATE_ROLLBACK_BIN_PATH="$bin"
+    update_snapshot_tool_binary oddtool
+    [[ -f "$bin.prev" ]]
+    write_smoke_fake_binary "$bin" 'echo "Usage: oddtool <SUBCOMMAND>" >&2; exit 2'
 
     run update_verify_tool_or_rollback oddtool
     assert_success
@@ -16333,12 +16332,11 @@ esac'
     export XDG_STATE_HOME="$HOME/.local/state"
     mkdir -p "$HOME/bin"
     local bin="$HOME/bin/brokentool"
-    write_smoke_fake_binary "$bin" 'echo "Traceback (most recent call last):" >&2; exit 1'
-    printf '#!/usr/bin/env bash\necho old\n' > "$bin.prev"
-    chmod +x "$bin.prev"
+    write_smoke_fake_binary "$bin" 'echo old'
     update_tool_binary_path() { printf '%s\n' "$HOME/bin/brokentool"; }
-    UPDATE_ROLLBACK_PREV_PATH="$bin.prev"
-    UPDATE_ROLLBACK_BIN_PATH="$bin"
+    update_snapshot_tool_binary brokentool
+    [[ -f "$bin.prev" ]]
+    write_smoke_fake_binary "$bin" 'echo "Traceback (most recent call last):" >&2; exit 1'
 
     run update_verify_tool_or_rollback brokentool
     assert_failure

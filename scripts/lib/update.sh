@@ -5643,39 +5643,78 @@ update_tool_rollback_backoff_details() {
     return 0
 }
 
-# Retain the current binary as <binary>.prev before the installer replaces it.
-# Best-effort: a tool with no resolvable binary (fresh install) simply has no
-# rollback candidate. Sets UPDATE_ROLLBACK_PREV_PATH/UPDATE_ROLLBACK_BIN_PATH.
+# Hash a retained binary with the account that owns the update. Resolving the
+# utility through trusted system paths must not turn a target-owned pathname
+# into a privileged read when the updater itself runs as root.
+update_target_file_sha256() {
+    local filepath="${1:-}" sha_bin="" output="" hash=""
+    local -a sha_args=()
+    [[ -n "$filepath" ]] || return 1
+    if sha_bin="$(update_system_binary_path sha256sum)"; then
+        :
+    elif sha_bin="$(update_system_binary_path shasum)"; then
+        sha_args=(-a 256)
+    else
+        return 1
+    fi
+    output="$(update_run_in_target_context "" "$sha_bin" "${sha_args[@]}" -- "$filepath")" || return 1
+    read -r hash _ <<< "$output"
+    # GNU checksum tools prefix escaped filenames with a backslash. The
+    # digest remains the first field; filenames are never parsed as commands.
+    hash="${hash#\\}"
+    [[ "$hash" =~ ^[[:xdigit:]]{64}$ ]] || return 1
+    printf '%s\n' "${hash,,}"
+}
+
+# Retain the current payload before the installer replaces it. Resolve command
+# symlinks without changing them, and publish the verified copy atomically so
+# an interrupted copy cannot truncate an earlier .prev. All writes run as the
+# target account. This is single-file recovery, not a package/tree snapshot.
+# A fresh install or unwritable destination simply has no rollback candidate.
 update_snapshot_tool_binary() {
     local tool="${1:-}"
     UPDATE_ROLLBACK_PREV_PATH=""
     UPDATE_ROLLBACK_BIN_PATH=""
+    UPDATE_ROLLBACK_SHA256=""
 
     local binary_name=""
     binary_name="$(update_tool_rollback_binary_name "$tool")"
     [[ -n "$binary_name" ]] || return 0
 
-    local bin_path=""
-    bin_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
-    [[ -n "$bin_path" && -x "$bin_path" && ! -d "$bin_path" ]] || return 0
-
-    local -a snapshot_command=(cp -p "$bin_path" "$bin_path.prev")
-    if [[ "$tool" == grok ]]; then
-        # The payload directory is target-owned. A root updater must not
-        # follow a .prev symlink or write there with the caller's privileges.
-        if [[ -L "$bin_path.prev" || ( -e "$bin_path.prev" && ! -f "$bin_path.prev" ) ]]; then
-            log_to_file "Refusing unsafe Grok snapshot destination at $bin_path.prev"
+    local command_path="" bin_path="" tmp_path="" snapshot_sha="" utility_name=""
+    local -A snapshot_bins=()
+    command_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
+    [[ -n "$command_path" && -x "$command_path" && ! -d "$command_path" ]] || return 0
+    for utility_name in readlink mktemp cp cmp mv rm; do
+        if ! snapshot_bins["$utility_name"]="$(update_system_binary_path "$utility_name")"; then
+            log_to_file "Cannot snapshot $tool: trusted $utility_name is unavailable"
             return 0
         fi
-        local cp_bin=""
-        cp_bin="$(update_system_binary_path cp)" || return 0
-        snapshot_command=(update_run_in_target_context "" "$cp_bin" -p --remove-destination -- "$bin_path" "$bin_path.prev")
+    done
+    bin_path="$(update_run_in_target_context "" "${snapshot_bins[readlink]}" -f -- "$command_path" 2>/dev/null || true)"
+    [[ "$bin_path" == /* && -f "$bin_path" && -x "$bin_path" && ! -L "$bin_path" ]] || return 0
+    if [[ -L "$bin_path.prev" || ( -e "$bin_path.prev" && ! -f "$bin_path.prev" ) ]]; then
+        log_to_file "Refusing unsafe $tool snapshot destination at $bin_path.prev"
+        return 0
     fi
-    if "${snapshot_command[@]}" 2>/dev/null; then
+
+    tmp_path="$(update_run_in_target_context "" "${snapshot_bins[mktemp]}" -- "$bin_path.prev.tmp.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$tmp_path" ]]; then
+        log_to_file "Could not stage previous $tool binary beside $bin_path (continuing without rollback candidate)"
+        return 0
+    fi
+    if update_run_in_target_context "" "${snapshot_bins[cp]}" -p --no-dereference --remove-destination -- "$bin_path" "$tmp_path" 2>/dev/null \
+        && [[ -f "$tmp_path" && ! -L "$tmp_path" ]] \
+        && update_run_in_target_context "" "${snapshot_bins[cmp]}" -s -- "$bin_path" "$tmp_path" 2>/dev/null \
+        && snapshot_sha="$(update_target_file_sha256 "$tmp_path" 2>/dev/null)" \
+        && [[ ! -L "$bin_path.prev" && ( ! -e "$bin_path.prev" || -f "$bin_path.prev" ) ]] \
+        && update_run_in_target_context "" "${snapshot_bins[mv]}" -fT -- "$tmp_path" "$bin_path.prev" 2>/dev/null; then
         UPDATE_ROLLBACK_PREV_PATH="$bin_path.prev"
         UPDATE_ROLLBACK_BIN_PATH="$bin_path"
+        UPDATE_ROLLBACK_SHA256="$snapshot_sha"
         log_to_file "Retained previous $tool binary at $bin_path.prev"
     else
+        update_run_in_target_context "" "${snapshot_bins[rm]}" -f -- "$tmp_path" 2>/dev/null || true
         log_to_file "Could not retain previous $tool binary at $bin_path.prev (continuing without rollback candidate)"
     fi
     return 0
@@ -5720,30 +5759,39 @@ update_verify_tool_or_rollback() {
     echo "POST-INSTALL VERIFICATION FAILED for $tool: ${UPDATE_LAST_SMOKE_DETAIL:-"'$new_path' failed its smoke check"}" >&2
     log_to_file "POST-INSTALL VERIFICATION FAILED for $tool at $new_path: ${UPDATE_LAST_SMOKE_DETAIL:-smoke check failed}"
 
-    if [[ -n "$prev_path" && -f "$prev_path" ]]; then
+    if [[ -n "$prev_path" ]]; then
         local restore_target="$new_path"
         [[ -n "${UPDATE_ROLLBACK_BIN_PATH:-}" ]] && restore_target="$UPDATE_ROLLBACK_BIN_PATH"
-        # Never treat a directory left at the old binary path as a destination
-        # container: moving .prev into it would falsely report a restoration.
-        local restore_status=1
-        if [[ "$tool" == grok ]]; then
-            local mv_bin=""
-            if [[ ! -L "$prev_path" ]] && mv_bin="$(update_system_binary_path mv)" \
-                && update_run_in_target_context "" "$mv_bin" -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
-                restore_status=0
-            fi
-        elif mv -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
-            restore_status=0
-        fi
-        if [[ "$restore_status" -eq 0 ]]; then
-            echo "ROLLED BACK: restored previous $tool binary at $restore_target" >&2
-            log_to_file "ROLLED BACK $tool: restored previous binary at $restore_target"
-            if [[ "$restore_target" != "$new_path" ]]; then
-                log_to_file "NOTE: new $tool binary at $new_path left in place; restored copy is earlier on PATH resolution order"
-            fi
+        local mv_bin="" retained_sha="" recovery_error="" restored_path=""
+        if [[ -L "$prev_path" || ! -f "$prev_path" ]]; then
+            recovery_error="retained backup is missing, a symlink, or not a regular file"
+        elif [[ ! "${UPDATE_ROLLBACK_SHA256:-}" =~ ^[[:xdigit:]]{64}$ ]]; then
+            recovery_error="retained backup has no verified snapshot digest"
+        elif ! retained_sha="$(update_target_file_sha256 "$prev_path" 2>/dev/null)" \
+            || [[ "$retained_sha" != "$UPDATE_ROLLBACK_SHA256" ]]; then
+            recovery_error="retained backup no longer matches the verified snapshot"
+        elif [[ -z "$restore_target" || -L "$restore_target" \
+            || ( -e "$restore_target" && ! -f "$restore_target" ) ]]; then
+            recovery_error="original payload destination is unsafe or no longer a regular-file slot"
+        elif ! mv_bin="$(update_system_binary_path mv)"; then
+            recovery_error="trusted mv is unavailable"
+        elif ! update_run_in_target_context "" "$mv_bin" -fT -- "$prev_path" "$restore_target" 2>/dev/null; then
+            recovery_error="could not restore $prev_path -> $restore_target as the target account"
         else
-            echo "ROLLBACK FAILED for $tool: could not restore $prev_path -> $restore_target" >&2
-            log_to_file "ROLLBACK FAILED for $tool: could not restore $prev_path -> $restore_target"
+            # An intact wrapper can still launch a damaged payload, and an
+            # installer can change a package-manager symlink to another target.
+            # Only the currently discoverable command proves recovery worked.
+            restored_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
+            if update_tool_smoke_check "$tool" "$restored_path"; then
+                echo "ROLLED BACK: restored previous $tool binary at $restore_target and verified the active command" >&2
+                log_to_file "ROLLED BACK $tool: restored $restore_target; active command $restored_path passed its smoke check"
+            else
+                recovery_error="retained file restored, but active command recovery is ${UPDATE_LAST_SMOKE_VERDICT:-unverified}: ${UPDATE_LAST_SMOKE_DETAIL:-smoke check failed}; package/tree recovery may be required"
+            fi
+        fi
+        if [[ -n "$recovery_error" ]]; then
+            echo "ROLLBACK FAILED for $tool: $recovery_error" >&2
+            log_to_file "ROLLBACK FAILED for $tool: $recovery_error"
         fi
     else
         echo "No previous $tool binary retained; cannot roll back automatically" >&2
@@ -5801,6 +5849,25 @@ update_run_verified_installer_with_env() {
 
     if ! update_require_security; then
         echo "Security verification unavailable (missing $SCRIPT_DIR/security.sh, repo scripts/lib/security.sh, or checksums.yaml)" >&2
+        return 1
+    fi
+
+    # run_cmd cannot time out a shell function. Enforce this deadline at the
+    # external interpreter inside the target account, before any installer
+    # acquisition or snapshot. GNU timeout treats zero as no deadline.
+    local installer_timeout="${UPDATE_CMD_TIMEOUT:-1800}"
+    local installer_timeout_bin="" installer_bash_bin=""
+    # Bound decimal precision so a nonzero value cannot underflow to zero or
+    # overflow when timeout converts it to floating-point seconds.
+    if [[ ${#installer_timeout} -gt 64 ]] \
+        || [[ ! "$installer_timeout" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([smhd])?$ ]] \
+        || [[ "${BASH_REMATCH[1]:-}" != *[1-9]* ]]; then
+        printf 'Verified installer deadline must be a positive duration (for example 30, 0.5s, or 2m); UPDATE_CMD_TIMEOUT is invalid.\n' >&2
+        return 1
+    fi
+    if ! installer_timeout_bin="$(update_system_binary_path timeout)" \
+        || ! installer_bash_bin="$(update_system_binary_path bash)"; then
+        printf 'Cannot enforce verified installer deadline: trusted timeout and bash are required.\n' >&2
         return 1
     fi
 
@@ -5877,7 +5944,13 @@ update_run_verified_installer_with_env() {
     update_snapshot_tool_binary "$tool"
 
     local exit_code=0
-    update_run_in_target_context "$installer_env" bash "$tmp_install" "$@" </dev/null || exit_code=$?
+    # A TERM-exiting shell can leave a TERM-resistant child alive after a
+    # timeout with a kill grace. Kill the ordinary installer process group at
+    # the deadline instead, before cleanup or recovery can race those children.
+    # Normal completion is unchanged; deliberately escaped sessions are outside
+    # timeout's process-group boundary.
+    update_run_in_target_context "$installer_env" "$installer_timeout_bin" \
+        --signal=KILL "$installer_timeout" "$installer_bash_bin" "$tmp_install" "$@" </dev/null || exit_code=$?
     rm -f "$tmp_install" 2>/dev/null || true
     if [[ -n "$installer_tmpdir" ]]; then
         update_remove_target_installer_tmpdir "$tool" "$installer_tmpdir" || true

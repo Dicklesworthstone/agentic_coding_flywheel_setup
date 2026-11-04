@@ -935,8 +935,19 @@ in the log. Expired holds warn and are ignored. Holds live in
 
 ### Post-Install Verification and Rollback
 
-Before a verified installer replaces a tool binary, the previous binary is
-retained at `<binary>.prev`. After the install, a smoke check probes the fresh
+Verified installers run within `UPDATE_CMD_TIMEOUT` (default: 1800 seconds).
+At the deadline, ACFS kills the installer's process group before checking the
+installed tool or attempting recovery. Zero or malformed durations, or a missing
+trusted timeout executable, prevent installer execution. This deadline applies
+to the installer process group; it does not contain a process that deliberately
+starts a separate session.
+
+Before a verified installer replaces a tool binary, ACFS attempts to retain the
+previous binary at `<binary>.prev`. An existing command symlink is resolved to
+its payload, and recovery preserves the command link. Backup creation and
+restoration run as the target account. Backups are staged, checked, and renamed
+atomically; a failed copy preserves an existing backup, and symlink or nonregular
+backup destinations are refused. After the install, a smoke check probes the fresh
 binary with a per-tool argument (`update_tool_smoke_probe` in
 `scripts/lib/update.sh`: `fsfs version`, `mdwb --help`, `pfr --help`) or, for
 tools without an entry, the chain `--version` → `--help` → `version`. Every
@@ -948,10 +959,17 @@ Verdicts:
   error). The binary ran, so it is kept and logged as
   `POST-INSTALL VERIFICATION UNAVAILABLE`; no rollback, no backoff.
 - **broken** — a probe timed out, could not execute, died by signal, or failed
-  without a usage-style rejection (crash, traceback, missing runtime). The
-  previous binary is restored atomically and the failure is recorded in
+  without a usage-style rejection (crash, traceback, missing runtime). ACFS
+  attempts to restore the retained binary only if its bytes still match the
+  snapshot. Recovery is reported as successful only after the active command
+  passes another smoke check. The update failure is recorded in
   `~/.local/state/acfs/update-rollback.state` so nightly runs back off instead
   of reinstalling the same broken release every night.
+
+This is recovery of one executable, not a transaction for the tool's entire
+installation. A changed command link, damaged wrapper dependency, or package
+data may require manual repair. Failed or unverified recovery remains an update
+failure; a successful recovery also preserves the installer's original failure.
 
 `acfs doctor` reports rolled back tools; `acfs-update --force` retries
 immediately. A backoff also ends as soon as the tool's pinned installer

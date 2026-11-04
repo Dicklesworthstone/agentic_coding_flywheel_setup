@@ -11,8 +11,10 @@ import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -490,6 +492,353 @@ exit "$rc"
                 if command == "consumer": self.assertIn("COUNTS=0,0,1", output)
 
 
+class SharedRollbackSafetyTests(unittest.TestCase):
+    """Exercise shared recovery with ordinary tools, never upstream installers.
+
+    Account transitions are explicitly a fixture on positive paths. The denial
+    cases retain the real target runner, and must never fall back to the caller.
+    """
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-shared-rollback-"))
+        (self.base / "bin").mkdir()
+        self.active = self.base / "bin/fixturetool"
+        self.backup = self.base / "bin/fixturetool.prev"
+        self.old = b'#!/bin/bash\nprintf "fixturetool 1.0.0\\n"\n'
+        self.broken = b'#!/bin/bash\nprintf "missing runtime dependency\\n" >&2\nexit 1\n'
+        self.active.write_bytes(self.old)
+        self.active.chmod(0o755)
+        (self.base / "broken").write_bytes(self.broken)
+        (self.base / "broken").chmod(0o755)
+        self.victim = self.base / "unrelated file"
+        self.victim.write_bytes(b"unrelated data must survive\n")
+        self.victim_bytes = self.victim.read_bytes()
+        self.installer = self.base / "installer.sh"
+        self.write_installer("")
+        self.env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.base),
+            "TARGET_HOME": str(self.base), "TEST_ROOT": str(self.base),
+            "XDG_STATE_HOME": str(self.base / "state"), "TMPDIR": str(self.base),
+            "REPO_ROOT": str(ROOT), "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+            "TEST_TOOL": "fixturetool",
+            "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+        }
+        self.shell_count = 0
+
+    def write_installer(self, body):
+        self.installer.write_text('#!/bin/bash\nset -eu\nprintf "execute\\n" >> "$TEST_ROOT/events"\n'
+                                  + body + "\n")
+
+    def shell(self, body, *, code=0, timeout=15, **env):
+        # Save the production runner before the existing acquisition/account
+        # boundary fixture replaces it. Denial cases restore it explicitly.
+        prefix = r'''
+source "$UPDATE_TEST_LIBRARY"
+real_target_runner="$(declare -f update_run_in_target_context)"
+''' + ROLLBACK_COMMON
+        self.shell_count += 1
+        output_path = self.base / f"shell-{self.shell_count}.log"
+        with output_path.open("w") as output_file:
+            process = subprocess.Popen(
+                ["/bin/bash", "--noprofile", "--norc", "-c", prefix + body],
+                env=self.env | {"TEST_PIN": hashlib.sha256(self.installer.read_bytes()).hexdigest()} | env,
+                stdout=output_file, stderr=subprocess.STDOUT, start_new_session=True,
+            )
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                # The baseline lacks an installer deadline. Kill only this
+                # fixture's session group, retaining all files and output.
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=3)
+                self.fail(f"fixture exceeded {timeout}s; artifacts: {self.base}")
+        output = output_path.read_text()
+        self.assertEqual(process.returncode, code, output + f"\nArtifacts: {self.base}")
+        return output
+
+    def events(self):
+        path = self.base / "events"
+        return path.read_text().splitlines() if path.exists() else []
+
+    def assert_no_successful_rollback(self, output):
+        self.assertNotIn("ROLLED BACK", output)
+        log = self.base / "update.log"
+        if log.exists():
+            self.assertNotIn("ROLLED BACK", log.read_text())
+
+    def test_snapshot_refuses_symlink_backup_without_overwriting_its_target(self):
+        self.backup.symlink_to(self.victim)
+        output = self.shell('update_snapshot_tool_binary fixturetool\n'
+                            'printf "PREV=%s\\n" "${UPDATE_ROLLBACK_PREV_PATH:-}"\n')
+        self.assertEqual(self.victim.read_bytes(), self.victim_bytes)
+        self.assertTrue(self.backup.is_symlink())
+        self.assertIn("PREV=\n", output)
+        self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_snapshot_refuses_directory_backup_without_creating_a_child(self):
+        self.backup.mkdir()
+        output = self.shell('update_snapshot_tool_binary fixturetool\n'
+                            'printf "PREV=%s\\n" "${UPDATE_ROLLBACK_PREV_PATH:-}"\n')
+        self.assertEqual(list(self.backup.iterdir()), [])
+        self.assertIn("PREV=\n", output)
+
+    def test_snapshot_replaces_hardlinked_backup_without_changing_its_peer(self):
+        os.link(self.victim, self.backup)
+        self.shell('update_snapshot_tool_binary fixturetool\n'
+                   '[[ -n "${UPDATE_ROLLBACK_PREV_PATH:-}" ]]\n')
+        self.assertEqual(self.victim.read_bytes(), self.victim_bytes)
+        self.assertEqual(self.backup.read_bytes(), self.old)
+        self.assertNotEqual(self.backup.stat().st_ino, self.victim.stat().st_ino)
+
+    def test_failed_staged_snapshot_preserves_the_previous_backup(self):
+        retained = b"retained earlier backup\n"
+        self.backup.write_bytes(retained)
+        failing_cp = self.base / "failing-cp"
+        failing_cp.write_text('#!/bin/bash\nprintf "incomplete copy\\n" > "${!#}"\nexit 23\n')
+        failing_cp.chmod(0o755)
+        output = self.shell(r'''
+update_system_binary_path() {
+    if [[ "$1" == cp ]]; then printf '%s\n' "$TEST_ROOT/failing-cp";
+    elif [[ -x "/usr/bin/$1" ]]; then printf '/usr/bin/%s\n' "$1";
+    else printf '/bin/%s\n' "$1"; fi
+}
+update_snapshot_tool_binary fixturetool
+printf 'PREV=%s\n' "${UPDATE_ROLLBACK_PREV_PATH:-}"
+''')
+        self.assertEqual(self.backup.read_bytes(), retained)
+        self.assertEqual(self.active.read_bytes(), self.old)
+        self.assertIn("PREV=\n", output)
+
+    def test_late_backup_symlink_is_neither_restored_nor_executed(self):
+        decoy = self.base / "decoy"
+        decoy.write_text('#!/bin/bash\nprintf "decoy\\n" >> "$TEST_ROOT/events"\nexit 0\n')
+        decoy.chmod(0o755)
+        output = self.shell(r'''
+update_snapshot_tool_binary fixturetool
+mv "$TEST_ROOT/bin/fixturetool.prev" "$TEST_ROOT/retained-original"
+ln -s "$TEST_ROOT/decoy" "$TEST_ROOT/bin/fixturetool.prev"
+cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"
+update_verify_tool_or_rollback fixturetool "$TEST_PIN"
+''', code=1)
+        self.assertTrue(self.backup.is_symlink())
+        self.assertFalse(self.active.is_symlink())
+        self.assertEqual(self.active.read_bytes(), self.broken)
+        self.assertEqual((self.base / "retained-original").read_bytes(), self.old)
+        self.assertNotIn("decoy", self.events())
+        self.assertIn("ROLLBACK FAILED", output)
+        self.assert_no_successful_rollback(output)
+
+    def test_changed_backup_bytes_are_rejected_before_restoration_or_probe(self):
+        output = self.shell(r'''
+update_snapshot_tool_binary fixturetool
+printf '#!/bin/bash\nprintf "decoy\\n" >> "$TEST_ROOT/events"\nexit 0\n' > "$TEST_ROOT/bin/fixturetool.prev"
+cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"
+update_verify_tool_or_rollback fixturetool "$TEST_PIN"
+''', code=1)
+        self.assertEqual(self.active.read_bytes(), self.broken)
+        self.assertNotIn("decoy", self.events())
+        self.assertIn("ROLLBACK FAILED", output)
+        self.assert_no_successful_rollback(output)
+
+    def test_restore_refuses_substituted_destination_symlink_without_touching_peer(self):
+        self.victim.write_bytes(self.broken)
+        self.victim.chmod(0o755)
+        output = self.shell(r'''
+update_snapshot_tool_binary fixturetool
+mv "$TEST_ROOT/bin/fixturetool" "$TEST_ROOT/displaced-original"
+ln -s "$TEST_ROOT/unrelated file" "$TEST_ROOT/bin/fixturetool"
+update_verify_tool_or_rollback fixturetool "$TEST_PIN"
+''', code=1)
+        self.assertTrue(self.active.is_symlink())
+        self.assertEqual(self.victim.read_bytes(), self.broken)
+        self.assertEqual(self.backup.read_bytes(), self.old)
+        self.assertIn("ROLLBACK FAILED", output)
+        self.assert_no_successful_rollback(output)
+
+    def test_snapshot_and_restore_mutations_cross_the_target_runner_boundary(self):
+        # Only system utility discovery and the account transition are fixtures.
+        # The real snapshot/restore commands execute; wrappers record the env
+        # supplied by the target boundary before delegating to the host utility.
+        commands = self.base / "commands"
+        commands.mkdir()
+        for command in ("cp", "mv"):
+            path = commands / command
+            path.write_text('#!/bin/bash\n'
+                            f'printf "{command}:%s\\n" "${{TEST_TARGET_CONTEXT:-caller}}" >> "$TEST_ROOT/mutations"\n'
+                            f'exec /bin/{command} "$@"\n')
+            path.chmod(0o755)
+        self.shell(r'''
+update_system_binary_path() {
+    case "$1" in
+        cp|mv) printf '%s/commands/%s\n' "$TEST_ROOT" "$1" ;;
+        *) if [[ -x "/usr/bin/$1" ]]; then printf '/usr/bin/%s\n' "$1"; else printf '/bin/%s\n' "$1"; fi ;;
+    esac
+}
+update_run_in_target_context() { shift; TEST_TARGET_CONTEXT=target "$@"; }
+update_snapshot_tool_binary fixturetool
+[[ -n "${UPDATE_ROLLBACK_PREV_PATH:-}" ]] || exit 98
+printf 'snapshot-complete\n' >> "$TEST_ROOT/mutations"
+cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"
+update_verify_tool_or_rollback fixturetool "$TEST_PIN"
+''', code=1)
+        records = (self.base / "mutations").read_text().splitlines() if (self.base / "mutations").exists() else []
+        self.assertIn("cp:target", records)
+        self.assertIn("mv:target", records)
+        self.assertIn("snapshot-complete", records)
+        self.assertIn("mv:target", records[records.index("snapshot-complete") + 1:])
+        self.assertTrue(all(record.endswith(":target") for record in records if record != "snapshot-complete"), records)
+        self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_unavailable_real_target_account_does_not_snapshot_as_the_caller(self):
+        output = self.shell(r'''
+eval "$real_target_runner"
+update_target_user() { printf '%s\n' acfs_fixture_unavailable_account; }
+update_target_home() { printf '%s\n' "$TARGET_HOME"; }
+update_snapshot_tool_binary fixturetool
+printf 'PREV=%s\n' "${UPDATE_ROLLBACK_PREV_PATH:-}"
+''')
+        self.assertFalse(self.backup.exists())
+        self.assertEqual(self.active.read_bytes(), self.old)
+        self.assertIn("PREV=\n", output)
+
+    def test_unavailable_real_target_account_does_not_restore_as_the_caller(self):
+        output = self.shell(r'''
+update_snapshot_tool_binary fixturetool
+cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"
+eval "$real_target_runner"
+update_target_user() { printf '%s\n' acfs_fixture_unavailable_account; }
+update_target_home() { printf '%s\n' "$TARGET_HOME"; }
+update_verify_tool_or_rollback fixturetool "$TEST_PIN"
+''', code=1)
+        self.assertEqual(self.active.read_bytes(), self.broken)
+        self.assertEqual(self.backup.read_bytes(), self.old)
+        self.assertIn("ROLLBACK FAILED", output)
+        self.assert_no_successful_rollback(output)
+
+    def test_relative_command_symlink_recovers_its_payload_and_keeps_the_link(self):
+        payload_dir = self.base / "payload directory"
+        payload_dir.mkdir()
+        payload = payload_dir / "tool"
+        self.active.rename(payload)
+        self.active.symlink_to("../payload directory/tool")
+        self.write_installer('cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"\nexit 17')
+        output = self.shell('update_run_verified_installer fixturetool\n', code=17)
+        self.assertTrue(self.active.is_symlink())
+        self.assertEqual(os.readlink(self.active), "../payload directory/tool")
+        self.assertEqual(payload.read_bytes(), self.old)
+        self.assertEqual(self.active.read_bytes(), self.old)
+        self.assertFalse(self.backup.exists())
+        self.assertIn("ROLLED BACK", output)
+
+    def test_restored_wrapper_cannot_claim_recovery_while_its_payload_is_broken(self):
+        payload = self.base / "wrapper-payload"
+        payload.write_bytes(self.old)
+        payload.chmod(0o755)
+        wrapper = b'#!/bin/bash\nexec "$TEST_ROOT/wrapper-payload" "$@"\n'
+        self.active.write_bytes(wrapper)
+        self.write_installer('cp "$TEST_ROOT/broken" "$TEST_ROOT/wrapper-payload"\nexit 17')
+        output = self.shell('update_run_verified_installer fixturetool\n', code=17)
+        self.assertEqual(self.active.read_bytes(), wrapper)
+        self.assertEqual(payload.read_bytes(), self.broken)
+        self.assertIn("ROLLBACK FAILED", output)
+        self.assert_no_successful_rollback(output)
+        state = (self.base / "state/acfs/update-rollback.state").read_text().split()
+        self.assertEqual(state[:2], ["fixturetool", "1"])
+
+    def test_zero_and_invalid_deadlines_fail_before_acquisition_or_snapshot(self):
+        for duration in ("0", "0.0s", "-1", "invalid", "1ms",
+                         "0." + "0" * 400 + "1s", "9" * 400 + "d"):
+            with self.subTest(duration=duration):
+                self.shell('update_run_verified_installer fixturetool\n', code=1,
+                           UPDATE_CMD_TIMEOUT=duration)
+                self.assertEqual(self.events(), [])
+                self.assertFalse(self.backup.exists())
+                self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_missing_timeout_or_bash_fails_before_acquisition_or_snapshot(self):
+        for missing in ("timeout", "bash"):
+            with self.subTest(missing=missing):
+                self.shell(r'''
+update_system_binary_path() {
+    [[ "$1" != "$TEST_MISSING_SYSTEM_COMMAND" ]] || return 1
+    if [[ -x "/usr/bin/$1" ]]; then printf '/usr/bin/%s\n' "$1"; else printf '/bin/%s\n' "$1"; fi
+}
+update_run_verified_installer fixturetool
+''', code=1, TEST_MISSING_SYSTEM_COMMAND=missing)
+                self.assertEqual(self.events(), [])
+                self.assertFalse(self.backup.exists())
+
+    def test_positive_fractional_deadline_bounds_the_actual_installer(self):
+        self.write_installer('sleep 2\nprintf "finished\\n" >> "$TEST_ROOT/events"')
+        self.shell('update_run_verified_installer fixturetool\n', code=137, UPDATE_CMD_TIMEOUT="0.2s")
+        self.assertEqual(self.events(), ["download", "execute"])
+        self.assertEqual(self.active.read_bytes(), self.old)
+
+    def test_native_installer_exit_statuses_still_propagate(self):
+        for native_status, expected in ((124, 124), (137, 137), (95, 1)):
+            with self.subTest(native_status=native_status):
+                self.write_installer(f"exit {native_status}")
+                output = self.shell('update_run_verified_installer fixturetool\n', code=expected,
+                                    UPDATE_CMD_TIMEOUT="2s")
+                self.assertNotIn("CHECKSUM BLOCKED", output)
+                self.assertEqual(self.active.read_bytes(), self.old)
+
+    @staticmethod
+    def process_is_running(pid):
+        try:
+            state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+        except FileNotFoundError:
+            return False
+        return state not in ("Z", "X")
+
+    def assert_deadline_stops_descendants_before_recovery(self, parent_ignores_term):
+        # The restored tool records whether the installer child is still alive
+        # when recovery probes it. A zombie is finished and cannot mutate files.
+        self.old = br'''#!/bin/bash
+if [[ -r "$TEST_ROOT/child.pid" ]]; then
+    read -r child_pid < "$TEST_ROOT/child.pid"
+    if [[ -r "/proc/$child_pid/stat" ]]; then
+        read -r child_stat < "/proc/$child_pid/stat"
+        child_state="${child_stat##*) }"
+        case "$child_state" in Z\ *|X\ *) ;; *) printf 'child-alive-at-restore\n' >> "$TEST_ROOT/events" ;; esac
+    fi
+fi
+printf 'fixturetool 1.0.0\n'
+'''
+        self.active.write_bytes(self.old)
+        child = self.base / "child.sh"
+        child.write_text('#!/bin/bash\ntrap "" TERM\nprintf "%s\\n" "$BASHPID" > "$TEST_ROOT/child.pid"\n'
+                         'sleep 2\nprintf "late-child-write\\n" >> "$TEST_ROOT/events"\n'
+                         'cp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"\n')
+        child.chmod(0o755)
+        trap = "trap '' TERM" if parent_ignores_term else "trap 'exit 0' TERM"
+        self.write_installer(trap + '\ncp "$TEST_ROOT/broken" "$TEST_ROOT/bin/fixturetool"\n'
+                             '/bin/bash "$TEST_ROOT/child.sh" &\nwait\n')
+        try:
+            output = self.shell('update_run_verified_installer fixturetool\n', code=137,
+                                timeout=10, UPDATE_CMD_TIMEOUT="1s")
+            pid = int((self.base / "child.pid").read_text())
+            self.assertFalse(self.process_is_running(pid), f"installer child {pid} survived recovery")
+            # Observe past the child's scheduled write, including the case in
+            # which a TERM-handling parent exited while its child survived.
+            time.sleep(1.2)
+            self.assertEqual(self.events(), ["download", "execute"])
+            self.assertEqual(self.active.read_bytes(), self.old)
+            self.assertIn("ROLLED BACK", output)
+        finally:
+            pid_file = self.base / "child.pid"
+            if pid_file.exists():
+                pid = int(pid_file.read_text())
+                if self.process_is_running(pid):
+                    os.kill(pid, signal.SIGKILL)
+
+    def test_deadline_kills_term_resistant_parent_and_child_before_recovery(self):
+        self.assert_deadline_stops_descendants_before_recovery(parent_ignores_term=True)
+
+    def test_deadline_kills_child_even_when_parent_would_exit_on_term(self):
+        self.assert_deadline_stops_descendants_before_recovery(parent_ignores_term=False)
+
+
 GROK_UPDATE_CONTEXT = COMMON + r'''
 KNOWN_INSTALLERS[grok]='https://fixture.invalid/grok-installer.sh'
 update_target_user() { printf '%s\n' fixture; }
@@ -778,7 +1127,7 @@ grok_recovery_source="$(declare -f update_snapshot_tool_binary update_verify_too
         self.assertTrue(os.access(self.payload, os.X_OK))
         self.assertEqual(grok.readlink(), self.payload)
         self.assertIn("ROLLED BACK", (self.base / "update.log").read_text())
-        self.assertEqual(self.events(), ["download", "execute"])
+        self.assertEqual(self.events(), ["download", "execute", "payload:--version"])
 
     def test_updater_restores_genuine_payload_that_lost_executable_mode(self):
         self.check_payload_recovery(f"chmod 0644 -- {shlex.quote(str(self.payload))}")
