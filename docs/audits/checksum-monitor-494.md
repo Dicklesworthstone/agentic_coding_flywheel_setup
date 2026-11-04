@@ -274,6 +274,54 @@ then review command ownership and ACFS's verification contract. Do not run
 the installer to establish provenance or approve it solely because the
 vendor endpoint and storage origin repeatedly agree.
 
+### November 4 follow-up: command ownership enforcement
+
+Implementation commit
+[`c345b9c3`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/c345b9c3a6b9b8193f19616f72580265d4cb6ce3)
+addresses the ACFS command-identity gap described above. Controlled fixtures
+against the original code reproduced false installed/resume/doctor results,
+updater success for a competing command, and execution of that command during
+version detection. These are now reproduced failures of the earlier ACFS
+integration, rather than only conclusions from upstream metadata.
+
+Installation, resume, doctor, and update checks now share one canonical
+ownership check. Before probing a command, ACFS requires `grok` to identify
+the expected regular executable under the target user's `.grok/downloads`.
+Active, pending, or unrecognized Cursor switch records and competing `grok`
+or `agent` commands block installation. Missing ACFS links are created without
+clobbering an existing command. Updater snapshots and restoration operate on
+the Grok payload as the target account; a conflicting command is neither
+probed nor overwritten during recovery. Final Cursor/XDG paths are checked
+before they are serialized into environment assignments.
+
+This establishes local command binding, **not binary authenticity**. It does
+not resolve the deployed-source provenance gap or authenticate Grok's second
+stage download. `checksums.yaml` and owner authorization records were unchanged
+by this implementation. Atuin and Grok's observed installer changes remain
+unapproved; the review recommendations above still apply to their bytes.
+
+Final validation ran through DSR:
+
+- All 59 Python regressions passed, including 24 Grok ownership, context,
+  recovery, and path-validation cases.
+- All 235 generator tests passed with their original deadlines. Manifest
+  TypeScript checking and default ShellCheck for all six changed shell files
+  passed. Canonical generation, generated-file drift, and diff-whitespace
+  checks passed.
+- The external checker passed schema validation, installer listing, and
+  `check --dry-run --local`. No live upstream installer was executed for this
+  implementation review.
+- UBS's Bash and Python scans had no critical findings or warnings. Its
+  generator scan retained four runtime passwd-variable-name matches and 64
+  CLI logging warnings. A scan of the original generator at `ad80c733`
+  reproduced the identical rule/severity/message multiset; all flagged lines
+  were unchanged. The raw scanner exit status remained 1 and no rules were
+  suppressed.
+- The changed generator test scanned with zero critical findings and five
+  non-null-assertion warnings, exiting 0. The implementation commit's message
+  incorrectly described this test scan as warning-free; these are the verified
+  counts. Assertions and scanner findings were not removed to obtain a pass.
+
 ## Repository improvements and validation
 
 The audit identified two verification defects, separate from Atuin's
