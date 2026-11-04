@@ -1085,7 +1085,6 @@ full-text search across sessions - invaluable for debugging agent behavior.`,
       "wa robot events              # Recent detection events",
       "wa why deny.alt_screen       # Explain policy denials",
     ],
-    installCommand: "cargo install --git https://github.com/Dicklesworthstone/wezterm_automata",
     language: "Rust",
   },
   {

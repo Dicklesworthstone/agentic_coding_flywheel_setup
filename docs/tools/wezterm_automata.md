@@ -156,10 +156,10 @@ Verify installation:
 # Check installation
 which wa
 ls -la ~/.cargo/bin/wa
-
-# Install if missing
-cargo install wezterm_automata
 ```
+
+If it is missing, `wa` cannot be installed any more; see the status note at the
+top of this page.
 
 ### Pane IDs Change
 

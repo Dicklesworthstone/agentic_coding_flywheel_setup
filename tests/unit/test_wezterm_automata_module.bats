@@ -52,7 +52,11 @@ setup() {
     DRY_RUN=false
     run acfs_generated_install_stack_wezterm_automata
     [[ "$status" -eq 0 ]]
-    ! grep -Eq '^(git|cargo|cp|rm|mktemp) ' "$CALLS"
+    # Not `! grep`: errexit ignores a negated command, so before the last line
+    # of a test it can never fail.
+    if grep -E '^(git|cargo|cp|rm|mktemp) ' "$CALLS"; then
+        return 1
+    fi
     [[ "$output" == *"has no 'wa' package"* ]]
     [[ "$output" == *"frankenterm#installation"* ]]
 }
