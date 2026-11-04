@@ -1907,7 +1907,14 @@ verify_checksum() {
             printf "  URL: %s\n" "$url" >&2
             printf "  Refusing to execute unverified installer script.\n" >&2
             printf "  Fix:\n" >&2
-            if [[ "${ACFS_CHECKSUMS_REMOTE_REFRESHED:-false}" == "true" ]]; then
+            if [[ "${ACFS_CHECKSUMS_REMOTE_REFRESHED:-false}" == "true" && "${ACFS_CHECKSUMS_REF:-main}" != "main" ]]; then
+                # A branch or an explicit --checksums-ref can simply be behind
+                # main, so the pin that was re-checked is not the newest one.
+                printf "    - End users: ACFS already re-checked this installer against checksums.yaml at ref %s,\n" "$ACFS_CHECKSUMS_REF" >&2
+                printf "      and that pin does not match either. That ref can be behind main, so retry with\n" >&2
+                printf "      --checksums-ref main. If main does not match either, the PUBLISHED pin is stale and\n" >&2
+                printf "      there is nothing to repair locally. Hold the tool until a new pin is published:\n" >&2
+            elif [[ "${ACFS_CHECKSUMS_REMOTE_REFRESHED:-false}" == "true" ]]; then
                 printf "    - End users: ACFS already re-checked this installer against the newest published\n" >&2
                 printf "      checksums.yaml (ref: %s), and that pin does not match either, so retrying now or\n" "${ACFS_CHECKSUMS_REF:-main}" >&2
                 printf "      --checksums-ref main will not help. Upstream changed its installer and the PUBLISHED\n" >&2

@@ -246,6 +246,33 @@ stub_acfs_curl_response() {
     refute_output --partial "could not load the newest published"
 }
 
+@test "verify_checksum: stale-pin guidance on another checksums ref points at main" {
+    local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
+
+    run bash -c '
+        ACFS_CHECKSUMS_REF=my-branch
+        source "$1"
+        acfs_download_to_file() {
+            printf "%s" "changed upstream installer" > "$2"
+        }
+        acfs_refresh_loaded_checksums_from_remote() {
+            ACFS_CHECKSUMS_REMOTE_REFRESHED=true
+            return 0
+        }
+        verify_checksum \
+            "https://example.com/install.sh" \
+            "0000000000000000000000000000000000000000000000000000000000000000" \
+            "example_tool"
+    ' _ "$security_lib"
+
+    assert_failure
+    assert_output --partial "checksums.yaml at ref my-branch"
+    assert_output --partial "--checksums-ref main."
+    assert_output --partial "acfs hold example_tool"
+    refute_output --partial "main will not help"
+    refute_output --partial "newest published"
+}
+
 @test "verify_checksum: stale-pin guidance says when the newest published pin could not be fetched" {
     local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
 
