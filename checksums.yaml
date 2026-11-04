@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-04T17:46:38+00:00
+# checksums.yaml - Auto-generated 2026-11-04T20:01:31+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -12,7 +12,7 @@ installers:
 
   asb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
-    sha256: "1e3aa962ac846fda29297349798f2acbefb66ce1e0c6de811d7fe09f3fb18b44"
+    sha256: "9069cd335b79bab7047271bbabb2ba018423a3a4fb95916c4ee9d5f11582bd94"
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
