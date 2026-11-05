@@ -155,6 +155,214 @@ teardown() {
     assert_output 1
 }
 
+# Exercise the actual authored language/tool functions, try_step and run_phase
+# against inert installer/package commands. Ready markers stand in for the
+# installed binaries, so retries use the same skip decisions as a real run.
+setup_language_phase_fixture() {
+    source_lib state
+    export TARGET_HOME="$BATS_TEST_TMPDIR/language-home"
+    export TARGET_USER="$(id -un)"
+    export ACFS_HOME="$BATS_TEST_TMPDIR/language-state"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    export LANGUAGE_ATTEMPTS="$BATS_TEST_TMPDIR/language-attempts"
+    ACFS_DISTRO_FAMILY=debian
+    ACFS_MODULE_FAILURES=()
+    LANGUAGE_FAILURES=""
+    LANGUAGE_APT_AVAILABLE=true
+    SUDO=""
+    mkdir -p "$TARGET_HOME/ready"
+    : > "$LANGUAGE_ATTEMPTS"
+
+    local missing=" ${1:-tools.atuin tools.zoxide} " module
+    for module in lang.bun lang.rust lang.go lang.uv lang.nvm tools.ast_grep tools.atuin tools.zoxide; do
+        [[ "$missing" == *" $module "* ]] || touch "$TARGET_HOME/ready/$module"
+    done
+
+    # The tools function contains a heredoc with column-zero closing braces;
+    # extract the entire phase rather than stopping at the first such brace.
+    eval "$(sed -n '/^install_languages_legacy_lang() {$/,/^install_agy_locked_launchers() {$/p' "$PROJECT_ROOT/install.sh" | sed '$d')"
+
+    language_attempt() {
+        local name="$1" module_id="$2"
+        printf '%s\n' "$name" >> "$LANGUAGE_ATTEMPTS"
+        ACFS_LAST_MODULE_FAILURE_REASON=""
+        if [[ " $LANGUAGE_FAILURES " == *" $name "* ]]; then
+            ACFS_LAST_MODULE_FAILURE_REASON=checksum
+            printf 'checksum mismatch for %s\n' "$name" >&2
+            return 65
+        fi
+        touch "$TARGET_HOME/ready/$module_id"
+    }
+    acfs_should_skip_module() { [[ -f "$TARGET_HOME/ready/$1" ]]; }
+    acfs_use_generated_category() { return 1; }
+    acfs_run_verified_upstream_script_as_target() {
+        local category=lang
+        [[ "$1" != zoxide ]] || category=tools
+        language_attempt "$1" "$category.$1"
+    }
+    acfs_run_verified_upstream_script_as_target_with_env() {
+        [[ "$1" == atuin && "$2" == sh && "$3" == ATUIN_NO_MODIFY_PATH=1 ]] || return 99
+        language_attempt atuin tools.atuin
+    }
+    _ensure_target_nvm_node() {
+        acfs_should_skip_module lang.nvm || language_attempt nvm lang.nvm
+    }
+    apt-cache() { [[ "$LANGUAGE_APT_AVAILABLE" == true ]]; }
+    apt-get() {
+        case "${!#}" in
+            zoxide) language_attempt apt:zoxide tools.zoxide ;;
+            golang-go) language_attempt apt:go lang.go ;;
+            *) return 99 ;;
+        esac
+    }
+    acfs_arch_pkg_install() { language_attempt "pacman:$1" "tools.$1"; }
+    run_as_target() { "$@"; }
+    acfs_verify_phase() {
+        local module_id
+        for module_id in lang.bun lang.rust lang.go lang.uv lang.nvm tools.ast_grep tools.atuin tools.zoxide; do
+            acfs_should_skip_module "$module_id" || return 1
+        done
+    }
+    run_language_phase_fixture() {
+        local phase_status=0
+        run_phase languages '5/9 Languages' install_languages || phase_status=$?
+        printf '%s\n' "${ACFS_MODULE_FAILURES[@]}"
+        return "$phase_status"
+    }
+    state_init
+}
+
+@test "language phase: Atuin failure still installs Zoxide and retries only missing tools" {
+    setup_language_phase_fixture
+    LANGUAGE_FAILURES=atuin
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'tools.atuin (checksum)'
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'atuin\napt:zoxide' ]]
+    jq -e '.phase_steps.languages["Installing Atuin"].status == "failed"
+        and .phase_steps.languages["Installing Atuin"].required == true
+        and .phase_steps.languages["Installing Zoxide (apt)"].status == "success"
+        and (.completed_phases | index("languages")) == null
+        and (.partial_phases | index("languages")) != null' "$ACFS_STATE_FILE"
+
+    run run_language_phase_fixture
+    assert_failure
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'atuin\napt:zoxide\natuin' ]]
+
+    LANGUAGE_FAILURES=""
+    run run_language_phase_fixture
+    assert_success
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'atuin\napt:zoxide\natuin\natuin' ]]
+    run state_is_phase_completed languages
+    assert_success
+    run state_has_required_failures
+    assert_failure
+}
+
+@test "language phase: unavailable Zoxide package uses the verified upstream fallback" {
+    setup_language_phase_fixture tools.zoxide
+    LANGUAGE_APT_AVAILABLE=false
+
+    run run_language_phase_fixture
+    assert_success
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == zoxide ]]
+    run state_is_phase_completed languages
+    assert_success
+}
+
+@test "language phase: failed Zoxide package recovers through verified upstream without a required failure" {
+    setup_language_phase_fixture tools.zoxide
+    LANGUAGE_FAILURES=apt:zoxide
+
+    run run_language_phase_fixture
+    assert_success
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'apt:zoxide\nzoxide' ]]
+    jq -e '.phase_steps.languages["Installing Zoxide (apt)"].status == "failed"
+        and .phase_steps.languages["Installing Zoxide (apt)"].required == false
+        and .phase_steps.languages["Installing Zoxide (upstream)"].status == "success"' "$ACFS_STATE_FILE"
+    run state_has_required_failures
+    assert_failure
+}
+
+@test "language phase: independent Atuin and Zoxide failures are both reported on Debian" {
+    setup_language_phase_fixture
+    LANGUAGE_FAILURES='atuin apt:zoxide zoxide'
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'tools.atuin (checksum)'
+    assert_output --partial 'tools.zoxide (checksum)'
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'atuin\napt:zoxide\nzoxide' ]]
+    run state_is_phase_completed languages
+    assert_failure
+}
+
+@test "language phase: independent Atuin and Zoxide failures are both reported on Arch" {
+    setup_language_phase_fixture
+    ACFS_DISTRO_FAMILY=arch
+    LANGUAGE_FAILURES='atuin pacman:zoxide zoxide'
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'tools.atuin (checksum)'
+    assert_output --partial 'tools.zoxide (checksum)'
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'atuin\npacman:zoxide\nzoxide' ]]
+    run state_is_phase_completed languages
+    assert_failure
+}
+
+@test "language phase: missing Cargo does not prevent unrelated tools from installing" {
+    setup_language_phase_fixture 'tools.ast_grep tools.atuin tools.zoxide'
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'tools.ast_grep (cargo unavailable)'
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'atuin\napt:zoxide' ]]
+    run state_is_phase_completed languages
+    assert_failure
+}
+
+@test "language phase: every independent runtime is attempted after preceding failures" {
+    setup_language_phase_fixture 'lang.bun lang.rust lang.go lang.uv lang.nvm tools.atuin tools.zoxide'
+    LANGUAGE_FAILURES='bun rust apt:go uv nvm'
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'lang.bun (checksum)'
+    assert_output --partial 'lang.rust (checksum)'
+    assert_output --partial 'lang.go (package installation failed)'
+    assert_output --partial 'lang.uv (checksum)'
+    assert_output --partial 'lang.nvm (checksum)'
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'bun\nrust\napt:go\nuv\nnvm\natuin\napt:zoxide' ]]
+    run state_is_phase_completed languages
+    assert_failure
+
+    LANGUAGE_FAILURES=""
+    run run_language_phase_fixture
+    assert_success
+    [[ "$(cat "$LANGUAGE_ATTEMPTS")" == $'bun\nrust\napt:go\nuv\nnvm\natuin\napt:zoxide\nbun\nrust\napt:go\nuv\nnvm' ]]
+    run state_is_phase_completed languages
+    assert_success
+    run state_has_required_failures
+    assert_failure
+}
+
+@test "language phase: optional Cargo package failures do not fail a healthy phase" {
+    setup_language_phase_fixture
+    mkdir -p "$TARGET_HOME/.cargo/bin"
+    printf '#!/bin/sh\nexit 1\n' > "$TARGET_HOME/.cargo/bin/cargo"
+    chmod +x "$TARGET_HOME/.cargo/bin/cargo"
+
+    run run_language_phase_fixture
+    assert_success
+    jq -e '.phase_steps.languages["Batch installing cargo tools"].status == "failed"
+        and .phase_steps.languages["Batch installing cargo tools"].required == false' "$ACFS_STATE_FILE"
+    run state_has_required_failures
+    assert_failure
+}
+
 @test "try_step_eval missing command string fails without unbound variable" {
     run env -i PATH="/usr/bin:/bin" /usr/bin/bash -c '
         set -euo pipefail

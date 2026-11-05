@@ -2826,6 +2826,80 @@ EOF
     assert_success
 }
 
+@test "install.sh preserves exact dedicated-ref checksum bytes through API and raw fallback (#504)" {
+    local installer="${ACFS_INSTALLER_TEST_SOURCE:-$PROJECT_ROOT/install.sh}"
+    local fixture="$BATS_TEST_TMPDIR/upstream-checksums.yaml"
+    local dest="$BATS_TEST_TMPDIR/installed-checksums.yaml"
+    local fetch_path ending
+
+    eval "$(sed -n '/^install_checksums_yaml()/,/^}$/p' "$installer")"
+    eval "$(sed -n '/^acfs_fetch_fresh_checksums_via_api()/,/^}$/p' "$installer")"
+    eval "$(sed -n '/^acfs_fetch_url_content()/,/^}$/p' "$installer")"
+    eval "$(sed -n '/^acfs_parse_checksums_content()/,/^}$/p' "$installer")"
+    eval "$(sed -n '/^acfs_required_upstream_tools()/,/^}$/p' "$installer")"
+    eval "$(sed -n '/^acfs_validate_upstream_checksums()/,/^}$/p' "$installer")"
+    ACFS_CHECKSUMS_REF=main
+    ACFS_REF_INPUT=older-install-ref
+    ACFS_REPO_OWNER=example
+    ACFS_REPO_NAME=acfs
+    ACFS_CURL_RETRY_DELAYS=(0)
+    declare -gA ACFS_UPSTREAM_URLS=()
+    declare -gA ACFS_UPSTREAM_SHA256=()
+
+    acfs_curl() {
+        if [[ "$fetch_path" == raw && "$1" == -H ]]; then
+            # A failed API may have already emitted a partial response; none
+            # of it may contaminate the successful raw fallback.
+            printf 'partial API response'
+            return 22
+        fi
+        cat "$fixture"
+    }
+    acfs_resolve_ref_sha() { ACFS_RESOLVED_REF_SHA=0123456789012345678901234567890123456789; }
+    acfs_cache_buster_suffix() { :; }
+    acfs_early_sudo_binary_path() { return 1; }
+    acfs_early_system_binary_path() { command -v "$1"; }
+    log_detail() { :; }
+    log_info() { :; }
+    log_error() { printf '%s\n' "$*" >&2; }
+
+    for fetch_path in api raw; do
+        for ending in '' $'\n' $'\n\n\n' $'\r\n'; do
+            # Real required-tool metadata, with controlled trailing bytes.
+            write_update_refresh_checksums_fixture "$fixture" "$(printf '%064d' 1)"
+            printf '# provenance fixture%s' "$ending" >> "$fixture"
+            run install_checksums_yaml "$dest"
+            assert_success
+            assert_output ""
+            run cmp "$fixture" "$dest"
+            assert_success
+        done
+    done
+}
+
+@test "install.sh does not replace installed checksums after both fetch routes fail (#504)" {
+    local installer="${ACFS_INSTALLER_TEST_SOURCE:-$PROJECT_ROOT/install.sh}"
+    local dest="$BATS_TEST_TMPDIR/installed-checksums.yaml"
+    printf 'previous trusted metadata\n' > "$dest"
+    cp "$dest" "$dest.before"
+    eval "$(sed -n '/^install_checksums_yaml()/,/^}$/p' "$installer")"
+    ACFS_CHECKSUMS_REF=main
+    ACFS_REF_INPUT=older-install-ref
+    ACFS_REPO_OWNER=example
+    ACFS_REPO_NAME=acfs
+    acfs_fetch_fresh_checksums_via_api() { printf 'partial API'; return 22; }
+    acfs_fetch_url_content() { printf 'partial raw'; return 28; }
+    acfs_resolve_ref_sha() { return 1; }
+    acfs_cache_buster_suffix() { :; }
+    log_error() { printf '%s\n' "$*" >&2; }
+
+    run install_checksums_yaml "$dest"
+    assert_failure
+    assert_output --partial "Failed to fetch checksums.yaml"
+    run cmp "$dest.before" "$dest"
+    assert_success
+}
+
 @test "install.sh verified installer wrapper stages cached bytes and preserves the runner contract" {
     local installer="$PROJECT_ROOT/install.sh"
     local url="https://example.com/example/install.sh"

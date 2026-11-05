@@ -894,6 +894,8 @@ install_gum_early() {
     local gpg_bin=""
     local apt_get_bin=""
     local timeout_bin=""
+    local setsid_bin=""
+    local env_bin=""
     local mkdir_bin=""
     local tee_bin=""
 
@@ -917,6 +919,11 @@ install_gum_early() {
     fi
     timeout_bin="$(acfs_early_system_binary_path timeout 2>/dev/null || true)"
     if [[ -z "$timeout_bin" ]]; then
+        return 0
+    fi
+    setsid_bin="$(acfs_early_system_binary_path setsid 2>/dev/null || true)"
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$setsid_bin" || -z "$env_bin" ]]; then
         return 0
     fi
     mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
@@ -960,10 +967,14 @@ Signed-By: /etc/apt/keyrings/charm.gpg
 EOF
 
     # Step 3: Update apt (this can be slow on fresh systems)
-    # Disable fancy progress to prevent terminal cursor issues
+    # Detach noninteractive apt from the controlling TTY to prevent SIGTTOU
+    # stops. Keep ordinary timeout inside that session so its process-group
+    # signal also reaches dpkg/helpers retaining the captured output pipe.
+    # sudo stays outside setsid: it may need the caller's terminal to prompt
+    # or use cached credentials (#475). Set DEBIAN_FRONTEND after sudo.
     echo -e "\033[0;90m      ↳ Updating package lists (may take 30-60s on fresh systems)...\033[0m" >&2
-    if ! DEBIAN_FRONTEND=noninteractive "$timeout_bin" 300 "${sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 \
-        update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" >/dev/null 2>&1; then
+    if ! "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$setsid_bin" --wait "$timeout_bin" 300 \
+        "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" </dev/null >/dev/null 2>&1; then
         # Reset terminal line position in case apt left cursor in bad state
         echo -e "\r\033[K\033[0;33m      ⚠ apt-get update slow/failed (skipping gum, will retry later)\033[0m" >&2
         return 0
@@ -974,8 +985,8 @@ EOF
     # terminal cursor position issues when apt-get fails or times out
     echo -e "\033[0;90m      ↳ Installing gum package...\033[0m" >&2
     local apt_output
-    if apt_output=$(DEBIAN_FRONTEND=noninteractive "$timeout_bin" 300 "${sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 \
-        install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum 2>&1); then
+    if apt_output=$("${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$setsid_bin" --wait "$timeout_bin" 300 \
+        "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum </dev/null 2>&1); then
         HAS_GUM=true
         # Reset terminal line position and show success
         echo -e "\r\033[K\033[0;32m    ✓ gum installed - enhanced UI enabled!\033[0m" >&2
@@ -2056,10 +2067,13 @@ acfs_attach_to_running_install() {
         _tail_pid=$!
         # Poll for lock release in this shell.
         while kill -0 "$_tail_pid" 2>/dev/null; do
-            if (exec 197>"$lock_file") 2>/dev/null && flock -n 197 2>/dev/null; then
+            # Open and probe in the SAME subshell. A descriptor opened by a
+            # completed subshell is unavailable to flock in this shell (or
+            # could refer to an unrelated caller-owned descriptor). The
+            # subshell also releases the probe lock without touching parent
+            # descriptors. Append mode preserves any lock-file evidence.
+            if (exec 197>>"$lock_file" && flock -n 197) 2>/dev/null; then
                 # Acquired -> the other installer released the lock (finished).
-                flock -u 197 2>/dev/null || true
-                { exec 197>&-; } 2>/dev/null || true
                 kill "$_tail_pid" 2>/dev/null || true
                 wait "$_tail_pid" 2>/dev/null || true
                 log_info ""
@@ -2067,7 +2081,6 @@ acfs_attach_to_running_install() {
                 log_info "continue or verify your installation (e.g. 'acfs doctor')."
                 return 0
             fi
-            { exec 197>&-; } 2>/dev/null || true
             sleep 2
         done
         return 0
@@ -5008,8 +5021,11 @@ install_checksums_yaml() {
     fi
 
     # Otherwise, fetch checksums from the dedicated checksums ref.
+    # Preserve the exact fetched bytes, including all trailing newlines, for
+    # provenance checks against the committed checksums.yaml blob.
     local content=""
-    content="$(acfs_fetch_fresh_checksums_via_api)" || {
+    local sentinel="__ACFS_EOF_SENTINEL__"
+    content="$(acfs_fetch_fresh_checksums_via_api && printf '%s' "$sentinel")" || {
         # FALLBACK, reached only when the GitHub API call above failed.
         # A stale checksums.yaml would mean verifying against the wrong
         # checksums, so for a MUTABLE ref freshness is a correctness
@@ -5020,11 +5036,15 @@ install_checksums_yaml() {
         local eff_cref
         acfs_resolve_ref_sha "$ACFS_CHECKSUMS_REF" >/dev/null
         eff_cref="${ACFS_RESOLVED_REF_SHA:-$ACFS_CHECKSUMS_REF}"
-        content="$(acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")")" || {
+        content="$(
+            acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")" &&
+                printf '%s' "$sentinel"
+        )" || {
             log_error "Failed to fetch checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
             return 1
         }
     }
+    content="${content%"$sentinel"}"
     if ! ( acfs_parse_checksums_content "$content" && acfs_validate_upstream_checksums ); then
         log_error "Fetched checksums.yaml from ref '${ACFS_CHECKSUMS_REF}' failed validation"
         return 1
@@ -5884,14 +5904,18 @@ acfs_fetch_fresh_checksums_via_api() {
     local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/contents/checksums.yaml?ref=${ACFS_CHECKSUMS_REF}"
 
     # Use application/vnd.github.raw to get raw file content directly (no base64)
-    local content
-    content="$(acfs_curl \
-        -H "Accept: application/vnd.github.raw" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        "$api_url" 2>/dev/null)" || {
+    local content sentinel="__ACFS_EOF_SENTINEL__"
+    content="$(
+        acfs_curl \
+            -H "Accept: application/vnd.github.raw" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api_url" 2>/dev/null || exit $?
+        printf '%s' "$sentinel"
+    )" || {
         log_detail "GitHub API request failed for checksums.yaml"
         return 1
     }
+    content="${content%"$sentinel"}"
 
     if [[ -z "$content" ]]; then
         log_detail "Empty content from GitHub API"
@@ -8659,11 +8683,19 @@ _ensure_target_nvm_node() {
 }
 
 install_languages_legacy_lang() {
+    local lang_rc=0
+
+    # These runtimes are independent. Keep installing the others after a
+    # failure, but retain every required failure for the summary and resume.
     # Bun (install as target user)
     local bun_bin="$TARGET_HOME/.bun/bin/bun"
     if ! acfs_should_skip_module "lang.bun"; then
         log_detail "Installing Bun for $TARGET_USER"
-        try_step "Installing Bun" acfs_run_verified_upstream_script_as_target "bun" "bash" || return 1
+        try_step "Installing Bun" acfs_run_verified_upstream_script_as_target "bun" "bash" || {
+            ACFS_MODULE_FAILURES+=("lang.bun (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
+            ACFS_LAST_MODULE_FAILURE_REASON=""
+            lang_rc=1
+        }
     fi
 
     # NOTE: node→bun symlink REMOVED (bug #145). The symlink shadowed real Node.js
@@ -8675,16 +8707,25 @@ install_languages_legacy_lang() {
     local cargo_bin="$TARGET_HOME/.cargo/bin/cargo"
     if ! acfs_should_skip_module "lang.rust"; then
         log_detail "Installing Rust nightly for $TARGET_USER"
-        try_step "Installing Rust nightly" acfs_run_verified_upstream_script_as_target "rust" "sh" -y --default-toolchain nightly || return 1
+        try_step "Installing Rust nightly" acfs_run_verified_upstream_script_as_target "rust" "sh" -y --default-toolchain nightly || {
+            ACFS_MODULE_FAILURES+=("lang.rust (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
+            ACFS_LAST_MODULE_FAILURE_REASON=""
+            lang_rc=1
+        }
     fi
 
     # Go (system-wide)
     if ! acfs_should_skip_module "lang.go"; then
         log_detail "Installing Go"
+        local go_rc=0
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
-            try_step "Installing Go (pacman)" acfs_arch_pkg_install go || return 1
+            try_step "Installing Go (pacman)" acfs_arch_pkg_install go || go_rc=1
         else
-            try_step "Installing Go" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y golang-go || return 1
+            try_step "Installing Go" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y golang-go || go_rc=1
+        fi
+        if [[ "$go_rc" -ne 0 ]]; then
+            ACFS_MODULE_FAILURES+=("lang.go (package installation failed)")
+            lang_rc=1
         fi
     fi
 
@@ -8693,14 +8734,25 @@ install_languages_legacy_lang() {
         log_detail "uv already installed"
     else
         log_detail "Installing uv for $TARGET_USER"
-        try_step "Installing uv" acfs_run_verified_upstream_script_as_target "uv" "sh" || return 1
+        try_step "Installing uv" acfs_run_verified_upstream_script_as_target "uv" "sh" || {
+            ACFS_MODULE_FAILURES+=("lang.uv (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
+            ACFS_LAST_MODULE_FAILURE_REASON=""
+            lang_rc=1
+        }
     fi
 
-    _ensure_target_nvm_node || return 1
+    _ensure_target_nvm_node || {
+        ACFS_MODULE_FAILURES+=("lang.nvm (${ACFS_LAST_MODULE_FAILURE_REASON:-Node.js installation failed})")
+        ACFS_LAST_MODULE_FAILURE_REASON=""
+        lang_rc=1
+    }
+
+    return "$lang_rc"
 }
 
 install_languages_legacy_tools() {
     local cargo_bin="$TARGET_HOME/.cargo/bin/cargo"
+    local tools_rc=0
 
     # Helper to install cargo tools with fallback
     _cargo_install() {
@@ -8732,10 +8784,12 @@ install_languages_legacy_tools() {
                 # not fail.
                 log_error "Failed to install ast-grep (sg); continuing (recorded as a module failure)"
                 ACFS_MODULE_FAILURES+=("tools.ast_grep (cargo install failed)")
+                tools_rc=1
             fi
         else
             log_error "Cargo not found at $cargo_bin (cannot install ast-grep); continuing"
             ACFS_MODULE_FAILURES+=("tools.ast_grep (cargo unavailable)")
+            tools_rc=1
         fi
     fi
 
@@ -8783,7 +8837,11 @@ install_languages_legacy_tools() {
         log_detail "Atuin already installed"
     else
         log_detail "Installing Atuin for $TARGET_USER"
-        try_step "Installing Atuin" acfs_run_verified_upstream_script_as_target_with_env "atuin" "sh" "ATUIN_NO_MODIFY_PATH=1" || return 1
+        try_step "Installing Atuin" acfs_run_verified_upstream_script_as_target_with_env "atuin" "sh" "ATUIN_NO_MODIFY_PATH=1" || {
+            ACFS_MODULE_FAILURES+=("tools.atuin (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
+            ACFS_LAST_MODULE_FAILURE_REASON=""
+            tools_rc=1
+        }
     fi
 
     if [[ -x "$TARGET_HOME/.atuin/bin/atuin" ]]; then
@@ -8885,19 +8943,33 @@ ATUIN_ACFS_WRAPPER_TAIL
     else
         log_detail "Installing Zoxide for $TARGET_USER"
         # Prefer the distro package (avoids GitHub API rate limits), fall back
-        # to upstream script
+        # to the verified upstream script if the package is unavailable or
+        # cannot be installed. A successful fallback resolves this module only;
+        # it must not hide an earlier Atuin or ast-grep failure (#503).
+        local zoxide_installed=false
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
-            if ! try_step_optional "Installing Zoxide (pacman)" acfs_arch_pkg_install zoxide; then
+            if try_step_optional "Installing Zoxide (pacman)" acfs_arch_pkg_install zoxide; then
+                zoxide_installed=true
+            else
                 log_detail "pacman install failed, falling back to upstream script"
-                try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
             fi
         elif apt-cache show zoxide &>/dev/null; then
-            try_step_optional "Installing Zoxide (apt)" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y zoxide || {
+            if try_step_optional "Installing Zoxide (apt)" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y zoxide; then
+                zoxide_installed=true
+            else
                 log_detail "apt install failed, falling back to upstream script"
-                try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
+            fi
+        fi
+        if [[ "$zoxide_installed" != true ]]; then
+            try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || {
+                ACFS_MODULE_FAILURES+=("tools.zoxide (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+                tools_rc=1
             }
         fi
     fi
+
+    return "$tools_rc"
 }
 
 install_languages() {
@@ -8923,7 +8995,7 @@ install_languages() {
         acfs_run_generated_category_phase "tools" "6" || lang_phase_rc=1
         ran_any=true
     else
-        install_languages_legacy_tools || return 1
+        install_languages_legacy_tools || lang_phase_rc=1
         ran_any=true
     fi
 
