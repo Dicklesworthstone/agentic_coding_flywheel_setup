@@ -2223,12 +2223,14 @@ doctor_version_probe() {
 
     if [[ "$stderr_mode" == "merge" ]]; then
         if [[ -n "$timeout_bin" ]]; then
-            "$timeout_bin" "$timeout_secs" "$@" 2>&1 | "$head_bin" -n 1
+            # A broken installed CLI may ignore TERM. Bound the grace just as
+            # run_with_timeout does, so version discovery cannot hang doctor.
+            "$timeout_bin" -k 5 "$timeout_secs" "$@" 2>&1 | "$head_bin" -n 1
         else
             "$@" 2>&1 | "$head_bin" -n 1
         fi
     elif [[ -n "$timeout_bin" ]]; then
-        "$timeout_bin" "$timeout_secs" "$@" 2>/dev/null | "$head_bin" -n 1
+        "$timeout_bin" -k 5 "$timeout_secs" "$@" 2>/dev/null | "$head_bin" -n 1
     else
         "$@" 2>/dev/null | "$head_bin" -n 1
     fi

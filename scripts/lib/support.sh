@@ -1725,13 +1725,23 @@ capture_doctor_json() {
 
     if [[ -n "$doctor_script" ]]; then
         log_detail "Running acfs doctor --json ..."
-        if timeout "$DOCTOR_TIMEOUT" bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" 2>/dev/null; then
+        local doctor_rc=0 jq_bin=""
+        timeout -k 5 "$DOCTOR_TIMEOUT" bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" 2>/dev/null || doctor_rc=$?
+        jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
+        # Doctor exits 1 for completed checks that found an unhealthy system.
+        # Those checks and repair hints are the most useful support evidence.
+        # Accept only a complete report from a normal health-check exit; neither
+        # early JSON followed by a crash/timeout nor malformed success output
+        # establishes that collection finished.
+        if [[ "$doctor_rc" -le 1 && -n "$jq_bin" ]] &&
+            "$jq_bin" -e -s 'length == 1 and
+                (.[0] | type == "object" and (.checks | type == "array"))' \
+                "$bundle_dir/doctor.json" >/dev/null 2>&1; then
             record_bundle_file "doctor.json"
             return 0
         else
-            log_warn "Doctor check timed out or failed"
-            # Write partial output marker
-            echo '{"error": "doctor check failed or timed out"}' > "$bundle_dir/doctor.json"
+            log_warn "Doctor output was incomplete, invalid, or timed out (exit $doctor_rc)"
+            printf '{"error": "doctor check failed or timed out", "exit_code": %s}\n' "$doctor_rc" > "$bundle_dir/doctor.json"
             record_bundle_file "doctor.json"
             return 1
         fi
