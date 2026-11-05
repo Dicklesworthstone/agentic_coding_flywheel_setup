@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-11-05T16:30:33+00:00
+# checksums.yaml - Auto-generated 2026-11-05T21:31:29+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -148,7 +148,7 @@ installers:
 
   rch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh"
-    sha256: "a8dfc489e1339f02920352bc03e5e3c890438590a0c75dc9c904ac6cae967b17"
+    sha256: "8f65b008e2a526597ccad178b78552dd617ae9377d07b41b1776f5032d677ebf"
 
   ru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh"
