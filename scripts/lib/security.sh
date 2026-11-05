@@ -1912,8 +1912,9 @@ verify_checksum() {
                 # main, so the pin that was re-checked is not the newest one.
                 printf "    - End users: ACFS already re-checked this installer against checksums.yaml at ref %s,\n" "$ACFS_CHECKSUMS_REF" >&2
                 printf "      and that pin does not match either. That ref can be behind main, so retry with\n" >&2
-                printf "      --checksums-ref main. If main does not match either, the PUBLISHED pin is stale and\n" >&2
-                printf "      there is nothing to repair locally. Hold the tool until a new pin is published:\n" >&2
+                printf "      --checksums-ref main (for acfs update: ACFS_CHECKSUMS_REF=main). If main does not\n" >&2
+                printf "      match either, the PUBLISHED pin is stale and there is nothing to repair locally.\n" >&2
+                printf "      Hold the tool until a new pin is published:\n" >&2
             elif [[ "${ACFS_CHECKSUMS_REMOTE_REFRESHED:-false}" == "true" ]]; then
                 printf "    - End users: ACFS already re-checked this installer against the newest published\n" >&2
                 printf "      checksums.yaml (ref: %s), and that pin does not match either, so retrying now or\n" "${ACFS_CHECKSUMS_REF:-main}" >&2

@@ -267,7 +267,8 @@ stub_acfs_curl_response() {
 
     assert_failure
     assert_output --partial "checksums.yaml at ref my-branch"
-    assert_output --partial "--checksums-ref main."
+    # `acfs update` takes no --checksums-ref; it reads the variable.
+    assert_output --partial "--checksums-ref main (for acfs update: ACFS_CHECKSUMS_REF=main)"
     assert_output --partial "acfs hold example_tool"
     refute_output --partial "main will not help"
     refute_output --partial "newest published"
