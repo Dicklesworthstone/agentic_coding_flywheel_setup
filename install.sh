@@ -863,6 +863,48 @@ fetch_commit_sha() {
 # ============================================================
 # Install gum FIRST for beautiful UI from the start
 # ============================================================
+# Run in a dedicated foreground Bash after sudo, so authentication still uses
+# the caller's terminal. Only apt/timeout detach; this shell receives terminal
+# signals and forwards cancellation to timeout, which signals its whole group.
+# Args: trusted setsid path, trusted timeout path, apt command and arguments.
+acfs_run_early_apt() {
+    local setsid_bin="$1"
+    local timeout_bin="$2"
+    shift 2
+    local apt_pid=""
+    local apt_status=0
+    local signal_status=0
+
+    # An asynchronous child must not be a process-group leader before setsid:
+    # then setsid execs timeout directly, and apt_pid is the timeout supervisor.
+    set +m
+    # Record signals even between spawning the child and publishing its PID.
+    # Once published, signal immediately as well: a trap can run just before
+    # wait starts, and must not leave that wait blocked for the full timeout.
+    trap '((signal_status != 0)) || signal_status=130; [[ -z "$apt_pid" ]] || kill -TERM "$apt_pid" 2>/dev/null || true' INT
+    trap '((signal_status != 0)) || signal_status=143; [[ -z "$apt_pid" ]] || kill -TERM "$apt_pid" 2>/dev/null || true' TERM
+    trap '((signal_status != 0)) || signal_status=129; [[ -z "$apt_pid" ]] || kill -TERM "$apt_pid" 2>/dev/null || true' HUP
+
+    if ((signal_status != 0)); then
+        return "$signal_status"
+    fi
+
+    "$setsid_bin" --wait "$timeout_bin" --kill-after=10 300 "$@" &
+    apt_pid=$!
+    if ((signal_status != 0)); then
+        kill -TERM "$apt_pid" 2>/dev/null || true
+    fi
+    wait "$apt_pid" || apt_status=$?
+    if ((signal_status != 0)); then
+        # wait is interruptible. Reap the cancelled command before exiting;
+        # timeout's kill grace also bounds a command that ignores SIGTERM.
+        trap '' INT TERM HUP
+        wait "$apt_pid" 2>/dev/null || true
+        return "$signal_status"
+    fi
+    return "$apt_status"
+}
+
 install_gum_early() {
     # Already have gum? Great!
     if acfs_early_system_binary_path gum &>/dev/null; then
@@ -896,6 +938,7 @@ install_gum_early() {
     local timeout_bin=""
     local setsid_bin=""
     local env_bin=""
+    local bash_bin=""
     local mkdir_bin=""
     local tee_bin=""
 
@@ -923,7 +966,8 @@ install_gum_early() {
     fi
     setsid_bin="$(acfs_early_system_binary_path setsid 2>/dev/null || true)"
     env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
-    if [[ -z "$setsid_bin" || -z "$env_bin" ]]; then
+    bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$setsid_bin" || -z "$env_bin" || -z "$bash_bin" ]]; then
         return 0
     fi
     mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
@@ -944,6 +988,10 @@ install_gum_early() {
             return 0
         fi
     fi
+
+    local apt_runner=""
+    apt_runner="$(declare -f acfs_run_early_apt)"
+    apt_runner+=$'\nacfs_run_early_apt "$@"'
 
     echo -e "\033[0;90m    → Installing gum for enhanced UI...\033[0m" >&2
 
@@ -970,11 +1018,14 @@ EOF
     # Detach noninteractive apt from the controlling TTY to prevent SIGTTOU
     # stops. Keep ordinary timeout inside that session so its process-group
     # signal also reaches dpkg/helpers retaining the captured output pipe.
+    # The foreground supervisor forwards terminal cancellation to that group.
     # sudo stays outside setsid: it may need the caller's terminal to prompt
-    # or use cached credentials (#475). Set DEBIAN_FRONTEND after sudo.
+    # or use cached credentials (#475). Set DEBIAN_FRONTEND after sudo, and
+    # use privileged Bash mode to ignore startup files and imported functions.
     echo -e "\033[0;90m      ↳ Updating package lists (may take 30-60s on fresh systems)...\033[0m" >&2
-    if ! "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$setsid_bin" --wait "$timeout_bin" 300 \
-        "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" </dev/null >/dev/null 2>&1; then
+    if ! "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$bash_bin" -p -c "$apt_runner" \
+        acfs-early-apt "$setsid_bin" "$timeout_bin" "$apt_get_bin" \
+        -o DPkg::Lock::Timeout=120 update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" </dev/null >/dev/null 2>&1; then
         # Reset terminal line position in case apt left cursor in bad state
         echo -e "\r\033[K\033[0;33m      ⚠ apt-get update slow/failed (skipping gum, will retry later)\033[0m" >&2
         return 0
@@ -985,8 +1036,9 @@ EOF
     # terminal cursor position issues when apt-get fails or times out
     echo -e "\033[0;90m      ↳ Installing gum package...\033[0m" >&2
     local apt_output
-    if apt_output=$("${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$setsid_bin" --wait "$timeout_bin" 300 \
-        "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum </dev/null 2>&1); then
+    if apt_output=$("${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$bash_bin" -p -c "$apt_runner" \
+        acfs-early-apt "$setsid_bin" "$timeout_bin" "$apt_get_bin" \
+        -o DPkg::Lock::Timeout=120 install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum </dev/null 2>&1); then
         HAS_GUM=true
         # Reset terminal line position and show success
         echo -e "\r\033[K\033[0;32m    ✓ gum installed - enhanced UI enabled!\033[0m" >&2
@@ -2063,7 +2115,11 @@ acfs_attach_to_running_install() {
     # other installer has finished, so we terminate the tail and return.
     if command -v flock >/dev/null 2>&1; then
         local _tail_pid=""
-        tail -n +1 -f "$live_log" &
+        local _watcher_pid="$BASHPID"
+        # Background jobs can inherit SIGINT ignored. Tie the follower to this
+        # watcher as well, so interrupting it cannot orphan tail in a terminal
+        # session that stays open. The independent installer is unaffected.
+        tail --pid="$_watcher_pid" -n +1 -f "$live_log" &
         _tail_pid=$!
         # Poll for lock release in this shell.
         while kill -0 "$_tail_pid" 2>/dev/null; do

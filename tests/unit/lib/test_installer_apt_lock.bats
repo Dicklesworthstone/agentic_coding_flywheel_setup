@@ -57,9 +57,74 @@ EOF
 }
 
 @test "installer: gum outer timeout leaves time to operate after lock acquisition" {
-    run grep -F '"$timeout_bin" 300 "${sudo_cmd[@]}" "$apt_get_bin"' install.sh
+    local timeout_log="$BATS_TEST_TMPDIR/gum_timeout_calls.log"
+    local apt_log="$BATS_TEST_TMPDIR/gum_apt_calls.log"
+
+    # Exercise the actual bootstrap function with inert commands. This checks
+    # the timeout and lock-wait budgets independently of sudo/session ordering.
+    run env TEST_TIMEOUT_LOG="$timeout_log" TEST_APT_LOG="$apt_log" bash -c '
+        set -euo pipefail
+        ACFS_DISTRO_FAMILY=ubuntu
+        ACFS_EARLY_CURL_ARGS=()
+        DRY_RUN=false
+        PRINT_MODE=false
+        HAS_GUM=false
+        _acfs_os_release_field() { printf "24.04\n"; }
+        acfs_early_system_binary_path() {
+            [[ "$1" != gum ]] || return 1
+            printf "fixture_%s\n" "$1"
+        }
+        acfs_early_sudo_binary_path() { printf "fixture_sudo\n"; }
+        fixture_sudo() { "$@"; }
+        fixture_curl() { printf "fixture-key\n"; }
+        fixture_gpg() { cat >/dev/null; }
+        fixture_mkdir() { :; }
+        fixture_tee() { cat >/dev/null; }
+        fixture_env() {
+            [[ "$1" == DEBIAN_FRONTEND=noninteractive ]] || return 97
+            shift
+            DEBIAN_FRONTEND=noninteractive "$@"
+        }
+        fixture_bash() {
+            [[ "$1" == -p && "$2" == -c ]] || return 97
+            local runner="$3"
+            shift 3
+            shift # bash -c command name
+            ( eval "$runner" )
+        }
+        fixture_setsid() {
+            [[ "$1" == --wait ]] || return 97
+            shift
+            "$@"
+        }
+        fixture_timeout() {
+            while [[ "$1" == -* ]]; do
+                case "$1" in
+                    --kill-after=*) shift ;;
+                    *) return 97 ;;
+                esac
+            done
+            printf "%s\n" "$1" >> "$TEST_TIMEOUT_LOG"
+            [[ "$1" == 300 ]] || return 98
+            shift
+            "$@"
+        }
+        fixture_apt-get() {
+            [[ "${DEBIAN_FRONTEND:-}" == noninteractive ]] || return 97
+            printf "%s\n" "$*" >> "$TEST_APT_LOG"
+            [[ "$*" == *"DPkg::Lock::Timeout=120"* ]] || return 98
+        }
+        eval "$(sed -n "/^acfs_run_early_apt() {/,/^}/p" install.sh)"
+        eval "$(sed -n "/^install_gum_early() {/,/^}/p" install.sh)"
+        install_gum_early
+        [[ "$HAS_GUM" == true ]]
+    '
     assert_success
-    [ "$(grep -Fc '"$timeout_bin" 300 "${sudo_cmd[@]}" "$apt_get_bin"' install.sh)" -eq 2 ]
+    [ "$(grep -c '^300$' "$timeout_log")" -eq 2 ]
+    [ "$(wc -l < "$timeout_log")" -eq 2 ]
+    [ "$(grep -c 'DPkg::Lock::Timeout=120 update ' "$apt_log")" -eq 1 ]
+    [ "$(grep -c 'DPkg::Lock::Timeout=120 install ' "$apt_log")" -eq 1 ]
+    [ "$(wc -l < "$apt_log")" -eq 2 ]
 }
 
 @test "installer: Agent Mail service migration never hard-kills a live owner" {
