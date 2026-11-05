@@ -534,10 +534,9 @@ export function formatSshHost(host: string): string {
   if (!isValidIP(normalized)) {
     return "YOUR_VPS_IP";
   }
-  if (normalized.includes(":")) {
-    // IPv6 address — strip any existing mismatched brackets and wrap cleanly
-    return `[${normalized}]`;
-  }
+  // OpenSSH's user@host argument accepts bare IPv6 addresses. Brackets are
+  // only needed by SCP's host:path grammar: here they become part of the
+  // hostname, and unquoted brackets also trigger glob expansion in zsh.
   return normalized;
 }
 
@@ -545,6 +544,16 @@ export function formatSshTarget(username: string, host: string): string {
   const safeUsername =
     username.trim() === "root" ? "root" : (normalizeSSHUsername(username) ?? "ubuntu");
   return `${safeUsername}@${formatSshHost(host)}`;
+}
+
+/** SCP uses a colon to separate host and path, so its IPv6 host needs brackets. */
+export function formatScpTarget(username: string, host: string): string {
+  const target = formatSshTarget(username, host);
+  const separator = target.indexOf("@");
+  const address = target.slice(separator + 1);
+  return address.includes(":")
+    ? `${target.slice(0, separator + 1)}[${address}]`
+    : target;
 }
 
 export function buildRootKeyRepairCommand(username: string, host: string): string {

@@ -18,6 +18,7 @@ import {
   buildUserKeyRepairCommandWindows,
   buildWindowsTerminalProfileSshCommand,
   formatHandoffRunbookMarkdown,
+  formatScpTarget,
   formatSshTarget,
   formatTeamProfileImportDiffMarkdown,
   formatTeamProfileReviewMarkdown,
@@ -29,8 +30,8 @@ import {
 describe("formatSshTarget", () => {
   test("formats valid IPv4 and IPv6 SSH targets", () => {
     expect(formatSshTarget("root", "203.0.113.42")).toBe("root@203.0.113.42");
-    expect(formatSshTarget("ubuntu", "2001:db8::42")).toBe("ubuntu@[2001:db8::42]");
-    expect(formatSshTarget("ubuntu", "[2001:db8::42]")).toBe("ubuntu@[2001:db8::42]");
+    expect(formatSshTarget("ubuntu", "2001:db8::42")).toBe("ubuntu@2001:db8::42");
+    expect(formatSshTarget("ubuntu", "[2001:db8::42]")).toBe("ubuntu@2001:db8::42");
     expect(formatSshTarget("ubuntu", "YOUR_VPS_IPV4")).toBe("ubuntu@YOUR_VPS_IPV4");
   });
 
@@ -41,6 +42,40 @@ describe("formatSshTarget", () => {
     expect(target).not.toContain(";");
     expect(target).not.toContain("touch");
     expect(target).not.toContain("bad user");
+  });
+
+  test("OpenSSH parses an IPv6 destination as an address without resolving brackets", () => {
+    // -G prints effective configuration without opening a network connection;
+    // -F avoids depending on the developer's SSH config or ProxyCommand.
+    const result = Bun.spawnSync({
+      cmd: ["ssh", "-G", "-F", "/dev/null", formatSshTarget("ubuntu", "2001:db8::42")],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(new TextDecoder().decode(result.stdout).split("\n")).toContain("hostname 2001:db8::42");
+  });
+
+  test("copied IPv6 login commands survive shells that reject unmatched globs", () => {
+    const login = buildSshKeyLoginCommands("ubuntu", "2001:db8::42");
+    const result = Bun.spawnSync({
+      cmd: ["bash", "-O", "failglob", "-c", `ssh() { printf '%s\\n' "$@"; }\n${login.command}`],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(new TextDecoder().decode(result.stdout).trim().split("\n").at(-1)).toBe(
+      "ubuntu@2001:db8::42",
+    );
+  });
+});
+
+describe("formatScpTarget", () => {
+  test("brackets IPv6 only for SCP's host:path grammar", () => {
+    expect(formatScpTarget("root", "2001:db8::42")).toBe("root@[2001:db8::42]");
+    expect(formatScpTarget("root", "[2001:db8::42]")).toBe("root@[2001:db8::42]");
+    expect(formatScpTarget("ubuntu", "203.0.113.42")).toBe("ubuntu@203.0.113.42");
+    expect(formatScpTarget("bad;user", "bad;host")).toBe("ubuntu@YOUR_VPS_IP");
   });
 });
 
@@ -85,7 +120,7 @@ describe("buildRootKeyRepairCommand", () => {
   test("falls back to ubuntu for usernames the installer would reject", () => {
     const command = buildRootKeyRepairCommand("Bad User", "2001:db8::42");
 
-    expect(command).toContain("ssh root@[2001:db8::42]");
+    expect(command).toContain("ssh root@2001:db8::42");
     expect(command).toContain("/home/ubuntu/.ssh/authorized_keys");
     expect(command).not.toContain("Bad User");
   });
@@ -136,7 +171,7 @@ describe("buildUserKeyRepairCommand", () => {
   test("falls back to ubuntu for usernames the installer would reject", () => {
     const command = buildUserKeyRepairCommand("Bad User", "2001:db8::42");
 
-    expect(command).toContain("ssh ubuntu@[2001:db8::42]");
+    expect(command).toContain("ssh ubuntu@2001:db8::42");
     expect(command).not.toContain("Bad User");
   });
 });
@@ -251,7 +286,7 @@ describe("buildUserKeyRepairCommandWindows", () => {
   test("falls back to ubuntu for usernames the installer would reject", () => {
     const command = buildUserKeyRepairCommandWindows("Bad User", "2001:db8::42");
 
-    expect(command).toContain("ssh ubuntu@[2001:db8::42] '");
+    expect(command).toContain("ssh ubuntu@2001:db8::42 '");
     expect(command).not.toContain("Bad User");
   });
 });
@@ -316,10 +351,10 @@ describe("buildSshKeyLoginCommands", () => {
     const login = buildSshKeyLoginCommands("ubuntu", "2001:db8::42", "-L 1455:localhost:1455");
 
     expect(login.command).toBe(
-      "ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]",
+      "ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ubuntu@2001:db8::42",
     );
     expect(login.windowsCommand).toBe(
-      "ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]",
+      "ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ubuntu@2001:db8::42",
     );
   });
 

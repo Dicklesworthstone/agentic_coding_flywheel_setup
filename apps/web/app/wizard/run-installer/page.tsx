@@ -38,6 +38,7 @@ import {
   buildInstallCommandDetails,
   buildTeamProfile,
   formatHandoffRunbookMarkdown,
+  formatScpTarget,
   formatSshTarget,
   formatTeamProfileReviewMarkdown,
   serializeHandoffRunbookJson,
@@ -288,6 +289,10 @@ export default function RunInstallerPage() {
     canGenerateInstall && currentCheckpoint !== null && installerAcknowledged && !isNavigating;
   const cacheTransferTarget = useMemo(
     () => formatSshTarget("root", effectiveVpsIP),
+    [effectiveVpsIP],
+  );
+  const cacheScpTarget = useMemo(
+    () => formatScpTarget("root", effectiveVpsIP),
     [effectiveVpsIP],
   );
   const cachedInstallCommand = useMemo(
@@ -964,7 +969,7 @@ export default function RunInstallerPage() {
                   runLocation="local"
                 />
                 <CommandCard
-                  command={`scp -r /tmp/acfs-cache/acfs-installer-cache/. ${cacheTransferTarget}:${VERIFIED_INSTALLER_CACHE_PATH}/`}
+                  command={`scp -r /tmp/acfs-cache/acfs-installer-cache/. '${cacheScpTarget}:${VERIFIED_INSTALLER_CACHE_PATH}/'`}
                   description="Copy the cache to the VPS"
                   runLocation="local"
                 />

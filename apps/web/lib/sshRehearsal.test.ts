@@ -103,10 +103,10 @@ describe("ssh rehearsal", () => {
     expect(texts(run(["whoami"], remote))).toContain("root");
   });
 
-  test("IPv6 targets keep brackets in the command but not in SSH's messages", () => {
+  test("IPv6 targets use bare addresses in commands and SSH's messages", () => {
     const state = run(
-      ["ssh root@[2001:db8::1]", "yes", "pw", "exit"],
-      startSshRehearsal("root@[2001:db8::1]", "[2001:db8::1]"),
+      ["ssh root@2001:db8::1", "yes", "pw", "exit"],
+      startSshRehearsal("root@2001:db8::1", "2001:db8::1"),
     );
     expect(state.stage).toBe("done");
     expect(texts(state)).toContain(

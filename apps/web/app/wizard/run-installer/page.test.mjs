@@ -1,5 +1,6 @@
 /** Page-routing tests with memoizing hook/service doubles, not a browser renderer. */
 import { strict as assert } from "node:assert";
+import { spawnSync } from "node:child_process";
 import { createHash, webcrypto } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -316,6 +317,7 @@ function fixture(initial = {}) {
       formatTeamProfileReviewMarkdown: JSON.stringify,
       serializeTeamProfileJson: JSON.stringify,
       formatSshTarget: (username, host) => `${username}@${host}`,
+      formatScpTarget: (username, host) => `${username}@${host.includes(":") ? `[${host}]` : host}`,
     },
     "@/lib/providerProvisioningPacket": {
       buildProviderProvisioningPacket: artifact("provider"),
@@ -733,6 +735,24 @@ test("cache targets the explicit upgrade destination while exports preserve an o
   assert.doesNotMatch(cacheBuilder.props.command, /24\.04/);
   assert.equal(item.calls.provider[0].ubuntuVersion, "24.04");
   assert.equal(item.calls.profile[0].providerSelection.ubuntuVersion, "24.04");
+});
+
+test("IPv6 cache commands preserve SSH addressing and quote SCP brackets for local shells", () => {
+  const item = fixture({ ip: "2001:db8::42" });
+  const view = item.render();
+  const prepare = view.nodes.find(
+    (node) => node.type === "command-card" && node.props.description === "Create the cache directory on the VPS",
+  );
+  const transfer = view.nodes.find(
+    (node) => node.type === "command-card" && node.props.description === "Copy the cache to the VPS",
+  );
+  assert.match(prepare.props.command, /^ssh root@2001:db8::42 /);
+  const result = spawnSync("bash", [
+    "-O", "failglob", "-c",
+    `scp() { printf '%s\\n' "$@"; }\n${transfer.props.command}`,
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim().split("\n").at(-1), "root@[2001:db8::42]:/var/cache/acfs-installer-cache/");
 });
 
 test("cache destination follows structured command details, not a duplicate hard-coded version", () => {

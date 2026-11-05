@@ -759,15 +759,15 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
     await expect(page.locator("code").filter({ hasText: "sudo -i" }).first()).toBeVisible();
   });
 
-  test("should bracket IPv6 hosts in SSH commands", async ({ page }) => {
+  test("should use bare IPv6 hosts in SSH commands", async ({ page }) => {
     const testIP = "2001:db8::10";
     await setupWizardState(page, { os: "mac", ip: testIP });
 
     await page.goto("/wizard/ssh-connect");
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
 
-    await expect(page.locator('text="ssh root@[2001:db8::10]"').first()).toBeVisible();
-    await expect(page.locator('text="ssh ubuntu@[2001:db8::10]"').first()).toBeVisible();
+    await expect(page.locator('text="ssh root@2001:db8::10"').first()).toBeVisible();
+    await expect(page.locator('text="ssh ubuntu@2001:db8::10"').first()).toBeVisible();
   });
 });
 
@@ -2541,7 +2541,7 @@ test.describe("Command Builder Panel", () => {
     await expect(page.locator("#cb-ip")).toHaveCount(0);
   });
 
-  test("should generate bracketed SSH commands for IPv6 addresses", async ({ page }) => {
+  test("should generate bare SSH destinations for IPv6 addresses", async ({ page }) => {
     await setupWizardState(page, {
       os: "mac",
       ip: "2001:db8::99",
@@ -2551,9 +2551,9 @@ test.describe("Command Builder Panel", () => {
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");
 
-    await expect(page.locator('text="ssh root@[2001:db8::99]"').first()).toBeVisible();
+    await expect(page.locator('text="ssh root@2001:db8::99"').first()).toBeVisible();
     await expect(
-      page.locator('text="ssh -i ~/.ssh/acfs_ed25519 ubuntu@[2001:db8::99]"').first(),
+      page.locator('text="ssh -i ~/.ssh/acfs_ed25519 ubuntu@2001:db8::99"').first(),
     ).toBeVisible();
   });
 });
