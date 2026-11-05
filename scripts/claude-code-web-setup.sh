@@ -147,16 +147,53 @@ for operation, selector, argv in operations:
         break
 else:
     raise ValueError('Unsupported bounded operation')
-children_path = pathlib.Path('/proc/self/task') / str(os.getpid()) / 'children'
-# Check supervision support before launching anything.
-children_path.read_text()
+def proc_status(path):
+    return dict(line.split(':', 1) for line in path.read_text().splitlines() if ':' in line)
+# Hosted sandboxes can expose a procfs mounted by an outer PID namespace.
+# Its task IDs and children list then differ from getpid()/waitpid() IDs.
+# Some supported kernels also omit the optional task/children interface.
+# Establish the procfs identity and namespace depth before launching anything.
+own_status = proc_status(pathlib.Path('/proc/self/status'))
+proc_pid = int(own_status['Pid'])
+namespace_pids = [int(pid) for pid in own_status.get('NSpid', str(proc_pid)).split()]
+if namespace_pids[-1] != os.getpid():
+    raise ValueError('Cannot resolve supervisor PID namespace')
+namespace_depth = len(namespace_pids)
+children_path = pathlib.Path('/proc/self/task') / str(proc_pid) / 'children'
+has_children_list = children_path.exists()
+def children():
+    try:
+        # waitid distinguishes an empty child set without reaping anything.
+        # Most successful probes leave no children; avoid scanning a shared
+        # host's /proc for every one of those checks.
+        os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return []
+    if has_children_list:
+        candidates = [pathlib.Path('/proc') / pid for pid in children_path.read_text().split()]
+    else:
+        candidates = (path for path in pathlib.Path('/proc').iterdir() if path.name.isdecimal())
+    owned = []
+    for path in candidates:
+        try:
+            status = proc_status(path / 'status')
+        except (OSError, UnicodeError):
+            # Unrelated/inaccessible or concurrently exiting /proc entries do
+            # not invalidate the census of this supervisor's own children.
+            continue
+        if status.get('PPid', '').strip() != str(proc_pid):
+            continue
+        pids = [int(pid) for pid in status.get('NSpid', status['Pid']).split()]
+        if len(pids) < namespace_depth:
+            raise ValueError('Cannot resolve owned child PID namespace')
+        owned.append(pids[namespace_depth - 1])
+    return owned
+children()
 libc = ctypes.CDLL(None, use_errno=True)
 if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
     raise OSError(ctypes.get_errno(), 'Could not enable child-process supervision')
 process = subprocess.Popen(command, start_new_session=True)
 timed_out = False
-def children():
-    return [int(pid) for pid in children_path.read_text().split()]
 def send(pids, sig):
     # Only this single-threaded parent reaps these direct children. Their PIDs
     # cannot be reused between enumeration and signalling while unreaped.
@@ -188,8 +225,7 @@ finally:
         reap(pids, os.WNOHANG)
         if time.monotonic() >= deadline:
             break
-        if children():
-            time.sleep(0.01)
+        time.sleep(0.01)
     while pids := children():
         send(pids, signal.SIGKILL)
         reap(pids, 0)

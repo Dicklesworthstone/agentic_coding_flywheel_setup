@@ -14,6 +14,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -1209,7 +1210,14 @@ else:
 
     def test_timed_out_probe_leaves_no_orphan_process_group(self):
         pidfile = self.root / 'probe.pid'
-        self.command('br', f'#!/bin/sh\ntrap "" TERM\nprintf "%s" "$$" > "{pidfile}"\nsleep 9\necho br-late\n')
+        self.command('br', f'''#!{shutil.which('python3')}
+import pathlib, signal, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+# Record the procfs PID, which can differ from getpid() in hosted sandboxes.
+pathlib.Path({str(pidfile)!r}).write_text(pathlib.Path('/proc/self').resolve().name)
+time.sleep(9)
+print('br-late')
+''')
         start = time.monotonic()
         output = self.run_setup(ACFS_CLOUD_TIMEOUT='1')
         self.assertLess(time.monotonic() - start, 5)
@@ -1219,11 +1227,16 @@ else:
 
     def test_successful_probe_reaps_children_that_started_a_new_session(self):
         pidfile = self.root / 'detached-probes'
+        child_code = (
+            f"import pathlib, time; path = pathlib.Path({str(pidfile)!r}); "
+            "output = path.open('a'); output.write(pathlib.Path('/proc/self').resolve().name + '\\n'); "
+            "output.close(); print('ready', flush=True); time.sleep(9)"
+        )
         self.command('br', f'''#!{shutil.which('python3')}
-import subprocess
-child = subprocess.Popen(['sleep', '9'], start_new_session=True)
-with open({str(pidfile)!r}, 'a') as output:
-    output.write(str(child.pid) + '\\n')
+import subprocess, sys
+child = subprocess.Popen([sys.executable, '-c', {child_code!r}], stdout=subprocess.PIPE,
+                         text=True, start_new_session=True)
+assert child.stdout.readline().strip() == 'ready'
 print('br-session-child')
 ''')
         output = self.run_setup()
@@ -1251,6 +1264,45 @@ print('br-session-child')
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('Unsupported bounded operation', result.stderr)
                 self.assertFalse(invoked.exists(), 'Unselected executable must never run')
+
+    def test_supervisor_census_handles_outer_procfs_and_missing_children_interface(self):
+        self.command('br', '#!/bin/sh\necho br-existing\n')
+        source = SCRIPT.read_text().split('cloud_run_bounded() {', 1)[1]
+        supervisor = source.split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+        # Exercise the real discovery code without signalling fixture PIDs.
+        census = supervisor.split('libc = ctypes.CDLL', 1)[0]
+        for outer_namespace in (False, True):
+            for children_interface in (False, True):
+                with self.subTest(outer_namespace=outer_namespace, children_interface=children_interface):
+                    parent, first, second = (1007, 1008, 1009) if outer_namespace else (7, 8, 11)
+                    statuses = {
+                        '/proc/self/status': f'Pid:\t{parent}\nPPid:\t1\n' +
+                            ('NSpid:\t1007\t7\n' if outer_namespace else ''),
+                        f'/proc/{first}/status': f'Pid:\t{first}\nPPid:\t{parent}\n' +
+                            ('NSpid:\t1008\t8\n' if outer_namespace else ''),
+                        f'/proc/{second}/status': f'Pid:\t{second}\nPPid:\t{parent}\n' +
+                            ('NSpid:\t1009\t11\t1\n' if outer_namespace else ''),
+                        '/proc/90/status': 'Pid:\t90\nPPid:\t2\nNSpid:\tnot-our-child\n',
+                        f'/proc/self/task/{parent}/children': f'{first} {second}',
+                    }
+
+                    def read_status(path, *args, **kwargs):
+                        if str(path) == '/proc/91/status':
+                            raise PermissionError('Unrelated process is inaccessible')
+                        return statuses[str(path)]
+
+                    paths = [Path(f'/proc/{pid}') for pid in (first, second, 90, 91)]
+                    with mock.patch.object(sys, 'argv', ['supervisor', '1', '1', 'version', str(self.bin / 'br')]), \
+                            mock.patch.dict(os.environ, {'PATH': str(self.bin) + ':/usr/bin:/bin'}), \
+                            mock.patch.object(os, 'getpid', return_value=7), \
+                            mock.patch.object(os, 'waitid', return_value=None), \
+                            mock.patch.object(Path, 'read_text', read_status), \
+                            mock.patch.object(Path, 'exists', return_value=children_interface), \
+                            mock.patch.object(Path, 'iterdir', return_value=iter(paths)):
+                        namespace = {}
+                        exec(compile(census, str(SCRIPT), 'exec'), namespace)
+                        with mock.patch.object(Path, 'iterdir', return_value=iter(paths)):
+                            self.assertEqual(namespace['children'](), [8, 11])
 
     def test_blocked_network_keeps_existing_tools_and_reports_missing(self):
         self.command("br", "#!/bin/sh\necho br-existing\n")
