@@ -16,6 +16,7 @@ class MailBootstrapTests(unittest.TestCase):
     run_cli = bootstrap.BootstrapTests.run_cli
     plan = bootstrap.BootstrapTests.plan
     save = bootstrap.BootstrapTests.save
+    git_directory_change_fixture = bootstrap.BootstrapTests.git_directory_change_fixture
 
     @contextlib.contextmanager
     def service(self, response=None, status=200, content_type="application/json"):
@@ -106,6 +107,47 @@ class MailBootstrapTests(unittest.TestCase):
                 self.run_cli("--apply", path, "--yes", ok=False)
                 self.assertFalse(self.target.exists())
                 self.assertEqual(calls, [])
+
+    def test_changed_project_path_stops_before_agent_mail_registration(self):
+        retained = self.git_directory_change_fixture("replace")
+        with self.service() as (url, calls):
+            plan = self.plan("--with", "git,readme", "--agent-mail", url)
+            failed = self.run_cli("--apply", self.save(plan), "--yes", ok=False)
+            self.assertIn("project directory", failed.stderr)
+            self.assertEqual(calls, [], "do not register a path that now names a different project")
+            state = json.loads((retained / plan["state_file"]).read_text())
+            self.assertEqual(state["completed_commands"], ["git-init"])
+            self.assertEqual(state["status"], "failed")
+            self.assertEqual((self.target / "concurrent-work.txt").read_text(), "unrelated user work\n")
+
+    def test_move_during_last_request_reports_partial_and_resumes_without_repeating_it(self):
+        retained = self.base / "retained-project"
+
+        def respond(request):
+            self.target.rename(retained)
+            self.target.mkdir()
+            (self.target / "user-work.txt").write_text("preserve replacement\n")
+            return {"jsonrpc": "2.0", "id": request["id"], "result": {
+                "structuredContent": {"human_key": str(self.target)}}}
+
+        with self.service(response=respond) as (url, calls):
+            plan = self.plan("--with", "readme", "--agent-mail", url)
+            path = self.save(plan)
+            failed = self.run_cli("--apply", path, "--yes", ok=False)
+            self.assertIn("project directory", failed.stderr)
+            self.assertEqual(len(calls), 1)
+            state = json.loads((retained / plan["state_file"]).read_text())
+            self.assertEqual(state["status"], "failed")
+            self.assertEqual(state["completed_commands"], ["agent-mail-project"])
+            self.assertEqual(sorted(p.name for p in self.target.iterdir()), ["user-work.txt"])
+
+            replacement = self.base / "retained-replacement"
+            self.target.rename(replacement)
+            retained.rename(self.target)
+            result = json.loads(self.run_cli("--apply", path, "--yes", "--resume").stdout)
+            self.assertEqual(result["status"], "resumed")
+            self.assertEqual(len(calls), 1, "completed registration must not run again after location recovery")
+            self.assertEqual((replacement / "user-work.txt").read_text(), "preserve replacement\n")
 
     def test_unauthenticated_loopback_does_not_use_ambient_credentials_or_proxies(self):
         with self.service() as (url, calls):

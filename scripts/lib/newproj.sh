@@ -466,6 +466,31 @@ def open_directory(path):
         raise
 
 
+class ProjectLocationChanged(ValueError):
+    pass
+
+
+def check_project_location(directory, parent, root):
+    # Held descriptors protect writes to the original objects, but do not
+    # prove that the reviewed path still names them after another command.
+    # Rewalk without links before further effects and before claiming success.
+    visible_parent = visible_root = None
+    message = "project directory moved, was replaced, or is no longer accessible; restore its reviewed location before resuming"
+    try:
+        visible_parent = open_directory(str(Path(directory).parent))
+        visible_root = os.open(Path(directory).name, DIR_FLAGS, dir_fd=visible_parent)
+        if (identity(os.fstat(visible_parent)) != identity(os.fstat(parent))
+                or identity(os.fstat(visible_root)) != identity(os.fstat(root))):
+            raise ProjectLocationChanged(message)
+    except OSError:
+        raise ProjectLocationChanged(message) from None
+    finally:
+        if visible_root is not None:
+            os.close(visible_root)
+        if visible_parent is not None:
+            os.close(visible_parent)
+
+
 def target_snapshot(directory):
     parent = open_directory(str(Path(directory).parent))
     try:
@@ -1021,6 +1046,7 @@ def apply(plan, resume=False):
             check_git_configuration(root, plan, executables, env)
         if actor is None:
             actor = publication_preflight(plan, state, executables, env)
+        check_project_location(directory, parent, root)
         if state is None:
             os.mkdir(".acfs", 0o700, dir_fd=root)
             state_dir = os.open(".acfs", DIR_FLAGS, dir_fd=root)
@@ -1032,6 +1058,7 @@ def apply(plan, resume=False):
             os.fsync(state_dir)
             touched = True
         for entry in plan["files"]:
+            check_project_location(directory, parent, root)
             fd = file_parent(root, entry["path"], create=True)
             try:
                 leaf = entry["path"].split("/")[-1]
@@ -1047,11 +1074,13 @@ def apply(plan, resume=False):
                     save_state(state_dir, state)
             finally:
                 os.close(fd)
+        check_project_location(directory, parent, root)
         if actor is not None and "github-commit" in state["completed_commands"]:
             initial_commit(plan, state, state_dir, executables, env, actor)
         for command in plan["commands"]:
             if command["id"] in state["completed_commands"]:
                 continue
+            check_project_location(directory, parent, root)
             if command["id"] == "agent-mail-project":
                 ensure_mail_project(command, token)
             elif command["id"] in ("github-commit", "github-create", "github-push", "ru-register"):
@@ -1080,6 +1109,8 @@ def apply(plan, resume=False):
                     run_tool(executable, ["ready", "--json"], env)
             state["completed_commands"].append(command["id"])
             save_state(state_dir, state)
+            check_project_location(directory, parent, root)
+        check_project_location(directory, parent, root)
         state["status"] = "complete"
         save_state(state_dir, state)
         return {"status": "resumed" if resume else "created", "plan_id": plan["plan_id"], "directory": directory,
@@ -1088,7 +1119,7 @@ def apply(plan, resume=False):
                 **external_progress(plan, state),
                 "note": ("Initial publication completed. Review the files and run the verification commands. Future pushes require new authorization."
                          if "github" in plan else "Review the files and run the verification commands. No agent, commit, or push was started.")}
-    except BaseException:
+    except BaseException as error:
         if state is not None and touched:
             state["status"] = "failed"
             try:
@@ -1096,7 +1127,10 @@ def apply(plan, resume=False):
             except (OSError, ValueError):
                 pass  # Preserve the original error and the last durable checkpoint.
         if touched:
-            print("Partial project retained at " + directory + "; nothing was removed. Review it, then retry the same plan with --apply PLAN.json --yes --resume.", file=sys.stderr)
+            if isinstance(error, ProjectLocationChanged):
+                print("Partial project retained in the original directory; nothing was removed. The reviewed path no longer safely identifies it: " + directory + ". Restore the original directory before retrying the saved plan with --resume.", file=sys.stderr)
+            else:
+                print("Partial project retained at " + directory + "; nothing was removed. Review it, then retry the same plan with --apply PLAN.json --yes --resume.", file=sys.stderr)
             if "github" in plan and state is not None and type(state.get("github")) is dict:
                 print(json.dumps({"status": "partial", "directory": directory, **external_progress(plan, state)}), file=sys.stderr)
         raise

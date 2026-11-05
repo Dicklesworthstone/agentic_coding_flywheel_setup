@@ -128,6 +128,102 @@ class BootstrapTests(unittest.TestCase):
         self.run_cli("--apply", self.save(plan), "--yes", ok=False)
         self.assertEqual(list(self.target.iterdir()), [])
 
+    def git_directory_change_fixture(self, change):
+        """Use real Git; inject a concurrent filesystem change after init."""
+        executable = shutil.which("git")
+        self.assertIsNotNone(executable)
+        bin_dir = self.base / "git-tools"
+        bin_dir.mkdir()
+        script = bin_dir / "git"
+        script.write_text("#!" + shutil.which("python3") + "\n" + '''import os, pathlib, subprocess, sys
+result = subprocess.run([os.environ["ACFS_TEST_REAL_GIT"], *sys.argv[1:]], check=False)
+if result.returncode:
+    sys.exit(result.returncode)
+log = pathlib.Path(os.environ["ACFS_TEST_GIT_CALLS"])
+with log.open("a") as stream:
+    stream.write("git init completed\\n")
+target = pathlib.Path(os.environ["ACFS_TEST_PROJECT"])
+retained = pathlib.Path(os.environ["ACFS_TEST_RETAINED"])
+change = os.environ["ACFS_TEST_DIRECTORY_CHANGE"]
+if change == "parent":
+    target.parent.rename(retained)
+    target.parent.mkdir()
+    target.mkdir()
+elif change in ("replace", "symlink"):
+    target.rename(retained)
+    if change == "symlink":
+        target.symlink_to(retained, target_is_directory=True)
+    else:
+        target.mkdir()
+if change != "symlink":
+    (target / "concurrent-work.txt").write_text("unrelated user work\\n")
+''')
+        script.chmod(0o755)
+        retained = self.base / "retained-directory"
+        self.env.update({"PATH": str(bin_dir) + os.pathsep + self.env["PATH"],
+                         "ACFS_TEST_REAL_GIT": executable,
+                         "ACFS_TEST_GIT_CALLS": str(self.base / "git-calls"),
+                         "ACFS_TEST_PROJECT": str(self.target),
+                         "ACFS_TEST_RETAINED": str(retained),
+                         "ACFS_TEST_DIRECTORY_CHANGE": change})
+        return retained
+
+    def test_directory_replacement_after_last_command_is_not_reported_complete(self):
+        retained = self.git_directory_change_fixture("replace")
+        plan = self.plan("--with", "git,readme")
+        path = self.save(plan)
+        failed = self.run_cli("--apply", path, "--yes", ok=False)
+        self.assertIn("project directory", failed.stderr)
+        self.assertIn("nothing was removed", failed.stderr)
+        state = json.loads((retained / plan["state_file"]).read_text())
+        self.assertEqual(state["status"], "failed")
+        self.assertEqual(state["completed_commands"], ["git-init"])
+        self.assertEqual(sorted(p.name for p in self.target.iterdir()), ["concurrent-work.txt"])
+        self.assertEqual((self.target / "concurrent-work.txt").read_text(), "unrelated user work\n")
+
+        # Restore the original directory without deleting either project.
+        replacement = self.base / "retained-replacement"
+        self.target.rename(replacement)
+        retained.rename(self.target)
+        result = json.loads(self.run_cli("--apply", path, "--yes", "--resume").stdout)
+        self.assertEqual(result["status"], "resumed")
+        self.assertEqual((self.base / "git-calls").read_text(), "git init completed\n")
+        self.assertEqual((replacement / "concurrent-work.txt").read_text(), "unrelated user work\n")
+
+    def test_project_symlink_added_during_apply_stops_later_tool_commands(self):
+        log = self.br_fixture()
+        retained = self.git_directory_change_fixture("symlink")
+        plan = self.plan("--with", "git,beads,readme")
+        failed = self.run_cli("--apply", self.save(plan), "--yes", ok=False)
+        self.assertIn("project directory", failed.stderr)
+        self.assertFalse(log.exists(), "do not initialize Beads through a replaced project path")
+        self.assertTrue(self.target.is_symlink())
+        self.assertFalse((retained / ".beads").exists())
+        self.assertEqual(json.loads((retained / plan["state_file"]).read_text())["status"], "failed")
+
+    def test_ancestor_replacement_during_apply_stops_later_tool_commands(self):
+        parent = self.base / "workspace"
+        parent.mkdir()
+        self.target = parent / "project"
+        log = self.br_fixture()
+        retained = self.git_directory_change_fixture("parent")
+        plan = self.plan("--with", "git,beads,readme")
+        failed = self.run_cli("--apply", self.save(plan), "--yes", ok=False)
+        self.assertIn("project directory", failed.stderr)
+        self.assertFalse(log.exists())
+        self.assertEqual((self.target / "concurrent-work.txt").read_text(), "unrelated user work\n")
+        original = retained / self.target.name
+        self.assertFalse((original / ".beads").exists())
+        self.assertEqual(json.loads((original / plan["state_file"]).read_text())["status"], "failed")
+
+    def test_concurrent_contents_do_not_change_project_directory_identity(self):
+        self.git_directory_change_fixture("contents")
+        path = self.save(self.plan("--with", "git,readme"))
+        result = json.loads(self.run_cli("--apply", path, "--yes").stdout)
+        self.assertEqual(result["status"], "created")
+        self.assertEqual((self.target / "concurrent-work.txt").read_text(), "unrelated user work\n")
+        self.assertTrue((self.target / "README.md").is_file())
+
     def test_existing_empty_directory_can_be_populated(self):
         self.target.mkdir()
         path = self.save(self.plan("--with", "readme"))
