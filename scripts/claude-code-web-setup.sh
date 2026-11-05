@@ -137,6 +137,8 @@ if not (0 < duration <= 180 and 0 < grace <= 2):
 tools = ('br', 'bv', 'am', 'ubs', 'cass', 'cm', 'ms', 'ast-grep', 'jsm', 'jfp')
 operations = [('job', tool, ['bash', '-c', 'set -uo pipefail; cloud_install_tool_job "$1"', '_', tool])
               for tool in tools]
+operations.extend(('recover', tool, ['bash', '-c', 'set -uo pipefail; cloud_promote_tool recover "$1"', '_', tool])
+                  for tool in tools)
 for name in (*tools, 'mcp-agent-mail'):
     binary = shutil.which(name)
     if binary is not None:
@@ -247,13 +249,45 @@ cloud_link_onto_path() {
     fi
     # Exclusive symlink creation never writes inside a colliding directory or
     # replaces an existing destination; reject linked parents before writing.
-    python3 - "$path" "$target" <<'PY' || return 1
-import os, pathlib, sys
-source, target = sys.argv[1], pathlib.Path(sys.argv[2])
+    python3 - "$path" "$target" "$ACFS_CLOUD_STATE_DIR" "$ACFS_CLOUD_WORK" <<'PY' || return 1
+import json, os, pathlib, stat, sys
+source, target, state, work = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]), pathlib.Path(sys.argv[4])
 try:
     if any(parent.is_symlink() for parent in target.parents):
         raise ValueError('Symlink in binary directory; existing files preserved: ' + str(target))
+    record = state / 'aliases' / (target.name + '.json')
+    if any(parent.is_symlink() for parent in [record, *record.parents]):
+        raise ValueError('Symlink in alias ownership path; existing files preserved: ' + str(record))
+    previous = None
+    if record.exists():
+        info = record.stat()
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError('Unsafe alias ownership file: ' + str(record))
+        previous = record.read_bytes()
+        saved = json.loads(previous)
+        if saved.get('schema') != 1 or saved.get('path') != str(target):
+            raise ValueError('Unrecognized alias ownership file: ' + str(record))
+    record.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.symlink(source, target)
+    info = target.lstat()
+    # Snapshots can be restored onto a different filesystem. Preserve the
+    # link's value and metadata, without persisting device/inode identity.
+    fields = ('st_mode', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns')
+    owned = {'schema': 1, 'path': str(target), 'source': source,
+             'identity': {field: getattr(info, field) for field in fields}}
+    candidate = record.with_name('.' + record.name + '.' + work.name + '.tmp')
+    with os.fdopen(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+        json.dump(owned, output)
+        output.flush()
+        os.fsync(output.fileno())
+    if any(parent.is_symlink() for parent in [record, *record.parents]):
+        raise ValueError('Alias ownership path changed; candidate retained')
+    if previous is None:
+        os.link(candidate, record)
+    else:
+        if record.read_bytes() != previous:
+            raise ValueError('Alias ownership changed concurrently; candidate retained')
+        os.replace(candidate, record)
 except Exception as error:
     print(str(error), file=sys.stderr)
     sys.exit(1)
@@ -275,10 +309,236 @@ cloud_version() {
     printf '%s\n' "${out%%$'\n'*}"
 }
 
+# Keep the pending replacement description until installed-path probes pass.
+# Recovery runs before warm reuse, so a killed multi-file refresh cannot leave
+# one new executable paired with old helpers and then be called "installed".
+# shellcheck disable=SC2329
+cloud_promote_tool() {
+    python3 - "$1" "$2" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" "$ACFS_CLOUD_STATE_DIR" <<'PY'
+import fcntl, hashlib, json, os, pathlib, re, shutil, signal, stat, subprocess, sys
+mode, tool, work, prefix, state = sys.argv[1:]
+work, prefix, state = pathlib.Path(work), pathlib.Path(prefix), pathlib.Path(state)
+bins = ['am', 'mcp-agent-mail'] if tool == 'am' else [tool]
+fields = ('st_mode', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns')
+def reject_links(path, leaf=True):
+    if any(parent.is_symlink() for parent in ([path] if leaf else []) + list(path.parents)):
+        raise ValueError('symlink in destination: ' + str(path))
+def fingerprint(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    digest = None
+    if stat.S_ISREG(info.st_mode):
+        # Hash only the observed file, without following a replacement link.
+        # A content identity survives snapshot copies where inodes change;
+        # checking the open descriptor also detects edits during the read.
+        identity = ('st_dev', 'st_ino', *fields)
+        digest = hashlib.sha256()
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as source:
+            opened = os.fstat(source.fileno())
+            if any(getattr(opened, field) != getattr(info, field) for field in identity):
+                raise ValueError('Bundle file changed while reading: ' + str(path))
+            remaining = info.st_size
+            while remaining:
+                data = source.read(min(1024 * 1024, remaining))
+                if not data:
+                    raise ValueError('Bundle file shortened while reading: ' + str(path))
+                digest.update(data)
+                remaining -= len(data)
+            current = path.lstat()
+            if source.read(1) or any(getattr(current, field) != getattr(info, field) for field in identity):
+                raise ValueError('Bundle file changed while reading: ' + str(path))
+        digest = digest.hexdigest()
+    return {'identity': {field: getattr(info, field) for field in fields},
+            'link': os.readlink(path) if stat.S_ISLNK(info.st_mode) else None,
+            'sha256': digest}
+def safe_name(name):
+    path = pathlib.PurePosixPath(name)
+    return (isinstance(name, str) and name == path.as_posix() and not path.is_absolute()
+            and '..' not in path.parts and (name in ['bin/' + b for b in bins]
+            or (tool == 'ubs' and name.startswith('share/ubs/modules/'))))
+def artifact(name, transaction, suffix):
+    target = prefix / name
+    return target.with_name('.' + target.name + '.' + transaction + suffix)
+def interrupt(signum, frame):
+    raise InterruptedError('tool refresh interrupted; recovering prior installation')
+signal.signal(signal.SIGTERM, interrupt)
+try:
+    if mode not in ('recover', 'install') or tool not in ('br', 'bv', 'am', 'ubs', 'cass', 'cm', 'ms', 'ast-grep', 'jsm', 'jfp'):
+        raise ValueError('Unsupported bundle promotion')
+    directory = state / 'transactions'
+    reject_links(directory)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock_path = directory / (tool + '.lock')
+    reject_links(lock_path)
+    with os.fdopen(os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError('Unsafe bundle promotion lock')
+        # The outer supervisor bounds lock waits as part of the whole tool job.
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        journal = directory / (tool + '.json')
+        reject_links(journal)
+        journal_bytes = None
+        if journal.exists():
+            info = journal.stat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError('Unsafe bundle recovery metadata')
+            journal_bytes = journal.read_bytes()
+        def save(record):
+            global journal_bytes
+            candidate = journal.with_name('.' + journal.name + '.' + work.name + '.' + record['state'] + '.tmp')
+            content = (json.dumps(record, sort_keys=True) + '\n').encode()
+            with os.fdopen(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as output:
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+            reject_links(journal)
+            if (journal.read_bytes() if journal.exists() else None) != journal_bytes:
+                raise ValueError('Bundle recovery metadata changed concurrently; candidate retained')
+            os.replace(candidate, journal)
+            journal_bytes = content
+        def validate(record):
+            if (record.get('schema') != 1 or record.get('tool') != tool or record.get('prefix') != str(prefix)
+                    or record.get('state') not in ('pending', 'committed', 'rolled-back')
+                    or not re.fullmatch(r'acfs-cloud\.[A-Za-z0-9]{6}', record.get('transaction', ''))):
+                raise ValueError('Invalid bundle recovery metadata')
+            entries = record.get('files')
+            if not isinstance(entries, list) or not entries:
+                raise ValueError('Invalid bundle recovery files')
+            names = []
+            for entry in entries:
+                name = entry.get('name')
+                if not isinstance(name, str) or not safe_name(name) or name in names:
+                    raise ValueError('Unsafe bundle recovery path')
+                names.append(name)
+                for key in ('before', 'after'):
+                    saved = entry.get(key)
+                    if saved is None and key == 'before':
+                        continue
+                    if (not isinstance(saved, dict) or set(saved) != {'identity', 'link', 'sha256'}
+                            or set(saved.get('identity', {})) != set(fields)
+                            or any(type(value) is not int for value in saved['identity'].values())
+                            or not ((stat.S_ISREG(saved['identity']['st_mode']) and saved['link'] is None
+                                     and isinstance(saved['sha256'], str)
+                                     and re.fullmatch(r'[a-f0-9]{64}', saved['sha256'])) or
+                                    (key == 'before' and stat.S_ISLNK(saved['identity']['st_mode'])
+                                     and isinstance(saved['link'], str) and saved['sha256'] is None))):
+                        raise ValueError('Invalid bundle recovery identity')
+            if not all('bin/' + binary in names for binary in bins):
+                raise ValueError('Incomplete bundle recovery metadata')
+        def recover(record):
+            validate(record)
+            if record['state'] != 'pending':
+                return
+            conflicts = []
+            for entry in reversed(record['files']):
+                target = prefix / entry['name']
+                reject_links(target, leaf=False)
+                current = fingerprint(target)
+                if current == entry['before']:
+                    continue
+                if current != entry['after']:
+                    conflicts.append(str(target))
+                    continue
+                if entry['before'] is not None:
+                    backup = artifact(entry['name'], record['transaction'], '.before')
+                    reject_links(backup, leaf=False)
+                    if fingerprint(backup) != entry['before']:
+                        raise ValueError('Prior bundle file changed; backup retained: ' + str(backup))
+                    os.replace(backup, target)
+                else:
+                    candidate = artifact(entry['name'], record['transaction'], '.tmp')
+                    if candidate.exists() or candidate.is_symlink():
+                        raise ValueError('Recovery candidate already exists; installed file retained: ' + str(target))
+                    os.replace(target, candidate)
+            if conflicts:
+                raise ValueError('Bundle files changed concurrently; existing files and recovery metadata retained: ' + ', '.join(conflicts))
+            record['state'] = 'rolled-back'
+            save(record)
+            print('Recovered prior ' + tool + ' installation after incomplete refresh', file=sys.stderr)
+        if journal_bytes is not None:
+            recover(json.loads(journal_bytes))
+        if mode == 'recover':
+            sys.exit(0)
+        stage = work / (tool + '-stage')
+        names = sorted(path.relative_to(stage).as_posix() for path in stage.rglob('*') if not path.is_dir())
+        if not names or not all(safe_name(name) for name in names) or not all('bin/' + binary in names for binary in bins):
+            raise ValueError('Invalid staged bundle files')
+        record = {'schema': 1, 'tool': tool, 'prefix': str(prefix), 'transaction': work.name, 'state': 'pending', 'files': []}
+        # Validate the entire destination set before making any replacement.
+        for name in names:
+            target = prefix / name
+            reject_links(stage / name)
+            reject_links(target, leaf=False)
+            before = fingerprint(target)
+            if before is not None:
+                if stat.S_ISLNK(before['identity']['st_mode']):
+                    alias = state / 'aliases' / (target.name + '.json')
+                    reject_links(alias)
+                    # First publication retains an exclusive hard-linked
+                    # candidate; this metadata is read, never truncated.
+                    owned = json.loads(alias.read_text()) if alias.is_file() else {}
+                    if (name not in ['bin/' + binary for binary in bins] or owned.get('schema') != 1
+                            or owned.get('path') != str(target) or owned.get('source') != before['link']
+                            or owned.get('identity') != before['identity']):
+                        raise ValueError('symlink in destination is not an unchanged ACFS-created alias: ' + str(target))
+                elif not stat.S_ISREG(before['identity']['st_mode']):
+                    raise ValueError('non-file destination: ' + str(target))
+            record['files'].append({'name': name, 'before': before})
+        for entry in record['files']:
+            target = prefix / entry['name']
+            target.parent.mkdir(parents=True, exist_ok=True)
+            reject_links(target, leaf=False)
+            if fingerprint(target) != entry['before']:
+                raise ValueError('Bundle destination changed concurrently; existing file retained: ' + str(target))
+            candidate = artifact(entry['name'], work.name, '.tmp')
+            with candidate.open('xb'):
+                pass
+            shutil.copy2(stage / entry['name'], candidate)
+            entry['after'] = fingerprint(candidate)
+            if entry['before'] is not None:
+                os.link(target, artifact(entry['name'], work.name, '.before'), follow_symlinks=False)
+        save(record)
+        try:
+            for entry in record['files']:
+                target = prefix / entry['name']
+                reject_links(target, leaf=False)
+                if fingerprint(target) != entry['before']:
+                    raise ValueError('Bundle destination changed concurrently; existing file retained: ' + str(target))
+                os.replace(artifact(entry['name'], work.name, '.tmp'), target)
+            versions = []
+            for binary in bins:
+                # Reuse the real bounded supervisor, including descendant
+                # cleanup, before committing the replacement transaction.
+                result = subprocess.run(['bash', '-c', 'cloud_version "$1"', '_', binary],
+                                        capture_output=True, text=True, check=False)
+                if result.returncode or not result.stdout.strip():
+                    raise ValueError('installed binary verification failed: ' + binary)
+                versions.append(result.stdout.strip().splitlines()[0])
+            record['state'] = 'committed'
+            save(record)
+        except Exception:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            record['state'] = 'pending'
+            recover(record)
+            raise
+        print(versions[0])
+except Exception as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 # shellcheck disable=SC2329
 cloud_install_tool_job() {
     local tool="$1" rc bin version log="$ACFS_CLOUD_STATE_DIR/logs/$1.log"
     bin="$(cloud_tool_field "$tool" 3)"
+    if ! cloud_promote_tool recover "$tool" >>"$log" 2>&1; then
+        cloud_record "$tool" fail "bundle recovery failed: $(tail -n 1 "$log"); see $log"
+        return 0
+    fi
     if [[ "${ACFS_CLOUD_REINSTALL:-0}" != "1" ]] && version="$(cloud_version "$bin")" && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail >/dev/null; }; then
         if ! cloud_link_onto_path "$bin" || { [[ "$tool" == am ]] && ! cloud_link_onto_path mcp-agent-mail; }; then
             cloud_record "$tool" fail "existing binary could not be linked onto PATH"
@@ -287,7 +547,7 @@ cloud_install_tool_job() {
         cloud_record "$tool" ok "$version (already installed)"
         return 0
     fi
-    python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >"$log" 2>&1 <<'PY'
+    python3 - "$tool" "$ACFS_CLOUD_WORK" "$ACFS_CLOUD_ROOT/.local" >>"$log" 2>&1 <<'PY'
 import fcntl, hashlib, io, json, os, pathlib, re, shutil, stat, subprocess, sys, tarfile, zipfile
 tool, work, prefix = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 blocked_hosts = []
@@ -428,30 +688,6 @@ try:
         if not version:
             raise ValueError(binary + ' returned no version')
         print(version.splitlines()[0], flush=True)
-    # Validate every destination before copying. Never follow pre-existing links.
-    for name in seen:
-        target = prefix / name
-        if any(p.is_symlink() for p in [target, *target.parents]):
-            raise ValueError('symlink in destination: ' + str(target))
-        if target.exists() and not target.is_file():
-            raise ValueError('non-file destination: ' + str(target))
-    replacements = []
-    for name in sorted(seen):
-        target = prefix / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if any(p.is_symlink() for p in [target, *target.parents]):
-            raise ValueError('symlink in destination: ' + str(target))
-        # Copy beside the destination before replacing it. A timeout, full disk
-        # or interrupted copy must not truncate an already working executable.
-        candidate = target.with_name('.' + target.name + '.acfs-' + work.name + '.tmp')
-        with candidate.open('xb'):
-            pass
-        shutil.copy2(stage / name, candidate)
-        replacements.append((candidate, target))
-    for candidate, target in replacements:
-        if any(p.is_symlink() for p in [target, *target.parents]):
-            raise ValueError('symlink in destination: ' + str(target))
-        os.replace(candidate, target)
     if fallback and tool == 'ubs':
         if source.get('format', 'upstream') == 'acfs-overlay':
             print('UBS complete public fallback: bundled modules/helpers are ready for offline scans.', flush=True)
@@ -469,10 +705,10 @@ except Exception as error:
 PY
     rc=$?
     if [[ $rc -eq 0 ]]; then
-        if version="$(cloud_version "$bin")" && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail >/dev/null; }; then
+        if version="$(cloud_promote_tool install "$tool" 2>>"$log")"; then
             cloud_record "$tool" ok "$version (verified prebuilt)"
         else
-            cloud_record "$tool" fail "installed binary verification failed; see $log"
+            cloud_record "$tool" fail "bundle activation failed: $(tail -n 1 "$log"); see $log"
         fi
     else
         cloud_record "$tool" fail "$(tail -n 1 "$log"); see $log; no source build attempted"
@@ -655,7 +891,7 @@ GUIDE
 }
 
 cloud_write_guide() {
-    local tool tool_bin status detail block rerun_config="" profile_name="" profile_path="" mail_data
+    local tool tool_bin status detail block rerun_config="" profile_name="" profile_path="" mail_data recovery_duration
     # Remaining-tool discovery includes final alias probes; cap the whole
     # phase so slow existing binaries cannot exceed the snapshot window.
     local probe_deadline=$(( SECONDS + 60 ))
@@ -665,9 +901,19 @@ cloud_write_guide() {
     for tool in $ACFS_CLOUD_DEFAULT_TOOLS; do
         if [[ -f "$ACFS_CLOUD_WORK/status/$tool" ]]; then
             IFS='|' read -r status detail < "$ACFS_CLOUD_WORK/status/$tool"
-        elif tool_bin="$(cloud_tool_field "$tool" 3)" && cloud_find_binary "$tool_bin" >/dev/null &&
-            cloud_version "$tool_bin" "$probe_deadline" >/dev/null && { [[ "$tool" != am ]] || cloud_version mcp-agent-mail "$probe_deadline" >/dev/null; }; then
-            if cloud_link_onto_path "$tool_bin" "$probe_deadline" && { [[ "$tool" != am ]] || cloud_link_onto_path mcp-agent-mail "$probe_deadline"; }; then
+        elif tool_bin="$(cloud_tool_field "$tool" 3)" && cloud_find_binary "$tool_bin" >/dev/null; then
+            recovery_duration=$(( probe_deadline - SECONDS - 1 ))
+            (( recovery_duration > 0 )) || continue
+            (( recovery_duration > 5 )) && recovery_duration=5
+            # Partial selections also discover existing tools for the guide.
+            # Recover their interrupted updates before advertising them, under
+            # the same remaining discovery budget (including lock waits).
+            if ! cloud_run_bounded "$recovery_duration" 1 recover "$tool" >>"$ACFS_CLOUD_STATE_DIR/logs/$tool.log" 2>&1; then
+                status="fail"
+                detail="bundle recovery failed; see $ACFS_CLOUD_STATE_DIR/logs/$tool.log"
+            elif ! cloud_version "$tool_bin" "$probe_deadline" >/dev/null || { [[ "$tool" == am ]] && ! cloud_version mcp-agent-mail "$probe_deadline" >/dev/null; }; then
+                continue
+            elif cloud_link_onto_path "$tool_bin" "$probe_deadline" && { [[ "$tool" != am ]] || cloud_link_onto_path mcp-agent-mail "$probe_deadline"; }; then
                 status="ok"
             else
                 status="fail"
@@ -941,7 +1187,7 @@ cloud_main() {
     fi
     export PATH="$ACFS_CLOUD_BIN_DIR:$PATH"
     export ACFS_RAW ACFS_CLOUD_WORK ACFS_CLOUD_ROOT ACFS_CLOUD_STATE_DIR ACFS_CLOUD_BIN_DIR ACFS_CLOUD_TIMEOUT ACFS_CLOUD_TOOL_TABLE
-    export -f cloud_install_tool_job cloud_version cloud_run_bounded cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
+    export -f cloud_install_tool_job cloud_promote_tool cloud_version cloud_run_bounded cloud_find_binary cloud_tool_field cloud_link_onto_path cloud_record
 
     cloud_step "ACFS cloud setup: $ACFS_CLOUD_TOOLS"
     cloud_detail "ACFS ref: $ACFS_REF, whole tool job timeout: ${ACFS_CLOUD_TIMEOUT}s"

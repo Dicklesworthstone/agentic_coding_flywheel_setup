@@ -2,6 +2,7 @@
 
 Each case retains its scratch directory; there is no automatic deletion.
 """
+import fcntl
 import hashlib
 import importlib.util
 import io
@@ -719,6 +720,11 @@ pathlib.Path(args[args.index('-o')+1]).write_bytes(pathlib.Path(mapping[url]).re
         dest = self.bin / name
         dest.write_text(code)
         dest.chmod(0o755)
+
+    def python_fault(self, code):
+        directory = Path(tempfile.mkdtemp(prefix='python-fault-', dir=self.root))
+        (directory / 'sitecustomize.py').write_text(code)
+        self.env['PYTHONPATH'] = str(directory)
 
     def serve(self, url, data):
         path = self.root / ("response-" + hashlib.sha256(url.encode()).hexdigest())
@@ -2539,6 +2545,260 @@ os.open = readonly_open
                 self.assertIn('Symlink in repository skill path', output)
                 self.assertIn('use the generated guide explicitly', output)
                 self.assertIn('`br`', (self.home / '.codex/AGENTS.md').read_text())
+
+    def test_reinstall_refreshes_acfs_created_alias_without_changing_its_source(self):
+        original = '#!/bin/sh\necho br-existing\n'
+        self.command('br', original)
+        first = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('br-existing (already installed)', first)
+        target = self.home / '.local/bin/br'
+        self.assertEqual(target.readlink(), self.bin / 'br')
+        self.bundle()
+        refreshed = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('br 1.2.3 (verified prebuilt)', refreshed)
+        self.assertFalse(target.is_symlink())
+        self.assertEqual((self.bin / 'br').read_text(), original)
+        self.assertEqual(self.probe_from_guide('br').stdout.strip(), 'br 1.2.3')
+
+    def test_reinstall_preserves_alias_replaced_by_the_user(self):
+        self.command('br', '#!/bin/sh\necho br-existing\n')
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        target = self.home / '.local/bin/br'
+        target.rename(target.with_name('br-original-acfs-alias'))
+        manual = self.root / 'manually-selected-br'
+        manual.write_text('#!/bin/sh\necho br-manual\n')
+        manual.chmod(0o755)
+        target.symlink_to(manual)
+        self.bundle()
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('not an unchanged ACFS-created alias', output)
+        self.assertEqual(target.readlink(), manual)
+        self.assertEqual(manual.read_text(), '#!/bin/sh\necho br-manual\n')
+        self.assertNotIn('(verified prebuilt)', output)
+
+    def test_managed_alias_refresh_survives_a_copied_cloud_snapshot(self):
+        self.command('br', '#!/bin/sh\necho br-existing\n')
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        target = self.home / '.local/bin/br'
+        inode = target.lstat().st_ino
+        retained = self.root / 'home-before-snapshot-copy'
+        self.home.rename(retained)
+        shutil.copytree(retained, self.home, symlinks=True)
+        self.assertNotEqual(target.lstat().st_ino, inode)
+        self.bundle()
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('br 1.2.3 (verified prebuilt)', output)
+        self.assertFalse(target.is_symlink())
+        self.assertEqual((self.bin / 'br').read_text(), '#!/bin/sh\necho br-existing\n')
+
+    def test_failed_installed_path_probe_restores_working_binary_and_allows_retry(self):
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        target = self.home / '.local/bin/br'
+        target.chmod(0o750)
+        original, original_inode = target.read_bytes(), target.stat().st_ino
+        self.bundle(content=b'#!/bin/sh\ncase "$0" in *-stage/bin/br) echo br-new;; *) exit 9;; esac\n')
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('installed binary verification failed', output)
+        self.assertNotIn('(verified prebuilt)', output)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(target.stat().st_ino, original_inode)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o750)
+        self.assertEqual(subprocess.run([str(target), '--version'], capture_output=True,
+                                       text=True, timeout=5).stdout.strip(), 'br 1.2.3')
+        self.bundle(content=b'#!/bin/sh\necho br-repaired\n')
+        retry = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('br-repaired (verified prebuilt)', retry)
+
+    def test_failed_agent_mail_refresh_restores_both_managed_aliases_and_ownership(self):
+        for binary in ('am', 'mcp-agent-mail'):
+            self.command(binary, '#!/bin/sh\necho ' + binary + '-existing\n')
+        self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        ownership = {path: path.read_bytes() for path in (self.home / '.acfs/cloud/aliases').glob('*.json')}
+        self.bundle('am', b'#!/bin/sh\ncase "$0" in *-stage/bin/*|*/.local/bin/am) echo am-new;; *) exit 9;; esac\n')
+        failed = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('installed binary verification failed: mcp-agent-mail', failed)
+        for binary in ('am', 'mcp-agent-mail'):
+            target = self.home / '.local/bin' / binary
+            self.assertEqual(target.readlink(), self.bin / binary)
+            self.assertEqual((self.bin / binary).read_text(), '#!/bin/sh\necho ' + binary + '-existing\n')
+        for path, content in ownership.items():
+            self.assertEqual(path.read_bytes(), content)
+        self.bundle('am', b'#!/bin/sh\necho am-repaired\n')
+        retry = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('am-repaired (verified prebuilt)', retry)
+        for binary in ('am', 'mcp-agent-mail'):
+            self.assertFalse((self.home / '.local/bin' / binary).is_symlink())
+
+    def test_failed_ubs_refresh_restores_bundled_modules_with_the_executable(self):
+        helper = tarfile.TarInfo('share/ubs/modules/ubs-python.sh')
+        old_helper = b'#!/bin/sh\necho old-module\n'
+        helper.size = len(old_helper)
+        self.bundle('ubs', extra=(helper, old_helper))
+        self.bundle('ast-grep')
+        self.run_setup('ubs', ACFS_CLOUD_AGENT='generic')
+        executable = self.home / '.local/bin/ubs'
+        module = self.home / '.local/share/ubs/modules/ubs-python.sh'
+        old_executable = executable.read_bytes()
+        new_helper = b'#!/bin/sh\necho new-module\n'
+        helper.size = len(new_helper)
+        self.bundle('ubs', b'#!/bin/sh\ncase "$0" in *-stage/bin/ubs) echo ubs-new;; *) exit 9;; esac\n',
+                    extra=(helper, new_helper))
+        failed = self.run_setup('ubs', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('installed binary verification failed: ubs', failed)
+        self.assertEqual(executable.read_bytes(), old_executable)
+        self.assertEqual(module.read_bytes(), old_helper)
+
+    def test_multi_binary_promotion_failure_restores_every_previous_executable(self):
+        self.bundle('am')
+        self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        original = {name: (self.home / '.local/bin' / name).read_bytes() for name in ('am', 'mcp-agent-mail')}
+        new_code = b'#!/bin/sh\necho am-new\n'
+        self.bundle('am', new_code)
+        legacy = self.home / '.local/bin/mcp-agent-mail'
+        self.python_fault(f'''
+import os, pathlib
+replace = os.replace
+def fail_second_binary(src, dst, *args, **kwargs):
+    if pathlib.Path(dst) == pathlib.Path({str(legacy)!r}) and pathlib.Path(src).read_bytes() == {new_code!r}:
+        raise OSError('injected second executable activation failure')
+    return replace(src, dst, *args, **kwargs)
+os.replace = fail_second_binary
+''')
+        failed = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('injected second executable activation failure', failed)
+        for name, content in original.items():
+            self.assertEqual((self.home / '.local/bin' / name).read_bytes(), content)
+        self.env.pop('PYTHONPATH')
+        requests = (self.root / 'requests').read_text()
+        warm = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertIn('am 1.2.3 (already installed)', warm)
+        self.assertEqual((self.root / 'requests').read_text(), requests)
+
+    def interrupted_agent_mail_refresh(self):
+        self.bundle('am')
+        self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        original = {name: (self.home / '.local/bin' / name).read_bytes() for name in ('am', 'mcp-agent-mail')}
+        new_code = b'#!/bin/sh\necho am-new\n'
+        self.bundle('am', new_code)
+        legacy = self.home / '.local/bin/mcp-agent-mail'
+        self.python_fault(f'''
+import os, pathlib
+replace = os.replace
+def interrupt_second_binary(src, dst, *args, **kwargs):
+    if pathlib.Path(dst) == pathlib.Path({str(legacy)!r}) and pathlib.Path(src).read_bytes() == {new_code!r}:
+        os._exit(73)
+    return replace(src, dst, *args, **kwargs)
+os.replace = interrupt_second_binary
+''')
+        interrupted = self.run_setup('am', ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1')
+        self.assertIn('bundle activation failed', interrupted)
+        self.assertNotIn('(verified prebuilt)', interrupted)
+        self.assertEqual((self.home / '.local/bin/am').read_bytes(), new_code)
+        self.assertEqual(legacy.read_bytes(), original['mcp-agent-mail'])
+        self.env.pop('PYTHONPATH')
+        return original
+
+    def test_killed_multi_binary_refresh_recovers_before_offline_warm_reuse(self):
+        original = self.interrupted_agent_mail_refresh()
+        requests = (self.root / 'requests').read_text()
+        warm = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertIn('am 1.2.3 (already installed)', warm)
+        self.assertEqual((self.root / 'requests').read_text(), requests)
+        for name, content in original.items():
+            self.assertEqual((self.home / '.local/bin' / name).read_bytes(), content)
+
+    def test_interrupted_bundle_recovery_survives_a_copied_cloud_snapshot(self):
+        original = self.interrupted_agent_mail_refresh()
+        target = self.home / '.local/bin/am'
+        inode = target.stat().st_ino
+        retained = self.root / 'home-before-snapshot-copy'
+        self.home.rename(retained)
+        shutil.copytree(retained, self.home, symlinks=True)
+        self.assertNotEqual(target.stat().st_ino, inode)
+        requests = (self.root / 'requests').read_text()
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertIn('am 1.2.3 (already installed)', output)
+        self.assertEqual((self.root / 'requests').read_text(), requests)
+        for name, content in original.items():
+            self.assertEqual((self.home / '.local/bin' / name).read_bytes(), content)
+
+    def test_partial_selection_recovers_interrupted_tool_before_guide_advertises_it(self):
+        original = self.interrupted_agent_mail_refresh()
+        bundle_url = 'https://mirror.invalid/v1/' + self.manifest['tools']['am']['file']
+        requests = (self.root / 'requests').read_text().splitlines().count(bundle_url)
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        for name, content in original.items():
+            self.assertEqual((self.home / '.local/bin' / name).read_bytes(), content)
+        self.assertEqual((self.root / 'requests').read_text().splitlines().count(bundle_url), requests)
+        self.assertIn('`am` / `mcp-agent-mail`', (self.home / '.acfs/cloud/AGENTS.md').read_text())
+
+    def test_recovery_rejects_tampered_paths_without_touching_unrelated_files(self):
+        self.interrupted_agent_mail_refresh()
+        victim = self.home / 'unrelated-user-file'
+        victim.write_bytes(b'keep this user file\n')
+        journal = self.home / '.acfs/cloud/transactions/am.json'
+        record = json.loads(journal.read_text())
+        record['files'][0]['name'] = '../unrelated-user-file'
+        journal.write_text(json.dumps(record))
+        original_record = journal.read_bytes()
+        requests = (self.root / 'requests').read_text()
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertIn('Unsafe bundle recovery path', output)
+        self.assertEqual(victim.read_bytes(), b'keep this user file\n')
+        self.assertEqual(journal.read_bytes(), original_record)
+        self.assertEqual((self.root / 'requests').read_text(), requests)
+
+    def test_recovery_preserves_concurrent_edits_and_keeps_original_backup(self):
+        original = self.interrupted_agent_mail_refresh()
+        target = self.home / '.local/bin/am'
+        before = target.stat()
+        edited = b'#!/bin/sh\necho am-own\n'
+        self.assertEqual(len(edited), before.st_size)
+        target.write_bytes(edited)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        output = self.run_setup('am', ACFS_CLOUD_AGENT='generic')
+        self.assertIn('Bundle files changed concurrently', output)
+        self.assertNotIn('(already installed)', output)
+        self.assertEqual(target.read_bytes(), edited)
+        self.assertEqual((self.home / '.local/bin/mcp-agent-mail').read_bytes(), original['mcp-agent-mail'])
+        backups = list(target.parent.glob('.am.acfs-cloud.*.before'))
+        self.assertTrue(any(path.read_bytes() == original['am'] for path in backups))
+
+    def test_promotion_lock_wait_obeys_existing_whole_job_deadline(self):
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        target = self.home / '.local/bin/br'
+        original = target.read_bytes()
+        with (self.home / '.acfs/cloud/transactions/br.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            start = time.monotonic()
+            output = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_TIMEOUT='1')
+            self.assertLess(time.monotonic() - start, 5)
+            self.assertIn('timed out', output)
+            self.assertEqual(target.read_bytes(), original)
+        retry = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('br 1.2.3 (already installed)', retry)
+
+    def test_timed_out_installed_probe_recovers_old_tool_without_redownloading(self):
+        self.bundle()
+        self.run_setup(ACFS_CLOUD_AGENT='generic')
+        target = self.home / '.local/bin/br'
+        original = target.read_bytes()
+        reached = self.root / 'new-installed-probe-ran'
+        self.bundle(content=(f'#!/bin/sh\ncase "$0" in *-stage/bin/br) echo br-new;; '
+                             f'*) echo reached > {shlex.quote(str(reached))}; trap "" TERM; sleep 10;; esac\n').encode())
+        started = time.monotonic()
+        output = self.run_setup(ACFS_CLOUD_AGENT='generic', ACFS_CLOUD_REINSTALL='1', ACFS_CLOUD_TIMEOUT='2')
+        self.assertLess(time.monotonic() - started, 6)
+        self.assertIn('timed out', output)
+        self.assertEqual(reached.read_text(), 'reached\n')
+        requests = (self.root / 'requests').read_text()
+        recovered = self.run_setup(ACFS_CLOUD_AGENT='generic')
+        self.assertIn('br 1.2.3 (already installed)', recovered)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual((self.root / 'requests').read_text(), requests)
 
     def test_reinstall_replaces_binary_atomically_for_existing_readers(self):
         original = b'#!/bin/sh\necho br-old\n'
