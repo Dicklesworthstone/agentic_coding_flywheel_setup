@@ -5339,21 +5339,22 @@ acfs_verify_authored_module() {
         tools.lazygit|tools.lazydocker)
             executable="$(binary_path "${module_id#*.}" 2>/dev/null)" || return 1
             [[ -n "$executable" ]] || return 1
-            run_as_target "$executable" --version >/dev/null 2>&1
+            acfs_run_verification_command target_user "$executable" --version >/dev/null 2>&1
             ;;
         lang.go)
             executable="$(binary_path go 2>/dev/null)" || executable="/usr/local/go/bin/go"
-            run_as_target "$executable" version >/dev/null 2>&1
+            acfs_run_verification_command target_user "$executable" version >/dev/null 2>&1
             ;;
         lang.nvm)
             executable="$(_target_latest_nvm_node_bin 2>/dev/null)" || return 1
-            run_as_target "$executable/node" --version >/dev/null 2>&1
+            acfs_run_verification_command target_user "$executable/node" --version >/dev/null 2>&1
             ;;
         network.tailscale)
             executable="$(binary_path tailscale 2>/dev/null)" || return 1
-            run_as_target "$executable" version >/dev/null 2>&1 || return 1
+            acfs_run_verification_command target_user "$executable" version >/dev/null 2>&1 || return 1
             if command_exists systemctl && [[ -d /run/systemd/system ]]; then
-                systemctl is-enabled --quiet tailscaled && systemctl is-active --quiet tailscaled
+                acfs_run_verification_shell root \
+                    'systemctl is-enabled --quiet tailscaled && systemctl is-active --quiet tailscaled'
             fi
             ;;
         *) return 2 ;;
@@ -8636,7 +8637,7 @@ _ensure_target_nvm_node() {
     local existing_node_bin=""
     if _target_has_nvm_node \
         && existing_node_bin="$(_target_latest_nvm_node_bin 2>/dev/null)" \
-        && run_as_target "$existing_node_bin/node" --version >/dev/null 2>&1; then
+        && acfs_run_verification_command target_user "$existing_node_bin/node" --version >/dev/null 2>&1; then
         log_detail "nvm + Node.js already installed"
         return 0
     fi
@@ -8672,7 +8673,7 @@ _ensure_target_nvm_node() {
         # was already installed correctly. Trust a working node binary.
         local node_bin_dir=""
         if node_bin_dir="$(_target_latest_nvm_node_bin 2>/dev/null)" \
-            && run_as_target "$node_bin_dir/node" --version >/dev/null 2>&1; then
+            && acfs_run_verification_command target_user "$node_bin_dir/node" --version >/dev/null 2>&1; then
             log_warn "nvm exited with status $nvm_rc but Node.js at $node_bin_dir/node works; continuing (#351)"
             return 0
         fi
@@ -9171,7 +9172,7 @@ install_agents_phase() {
     if [[ -x "$claude_bin_local" ]] && acfs_verify_module "agents.claude"; then
         log_detail "Claude Code already installed ($claude_bin_local)"
     elif [[ -x "$claude_bin_bun" ]] \
-        && run_as_target "$claude_bin_bun" --version >/dev/null 2>&1; then
+        && acfs_run_verification_command target_user "$claude_bin_bun" --version >/dev/null 2>&1; then
         log_detail "Claude Code already installed ($claude_bin_bun)"
     else
         acfs_ensure_primary_bin_dir 2>/dev/null || true
@@ -9180,7 +9181,7 @@ install_agents_phase() {
         try_step_optional "Installing Claude Code (native)" acfs_run_verified_upstream_script_as_target "claude" "bash" latest || true
 
         if ! acfs_verify_module "agents.claude" \
-            && ! run_as_target "$claude_bin_bun" --version >/dev/null 2>&1; then
+            && ! acfs_run_verification_command target_user "$claude_bin_bun" --version >/dev/null 2>&1; then
             log_detail "Claude Code not found in standard paths; attempting bun install"
             try_step_optional "Installing Claude Code (bun)" run_as_target "$bun_bin" install -g --trust @anthropic-ai/claude-code@latest || true
         fi
@@ -9744,7 +9745,7 @@ install_supabase_cli_release() {
         cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
-    if ! run_as_target "$ACFS_BIN_DIR/supabase" --version >/dev/null 2>&1; then
+    if ! acfs_run_verification_command target_user "$ACFS_BIN_DIR/supabase" --version >/dev/null 2>&1; then
         log_error "Supabase CLI: installed but failed to run"
         cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1

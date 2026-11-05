@@ -98,9 +98,9 @@ test_doctor_lsof_version_probe_captures_stderr() {
     local doctor_file="$REPO_ROOT/scripts/lib/doctor.sh"
     local probe_def=""
     probe_def="$(awk '
-        /^doctor_version_probe\(\)[[:space:]]*\{/ { in_function = 1 }
+        /^(_acfs_doctor_system_binary_path|_acfs_doctor_run_bounded|doctor_version_probe)\(\)[[:space:]]*\{/ { in_function = 1 }
         in_function { print }
-        in_function && /^}[[:space:]]*$/ { exit }
+        in_function && /^}[[:space:]]*$/ { in_function = 0 }
     ' "$doctor_file")"
 
     if [[ -z "$probe_def" ]]; then

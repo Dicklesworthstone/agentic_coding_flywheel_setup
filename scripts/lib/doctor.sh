@@ -1470,6 +1470,38 @@ json_escape() {
 # Timeout and Caching Helpers (bead lz1)
 # ============================================================
 
+# Retain a guardian until timeout's kill escalation. Monitoring the command
+# directly is insufficient: a wrapper can exit on TERM while its descendants
+# keep running and keep a captured output pipe open.
+_acfs_doctor_run_bounded() {
+    (( $# >= 3 )) || return 1
+    local timeout_bin="$1" timeout_secs="$2"
+    local bash_bin="" sleep_bin=""
+    shift 2
+
+    if [[ -z "$timeout_bin" ]]; then
+        "$@" </dev/null
+        return $?
+    fi
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null)" || return 127
+    sleep_bin="$(_acfs_doctor_system_binary_path sleep 2>/dev/null)" || return 127
+
+    # -p prevents BASH_ENV and imported shell functions from changing the
+    # guardian. The command's argv remains data, and it keeps its environment.
+    "$timeout_bin" -k 5 "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
+        set +e
+        set +m
+        guardian_sleep=$1
+        shift
+        trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+        "$@" &
+        probe_pid=$!
+        probe_status=0
+        wait "$probe_pid" || probe_status=$?
+        exit "$probe_status"
+    ' _ "$sleep_bin" "$@" </dev/null
+}
+
 # Run a command with timeout, returning special status for timeout
 # Usage: run_with_timeout <timeout_seconds> <description> <command> [args...]
 # Returns: 0=success, 124=timeout, other=command exit code
@@ -1479,12 +1511,10 @@ run_with_timeout() {
     local description="$2"
     shift 2
 
-    local result
-    local status
-    # -k 5: if the probe ignores/traps SIGTERM at the deadline, force-kill it
-    # 5s later so `acfs doctor --deep` can't hang past its timeout budget.
-    result=$(timeout -k 5 "$timeout_secs" "$@" 2>&1)
-    status=$?
+    local result timeout_bin=""
+    local status=0
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null)" || return 127
+    result=$(_acfs_doctor_run_bounded "$timeout_bin" "$timeout_secs" "$@" 2>&1) || status=$?
 
     if ((status == 124)); then
         echo "TIMEOUT"
@@ -2222,17 +2252,9 @@ doctor_version_probe() {
     [[ -x "$head_bin" ]] || return 1
 
     if [[ "$stderr_mode" == "merge" ]]; then
-        if [[ -n "$timeout_bin" ]]; then
-            # A broken installed CLI may ignore TERM. Bound the grace just as
-            # run_with_timeout does, so version discovery cannot hang doctor.
-            "$timeout_bin" -k 5 "$timeout_secs" "$@" 2>&1 | "$head_bin" -n 1
-        else
-            "$@" 2>&1 | "$head_bin" -n 1
-        fi
-    elif [[ -n "$timeout_bin" ]]; then
-        "$timeout_bin" -k 5 "$timeout_secs" "$@" 2>/dev/null | "$head_bin" -n 1
+        _acfs_doctor_run_bounded "$timeout_bin" "$timeout_secs" "$@" 2>&1 | "$head_bin" -n 1
     else
-        "$@" 2>/dev/null | "$head_bin" -n 1
+        _acfs_doctor_run_bounded "$timeout_bin" "$timeout_secs" "$@" 2>/dev/null | "$head_bin" -n 1
     fi
 }
 

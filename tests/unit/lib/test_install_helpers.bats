@@ -1053,6 +1053,305 @@ EOF
     assert_failure
 }
 
+# Use the real timeout and strict-shell runners. The fixture scales only the
+# declared 120-second production allowance to keep a regression test short;
+# its TERM-resistant child still exercises timeout's real kill escalation.
+setup_verification_deadline_fixture() {
+    export ACFS_VERIFY_FIXTURE_ROOT="$BATS_TEST_TMPDIR/verification"
+    export ACFS_VERIFY_FIXTURE_SOURCE="$PROJECT_ROOT"
+    mkdir -p "$ACFS_VERIFY_FIXTURE_ROOT"
+    cat > "$ACFS_VERIFY_FIXTURE_ROOT/timeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$1 $2" >> "$ACFS_VERIFY_FIXTURE_ROOT/timeouts"
+[[ "$1" == --kill-after=2s && "$2" == 120s ]] || exit 98
+shift 2
+printf '%s\n' "$BASHPID" > "$ACFS_VERIFY_FIXTURE_ROOT/timeout-pid"
+duration=0.3s
+[[ "${ACFS_VERIFY_FIXTURE_INTERRUPT:-false}" != true ]] || duration=7s
+exec /usr/bin/timeout --kill-after=0.3s "$duration" "$@"
+EOF
+    cat > "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" <<'EOF'
+#!/usr/bin/env bash
+trap '' TERM
+while read -r key value; do
+    if [[ "$key" == Pid: ]]; then
+        printf '%s\n' "$value" > "$ACFS_VERIFY_FIXTURE_ROOT/probe-pid"
+        break
+    fi
+done < /proc/self/status
+(
+    while read -r key value; do
+        if [[ "$key" == Pid: ]]; then
+            printf '%s\n' "$value" > "$ACFS_VERIFY_FIXTURE_ROOT/child-pid"
+            break
+        fi
+    done < /proc/self/status
+    printf 'started\n' > "$ACFS_VERIFY_FIXTURE_ROOT/started"
+    # A broken implementation must fail the test without leaving an infinite
+    # fixture behind. This is far longer than the scaled 0.3s probe deadline.
+    fixture_end=$((SECONDS + 6))
+    while (( SECONDS < fixture_end )); do /bin/sleep 0.05; done
+) &
+wait
+EOF
+    cat > "$ACFS_VERIFY_FIXTURE_ROOT/runner" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# DSR can export its own log functions without their private array state.
+# Initialize the repository's real logging in this standalone strict child.
+unset -f log_error log_warn log_detail
+unset _ACFS_LOGGING_SH_LOADED
+source "$ACFS_VERIFY_FIXTURE_SOURCE/scripts/lib/logging.sh"
+source "${ACFS_VERIFY_FIXTURE_HELPERS:-$ACFS_VERIFY_FIXTURE_SOURCE/scripts/lib/install_helpers.sh}"
+_acfs_system_binary_path() {
+    if [[ "$1" == timeout ]]; then
+        [[ "${ACFS_VERIFY_FIXTURE_NO_TIMEOUT:-false}" != true ]] || return 1
+        printf '%s/timeout\n' "$ACFS_VERIFY_FIXTURE_ROOT"
+        return 0
+    fi
+    local candidate
+    for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+# This is an identity fixture, not evidence of a real privilege transition.
+run_as_target() { HOME="$ACFS_VERIFY_FIXTURE_ROOT/target-home" "$@"; }
+ACFS_MANIFEST_INDEX_LOADED=true
+ACFS_FORCE_REINSTALL=false
+declare -A ACFS_MODULE_INSTALLED_CHECK=([fixture]="$2")
+declare -A ACFS_MODULE_INSTALLED_CHECK_RUN_AS=([fixture]="${3:-current}")
+declare -A ACFS_MODULE_VERIFY_COUNT=([fixture]=2)
+declare -A ACFS_MODULE_VERIFY_COMMAND=([fixture.0]="$2" [fixture.1]='touch "$ACFS_VERIFY_FIXTURE_ROOT/later-check"')
+declare -A ACFS_MODULE_VERIFY_RUN_AS=([fixture]="${3:-current}")
+result=0
+case "$1" in
+    present) acfs_module_is_installed fixture || result=$? ;;
+    verify) acfs_verify_module fixture || result=$? ;;
+    skip) acfs_should_skip_module fixture || result=$? ;;
+    command) acfs_run_verification_command "${3:-current}" /bin/bash -c 'exit 41' || result=$? ;;
+    interrupt)
+        ACFS_VERIFY_FIXTURE_INTERRUPT=true acfs_run_verification_shell current "$2" &
+        probe_runner_pid=$!
+        for (( attempt=0; attempt<200; attempt++ )); do
+            [[ ! -s "$ACFS_VERIFY_FIXTURE_ROOT/started" ]] || break
+            /bin/sleep 0.01
+        done
+        [[ -s "$ACFS_VERIFY_FIXTURE_ROOT/started" ]] || exit 99
+        # Signal from the same PID namespace as timeout. The /proc PID files
+        # below are for read-only liveness assertions by the test harness.
+        IFS= read -r timeout_pid < "$ACFS_VERIFY_FIXTURE_ROOT/timeout-pid"
+        kill -TERM "$timeout_pid"
+        wait "$probe_runner_pid" || result=$?
+        ;;
+    nvm)
+        for function_name in _target_has_nvm_node _target_latest_nvm_node_bin _ensure_target_nvm_node; do
+            eval "$(sed -n "/^${function_name}() {$/,/^}/p" "$ACFS_VERIFY_FIXTURE_SOURCE/install.sh")"
+        done
+        TARGET_HOME="$ACFS_VERIFY_FIXTURE_ROOT/target-home"
+        TARGET_USER=fixture
+        try_step() { shift; "$@"; }
+        acfs_run_verified_upstream_script_as_target() {
+            [[ "$*" == 'nvm bash' ]] || return 98
+            touch "$ACFS_VERIFY_FIXTURE_ROOT/nvm-installer-attempted"
+        }
+        try_step_optional() {
+            touch "$ACFS_VERIFY_FIXTURE_ROOT/node-installer-attempted"
+            if [[ "${ACFS_VERIFY_FIXTURE_REPAIR:-false}" == true ]]; then
+                printf '#!/bin/sh\nprintf "v22.0.0\\n"\n' > "$TARGET_HOME/.nvm/versions/node/v22.0.0/bin/node"
+            fi
+            # nvm can return 11 after a working Node has been installed.
+            return 11
+        }
+        _ensure_target_nvm_node || result=$?
+        ;;
+    argv)
+        acfs_run_verification_command target_user "$ACFS_VERIFY_FIXTURE_ROOT/quoted tool" \
+            'literal; $(touch "$ACFS_VERIFY_FIXTURE_ROOT/injected")' || result=$?
+        ;;
+    stdin)
+        acfs_verify_module fixture || result=$?
+        IFS= read -r remaining
+        printf 'remaining:%s\n' "$remaining"
+        ;;
+    phase)
+        source "$ACFS_VERIFY_FIXTURE_SOURCE/scripts/lib/state.sh"
+        ACFS_HOME="$ACFS_VERIFY_FIXTURE_ROOT/state"
+        ACFS_STATE_FILE="$ACFS_HOME/state.json"
+        ACFS_MODULE_FAILURES=()
+        acfs_verify_phase() { acfs_verify_module fixture; }
+        state_init
+        run_phase languages 'Language verification' true || result=$?
+        state_is_phase_completed languages && exit 99
+        ;;
+esac
+printf 'returned:%s\n' "$result"
+exit "$result"
+EOF
+    chmod +x "$ACFS_VERIFY_FIXTURE_ROOT/timeout" "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$ACFS_VERIFY_FIXTURE_ROOT/runner"
+}
+
+assert_verification_fixture_stopped() {
+    local pid_file pid state attempt
+    for pid_file in probe-pid child-pid; do
+        pid="$(cat "$ACFS_VERIFY_FIXTURE_ROOT/$pid_file")"
+        for (( attempt=0; attempt<50; attempt++ )); do
+            state="$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null || true)"
+            [[ -n "$state" && "$state" != Z ]] || break
+            /bin/sleep 0.01
+        done
+        if [[ -n "$state" && "$state" != Z ]]; then
+            fail "Timed-out probe still running: $pid ($state)"
+            return 1
+        fi
+    done
+}
+
+@test "acfs_verify_module: bounds a TERM-resistant check before later checks" {
+    setup_verification_deadline_fixture
+
+    run /usr/bin/timeout --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" verify \
+        '"$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" & wait'
+    [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/started" ]]
+    assert_equal "$status" 1
+    assert_output --partial 'returned:1'
+    [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/later-check" ]]
+    [[ "$(cat "$ACFS_VERIFY_FIXTURE_ROOT/timeouts")" == '--kill-after=2s 120s' ]]
+    assert_verification_fixture_stopped
+}
+
+@test "acfs_run_verification_shell: interruption kills a resistant check and its child" {
+    setup_verification_deadline_fixture
+
+    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" interrupt \
+        '"$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" & wait'
+    assert_equal "$status" 137
+    assert_output --partial 'returned:137'
+    assert_verification_fixture_stopped
+}
+
+@test "acfs_module_is_installed: bounds hanging presence checks in every execution context" {
+    setup_verification_deadline_fixture
+    local context
+    for context in current root target_user; do
+        run /usr/bin/timeout --kill-after=0.2s 8s "$ACFS_VERIFY_FIXTURE_ROOT/runner" present \
+            'exec "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"' "$context"
+        assert_equal "$status" 137
+        assert_output --partial 'returned:137'
+        assert_verification_fixture_stopped
+    done
+    [[ "$(wc -l < "$ACFS_VERIFY_FIXTURE_ROOT/timeouts")" == 3 ]]
+}
+
+@test "acfs_verify_module: fails closed when the trusted timeout is unavailable" {
+    setup_verification_deadline_fixture
+    export ACFS_VERIFY_FIXTURE_NO_TIMEOUT=true
+
+    run "$ACFS_VERIFY_FIXTURE_ROOT/runner" verify \
+        'touch "$ACFS_VERIFY_FIXTURE_ROOT/unbounded-check"'
+    assert_equal "$status" 1
+    assert_output --partial 'returned:1'
+    [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/unbounded-check" ]]
+    [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/later-check" ]]
+}
+
+@test "acfs_run_verification_command: preserves native failure status in the target context" {
+    setup_verification_deadline_fixture
+
+    run "$ACFS_VERIFY_FIXTURE_ROOT/runner" command '' target_user
+    assert_equal "$status" 41
+    assert_output --partial 'returned:41'
+}
+
+@test "acfs_run_verification_command: preserves literal argv and the target environment" {
+    setup_verification_deadline_fixture
+    cat > "$ACFS_VERIFY_FIXTURE_ROOT/quoted tool" <<'EOF'
+#!/usr/bin/env bash
+[[ "$HOME" == "$ACFS_VERIFY_FIXTURE_ROOT/target-home" ]] || exit 42
+[[ $# -eq 1 ]] || exit 43
+printf 'argument:%s\n' "$1"
+EOF
+    chmod +x "$ACFS_VERIFY_FIXTURE_ROOT/quoted tool"
+
+    run "$ACFS_VERIFY_FIXTURE_ROOT/runner" argv '' target_user
+    assert_success
+    assert_output --partial 'argument:literal; $(touch "$ACFS_VERIFY_FIXTURE_ROOT/injected")'
+    assert_output --partial 'returned:0'
+    [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/injected" ]]
+}
+
+@test "acfs_verify_module: preserves helpers embedded in the authored check" {
+    setup_verification_deadline_fixture
+
+    run "$ACFS_VERIFY_FIXTURE_ROOT/runner" verify '
+        fixture_manifest_helper() {
+            [[ "$HOME" == "$ACFS_VERIFY_FIXTURE_ROOT/target-home" ]] || return 42
+            printf "ready\n" > "$ACFS_VERIFY_FIXTURE_ROOT/embedded-helper"
+        }
+        fixture_manifest_helper
+    ' target_user
+    assert_success
+    [[ "$(cat "$ACFS_VERIFY_FIXTURE_ROOT/embedded-helper")" == ready ]]
+    [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/later-check" ]]
+}
+
+@test "acfs_verify_module: checks cannot consume the installer's input" {
+    setup_verification_deadline_fixture
+    printf 'remaining-installer-input\n' > "$ACFS_VERIFY_FIXTURE_ROOT/input"
+
+    run bash -c '"$ACFS_VERIFY_FIXTURE_ROOT/runner" stdin "read -r stolen" < "$ACFS_VERIFY_FIXTURE_ROOT/input"'
+    assert_equal "$status" 1
+    assert_output --partial 'remaining:remaining-installer-input'
+    assert_output --partial 'returned:1'
+    [[ ! -e "$ACFS_VERIFY_FIXTURE_ROOT/later-check" ]]
+}
+
+@test "run_phase: a timed-out verifier never creates a completed checkpoint" {
+    setup_verification_deadline_fixture
+
+    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" phase \
+        'exec "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool"'
+    assert_equal "$status" 1
+    assert_output --partial 'returned:1'
+    jq -e '.failed_phase == "languages" and (.completed_phases | index("languages")) == null' \
+        "$ACFS_VERIFY_FIXTURE_ROOT/state/state.json"
+}
+
+@test "_ensure_target_nvm_node: repairs a hung Node instead of hanging again during recovery" {
+    setup_verification_deadline_fixture
+    export ACFS_VERIFY_FIXTURE_REPAIR=true
+    local node_bin="$ACFS_VERIFY_FIXTURE_ROOT/target-home/.nvm/versions/node/v22.0.0/bin"
+    mkdir -p "$node_bin"
+    cp "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$node_bin/node"
+
+    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" nvm ''
+    assert_success
+    assert_output --partial 'returned:0'
+    [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/nvm-installer-attempted" ]]
+    [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/node-installer-attempted" ]]
+    [[ "$(wc -l < "$ACFS_VERIFY_FIXTURE_ROOT/timeouts")" == 2 ]]
+    assert_verification_fixture_stopped
+}
+
+@test "_ensure_target_nvm_node: rejects a hung Node left by a failed repair" {
+    setup_verification_deadline_fixture
+    local node_bin="$ACFS_VERIFY_FIXTURE_ROOT/target-home/.nvm/versions/node/v22.0.0/bin"
+    mkdir -p "$node_bin"
+    cp "$ACFS_VERIFY_FIXTURE_ROOT/hanging-tool" "$node_bin/node"
+
+    run /usr/bin/timeout --kill-after=0.2s 15s "$ACFS_VERIFY_FIXTURE_ROOT/runner" nvm ''
+    assert_equal "$status" 1
+    assert_output --partial 'returned:1'
+    [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/nvm-installer-attempted" ]]
+    [[ -f "$ACFS_VERIFY_FIXTURE_ROOT/node-installer-attempted" ]]
+    [[ "$(wc -l < "$ACFS_VERIFY_FIXTURE_ROOT/timeouts")" == 2 ]]
+    assert_verification_fixture_stopped
+}
+
 @test "acfs_verify_module: earlier failed command cannot be hidden by a successful command" {
     declare -gA ACFS_MODULE_VERIFY_COUNT=( ["mod1"]="2" )
     declare -gA ACFS_MODULE_VERIFY_COMMAND=( ["mod1.0"]=$'false\ntrue' ["mod1.1"]="true" )
@@ -1149,12 +1448,12 @@ EOF
 
     run acfs_verify_module mod1
     assert_failure
-    [[ "$(cat "$ACFS_TEST_VERIFY_CONTEXT")" == 'root:fixture-check' ]]
+    [[ "$(cat "$ACFS_TEST_VERIFY_CONTEXT")" == root:*fixture-check* ]]
 
     ACFS_MODULE_VERIFY_RUN_AS[mod1]="target_user"
     run acfs_verify_module mod1
     assert_success
-    [[ "$(tail -n 1 "$ACFS_TEST_VERIFY_CONTEXT")" == 'target:fixture-check' ]]
+    [[ "$(tail -n 1 "$ACFS_TEST_VERIFY_CONTEXT")" == target:*fixture-check* ]]
 
     ACFS_MODULE_VERIFY_RUN_AS[mod1]="invalid"
     run acfs_verify_module mod1
@@ -1329,8 +1628,10 @@ EOF
         || fail "Expected target-user installed check to compute runtime primary bin, got: $captured"
     [[ "$captured" == *'export PATH="${_acfs_primary_bin}:$HOME/.local/bin:$HOME/.acfs/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:$PATH"'* ]] \
         || fail "Expected target-user installed check to extend PATH, got: $captured"
-    [[ "$captured" == *'eval "$1" _ command -v br'* ]] \
-        || fail "Expected target-user installed check to extend PATH, got: $captured"
+    [[ "$captured" == *' --kill-after=2s 120s '* ]] \
+        || fail "Expected target-user installed check to enforce its deadline, got: $captured"
+    [[ "$captured" == *'command\ -v\ br'* ]] \
+        || fail "Expected target-user installed check to pass its command as quoted data, got: $captured"
 }
 
 @test "acfs_module_is_installed: target_user checks fail closed without run_as_target" {

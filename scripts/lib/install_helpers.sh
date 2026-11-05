@@ -1651,12 +1651,71 @@ _acfs_force_reinstall_enabled() {
     esac
 }
 
+# Installed-state probes must not prevent recovery from a broken executable or
+# consume the rest of a curl|bash installer's input. Keep the normal execution
+# context, but give the check's process group a deadline with kill escalation.
+# The allowance exceeds Supabase's documented 60-second cold-start window;
+# it does not limit installation commands.
+acfs_run_verification_shell() {
+    local run_as="${1:-}"
+    local check_cmd="${2:-}"
+    local timeout_bin="" bash_bin="" sleep_bin="" bounded_cmd=""
+
+    [[ -n "$check_cmd" ]] || return 1
+    case "$run_as" in
+        root|target_user|target|current) ;;
+        *) return 1 ;;
+    esac
+    timeout_bin="$(_acfs_system_binary_path timeout 2>/dev/null)" || {
+        log_error "Unable to locate trusted timeout for installed-state verification"
+        return 1
+    }
+    bash_bin="$(_acfs_system_binary_path bash 2>/dev/null)" || return 1
+    sleep_bin="$(_acfs_system_binary_path sleep 2>/dev/null)" || return 1
+    [[ -n "$timeout_bin" && -n "$bash_bin" && -n "$sleep_bin" ]] || return 1
+
+    # Pass the authored shell source as one data argument. Quoting every argv
+    # element also preserves executable paths containing spaces or shell text.
+    # timeout cancels kill-after when its direct child exits. A shell check
+    # can die on TERM while its resistant children remain alive, so retain a
+    # guardian until escalation and execute the actual check in a strict child.
+    # Privileged mode prevents either new shell from loading ambient startup
+    # hooks/functions. Authored checks may still define/source their helpers.
+    # Disabling job control keeps that child in timeout's process group.
+    printf -v bounded_cmd '%q ' "$timeout_bin" --kill-after=2s 120s \
+        "$bash_bin" --noprofile --norc -p -c '
+            set +e
+            set +m
+            trap '\''trap "" HUP INT QUIT TERM; while :; do "$3" 1; done'\'' HUP INT QUIT TERM
+            "$2" --noprofile --norc -p -c '\''set -euo pipefail; eval "$1"'\'' _ "$1" &
+            probe_pid=$!
+            probe_status=0
+            wait "$probe_pid" || probe_status=$?
+            exit "$probe_status"
+        ' _ "$check_cmd" "$bash_bin" "$sleep_bin"
+    case "$run_as" in
+        root) run_as_root_shell "$bounded_cmd" </dev/null ;;
+        target_user|target) run_as_target_shell "$bounded_cmd" </dev/null ;;
+        current) run_as_current_shell "$bounded_cmd" </dev/null ;;
+    esac
+}
+
+# Native-command counterpart for authored alternate-layout checks and recovery
+# probes. Retain the command's status rather than letting a later echo or a
+# successful pipeline hide a failed or timed-out executable.
+acfs_run_verification_command() {
+    local run_as="${1:-}"
+    local check_cmd=""
+    shift || return 1
+    [[ $# -gt 0 && -n "$1" ]] || return 1
+    printf -v check_cmd '%q ' "$@"
+    acfs_run_verification_shell "$run_as" "exec $check_cmd"
+}
+
 # Check if a module is already installed
 # Returns 0 (true) if installed, 1 (false) if not installed or check fails
 acfs_module_is_installed() {
     local module_id="$1"
-    local env_bin=""
-    local bash_bin=""
 
     # If force reinstall is enabled, always return "not installed"
     if _acfs_force_reinstall_enabled; then
@@ -1678,40 +1737,9 @@ acfs_module_is_installed() {
     # Get execution context (default: current)
     local run_as="${ACFS_MODULE_INSTALLED_CHECK_RUN_AS[$module_id]:-current}"
 
-    # Run the check in the appropriate context
-    case "$run_as" in
-        target_user|target)
-            local path_export_source=""
-            path_export_source="$(_acfs_user_path_export_source)"
-            if declare -f run_as_target >/dev/null 2>&1; then
-                env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
-                bash_bin="$(_acfs_system_binary_path bash 2>/dev/null || true)"
-                [[ -n "$env_bin" && -n "$bash_bin" ]] || return 1
-                run_as_target "$env_bin" "$bash_bin" -c \
-                    "$path_export_source; set -euo pipefail; eval \"\$1\"" \
-                    _ "$check_cmd" >/dev/null 2>&1
-                return $?
-            fi
-            # Target-user checks must fail closed when we cannot execute in the
-            # target context. Falling back to the current shell can incorrectly
-            # mark a tool as installed based on host-only PATH entries.
-            return 1
-            ;;
-        root)
-            if declare -f run_as_root_shell >/dev/null 2>&1; then
-                run_as_root_shell "$check_cmd" >/dev/null 2>&1
-                return $?
-            fi
-            # Root checks must fail closed when sudo is unavailable. Falling
-            # back to the current shell can incorrectly treat user-only tools
-            # as root-installed.
-            return 1
-            ;;
-        current|*)
-            _run_shell_with_strict_mode "$check_cmd" >/dev/null 2>&1
-            return $?
-            ;;
-    esac
+    # Missing privilege helpers or timeout fail closed; never run a target or
+    # root check in the caller's context as a fallback.
+    acfs_run_verification_shell "$run_as" "$check_cmd" >/dev/null 2>&1
 }
 
 # Verify the module's required checks in their authored execution context.
@@ -1771,17 +1799,7 @@ acfs_verify_module_commands() {
         # Use the same strict child-shell helpers as the generated installer.
         # Separate invocations preserve check isolation and ensure an early
         # failure cannot be concealed by a later successful command.
-        case "$run_as" in
-            root)
-                run_as_root_shell "$check_cmd" >/dev/null 2>&1 || return 1
-                ;;
-            target_user)
-                run_as_target_shell "$check_cmd" >/dev/null 2>&1 || return 1
-                ;;
-            current)
-                run_as_current_shell "$check_cmd" >/dev/null 2>&1 || return 1
-                ;;
-        esac
+        acfs_run_verification_shell "$run_as" "$check_cmd" >/dev/null 2>&1 || return 1
     done
     return 0
 }

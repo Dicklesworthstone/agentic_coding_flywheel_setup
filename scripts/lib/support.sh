@@ -1726,7 +1726,7 @@ capture_doctor_json() {
     if [[ -n "$doctor_script" ]]; then
         log_detail "Running acfs doctor --json ..."
         local doctor_rc=0 jq_bin=""
-        timeout -k 5 "$DOCTOR_TIMEOUT" bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" 2>/dev/null || doctor_rc=$?
+        support_run_with_timeout "$DOCTOR_TIMEOUT" bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" || doctor_rc=$?
         jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
         # Doctor exits 1 for completed checks that found an unhealthy system.
         # Those checks and repair hints are the most useful support evidence.
@@ -1771,7 +1771,7 @@ capture_agent_readiness_json() {
     fi
 
     log_detail "Running acfs agent-readiness --json --no-version ..."
-    timeout "$DOCTOR_TIMEOUT" bash "$readiness_script" --json --no-version > "$bundle_dir/agent-readiness.json" 2>/dev/null || true
+    support_run_with_timeout "$DOCTOR_TIMEOUT" bash "$readiness_script" --json --no-version > "$bundle_dir/agent-readiness.json" || true
     if ! jq -e '.tools | type == "array"' "$bundle_dir/agent-readiness.json" >/dev/null 2>&1; then
         log_warn "Agent readiness audit timed out or failed"
         echo '{"error": "agent readiness audit failed or timed out"}' > "$bundle_dir/agent-readiness.json"
@@ -1800,14 +1800,7 @@ capture_swarm_status_json() {
     fi
 
     log_detail "Running acfs swarm status --json ..."
-    local timeout_bin=""
-    timeout_bin="$(support_system_binary_path timeout 2>/dev/null || command -v timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        if "$timeout_bin" "$SWARM_STATUS_TIMEOUT" bash "$swarm_status_script" --json > "$bundle_dir/swarm_status.json" 2>/dev/null; then
-            record_bundle_file "swarm_status.json"
-            return 0
-        fi
-    elif bash "$swarm_status_script" --json > "$bundle_dir/swarm_status.json" 2>/dev/null; then
+    if support_run_with_timeout "$SWARM_STATUS_TIMEOUT" bash "$swarm_status_script" --json > "$bundle_dir/swarm_status.json"; then
         record_bundle_file "swarm_status.json"
         return 0
     fi
@@ -1836,14 +1829,7 @@ capture_provenance_json() {
     fi
 
     log_detail "Running acfs provenance --json ..."
-    local timeout_bin=""
-    timeout_bin="$(support_system_binary_path timeout 2>/dev/null || command -v timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        if "$timeout_bin" "$PROVENANCE_TIMEOUT" bash "$provenance_script" --json > "$bundle_dir/provenance.json" 2>/dev/null; then
-            record_bundle_file "provenance.json"
-            return 0
-        fi
-    elif bash "$provenance_script" --json > "$bundle_dir/provenance.json" 2>/dev/null; then
+    if support_run_with_timeout "$PROVENANCE_TIMEOUT" bash "$provenance_script" --json > "$bundle_dir/provenance.json"; then
         record_bundle_file "provenance.json"
         return 0
     fi
@@ -1855,15 +1841,32 @@ capture_provenance_json() {
 }
 
 support_run_with_timeout() {
+    (( $# >= 2 )) || return 1
     local timeout_secs="$1"
     shift
 
-    local timeout_bin=""
+    local timeout_bin="" bash_bin="" sleep_bin=""
     timeout_bin="$(support_system_binary_path timeout 2>/dev/null || command -v timeout 2>/dev/null || true)"
     if [[ -n "$timeout_bin" ]]; then
-        "$timeout_bin" "$timeout_secs" "$@" 2>/dev/null
+        bash_bin="$(support_system_binary_path bash 2>/dev/null)" || return 127
+        sleep_bin="$(support_system_binary_path sleep 2>/dev/null)" || return 127
+        # A wrapper exiting on TERM must not cancel escalation while its
+        # descendants still hold captured output open. Keep the guardian in
+        # timeout's process group until KILL, with startup hooks disabled.
+        "$timeout_bin" -k 5 "$timeout_secs" "$bash_bin" --noprofile --norc -p -c '
+            set +e
+            set +m
+            guardian_sleep=$1
+            shift
+            trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+            "$@" &
+            probe_pid=$!
+            probe_status=0
+            wait "$probe_pid" || probe_status=$?
+            exit "$probe_status"
+        ' _ "$sleep_bin" "$@" </dev/null 2>/dev/null
     else
-        "$@" 2>/dev/null
+        "$@" </dev/null 2>/dev/null
     fi
 }
 
@@ -2705,7 +2708,7 @@ capture_versions() {
         local cmd_path=""
         cmd_path="$(support_system_binary_path "$cmd" 2>/dev/null || command -v "$cmd" 2>/dev/null || true)"
         if [[ -n "$cmd_path" ]]; then
-            timeout 5 "$cmd_path" $args 2>/dev/null | head -1 || echo "error"
+            support_run_with_timeout 5 "$cmd_path" $args | head -1 || echo "error"
         else
             echo "not installed"
         fi
