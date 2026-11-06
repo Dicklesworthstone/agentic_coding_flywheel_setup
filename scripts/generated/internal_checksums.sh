@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="0c08af70ba951aa7cde4fcfc886058cbedf28718105075d5baf31568a7b169ed"
+  [install.sh]="9eb30eda45261eed8ebabfb4e632e66f8b86621b58d383dbef1d5aab51121702"
   [checksums.yaml]="fc3bf2d9378bc80517bde3c7b1693f7e672f457dd225da34c4d9819961cf54d2"
   [scripts/preflight.sh]="76e6768d16238317e67f7c0ba38abf5e7440b9d4f76bfd28b5c07b7f007d247e"
   [scripts/lib/security.sh]="ea2e485314980e4ba1c764a6cd2dec19844337ac2a6bcaf9d26e979ad879cf5c"
@@ -34,7 +34,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/output.sh]="95c83ae9c67fbd9364f1d69a6430ca8df7ebd1bd2cfa0fe9339afdead74e96eb"
   [scripts/lib/gum_ui.sh]="1616f7f6fdd730802da196a661a2e5f576e480e4e96d745ce12ea5b64f9559b5"
   [scripts/lib/progress.sh]="a8400b341c5581f4acd50595aeea62a5ebb3bb8c914e6bcd5569dd23a673ceca"
-  [scripts/lib/state.sh]="4abc658129bd40e55839eedc70bfe0bb17965e88e5d178c3c31f0bc2d69b2a89"
+  [scripts/lib/state.sh]="14583f274b5606acf2cc8d9b69accf298b64b54bd4e7e79b7a0d20f0d6c4e0d1"
   [scripts/lib/report.sh]="aa0e2c4b279a90d4b3b87ed306500f7fd13eb26583dda6f82dc2a71f65f18a8f"
   [scripts/lib/error_tracking.sh]="491758eb4fcacd3c7bec87f43e0d8f997f5a3583da85d7c4ca8f2b854355111e"
   [scripts/lib/session.sh]="fe75affaa1ce2a70acc678332da6a82d15c3dfa35c15310cd0bf8b88c57207a6"

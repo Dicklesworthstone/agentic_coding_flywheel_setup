@@ -12751,7 +12751,8 @@ main() {
     # Check for resume scenario (if state functions available)
     if type -t confirm_resume &>/dev/null; then
         # Use || to capture non-zero exit codes without triggering set -e
-        # confirm_resume returns: 0=resume, 1=fresh install, 2=abort
+        # confirm_resume returns: 0=resume, 1=fresh install, 2=user abort,
+        # 3=checkpoint preparation failure. Unknown statuses also fail closed.
         local resume_result=0
         confirm_resume || resume_result=$?
         case $resume_result in
@@ -12767,6 +12768,11 @@ main() {
             2) # Abort
                 log_info "Installation aborted by user."
                 exit 0
+                ;;
+            *)
+                log_error "Unable to prepare installation state for resume (status $resume_result)."
+                log_error "Resolve the checkpoint error and re-run the installer."
+                exit 1
                 ;;
         esac
     else

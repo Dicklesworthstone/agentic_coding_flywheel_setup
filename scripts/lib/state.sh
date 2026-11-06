@@ -1150,7 +1150,8 @@ get_next_pending_phase() {
 # Returns:
 #   0 - Resume (continue from last completed phase)
 #   1 - Fresh install (wipe state and start over)
-#   2 - Abort (exit installation)
+#   2 - User chose to abort (exit installation successfully)
+#   3 - State preparation failed (stop installation with an error)
 #
 # Side effects:
 #   - May move state file to a timestamped backup if fresh install chosen
@@ -1159,7 +1160,10 @@ get_next_pending_phase() {
 # Related: agentic_coding_flywheel_setup-4xi
 confirm_resume() {
     local state_file
-    state_file="$(state_get_file)"
+    if ! state_file="$(state_get_file)"; then
+        _confirm_resume_log_warn "Cannot resolve the installation checkpoint. Refusing to resume."
+        return 3
+    fi
 
     # If no state file, nothing to resume - proceed with fresh install
     if [[ ! -f "$state_file" ]]; then
@@ -1173,7 +1177,7 @@ confirm_resume() {
         _confirm_resume_log_warn "State file exists but is unreadable. Starting fresh."
         if ! state_backup_and_remove; then
             _confirm_resume_log_warn "Failed to move unreadable state file out of the way. Aborting."
-            return 2
+            return 3
         fi
         return 1
     fi
@@ -1183,7 +1187,7 @@ confirm_resume() {
     local completed_count=0 last_phase="" started_at="" failed_phase="" mode=""
     if command -v jq &>/dev/null; then
         local extracted
-        extracted=$(echo "$state" | jq -r '
+        if ! extracted=$(echo "$state" | jq -r '
             [
                 (.completed_phases | length | tostring),
                 (.completed_phases[-1] // "unknown"),
@@ -1191,7 +1195,10 @@ confirm_resume() {
                 (.failed_phase // ""),
                 (.mode // "unknown")
             ] | join("\u001f")
-        ')
+        '); then
+            _confirm_resume_log_warn "Cannot read the installation checkpoint. Refusing to resume."
+            return 3
+        fi
         IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
     fi
 
@@ -1200,7 +1207,7 @@ confirm_resume() {
         _confirm_resume_log_info "Force reinstall requested. Wiping state..."
         if ! state_backup_and_remove; then
             _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
-            return 2
+            return 3
         fi
         return 1
     fi
@@ -1221,22 +1228,30 @@ confirm_resume() {
     fi
     local total_phases="${#ACFS_PHASE_IDS[@]}"
 
-    local resume_state=""
+    local resume_version=""
     local state_version=""
     if command -v jq &>/dev/null; then
-        state_version=$(echo "$state" | jq -r '.version // "unknown"')
+        if ! state_version=$(echo "$state" | jq -r '.version // "unknown"'); then
+            _confirm_resume_log_warn "Cannot read the checkpoint version. Refusing to resume."
+            return 3
+        fi
     fi
     if [[ -n "${ACFS_VERSION:-}" && -n "$state_version" && "$state_version" != "unknown" ]]; then
         if [[ "$ACFS_VERSION" != "$state_version" ]] && command -v jq &>/dev/null; then
             _confirm_resume_log_warn "Version mismatch: state=$state_version, running=$ACFS_VERSION"
             _confirm_resume_log_info "Finalize will be re-run on resume to deploy updated scripts"
-            resume_state=$(echo "$state" | jq --arg ver "$ACFS_VERSION" '
+            # This snapshot is only for the prompt. Commit the transition
+            # against freshly locked state after the user chooses to resume.
+            if ! state=$(echo "$state" | jq --arg ver "$ACFS_VERSION" '
                 .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
                 .version = $ver
-            ')
-            state="$resume_state"
+            '); then
+                _confirm_resume_log_warn "Cannot prepare the checkpoint version update. Refusing to resume."
+                return 3
+            fi
+            resume_version="$ACFS_VERSION"
 
-            extracted=$(echo "$state" | jq -r '
+            if ! extracted=$(echo "$state" | jq -r '
                 [
                     (.completed_phases | length | tostring),
                     (.completed_phases[-1] // "unknown"),
@@ -1244,7 +1259,10 @@ confirm_resume() {
                     (.failed_phase // ""),
                     (.mode // "unknown")
                 ] | join("\u001f")
-            ')
+            '); then
+                _confirm_resume_log_warn "Cannot read the updated checkpoint. Refusing to resume."
+                return 3
+            fi
             IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
 
             last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
@@ -1259,9 +1277,7 @@ confirm_resume() {
         if [[ -z "$forced_resume_phase" || "$forced_resume_phase" == "unknown" ]]; then
             forced_resume_phase="the beginning"
         fi
-        if [[ -n "$resume_state" ]]; then
-            state_save "$resume_state"
-        fi
+        _confirm_resume_commit_version "$resume_version" || return 3
         _confirm_resume_log_info "Force resume requested."
         _confirm_resume_log_info "Resuming installation from: $forced_resume_phase"
         _confirm_resume_log_info "Progress: $completed_count/$total_phases phases completed"
@@ -1300,7 +1316,7 @@ confirm_resume() {
                     _confirm_resume_log_info "Starting fresh install..."
                     if ! state_backup_and_remove; then
                         _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
-                        return 2
+                        return 3
                     fi
                     return 1
                     ;;
@@ -1309,9 +1325,7 @@ confirm_resume() {
                     return 2
                     ;;
                 *)
-                    if [[ -n "$resume_state" ]]; then
-                        state_save "$resume_state"
-                    fi
+                    _confirm_resume_commit_version "$resume_version" || return 3
                     _confirm_resume_log_info "Resuming installation..."
                     return 0
                     ;;
@@ -1328,7 +1342,7 @@ confirm_resume() {
                     _confirm_resume_log_info "Starting fresh install..."
                     if ! state_backup_and_remove; then
                         _confirm_resume_log_warn "Failed to move state file out of the way. Aborting."
-                        return 2
+                        return 3
                     fi
                     return 1
                     ;;
@@ -1337,9 +1351,7 @@ confirm_resume() {
                     return 2
                     ;;
                 *)
-                    if [[ -n "$resume_state" ]]; then
-                        state_save "$resume_state"
-                    fi
+                    _confirm_resume_commit_version "$resume_version" || return 3
                     _confirm_resume_log_info "Resuming installation..."
                     return 0
                     ;;
@@ -1349,11 +1361,27 @@ confirm_resume() {
 
     # Non-interactive: silent resume (default behavior)
     echo "" >&2
-    if [[ -n "$resume_state" ]]; then
-        state_save "$resume_state"
-    fi
+    _confirm_resume_commit_version "$resume_version" || return 3
     _confirm_resume_log_info "Resuming installation (use --force-reinstall for fresh start)"
     echo "" >&2
+    return 0
+}
+
+# Persist the required version transition before accepting a resume. Updating
+# the live document under the state lock preserves progress/failure records
+# written while an interactive prompt was open. A failed write must not leave
+# the caller using an old completed-finalize flag as evidence of current assets.
+_confirm_resume_commit_version() {
+    local version="${1:-}"
+    [[ -n "$version" ]] || return 0
+
+    if ! state_update_with_args '
+        .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
+        .version = $ver
+    ' --arg ver "$version"; then
+        _confirm_resume_log_warn "Cannot save the updated installation checkpoint. Refusing to resume."
+        return 3
+    fi
     return 0
 }
 
