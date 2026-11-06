@@ -16,11 +16,24 @@
 #   - agentic_coding_flywheel_setup-aa1: Implement atomic state file writes
 # ============================================================
 
-# Prevent multiple sourcing
-if [[ -n "${_ACFS_STATE_SH_LOADED:-}" ]]; then
+# Only a locally initialized library may skip loading. An exported marker in a
+# fresh shell does not carry the functions or ownership of an open lock.
+if [[ -n "${_ACFS_STATE_SH_LOADED:-}" ]] &&
+    [[ "$(declare -p _ACFS_STATE_SH_LOADED 2>/dev/null)" == "declare -- "* ]] &&
+    declare -F _state_acquire_lock >/dev/null; then
     return 0
 fi
 _ACFS_STATE_SH_LOADED=1
+
+# Lock ownership is established here and by successful acquisition, never by
+# caller-supplied environment values. Do not close any caller descriptor here.
+unset ACFS_LOCK_FD
+_ACFS_STATE_LOCKED=false
+_ACFS_STATE_LOCK_DEPTH=0
+_ACFS_STATE_LOCK_FILE=""
+_ACFS_STATE_LOCK_OWNER_PID=""
+export -n _ACFS_STATE_SH_LOADED _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_DEPTH \
+    _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_OWNER_PID
 
 _ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! type -t local_progress_record_installer_phase >/dev/null 2>&1 && [[ -f "$_ACFS_STATE_SCRIPT_DIR/progress.sh" ]]; then
@@ -769,11 +782,18 @@ PY
 # Acquire a lock for the state file using flock (FD 200).
 # This replaces the former mkdir-based lock which had no PID tracking
 # and could leave stale lock directories after crashes.
-# FD 200 is consistent with autofix.sh's existing flock pattern.
+# The descriptor and nesting depth belong to the Bash process that acquired it.
 #
 # Usage: _state_acquire_lock
 # Returns: 0 on success, 1 on timeout/failure
 _state_acquire_lock() {
+    # A fork inherits both the descriptor and the bookkeeping, but is not a
+    # nested caller. Close only its copy: flock -u would unlock the parent's
+    # shared open-file description. BASHPID changes in subshells; $$ does not.
+    if [[ "${_ACFS_STATE_LOCK_OWNER_PID:-}" != "$BASHPID" ]]; then
+        _state_close_lock_fd
+    fi
+
     local state_file
     state_file="$(state_get_file)" || return 1
     local lock_file="${state_file}.lock"
@@ -793,14 +813,10 @@ _state_acquire_lock() {
         return 1
     fi
 
-    # If a stale descriptor is present for another state file, close it before
-    # opening the descriptor for this lock. A freshly opened descriptor does not
-    # receive _ACFS_STATE_LOCK_FILE until after flock succeeds.
-    if [[ -n "${ACFS_LOCK_FD:-}" && "${_ACFS_STATE_LOCK_FILE:-}" != "$lock_file" ]]; then
-        _state_close_lock_fd
-    fi
+    # Every outer acquisition starts with a fresh open-file description.
+    _state_close_lock_fd
 
-    # Open lock file on FD 200 (same FD convention as autofix.sh)
+    # Open lock file on FD 200.
     # Using >> to avoid truncating while opening for locking
     # Fallback FD is 195, NOT 199: install.sh holds its install lock on FD
     # 199 (fallback 198) for its whole run, and ubuntu_upgrade.sh uses
@@ -819,6 +835,7 @@ _state_acquire_lock() {
     fi
 
     [[ -n "${ACFS_LOCK_FD:-}" ]] || return 1
+    _ACFS_STATE_LOCK_OWNER_PID="$BASHPID"
 
     local lock_timeout="${ACFS_STATE_LOCK_TIMEOUT:-30}"
     if [[ ! "$lock_timeout" =~ ^[0-9]+$ ]] || [[ "$lock_timeout" -lt 1 ]]; then
@@ -849,23 +866,32 @@ _state_close_lock_fd() {
     esac
     unset ACFS_LOCK_FD
     _ACFS_STATE_LOCK_FILE=""
+    _ACFS_STATE_LOCK_OWNER_PID=""
+    _ACFS_STATE_LOCKED=false
+    _ACFS_STATE_LOCK_DEPTH=0
 }
 
 # Release the lock
 # Usage: _state_release_lock
 _state_release_lock() {
+    # A child may discard its inherited copy, but only the acquiring process
+    # may unlock the shared open-file description or consume nested depth.
+    if [[ "${_ACFS_STATE_LOCK_OWNER_PID:-}" != "$BASHPID" ||
+        "${_ACFS_STATE_LOCKED:-}" != true ]]; then
+        _state_close_lock_fd
+        return 0
+    fi
+
     local lock_depth="${_ACFS_STATE_LOCK_DEPTH:-0}"
     if [[ "$lock_depth" -gt 1 ]]; then
         _ACFS_STATE_LOCK_DEPTH=$(( lock_depth - 1 ))
         return 0
     fi
 
-    if [[ -n "${ACFS_LOCK_FD:-}" ]]; then
-        flock -u "${ACFS_LOCK_FD}" 2>/dev/null || true
-    fi
+    case "${ACFS_LOCK_FD:-}" in
+        195|200) flock -u "$ACFS_LOCK_FD" 2>/dev/null || true ;;
+    esac
     _state_close_lock_fd
-    _ACFS_STATE_LOCKED=false
-    _ACFS_STATE_LOCK_DEPTH=0
 }
 
 # Mark state as interrupted by a signal (SIGTERM, SIGINT, SIGHUP).

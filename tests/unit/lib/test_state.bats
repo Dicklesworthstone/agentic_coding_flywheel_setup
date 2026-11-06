@@ -853,6 +853,214 @@ EOF
     assert_output "value"
 }
 
+# Keep these process tests independent of Bats' own subshell and inherited
+# descriptors. The optional source override also permits checking that the
+# regression fixtures fail against a saved pre-fix library.
+run_state_lock_fixture() {
+    run timeout 15 env -i PATH="$PATH" HOME="$HOME" \
+        TMPDIR="$BATS_TEST_TMPDIR" ACFS_HOME="$BATS_TEST_TMPDIR" \
+        ACFS_STATE_FILE="$BATS_TEST_TMPDIR/state.json" \
+        ACFS_STATE_LOCK_TIMEOUT=1 \
+        bash -eu -c "$1" _ \
+        "${ACFS_STATE_LIB_SOURCE:-$PROJECT_ROOT/scripts/lib/state.sh}" \
+        "$BATS_TEST_TMPDIR"
+}
+
+@test "state: lock ownership ignores an exported library load marker" {
+    run_state_lock_fixture '
+        export _ACFS_STATE_SH_LOADED=1
+        source "$1"
+
+        _state_acquire_lock
+        _state_release_lock
+        flock -n "$ACFS_STATE_FILE.lock" true
+    '
+    assert_success
+}
+
+@test "state: lock ownership survives repeated source in parent and child" {
+    run_state_lock_fixture '
+        source "$1"
+        _state_acquire_lock
+        source "$1"
+        _state_acquire_lock
+        _state_release_lock
+
+        if flock -n "$ACFS_STATE_FILE.lock" true; then
+            echo "Repeated source released the parent state transaction" >&2
+            exit 47
+        fi
+        ( source "$1"; _state_release_lock )
+        if flock -n "$ACFS_STATE_FILE.lock" true; then
+            echo "Repeated child source released the parent state transaction" >&2
+            exit 48
+        fi
+
+        _state_release_lock
+        flock -n "$ACFS_STATE_FILE.lock" true
+    '
+    assert_success
+}
+
+@test "state: lock ownership ignores an inherited installer descriptor" {
+    run_state_lock_fixture '
+        exec 199>"$2/install.lock"
+        flock -n 199
+        export ACFS_LOCK_FD=199
+        export _ACFS_STATE_LOCK_FILE="$ACFS_STATE_FILE.lock"
+        source "$1"
+
+        _state_acquire_lock
+        _state_release_lock
+
+        if flock -n "$2/install.lock" true; then
+            echo "State release unlocked the installer descriptor" >&2
+            exit 41
+        fi
+        flock -u 199
+        flock -n "$2/install.lock" true
+    '
+    assert_success
+}
+
+@test "state: lock ownership rejects forged inherited ownership metadata" {
+    run_state_lock_fixture '
+        exec 199>"$ACFS_STATE_FILE.lock"
+        flock -n 199
+        export _ACFS_STATE_LOCKED=true
+        export _ACFS_STATE_LOCK_DEPTH=1
+        export _ACFS_STATE_LOCK_FILE="$ACFS_STATE_FILE.lock"
+        export _ACFS_STATE_LOCK_OWNER_PID="$BASHPID"
+        source "$1"
+
+        if _state_acquire_lock; then
+            _state_release_lock
+            echo "Inherited metadata bypassed a contended state lock" >&2
+            exit 42
+        fi
+        if flock -n "$ACFS_STATE_FILE.lock" true; then
+            echo "Failed state acquisition released another owner" >&2
+            exit 43
+        fi
+        flock -u 199
+        _state_acquire_lock
+        _state_release_lock
+    '
+    assert_success
+}
+
+@test "state: lock ownership prevents a child from unlocking its parent" {
+    run_state_lock_fixture '
+        source "$1"
+        _state_acquire_lock
+        ( _state_release_lock )
+
+        if flock -n "$ACFS_STATE_FILE.lock" true; then
+            echo "Child release unlocked the parent state transaction" >&2
+            exit 44
+        fi
+        _state_release_lock
+        flock -n "$ACFS_STATE_FILE.lock" true
+    '
+    assert_success
+}
+
+@test "state: lock ownership makes child acquisition wait for its parent" {
+    run_state_lock_fixture '
+        source "$1"
+        _state_acquire_lock
+
+        if ( _state_acquire_lock ); then
+            echo "Child acquired a state lock still owned by its parent" >&2
+            exit 45
+        fi
+        if flock -n "$ACFS_STATE_FILE.lock" true; then
+            echo "Timed out child released the parent state transaction" >&2
+            exit 46
+        fi
+
+        _state_release_lock
+        ( _state_acquire_lock; _state_release_lock )
+        flock -n "$ACFS_STATE_FILE.lock" true
+    '
+    assert_success
+}
+
+@test "state: lock ownership serializes inherited parallel state updates" {
+    run_state_lock_fixture '
+        source "$1"
+        fixture="$2"
+        export ACFS_STATE_LOCK_TIMEOUT=5
+        printf "{\"counter\":0}\n" > "$ACFS_STATE_FILE"
+        first=""
+        second=""
+        cleanup_workers() {
+            _state_release_lock
+            : > "$fixture/released"
+            if [[ -n "$first" ]]; then
+                kill "$first" 2>/dev/null || true
+                wait "$first" 2>/dev/null || true
+            fi
+            if [[ -n "$second" ]]; then
+                kill "$second" 2>/dev/null || true
+                wait "$second" 2>/dev/null || true
+            fi
+        }
+        trap cleanup_workers EXIT
+        _state_acquire_lock
+
+        # Observe real flock calls without changing their result. A child with
+        # inherited ownership must reach this wait before reading the state.
+        flock() {
+            if [[ "${1:-}" == "-w" && -n "${worker:-}" ]]; then
+                : > "$fixture/$worker.waiting"
+            fi
+            command flock "$@"
+        }
+        # A broken inherited fast path reaches jq while the parent still owns
+        # the lock. Hold both old snapshots until the parent has observed them.
+        jq() {
+            if [[ "$*" == ".counter += 1" ]]; then
+                : > "$fixture/$worker.reading"
+                while [[ ! -e "$fixture/released" ]]; do sleep 0.01; done
+            fi
+            command jq "$@"
+        }
+        ( worker=one; state_update ".counter += 1" ) &
+        first=$!
+        ( worker=two; state_update ".counter += 1" ) &
+        second=$!
+
+        for worker in one two; do
+            for ((attempt=0; attempt<300; attempt++)); do
+                if [[ -e "$fixture/$worker.waiting" || -e "$fixture/$worker.reading" ]]; then
+                    break
+                fi
+                sleep 0.01
+            done
+            [[ -e "$fixture/$worker.waiting" || -e "$fixture/$worker.reading" ]]
+        done
+        blocked=true
+        if [[ -e "$fixture/one.reading" || -e "$fixture/two.reading" ]]; then
+            blocked=false
+        fi
+
+        _state_release_lock
+        : > "$fixture/released"
+        wait "$first"
+        first=""
+        wait "$second"
+        second=""
+
+        counter=$(command jq -r .counter "$ACFS_STATE_FILE")
+        printf "blocked_before_release=%s counter=%s\n" "$blocked" "$counter"
+        [[ "$blocked" == true && "$counter" == 2 ]]
+        flock -n "$ACFS_STATE_FILE.lock" true
+    '
+    assert_success
+    assert_output "blocked_before_release=true counter=2"
+}
+
 @test "state: first lock acquisition succeeds under nounset" {
     local state_root
     state_root=$(create_temp_dir)
