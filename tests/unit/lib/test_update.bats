@@ -1641,7 +1641,7 @@ EOF
     update_target_home() { printf '%s\n' "$HOME"; }
     update_run_logged_passthrough() {
         printf '%s\n' "$*" > "$HOME/mcp-agent-mail-passthrough.args"
-        stat -c '%a' "${4:-}" > "$mode_file"
+        stat -c '%a' "${7:-}" > "$mode_file"
         return 0
     }
     update_source_stack_lib() { return 0; }
@@ -1663,7 +1663,8 @@ EOF
     [[ "$passthrough_args" == update_run_in_target_context* ]]
     [[ "$passthrough_args" == *"AM_INSTALL_SKIP_MCP_SETUP=1"* ]]
     [[ "$passthrough_args" == *"AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1"* ]]
-    [[ "$passthrough_args" == *"bash "* ]]
+    [[ "$passthrough_args" == *"/timeout --signal=KILL "* ]]
+    [[ "$passthrough_args" == *"/bash "* ]]
     [[ "$(cat "$mode_file")" == "755" ]]
 }
 

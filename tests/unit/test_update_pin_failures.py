@@ -6,6 +6,7 @@ restoration. SHA256 verification, metadata recovery, shell execution, background
 status propagation, retry dispatch and final summaries run the repository code.
 No system packages, real agent installations or external services are touched.
 """
+import fcntl
 import hashlib
 import json
 import os
@@ -837,6 +838,234 @@ printf 'fixturetool 1.0.0\n'
 
     def test_deadline_kills_child_even_when_parent_would_exit_on_term(self):
         self.assert_deadline_stops_descendants_before_recovery(parent_ignores_term=False)
+
+
+AGENT_MAIL_DEADLINE_COMMON = ROLLBACK_COMMON + r'''
+UPDATE_STACK=true
+ABORT_ON_FAILURE="${TEST_ABORT:-false}"
+DRY_RUN="${TEST_DRY_RUN:-false}"
+update_ensure_minisign() { return 0; }
+update_target_user() { printf '%s\n' fixture; }
+update_target_home() { printf '%s\n' "$HOME"; }
+update_run_in_target_context() (
+    local assignment="" assignments="$1"
+    shift
+    while IFS= read -r assignment; do
+        [[ -z "$assignment" ]] || export "$assignment"
+    done <<< "$assignments"
+    TEST_TARGET_CONTEXT=target "$@"
+)
+update_private_installer_tmpdir() {
+    printf 'private-tmp\n' >> "$TEST_ROOT/events"
+    mktemp -d "$TEST_ROOT/private.XXXXXX"
+}
+update_remove_target_installer_tmpdir() {
+    [[ "$1" == mcp_agent_mail ]] || return 97
+    # The child and its sleep process retain this lock until they exit. Probe
+    # the owned resource, not /proc/<pid>: /proc may expose a different PID
+    # namespace from the one in which Bash reports BASHPID.
+    if [[ -r "$TEST_ROOT/child.pid" ]] && ! flock -n "$TEST_ROOT/child.lock" true; then
+        printf 'child-alive-at-cleanup\n' >> "$TEST_ROOT/events"
+    fi
+    printf 'tmp-cleanup\n' >> "$TEST_ROOT/events"
+    # Retain the fixture contents while observing the real cleanup call/order.
+    mv -- "$2" "$2.retained"
+}
+rm() {
+    local path=""
+    for path in "$@"; do
+        if [[ "$path" == "$TEST_ROOT"/stage.* && -f "$path" ]]; then
+            printf 'script-cleanup\n' >> "$TEST_ROOT/events"
+            mv -- "$path" "$path.retained"
+        fi
+    done
+}
+update_source_stack_lib() { return 0; }
+_stack_repair_agent_mail_cli_symlink() { printf 'repair\n' >> "$TEST_ROOT/events"; }
+_stack_configure_agent_mail_service() { printf 'configure\n' >> "$TEST_ROOT/events"; }
+_stack_wait_for_agent_mail_health() { printf 'health\n' >> "$TEST_ROOT/events"; }
+# Agent Mail uses the real dispatch, verifier, logging, interpreter and timeout.
+# Only APR retains run_cmd to mark continued execution; unrelated updates do
+# not spend the fixture's watchdog budget logging dozens of inert commands.
+fixture_run_cmd_definition="$(declare -f run_cmd)"
+eval "${fixture_run_cmd_definition/run_cmd ()/agent_mail_fixture_run_cmd ()}"
+run_cmd() {
+    if [[ "$1" == APR ]]; then agent_mail_fixture_run_cmd "$@"; fi
+    return 0
+}
+capture_version_before() { :; }
+capture_version_after() { return 1; }
+update_binary_exists() { return 1; }
+update_run_verified_installer() {
+    if [[ "$1" == apr ]]; then printf 'apr\n' >> "$TEST_ROOT/events"; fi
+    return 0
+}
+update_run_verified_installer_with_env() { return 0; }
+update_run_verified_installer_or_existing_on_transient() { return 0; }
+update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() { return 0; }
+update_run_slb_verified_install() { return 0; }
+update_run_fsfs_installer() { return 0; }
+'''
+
+
+class AgentMailDeadlineTests(unittest.TestCase):
+    """Run Agent Mail's real update branch with a verified, inert installer.
+
+    Account switching, private-directory removal and service operations are
+    fixture boundaries. Interpreter lifetime, descendants, verification,
+    argument/environment forwarding and failure accounting run as production.
+    """
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="acfs-agent-mail-deadline-"))
+        self.installer = self.base / "installer.sh"
+        self.env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(self.base),
+            "TARGET_HOME": str(self.base), "TEST_ROOT": str(self.base),
+            "REPO_ROOT": str(ROOT), "TMPDIR": str(self.base),
+            "TEST_TOOL": "mcp_agent_mail", "NO_COLOR": "1",
+            "ACFS_INTERACTIVE": "false", "UPDATE_CMD_TIMEOUT": "5s",
+            "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+        }
+        self.shell_count = 0
+        self.write_installer("")
+
+    def write_installer(self, body):
+        self.installer.write_text(r'''#!/bin/bash
+set -eu
+printf 'execute\n' >> "$TEST_ROOT/events"
+printf '%s\n' "$AM_INSTALL_SKIP_MCP_SETUP" "$AM_INSTALL_SKIP_REMOTE_HTTP_READINESS" \
+    "$TMPDIR" "$TEST_TARGET_CONTEXT" "$(stat -c %a "$0")" "$@" > "$TEST_ROOT/context"
+if IFS= read -r caller_input; then
+    printf 'stdin-open\n' >> "$TEST_ROOT/events"
+else
+    printf 'stdin-closed\n' >> "$TEST_ROOT/events"
+fi
+''' + body + "\n")
+
+    def shell(self, setup="", *, code=0, **env):
+        self.shell_count += 1
+        output_path = self.base / f"shell-{self.shell_count}.log"
+        command = (AGENT_MAIL_DEADLINE_COMMON + setup + '\nupdate_stack\n'
+                   'printf "FAILURES=%s\\n" "$FAIL_COUNT"\nprint_summary\n')
+        with output_path.open("w") as output_file:
+            process = subprocess.Popen(
+                ["/bin/bash", "--noprofile", "--norc", "-c", command],
+                env=self.env | {"TEST_PIN": hashlib.sha256(self.installer.read_bytes()).hexdigest()} | env,
+                stdin=subprocess.PIPE, stdout=output_file, stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                process.communicate(input=b"caller input must not reach the installer\n", timeout=15)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.communicate(timeout=3)
+                self.fail(f"Agent Mail fixture exceeded 15s; artifacts: {self.base}")
+        output = output_path.read_text()
+        self.assertEqual(process.returncode, code, output + f"\nArtifacts: {self.base}")
+        return output
+
+    def events(self):
+        path = self.base / "events"
+        return path.read_text().splitlines() if path.exists() else []
+
+    def assert_failed_without_service_changes(self, output, *, aborted=False):
+        events = self.events()
+        self.assertIn("tmp-cleanup", events)
+        self.assertIn("script-cleanup", events)
+        self.assertNotIn("stdin-open", events)
+        for operation in ("repair", "configure", "health"):
+            self.assertNotIn(operation, events)
+        self.assertIn("installer failed (exit 137)", output)
+        self.assertNotIn("Success: MCP Agent Mail", (self.base / "update.log").read_text())
+        if aborted:
+            self.assertNotIn("apr", events)
+            self.assertIn("Aborting due to failure (--abort-on-failure)", output)
+        else:
+            self.assertGreater(events.index("apr"), events.index("script-cleanup"))
+            self.assertIn("FAILURES=1", output)
+            self.assertIn("Partial failure", output)
+
+    def test_success_preserves_target_environment_arguments_stdin_and_cleanup(self):
+        output = self.shell()
+        context = (self.base / "context").read_text().splitlines()
+        self.assertEqual(context[:2], ["1", "1"])
+        self.assertEqual(context[3:], ["target", "755", "--dest", str(self.base / "mcp_agent_mail"), "--yes"])
+        self.assertFalse(Path(context[2]).exists())
+        self.assertTrue(Path(context[2] + ".retained").is_dir())
+        self.assertEqual(self.events(), ["download", "private-tmp", "execute", "stdin-closed",
+                                         "tmp-cleanup", "repair", "configure", "health", "script-cleanup", "apr"])
+        self.assertIn("FAILURES=0", output)
+
+    def test_fractional_deadline_fails_without_service_changes_and_continues_stack(self):
+        self.write_installer('sleep 2\nprintf "finished\\n" >> "$TEST_ROOT/events"')
+        output = self.shell(UPDATE_CMD_TIMEOUT="0.2s")
+        self.assert_failed_without_service_changes(output)
+        self.assertNotIn("finished", self.events())
+
+    def test_deadline_cleans_up_before_abort_on_failure(self):
+        self.write_installer('sleep 2\nprintf "finished\\n" >> "$TEST_ROOT/events"')
+        output = self.shell(code=1, UPDATE_CMD_TIMEOUT="0.2s", TEST_ABORT="true")
+        self.assert_failed_without_service_changes(output, aborted=True)
+
+    def test_invalid_deadlines_fail_before_download_or_temporary_directory(self):
+        for duration in ("0", "0.0s", "-1", "invalid", "1ms",
+                         "0." + "0" * 400 + "1s", "9" * 400 + "d"):
+            with self.subTest(duration=duration):
+                output = self.shell(UPDATE_CMD_TIMEOUT=duration)
+                self.assertIn("cannot enforce verified installer deadline", output)
+                self.assertIn("FAILURES=1", output)
+                self.assertTrue(all(event == "apr" for event in self.events()), self.events())
+                self.assertEqual(list(self.base.glob("stage.*")), [])
+
+    def test_missing_trusted_timeout_or_bash_fails_before_download(self):
+        for missing in ("timeout", "bash"):
+            with self.subTest(missing=missing):
+                output = self.shell(r'''
+update_system_binary_path() {
+    [[ "$1" != "$TEST_MISSING_SYSTEM_COMMAND" ]] || return 1
+    if [[ -x "/usr/bin/$1" ]]; then printf '/usr/bin/%s\n' "$1"; else printf '/bin/%s\n' "$1"; fi
+}
+''', TEST_MISSING_SYSTEM_COMMAND=missing)
+                self.assertIn("trusted timeout and bash are required", output)
+                self.assertIn("FAILURES=1", output)
+                self.assertTrue(all(event == "apr" for event in self.events()), self.events())
+
+    def test_dry_run_does_not_require_or_execute_installer_deadline(self):
+        output = self.shell(UPDATE_CMD_TIMEOUT="0", TEST_DRY_RUN="true")
+        self.assertEqual(self.events(), [])
+        self.assertIn("FAILURES=0", output)
+
+    def assert_deadline_stops_descendants_before_cleanup(self, parent_ignores_term):
+        child = self.base / "child.sh"
+        child.write_text('#!/bin/bash\ntrap "" TERM\nexec 8> "$TEST_ROOT/child.lock"\nflock -x 8\n'
+                         'printf "%s\\n" "$BASHPID" > "$TEST_ROOT/child.pid"\n'
+                         'sleep 2\nprintf "late-child-write\\n" >> "$TEST_ROOT/events"\n')
+        trap = "trap '' TERM" if parent_ignores_term else "trap 'exit 0' TERM"
+        self.write_installer(trap + '\n/bin/bash "$TEST_ROOT/child.sh" &\nwait\n')
+        try:
+            output = self.shell(UPDATE_CMD_TIMEOUT="1s")
+            self.assert_failed_without_service_changes(output)
+            self.assertTrue((self.base / "child.pid").exists(), "child never reached its lifetime lock")
+            with (self.base / "child.lock").open("r") as lifetime_lock:
+                fcntl.flock(lifetime_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            time.sleep(1.2)
+            self.assertNotIn("child-alive-at-cleanup", self.events())
+            self.assertNotIn("late-child-write", self.events())
+        finally:
+            pid_file = self.base / "child.pid"
+            if pid_file.exists():
+                pid = int(pid_file.read_text())
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def test_deadline_kills_term_resistant_parent_and_child_before_cleanup(self):
+        self.assert_deadline_stops_descendants_before_cleanup(parent_ignores_term=True)
+
+    def test_deadline_kills_child_even_when_parent_would_exit_on_term(self):
+        self.assert_deadline_stops_descendants_before_cleanup(parent_ignores_term=False)
 
 
 GROK_UPDATE_CONTEXT = COMMON + r'''

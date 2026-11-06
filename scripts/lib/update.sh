@@ -5810,6 +5810,37 @@ update_verify_tool_or_rollback() {
 # against checksums.yaml, and execute it in the target context.
 # ============================================================
 
+# Build the interpreter prefix once, before acquiring an installer. Both the
+# shared wrapper and Agent Mail's service-aware path must enforce the same
+# deadline inside the target account; a timeout around a shell function cannot
+# provide that boundary. The caller supplies the name of an indexed array.
+update_verified_installer_runner() {
+    local -n _installer_runner_ref="$1"
+    _installer_runner_ref=()
+    local installer_timeout="${UPDATE_CMD_TIMEOUT:-1800}"
+    local installer_timeout_bin="" installer_bash_bin=""
+
+    # GNU timeout treats zero as no deadline. Bound decimal precision so a
+    # nonzero value cannot underflow to zero or overflow during conversion.
+    if [[ ${#installer_timeout} -gt 64 ]] \
+        || [[ ! "$installer_timeout" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([smhd])?$ ]] \
+        || [[ "${BASH_REMATCH[1]:-}" != *[1-9]* ]]; then
+        printf 'Verified installer deadline must be a positive duration (for example 30, 0.5s, or 2m); UPDATE_CMD_TIMEOUT is invalid.\n' >&2
+        return 1
+    fi
+    if ! installer_timeout_bin="$(update_system_binary_path timeout)" \
+        || ! installer_bash_bin="$(update_system_binary_path bash)"; then
+        printf 'Cannot enforce verified installer deadline: trusted timeout and bash are required.\n' >&2
+        return 1
+    fi
+
+    # A TERM-exiting shell can leave a TERM-resistant child alive after a
+    # timeout with a kill grace. Kill the ordinary installer process group at
+    # the deadline, before cleanup, recovery, or service changes can race it.
+    # Deliberately escaped sessions remain outside this process-group boundary.
+    _installer_runner_ref=("$installer_timeout_bin" --signal=KILL "$installer_timeout" "$installer_bash_bin")
+}
+
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
 update_run_verified_installer_with_env() {
     if [[ $# -lt 1 ]]; then
@@ -5852,24 +5883,8 @@ update_run_verified_installer_with_env() {
         return 1
     fi
 
-    # run_cmd cannot time out a shell function. Enforce this deadline at the
-    # external interpreter inside the target account, before any installer
-    # acquisition or snapshot. GNU timeout treats zero as no deadline.
-    local installer_timeout="${UPDATE_CMD_TIMEOUT:-1800}"
-    local installer_timeout_bin="" installer_bash_bin=""
-    # Bound decimal precision so a nonzero value cannot underflow to zero or
-    # overflow when timeout converts it to floating-point seconds.
-    if [[ ${#installer_timeout} -gt 64 ]] \
-        || [[ ! "$installer_timeout" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([smhd])?$ ]] \
-        || [[ "${BASH_REMATCH[1]:-}" != *[1-9]* ]]; then
-        printf 'Verified installer deadline must be a positive duration (for example 30, 0.5s, or 2m); UPDATE_CMD_TIMEOUT is invalid.\n' >&2
-        return 1
-    fi
-    if ! installer_timeout_bin="$(update_system_binary_path timeout)" \
-        || ! installer_bash_bin="$(update_system_binary_path bash)"; then
-        printf 'Cannot enforce verified installer deadline: trusted timeout and bash are required.\n' >&2
-        return 1
-    fi
+    local -a installer_runner=()
+    update_verified_installer_runner installer_runner || return 1
 
     local url="${KNOWN_INSTALLERS[$tool]:-}"
     local expected_sha256
@@ -5944,13 +5959,8 @@ update_run_verified_installer_with_env() {
     update_snapshot_tool_binary "$tool"
 
     local exit_code=0
-    # A TERM-exiting shell can leave a TERM-resistant child alive after a
-    # timeout with a kill grace. Kill the ordinary installer process group at
-    # the deadline instead, before cleanup or recovery can race those children.
-    # Normal completion is unchanged; deliberately escaped sessions are outside
-    # timeout's process-group boundary.
-    update_run_in_target_context "$installer_env" "$installer_timeout_bin" \
-        --signal=KILL "$installer_timeout" "$installer_bash_bin" "$tmp_install" "$@" </dev/null || exit_code=$?
+    update_run_in_target_context "$installer_env" "${installer_runner[@]}" \
+        "$tmp_install" "$@" </dev/null || exit_code=$?
     rm -f "$tmp_install" 2>/dev/null || true
     if [[ -n "$installer_tmpdir" ]]; then
         update_remove_target_installer_tmpdir "$tool" "$installer_tmpdir" || true
@@ -8214,6 +8224,7 @@ update_stack() {
     local url="${KNOWN_INSTALLERS[$tool]:-}"
     local expected_sha256
     expected_sha256="$(get_checksum "$tool")"
+    local -a am_installer_runner=()
 
     if [[ "$DRY_RUN" == "true" ]]; then
         log_item "skip" "MCP Agent Mail" "dry-run: verified install + service refresh"
@@ -8225,6 +8236,8 @@ update_stack() {
         update_note_held_tool "$tool"
     elif [[ "$minisign_ready" != "true" ]]; then
         log_item "fail" "MCP Agent Mail" "$(update_minisign_missing_details)"
+    elif ! update_verified_installer_runner am_installer_runner; then
+        log_item "fail" "MCP Agent Mail" "cannot enforce verified installer deadline"
     elif [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
         local tmp_install
         tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
@@ -8263,7 +8276,8 @@ update_stack() {
                     if [[ -z "$target_context_error" ]]; then
                         am_installer_tmpdir="$(update_private_installer_tmpdir "$tool" "$am_installer_env")"
                         [[ -z "$am_installer_tmpdir" ]] || am_installer_env+=$'\n'"TMPDIR=$am_installer_tmpdir"
-                        update_run_logged_passthrough update_run_in_target_context "$am_installer_env" bash "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes || am_installer_rc=$?
+                        update_run_logged_passthrough update_run_in_target_context "$am_installer_env" \
+                            "${am_installer_runner[@]}" "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes </dev/null || am_installer_rc=$?
                         if [[ -n "$am_installer_tmpdir" ]]; then
                             update_remove_target_installer_tmpdir "$tool" "$am_installer_tmpdir" || true
                         fi
@@ -8307,7 +8321,11 @@ update_stack() {
                             update_finish_cmd_fail "MCP Agent Mail" "service setup/readiness failed"
                         fi
                     else
-                        log_item "fail" "MCP Agent Mail" "installer failed"
+                        # Failure reporting may exit for --abort-on-failure;
+                        # release the downloaded script before that boundary.
+                        rm -f "$tmp_install" 2>/dev/null || true
+                        tmp_install=""
+                        log_item "fail" "MCP Agent Mail" "installer failed (exit $am_installer_rc)"
                     fi
                 fi
 
