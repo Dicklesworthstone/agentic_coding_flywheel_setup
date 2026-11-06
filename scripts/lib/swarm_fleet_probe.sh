@@ -240,12 +240,33 @@ def validate_inventory(value, library):
         refuse("inventory_validation_failed")
 
 
+def private_snapshot_path(fd):
+    """Keep the standalone probe's snapshots in the mounted procfs namespace."""
+    if type(fd) is not int or fd < 0:
+        refuse("procfs_snapshot_unavailable")
+    try:
+        # This installed probe has no fleet-controller Python dependency. As in
+        # that transport, /proc/self names the PID visible through this mount;
+        # os.getpid() may name an unrelated process in a nested PID namespace.
+        pid = os.readlink("/proc/self")
+        if type(pid) is not str or not re.fullmatch(r"[1-9][0-9]{0,19}", pid):
+            refuse("procfs_snapshot_unavailable")
+        path = f"/proc/{pid}/fd/{fd}"
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077 or not os.path.samestat(info, os.stat(path))):
+            refuse("procfs_snapshot_unavailable")
+        return path
+    except OSError:
+        raise Refused("procfs_snapshot_unavailable") from None
+
+
 def ssh_argv(target, known_fd, identity=None, ssh="/usr/bin/ssh"):
     command = ('exec /bin/bash "$HOME/.acfs/scripts/lib/swarm_inventory.sh" '
                'probe-local --json --host-id {} --workload {}').format(
         target["id"], target["workload"])
     argv = [ssh, "-F", "/dev/null", "-T", "-n", "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile=/proc/{os.getpid()}/fd/{known_fd}",
+            "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + private_snapshot_path(known_fd),
             "-o", "GlobalKnownHostsFile=/dev/null", "-o", "UpdateHostKeys=no",
             "-o", "ConnectionAttempts=1", "-o", "ConnectTimeout=10",
             "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2",
@@ -432,7 +453,7 @@ def main(args, library):
             if identity_bytes is not None:
                 identity.write(identity_bytes)
                 identity.flush()
-                identity_path = f"/proc/{os.getpid()}/fd/{identity.fileno()}"
+                identity_path = private_snapshot_path(identity.fileno())
             results = []
             with concurrent.futures.ThreadPoolExecutor(max_workers=options.parallel) as pool:
                 pending = [pool.submit(probe_one, target, trust.fileno(), options.timeout, identity_path)

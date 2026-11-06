@@ -103,7 +103,7 @@ def remote_transport(endpoint, known, identity, timeout, *, runner=fleet.capture
             host = {**endpoint, "request": {"receipt": "/unused"}}
             base = fleet.ssh_argv(host, "reconcile", hosts.fileno(), key.fileno(), ssh)
             prefix = [arg for arg in base[:base.index("-i")] if arg != "-n"]
-            prefix += ["-i", f"/proc/{os.getpid()}/fd/{key.fileno()}"]
+            prefix += ["-i", fleet.private_snapshot_path(key.fileno())]
             env.update(GIT_ALLOW_PROTOCOL="ssh", GIT_SSH_VARIANT="ssh", GIT_SSH_COMMAND=shlex.join(prefix))
             sock = os.environ.get("SSH_AUTH_SOCK")
             if sock and os.path.isabs(sock) and not re.search(r"[\x00-\x1f\x7f]", sock):

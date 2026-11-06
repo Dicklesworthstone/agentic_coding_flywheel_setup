@@ -4,12 +4,14 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,6 +100,27 @@ class Fixture:
     @staticmethod
     def contents(root):
         return integration.Fixture.contents(root)
+
+
+class TransportSnapshotTests(unittest.TestCase):
+    def test_ssh_snapshots_are_readable_by_child_in_procfs_namespace(self):
+        # Exercise the transport's private file handoff without publishing or
+        # bypassing the full workflow's separate nonroot authority requirement.
+        endpoint = publish.ssh_endpoint("ssh://git@github.com/owner/repo.git")
+        child = ("import json,sys; from pathlib import Path; "
+                 "print(json.dumps([(Path(p).read_text(), Path(p).stat().st_mode & 511) "
+                 "for p in sys.argv[1:]]))")
+        def inspect(argv, timeout, env):
+            ssh_args = shlex.split(env["GIT_SSH_COMMAND"])
+            known_path = next(v.split("=", 1)[1] for v in ssh_args if v.startswith("UserKnownHostsFile="))
+            key_path = ssh_args[ssh_args.index("-i") + 1]
+            return publish.fleet.capture([sys.executable, "-I", "-c", child, known_path, key_path], 5, {})
+        with patch.object(publish.os, "getpid", return_value=2147483647):
+            with publish.remote_transport(endpoint, b"reviewed-host-key", b"selected-identity", 30,
+                                          runner=inspect, ssh="/bin/true") as remote:
+                code, raw = remote("query", "refs/heads/main")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(raw), [["reviewed-host-key", 0o600], ["selected-identity", 0o600]])
 
 
 class PublicationTests(unittest.TestCase):

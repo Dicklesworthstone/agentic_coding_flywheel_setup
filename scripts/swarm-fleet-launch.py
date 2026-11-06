@@ -237,6 +237,25 @@ def native_argv(request, mode):
     return argv
 
 
+def private_snapshot_path(fd):
+    """Address an open private snapshot in the mounted procfs PID namespace."""
+    require(type(fd) is int and fd >= 0, "procfs_snapshot_unavailable")
+    try:
+        # getpid() belongs to our PID namespace, which need not be the namespace
+        # backing /proc. Children must reopen our descriptor, not their own
+        # /proc/self/fd entry or a coincidentally reused PID in that mount.
+        pid = os.readlink("/proc/self")
+        require(matches(r"[1-9][0-9]{0,19}", pid), "procfs_snapshot_unavailable")
+        path = f"/proc/{pid}/fd/{fd}"
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
+                and info.st_mode & 0o077 == 0
+                and os.path.samestat(info, os.stat(path)), "procfs_snapshot_unavailable")
+        return path
+    except OSError:
+        raise Refused("procfs_snapshot_unavailable") from None
+
+
 def ssh_argv(host, mode, known_fd, identity_fd, ssh="/usr/bin/ssh"):
     launcher = '"$HOME/.acfs/scripts/lib/swarm_launch.sh"'
     # The remote installed launcher is fixed. Never execute a command returned
@@ -249,11 +268,11 @@ def ssh_argv(host, mode, known_fd, identity_fd, ssh="/usr/bin/ssh"):
                "ServerAliveInterval=5", "ServerAliveCountMax=2", "ForwardAgent=no", "ForwardX11=no",
                "ClearAllForwardings=yes", "ControlMaster=no", "ControlPath=none", "PermitLocalCommand=no",
                "ProxyCommand=none", "ProxyJump=none", "RemoteCommand=none", "SendEnv=-*", "IdentitiesOnly=yes",
-               f"UserKnownHostsFile=/proc/{os.getpid()}/fd/{known_fd}"]
+               "UserKnownHostsFile=" + private_snapshot_path(known_fd)]
     argv = [ssh, "-F", "/dev/null", "-T", "-n"]
     for option in options:
         argv += ["-o", option]
-    return argv + ["-i", f"/proc/{os.getpid()}/fd/{identity_fd}", "-p", str(host["port"]),
+    return argv + ["-i", private_snapshot_path(identity_fd), "-p", str(host["port"]),
                    "-l", host["user"], "--", host["host"], command]
 
 

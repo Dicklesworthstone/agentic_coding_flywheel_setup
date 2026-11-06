@@ -737,7 +737,7 @@ class LocalGit:
         with tempfile.TemporaryFile() as snapshot:
             snapshot.write(raw)
             snapshot.flush()
-            self.run(["bundle", "verify", f"/proc/{os.getpid()}/fd/{snapshot.fileno()}"])
+            self.run(["bundle", "verify", fleet.private_snapshot_path(snapshot.fileno())])
 
 
 @contextmanager

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
@@ -125,11 +126,37 @@ class ImportFixture:
                               capture_output=True, text=True, env=ENV, timeout=20)
 
 
+class BundleSnapshotTests(unittest.TestCase):
+    def test_real_git_verifies_snapshot_in_the_mounted_procfs_namespace(self):
+        # Bundle verification itself is read-only and does not require the
+        # nonroot authority needed by the complete import workflow below.
+        repo = Path(tempfile.mkdtemp(prefix="acfs-fleet-bundle-snapshot-test-"))
+        git(repo, "init", "--template=", "-b", "main")
+        (repo / "content").write_bytes(b"reviewed bundle fixture\n")
+        git(repo, "add", "content")
+        git(repo, "commit", "-m", "fixture")
+        raw = git(repo, "bundle", "create", "-", "HEAD")
+        head = git(repo, "rev-parse", "HEAD")
+        with patch.object(c.os, "getpid", return_value=2147483647):
+            c.LocalGit(repo, 10).verify_bundle(raw)
+        self.assertEqual(git(repo, "rev-parse", "HEAD"), head)
+        with self.assertRaisesRegex(fleet.Refused, "^local_git_refused$"):
+            c.LocalGit(repo, 10).verify_bundle(b"not a Git bundle\n")
+
+
 class ImportTests(unittest.TestCase):
     def setUp(self):
         # Fixtures inherit the umask; a login user's 0002 makes them group-writable.
         self.addCleanup(os.umask, os.umask(0o022))
         self.fx = ImportFixture()
+
+    def test_bundle_verification_and_import_use_mounted_procfs_namespace(self):
+        with patch.object(c.os, "getpid", return_value=2147483647):
+            result = self.fx.apply()
+        self.assertEqual(result["status"], "imported")
+        for host, commit in self.fx.heads.items():
+            self.assertEqual(git(self.fx.dest, "rev-parse", "refs/acfs/fleet/wave1/" + host).decode().strip(), commit)
+        self.assertEqual(git(self.fx.dest, "rev-parse", "HEAD").decode().strip(), self.fx.base)
 
     def test_preview_checks_all_bundles_without_destination_or_collection_writes(self):
         fx = self.fx

@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "swarm-fleet-launch.py"
@@ -375,7 +376,8 @@ class FilesAndProcessTests(unittest.TestCase):
     def test_ssh_argv_disables_ambient_configuration_and_quotes_all_remote_values(self):
         selected = host()
         selected["request"]["repo"] = "/data/space ' $(touch never)"
-        args = fleet.ssh_argv(selected, "launch", 7, 8)
+        with tempfile.TemporaryFile() as known, tempfile.TemporaryFile() as identity:
+            args = fleet.ssh_argv(selected, "launch", known.fileno(), identity.fileno())
         self.assertEqual(args[:6], ["/usr/bin/ssh", "-F", "/dev/null", "-T", "-n", "-o"])
         for option in ("BatchMode=yes", "StrictHostKeyChecking=yes", "ForwardAgent=no", "ProxyCommand=none",
                        "ProxyJump=none", "ControlMaster=no", "PermitLocalCommand=no", "SendEnv=-*", "IdentitiesOnly=yes"):
@@ -400,6 +402,47 @@ class FilesAndProcessTests(unittest.TestCase):
             return 0, b"{}"
         with fleet.transport(b"KNOWN HOSTS", b"PRIVATE IDENTITY", 30, runner=inspect, ssh=sys.executable) as invoke:
             self.assertEqual(invoke(host(), "preview"), (0, b"{}"))
+
+    def test_real_child_reads_snapshots_when_process_and_procfs_pids_differ(self):
+        child = ("import json,sys; from pathlib import Path; "
+                 "print(json.dumps([(Path(p).read_text(), Path(p).stat().st_mode & 511) "
+                 "for p in sys.argv[1:]]))")
+        def inspect(argv, timeout, env):
+            key = argv[argv.index("-i") + 1]
+            known = next(v.split("=", 1)[1] for v in argv if v.startswith("UserKnownHostsFile="))
+            # The child inherits no snapshot FD. It must reopen the controller's
+            # actual procfs entry, with the same private modes and exact bytes.
+            return fleet.capture([sys.executable, "-I", "-c", child, known, key], timeout, env)
+        with patch.object(fleet.os, "getpid", return_value=2147483647):
+            with fleet.transport(b"PINNED HOSTS", b"PINNED KEY", 5, runner=inspect, ssh=sys.executable) as invoke:
+                code, raw = invoke(host(), "preview")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(raw), [["PINNED HOSTS", 0o600], ["PINNED KEY", 0o600]])
+
+    def test_snapshot_path_refuses_missing_or_malformed_procfs(self):
+        with tempfile.TemporaryFile() as snapshot:
+            for pid in ("", "0", "../1", "/proc/1", "1/fd", "1\n", "9" * 21):
+                with self.subTest(pid=pid), patch.object(fleet.os, "readlink", return_value=pid):
+                    with self.assertRaisesRegex(fleet.Refused, "^procfs_snapshot_unavailable$"):
+                        fleet.private_snapshot_path(snapshot.fileno())
+            for operation in ("readlink", "stat"):
+                with self.subTest(operation=operation), patch.object(
+                        fleet.os, operation, side_effect=PermissionError("sensitive system detail")):
+                    with self.assertRaisesRegex(fleet.Refused, "^procfs_snapshot_unavailable$"):
+                        fleet.private_snapshot_path(snapshot.fileno())
+
+    def test_snapshot_path_rejects_another_file_and_nonprivate_descriptors(self):
+        with tempfile.TemporaryFile() as snapshot, tempfile.TemporaryFile() as other:
+            closed_fd = snapshot.fileno()
+            with patch.object(fleet.os, "stat", return_value=os.fstat(other.fileno())):
+                with self.assertRaisesRegex(fleet.Refused, "^procfs_snapshot_unavailable$"):
+                    fleet.private_snapshot_path(snapshot.fileno())
+            os.fchmod(snapshot.fileno(), 0o640)
+            with self.assertRaisesRegex(fleet.Refused, "^procfs_snapshot_unavailable$"):
+                fleet.private_snapshot_path(snapshot.fileno())
+        for fd in (-1, closed_fd, True, "3"):
+            with self.subTest(fd=fd), self.assertRaisesRegex(fleet.Refused, "^procfs_snapshot_unavailable$"):
+                fleet.private_snapshot_path(fd)
 
     def test_real_capture_collects_exit_and_stdout_but_never_exposes_stderr(self):
         code, output = fleet.capture([sys.executable, "-c", "import sys; print('response'); print('SECRET', file=sys.stderr); sys.exit(7)"], 3, {})

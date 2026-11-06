@@ -296,6 +296,10 @@ class RemoteCommandTests(unittest.TestCase):
                                " -c 'import json,sys; print(json.dumps(sys.argv[1:]))' \"$@\"\n")
         self.script.chmod(0o755)
         self.identity = {"user": 65534, "group": 65534} if os.geteuid() == 0 else {}
+        self.known = tempfile.TemporaryFile()
+        self.key = tempfile.TemporaryFile()
+        self.addCleanup(self.known.close)
+        self.addCleanup(self.key.close)
 
     def invoke(self, command, identity=None):
         return subprocess.run(["/bin/sh", "-c", command], env={"HOME": str(self.home), "PATH": "/usr/bin:/bin"},
@@ -305,17 +309,17 @@ class RemoteCommandTests(unittest.TestCase):
         selected = host()
         marker = self.home / "must-not-execute"
         selected["request"]["repo"] = "/data/quoted ' $(touch " + str(marker) + ")"
-        command = fleet.ssh_argv(selected, "launch", 7, 8)[-1]
+        command = fleet.ssh_argv(selected, "launch", self.known.fileno(), self.key.fileno())[-1]
         result = self.invoke(command)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), fleet.native_argv(selected["request"], "launch"))
         self.assertFalse(marker.exists())
-        result = self.invoke(fleet.ssh_argv(selected, "reconcile", 7, 8)[-1])
+        result = self.invoke(fleet.ssh_argv(selected, "reconcile", self.known.fileno(), self.key.fileno())[-1])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["--reconcile", "--receipt", selected["request"]["receipt"]])
 
     def test_missing_or_symlinked_remote_launcher_never_falls_back(self):
-        command = fleet.ssh_argv(host(), "launch", 7, 8)[-1]
+        command = fleet.ssh_argv(host(), "launch", self.known.fileno(), self.key.fileno())[-1]
         saved = self.script.with_suffix(".saved")
         self.script.rename(saved)
         result = self.invoke(command)
@@ -328,7 +332,7 @@ class RemoteCommandTests(unittest.TestCase):
 
     @unittest.skipUnless(os.geteuid() == 0, "root refusal exercised only when the test runner is root")
     def test_remote_root_is_refused_before_the_installed_launcher_executes(self):
-        result = self.invoke(fleet.ssh_argv(host(), "launch", 7, 8)[-1], {})
+        result = self.invoke(fleet.ssh_argv(host(), "launch", self.known.fileno(), self.key.fileno())[-1], {})
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 

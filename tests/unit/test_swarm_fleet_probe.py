@@ -192,17 +192,32 @@ class FleetTests(unittest.TestCase):
         self.rejects("invalid_target", selected, [item])
 
     def test_ssh_command_pins_host_keys_and_disables_implicit_actions(self):
-        argv = m.ssh_argv(selected()[0], 7, "/private/key")
+        with tempfile.TemporaryFile() as known:
+            argv = m.ssh_argv(selected()[0], known.fileno(), "/private/key")
+            self.assertIn("UserKnownHostsFile=" + m.private_snapshot_path(known.fileno()), argv)
         self.assertEqual(argv[:7], ["/usr/bin/ssh", "-F", "/dev/null", "-T", "-n", "-o", "BatchMode=yes"])
         for option in ("StrictHostKeyChecking=yes", "UpdateHostKeys=no", "ForwardAgent=no", "ForwardX11=no",
                        "ClearAllForwardings=yes", "ControlMaster=no", "ControlPath=none", "PermitLocalCommand=no",
                        "ProxyCommand=none", "ProxyJump=none", "RemoteCommand=none", "SendEnv=-*"):
             self.assertIn(option, argv)
-        self.assertIn(f"UserKnownHostsFile=/proc/{os.getpid()}/fd/7", argv)
         self.assertEqual(argv[-3], "--")
         self.assertEqual(argv[-2], "alpha.example")
         self.assertEqual(argv[-1], 'exec /bin/bash "$HOME/.acfs/scripts/lib/swarm_inventory.sh" probe-local --json --host-id alpha --workload standard')
         self.assertNotIn("--allow-launch", argv[-1])
+
+    def test_snapshot_path_refuses_invalid_procfs_and_mismatched_files(self):
+        with tempfile.TemporaryFile() as snapshot, tempfile.TemporaryFile() as other:
+            for pid in ("", "0", "../1", "/proc/1", "1/fd", "1\n", "9" * 21):
+                with self.subTest(pid=pid), patch.object(m.os, "readlink", return_value=pid):
+                    self.rejects("procfs_snapshot_unavailable", m.private_snapshot_path, snapshot.fileno())
+            for operation in ("readlink", "stat"):
+                with self.subTest(operation=operation), patch.object(
+                        m.os, operation, side_effect=PermissionError("private system details")):
+                    self.rejects("procfs_snapshot_unavailable", m.private_snapshot_path, snapshot.fileno())
+            with patch.object(m.os, "stat", return_value=os.fstat(other.fileno())):
+                self.rejects("procfs_snapshot_unavailable", m.private_snapshot_path, snapshot.fileno())
+            os.fchmod(snapshot.fileno(), 0o640)
+            self.rejects("procfs_snapshot_unavailable", m.private_snapshot_path, snapshot.fileno())
 
     def test_real_subprocess_output_and_large_stdin_are_supported(self):
         payload = b"x" * 400000
@@ -471,6 +486,31 @@ class FleetTests(unittest.TestCase):
         self.assertTrue(result["snapshot_created"])
         self.assertEqual(base.read_bytes(), m.encoded(inventory()))
         self.assertEqual(result["inventory_sha256"], m.digest(output.read_bytes()))
+
+    def test_coordinator_snapshots_are_readable_by_children_in_procfs_namespace(self):
+        args, library, _, _ = self.coordinator()
+        key = self.file("identity", "private identity fixture\n")
+        args += ["--identity-file", str(key)]
+        output = self.directory / "namespace-result.json"
+        child = ("import json,sys; from pathlib import Path; "
+                 "print(json.dumps([(Path(p).read_text(), Path(p).stat().st_mode & 511) "
+                 "for p in sys.argv[1:]]))")
+        def observe(target, known_fd, timeout, identity_path):
+            argv = m.ssh_argv(target, known_fd, identity_path)
+            known_path = next(v.split("=", 1)[1] for v in argv if v.startswith("UserKnownHostsFile="))
+            raw = m.capture([sys.executable, "-I", "-c", child, known_path,
+                             argv[argv.index("-i") + 1]], 5)
+            self.assertEqual(json.loads(raw), [["known-key fixture\n", 0o600],
+                                               ["private identity fixture\n", 0o600]])
+            return {"id": target["id"], "status": "measured", "observation": m.observation(
+                m.encoded(response(target["id"])), target, time.time() - 2, time.time())}
+        with patch.object(m, "validate_inventory"), patch.object(m, "probe_one", side_effect=observe) as probe:
+            preview, _ = m.main(args, library)
+            with patch.object(m.os, "getpid", return_value=2147483647):
+                result, code = m.main(args + ["--probe", "--accept-plan", preview["plan_sha256"],
+                                             "--output", str(output)], library)
+        self.assertEqual((code, result["status"], probe.call_count), (0, "measured", 3))
+        self.assertNotIn(b"private identity fixture", m.encoded(result))
 
     def test_coordinator_partial_failure_publishes_only_conservative_capacity(self):
         args, library, base, _ = self.coordinator()
