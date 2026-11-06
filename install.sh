@@ -254,6 +254,9 @@ ACFS_BOOTSTRAP_PRESERVE_TREE=false
 ACFS_BOOTSTRAP_PS_BIN=""
 ACFS_BOOTSTRAP_SLEEP_BIN=""
 ACFS_CLEANUP_ACTIVE=false
+# Cancellation authority exists only inside acfs_wait_early_apt's local scope.
+# Never let caller-supplied state activate its PID/descriptor signal handler.
+ACFS_EARLY_APT_ACTIVE=false
 ACFS_VERIFIED_BOOTSTRAP_SOURCE="${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}"
 ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}"
 
@@ -863,9 +866,93 @@ fetch_commit_sha() {
 # ============================================================
 # Install gum FIRST for beautiful UI from the start
 # ============================================================
+# Wait in the installer shell so its signal traps run promptly. The write end
+# of this private pipe is also cancellation authority: closing it reaches the
+# privileged supervisor even when sudo execs and the caller cannot signal it.
+# Capture output in a private regular file, never a blocking command substitution.
+# Args: output variable (empty to discard), trusted mktemp/rm, command and args.
+acfs_wait_early_apt() {
+    local output_var="$1" mktemp_bin="$2" rm_bin="$3"
+    shift 3
+    local output_file="" output_value="" command_status=0 launch_status=0
+    local previous_pid=""
+    local monitor_enabled=false signal_count=0
+    # These locals are dynamically visible to the installer's signal handler.
+    # Publish the active flag only after all ownership slots are initialized.
+    local ACFS_EARLY_APT_PID="" ACFS_EARLY_APT_CONTROL_FD=""
+    local ACFS_EARLY_APT_SIGNAL="" ACFS_EARLY_APT_SIGNAL_COUNT=0
+    local ACFS_EARLY_APT_ACTIVE=true
+
+    if [[ -n "$output_var" ]]; then
+        [[ "$output_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 2
+        printf -v "$output_var" '%s' ""
+        # Pin the directory: an inherited TMPDIR may be owned by another user
+        # who could replace the capture path before the child opens it.
+        output_file="$("$mktemp_bin" /tmp/acfs-early-apt.XXXXXXXX)" || command_status=1
+        [[ -n "$output_file" && -f "$output_file" && ! -L "$output_file" ]] || command_status=1
+    fi
+
+    if ((command_status == 0)) && [[ -z "$ACFS_EARLY_APT_SIGNAL" ]]; then
+        # An asynchronous command still has foreground /dev/tty access when
+        # job control is off. Keep sudo's original argv and authentication flow.
+        [[ "$-" != *m* ]] || monitor_enabled=true
+        set +m
+        previous_pid="${!:-}"
+        if { exec {ACFS_EARLY_APT_CONTROL_FD}> >(exec "$@" >"${output_file:-/dev/null}" 2>&1); }; then
+            ACFS_EARLY_APT_PID=$!
+        else
+            launch_status=1
+            # The pipe child can exist even if allocating its parent FD fails.
+            # Reap that child after EOF cleanup, without waiting for an older
+            # unrelated job when the fork itself left $! unchanged.
+            if [[ "${!:-}" != "$previous_pid" ]]; then
+                ACFS_EARLY_APT_PID="${!:-}"
+            fi
+        fi
+        if [[ "$monitor_enabled" == true ]]; then
+            set -m
+        fi
+        # A signal may have arrived between the fork and publishing its PID/FD.
+        if [[ -n "$ACFS_EARLY_APT_SIGNAL" ]]; then
+            _acfs_signal_handler "$ACFS_EARLY_APT_SIGNAL"
+        fi
+        if [[ -n "$ACFS_EARLY_APT_PID" ]]; then
+            while :; do
+                signal_count=$ACFS_EARLY_APT_SIGNAL_COUNT
+                command_status=0
+                wait "$ACFS_EARLY_APT_PID" || command_status=$?
+                # A trapped signal interrupts wait before the child is reaped.
+                # Retry only when a handler ran, preserving native exit codes.
+                ((signal_count == ACFS_EARLY_APT_SIGNAL_COUNT)) && break
+            done
+            ACFS_EARLY_APT_PID=""
+        fi
+        ((launch_status == 0)) || command_status=$launch_status
+    fi
+
+    if [[ -n "$ACFS_EARLY_APT_CONTROL_FD" ]]; then
+        exec {ACFS_EARLY_APT_CONTROL_FD}>&-
+        ACFS_EARLY_APT_CONTROL_FD=""
+    fi
+    if [[ -n "$output_file" ]]; then
+        if [[ -z "$ACFS_EARLY_APT_SIGNAL" ]]; then
+            output_value="$(<"$output_file")"
+            printf -v "$output_var" '%s' "$output_value"
+        fi
+        "$rm_bin" -f -- "$output_file" 2>/dev/null || true
+    fi
+    ACFS_EARLY_APT_ACTIVE=false
+    if [[ -n "$ACFS_EARLY_APT_SIGNAL" ]]; then
+        # Only now may ordinary cleanup mark interruption and release the lock.
+        _acfs_signal_handler "$ACFS_EARLY_APT_SIGNAL"
+    fi
+    return "$command_status"
+}
+
 # Run in a dedicated foreground Bash after sudo, so authentication still uses
 # the caller's terminal. Only apt/timeout detach; this shell receives terminal
 # signals and forwards cancellation to timeout, which signals its whole group.
+# Stdin is the parent's cancellation pipe; apt itself receives /dev/null.
 # Args: trusted setsid, timeout, Bash and sleep paths, apt command and arguments.
 acfs_run_early_apt() {
     local setsid_bin="$1"
@@ -876,6 +963,7 @@ acfs_run_early_apt() {
     local apt_pid=""
     local apt_status=0
     local signal_status=0
+    local apt_finished=false control_line="" read_status=0
 
     # An asynchronous child must not be a process-group leader before setsid:
     # then setsid execs timeout directly, and apt_pid is the timeout supervisor.
@@ -886,6 +974,9 @@ acfs_run_early_apt() {
     trap '((signal_status != 0)) || signal_status=130; [[ -z "$apt_pid" ]] || kill -TERM "$apt_pid" 2>/dev/null || true' INT
     trap '((signal_status != 0)) || signal_status=143; [[ -z "$apt_pid" ]] || kill -TERM "$apt_pid" 2>/dev/null || true' TERM
     trap '((signal_status != 0)) || signal_status=129; [[ -z "$apt_pid" ]] || kill -TERM "$apt_pid" 2>/dev/null || true' HUP
+    # This dedicated shell has only one child. Arm before spawning so even an
+    # immediately completed command cannot be missed by the control-pipe wait.
+    trap 'apt_finished=true' CHLD
 
     if ((signal_status != 0)); then
         return "$signal_status"
@@ -907,11 +998,26 @@ acfs_run_early_apt() {
         child_status=0
         wait "$child_pid" || child_status=$?
         exit "$child_status"
-    ' acfs-early-apt-guardian "$sleep_bin" "$@" &
+    ' acfs-early-apt-guardian "$sleep_bin" "$@" </dev/null &
     apt_pid=$!
     if ((signal_status != 0)); then
         kill -TERM "$apt_pid" 2>/dev/null || true
     fi
+    while [[ "$apt_finished" != true ]] && ((signal_status == 0)); do
+        # read is a Bash builtin: no polling subprocesses. Its short deadline
+        # also handles shells that resume a read after the child's CHLD trap.
+        if IFS= read -r -t 0.1 control_line; then
+            continue
+        else
+            read_status=$?
+        fi
+        if ((read_status <= 128)); then
+            # EOF means cancellation or parent death, including across sudo's
+            # UID boundary. The privileged supervisor owns and signals timeout.
+            signal_status=143
+            kill -TERM "$apt_pid" 2>/dev/null || true
+        fi
+    done
     wait "$apt_pid" || apt_status=$?
     if ((signal_status != 0)); then
         # wait is interruptible. Reap the cancelled command before exiting;
@@ -958,6 +1064,8 @@ install_gum_early() {
     local env_bin=""
     local bash_bin=""
     local sleep_bin=""
+    local mktemp_bin=""
+    local rm_bin=""
     local mkdir_bin=""
     local tee_bin=""
 
@@ -987,7 +1095,10 @@ install_gum_early() {
     env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
     bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
     sleep_bin="$(acfs_early_system_binary_path sleep 2>/dev/null || true)"
-    if [[ -z "$setsid_bin" || -z "$env_bin" || -z "$bash_bin" || -z "$sleep_bin" ]]; then
+    mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+    rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+    if [[ -z "$setsid_bin" || -z "$env_bin" || -z "$bash_bin" || -z "$sleep_bin" \
+        || -z "$mktemp_bin" || -z "$rm_bin" ]]; then
         return 0
     fi
     mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
@@ -1043,9 +1154,10 @@ EOF
     # or use cached credentials (#475). Set DEBIAN_FRONTEND after sudo, and
     # use privileged Bash mode to ignore startup files and imported functions.
     echo -e "\033[0;90m      ↳ Updating package lists (may take 30-60s on fresh systems)...\033[0m" >&2
-    if ! "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$bash_bin" -p -c "$apt_runner" \
+    if ! acfs_wait_early_apt "" "$mktemp_bin" "$rm_bin" \
+        "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$bash_bin" -p -c "$apt_runner" \
         acfs-early-apt "$setsid_bin" "$timeout_bin" "$bash_bin" "$sleep_bin" "$apt_get_bin" \
-        -o DPkg::Lock::Timeout=120 update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" </dev/null >/dev/null 2>&1; then
+        -o DPkg::Lock::Timeout=120 update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0"; then
         # Reset terminal line position in case apt left cursor in bad state
         echo -e "\r\033[K\033[0;33m      ⚠ apt-get update slow/failed (skipping gum, will retry later)\033[0m" >&2
         return 0
@@ -1056,9 +1168,10 @@ EOF
     # terminal cursor position issues when apt-get fails or times out
     echo -e "\033[0;90m      ↳ Installing gum package...\033[0m" >&2
     local apt_output
-    if apt_output=$("${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$bash_bin" -p -c "$apt_runner" \
+    if acfs_wait_early_apt apt_output "$mktemp_bin" "$rm_bin" \
+        "${sudo_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive "$bash_bin" -p -c "$apt_runner" \
         acfs-early-apt "$setsid_bin" "$timeout_bin" "$bash_bin" "$sleep_bin" "$apt_get_bin" \
-        -o DPkg::Lock::Timeout=120 install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum </dev/null 2>&1); then
+        -o DPkg::Lock::Timeout=120 install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum; then
         HAS_GUM=true
         # Reset terminal line position and show success
         echo -e "\r\033[K\033[0;32m    ✓ gum installed - enhanced UI enabled!\033[0m" >&2
@@ -2017,6 +2130,21 @@ _acfs_signal_handler() {
     if [[ "${ACFS_CLEANUP_ACTIVE:-false}" == "true" ]]; then
         if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]]; then
             ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        fi
+        return 0
+    fi
+
+    if [[ "${ACFS_EARLY_APT_ACTIVE:-false}" == true ]]; then
+        [[ -n "$ACFS_EARLY_APT_SIGNAL" ]] || ACFS_EARLY_APT_SIGNAL="$signal"
+        ((ACFS_EARLY_APT_SIGNAL_COUNT += 1))
+        if [[ -n "$ACFS_EARLY_APT_CONTROL_FD" ]]; then
+            exec {ACFS_EARLY_APT_CONTROL_FD}>&-
+            ACFS_EARLY_APT_CONTROL_FD=""
+        fi
+        # Also stop sudo if it is still authenticating. After a privileged
+        # exec this may be denied; EOF above still reaches the root supervisor.
+        if [[ -n "$ACFS_EARLY_APT_PID" ]]; then
+            kill -TERM "$ACFS_EARLY_APT_PID" 2>/dev/null || true
         fi
         return 0
     fi

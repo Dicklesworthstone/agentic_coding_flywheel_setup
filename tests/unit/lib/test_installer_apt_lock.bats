@@ -59,10 +59,50 @@ EOF
 @test "installer: gum outer timeout leaves time to operate after lock acquisition" {
     local timeout_log="$BATS_TEST_TMPDIR/gum_timeout_calls.log"
     local apt_log="$BATS_TEST_TMPDIR/gum_apt_calls.log"
+    local fake_bin="$BATS_TEST_TMPDIR/gum_bin"
+    local real_timeout
+    real_timeout="$(command -v timeout)"
+    mkdir -p "$fake_bin"
+
+    # The parent supervisor execs its command, so these are executable fixtures
+    # rather than shell functions. All package/repository operations are inert;
+    # Bash, env, setsid and GNU timeout execute normally.
+    cat > "$fake_bin/fixture-command" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${0##*/}" in
+    curl) printf 'fixture-key\n' ;;
+    gpg|tee) cat >/dev/null ;;
+    mkdir|rm) : ;; # Retain the test-owned output file for inspection.
+    mktemp)
+        [[ $# -eq 1 && "$1" == /tmp/acfs-early-apt.* ]] || exit 98
+        exec /usr/bin/mktemp "$TEST_FIXTURE_BIN/output.XXXXXXXX"
+        ;;
+    sudo) exec "$@" ;;
+    timeout)
+        [[ "$1" == --kill-after=10 && "$2" == 300 ]] || exit 98
+        printf '%s\n' "$2" >> "$TEST_TIMEOUT_LOG"
+        exec "$TEST_REAL_TIMEOUT" "$@"
+        ;;
+    apt-get)
+        [[ "${DEBIAN_FRONTEND:-}" == noninteractive ]] || exit 97
+        printf '%s\n' "$*" >> "$TEST_APT_LOG"
+        [[ "$*" == *"DPkg::Lock::Timeout=120"* ]] || exit 98
+        ;;
+    *) exit 99 ;;
+esac
+EOF
+    chmod +x "$fake_bin/fixture-command"
+    local fixture_name
+    for fixture_name in curl gpg tee mkdir rm mktemp sudo timeout apt-get; do
+        ln -s fixture-command "$fake_bin/$fixture_name"
+    done
 
     # Exercise the actual bootstrap function with inert commands. This checks
     # the timeout and lock-wait budgets independently of sudo/session ordering.
-    run env TEST_TIMEOUT_LOG="$timeout_log" TEST_APT_LOG="$apt_log" bash -c '
+    run env TEST_TIMEOUT_LOG="$timeout_log" TEST_APT_LOG="$apt_log" \
+        TEST_FIXTURE_BIN="$fake_bin" TEST_REAL_TIMEOUT="$real_timeout" \
+        TMPDIR="$BATS_TEST_TMPDIR" bash -c '
         set -euo pipefail
         ACFS_DISTRO_FAMILY=ubuntu
         ACFS_EARLY_CURL_ARGS=()
@@ -71,49 +111,14 @@ EOF
         HAS_GUM=false
         _acfs_os_release_field() { printf "24.04\n"; }
         acfs_early_system_binary_path() {
-            [[ "$1" != gum ]] || return 1
-            printf "fixture_%s\n" "$1"
+            case "$1" in
+                gum) return 1 ;;
+                bash|env|sleep|setsid) command -v "$1" ;;
+                *) printf "%s/%s\n" "$TEST_FIXTURE_BIN" "$1" ;;
+            esac
         }
-        acfs_early_sudo_binary_path() { printf "fixture_sudo\n"; }
-        fixture_sudo() { "$@"; }
-        fixture_curl() { printf "fixture-key\n"; }
-        fixture_gpg() { cat >/dev/null; }
-        fixture_mkdir() { :; }
-        fixture_tee() { cat >/dev/null; }
-        fixture_env() {
-            [[ "$1" == DEBIAN_FRONTEND=noninteractive ]] || return 97
-            shift
-            DEBIAN_FRONTEND=noninteractive "$@"
-        }
-        fixture_bash() {
-            [[ "$1" == -p && "$2" == -c ]] || return 97
-            local runner="$3"
-            shift 3
-            shift # bash -c command name
-            ( eval "$runner" )
-        }
-        fixture_setsid() {
-            [[ "$1" == --wait ]] || return 97
-            shift
-            "$@"
-        }
-        fixture_timeout() {
-            while [[ "$1" == -* ]]; do
-                case "$1" in
-                    --kill-after=*) shift ;;
-                    *) return 97 ;;
-                esac
-            done
-            printf "%s\n" "$1" >> "$TEST_TIMEOUT_LOG"
-            [[ "$1" == 300 ]] || return 98
-            shift
-            "$@"
-        }
-        fixture_apt-get() {
-            [[ "${DEBIAN_FRONTEND:-}" == noninteractive ]] || return 97
-            printf "%s\n" "$*" >> "$TEST_APT_LOG"
-            [[ "$*" == *"DPkg::Lock::Timeout=120"* ]] || return 98
-        }
+        acfs_early_sudo_binary_path() { printf "%s/sudo\n" "$TEST_FIXTURE_BIN"; }
+        eval "$(sed -n "/^acfs_wait_early_apt() {/,/^}/p" install.sh)"
         eval "$(sed -n "/^acfs_run_early_apt() {/,/^}/p" install.sh)"
         eval "$(sed -n "/^install_gum_early() {/,/^}/p" install.sh)"
         install_gum_early

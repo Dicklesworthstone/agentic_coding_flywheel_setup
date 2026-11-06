@@ -35,6 +35,13 @@ def definition(name: str) -> str:
     return match[0]
 
 
+def initializer(name: str) -> str:
+    match = re.search(r"^" + re.escape(name) + r"=.*$", SOURCE.read_text(), re.M)
+    if not match:
+        raise ValueError(f"Missing production initializer: {name}")
+    return match[0]
+
+
 class InstallerTerminalTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="acfs-terminal-test-"))
@@ -299,12 +306,21 @@ class InstallerTerminalTests(unittest.TestCase):
         self.attach_signal_probe(signal.SIGHUP)
 
     def gum(self, *, failure="", dry_run=False, sudo_identity_fixture=False,
-            setsid_available=True, sleep_available=True, detached=False,
-            interrupt_signal=None):
+            setsid_available=True, sleep_available=True, mktemp_available=True,
+            detached=False, interrupt_signal=None, pid_only=False, monitor_mode=False,
+            parent_kill_fails=False):
         function_source = definition("install_gum_early")
         helpers = []
-        if re.search(r"^acfs_run_early_apt\(\) \{", SOURCE.read_text(), re.M):
-            helpers.append(definition("acfs_run_early_apt"))
+        for helper in ("acfs_run_early_apt", "acfs_wait_early_apt"):
+            if re.search(r"^" + helper + r"\(\) \{", SOURCE.read_text(), re.M):
+                helpers.append(definition(helper))
+                if helper == "acfs_wait_early_apt":
+                    helpers.append(initializer("ACFS_EARLY_APT_ACTIVE"))
+        if pid_only:
+            helpers.extend(definition(helper) for helper in (
+                "cleanup", "acfs_bootstrap_dir_is_owned_temp", "acfs_file_is_owned_temp",
+                "acfs_remember_install_lock", "acfs_release_install_lock",
+            ))
         if sudo_identity_fixture and os.geteuid() == 0:
             # Root-only user namespaces cannot switch to another UID. Exercise
             # sudo command ordering with a test-only identity substitution; this
@@ -339,9 +355,25 @@ while [[ "$1" == -* ]]; do
 done
 [[ "$1" == 300 ]] || exit 98
 shift
+# Match the apt operation as an argv element. The guardian's multiline shell
+# source is one argument and must not be mistaken for an operation name.
+operation=""
+for argument in "$@"; do
+    case "$argument" in
+        update|install)
+            [[ -z "$operation" ]] || exit 98
+            operation="$argument"
+            ;;
+    esac
+done
+case "$operation" in
+    update) test_duration="$TEST_TIMEOUT_UPDATE_DURATION" ;;
+    install) test_duration="$TEST_TIMEOUT_INSTALL_DURATION" ;;
+    *) exit 98 ;;
+esac
 # Scale only durations supplied by production. In particular, do not invent a
 # kill-after grace period that would conceal a missing production escalation.
-exec "$TEST_REAL_TIMEOUT_BIN" "${options[@]}" "$TEST_TIMEOUT_DURATION" "$@"
+exec "$TEST_REAL_TIMEOUT_BIN" "${options[@]}" "$test_duration" "$@"
 ''')
         timeout_wrapper.chmod(0o755)
         apt.write_text("#!/usr/bin/python3\n" + r'''
@@ -373,6 +405,9 @@ if os.fstat(0).st_rdev != os.stat("/dev/null").st_rdev:
     sys.exit(44)
 if os.environ["TEST_APT_FAILURE"] == operation:
     sys.exit(42)
+if os.environ["TEST_APT_FAILURE"] == "install-output" and operation == "install":
+    print("Unable to locate package fixture-gum", file=sys.stderr, flush=True)
+    sys.exit(42)
 if os.environ["TEST_APT_FAILURE"] == "timeout":
     time.sleep(10)
 if os.environ["TEST_APT_FAILURE"] == "ignore-term" and operation == "install":
@@ -386,7 +421,7 @@ if os.environ["TEST_APT_FAILURE"] in (
     # A helper keeps apt's captured stdout open. Some helpers also ignore TERM;
     # timeout must retain its KILL escalation even after apt itself exits.
     child = """
-import os, signal, sys, time
+import fcntl, os, signal, sys, time
 from pathlib import Path
 events = Path(sys.argv[1])
 resistant = os.environ["TEST_APT_FAILURE"] in ("resistant-descendant", "interrupt-resistant")
@@ -397,7 +432,25 @@ def terminated(signum, frame):
 signal.signal(signal.SIGTERM, signal.SIG_IGN if resistant else terminated)
 Path(os.environ["TEST_APT_CHILD_PID"]).write_text(str(os.getpid()))
 events.write_text('started\\n')
-time.sleep(6 if resistant or os.environ["TEST_APT_FAILURE"] == "interrupt" else 2)
+lock_path = os.environ.get("TEST_INSTALL_LOCK")
+lock_reported = False
+deadline = time.monotonic() + (6 if resistant or os.environ["TEST_APT_FAILURE"] == "interrupt" else 2)
+while time.monotonic() < deadline:
+    if lock_path:
+        # Probe from the live helper itself: zombie-only process groups must
+        # not be mistaken for work that still needs the installer lock.
+        with open(lock_path, "r+") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if not lock_reported:
+                    Path(os.environ["TEST_LOCK_EVENTS"]).write_text('contended\\n')
+                    lock_reported = True
+            else:
+                with open(os.environ["TEST_LOCK_EVENTS"], "a") as stream:
+                    stream.write('released-while-child-live\\n')
+                fcntl.flock(lock, fcntl.LOCK_UN)
+    time.sleep(0.01)
 with events.open('a') as stream:
     stream.write('completed\\n')
 """
@@ -417,6 +470,19 @@ with events.open('a') as stream:
             "gpg": "cat >/dev/null\n",
             "mkdir": ":\n",
             "tee": "cat >/dev/null\n",
+            "mktemp": r'''
+# Production must pin its private capture to a trusted root, not inherit TMPDIR.
+[[ $# -eq 1 && "$1" == /tmp/acfs-early-apt.* ]] || exit 96
+exec /usr/bin/python3 -c 'import os, tempfile
+fd, path = tempfile.mkstemp(prefix="early-apt-output-", dir=os.environ["TEST_FIXTURE_DIR"])
+os.close(fd)
+print(path)
+'
+''',
+            "rm": r'''
+# Retain test artifacts while recording the production cleanup request.
+printf '%s\n' "$*" >> "$TEST_CAPTURE_CLEANUP"
+''',
             "sudo": r'''
 # This is a signal-transparent exec fixture, not a real privilege transition.
 # Authentication happens before detaching, including when stdin is null.
@@ -430,6 +496,11 @@ exec "$@"
             fixture = self.root / ("fixture-" + name)
             fixture.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + content)
             fixture.chmod(0o755)
+        # A setup update must not hit the shortened deadline intended for a
+        # later install fault, especially when the test host is under load.
+        install_duration = "0.4" if failure in ("descendant", "resistant-descendant", "ignore-term") else "2"
+        if interrupt_signal is not None:
+            install_duration = "4"
         body = "\n".join([
             *helpers,
             function_source,
@@ -442,19 +513,46 @@ exec "$@"
             f"export TEST_APT_PGID={shlex.quote(str(self.root / 'apt-pgid'))}",
             f"export TEST_APT_CHILD_EVENTS={shlex.quote(str(self.root / 'apt-child-events'))}",
             f"export TEST_APT_CHILD_PID={shlex.quote(str(self.root / 'apt-child-pid'))}",
+            f"export TEST_INSTALL_LOCK={shlex.quote(str(self.root / 'install.lock') if pid_only else '')}",
+            f"export TEST_LOCK_EVENTS={shlex.quote(str(self.root / 'apt-lock-events'))}",
+            f"export TEST_INTERRUPT_EVENTS={shlex.quote(str(self.root / 'interruption-events'))}",
+            f"export TEST_CAPTURE_CLEANUP={shlex.quote(str(self.root / 'capture-cleanup-events'))}",
             f"export TEST_APT_FAILURE={shlex.quote(failure)}",
             f"export TEST_TIMEOUT_ARGS={shlex.quote(str(timeouts))}",
             f"export TEST_REAL_TIMEOUT_BIN={shlex.quote(timeout_bin)}",
-            f"export TEST_TIMEOUT_DURATION={'4' if interrupt_signal else '0.4' if failure else '2'}",
+            f"export TEST_TIMEOUT_UPDATE_DURATION={'0.4' if failure == 'timeout' else '2'}",
+            f"export TEST_TIMEOUT_INSTALL_DURATION={install_duration}",
             f"TEST_TIMEOUT_WRAPPER={shlex.quote(str(timeout_wrapper))}",
             f"TEST_APT_BIN={shlex.quote(str(apt))}",
             f"TEST_SETSID_BIN={shlex.quote(setsid_bin)}",
             f"TEST_ENV_BIN={shlex.quote(env_bin)}",
             f"export TEST_SUDO_EVENTS={shlex.quote(str(self.root / 'sudo-events'))}",
-            f"TEST_FIXTURE_DIR={shlex.quote(str(self.root))}",
+            f"export TEST_FIXTURE_DIR={shlex.quote(str(self.root))}",
             f"TEST_SETSID_AVAILABLE={'true' if setsid_available else 'false'}",
             f"TEST_SLEEP_AVAILABLE={'true' if sleep_available else 'false'}",
+            f"TEST_MKTEMP_AVAILABLE={'true' if mktemp_available else 'false'}",
+            f"TEST_MONITOR_MODE={'true' if monitor_mode else 'false'}",
             f"DRY_RUN={'true' if dry_run else 'false'}",
+            r'''
+# Exercise the shipped EXIT cleanup against a real install-wide lock. Only
+# its state-storage callback and unrelated logging are controlled fixtures.
+BOOTSTRAP_ARCHIVE_FD=""
+ACFS_BOOTSTRAP_SUPERVISOR=true
+ACFS_INSTALL_RUN_CONFIRMED=0
+ACFS_CLEANUP_ACTIVE=false
+_ACFS_SIGNAL_RECEIVED=""
+log_error() { :; }
+log_warn() { :; }
+acfs_log_close() { :; }
+state_mark_interrupted() { printf '%s\n' "$_ACFS_SIGNAL_RECEIVED" >> "$TEST_INTERRUPT_EVENTS"; }
+exec 199>>"$TEST_INSTALL_LOCK"
+flock -n 199
+acfs_remember_install_lock 199 "$TEST_INSTALL_LOCK"
+trap cleanup EXIT
+''' if pid_only else ":",
+            # A sudo exec can make the privileged helper unsignalable by the
+            # caller. The child Bash ignores this function; EOF must cancel it.
+            "kill() { return 1; }" if parent_kill_fails else ":",
             r'''
 ACFS_DISTRO_FAMILY=ubuntu
 HAS_GUM=false
@@ -476,17 +574,29 @@ acfs_early_system_binary_path() {
             [[ "$TEST_SLEEP_AVAILABLE" == true ]] || return 1
             printf '/bin/sleep\n'
             ;;
+        mktemp)
+            [[ "$TEST_MKTEMP_AVAILABLE" == true ]] || return 1
+            printf '%s/fixture-mktemp\n' "$TEST_FIXTURE_DIR"
+            ;;
         *) printf '%s/fixture-%s\n' "$TEST_FIXTURE_DIR" "$1" ;;
     esac
 }
+if [[ "$TEST_MONITOR_MODE" == true ]]; then
+    set -m
+fi
 install_gum_early
 printf 'HAS_GUM=%s\n' "$HAS_GUM"
+if [[ "$TEST_MONITOR_MODE" == true ]]; then
+    [[ $- == *m* ]]
+    printf 'JOB_CONTROL_RESTORED=true\n'
+fi
 ''',
         ])
         if interrupt_signal is not None or failure == "resistant-descendant":
             return self.gum_process_probe(
                 body, interrupt_signal,
                 resistant_child=failure in ("resistant-descendant", "interrupt-resistant"),
+                pid_only=pid_only,
             )
         if detached:
             import subprocess
@@ -503,7 +613,7 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
         self.assertEqual(status, 0, output)
         return output, events.read_text() if events.exists() else "", timeouts
 
-    def gum_process_probe(self, body, watched_signal, *, resistant_child=False):
+    def gum_process_probe(self, body, watched_signal, *, resistant_child=False, pid_only=False):
         pid, terminal = pty.fork()
         if pid == 0:
             import ctypes
@@ -545,9 +655,14 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
                 if apt_group is None or apt_group in (os.getpgrp(), worker):
                     raise RuntimeError("detached apt helper did not become ready")
                 if watched_signal is not None:
-                    # Deliver exactly the foreground-group signal a terminal
-                    # would send, without signalling detached apt ourselves.
-                    os.killpg(worker, watched_signal)
+                    if pid_only:
+                        # A service manager/operator may target the installer
+                        # PID alone. Its children must be cancelled by production.
+                        os.kill(worker, watched_signal)
+                    else:
+                        # Deliver exactly the foreground-group signal a terminal
+                        # would send, without signalling detached apt ourselves.
+                        os.killpg(worker, watched_signal)
                 deadline = time.monotonic() + 2
                 while time.monotonic() < deadline:
                     while True:
@@ -606,7 +721,91 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
             self.assertIn("install:terminated\n", (self.root / "apt-events").read_text())
         else:
             self.assertEqual((self.root / "apt-child-events").read_text(), "started\nterminated\n")
+        if pid_only:
+            self.assertEqual((self.root / "apt-lock-events").read_text(), "contended\n")
+            expected_signal = signal.Signals(watched_signal).name.removeprefix("SIG")
+            self.assertEqual((self.root / "interruption-events").read_text(), expected_signal + "\n")
+            with (self.root / "install.lock").open("r+") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lock, fcntl.LOCK_UN)
         return output, (self.root / "apt-events").read_text(), self.root / "timeout-args"
+
+    def test_early_apt_fd_allocation_failure_reaps_spawned_child_before_returning(self):
+        finished = self.root / "allocation-child-finished"
+        released_early = self.root / "allocation-lock-released-early"
+        lock_path = self.root / "allocation.lock"
+        child = r'''
+import fcntl, os, select, sys, time
+from pathlib import Path
+# Keep a failing negative control bounded even if no EOF arrives.
+if not select.select([0], [], [], 2)[0] or os.read(0, 1) != b"":
+    sys.exit(97)
+time.sleep(0.2)
+with open(sys.argv[2], "r+") as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        Path(sys.argv[3]).write_text("released before child finished\n")
+        fcntl.flock(lock, fcntl.LOCK_UN)
+Path(sys.argv[1]).write_text("finished\n")
+'''
+        child_command = shlex.join([
+            "/usr/bin/python3", "-c", child, str(finished), str(lock_path), str(released_early),
+        ])
+        self.start("\n".join([
+            initializer("ACFS_EARLY_APT_ACTIVE"),
+            definition("acfs_wait_early_apt"),
+            f"exec 9>{shlex.quote(str(lock_path))}",
+            "flock -n 9",
+            # Bash can spawn process substitution before discovering that a
+            # dynamically allocated descriptor (>=10) exceeds this limit.
+            "ulimit -n 10",
+            "wrapper_status=0",
+            f"acfs_wait_early_apt '' /bin/false /bin/false {child_command} || wrapper_status=$?",
+            'printf "WRAPPER_STATUS=%s\\n" "$wrapper_status"',
+            f"if [[ -f {shlex.quote(str(finished))} ]]; then",
+            "    printf 'CHILD_FINISHED_AT_RETURN=true\\n'",
+            "else",
+            "    printf 'CHILD_FINISHED_AT_RETURN=false\\n'",
+            "fi",
+            "flock -u 9",
+            # A broken implementation may return early. Retain observations
+            # above, then reap its fixture so the negative control cannot leak.
+            "wait",
+        ]))
+        status, output = self.finish()
+        self.assertEqual(status, 0, output)
+        wrapper_status = re.search(r"WRAPPER_STATUS=(\d+)", output)
+        self.assertIsNotNone(wrapper_status, output)
+        self.assertNotEqual(int(wrapper_status[1]), 0, output)
+        self.assertIn("CHILD_FINISHED_AT_RETURN=true", output)
+        self.assertEqual(finished.read_text(), "finished\n")
+        self.assertFalse(released_early.exists(), output)
+
+    def test_signal_handler_rejects_inherited_early_apt_ownership(self):
+        attempted_signals = self.root / "forged-signal-attempts"
+        unrelated_fd = self.root / "unrelated-descriptor"
+        self.start("\n".join([
+            "export ACFS_EARLY_APT_ACTIVE=true ACFS_EARLY_APT_PID=2147483647",
+            "export ACFS_EARLY_APT_CONTROL_FD=197 ACFS_EARLY_APT_SIGNAL=TERM ACFS_EARLY_APT_SIGNAL_COUNT=0",
+            initializer("ACFS_EARLY_APT_ACTIVE"),
+            definition("_acfs_signal_handler"),
+            definition("_acfs_bootstrap_signal_exit"),
+            f"TEST_SIGNAL_ATTEMPTS={shlex.quote(str(attempted_signals))}",
+            'kill() { printf "%s\\n" "$*" >> "$TEST_SIGNAL_ATTEMPTS"; }',
+            "ACFS_CLEANUP_ACTIVE=false; ACFS_BOOTSTRAP_CHILD_STATE=QUIESCENT",
+            f"exec 197>{shlex.quote(str(unrelated_fd))}",
+            "trap 'printf \"descriptor preserved\\n\" >&197' EXIT",
+            "_acfs_signal_handler TERM",
+            "printf 'SIGNAL_HANDLER_RETURNED\\n'",
+        ]))
+        status, output = self.finish()
+        self.assertEqual(status, 143, output)
+        self.assertNotIn("SIGNAL_HANDLER_RETURNED", output)
+        self.assertFalse(attempted_signals.exists())
+        self.assertEqual(unrelated_fd.read_text(), "descriptor preserved\n")
 
     def test_early_gum_apt_detaches_from_controlling_terminal(self):
         output, events, timeouts = self.gum()
@@ -628,6 +827,12 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
         sudo_events = (self.root / "sudo-events").read_text().splitlines()
         self.assertEqual(sudo_events, ["foreground-terminal"] * 5)
 
+    def test_early_gum_restores_monitor_mode_and_keeps_sudo_in_foreground(self):
+        output, _, _ = self.gum(sudo_identity_fixture=True, monitor_mode=True)
+        self.assertIn("HAS_GUM=true", output)
+        self.assertIn("JOB_CONTROL_RESTORED=true", output)
+        self.assertEqual((self.root / "sudo-events").read_text().splitlines(), ["foreground-terminal"] * 5)
+
     def test_early_gum_update_failure_stops_before_install(self):
         output, events, _ = self.gum(failure="update")
         self.assertIn("HAS_GUM=false", output)
@@ -637,6 +842,12 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
         output, events, _ = self.gum(failure="install")
         self.assertIn("HAS_GUM=false", output)
         self.assertIn("install:detached", events)
+
+    def test_early_gum_install_failure_preserves_captured_diagnostics(self):
+        output, events, _ = self.gum(failure="install-output")
+        self.assertIn("HAS_GUM=false", output)
+        self.assertIn("install:detached", events)
+        self.assertIn("Charm repository may be unavailable or package not found", output)
 
     def test_early_gum_timeout_still_bounds_hanging_package_manager(self):
         output, events, _ = self.gum(failure="timeout")
@@ -673,6 +884,20 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
     def test_early_gum_sudo_terminal_interrupt_cleans_up_detached_apt_group(self):
         self.gum(failure="interrupt", sudo_identity_fixture=True, interrupt_signal=signal.SIGINT)
 
+    def test_early_gum_pid_interrupt_reaps_children_before_unlocking(self):
+        self.gum(failure="interrupt-resistant", interrupt_signal=signal.SIGINT, pid_only=True)
+
+    def test_early_gum_pid_termination_reaps_children_before_unlocking(self):
+        self.gum(failure="interrupt-resistant", interrupt_signal=signal.SIGTERM, pid_only=True)
+
+    def test_early_gum_pid_hangup_reaps_children_before_unlocking(self):
+        self.gum(failure="interrupt-resistant", interrupt_signal=signal.SIGHUP, pid_only=True)
+
+    def test_early_gum_sudo_pid_termination_reaps_children_before_unlocking(self):
+        self.gum(failure="interrupt-resistant", interrupt_signal=signal.SIGTERM,
+                 sudo_identity_fixture=True, pid_only=True, parent_kill_fails=True)
+        self.assertEqual((self.root / "sudo-events").read_text().splitlines(), ["foreground-terminal"] * 5)
+
     def test_early_gum_missing_session_tool_keeps_optional_fallback(self):
         output, events, timeouts = self.gum(setsid_available=False)
         self.assertIn("HAS_GUM=false", output)
@@ -681,6 +906,12 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
 
     def test_early_gum_missing_guardian_sleep_keeps_optional_fallback(self):
         output, events, timeouts = self.gum(sleep_available=False)
+        self.assertIn("HAS_GUM=false", output)
+        self.assertEqual(events, "")
+        self.assertFalse(timeouts.exists())
+
+    def test_early_gum_missing_capture_mktemp_keeps_optional_fallback(self):
+        output, events, timeouts = self.gum(mktemp_available=False)
         self.assertIn("HAS_GUM=false", output)
         self.assertEqual(events, "")
         self.assertFalse(timeouts.exists())
