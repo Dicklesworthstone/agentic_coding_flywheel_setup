@@ -448,7 +448,7 @@ case "$*" in
         ;;
 esac
 case "$tool:$*" in
-    bun:upgrade|uv:'self update'|atuin:self-update|atuin-update:)
+    bun:upgrade|bun:'install -g --trust '*|uv:'self update'|atuin:self-update|atuin-update:|agy:update|agy-real:update|omp:update|opencode:upgrade)
         attempt_file="$HOME/$tool-native-attempts"
         attempt=0
         [[ ! -f "$attempt_file" ]] || read -r attempt < "$attempt_file"
@@ -1267,6 +1267,170 @@ update_p10k
         self.assertTrue(any(row[2].startswith("120 ") for row in rows), rows)
         self.assertTrue(any(row[2].startswith("60 ") for row in rows), rows)
         self.assertTrue(any(row[2].startswith("--kill-after=30s 5 ") for row in rows), rows)
+
+
+class AgentPackageDeadlineTests(unittest.TestCase):
+    """Exercise agent/package deadlines without requiring account privileges.
+
+    The existing RustRuntimeContextTests retain their real account-transition
+    coverage. These dispatch tests use the current account and a fixture home,
+    keeping the production target runner, timeouts and failure accounting real.
+    """
+
+    owned_dir = RustRuntimeContextTests.owned_dir
+    write_input = RustRuntimeContextTests.write_input
+    write_native_tool = RustRuntimeContextTests.write_native_tool
+    write_maintenance_tool = RustRuntimeContextTests.write_maintenance_tool
+    cloud_command = RustRuntimeContextTests.cloud_command
+    events = RustRuntimeContextTests.events
+    assert_target_events = RustRuntimeContextTests.assert_target_events
+
+    @classmethod
+    def setUpClass(cls):
+        cls.account = pwd.getpwuid(os.geteuid())
+        cls.artifacts = Path(tempfile.mkdtemp(prefix="acfs-agent-deadlines-"))
+        cls.library = cls.artifacts / "update.sh"
+        cls.library.write_text(SOURCE.read_text())
+        print("Agent deadline artifacts:", cls.artifacts, flush=True)
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="case-", dir=self.artifacts))
+        self.home = self.base / "target-home"
+        self.caller = self.base / "caller-home"
+        self.work = self.base / "working directory"
+        self.tmp = self.base / "tmp"
+        for path in (self.home, self.caller, self.work, self.tmp):
+            self.owned_dir(path)
+        self.events_file = self.base / "events.tsv"
+        self.events_file.write_text("")
+        (self.base / "update.log").write_text("")
+
+    def own(self, path):
+        # These fixtures already belong to the account that executes them.
+        pass
+
+    def run_update(self, *, command, timeout="5", dry_run=False):
+        env = {
+            "HOME": str(self.home), "PATH": "/usr/bin:/bin",
+            "TARGET_USER": self.account.pw_name, "TARGET_HOME": str(self.home),
+            "UPDATE_TEST_LIBRARY": str(self.library), "TEST_ROOT": str(self.base),
+            "TEST_USER": self.account.pw_name, "TEST_UID": str(self.account.pw_uid),
+            "TEST_GID": str(self.account.pw_gid), "TEST_HOME": str(self.home),
+            "TEST_DRY_RUN": str(dry_run).lower(), "TEST_ABORT": "false",
+            "TEST_TIMEOUT": timeout, "TEST_TRANSPORT": "default",
+            "TMPDIR": str(self.tmp), "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+        }
+        # Root's real home is /root even with TARGET_HOME. Redirect only home
+        # metadata to the isolated fixture; account identity/transport stay real.
+        body = COMMON + r'''
+update_target_home() { printf '%s\n' "$TEST_HOME"; }
+''' + command + r'''
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+'''
+        result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", body],
+                                env=env, cwd=self.work, text=True, capture_output=True,
+                                timeout=20)
+        (self.base / "stdout").write_text(result.stdout)
+        (self.base / "stderr").write_text(result.stderr)
+        (self.base / "exit").write_text(str(result.returncode) + "\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout + result.stderr
+
+    def test_agent_native_updates_keep_deadlines_and_continue(self):
+        for tool in ("agy", "agy-real", "omp", "opencode"):
+            self.write_native_tool(tool)
+        for tool in ("agy-real", "omp"):
+            self.write_input(self.base / f"mode-{tool}", "hang\n")
+        output = self.run_update(timeout="0.2", command="update_agents")
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=1,3,2", output)
+        log = (self.base / "update.log").read_text()
+        self.assertIn("Failed: Antigravity CLI (exit code: 124)", log)
+        self.assertIn("Failed: oh-my-pi (omp) (exit code: 124)", log)
+        for tool in ("agy-real", "omp"):
+            self.assertFalse((self.home / f"{tool}-native-installed").exists())
+        self.assertTrue((self.home / "opencode-native-installed").exists())
+        mutations = [(e[0], e[-1]) for e in self.events() if e[-1] != "--version"]
+        self.assertEqual(mutations, [("agy-real", "update"), ("omp", "update"),
+                                     ("opencode", "upgrade")])
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_agent_native_updates_keep_success_and_account_context(self):
+        for tool in ("agy", "agy-real", "omp", "opencode"):
+            self.write_native_tool(tool)
+        output = self.run_update(command="update_agents")
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=3,3,0", output)
+        for tool in ("agy-real", "omp", "opencode"):
+            self.assertEqual((self.home / f"{tool}-native-installed").stat().st_uid,
+                             self.account.pw_uid)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_agent_native_dry_run_never_self_updates(self):
+        for tool in ("agy", "agy-real", "omp", "opencode"):
+            self.write_native_tool(tool)
+        output = self.run_update(dry_run=True, command="update_agents")
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=0,6,0", output)
+        self.assertEqual(set(e[-1] for e in self.events()), {"--version"})
+        for tool in ("agy-real", "omp", "opencode"):
+            self.assertFalse((self.home / f"{tool}-native-attempts").exists())
+
+    def test_codex_package_timeout_preserves_retries_and_later_agents(self):
+        for tool in ("bun", "codex", "omp"):
+            self.write_native_tool(tool)
+        self.write_input(self.base / "mode-bun", "hang\n")
+        output = self.run_update(timeout="0.2", command="update_agents")
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=1,4,1", output)
+        install_args = [e[-1] for e in self.events() if e[0] == "bun"]
+        self.assertEqual(install_args,
+                         ["install -g --trust @openai/codex@latest"] * 3 +
+                         ["install -g --trust @openai/codex"] * 3)
+        self.assertFalse((self.home / "bun-native-installed").exists())
+        self.assertTrue((self.home / "omp-native-installed").exists())
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_codex_package_dry_run_never_installs(self):
+        for tool in ("bun", "codex", "omp"):
+            self.write_native_tool(tool)
+        output = self.run_update(dry_run=True, command="update_agents")
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=0,6,0", output)
+        self.assertEqual(set(e[-1] for e in self.events()), {"--version"})
+        self.assertFalse((self.home / "bun-native-attempts").exists())
+        self.assertFalse((self.home / "omp-native-attempts").exists())
+
+    def test_cloud_package_timeouts_continue_to_other_tools(self):
+        for tool in ("bun", "wrangler", "vercel"):
+            self.write_native_tool(tool)
+        self.write_maintenance_tool("gh")
+        self.write_input(self.base / "mode-bun", "hang\n")
+        output = self.run_update(timeout="0.2", command=self.cloud_command())
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=1,2,2", output)
+        self.assertEqual([e[-1] for e in self.events() if e[0] == "bun"],
+                         ["install -g --trust wrangler@latest",
+                          "install -g --trust vercel@latest"])
+        self.assertFalse((self.home / "bun-native-installed").exists())
+        self.assertIn(("gh", "extension upgrade --all"),
+                      [(e[0], e[-1]) for e in self.events()])
+        log = (self.base / "update.log").read_text()
+        self.assertIn("Failed: Wrangler (Cloudflare) (exit code: 124 after 1 attempts)", log)
+        self.assertIn("Failed: Vercel CLI (exit code: 124 after 1 attempts)", log)
+        self.assertEqual(list(self.caller.iterdir()), [])
+
+    def test_cloud_package_dry_run_never_installs(self):
+        for tool in ("bun", "wrangler", "vercel"):
+            self.write_native_tool(tool)
+        self.write_maintenance_tool("gh")
+        output = self.run_update(dry_run=True, command=self.cloud_command())
+        self.assert_target_events(self.events())
+        self.assertIn("COUNTS=0,5,0", output)
+        self.assertEqual([(e[0], e[-1]) for e in self.events()],
+                         [("gh", "extension list")])
+        self.assertFalse((self.home / "bun-native-attempts").exists())
+        self.assertEqual(list(self.caller.iterdir()), [])
 
 
 if __name__ == "__main__":

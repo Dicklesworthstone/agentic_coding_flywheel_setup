@@ -1369,7 +1369,7 @@ update_is_pin_failure() {
     case "${2:-}" in
         update_run_verified_installer|update_run_verified_installer_with_env) return 0 ;;
         update_run_verified_installer_with_target_tmpdir|_run_claude_installer_with_timeout) return 0 ;;
-        update_run_pcr_installer_and_verify|update_run_slb_verified_install) return 0 ;;
+        update_run_pcr_installer_and_verify|update_run_slb_verified_install|update_migrate_bun_claude) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -7205,6 +7205,125 @@ update_install_agy_locked_launchers() {
     return 1
 }
 
+# Preserve the Bun package until the native command is installed, selected, and
+# executable. The generic rollback retains a payload, but a native installer can
+# replace ~/.local/bin/claude with a different symlink; retain that binding too.
+update_migrate_bun_claude() {
+    local previous_command="$1" target_home="" native_command="" previous_payload=""
+    target_home="$(update_target_home "$(update_target_user)")" || return 1
+    [[ -n "$target_home" && "$target_home" != / ]] || return 1
+    native_command="$target_home/.local/bin/claude"
+
+    local utility="" recovery_dir="" had_native=false activated_alias=false
+    local -A migration_bins=()
+    for utility in mktemp cp mv readlink ln cmp; do
+        migration_bins["$utility"]="$(update_system_binary_path "$utility")" || return 1
+    done
+    previous_payload="$(update_run_in_target_context "" "${migration_bins[readlink]}" -f -- "$previous_command")" || return 1
+    if [[ -e "$native_command" && ! -f "$native_command" && ! -L "$native_command" ]]; then
+        printf 'Cannot migrate Claude: native command destination is not a file or symlink.\n' >&2
+        return 1
+    fi
+    recovery_dir="$(update_run_in_target_context "" "${migration_bins[mktemp]}" -d -- \
+        "$target_home/.acfs-claude-migration.XXXXXX")" || return 1
+    if [[ -e "$native_command" || -L "$native_command" ]]; then
+        update_run_in_target_context "" "${migration_bins[cp]}" -a --no-dereference -- \
+            "$native_command" "$recovery_dir/original-command" || return 1
+        had_native=true
+    fi
+
+    local status=0 native_payload="" active_command="" active_payload=""
+    update_run_verified_installer claude latest || status=$?
+    # A genuine refusal happens before execution. Hold/backoff details prove
+    # that provenance: an executed installer can also exit with 93 or 94, in
+    # which case its changed command binding still needs recovery.
+    case "$status" in
+        "$UPDATE_EXIT_CHECKSUM") return "$status" ;;
+        "$UPDATE_EXIT_HELD") [[ -z "$UPDATE_LAST_HOLD_DETAILS" ]] || return "$status" ;;
+        "$UPDATE_EXIT_ROLLBACK_BACKOFF") [[ -z "$UPDATE_LAST_BACKOFF_DETAILS" ]] || return "$status" ;;
+    esac
+    if [[ "$status" -eq 0 ]]; then
+        native_payload="$(update_run_in_target_context "" "${migration_bins[readlink]}" -f -- "$native_command" 2>/dev/null || true)"
+        case "$native_payload" in
+            ""|"$previous_payload"|*/.bun/*|*/node_modules/*) status=1 ;;
+            *) update_run_smoke_probe "$native_command" --version >/dev/null 2>&1 || status=1 ;;
+        esac
+    fi
+
+    # A custom primary bin may still select the old Bun symlink. Activate the
+    # verified native command there atomically before retiring its package.
+    if [[ "$status" -eq 0 && "$previous_command" != "$native_command" \
+          && "$previous_command" != "$target_home/.bun/"* ]]; then
+        if [[ -L "$previous_command" ]] \
+            && update_run_in_target_context "" "${migration_bins[cp]}" -a --no-dereference -- \
+                "$previous_command" "$recovery_dir/original-active-command" \
+            && update_run_in_target_context "" "${migration_bins[ln]}" -s -- \
+                "$native_command" "$recovery_dir/native-command" \
+            && update_run_in_target_context "" "${migration_bins[mv]}" -fT -- \
+                "$recovery_dir/native-command" "$previous_command"; then
+            activated_alias=true
+        else
+            status=1
+        fi
+    fi
+    if [[ "$status" -eq 0 ]]; then
+        active_command="$(update_binary_path claude 2>/dev/null || true)"
+        active_payload="$(update_run_in_target_context "" "${migration_bins[readlink]}" -f -- "$active_command" 2>/dev/null || true)"
+        if [[ "$active_payload" != "$native_payload" ]] \
+            || ! update_run_smoke_probe "$active_command" --version >/dev/null 2>&1; then
+            status=1
+        fi
+    fi
+
+    if [[ "$status" -ne 0 ]]; then
+        local native_unchanged=false current_link="" original_link="" recovered=true
+        if [[ "$had_native" == true ]]; then
+            if [[ -L "$native_command" && -L "$recovery_dir/original-command" ]] \
+                && current_link="$(update_run_in_target_context "" "${migration_bins[readlink]}" -- "$native_command")" \
+                && original_link="$(update_run_in_target_context "" "${migration_bins[readlink]}" -- "$recovery_dir/original-command")" \
+                && [[ "$current_link" == "$original_link" ]]; then
+                native_unchanged=true
+            elif [[ -f "$native_command" && ! -L "$native_command" \
+                    && ! -L "$recovery_dir/original-command" ]] \
+                && update_run_in_target_context "" "${migration_bins[cmp]}" -s -- \
+                    "$native_command" "$recovery_dir/original-command"; then
+                native_unchanged=true
+            fi
+        fi
+        if [[ "$native_unchanged" != true ]]; then
+            if [[ -e "$native_command" || -L "$native_command" ]]; then
+                update_run_in_target_context "" "${migration_bins[mv]}" -T -- \
+                    "$native_command" "$recovery_dir/failed-native-command" || recovered=false
+            fi
+            if [[ "$recovered" == true && "$had_native" == true ]]; then
+                update_run_in_target_context "" "${migration_bins[cp]}" -a --no-dereference -- \
+                    "$recovery_dir/original-command" "$native_command" || recovered=false
+            fi
+        fi
+        if [[ "$activated_alias" == true ]]; then
+            update_run_in_target_context "" "${migration_bins[mv]}" -fT -- \
+                "$recovery_dir/original-active-command" "$previous_command" || recovered=false
+        fi
+        active_command="$(update_binary_path claude 2>/dev/null || true)"
+        if [[ "$recovered" == true ]] && update_run_smoke_probe "$active_command" --version >/dev/null 2>&1; then
+            log_to_file "Claude native migration failed; retained the working Bun installation (recovery: $recovery_dir)"
+        else
+            printf 'Claude migration recovery needs attention; retained command backups: %s\n' "$recovery_dir" >&2
+        fi
+        return "$status"
+    fi
+
+    local bun_bin=""
+    bun_bin="$(update_binary_path bun 2>/dev/null || true)"
+    if [[ -n "$bun_bin" ]] \
+        && update_run_bounded_in_target_context "$bun_bin" remove -g @anthropic-ai/claude-code; then
+        log_to_file "Claude native migration verified; retired the Bun package as the target account"
+    else
+        log_item "warn" "Claude Code" "native command verified; old Bun package retained because cleanup was unavailable or failed"
+    fi
+    return 0
+}
+
 update_agents() {
     if [[ "$UPDATE_AGENTS" != "true" ]]; then
         return 0
@@ -7219,9 +7338,8 @@ update_agents() {
 
     # Claude Code - can update without bun; supports install/reinstall with --force.
     #
-    # Check for bun-installed Claude and remove it if native install is requested.
-    # The native install goes to ~/.local/bin/claude which should take precedence,
-    # but having both can cause PATH confusion and doctor warnings.
+    # A forced Bun-to-native migration keeps the working package and command
+    # bindings until the verified replacement is ready.
     local claude_path=""
     claude_path="$(update_binary_path claude 2>/dev/null || true)"
     local bun_claude_detected=false
@@ -7239,32 +7357,6 @@ update_agents() {
               "$resolved_path" == *".bun"* || "$resolved_path" == *"node_modules"* ]]; then
             bun_claude_detected=true
         fi
-    fi
-
-    if [[ "$bun_claude_detected" == "true" ]] && [[ "$FORCE_MODE" == "true" ]] && [[ "$DRY_RUN" == "true" ]]; then
-        # Every other mutating path honours --dry-run; without this guard a
-        # preview run would uninstall bun's claude and then skip the replacement
-        # install, leaving no claude at all.
-        log_item "skip" "Claude Code" "dry-run: would remove bun-installed Claude ($claude_path) and install the native build"
-    elif [[ "$bun_claude_detected" == "true" ]] && [[ "$FORCE_MODE" == "true" ]]; then
-        log_to_file "Removing bun-installed Claude to switch to native version: $claude_path"
-        local bun_remove_bin=""
-        bun_remove_bin="$(update_binary_path bun 2>/dev/null || true)"
-        if [[ -n "$bun_remove_bin" ]]; then
-            # Try to uninstall via bun
-            "$bun_remove_bin" remove -g @anthropic-ai/claude-code 2>/dev/null || true
-        fi
-        # Also remove the symlink/binary directly if it still exists
-        if [[ -f "$claude_path" || -L "$claude_path" ]]; then
-            rm -f "$claude_path" 2>/dev/null || true
-        fi
-        # Remove the actual bun binary too if it's separate from the symlink
-        local bun_claude_bin="${target_home:-$HOME}/.bun/bin/claude"
-        if [[ -f "$bun_claude_bin" || -L "$bun_claude_bin" ]] && [[ "$bun_claude_bin" != "$claude_path" ]]; then
-            rm -f "$bun_claude_bin" 2>/dev/null || true
-        fi
-        # Clear the cached path so we detect as "not installed" for fresh install
-        claude_path=""
     fi
 
     if [[ -n "$claude_path" ]] && [[ "$bun_claude_detected" != "true" || "$FORCE_MODE" != "true" ]]; then
@@ -7295,7 +7387,11 @@ update_agents() {
         capture_version_before "claude"
         if update_require_security; then
             # INTENTIONAL: verified installer is the correct path for fresh installs
-            run_cmd "Claude Code (install)" update_run_verified_installer claude latest
+            if [[ "$bun_claude_detected" == "true" ]]; then
+                run_cmd "Claude Code (native migration)" update_migrate_bun_claude "$claude_path"
+            else
+                run_cmd "Claude Code (install)" update_run_verified_installer claude latest
+            fi
             if capture_version_after "claude"; then
                 update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[claude]}" "${VERSION_AFTER[claude]}"
             fi
@@ -7351,7 +7447,7 @@ update_agents() {
                 log_to_file "Trying bun install $pkg"
                 local attempt=1
                 while [[ $attempt -le $max_attempts ]]; do
-                    if output=$(update_run_in_target_context "" "$bun_bin" install -g --trust "$pkg" 2>&1); then
+                    if output=$(update_run_bounded_in_target_context "$bun_bin" install -g --trust "$pkg" 2>&1); then
                         success=true
                         break 2
                     fi
@@ -7390,7 +7486,7 @@ update_agents() {
 
     if [[ -n "$agy_bin" ]]; then
         capture_version_before "agy"
-        run_cmd "Antigravity CLI" update_run_in_target_context "" "$agy_bin" update
+        run_cmd "Antigravity CLI" update_run_bounded_in_target_context "$agy_bin" update
         if capture_version_after "agy"; then
             update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[agy]}" "${VERSION_AFTER[agy]}"
         fi
@@ -7417,7 +7513,7 @@ update_agents() {
         local omp_bin=""
         omp_bin="$(update_binary_path omp 2>/dev/null || true)"
         capture_version_before "omp"
-        run_cmd "oh-my-pi (omp)" update_run_in_target_context "" "$omp_bin" update
+        run_cmd "oh-my-pi (omp)" update_run_bounded_in_target_context "$omp_bin" update
         if capture_version_after "omp"; then
             update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[omp]}" "${VERSION_AFTER[omp]}"
         fi
@@ -7831,7 +7927,7 @@ update_cloud() {
     # Wrangler (--trust allows postinstall scripts for native binaries)
     if update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
-            run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_in_target_context "" "$bun_bin" install -g --trust wrangler@latest
+            run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_bounded_in_target_context "$bun_bin" install -g --trust wrangler@latest
         else
             log_item "fail" "Wrangler (Cloudflare)" "bun not installed (required)"
         fi
@@ -7861,7 +7957,7 @@ update_cloud() {
     # Vercel (--trust allows postinstall scripts for native binaries)
     if update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
-            run_cmd_bun_with_retry "Vercel CLI" update_run_in_target_context "" "$bun_bin" install -g --trust vercel@latest
+            run_cmd_bun_with_retry "Vercel CLI" update_run_bounded_in_target_context "$bun_bin" install -g --trust vercel@latest
         else
             log_item "fail" "Vercel CLI" "bun not installed (required)"
         fi

@@ -1184,5 +1184,219 @@ grok_recovery_source="$(declare -f update_snapshot_tool_binary update_verify_too
         self.assertEqual(self.events(), ["download", "refresh"])
 
 
+class ClaudeMigrationTests(unittest.TestCase):
+    """The real agent dispatcher must retain Bun Claude until native readiness.
+
+    Acquisition is file-backed and package operations are inert executables.
+    Verification, the target HOME, command bindings and recovery are real. The
+    target account is the current account with an isolated passwd-home fixture;
+    these cases do not claim privileged account-switching coverage.
+    """
+
+    def fixture(self, *, binding="local", action="healthy", installer_exit=0,
+                security=True, hold=False, backoff=False, dry_run=False, pin=None, cleanup_exit=0):
+        base = Path(tempfile.mkdtemp(prefix="acfs-claude-migration-"))
+        home, caller = base / "target", base / "caller"
+        for folder in (home / ".local/bin", home / ".bun/bin", caller):
+            folder.mkdir(parents=True, exist_ok=True)
+        package = home / ".bun/install/global/node_modules/@anthropic-ai/claude-code"
+        package.mkdir(parents=True)
+        old = package / "cli.js"
+        old.write_text('#!/bin/bash\nprintf "Claude Code 1.0.0 (Bun)\\n"\n')
+        old.chmod(0o755)
+        bun_command = home / ".bun/bin/claude"
+        bun_command.symlink_to(old)
+        native = home / ".local/bin/claude"
+        active = bun_command
+        if binding == "local":
+            native.symlink_to(bun_command)
+            active = native
+        elif binding == "custom":
+            active = home / "custom/bin/claude"
+            active.parent.mkdir(parents=True)
+            active.symlink_to(bun_command)
+        bun = home / ".bun/bin/bun"
+        bun.write_text(r'''#!/bin/bash
+set -eu
+if [[ "$*" == 'remove -g @anthropic-ai/claude-code' ]]; then
+    printf 'remove:%s:%s\n' "$HOME" "${BUN_INSTALL:-unset}" >> "$TEST_ROOT/events"
+    [[ "$TEST_CLEANUP_EXIT" == 0 ]] || exit "$TEST_CLEANUP_EXIT"
+    mv "$HOME/.bun/install/global/node_modules/@anthropic-ai/claude-code" "$TEST_ROOT/retired-package"
+elif [[ "${1:-}" == --version ]]; then
+    printf '1.4.4\n'
+fi
+''')
+        bun.chmod(0o755)
+        payload = base / "native-payload"
+        payload.write_text(r'''#!/bin/bash
+printf 'native-probe:%s\n' "$HOME" >> "$TEST_ROOT/events"
+if [[ "$TEST_ACTION" == broken ]]; then exit 17; fi
+printf 'Claude Code 2.0.0 (native)\n'
+''')
+        payload.chmod(0o755)
+        installer = base / "installer.sh"
+        installer.write_text(r'''#!/bin/bash
+set -eu
+printf 'install:%s\n' "$HOME" >> "$TEST_ROOT/events"
+if [[ "$TEST_ACTION" != unchanged ]]; then
+    mkdir -p "$HOME/.local/share/claude/versions"
+    cp "$TEST_ROOT/native-payload" "$HOME/.local/share/claude/versions/2.0.0"
+    if [[ -e "$HOME/.local/bin/claude" || -L "$HOME/.local/bin/claude" ]]; then
+        mv "$HOME/.local/bin/claude" "$TEST_ROOT/installer-displaced-command"
+    fi
+    ln -s "$HOME/.local/share/claude/versions/2.0.0" "$HOME/.local/bin/claude"
+fi
+exit "$TEST_INSTALLER_EXIT"
+''')
+        digest = hashlib.sha256(installer.read_bytes()).hexdigest()
+        env = {
+            "PATH": "/usr/bin:/bin", "HOME": str(caller), "TARGET_HOME": str(home),
+            "TEST_HOME": str(home), "TEST_ROOT": str(base), "TMPDIR": str(base),
+            "ACFS_HOME": str(home / ".acfs"), "ACFS_BIN_DIR": str(active.parent if binding == "custom" else native.parent),
+            "REPO_ROOT": str(ROOT), "NO_COLOR": "1", "ACFS_INTERACTIVE": "false",
+            "UPDATE_TEST_LIBRARY": os.environ.get("ACFS_UPDATE_TEST_LIBRARY", str(ROOT / "scripts/lib/update.sh")),
+            "TEST_PIN": digest if pin is None else pin,
+            "TEST_ACTION": action, "TEST_INSTALLER_EXIT": str(installer_exit),
+            "TEST_SECURITY": str(security).lower(), "TEST_HOLD": str(hold).lower(),
+            "TEST_BACKOFF": str(backoff).lower(),
+            "TEST_DRY_RUN": str(dry_run).lower(), "TEST_CLEANUP_EXIT": str(cleanup_exit),
+        }
+        script = r'''
+set -euo pipefail
+source "$UPDATE_TEST_LIBRARY"
+source "$REPO_ROOT/scripts/lib/security.sh"
+UPDATE_AGENTS=true FORCE_MODE=true DRY_RUN="$TEST_DRY_RUN"
+QUIET=true VERBOSE=false ABORT_ON_FAILURE=false
+UPDATE_LOG_FILE="$TEST_ROOT/update.log"
+UPDATE_CMD_TIMEOUT=5 UPDATE_SMOKE_TIMEOUT=2
+update_target_home() { printf '%s\n' "$TEST_HOME"; }
+update_require_security() { [[ "$TEST_SECURITY" == true ]]; }
+get_checksum() { printf '%s\n' "$TEST_PIN"; }
+KNOWN_INSTALLERS[claude]='https://fixture.invalid/installer.sh'
+update_tool_hold_details() {
+    [[ "$TEST_HOLD" == true ]] || return 1
+    UPDATE_LAST_HOLD_TOOL=claude UPDATE_LAST_HOLD_DETAILS='fixture hold'
+}
+update_tool_rollback_backoff_details() {
+    [[ "$TEST_BACKOFF" == true ]] || return 1
+    UPDATE_LAST_BACKOFF_TOOL=claude UPDATE_LAST_BACKOFF_DETAILS='fixture backoff'
+}
+update_tool_latest_release_tag() { printf 'v2.0.0\n'; }
+update_private_installer_tmpdir() { return 0; }
+update_create_target_readable_temp_file() { mktemp "$TEST_ROOT/stage.XXXXXX"; }
+acfs_download_to_file() { cat "$TEST_ROOT/installer.sh" > "$2"; }
+acfs_refresh_loaded_checksums_from_remote() { return 1; }
+# Retain captures and downloaded scripts. Package retirement is a fixture move.
+rm() { :; }
+# Exercise the actual Claude dispatch/run_cmd path without updating other agents.
+original_run_cmd="$(declare -f run_cmd)"
+eval "${original_run_cmd/run_cmd ()/migration_run_cmd ()}"
+run_cmd() {
+    if [[ "$1" == 'Claude Code'* ]]; then migration_run_cmd "$@"; fi
+}
+update_binary_exists() { return 1; }
+update_install_agy_locked_launchers() { return 0; }
+capture_version_before() { :; }
+capture_version_after() { return 1; }
+update_agents
+printf 'COUNTS=%s,%s,%s\n' "$SUCCESS_COUNT" "$FAIL_COUNT" "${#UPDATE_PIN_FAILURES[@]}"
+printf 'ACTIVE=%s\n' "$(update_binary_path claude 2>/dev/null || true)"
+'''
+        result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", script],
+                                env=env, text=True, capture_output=True, timeout=30)
+        output = result.stdout + result.stderr
+        (base / "result.log").write_text(output)
+        self.assertEqual(result.returncode, 0, output)
+        return base, home, active, output
+
+    def assert_original_works(self, home, active):
+        result = subprocess.run([str(active), "--version"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("1.0.0 (Bun)", result.stdout)
+        self.assertTrue((home / ".bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js").exists())
+
+    def test_checksum_refusal_preserves_package_and_active_binding(self):
+        for binding in ("local", "bun", "custom"):
+            with self.subTest(binding=binding):
+                base, home, active, output = self.fixture(binding=binding, pin="1" * 64)
+                self.assert_original_works(home, active)
+                self.assertIn("CHECKSUM BLOCKED", output)
+                self.assertFalse((base / "events").exists())
+
+    def test_missing_security_preserves_existing_installation(self):
+        base, home, active, _ = self.fixture(security=False)
+        self.assert_original_works(home, active)
+        self.assertFalse((base / "events").exists())
+
+    def test_hold_preserves_existing_installation(self):
+        base, home, active, _ = self.fixture(hold=True)
+        self.assert_original_works(home, active)
+        self.assertFalse((base / "events").exists())
+
+    def test_backoff_preserves_existing_installation(self):
+        base, home, active, _ = self.fixture(backoff=True)
+        self.assert_original_works(home, active)
+        self.assertFalse((base / "events").exists())
+        self.assertIn("BACKOFF: fixture backoff", (base / "update.log").read_text())
+
+    def test_executed_installer_cannot_impersonate_hold_or_backoff(self):
+        for installer_exit in (93, 94):
+            with self.subTest(installer_exit=installer_exit):
+                base, home, active, output = self.fixture(action="broken", installer_exit=installer_exit)
+                self.assert_original_works(home, active)
+                self.assertNotIn("remove:", (base / "events").read_text())
+                self.assertIn("[fail] Claude Code", output)
+                self.assertNotIn("HELD:", output)
+                self.assertNotIn("BACKOFF:", output)
+
+    def test_failed_installer_restores_command_even_after_rebinding(self):
+        for binding in ("local", "bun"):
+            with self.subTest(binding=binding):
+                base, home, active, output = self.fixture(binding=binding, installer_exit=17)
+                self.assert_original_works(home, active)
+                self.assertNotIn("remove:", (base / "events").read_text())
+                self.assertIn("[fail] Claude Code", output)
+                if binding == "bun":
+                    self.assertFalse((home / ".local/bin/claude").exists())
+
+    def test_broken_native_restores_working_bun_command(self):
+        base, home, active, _ = self.fixture(action="broken")
+        self.assert_original_works(home, active)
+        self.assertNotIn("remove:", (base / "events").read_text())
+
+    def test_noop_installer_cannot_remove_bun_or_claim_native_success(self):
+        base, home, active, output = self.fixture(action="unchanged")
+        self.assert_original_works(home, active)
+        self.assertNotIn("remove:", (base / "events").read_text())
+        self.assertIn("[fail] Claude Code", output)
+
+    def test_success_verifies_native_before_target_context_cleanup(self):
+        for binding in ("local", "bun", "custom"):
+            with self.subTest(binding=binding):
+                base, home, active, output = self.fixture(binding=binding)
+                events = (base / "events").read_text().splitlines()
+                removal = f"remove:{home}:{home}/.bun"
+                self.assertIn(removal, events)
+                self.assertLess(events.index(f"install:{home}"), events.index(removal))
+                self.assertLess(events.index(f"native-probe:{home}"), events.index(removal))
+                self.assertTrue((home / ".local/bin/claude").is_file())
+                if binding == "custom":
+                    self.assertEqual(active.resolve(), (home / ".local/bin/claude").resolve())
+                self.assertNotIn("[fail] Claude Code", output)
+
+    def test_cleanup_failure_keeps_native_and_old_package(self):
+        base, home, _, output = self.fixture(cleanup_exit=17)
+        self.assertTrue((home / ".local/bin/claude").is_file())
+        self.assertTrue((home / ".bun/bin/claude").is_file())
+        self.assertNotIn("[fail] Claude Code", output)
+        self.assertIn("retained", (base / "update.log").read_text())
+
+    def test_dry_run_does_not_install_remove_or_rebind(self):
+        base, home, active, _ = self.fixture(dry_run=True)
+        self.assert_original_works(home, active)
+        self.assertFalse((base / "events").exists())
+        self.assertEqual(list(home.glob(".acfs-claude-migration.*")), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
