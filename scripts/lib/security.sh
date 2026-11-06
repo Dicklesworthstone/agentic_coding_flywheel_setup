@@ -4025,6 +4025,613 @@ acfs_review_checksum_subset() (
     printf '%s\n' "$review_json"
 )
 
+
+# Validate policy/report snapshots with the canonical Bash parsers. This helper
+# receives only private snapshots made by the evidence reader, never installer
+# contents or shell fragments from the evidence bundle.
+_acfs_validate_checksum_evidence_policy_report() (
+    local policy_file="$1" report_file="$2" policy_digest="$3" tool=""
+    local -A evidence_urls=() evidence_checksums=() evidence_matches=()
+    local -A evidence_expected=() evidence_actual=() evidence_errors=() evidence_skipped=()
+    acfs_load_checksums_strict "$policy_file" evidence_urls evidence_checksums || return 1
+    acfs_validate_installer_checksum_report "$report_file" evidence_urls evidence_checksums "$policy_digest" \
+        evidence_matches evidence_expected evidence_actual evidence_errors evidence_skipped || return 1
+    if (( ${#evidence_errors[@]} > 0 || ${#evidence_skipped[@]} > 0 )); then
+        log_error "Checksum evidence requires a complete observation without errors or skipped installers"
+        return 1
+    fi
+    for tool in "${!evidence_actual[@]}"; do
+        if [[ "${evidence_actual[$tool]}" == "${evidence_expected[$tool]}" ]]; then
+            log_error "Checksum evidence labels a matching observation as a mismatch"
+            return 1
+        fi
+    done
+)
+
+# Offline evidence review has a different trust boundary from a live download:
+# the caller must supply the report/index hashes recorded independently by the
+# monitor. Python's descriptor-relative, nonblocking opens avoid stat/open FIFO
+# races; the existing strict Bash parsers still own policy/report semantics.
+# Keep this reader independent of the publication monitor and its state writes.
+_acfs_checksum_evidence() {
+    local evidence_python="" evidence_bash="" evidence_jq=""
+    evidence_python="$(acfs_security_required_binary_path python3)" || return $?
+    evidence_bash="$(acfs_security_required_binary_path bash)" || return $?
+    evidence_jq="$(acfs_security_required_binary_path jq)" || return $?
+    "$evidence_python" -I - "$SECURITY_SCRIPT_DIR/security.sh" "$evidence_bash" "$evidence_jq" "$@" <<'ACFS_CHECKSUM_EVIDENCE_PY'
+import gzip
+import hashlib
+import io
+import json
+import os
+import re
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import zlib
+
+POLICY_LIMIT = 1048576
+REPORT_LIMIT = 4194304
+INDEX_LIMIT = 1048576
+METADATA_LIMIT = 16384
+BODY_LIMIT = 16777216
+WIRE_LIMIT = 1048576
+HEADERS_LIMIT = 1048576
+DIAGNOSTIC_LIMIT = 1048576
+FIXED_FILES = ("body", "body.wire", "body.headers", "metadata.json")
+METADATA_KEYS = {
+    "schema", "name", "url", "expected", "actual", "status",
+    "bodySha256", "wireSha256", "headersSha256",
+}
+INDEX_KEYS = {"schema", "verificationReportSha256", "checksumsYamlSha256", "observations"}
+HEX = re.compile(r"[0-9a-f]{64}")
+NAME = re.compile(r"[a-z][a-z0-9_]*")
+DIAGNOSTIC = re.compile(r"fetch-stderr\.[A-Za-z0-9]{6}")
+LIBRARY, BASH, JQ = sys.argv[1:4]
+CLEAN_ENV = {
+    "PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": "/",
+    "LANG": "C", "LC_ALL": "C", "NO_COLOR": "1",
+}
+os.umask(0o077)
+
+
+class EvidenceError(Exception):
+    pass
+
+
+def require(condition, message):
+    if not condition:
+        raise EvidenceError(message)
+
+
+def absolute_path(value):
+    require(bool(value) and "\n" not in value and "\r" not in value
+            and ".." not in value.split("/"), "Invalid evidence path")
+    return os.path.abspath(value)
+
+
+def identity(info):
+    return info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid
+
+
+def file_identity(info):
+    return identity(info) + (info.st_nlink, info.st_size,
+                             info.st_mtime_ns, info.st_ctime_ns)
+
+
+def check_file(info, limit, private):
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1,
+            "Evidence input must be a single-link regular file")
+    require(info.st_size <= limit, "Evidence input exceeds its size limit")
+    if private:
+        require(info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o600,
+                "Retained evidence file must be owned by the reviewer with mode 0600")
+
+
+def check_private_directory(info):
+    require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid()
+            and stat.S_IMODE(info.st_mode) == 0o700,
+            "Retained evidence directory must be owned by the reviewer with mode 0700")
+
+
+def run_local(arguments, data=None, workspace=None, pass_fds=()):
+    env = dict(CLEAN_ENV)
+    if workspace is not None:
+        env["TMPDIR"] = workspace
+    process = subprocess.Popen(arguments, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               env=env, start_new_session=True, pass_fds=pass_fds)
+    try:
+        output, _ = process.communicate(data, timeout=30)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        raise EvidenceError("Offline evidence parser exceeded its deadline") from None
+    require(process.returncode == 0, "Offline evidence schema/policy validation failed")
+    return output
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "Evidence JSON contains a duplicate key")
+        result[key] = value
+    return result
+
+
+def parse_canonical(data):
+    value = json.loads(data, object_pairs_hook=unique_object,
+                       parse_constant=lambda _: (_ for _ in ()).throw(
+                           EvidenceError("Evidence JSON contains a non-finite number")))
+    require(run_local([JQ, "-c", "."], data) == data,
+            "Evidence JSON must be one canonical compact document with a final newline")
+    require(isinstance(value, dict), "Evidence JSON must be an object")
+    return value
+
+
+def read_fd(fd, limit, destination=None):
+    os.lseek(fd, 0, os.SEEK_SET)
+    digest = hashlib.sha256()
+    size = 0
+    chunks = [] if destination is None else None
+    while True:
+        chunk = os.read(fd, min(65536, limit + 1 - size))
+        if not chunk:
+            break
+        size += len(chunk)
+        require(size <= limit, "Evidence input grew past its size limit")
+        digest.update(chunk)
+        if destination is None:
+            chunks.append(chunk)
+        else:
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination, view)
+                require(written > 0, "Could not retain an evidence snapshot")
+                view = view[written:]
+    return digest.hexdigest(), size, b"".join(chunks) if chunks is not None else None
+
+
+class EvidenceReader:
+    """Held originals plus private snapshots, reusable by the export operation."""
+
+    def __init__(self):
+        require(all(hasattr(os, flag) for flag in
+                    ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK", "O_CLOEXEC")),
+                "Safe evidence review requires descriptor-relative POSIX file access")
+        self.directories = {}
+        self.sources = []
+        self.members = {}
+        self.workspace = None
+        self.dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        self.file_flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    def directory(self, path, private=False):
+        path = absolute_path(path)
+        if path not in self.directories:
+            parent = None if path == "/" else self.directory(os.path.dirname(path))
+            fd = os.open(path if parent is None else os.path.basename(path),
+                         self.dir_flags, **({} if parent is None else {"dir_fd": parent["fd"]}))
+            info = os.fstat(fd)
+            self.directories[path] = {
+                "path": path, "fd": fd, "initial": info, "parent": parent,
+                "private": False, "entries": None,
+            }
+        directory = self.directories[path]
+        if private:
+            check_private_directory(os.fstat(directory["fd"]))
+            directory["private"] = True
+        return directory
+
+    def watch_directory(self, directory, expected=None):
+        names = sorted(os.listdir(directory["fd"]))
+        if expected is not None:
+            require(names == sorted(expected), "Evidence directory membership does not match the report")
+        directory["entries"] = names
+        return names
+
+    def take(self, path, relative, limit, private=True):
+        path = absolute_path(path)
+        parent = self.directory(os.path.dirname(path))
+        fd = os.open(os.path.basename(path), self.file_flags, dir_fd=parent["fd"])
+        source = {"fd": fd, "parent": parent, "name": os.path.basename(path),
+                  "private": private, "limit": limit, "snapshot_fd": None}
+        self.sources.append(source)
+        before = os.fstat(fd)
+        check_file(before, limit, private)
+        source["initial"] = before
+        if relative is None:
+            # Fetch stderr is an unbound diagnostic, not an indexed observation.
+            # Hold its descriptor for metadata checks, but never copy or display it.
+            return source
+        require(relative not in self.members, "Duplicate evidence package member")
+        snapshot = os.path.join(self.workspace, relative)
+        os.makedirs(os.path.dirname(snapshot), mode=0o700, exist_ok=True)
+        snapshot_fd = os.open(snapshot, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+        source["snapshot_fd"] = snapshot_fd
+        source["snapshot"] = snapshot
+        digest, size, _ = read_fd(fd, limit, snapshot_fd)
+        require(file_identity(os.fstat(fd)) == file_identity(before),
+                "Evidence changed while it was being snapshotted")
+        source["sha256"] = digest
+        source["size"] = size
+        source["snapshot_initial"] = os.fstat(snapshot_fd)
+        self.members[relative] = source
+        return source
+
+    def data(self, member):
+        digest, size, data = read_fd(member["snapshot_fd"], member["limit"])
+        require(digest == member["sha256"] and size == member["size"],
+                "Private evidence snapshot changed")
+        return data
+
+    def fence(self):
+        # Reopen through retained directory descriptors, then check all ancestors.
+        # Replacing a parent cannot redirect a leaf read or escape this final fence.
+        for source in self.sources:
+            check_file(os.fstat(source["fd"]), source["limit"], source["private"])
+            require(file_identity(os.fstat(source["fd"])) == file_identity(source["initial"]),
+                    "Evidence source changed after validation")
+            reopened = os.open(source["name"], self.file_flags, dir_fd=source["parent"]["fd"])
+            try:
+                info = os.fstat(reopened)
+                check_file(info, source["limit"], source["private"])
+                require(file_identity(info) == file_identity(source["initial"]),
+                        "Evidence source path changed identity")
+                if source["snapshot_fd"] is not None:
+                    digest, size, _ = read_fd(reopened, source["limit"])
+                    require(digest == source["sha256"] and size == source["size"]
+                            and file_identity(os.fstat(reopened)) == file_identity(info),
+                            "Evidence source bytes changed after validation")
+                    self.data(source)
+                    require(file_identity(os.fstat(source["snapshot_fd"]))
+                            == file_identity(source["snapshot_initial"]),
+                            "Private evidence snapshot changed identity")
+            finally:
+                os.close(reopened)
+        for directory in self.directories.values():
+            info = os.fstat(directory["fd"])
+            require(identity(info) == identity(directory["initial"]),
+                    "Evidence directory changed identity")
+            parent = directory["parent"]
+            if parent is not None:
+                actual = os.stat(os.path.basename(directory["path"]),
+                                 dir_fd=parent["fd"], follow_symlinks=False)
+                require(identity(actual) == identity(info), "Evidence directory path was replaced")
+            if directory["private"]:
+                check_private_directory(info)
+            if directory["entries"] is not None:
+                require(file_identity(info) == file_identity(directory["initial"])
+                        and sorted(os.listdir(directory["fd"])) == directory["entries"],
+                        "Evidence directory changed during validation")
+
+    def close(self):
+        for source in self.sources:
+            if source["snapshot_fd"] is not None:
+                os.close(source["snapshot_fd"])
+            os.close(source["fd"])
+        for directory in reversed(list(self.directories.values())):
+            os.close(directory["fd"])
+
+
+def scratch_directory(reader, protected_paths):
+    protected = {os.path.dirname(path) for path in protected_paths[:3]}
+    protected.add(protected_paths[3])
+    configured = os.environ.get("TMPDIR")
+    candidates = [configured] if configured else ["/tmp", "/var/tmp"]
+    for candidate in candidates:
+        candidate = absolute_path(candidate)
+        require(not any(parent != "/" and
+                        (candidate == parent or candidate.startswith(parent + "/"))
+                        for parent in protected),
+                "Evidence scratch directory must be outside the input evidence tree")
+        directory = reader.directory(candidate)
+        info = os.fstat(directory["fd"])
+        system_temporary = (candidate in ("/tmp", "/var/tmp") and info.st_uid == 0
+                            and stat.S_IMODE(info.st_mode) == 0o1777)
+        if not system_temporary:
+            check_private_directory(info)
+        try:
+            workspace = tempfile.TemporaryDirectory(prefix="acfs-evidence-review.", dir=candidate)
+        except OSError:
+            if configured:
+                raise
+            continue
+        # Do not trust a directory path that was replaced during allocation.
+        actual = os.stat(candidate, follow_symlinks=False)
+        require(identity(actual) == identity(info), "Evidence scratch directory was replaced")
+        return workspace
+    raise EvidenceError("No safe evidence scratch directory is available")
+
+
+def validate_encoding(reader, body, wire, headers, name):
+    encoding = b""
+    for line in reader.data(headers).split(b"\n"):
+        line = line.removesuffix(b"\r")
+        if line.startswith(b"HTTP/"):
+            encoding = b""
+        if line.lower().startswith(b"content-encoding:"):
+            encoding = line.split(b":", 1)[1].strip(b" \t").lower()
+    if encoding in (b"", b"identity"):
+        require(body["sha256"] == wire["sha256"] and body["size"] == wire["size"],
+                "Identity response entity does not match its decoded body")
+        return "identity"
+    require(encoding in (b"gzip", b"x-gzip"), "Unsupported response content encoding")
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(reader.data(wire))) as stream:
+            decoded = stream.read(BODY_LIMIT + 1)
+    except (OSError, EOFError, zlib.error):
+        raise EvidenceError("Retained gzip response is corrupt") from None
+    require(len(decoded) <= BODY_LIMIT, "Retained gzip response exceeds the decoded body limit")
+    require(len(decoded) == body["size"]
+            and hashlib.sha256(decoded).hexdigest() == body["sha256"],
+            "Retained gzip response does not decode to the observed body")
+    return encoding.decode("ascii")
+
+
+def collect_evidence(reader, paths, report_anchor, index_anchor):
+    policy_path, report_path, index_path, observations_path = paths
+    require(HEX.fullmatch(report_anchor) is not None and HEX.fullmatch(index_anchor) is not None,
+            "Published report and evidence-index SHA256 anchors are required")
+    policy = reader.take(policy_path, "checksums.yaml", POLICY_LIMIT, private=False)
+    report = reader.take(report_path, "verification-report.json", REPORT_LIMIT)
+    index = reader.take(index_path, "evidence-index.json", INDEX_LIMIT)
+    require(report["sha256"] == report_anchor, "Verification report differs from its published SHA256")
+    require(index["sha256"] == index_anchor, "Evidence index differs from its published SHA256")
+    report_json = parse_canonical(reader.data(report))
+    index_json = parse_canonical(reader.data(index))
+    strict_program = (
+        'set -euo pipefail\n'
+        'source "$1"\n'
+        '_acfs_validate_checksum_evidence_policy_report "$2" "$3" "$4"\n'
+    )
+    # Pin the pathname inputs consumed by the Bash parsers to a directory FD.
+    # Their scratch files live separately, leaving snapshot membership stable.
+    parser_tmp = os.path.join(reader.workspace, "parser-tmp")
+    os.mkdir(parser_tmp, 0o700)
+    workspace_fd = os.open(reader.workspace, reader.dir_flags)
+    try:
+        workspace_before = os.fstat(workspace_fd)
+        workspace_names = sorted(os.listdir(workspace_fd))
+        descriptor_root = "/proc/self/fd/" + str(workspace_fd)
+        require(identity(os.stat(descriptor_root)) == identity(workspace_before),
+                "Bound evidence parsing requires directory descriptor paths")
+
+        def snapshot_inputs_current():
+            for member in (policy, report, index):
+                info = os.stat(os.path.basename(member["snapshot"]), dir_fd=workspace_fd,
+                               follow_symlinks=False)
+                require(file_identity(info) == file_identity(member["snapshot_initial"])
+                        and file_identity(os.fstat(member["snapshot_fd"]))
+                        == file_identity(member["snapshot_initial"]),
+                        "Policy/report snapshot pathname changed during parsing")
+                reader.data(member)
+
+        snapshot_inputs_current()
+        run_local([BASH, "--noprofile", "--norc", "-c", strict_program, "acfs-evidence-policy",
+                   LIBRARY, descriptor_root + "/checksums.yaml",
+                   descriptor_root + "/verification-report.json", policy["sha256"]],
+                  workspace=descriptor_root + "/parser-tmp", pass_fds=(workspace_fd,))
+        snapshot_inputs_current()
+        require(file_identity(os.fstat(workspace_fd)) == file_identity(workspace_before)
+                and sorted(os.listdir(workspace_fd)) == workspace_names,
+                "Snapshot directory changed during policy/report parsing")
+    finally:
+        os.close(workspace_fd)
+    require(set(index_json) == INDEX_KEYS
+            and index_json["schema"] == "acfs.installer-download-evidence-index.v1"
+            and index_json["verificationReportSha256"] == report_anchor
+            and index_json["checksumsYamlSha256"] == policy["sha256"]
+            and isinstance(index_json["observations"], list),
+            "Evidence index does not match its schema or policy/report bindings")
+    rows = [dict(name=row["name"], url=row["url"], expected=row["checksum"], actual=row["checksum"])
+            for row in report_json["matches"]] + report_json["mismatches"]
+    rows.sort(key=lambda row: row["name"])
+    require(len(index_json["observations"]) == len(rows), "Evidence index omits or adds observations")
+    expected_names = [row["name"] for row in rows]
+    require(all(NAME.fullmatch(name) for name in expected_names)
+            and len(set(expected_names)) == len(expected_names),
+            "Invalid or duplicate observation name")
+    observations = reader.directory(observations_path, private=True)
+    reader.watch_directory(observations, expected_names)
+    metadata_rows = []
+    encodings = {}
+    for row, indexed in zip(rows, index_json["observations"]):
+        name = row["name"]
+        require(isinstance(indexed, dict) and set(indexed) == METADATA_KEYS
+                and all(isinstance(value, str) for value in indexed.values())
+                and indexed["schema"] == "acfs.installer-download-evidence.v1"
+                and indexed["status"] == "observed"
+                and all(indexed[key] == row[key] for key in ("name", "url", "expected", "actual"))
+                and indexed["bodySha256"] == row["actual"]
+                and all(HEX.fullmatch(indexed[key]) for key in
+                        ("bodySha256", "wireSha256", "headersSha256")),
+                "Evidence index has invalid, unsorted, or unbound observation metadata")
+        tool_path = os.path.join(observations_path, name)
+        tool_dir = reader.directory(tool_path, private=True)
+        names = reader.watch_directory(tool_dir)
+        diagnostics = [entry for entry in names if entry not in FIXED_FILES]
+        require(set(FIXED_FILES).issubset(names) and len(diagnostics) <= 1
+                and all(DIAGNOSTIC.fullmatch(entry) for entry in diagnostics),
+                "Unexpected or missing files in an observation directory")
+        for entry in diagnostics:
+            reader.take(os.path.join(tool_path, entry), None, DIAGNOSTIC_LIMIT)
+        prefix = "observations/" + name + "/"
+        metadata = reader.take(os.path.join(tool_path, "metadata.json"),
+                               prefix + "metadata.json", METADATA_LIMIT)
+        metadata_json = parse_canonical(reader.data(metadata))
+        require(metadata_json == indexed, "Observation sidecar differs from the anchored index")
+        body = reader.take(os.path.join(tool_path, "body"), prefix + "body", BODY_LIMIT)
+        wire = reader.take(os.path.join(tool_path, "body.wire"), prefix + "body.wire", WIRE_LIMIT)
+        headers = reader.take(os.path.join(tool_path, "body.headers"),
+                              prefix + "body.headers", HEADERS_LIMIT)
+        require(headers["size"] > 0 and body["sha256"] == indexed["bodySha256"]
+                and wire["sha256"] == indexed["wireSha256"]
+                and headers["sha256"] == indexed["headersSha256"],
+                "Retained observation bytes differ from the anchored index")
+        encodings[name] = validate_encoding(reader, body, wire, headers, name)
+        metadata_rows.append(metadata_json)
+    # Reconstruct exactly what the monitor indexed. Object order is preserved;
+    # a reordered metadata sidecar must not silently become equivalent evidence.
+    reconstructed = {
+        "schema": "acfs.installer-download-evidence-index.v1",
+        "verificationReportSha256": report_anchor,
+        "checksumsYamlSha256": policy["sha256"],
+        "observations": metadata_rows,
+    }
+    reconstructed_bytes = (json.dumps(reconstructed, ensure_ascii=False,
+                                      separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+    require(run_local([JQ, "-c", "."], reconstructed_bytes) == reader.data(index),
+            "Retained sidecars do not reproduce the exact anchored evidence index")
+    return {
+        "schema": "acfs.checksum-evidence-review.v1",
+        "integrity_verified": True, "trust_decision": "not_assessed", "authorization_granted": False,
+        "verification_report_sha256": report_anchor, "download_evidence_index_sha256": index_anchor,
+        "checksums_yaml_sha256": policy["sha256"], "total": len(rows),
+        "matches": len(report_json["matches"]), "mismatches": len(report_json["mismatches"]),
+        "content_encoding_verified": True, "content_encodings": encodings,
+        "observations": metadata_rows,
+    }
+
+
+def write_private_member(directory_fd, name, data):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                 0o600, dir_fd=directory_fd)
+    try:
+        view = memoryview(data)
+        while view:
+            written = os.write(fd, view)
+            require(written > 0, "Could not write private evidence export")
+            view = view[written:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def export_evidence(reader, paths, report_anchor, index_anchor, summary, destination):
+    destination = absolute_path(destination)
+    protected = {os.path.dirname(path) for path in paths[:3]}
+    protected.add(paths[3])
+    require(not any(destination == parent or destination.startswith(parent + "/")
+                    for parent in protected),
+            "Export destination must be outside the original evidence tree")
+    writer = EvidenceReader()
+    verifier = EvidenceReader()
+    try:
+        parent = writer.directory(os.path.dirname(destination), private=True)
+        # mkdir is the exclusive reservation: existing files, directories and
+        # dangling links all fail without overwriting or adopting anything.
+        reader.fence()
+        os.mkdir(os.path.basename(destination), 0o700, dir_fd=parent["fd"])
+        root = writer.directory(destination, private=True)
+        directories = {"": root}
+        for relative, member in reader.members.items():
+            parts = relative.split("/")
+            prefix = ""
+            directory = root
+            for part in parts[:-1]:
+                next_prefix = prefix + "/" + part if prefix else part
+                if next_prefix not in directories:
+                    os.mkdir(part, 0o700, dir_fd=directory["fd"])
+                    directories[next_prefix] = writer.directory(
+                        os.path.join(destination, next_prefix), private=True)
+                prefix = next_prefix
+                directory = directories[prefix]
+            # Copy from the held, hashed snapshot, never reopen an original
+            # pathname. No unbound diagnostics are included in members.
+            write_private_member(directory["fd"], parts[-1], reader.data(member))
+        for directory in directories.values():
+            os.fsync(directory["fd"])
+        writer.fence()
+        reader.fence()
+        exported_paths = [
+            os.path.join(destination, name) for name in
+            ("checksums.yaml", "verification-report.json", "evidence-index.json", "observations")
+        ]
+        with scratch_directory(verifier, exported_paths) as workspace:
+            verifier.workspace = workspace
+            copied_summary = collect_evidence(verifier, exported_paths, report_anchor, index_anchor)
+            require(copied_summary == summary, "Exported evidence differs from the verified source")
+            verifier.fence()
+            for member in verifier.members.values():
+                check_file(os.fstat(member["fd"]), member["limit"], private=True)
+            writer.fence()
+            reader.fence()
+            # This descriptor is informative, never an authority source. Its
+            # creation is last; an interrupted export can leave a private
+            # incomplete directory but cannot emit a successful result.
+            descriptor = {
+                "schema": "acfs.checksum-evidence-bundle.v1",
+                "verification_report_sha256": report_anchor,
+                "download_evidence_index_sha256": index_anchor,
+                "checksums_yaml_sha256": summary["checksums_yaml_sha256"],
+                "trust_decision": "not_assessed", "authorization_granted": False,
+                "limitations": [
+                    "Supply report and index digests from the original issue independently.",
+                    "Hash continuity does not establish upstream provenance or installer safety.",
+                    "Raw headers may contain private cookies and signed redirect URLs.",
+                    "Unbound fetch-stderr diagnostics are excluded.",
+                ],
+            }
+            write_private_member(root["fd"], "bundle.json",
+                                 (json.dumps(descriptor, separators=(",", ":")) + "\n").encode())
+            os.fsync(root["fd"])
+            verifier.fence()
+            writer.fence()
+            reader.fence()
+        return {**summary, "exported": True, "export_path": destination}
+    finally:
+        verifier.close()
+        writer.close()
+
+
+def main():
+    operation = sys.argv[4] if len(sys.argv) > 4 else ""
+    require((operation == "verify" and len(sys.argv) == 11)
+            or (operation == "export" and len(sys.argv) == 12),
+            "Evidence review requires POLICY REPORT INDEX OBSERVATIONS REPORT_SHA256 INDEX_SHA256"
+            " and an explicit destination for export")
+    paths = [absolute_path(value) for value in sys.argv[5:9]]
+    report_anchor, index_anchor = sys.argv[9:11]
+    require(HEX.fullmatch(report_anchor) is not None and HEX.fullmatch(index_anchor) is not None,
+            "Published report and evidence-index SHA256 anchors are required")
+    reader = EvidenceReader()
+    try:
+        reader.directory(paths[3], private=True)
+        with scratch_directory(reader, paths) as workspace:
+            reader.workspace = workspace
+            summary = collect_evidence(reader, paths, report_anchor, index_anchor)
+            reader.fence()
+            if operation == "export":
+                summary = export_evidence(reader, paths, report_anchor, index_anchor, summary, sys.argv[11])
+            output = json.dumps(summary, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    finally:
+        reader.close()
+    print(output)
+
+
+try:
+    main()
+except EvidenceError as error:
+    print("Checksum evidence verification failed: " + str(error), file=sys.stderr)
+    sys.exit(1)
+except (OSError, ValueError, TypeError, KeyError, RecursionError):
+    # Never echo raw responses, headers, credentials, or attacker-controlled paths.
+    print("Checksum evidence verification failed: invalid or inaccessible bounded evidence", file=sys.stderr)
+    sys.exit(1)
+ACFS_CHECKSUM_EVIDENCE_PY
+}
+
+acfs_verify_checksum_evidence() {
+    _acfs_checksum_evidence verify "$@"
+}
+
+acfs_export_checksum_evidence() {
+    _acfs_checksum_evidence export "$@"
+}
+
 # ============================================================
 # CLI Interface
 # ============================================================
@@ -4048,6 +4655,11 @@ Commands:
   --review-checksum-subset CURRENT REPORT TOOL...
                                                Review selected external mismatches, offline
                                                (emits review data; does not authorize or write pins)
+  --verify-checksum-evidence POLICY REPORT INDEX OBSERVATIONS REPORT_SHA256 INDEX_SHA256
+                                               Verify retained evidence against published hashes,
+                                               offline; does not authorize or execute installers
+  --export-checksum-evidence POLICY REPORT INDEX OBSERVATIONS REPORT_SHA256 INDEX_SHA256 DESTINATION
+                                               Export exact verified bytes to a new private directory
   --checksum URL                               Calculate SHA256 of a URL
   --help                                       Show this help
 
@@ -4159,6 +4771,22 @@ main() {
             fi
             shift
             acfs_review_checksum_subset "$@"
+            ;;
+        --verify-checksum-evidence)
+            if [[ "$#" -ne 7 ]]; then
+                echo "Usage: security.sh --verify-checksum-evidence POLICY REPORT INDEX OBSERVATIONS REPORT_SHA256 INDEX_SHA256" >&2
+                return 1
+            fi
+            shift
+            acfs_verify_checksum_evidence "$@"
+            ;;
+        --export-checksum-evidence)
+            if [[ "$#" -ne 8 ]]; then
+                echo "Usage: security.sh --export-checksum-evidence POLICY REPORT INDEX OBSERVATIONS REPORT_SHA256 INDEX_SHA256 DESTINATION" >&2
+                return 1
+            fi
+            shift
+            acfs_export_checksum_evidence "$@"
             ;;
         --checksum)
             if [[ "$#" -ne 2 || -z "${2:-}" ]]; then

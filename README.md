@@ -3082,6 +3082,74 @@ scripts/templates/acfs-checksum-monitor.* # timer + service templates
 4. **Build and validate offline**: Uses the complete first observation to construct the candidate, without downloading installers a second time. Selects trusted-owner mismatches and exactly the authorized external tools; every deferred external pin stays unchanged. The validator checks the exact selected mismatch set, unchanged URLs and unchanged unselected pins. Its default, without explicit selection, still requires all observed mismatches. A changing external endpoint therefore cannot invalidate trusted publication through a second fetch. If issue delivery fails, the bound evidence stays in local state with a warning; approved external changes still require recorded review before mutation.
 5. **Generate and publish**: Places the validated candidate, regenerates its installer ledger and web metadata, checks the complete generated contract, and commits only the declared publication paths. Rechecks retained evidence and selected authorization after remote probes, immediately before commit and push, and before accepting remote readback. Pushes both compatibility refs atomically and reads them back before recording the result. Pending external review reports `result=deferred state=DEFERRED`, including after an approved subset publishes, and leaves the deferred review open. An accepted run with no pending review records `HEALTHY`. Authorization is consumed only after accepted external publication.
 
+#### Verify retained download evidence offline
+
+Before reviewing changed installers, obtain the original verification report,
+download-evidence index, complete observation directory, and the exact checksum
+policy used for that observation from the monitor host. The observation directory
+is the `acfs-observations.*` directory containing one subdirectory per installer.
+It includes unchanged installers because the published index covers the complete
+observation. Use the report and evidence-index SHA256 values recorded in the
+review issue as independent inputs:
+
+```bash
+bash scripts/lib/security.sh --verify-checksum-evidence \
+  /private/review/checksums.yaml \
+  /private/review/verification-report.json \
+  /private/review/evidence-index.json \
+  /private/review/acfs-observations.ORIGINAL \
+  "$REPORT_SHA256_FROM_ISSUE" "$EVIDENCE_INDEX_SHA256_FROM_ISSUE"
+```
+
+This offline command checks the supplied anchors, strict policy/report/index
+relationships, complete installer membership, and exact retained body, wire,
+header, and metadata bytes. It rejects unsafe files and changed sources before
+emitting its JSON result. Retained evidence files must be owned by the invoking
+user with mode `0600`, and observation directories must have mode `0700`. The
+policy may be a readable regular file from the original checkout. Python 3,
+Bash, and jq must be available in trusted system locations.
+
+`integrity_verified: true` means that the evidence matches the supplied issue
+anchors. `trust_decision: "not_assessed"` and `authorization_granted: false`
+remain explicit: a human still needs to compare the old and new scripts,
+inspect the captured redirects, and establish upstream provenance. The command
+does not fetch or execute installers, create authorization, or change pins.
+
+A current public download is not a replacement for missing original evidence.
+If the original policy is recovered from the issue's recorded repository commit,
+its exact bytes must still match the policy digest bound into the report and
+index. Missing evidence or mismatched digests stop verification; do not replace
+the expected anchors with hashes computed from the supplied files merely to
+make the check pass. Raw headers can contain cookies and signed URLs, so keep
+the evidence private when transferring it to a reviewer.
+
+To prepare a portable copy on the monitor host, use the same six inputs followed
+by a new destination directory:
+
+    bash scripts/lib/security.sh --export-checksum-evidence \
+      /private/review/checksums.yaml \
+      /private/review/verification-report.json \
+      /private/review/evidence-index.json \
+      /private/review/acfs-observations.ORIGINAL \
+      "$REPORT_SHA256_FROM_ISSUE" "$EVIDENCE_INDEX_SHA256_FROM_ISSUE" \
+      /private/exports/issue-500
+
+The destination's existing parent must be owned by the invoking user with mode
+0700. The command refuses an existing destination or linked path and never
+overwrites a previous package. It copies the original policy, report, index,
+and all four indexed files per installer into an observations directory,
+preserving their exact bytes with 0700 directories and 0600 files. It then
+revalidates the copied package before reporting success. Unbound fetch-stderr
+diagnostics are excluded. The informative bundle.json descriptor is written
+last; an interrupted or failed export can leave a private incomplete directory,
+and only exit status zero with the successful JSON result confirms completion.
+
+After a private transfer, run the verification command again using the exported
+checksums.yaml, verification-report.json, evidence-index.json, and observations
+paths. Obtain its expected report/index hashes independently from the original
+issue; the package descriptor is not an authority source. Export and verification
+do not upload the evidence or make a trust decision.
+
 #### Review an external subset
 
 Use the complete saved verification report from the monitor host and its matching
