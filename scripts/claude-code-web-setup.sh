@@ -127,10 +127,15 @@ cloud_run_bounded() {
     PATH="$ACFS_CLOUD_BIN_DIR:$PATH:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/go/bin" \
         python3 - "$@" <<'PY'
 import ctypes, os, pathlib, shutil, signal, subprocess, sys, time
-_, duration, grace, mode, value = sys.argv
+_, duration, grace, mode, value, *arguments = sys.argv
 duration, grace = float(duration), float(grace)
 if not (0 < duration <= 180 and 0 < grace <= 2):
     raise ValueError('Invalid process deadline')
+if arguments and (mode != 'mcp-add' or len(arguments) != 1):
+    raise ValueError('Unsupported bounded operation arguments')
+storage_root = arguments[0] if arguments else ''
+if storage_root and not os.path.isabs(storage_root):
+    raise ValueError('MCP storage root must be absolute')
 # Build the permitted commands independently of the supplied selector. Version
 # probes may execute only the same fixed tool names resolved on the active PATH,
 # never an arbitrary path with a matching basename or an environment-table row.
@@ -143,6 +148,17 @@ for name in (*tools, 'mcp-agent-mail'):
     binary = shutil.which(name)
     if binary is not None:
         operations.append(('version', binary, [binary, '--version']))
+# MCP setup can also leave detached helpers behind. Permit only the two fixed
+# registration operations, with the optional storage root passed as data to
+# --env, never as a command or an additional CLI option.
+claude = shutil.which('claude')
+if claude is not None:
+    operations.append(('mcp-get', claude, [claude, 'mcp', 'get', 'mcp-agent-mail']))
+    server = shutil.which('am')
+    if server is not None:
+        storage_args = ['--env', 'STORAGE_ROOT=' + storage_root] if storage_root else []
+        operations.append(('mcp-add', claude, [claude, 'mcp', 'add', '--scope', 'user',
+                                             'mcp-agent-mail', *storage_args, '--', server, 'serve-stdio']))
 for operation, selector, argv in operations:
     if (mode, value) == (operation, selector):
         command = argv
@@ -733,8 +749,7 @@ cloud_install_tool() {
 cloud_register_agent_mail() {
     # Register Agent Mail with Claude Code as a stdio MCP server so each
     # session spawns it on demand; nothing has to survive the VM snapshot.
-    local server claude_bin legacy storage_root config="$HOME/.claude.json"
-    local -a storage_args=()
+    local server claude_bin legacy storage_root="" config="$HOME/.claude.json"
     server="$(cloud_find_binary am)" || return 1
     claude_bin="$(command -v claude 2>/dev/null)" || return 1
     legacy="$(cloud_find_binary mcp-agent-mail)" || return 1
@@ -786,7 +801,7 @@ PY
         return 1
     fi
     # Keep custom registrations; repair only the legacy ACFS command above.
-    if timeout --kill-after=1 5 "$claude_bin" mcp get mcp-agent-mail </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1; then
+    if cloud_run_bounded 5 1 mcp-get "$claude_bin" </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1; then
         ACFS_CLOUD_MCP_DETAIL="Existing Agent Mail MCP registration retained; see logs/mcp.log"
         return 0
     fi
@@ -806,10 +821,9 @@ if any(parent.is_symlink() for parent in [path, *path.parents]):
     raise ValueError('Symlink in Agent Mail storage path; existing files preserved')
 path.mkdir(mode=0o700, parents=True, exist_ok=True)
 PY
-        storage_args=(--env "STORAGE_ROOT=$storage_root")
     fi
     ACFS_CLOUD_MCP_DETAIL="Registered Agent Mail as the stdio MCP server 'mcp-agent-mail'"
-    timeout --kill-after=1 10 "$claude_bin" mcp add --scope user mcp-agent-mail "${storage_args[@]}" -- "$server" serve-stdio </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1
+    cloud_run_bounded 10 1 mcp-add "$claude_bin" "$storage_root" </dev/null >>"$ACFS_CLOUD_STATE_DIR/logs/mcp.log" 2>&1
 }
 
 cloud_agent_mail_storage_env() {

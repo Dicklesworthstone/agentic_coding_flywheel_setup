@@ -1261,7 +1261,13 @@ print('br-session-child')
         binary = outside / 'br'
         binary.write_text(f'#!/bin/sh\necho invoked > "{invoked}"\n')
         binary.chmod(0o755)
-        for mode, value in [('version', str(binary)), ('job', 'unselected')]:
+        claude = outside / 'claude'
+        claude.write_bytes(binary.read_bytes())
+        claude.chmod(0o755)
+        self.command('claude', binary.read_text())
+        self.command('am', '#!/bin/sh\necho am-version\n')
+        for mode, value in [('version', str(binary)), ('job', 'unselected'),
+                            ('mcp-get', str(claude)), ('mcp-add', str(claude))]:
             with self.subTest(mode=mode):
                 result = subprocess.run([shutil.which('python3'), '-c', supervisor, '1', '1', mode, value],
                                         env={**os.environ, 'PATH': str(self.bin) + ':/usr/bin:/bin',
@@ -1270,6 +1276,16 @@ print('br-session-child')
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('Unsupported bounded operation', result.stderr)
                 self.assertFalse(invoked.exists(), 'Unselected executable must never run')
+        for mode, arguments in [('mcp-get', ['/unexpected']),
+                                ('mcp-add', ['/storage', '/unexpected']),
+                                ('mcp-add', ['relative-storage'])]:
+            with self.subTest(mode=mode, arguments=arguments):
+                result = subprocess.run([shutil.which('python3'), '-c', supervisor, '1', '1',
+                                         mode, str(self.bin / 'claude'), *arguments],
+                                        env={**os.environ, 'PATH': str(self.bin) + ':/usr/bin:/bin'},
+                                        capture_output=True, text=True, timeout=5, check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(invoked.exists(), 'Unexpected MCP arguments must never launch Claude')
 
     def test_supervisor_census_handles_outer_procfs_and_missing_children_interface(self):
         self.command('br', '#!/bin/sh\necho br-existing\n')
@@ -1809,6 +1825,91 @@ exec(compile(source, '<setup-python>', 'exec'))
         self.assertIn("Could not register Agent Mail", output)
         self.assertNotIn("Registered as the stdio", (self.home / ".claude/CLAUDE.md").read_text())
         self.assertTrue((self.home / ".local/bin/mcp-agent-mail").is_file())
+
+    def check_mcp_registration_children(self, existing=False, hanging=None):
+        self.bundle('am')
+        scenario = self.root / ('mcp-' + (hanging or ('existing' if existing else 'new')))
+        scenario.mkdir()
+        events = scenario / 'processes.jsonl'
+        stop = scenario / 'stop'
+        child_code = f'''
+import json, pathlib, signal, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with pathlib.Path({str(events)!r}).open('a') as output:
+    output.write(json.dumps({{'role': 'child', 'operation': sys.argv[1],
+                             'pid': pathlib.Path('/proc/self').resolve().name}}) + '\\n')
+print('ready', flush=True)
+deadline = time.monotonic() + 60
+while not pathlib.Path({str(stop)!r}).exists() and time.monotonic() < deadline:
+    time.sleep(0.01)
+'''
+        self.command('claude', f'''#!{shutil.which('python3')}
+import json, pathlib, signal, subprocess, sys, time
+operation = sys.argv[2]
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with pathlib.Path({str(events)!r}).open('a') as output:
+    output.write(json.dumps({{'role': 'parent', 'operation': operation,
+                             'pid': pathlib.Path('/proc/self').resolve().name,
+                             'started': time.monotonic()}}) + '\\n')
+child = subprocess.Popen([sys.executable, '-c', {child_code!r}, operation],
+                         stdout=subprocess.PIPE, text=True, start_new_session=True)
+assert child.stdout.readline().strip() == 'ready'
+if operation == {hanging!r}:
+    deadline = time.monotonic() + 60
+    while not pathlib.Path({str(stop)!r}).exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+sys.exit(0 if operation == 'add' or {existing!r} else 1)
+''')
+        try:
+            if hanging:
+                # Measure the real supervisor's return, excluding guide writes
+                # and the rest of setup. The successful get/add cases above
+                # still exercise the whole entrypoint and its command routing.
+                self.command('am', '#!/bin/sh\necho am-fixture\n')
+                source = SCRIPT.read_text().split('cloud_run_bounded() {', 1)[1]
+                supervisor = source.split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+                budget = 5 if hanging == 'get' else 10
+                result = subprocess.run([shutil.which('python3'), '-c', supervisor,
+                                         str(budget), '1', 'mcp-' + hanging, str(self.bin / 'claude')],
+                                        env=self.env, stdin=subprocess.DEVNULL, capture_output=True,
+                                        text=True, timeout=budget + 3, check=False)
+                self.assertEqual(result.returncode, 124, result.stderr)
+            else:
+                output = self.run_setup('am')
+            finished = time.monotonic()
+            records = [parse_json_report(line) for line in events.read_text().splitlines()]
+            parents = [record for record in records if record['role'] == 'parent']
+            expected = [hanging] if hanging else ['get'] if existing else ['get', 'add']
+            self.assertEqual([record['operation'] for record in parents], expected)
+            self.assertEqual(len(records), len(expected) * 2,
+                             'Every MCP command must actually start its detached child')
+            for record in records:
+                self.assertFalse(Path('/proc', record['pid']).exists(),
+                                 f"MCP {record['operation']} left its {record['role']} running")
+            if hanging:
+                started = parents[0]['started']
+                self.assertGreaterEqual(finished - started, budget)
+                self.assertLess(finished - started, budget + 2,
+                                'Keep the original command deadline and one-second kill grace')
+            else:
+                expected_message = ('Existing Agent Mail MCP registration retained' if existing else
+                                    'Registered Agent Mail')
+                self.assertIn(expected_message, output)
+        finally:
+            # A failing pre-fix run must release only this fixture's processes.
+            # Keep all diagnostic files, including this cooperative stop signal.
+            stop.touch()
+
+    def test_successful_mcp_get_reaps_detached_children(self):
+        self.check_mcp_registration_children(existing=True)
+
+    def test_failed_mcp_get_and_successful_add_reap_detached_children(self):
+        self.check_mcp_registration_children()
+
+    def test_term_resistant_mcp_commands_keep_original_deadlines(self):
+        for operation in ('get', 'add'):
+            with self.subTest(operation=operation):
+                self.check_mcp_registration_children(hanging=operation)
 
     def test_registers_agent_mail_without_removing_user_configuration(self):
         self.bundle('am')
