@@ -8894,7 +8894,7 @@ install_languages_legacy_lang() {
     # failure, but retain every required failure for the summary and resume.
     # Bun (install as target user)
     local bun_bin="$TARGET_HOME/.bun/bin/bun"
-    if ! acfs_should_skip_module "lang.bun"; then
+    if acfs_legacy_module_selected "lang.bun" && ! acfs_should_skip_module "lang.bun"; then
         log_detail "Installing Bun for $TARGET_USER"
         try_step "Installing Bun" acfs_run_verified_upstream_script_as_target "bun" "bash" || {
             ACFS_MODULE_FAILURES+=("lang.bun (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
@@ -8910,7 +8910,7 @@ install_languages_legacy_lang() {
     # Rust nightly (install as target user)
     # We use nightly for latest features and to install tools like dust/lsd
     local cargo_bin="$TARGET_HOME/.cargo/bin/cargo"
-    if ! acfs_should_skip_module "lang.rust"; then
+    if acfs_legacy_module_selected "lang.rust" && ! acfs_should_skip_module "lang.rust"; then
         log_detail "Installing Rust nightly for $TARGET_USER"
         try_step "Installing Rust nightly" acfs_run_verified_upstream_script_as_target "rust" "sh" -y --default-toolchain nightly || {
             ACFS_MODULE_FAILURES+=("lang.rust (${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed})")
@@ -8920,7 +8920,7 @@ install_languages_legacy_lang() {
     fi
 
     # Go (system-wide)
-    if ! acfs_should_skip_module "lang.go"; then
+    if acfs_legacy_module_selected "lang.go" && ! acfs_should_skip_module "lang.go"; then
         log_detail "Installing Go"
         local go_rc=0
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
@@ -8935,7 +8935,9 @@ install_languages_legacy_lang() {
     fi
 
     # uv (install as target user)
-    if acfs_should_skip_module "lang.uv"; then
+    if ! acfs_legacy_module_selected "lang.uv"; then
+        log_detail "Skipping uv (not selected)"
+    elif acfs_should_skip_module "lang.uv"; then
         log_detail "uv already installed"
     else
         log_detail "Installing uv for $TARGET_USER"
@@ -8946,11 +8948,13 @@ install_languages_legacy_lang() {
         }
     fi
 
-    _ensure_target_nvm_node || {
-        ACFS_MODULE_FAILURES+=("lang.nvm (${ACFS_LAST_MODULE_FAILURE_REASON:-Node.js installation failed})")
-        ACFS_LAST_MODULE_FAILURE_REASON=""
-        lang_rc=1
-    }
+    if acfs_legacy_module_selected "lang.nvm"; then
+        _ensure_target_nvm_node || {
+            ACFS_MODULE_FAILURES+=("lang.nvm (${ACFS_LAST_MODULE_FAILURE_REASON:-Node.js installation failed})")
+            ACFS_LAST_MODULE_FAILURE_REASON=""
+            lang_rc=1
+        }
+    fi
 
     return "$lang_rc"
 }
@@ -8977,7 +8981,7 @@ install_languages_legacy_tools() {
     }
 
     # ast-grep (sg) - required by UBS for syntax-aware scanning
-    if ! acfs_should_skip_module "tools.ast_grep"; then
+    if acfs_legacy_module_selected "tools.ast_grep" && ! acfs_should_skip_module "tools.ast_grep"; then
         if [[ -x "$cargo_bin" ]]; then
             log_detail "Installing ast-grep (sg) via cargo"
             if try_step "Installing ast-grep via cargo" run_as_target "$cargo_bin" install ast-grep --locked; then
@@ -8998,47 +9002,50 @@ install_languages_legacy_tools() {
         fi
     fi
 
-    # Install additional cargo tools (dust, lsd, etc.)
-    # These are better than apt versions and always up-to-date
-    # Optimization: batch install all needed tools in one cargo command
-    # This downloads the index once and allows parallel compilation
-    local cargo_tools_needed=()
-    local -A cargo_bin_map=(
-        ["du-dust"]="dust"
-        ["lsd"]="lsd"
-        ["bat"]="bat"
-        ["fd-find"]="fd"
-        ["ripgrep"]="rg"
-    )
+    # These optional Cargo upgrades belong to cli.modern. A selection limited
+    # to language runtimes or another tool must not build unrelated CLI tools.
+    if acfs_legacy_module_selected "cli.modern"; then
+        # Batch downloads the index once and allows parallel compilation.
+        local cargo_tools_needed=()
+        local -A cargo_bin_map=(
+            ["du-dust"]="dust"
+            ["lsd"]="lsd"
+            ["bat"]="bat"
+            ["fd-find"]="fd"
+            ["ripgrep"]="rg"
+        )
 
-    # Collect tools that need to be installed
-    for tool in du-dust lsd bat fd-find ripgrep; do
-        local bin_name="${cargo_bin_map[$tool]}"
-        if [[ ! -x "$TARGET_HOME/.cargo/bin/$bin_name" ]]; then
-            cargo_tools_needed+=("$tool")
-        fi
-    done
+        # Collect tools that need to be installed
+        for tool in du-dust lsd bat fd-find ripgrep; do
+            local bin_name="${cargo_bin_map[$tool]}"
+            if [[ ! -x "$TARGET_HOME/.cargo/bin/$bin_name" ]]; then
+                cargo_tools_needed+=("$tool")
+            fi
+        done
 
-    # Batch install if there are tools to install
-    if [[ ${#cargo_tools_needed[@]} -gt 0 ]] && [[ -x "$cargo_bin" ]]; then
-        log_detail "Batch installing ${#cargo_tools_needed[@]} cargo tools: ${cargo_tools_needed[*]}"
-        if try_step_optional "Batch installing cargo tools" run_as_target "$cargo_bin" install "${cargo_tools_needed[@]}" --locked 2>/dev/null || \
-           try_step_optional "Batch installing cargo tools (no --locked)" run_as_target "$cargo_bin" install "${cargo_tools_needed[@]}"; then
-            log_success "Cargo tools batch installed: ${cargo_tools_needed[*]}"
-        else
-            # Fallback: install individually if batch fails
-            log_warn "Batch install failed, falling back to individual installs"
-            _cargo_install "du-dust" "dust"
-            _cargo_install "lsd"
-            _cargo_install "bat" "bat"
-            _cargo_install "fd-find" "fd"
-            _cargo_install "ripgrep" "rg"
+        # Batch install if there are tools to install
+        if [[ ${#cargo_tools_needed[@]} -gt 0 ]] && [[ -x "$cargo_bin" ]]; then
+            log_detail "Batch installing ${#cargo_tools_needed[@]} cargo tools: ${cargo_tools_needed[*]}"
+            if try_step_optional "Batch installing cargo tools" run_as_target "$cargo_bin" install "${cargo_tools_needed[@]}" --locked 2>/dev/null || \
+               try_step_optional "Batch installing cargo tools (no --locked)" run_as_target "$cargo_bin" install "${cargo_tools_needed[@]}"; then
+                log_success "Cargo tools batch installed: ${cargo_tools_needed[*]}"
+            else
+                # Fallback: install individually if batch fails
+                log_warn "Batch install failed, falling back to individual installs"
+                _cargo_install "du-dust" "dust"
+                _cargo_install "lsd"
+                _cargo_install "bat" "bat"
+                _cargo_install "fd-find" "fd"
+                _cargo_install "ripgrep" "rg"
+            fi
         fi
     fi
 
     # Atuin (install as target user)
     # Check both the data directory and the binary location
-    if acfs_should_skip_module "tools.atuin"; then
+    if ! acfs_legacy_module_selected "tools.atuin"; then
+        log_detail "Skipping Atuin (not selected)"
+    elif acfs_should_skip_module "tools.atuin"; then
         log_detail "Atuin already installed"
     else
         log_detail "Installing Atuin for $TARGET_USER"
@@ -9049,7 +9056,7 @@ install_languages_legacy_tools() {
         }
     fi
 
-    if [[ -x "$TARGET_HOME/.atuin/bin/atuin" ]]; then
+    if acfs_legacy_module_selected "tools.atuin" && [[ -x "$TARGET_HOME/.atuin/bin/atuin" ]]; then
         if run_as_target bash -c '
             set -euo pipefail
             real_bin="$HOME/.atuin/bin/atuin"
@@ -9143,7 +9150,9 @@ ATUIN_ACFS_WRAPPER_TAIL
 
     # Zoxide - prefer apt to avoid GitHub API rate limits in CI
     # Check multiple possible locations
-    if acfs_should_skip_module "tools.zoxide"; then
+    if ! acfs_legacy_module_selected "tools.zoxide"; then
+        log_detail "Skipping Zoxide (not selected)"
+    elif acfs_should_skip_module "tools.zoxide"; then
         log_detail "Zoxide already installed"
     else
         log_detail "Installing Zoxide for $TARGET_USER"
@@ -9354,18 +9363,9 @@ install_agents_phase() {
         return 0
     fi
 
-    # Use target user's bun
+    # Native Claude and Antigravity do not depend on Bun. A failed language
+    # install must not prevent their independent installation or recovery.
     local bun_bin="$TARGET_HOME/.bun/bin/bun"
-
-    if [[ ! -x "$bun_bin" ]]; then
-        # Returning 0 here marked the agents phase complete with nothing
-        # installed; once the languages phase succeeded on resume, this phase
-        # was skipped forever and the user had no claude/codex/agy.
-        log_error "Bun not found at $bun_bin; the agents phase cannot run yet (it is retried on resume once the languages phase succeeds)"
-        ACFS_MODULE_FAILURES+=("agents (bun missing; languages phase must succeed first)")
-        return 1
-    fi
-
     local agents_phase_rc=0
 
     # Claude Code (install as target user)
@@ -9386,8 +9386,12 @@ install_agents_phase() {
 
         if ! acfs_verify_module "agents.claude" \
             && ! acfs_run_verification_command target_user "$claude_bin_bun" --version >/dev/null 2>&1; then
-            log_detail "Claude Code not found in standard paths; attempting bun install"
-            try_step_optional "Installing Claude Code (bun)" run_as_target "$bun_bin" install -g --trust @anthropic-ai/claude-code@latest || true
+            if [[ -x "$bun_bin" ]]; then
+                log_detail "Claude Code not found in standard paths; attempting bun install"
+                try_step_optional "Installing Claude Code (bun)" run_as_target "$bun_bin" install -g --trust @anthropic-ai/claude-code@latest || true
+            else
+                log_detail "Skipping Claude Code bun fallback (Bun is not available)"
+            fi
         fi
 
         # Best-effort: if claude landed in ~/.claude/*, link it into ~/.local/bin.
@@ -9435,8 +9439,14 @@ install_agents_phase() {
     # Codex CLI (install as target user)
     # Uses fallback chain: @latest -> unversioned -> pinned 0.87.0
     # npm can 404 briefly after publishing; pinned version is reliable fallback
+    local codex_install_blocked=false
     if acfs_should_skip_module "agents.codex"; then
         log_detail "Codex CLI already installed and verified"
+    elif [[ ! -x "$bun_bin" ]]; then
+        log_error "Bun not found at $bun_bin; Codex CLI installation will be retried after the languages phase succeeds"
+        ACFS_MODULE_FAILURES+=("agents.codex (bun missing; languages phase must succeed first)")
+        agents_phase_rc=1
+        codex_install_blocked=true
     else
         log_detail "Installing Codex CLI for $TARGET_USER"
         try_step "Installing Codex CLI" run_as_target bash -c '
@@ -9457,7 +9467,7 @@ install_agents_phase() {
 
     # Create wrapper script that uses bun as runtime (avoids node PATH issues)
     local codex_bin_local="$ACFS_BIN_DIR/codex"
-    if [[ -x "$TARGET_HOME/.bun/bin/codex" ]] && [[ ! -x "$codex_bin_local" ]]; then
+    if [[ -x "$bun_bin" && -x "$TARGET_HOME/.bun/bin/codex" && ! -x "$codex_bin_local" ]]; then
         local codex_wrapper_tmp=""
         local mktemp_bin="" chmod_bin="" rm_bin=""
         mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
@@ -9476,11 +9486,13 @@ install_agents_phase() {
         fi
     fi
     if ! acfs_verify_module "agents.codex"; then
-        log_error "Codex CLI installation failed (configured executable is not functional)"
-        # Name bun's real global bin dir when the install itself succeeded
-        # but landed off the ACFS PATH (#388).
-        acfs_note_bun_global_bin_mismatch "codex" "@openai/codex@latest" "$bun_bin" || true
-        ACFS_MODULE_FAILURES+=("agents.codex (required verification failed after install attempts)")
+        if [[ "$codex_install_blocked" != true ]]; then
+            log_error "Codex CLI installation failed (configured executable is not functional)"
+            # Name bun's real global bin dir when the install itself succeeded
+            # but landed off the ACFS PATH (#388).
+            acfs_note_bun_global_bin_mismatch "codex" "@openai/codex@latest" "$bun_bin" || true
+            ACFS_MODULE_FAILURES+=("agents.codex (required verification failed after install attempts)")
+        fi
         agents_phase_rc=1
     fi
 

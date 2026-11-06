@@ -160,6 +160,17 @@ teardown() {
 # installed binaries, so retries use the same skip decisions as a real run.
 setup_language_phase_fixture() {
     source_lib state
+    source_lib install_helpers
+    source "$PROJECT_ROOT/scripts/generated/manifest_index.sh"
+    ACFS_MANIFEST_INDEX_LOADED=true
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    SKIP_MODULES=()
+    SKIP_TAGS=()
+    SKIP_CATEGORIES=()
+    NO_DEPS=false
+    ACFS_USE_GENERATED=0
+    unset ACFS_USE_GENERATED_LANG ACFS_USE_GENERATED_TOOLS
     export TARGET_HOME="$BATS_TEST_TMPDIR/language-home"
     export TARGET_USER="$(id -un)"
     export ACFS_HOME="$BATS_TEST_TMPDIR/language-state"
@@ -181,7 +192,10 @@ setup_language_phase_fixture() {
 
     # The tools function contains a heredoc with column-zero closing braces;
     # extract the entire phase rather than stopping at the first such brace.
-    eval "$(sed -n '/^install_languages_legacy_lang() {$/,/^install_agy_locked_launchers() {$/p' "$PROJECT_ROOT/install.sh" | sed '$d')"
+    local install_source="${ACFS_LANGUAGE_TEST_INSTALL_SH:-$PROJECT_ROOT/install.sh}"
+    eval "$(sed -n '/^acfs_legacy_module_selected() {$/,/^}$/p' "$install_source")"
+    eval "$(sed -n '/^acfs_verify_phase() {$/,/^}$/p' "$install_source")"
+    eval "$(sed -n '/^install_languages_legacy_lang() {$/,/^install_agy_locked_launchers() {$/p' "$install_source" | sed '$d')"
 
     language_attempt() {
         local name="$1" module_id="$2"
@@ -194,8 +208,7 @@ setup_language_phase_fixture() {
         fi
         touch "$TARGET_HOME/ready/$module_id"
     }
-    acfs_should_skip_module() { [[ -f "$TARGET_HOME/ready/$1" ]]; }
-    acfs_use_generated_category() { return 1; }
+    acfs_verify_authored_module() { [[ -f "$TARGET_HOME/ready/$1" ]]; }
     acfs_run_verified_upstream_script_as_target() {
         local category=lang
         [[ "$1" != zoxide ]] || category=tools
@@ -216,21 +229,160 @@ setup_language_phase_fixture() {
             *) return 99 ;;
         esac
     }
-    acfs_arch_pkg_install() { language_attempt "pacman:$1" "tools.$1"; }
-    run_as_target() { "$@"; }
-    acfs_verify_phase() {
-        local module_id
-        for module_id in lang.bun lang.rust lang.go lang.uv lang.nvm tools.ast_grep tools.atuin tools.zoxide; do
-            acfs_should_skip_module "$module_id" || return 1
-        done
+    acfs_arch_pkg_install() {
+        local category=tools
+        [[ "$1" != go ]] || category=lang
+        language_attempt "pacman:$1" "$category.$1"
     }
+    run_as_target() { env HOME="$TARGET_HOME" "$@"; }
     run_language_phase_fixture() {
         local phase_status=0
         run_phase languages '5/9 Languages' install_languages || phase_status=$?
         printf '%s\n' "${ACFS_MODULE_FAILURES[@]}"
         return "$phase_status"
     }
+    acfs_resolve_selection
     state_init
+}
+
+setup_missing_language_modules() {
+    setup_language_phase_fixture 'lang.bun lang.rust lang.go lang.uv lang.nvm tools.ast_grep tools.atuin tools.zoxide'
+    mkdir -p "$TARGET_HOME/.cargo/bin"
+    cat > "$TARGET_HOME/.cargo/bin/cargo" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == install ]] || exit 99
+shift
+printf 'cargo:%s\n' "$*" >> "$LANGUAGE_ATTEMPTS"
+for package in "$@"; do
+    if [[ "$package" == ast-grep ]]; then
+        touch "$TARGET_HOME/ready/tools.ast_grep"
+    fi
+done
+EOF
+    chmod +x "$TARGET_HOME/.cargo/bin/cargo"
+}
+
+setup_language_atuin_wrapper() {
+    mkdir -p "$TARGET_HOME/.atuin/bin" "$ACFS_BIN_DIR"
+    printf '#!/bin/sh\nexit 0\n' > "$TARGET_HOME/.atuin/bin/atuin"
+    printf '#!/bin/sh\nprintf "existing wrapper\\n"\n' > "$ACFS_BIN_DIR/atuin"
+    chmod +x "$TARGET_HOME/.atuin/bin/atuin" "$ACFS_BIN_DIR/atuin"
+}
+
+@test "legacy language selection: --only lang.bun excludes unrelated runtimes and tools on Arch" {
+    setup_missing_language_modules
+    ACFS_DISTRO_FAMILY=arch
+    ONLY_MODULES=(lang.bun)
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" bun
+    run state_is_phase_completed languages
+    assert_success
+}
+
+@test "legacy language selection: category overrides preserve --only tools.zoxide with Cargo present" {
+    setup_missing_language_modules
+    ACFS_USE_GENERATED=1
+    ACFS_USE_GENERATED_LANG=0
+    ACFS_USE_GENERATED_TOOLS=0
+    ONLY_MODULES=(tools.zoxide)
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" apt:zoxide
+}
+
+@test "legacy language selection: ast-grep includes its real Rust dependency only" {
+    setup_missing_language_modules
+    ONLY_MODULES=(tools.ast_grep)
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" $'rust\ncargo:ast-grep --locked'
+}
+
+@test "legacy language selection: --only-phase 6 excludes the phase 5 CLI Cargo batch" {
+    setup_missing_language_modules
+    ONLY_PHASES=(6)
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" $'bun\nrust\napt:go\nuv\nnvm\ncargo:ast-grep --locked\natuin\napt:zoxide'
+}
+
+@test "legacy language selection: an explicit CLI selection retains its Cargo upgrades" {
+    setup_missing_language_modules
+    ONLY_MODULES=(cli.modern lang.rust)
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" $'rust\ncargo:du-dust lsd bat fd-find ripgrep --locked'
+}
+
+@test "legacy language selection: --skip tools.atuin preserves an existing wrapper" {
+    setup_language_phase_fixture
+    setup_language_atuin_wrapper
+    local original_wrapper
+    original_wrapper="$(cat "$ACFS_BIN_DIR/atuin")"
+    SKIP_MODULES=(tools.atuin)
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" apt:zoxide
+    assert_equal "$(cat "$ACFS_BIN_DIR/atuin")" "$original_wrapper"
+}
+
+@test "legacy language selection: full installs retain CLI Cargo extras and the Atuin wrapper" {
+    setup_missing_language_modules
+    setup_language_atuin_wrapper
+
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" $'bun\nrust\napt:go\nuv\nnvm\ncargo:ast-grep --locked\ncargo:du-dust lsd bat fd-find ripgrep --locked\natuin\napt:zoxide'
+    [[ "$(cat "$ACFS_BIN_DIR/atuin")" == *"agent hook integration disabled by ACFS"* ]]
+}
+
+@test "legacy language selection: selected failures retain later selected installs and recovery" {
+    setup_missing_language_modules
+    ONLY_MODULES=(lang.bun lang.uv tools.zoxide)
+    LANGUAGE_FAILURES=bun
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'lang.bun (checksum)'
+    refute_output --partial 'tools.ast_grep ('
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" $'bun\nuv\napt:zoxide'
+    run state_is_phase_completed languages
+    assert_failure
+
+    LANGUAGE_FAILURES=""
+    run run_language_phase_fixture
+    assert_success
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" $'bun\nuv\napt:zoxide\nbun'
+    run state_is_phase_completed languages
+    assert_success
+}
+
+@test "legacy language selection: --no-deps reports missing Cargo without installing Rust" {
+    setup_language_phase_fixture 'lang.bun lang.rust lang.go lang.uv lang.nvm tools.ast_grep tools.atuin tools.zoxide'
+    ONLY_MODULES=(tools.ast_grep)
+    NO_DEPS=true
+    acfs_resolve_selection
+
+    run run_language_phase_fixture
+    assert_failure
+    assert_output --partial 'tools.ast_grep (cargo unavailable)'
+    assert_equal "$(cat "$LANGUAGE_ATTEMPTS")" ""
+    run state_is_phase_completed languages
+    assert_failure
 }
 
 @test "language phase: Atuin failure still installs Zoxide and retries only missing tools" {
@@ -604,4 +756,173 @@ EOF_STATE
         and (.failure.suggested_fix | contains("Upstream installer script has changed"))
     ' "$report_log"
     assert_success
+}
+
+# Exercise the authored agents phase and persistent recovery state without
+# downloading installers. Native installers and Bun publish working fixture
+# commands; readiness checks execute those commands instead of testing presence.
+setup_agents_phase_fixture() {
+    source_lib state
+    export TARGET_HOME="$BATS_TEST_TMPDIR/agents-home"
+    export TARGET_USER="$(id -un)"
+    export ACFS_HOME="$BATS_TEST_TMPDIR/agents-state"
+    export ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    export AGENT_ATTEMPTS="$BATS_TEST_TMPDIR/agent-attempts"
+    AGENT_NATIVE_FAILURES=""
+    ACFS_MODULE_FAILURES=()
+    SUDO=""
+    mkdir -p "$TARGET_HOME/.bun/bin" "$ACFS_BIN_DIR"
+    : > "$AGENT_ATTEMPTS"
+
+    local install_source="${ACFS_AGENT_TEST_INSTALL_SH:-$PROJECT_ROOT/install.sh}"
+    eval "$(sed -n '/^install_agents_phase() {$/,/^acfs_postgres_run_as_owner() {$/p' "$install_source" | sed '$d')"
+
+    agent_write_executable() {
+        printf '#!/bin/sh\nprintf "fixture agent\\n"\n' > "$1"
+        chmod +x "$1"
+    }
+    acfs_use_generated_category() { return 1; }
+    acfs_verify_module() {
+        local command="${1#agents.}"
+        [[ "$command" != antigravity ]] || command=agy
+        [[ -x "$ACFS_BIN_DIR/$command" ]] \
+            && "$ACFS_BIN_DIR/$command" --version >/dev/null 2>&1
+    }
+    acfs_should_skip_module() { acfs_verify_module "$1"; }
+    acfs_ensure_primary_bin_dir() { mkdir -p "$ACFS_BIN_DIR"; }
+    acfs_early_system_binary_path() { command -v "$1"; }
+    acfs_install_executable_into_primary_bin() {
+        cp "$1" "$ACFS_BIN_DIR/$2"
+        chmod +x "$ACFS_BIN_DIR/$2"
+    }
+    acfs_run_verified_upstream_script_as_target() {
+        local tool="$1"
+        printf 'native:%s\n' "$tool" >> "$AGENT_ATTEMPTS"
+        if [[ " $AGENT_NATIVE_FAILURES " == *" $tool "* ]]; then
+            printf 'native installer failed for %s\n' "$tool" >&2
+            return 65
+        fi
+        [[ "$tool" != antigravity ]] || tool=agy-real
+        agent_write_executable "$ACFS_BIN_DIR/$tool"
+    }
+    install_agy_locked_launchers() {
+        [[ -x "$ACFS_BIN_DIR/agy-real" ]] || return 1
+        agent_write_executable "$ACFS_BIN_DIR/agy"
+    }
+    run_as_target() { env HOME="$TARGET_HOME" "$@"; }
+    acfs_run_verification_command() { shift; "$@"; }
+    acfs_note_bun_global_bin_mismatch() { return 1; }
+    acfs_verify_phase() {
+        local module
+        for module in agents.claude agents.codex agents.antigravity; do
+            acfs_verify_module "$module" || return 1
+        done
+    }
+    run_agents_phase_fixture() {
+        local phase_status=0
+        run_phase agents '6/9 Coding Agents' install_agents_phase || phase_status=$?
+        printf '%s\n' "${ACFS_MODULE_FAILURES[@]}"
+        return "$phase_status"
+    }
+    state_init
+}
+
+install_agents_fixture_bun() {
+    cat > "$TARGET_HOME/.bun/bin/bun" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == install && "$2" == -g && "$3" == --trust ]] || exit 99
+case "$4" in
+    @openai/codex*) fixture_tool=codex ;;
+    @anthropic-ai/claude-code*) fixture_tool=claude ;;
+    *) exit 99 ;;
+esac
+printf 'bun:%s\n' "$fixture_tool" >> "$AGENT_ATTEMPTS"
+printf '#!/bin/sh\nprintf "fixture agent\\n"\n' > "$ACFS_BIN_DIR/$fixture_tool"
+chmod +x "$ACFS_BIN_DIR/$fixture_tool"
+EOF
+    chmod +x "$TARGET_HOME/.bun/bin/bun"
+}
+
+@test "legacy agents: missing Bun installs native agents and resumes only Codex" {
+    setup_agents_phase_fixture
+
+    run run_agents_phase_fixture
+    assert_failure
+    assert_equal "$(cat "$AGENT_ATTEMPTS")" $'native:claude\nnative:antigravity'
+    assert_output --partial 'agents.codex (bun missing; languages phase must succeed first)'
+    refute_output --partial 'agents.claude ('
+    refute_output --partial 'agents.antigravity ('
+    run state_is_phase_completed agents
+    assert_failure
+    run state_has_required_failures
+    assert_success
+
+    install_agents_fixture_bun
+    run run_agents_phase_fixture
+    assert_success
+    assert_equal "$(cat "$AGENT_ATTEMPTS")" $'native:claude\nnative:antigravity\nbun:codex'
+    run state_is_phase_completed agents
+    assert_success
+    run state_has_required_failures
+    assert_failure
+}
+
+@test "legacy agents: missing Bun and native Claude failure still install Antigravity" {
+    setup_agents_phase_fixture
+    AGENT_NATIVE_FAILURES=claude
+
+    run run_agents_phase_fixture
+    assert_failure
+    assert_equal "$(cat "$AGENT_ATTEMPTS")" $'native:claude\nnative:antigravity'
+    assert_output --partial 'agents.claude (required verification failed after install attempts)'
+    assert_output --partial 'agents.codex (bun missing; languages phase must succeed first)'
+    refute_output --partial 'agents.antigravity ('
+    run state_is_phase_completed agents
+    assert_failure
+    run jq -e '.phase_steps.agents | has("Installing Claude Code (bun)") | not' "$ACFS_STATE_FILE"
+    assert_success
+    run acfs_verify_module agents.antigravity
+    assert_success
+}
+
+@test "legacy agents: healthy installed Codex does not require Bun" {
+    setup_agents_phase_fixture
+    agent_write_executable "$ACFS_BIN_DIR/codex"
+    local original_codex
+    original_codex="$(cat "$ACFS_BIN_DIR/codex")"
+
+    run run_agents_phase_fixture
+    assert_success
+    assert_equal "$(cat "$AGENT_ATTEMPTS")" $'native:claude\nnative:antigravity'
+    assert_equal "$(cat "$ACFS_BIN_DIR/codex")" "$original_codex"
+    refute_output --partial 'agents.codex ('
+    run state_is_phase_completed agents
+    assert_success
+}
+
+@test "legacy agents: missing Bun does not publish a broken Codex wrapper" {
+    setup_agents_phase_fixture
+    agent_write_executable "$TARGET_HOME/.bun/bin/codex"
+
+    run run_agents_phase_fixture
+    assert_failure
+    assert_equal "$(cat "$AGENT_ATTEMPTS")" $'native:claude\nnative:antigravity'
+    assert_output --partial 'agents.codex (bun missing; languages phase must succeed first)'
+    [[ ! -e "$ACFS_BIN_DIR/codex" ]]
+}
+
+@test "legacy agents: available Bun still recovers a failed native Claude install" {
+    setup_agents_phase_fixture
+    install_agents_fixture_bun
+    AGENT_NATIVE_FAILURES=claude
+
+    run run_agents_phase_fixture
+    assert_success
+    assert_equal "$(cat "$AGENT_ATTEMPTS")" $'native:claude\nbun:claude\nbun:codex\nnative:antigravity'
+    run state_is_phase_completed agents
+    assert_success
+    run state_has_required_failures
+    assert_failure
 }
