@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import json
 import os
 from pathlib import Path
 import pty
@@ -298,7 +299,8 @@ class InstallerTerminalTests(unittest.TestCase):
         self.attach_signal_probe(signal.SIGHUP)
 
     def gum(self, *, failure="", dry_run=False, sudo_identity_fixture=False,
-            setsid_available=True, detached=False, interrupt_signal=None):
+            setsid_available=True, sleep_available=True, detached=False,
+            interrupt_signal=None):
         function_source = definition("install_gum_early")
         helpers = []
         if re.search(r"^acfs_run_early_apt\(\) \{", SOURCE.read_text(), re.M):
@@ -322,7 +324,10 @@ class InstallerTerminalTests(unittest.TestCase):
         timeout_wrapper = self.root / "timeout-fixture"
         timeout_wrapper.write_text("#!/usr/bin/env bash\n" + r'''
 set -euo pipefail
-printf '%s\n' "$*" >> "$TEST_TIMEOUT_ARGS"
+/usr/bin/python3 -c 'import json, sys
+with open(sys.argv[1], "a") as stream:
+    stream.write(json.dumps(sys.argv[2:]) + "\n")
+' "$TEST_TIMEOUT_ARGS" "$@"
 options=()
 while [[ "$1" == -* ]]; do
     case "$1" in
@@ -375,23 +380,35 @@ if os.environ["TEST_APT_FAILURE"] == "ignore-term" and operation == "install":
     time.sleep(2)
     with events.open("a") as stream:
         stream.write("install:survived-timeout\n")
-if os.environ["TEST_APT_FAILURE"] in ("descendant", "interrupt") and operation == "install":
-    # A helper keeps apt's captured stdout open. Foreground-only timeout kills
-    # apt but leaves this child running until it exits two seconds later.
+if os.environ["TEST_APT_FAILURE"] in (
+    "descendant", "interrupt", "resistant-descendant", "interrupt-resistant"
+) and operation == "install":
+    # A helper keeps apt's captured stdout open. Some helpers also ignore TERM;
+    # timeout must retain its KILL escalation even after apt itself exits.
     child = """
 import os, signal, sys, time
 from pathlib import Path
 events = Path(sys.argv[1])
+resistant = os.environ["TEST_APT_FAILURE"] in ("resistant-descendant", "interrupt-resistant")
 def terminated(signum, frame):
     with events.open('a') as stream:
         stream.write('terminated\\n')
     sys.exit(0)
-signal.signal(signal.SIGTERM, terminated)
+signal.signal(signal.SIGTERM, signal.SIG_IGN if resistant else terminated)
+Path(os.environ["TEST_APT_CHILD_PID"]).write_text(str(os.getpid()))
 events.write_text('started\\n')
-time.sleep(6 if os.environ["TEST_APT_FAILURE"] == "interrupt" else 2)
+time.sleep(6 if resistant or os.environ["TEST_APT_FAILURE"] == "interrupt" else 2)
 with events.open('a') as stream:
     stream.write('completed\\n')
 """
+    if os.environ["TEST_APT_FAILURE"] in ("resistant-descendant", "interrupt-resistant"):
+        def terminated(signum, frame):
+            with events.open("a") as stream:
+                stream.write("install:terminated\n")
+            # Abrupt apt exit must leave the resistant helper to production
+            # supervision, not subprocess.run's exception cleanup in this fixture.
+            os._exit(128 + signum)
+        signal.signal(signal.SIGTERM, terminated)
     subprocess.run([sys.executable, "-c", child, os.environ["TEST_APT_CHILD_EVENTS"]], check=False)
 ''')
         apt.chmod(0o755)
@@ -424,6 +441,7 @@ exec "$@"
             f"export TEST_APT_EVENTS={shlex.quote(str(events))}",
             f"export TEST_APT_PGID={shlex.quote(str(self.root / 'apt-pgid'))}",
             f"export TEST_APT_CHILD_EVENTS={shlex.quote(str(self.root / 'apt-child-events'))}",
+            f"export TEST_APT_CHILD_PID={shlex.quote(str(self.root / 'apt-child-pid'))}",
             f"export TEST_APT_FAILURE={shlex.quote(failure)}",
             f"export TEST_TIMEOUT_ARGS={shlex.quote(str(timeouts))}",
             f"export TEST_REAL_TIMEOUT_BIN={shlex.quote(timeout_bin)}",
@@ -435,6 +453,7 @@ exec "$@"
             f"export TEST_SUDO_EVENTS={shlex.quote(str(self.root / 'sudo-events'))}",
             f"TEST_FIXTURE_DIR={shlex.quote(str(self.root))}",
             f"TEST_SETSID_AVAILABLE={'true' if setsid_available else 'false'}",
+            f"TEST_SLEEP_AVAILABLE={'true' if sleep_available else 'false'}",
             f"DRY_RUN={'true' if dry_run else 'false'}",
             r'''
 ACFS_DISTRO_FAMILY=ubuntu
@@ -453,6 +472,10 @@ acfs_early_system_binary_path() {
             ;;
         env) printf '%s\n' "$TEST_ENV_BIN" ;;
         bash) printf '/bin/bash\n' ;;
+        sleep)
+            [[ "$TEST_SLEEP_AVAILABLE" == true ]] || return 1
+            printf '/bin/sleep\n'
+            ;;
         *) printf '%s/fixture-%s\n' "$TEST_FIXTURE_DIR" "$1" ;;
     esac
 }
@@ -460,8 +483,11 @@ install_gum_early
 printf 'HAS_GUM=%s\n' "$HAS_GUM"
 ''',
         ])
-        if interrupt_signal is not None:
-            return self.gum_signal_probe(body, interrupt_signal)
+        if interrupt_signal is not None or failure == "resistant-descendant":
+            return self.gum_process_probe(
+                body, interrupt_signal,
+                resistant_child=failure in ("resistant-descendant", "interrupt-resistant"),
+            )
         if detached:
             import subprocess
 
@@ -477,7 +503,7 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
         self.assertEqual(status, 0, output)
         return output, events.read_text() if events.exists() else "", timeouts
 
-    def gum_signal_probe(self, body, watched_signal):
+    def gum_process_probe(self, body, watched_signal, *, resistant_child=False):
         pid, terminal = pty.fork()
         if pid == 0:
             import ctypes
@@ -501,6 +527,8 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
             os.write(ready_write, b"1")
             os.close(ready_write)
             apt_group = None
+            apt_child = None
+            child_status = None
             worker_status = None
             group_exited = False
             result = 1
@@ -511,13 +539,15 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
                 while time.monotonic() < deadline:
                     if child_events.exists() and "started\n" in child_events.read_text():
                         apt_group = int(pgid_file.read_text())
+                        apt_child = int((self.root / "apt-child-pid").read_text())
                         break
                     time.sleep(0.02)
                 if apt_group is None or apt_group in (os.getpgrp(), worker):
                     raise RuntimeError("detached apt helper did not become ready")
-                # Deliver exactly the foreground-group signal a terminal would
-                # send, without signalling the detached timeout group ourselves.
-                os.killpg(worker, watched_signal)
+                if watched_signal is not None:
+                    # Deliver exactly the foreground-group signal a terminal
+                    # would send, without signalling detached apt ourselves.
+                    os.killpg(worker, watched_signal)
                 deadline = time.monotonic() + 2
                 while time.monotonic() < deadline:
                     while True:
@@ -529,6 +559,8 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
                             break
                         if reaped == worker:
                             worker_status = os.waitstatus_to_exitcode(status)
+                        if reaped == apt_child:
+                            child_status = os.waitstatus_to_exitcode(status)
                     try:
                         os.killpg(apt_group, 0)
                     except ProcessLookupError:
@@ -538,8 +570,15 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
                     time.sleep(0.02)
                 print(f"INSTALLER_SIGNAL_STATUS={worker_status}", flush=True)
                 print(f"APT_GROUP_EXITED={group_exited}", flush=True)
+                print(f"APT_CHILD_STATUS={child_status}", flush=True)
                 result = 0
             finally:
+                # Readiness can fail after apt starts but before its helper
+                # publishes its marker. Still clean up that owned detached group.
+                if apt_group is None and (self.root / "apt-pgid").exists():
+                    recorded_group = int((self.root / "apt-pgid").read_text())
+                    if recorded_group > 1 and recorded_group not in (os.getpgrp(), worker):
+                        apt_group = recorded_group
                 for group in (worker, apt_group):
                     if group is not None:
                         try:
@@ -557,19 +596,25 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
         self.child, self.terminal = pid, terminal
         status, output = self.finish(timeout=8)
         self.assertEqual(status, 0, output)
-        self.assertIn(f"INSTALLER_SIGNAL_STATUS={128 + watched_signal}", output)
+        expected_status = 128 + watched_signal if watched_signal is not None else 0
+        self.assertIn(f"INSTALLER_SIGNAL_STATUS={expected_status}", output)
         self.assertIn("APT_GROUP_EXITED=True", output)
         self.assertNotIn("HAS_GUM=true", output)
-        self.assertEqual((self.root / "apt-child-events").read_text(), "started\nterminated\n")
+        if resistant_child:
+            self.assertIn(f"APT_CHILD_STATUS={-signal.SIGKILL}", output)
+            self.assertEqual((self.root / "apt-child-events").read_text(), "started\n")
+            self.assertIn("install:terminated\n", (self.root / "apt-events").read_text())
+        else:
+            self.assertEqual((self.root / "apt-child-events").read_text(), "started\nterminated\n")
         return output, (self.root / "apt-events").read_text(), self.root / "timeout-args"
 
     def test_early_gum_apt_detaches_from_controlling_terminal(self):
         output, events, timeouts = self.gum()
         self.assertIn("HAS_GUM=true", output)
         self.assertEqual(events, "update:started\nupdate:detached\ninstall:started\ninstall:detached\n")
-        calls = timeouts.read_text().splitlines()
+        calls = [json.loads(call) for call in timeouts.read_text().splitlines()]
         self.assertEqual(len(calls), 2)
-        self.assertTrue(all(shlex.split(call)[:2] == ["--kill-after=10", "300"] for call in calls), calls)
+        self.assertTrue(all(call[:2] == ["--kill-after=10", "300"] for call in calls), calls)
 
     def test_early_gum_detached_noninteractive_bootstrap_succeeds(self):
         output, events, _ = self.gum(detached=True)
@@ -611,6 +656,14 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
         self.assertIn("install:detached", events)
         self.assertNotIn("install:survived-timeout", events)
 
+    def test_early_gum_timeout_kills_resistant_child_after_apt_exits(self):
+        output, events, _ = self.gum(failure="resistant-descendant")
+        self.assertIn("HAS_GUM=false", output)
+        self.assertIn("install:detached", events)
+
+    def test_early_gum_terminal_interrupt_kills_resistant_child_after_apt_exits(self):
+        self.gum(failure="interrupt-resistant", interrupt_signal=signal.SIGINT)
+
     def test_early_gum_terminal_interrupt_cleans_up_detached_apt_group(self):
         self.gum(failure="interrupt", interrupt_signal=signal.SIGINT)
 
@@ -622,6 +675,12 @@ printf 'HAS_GUM=%s\n' "$HAS_GUM"
 
     def test_early_gum_missing_session_tool_keeps_optional_fallback(self):
         output, events, timeouts = self.gum(setsid_available=False)
+        self.assertIn("HAS_GUM=false", output)
+        self.assertEqual(events, "")
+        self.assertFalse(timeouts.exists())
+
+    def test_early_gum_missing_guardian_sleep_keeps_optional_fallback(self):
+        output, events, timeouts = self.gum(sleep_available=False)
         self.assertIn("HAS_GUM=false", output)
         self.assertEqual(events, "")
         self.assertFalse(timeouts.exists())
