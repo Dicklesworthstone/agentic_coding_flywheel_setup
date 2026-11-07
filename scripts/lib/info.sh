@@ -1674,28 +1674,36 @@ info_collect_swarm_status_json() {
     local status_script="${ACFS_INFO_SWARM_STATUS_SCRIPT:-${_INFO_SCRIPT_DIR}/swarm_status.sh}"
     local bash_bin=""
     local timeout_bin=""
+    local sleep_bin=""
     local deadline="${ACFS_INFO_SWARM_STATUS_DEADLINE:-2}"
     local per_tool_timeout="${ACFS_INFO_SWARM_STATUS_TIMEOUT:-0.2}"
     local output=""
     local exit_status=0
 
     [[ -f "$status_script" ]] || return 1
+    [[ "$deadline" =~ ^[0-9]+([.][0-9]+)?$ && -n "${deadline//[.0]/}" ]] || return 1
     bash_bin="$(info_system_binary_path bash 2>/dev/null || true)"
     [[ -n "$bash_bin" ]] || return 1
 
-    timeout_bin="$(info_system_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        if output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$timeout_bin" "$deadline" "$bash_bin" "$status_script" --json 2>/dev/null)"; then
-            :
-        else
-            exit_status=$?
-        fi
+    timeout_bin="$(info_system_binary_path timeout 2>/dev/null)" || return 1
+    sleep_bin="$(info_system_binary_path sleep 2>/dev/null)" || return 1
+    # The collector may exit on TERM while a child still owns its output pipe.
+    # Retain a guardian until the whole probe group is forcibly stopped.
+    if output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$timeout_bin" --kill-after=1 -- "$deadline" "$bash_bin" --noprofile --norc -p -c '
+        set +e
+        set +m
+        guardian_sleep=$1
+        shift
+        trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+        "$@" &
+        probe_pid=$!
+        probe_status=0
+        wait "$probe_pid" || probe_status=$?
+        exit "$probe_status"
+    ' _ "$sleep_bin" "$bash_bin" "$status_script" --json </dev/null 2>/dev/null)"; then
+        :
     else
-        if output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$bash_bin" "$status_script" --json 2>/dev/null)"; then
-            :
-        else
-            exit_status=$?
-        fi
+        exit_status=$?
     fi
 
     [[ $exit_status -eq 0 && -n "$output" ]] || return 1

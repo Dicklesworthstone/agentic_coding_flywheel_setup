@@ -152,13 +152,28 @@ swarm_status_run_with_timeout() {
     local timeout_secs="$1"
     shift
 
-    local timeout_bin=""
-    timeout_bin="$(swarm_status_binary_path timeout 2>/dev/null || true)"
-    if [[ -n "$timeout_bin" ]]; then
-        "$timeout_bin" "$timeout_secs" "$@" 2>&1
-    else
-        "$@" 2>&1
-    fi
+    # A zero duration disables GNU timeout. Invalid or unavailable bounds must
+    # produce the caller's structured warning without executing the probe.
+    [[ "$timeout_secs" =~ ^[0-9]+([.][0-9]+)?$ && -n "${timeout_secs//[.0]/}" ]] || return 2
+    local timeout_bin="" sleep_bin=""
+    timeout_bin="$(swarm_status_binary_path timeout 2>/dev/null)" || return 127
+    sleep_bin="$(swarm_status_binary_path sleep 2>/dev/null)" || return 127
+
+    # Keep the monitored process alive through escalation even if a wrapper
+    # exits on TERM while its descendants retain our captured output pipe.
+    # Use the calling Bash and disable startup hooks in this guardian only.
+    "$timeout_bin" --kill-after=1 -- "$timeout_secs" "$BASH" --noprofile --norc -p -c '
+        set +e
+        set +m
+        guardian_sleep=$1
+        shift
+        trap '\''trap "" HUP INT QUIT TERM; while :; do "$guardian_sleep" 1; done'\'' HUP INT QUIT TERM
+        "$@" &
+        probe_pid=$!
+        probe_status=0
+        wait "$probe_pid" || probe_status=$?
+        exit "$probe_status"
+    ' _ "$sleep_bin" "$@" </dev/null 2>&1
 }
 
 swarm_status_json_array() {

@@ -197,6 +197,13 @@ class DiagnosticCaptureTests(unittest.TestCase):
 
     def bounded_probe(self, kind: str, command: list[str], *, deadline="0.5"):
         argv = shlex.join(command)
+        if kind == "swarm":
+            source = ROOT / "scripts/lib/swarm_status.sh"
+            return "\n".join([
+                definition(source, "swarm_status_binary_path"),
+                definition(source, "swarm_status_run_with_timeout"),
+                f"swarm_status_run_with_timeout {deadline} {argv}",
+            ])
         if kind == "version":
             return "set -o pipefail\n" + doctor_definitions("doctor_version_probe") + \
                 f"\ndoctor_version_probe /usr/bin/timeout {deadline} discard {argv}"
@@ -242,6 +249,57 @@ class DiagnosticCaptureTests(unittest.TestCase):
     def test_support_helper_bounds_wrapper_exit_with_live_grandchild(self):
         self.check_wrapper_timeout("support")
 
+    def test_swarm_probe_bounds_wrapper_exit_with_live_grandchild(self):
+        self.check_wrapper_timeout("swarm")
+
+    def test_live_info_bounds_wrapper_exit_with_live_grandchild(self):
+        fixture, stop, identity = self.wrapper_with_resistant_grandchild()
+        collector = self.root / "collector.sh"
+        collector.write_text("exec /usr/bin/python3 " + shlex.quote(str(fixture)) + "\n")
+        source = ROOT / "scripts/lib/info.sh"
+        code = "\n".join([
+            definition(source, "info_system_binary_path"),
+            definition(source, "info_collect_swarm_status_json"),
+            f"ACFS_INFO_SWARM_STATUS_SCRIPT={shlex.quote(str(collector))}",
+            "ACFS_INFO_SWARM_STATUS_DEADLINE=0.5",
+            "info_collect_swarm_status_json",
+        ])
+        process = subprocess.Popen(["/bin/bash", "-c", code], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        try:
+            try:
+                stdout, stderr = process.communicate(timeout=4)
+            except subprocess.TimeoutExpired:
+                self.fail("Live info waited for a descendant after its collector timed out")
+            self.assertEqual(process.returncode, 1, (stdout, stderr))
+            self.assertEqual(stdout, "")
+            self.assert_child_stopped(identity)
+        finally:
+            stop.touch()
+            process.communicate(timeout=3)
+
+    def test_swarm_missing_timeout_does_not_execute_unbounded_probe(self):
+        marker = self.root / "unbounded-probe-ran"
+        code = self.bounded_probe("swarm", ["/usr/bin/touch", str(marker)], deadline="1")
+        # Only dependency discovery is replaced; run the actual probe helper.
+        before, call = code.rsplit("\n", 1)
+        code = before + '\nswarm_status_binary_path() { return 1; }\n' + call
+        result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists(), "Missing timeout ran an unbounded probe")
+
+    def test_swarm_rejects_deadlines_that_disable_or_reinterpret_timeout(self):
+        for index, deadline in enumerate(("0", "0.000", "-1", "--help", "NaN", "1h")):
+            with self.subTest(deadline=deadline):
+                marker = self.root / f"invalid-deadline-probe-ran-{index}"
+                code = self.bounded_probe("swarm", ["/usr/bin/touch", str(marker)],
+                                          deadline=shlex.quote(deadline))
+                result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
+                                        text=True, timeout=3)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(marker.exists())
+
     def test_doctor_capture_bounds_wrapper_exit_with_live_grandchild(self):
         fixture, stop, identity = self.wrapper_with_resistant_grandchild()
         try:
@@ -263,14 +321,14 @@ class DiagnosticCaptureTests(unittest.TestCase):
             "sys.exit(41)"
         )
         first_line = json.dumps([argument]) + "\n"
-        for kind in ("version", "deep", "support"):
+        for kind in ("version", "deep", "support", "swarm"):
             with self.subTest(kind=kind):
                 code = self.bounded_probe(kind, ["/usr/bin/python3", "-c", probe, argument], deadline="2")
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
                                         text=True, input="remaining installer input\n", timeout=5)
                 self.assertEqual(result.returncode, 41, result.stderr)
                 expected = first_line if kind == "version" else first_line + "stdin=\n"
-                if kind == "deep":
+                if kind in ("deep", "swarm"):
                     expected += "diagnostic stderr\n"
                 self.assertEqual(result.stdout, expected)
                 self.assertEqual(result.stderr, "")
@@ -279,7 +337,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
         hook = self.root / "bash-env"
         marker = self.root / "hook-ran"
         hook.write_text("printf 'unexpected startup' > " + shlex.quote(str(marker)))
-        for kind in ("version", "deep", "support"):
+        for kind in ("version", "deep", "support", "swarm"):
             with self.subTest(kind=kind):
                 code = "export BASH_ENV=" + shlex.quote(str(hook)) + "\n" + \
                     self.bounded_probe(kind, ["/usr/bin/printf", "%s\\n", "version 1"], deadline="2")
@@ -290,7 +348,7 @@ class DiagnosticCaptureTests(unittest.TestCase):
                 self.assertFalse(marker.exists(), "Guardian executed a user shell startup hook")
 
     def test_native_137_is_preserved_as_failure_not_relabelled_timeout(self):
-        for kind in ("version", "deep", "support"):
+        for kind in ("version", "deep", "support", "swarm"):
             with self.subTest(kind=kind):
                 code = self.bounded_probe(kind, ["/bin/bash", "-c", "printf 'native failure\\n'; exit 137"], deadline="2")
                 result = subprocess.run(["/bin/bash", "-c", code], capture_output=True,
