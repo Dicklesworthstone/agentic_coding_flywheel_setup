@@ -88,6 +88,183 @@ load_doctor_functions() {
 }
 
 # ============================================================
+# Repair execution and undo lifecycle
+# ============================================================
+
+# Exercise the actual doctor command, dispatcher, PATH repair and undo journal
+# in a private home. Only host diagnostics and account discovery are replaced;
+# these tests must never repair the machine running the suite.
+run_isolated_doctor_repair() {
+    # The installed doctor does not enable errexit. Bats' own errexit must not
+    # hide missing error propagation in the actual command.
+    set +e
+    local scenario="$1"
+    shift
+    local fixture_home="$HOME"
+    load_doctor_functions
+    HOME="$fixture_home"
+    TARGET_HOME="$fixture_home"
+    ACFS_HOME="$fixture_home/.acfs"
+    SCRIPT_DIR="$PROJECT_ROOT/scripts/lib"
+    unset _ACFS_AUTOFIX_SOURCED _ACFS_DOCTOR_FIX_LOADED
+    # shellcheck source=../../../scripts/lib/doctor_fix.sh
+    source "$PROJECT_ROOT/scripts/lib/doctor_fix.sh"
+    doctor_fix_runtime_home() { printf '%s\n' "$HOME"; }
+    doctor_fix_runtime_acfs_home() { printf '%s\n' "$HOME/.acfs"; }
+    doctor_fix_runtime_user() { id -un; }
+    doctor_runtime_home() { printf '%s\n' "$HOME"; }
+    JSON_MODE=false
+    FIX_MODE=false
+    DRY_RUN_MODE=false
+    DEEP_MODE=false
+    HAS_GUM=false
+    QUIET_MODE=false
+    FIX_ARGS=()
+    JSON_CHECKS=()
+    PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0; SKIP_COUNT=0
+    DOCTOR_FIX_LOG="$HOME/doctor-fix.log"
+    ACFS_STATE_DIR="$HOME/.acfs/autofix"
+    ACFS_CHANGES_FILE="$ACFS_STATE_DIR/changes.jsonl"
+    ACFS_UNDOS_FILE="$ACFS_STATE_DIR/undos.jsonl"
+    ACFS_BACKUPS_DIR="$ACFS_STATE_DIR/backups"
+    ACFS_LOCK_FILE="$ACFS_STATE_DIR/.lock"
+    ACFS_INTEGRITY_FILE="$ACFS_STATE_DIR/.integrity"
+    ACFS_AUTOFIX_INITIALIZED=false
+    check_identity() { : > "$HOME/checks-ran"; check identity.user "Identity" pass; }
+    check_ubuntu_archive_suites() { :; }
+    check_workspace() { :; }
+    check_shell() { check path.local_bin "Local PATH" warn "missing PATH entries"; }
+    check_core_tools() { :; }
+    check_agents() { :; }
+    check_credential_sources() { :; }
+    check_cloud() { :; }
+    check_stack() { :; }
+    check_service_binary_drift() { :; }
+    check_utilities() { :; }
+    check_updates_health() { :; }
+    check_manifest_supplemental() { :; }
+    show_skipped_tools() { :; }
+    case "$scenario" in
+        init-failure)
+            start_autofix_session() { printf 'session locked\n' >&2; return 73; }
+            ;;
+        finalization-failure)
+            end_autofix_session() { printf 'journal unavailable\n' >&2; return 74; }
+            ;;
+        missing-helper)
+            unset -f run_doctor_fix
+            ;;
+        repair-failure)
+            fix_path_ordering() { printf 'repair failed\n'; return 75; }
+            ;;
+        counted-repair-failure)
+            fix_path_ordering() { FIX_FAILED=$((FIX_FAILED + 1)); return 75; }
+            ;;
+    esac
+    main doctor --fix "$@" > "$HOME/result.out" 2> "$HOME/result.err"
+}
+
+@test "doctor JSON repair applies the real PATH fix and records its undo" {
+    printf '# existing shell configuration\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair normal --yes --json
+    assert_success
+    run grep -F '# ACFS PATH ordering (added by doctor --fix)' "$HOME/.zshrc"
+    assert_success
+    run jq -e '.checks | any(.id == "path.local_bin" and .status == "warn")' "$HOME/result.out"
+    assert_success
+    run jq -se 'length > 0' "$HOME/.acfs/autofix/changes.jsonl"
+    assert_success
+    run grep -F 'Applied: 1' "$HOME/result.err"
+    assert_success
+}
+
+@test "doctor JSON dry-run previews the real repair without changing shell files" {
+    printf '# preserve this configuration\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair normal --yes --dry-run --json
+    assert_success
+    run cat "$HOME/.zshrc"
+    assert_output '# preserve this configuration'
+    run jq -e '.summary.warn == 1' "$HOME/result.out"
+    assert_success
+    run grep -F 'fix.path.ordering' "$HOME/result.err"
+    assert_success
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" ]]
+}
+
+@test "doctor text repair still applies the PATH fix and records its undo" {
+    printf '# existing text-mode configuration\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair normal --yes
+    assert_success
+    run grep -F '# ACFS PATH ordering (added by doctor --fix)' "$HOME/.zshrc"
+    assert_success
+    run jq -se 'length > 0' "$HOME/.acfs/autofix/changes.jsonl"
+    assert_success
+    run grep -F 'Applied: 1' "$HOME/result.out"
+    assert_success
+}
+
+@test "doctor JSON repair preserves the warning-level opt-in" {
+    printf '# leave warning alone\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair normal --json
+    assert_success
+    run cat "$HOME/.zshrc"
+    assert_output '# leave warning alone'
+    run grep -F 'warning left as-is' "$HOME/result.err"
+    assert_success
+    run jq -e '.summary.warn == 1' "$HOME/result.out"
+    assert_success
+}
+
+@test "doctor aborts repairs when the undo session cannot start" {
+    printf '# unchanged after session failure\n' > "$HOME/.zshrc"
+    run run_isolated_doctor_repair init-failure --yes
+    assert_failure
+    run cat "$HOME/.zshrc"
+    assert_output '# unchanged after session failure'
+    run grep -F 'Failed to start autofix session' "$HOME/result.err"
+    assert_success
+    [[ ! -e "$HOME/.acfs/autofix/changes.jsonl" ]]
+    [[ ! -e "$HOME/checks-ran" ]]
+}
+
+@test "doctor fails when repair support is unavailable" {
+    run run_isolated_doctor_repair missing-helper --json
+    assert_failure
+    run grep -F -- '--fix unavailable' "$HOME/result.err"
+    assert_success
+    [[ ! -s "$HOME/result.out" ]]
+}
+
+@test "doctor propagates undo finalization failure even when checks have no failures" {
+    run run_isolated_doctor_repair finalization-failure --json
+    assert_failure
+    run jq -e '.summary.fail == 0' "$HOME/result.out"
+    assert_success
+    run grep -F 'Failed to finalize autofix session' "$HOME/result.err"
+    assert_success
+}
+
+@test "doctor records repair failure and keeps structured output valid" {
+    run run_isolated_doctor_repair repair-failure --yes --json
+    assert_failure
+    run jq -e '.summary.fail == 0 and (.checks | length == 2)' "$HOME/result.out"
+    assert_success
+    run grep -F 'repair failed' "$HOME/result.err"
+    assert_success
+    run grep -F 'Failed:  1' "$HOME/result.err"
+    assert_success
+}
+
+@test "doctor does not count an already recorded repair failure twice" {
+    run run_isolated_doctor_repair counted-repair-failure --yes --json
+    assert_failure
+    run jq -e '.summary.fail == 0' "$HOME/result.out"
+    assert_success
+    run grep -F 'Failed:  1' "$HOME/result.err"
+    assert_success
+}
+
+# ============================================================
 # #403 — holds are reported, not flagged
 # ============================================================
 

@@ -2042,10 +2042,7 @@ check() {
         fi
 
         JSON_CHECKS+=("{\"id\":\"$(json_escape "$id")\",\"label\":\"$(json_escape "$label")\",\"status\":\"$(json_escape "$status")\",\"details\":\"$(json_escape "$details")\",\"fix\":$fix_json}")
-        return 0
-    fi
-
-    if [[ "$HAS_GUM" == "true" ]]; then
+    elif [[ "$HAS_GUM" == "true" ]]; then
         case "$status" in
             pass)
                 echo "  $(gum style --foreground "$ACFS_SUCCESS" --bold "✓ PASS") $(gum style --foreground "$ACFS_TEAL" "$label")"
@@ -2099,9 +2096,28 @@ check() {
     # Dispatch fix if --fix mode is enabled
     if [[ "$FIX_MODE" == "true" ]] && [[ "$status" != "pass" ]]; then
         if type -t dispatch_fix &>/dev/null; then
-            dispatch_fix "$id" "$status" "$fix"
+            local failures_before="${FIX_FAILED:-0}"
+            local repair_status=0
+            # Output format must not disable repairs. Keep the dispatcher in
+            # this shell so its counters and undo records survive, and send
+            # all installer output to stderr when stdout is structured data.
+            if [[ "$JSON_MODE" == "true" ]]; then
+                dispatch_fix "$id" "$status" "$fix" >&2 || repair_status=$?
+            else
+                dispatch_fix "$id" "$status" "$fix" || repair_status=$?
+            fi
+            # Some fixers return before recording a failure (for example, a
+            # missing prerequisite). Count those too, without double counting
+            # fixers that already reported their own failure.
+            if [[ "$repair_status" -ne 0 && "${FIX_FAILED:-0}" -eq "$failures_before" ]]; then
+                FIX_FAILED=$((failures_before + 1))
+                printf 'Error: repair failed for %s (exit %s)\n' "$id" "$repair_status" >&2
+            fi
         fi
     fi
+    # A failed repair is reported in FIX_FAILED; continue diagnostics and
+    # finalize the undo session even when the caller has errexit enabled.
+    return 0
 }
 
 doctor_binary_path() {
@@ -6691,14 +6707,24 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
 
     # Initialize fix mode if enabled
     if [[ "$FIX_MODE" == "true" ]]; then
-        if type -t run_doctor_fix &>/dev/null; then
+        if type -t run_doctor_fix &>/dev/null &&
+           type -t dispatch_fix &>/dev/null &&
+           type -t finalize_doctor_fix &>/dev/null; then
             if [[ "$DRY_RUN_MODE" == "true" ]]; then
                 FIX_ARGS+=("--dry-run")
             fi
-            run_doctor_fix "${FIX_ARGS[@]}"
+            local fix_init_status=0
+            if [[ "$JSON_MODE" == "true" ]]; then
+                run_doctor_fix "${FIX_ARGS[@]}" >&2 || fix_init_status=$?
+            else
+                run_doctor_fix "${FIX_ARGS[@]}" || fix_init_status=$?
+            fi
+            # Never repair without the session lock and undo journal that
+            # initialization establishes, including on partial failures.
+            [[ "$fix_init_status" -eq 0 ]] || return "$fix_init_status"
         else
-            echo "Warning: doctor_fix.sh not loaded, --fix unavailable" >&2
-            FIX_MODE=false
+            echo "Error: doctor_fix.sh not fully loaded, --fix unavailable" >&2
+            return 1
         fi
     fi
 
@@ -6729,21 +6755,25 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     fi
 
     # Finalize fix mode if enabled
+    local fix_finalize_status=0
     if [[ "$FIX_MODE" == "true" ]]; then
         if type -t finalize_doctor_fix &>/dev/null; then
             if [[ "$JSON_MODE" == "true" ]]; then
                 # Keep stdout a single JSON document; the fix summary is
                 # human-oriented text.
-                finalize_doctor_fix >&2
+                finalize_doctor_fix >&2 || fix_finalize_status=$?
             else
-                finalize_doctor_fix
+                finalize_doctor_fix || fix_finalize_status=$?
             fi
+        else
+            echo "Error: doctor fix session finalization is unavailable" >&2
+            fix_finalize_status=1
         fi
     fi
 
     # Exit with appropriate code. A --fix run whose fixes failed is not a
     # clean run either, even when no check reported FAIL.
-    if [[ $FAIL_COUNT -gt 0 ]] || [[ "${FIX_FAILED:-0}" -gt 0 ]]; then
+    if [[ $FAIL_COUNT -gt 0 ]] || [[ "${FIX_FAILED:-0}" -gt 0 ]] || [[ "$fix_finalize_status" -ne 0 ]]; then
         exit 1
     fi
     exit 0
